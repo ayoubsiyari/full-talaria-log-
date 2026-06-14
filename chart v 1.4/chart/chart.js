@@ -26753,6 +26753,8 @@ class Chart {
             'exec-order-connector',
             'split-avg-line', 'split-avg-label', 'split-avg-connector',
             'multi-tp-avg-line', 'multi-tp-avg-label',
+            'entry-marker', 'exit-marker', 'partial-close-marker', 'trade-connector',
+            'mfe-mae-marker-root',
             'order-overlay-sublayer'
         ];
         const _notOverlay = _preserveOrderOverlay.map((c) => `.${c}`).join('):not(');

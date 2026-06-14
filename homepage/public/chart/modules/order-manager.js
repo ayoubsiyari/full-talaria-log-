@@ -13022,6 +13022,9 @@ class OrderManager {
             // Reset TP/SL positioning flags when switching sides
             this.tpManuallyPositioned = false;
             this.slManuallyPositioned = false;
+            if (document.getElementById('multipleTPToggle')?.checked && this.tpTargets?.length) {
+                this.calculateTPTargetsFromNumber(this.tpTargets.length);
+            }
             this.updatePlaceButtonText();
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
@@ -13033,6 +13036,9 @@ class OrderManager {
             // Reset TP/SL positioning flags when switching sides
             this.tpManuallyPositioned = false;
             this.slManuallyPositioned = false;
+            if (document.getElementById('multipleTPToggle')?.checked && this.tpTargets?.length) {
+                this.calculateTPTargetsFromNumber(this.tpTargets.length);
+            }
             this.updatePlaceButtonText();
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
@@ -14820,6 +14826,13 @@ class OrderManager {
             } else if (this.tpDistributionMode === 'lots') {
                 distributionValue = quantity / nTargets;
             }
+
+            const lotShares = this.tpDistributionMode === 'lots'
+                ? this._allocateTpLotsByLargestRemainder(
+                    quantity,
+                    Array.from({ length: nTargets }, () => distributionValue)
+                )
+                : null;
             
             for (let i = 1; i <= nTargets; i++) {
                 // Distribute evenly from entry to original TP
@@ -14838,13 +14851,15 @@ class OrderManager {
                 } else if (this.tpDistributionMode === 'amount') {
                     value = parseFloat(distributionValue.toFixed(2));
                 } else if (this.tpDistributionMode === 'lots') {
-                    value = parseFloat(distributionValue.toFixed(2));
+                    value = lotShares ? lotShares[i - 1] : parseFloat(distributionValue.toFixed(2));
                 }
                 
                 this.tpTargets.push({ 
                     id: i, 
                     price: parseFloat(price.toFixed(this.getPricePrecision())), 
-                    percentage: value  // Renamed from percentage but stores the distribution value
+                    percentage: value,
+                    distributionMode: this.tpDistributionMode,
+                    originalValue: value,
                 });
             }
         } else {
@@ -14857,12 +14872,26 @@ class OrderManager {
             } else if (this.tpDistributionMode === 'lots') {
                 distributionValue = quantity / nTargets;
             }
+
+            const lotShares = this.tpDistributionMode === 'lots'
+                ? this._allocateTpLotsByLargestRemainder(
+                    quantity,
+                    Array.from({ length: nTargets }, () => distributionValue)
+                )
+                : null;
             
             for (let i = 1; i <= nTargets; i++) {
+                const value = this.tpDistributionMode === 'percent'
+                    ? parseFloat(distributionValue.toFixed(1))
+                    : (this.tpDistributionMode === 'lots' && lotShares
+                        ? lotShares[i - 1]
+                        : parseFloat(distributionValue.toFixed(2)));
                 this.tpTargets.push({ 
                     id: i, 
                     price: 0, 
-                    percentage: parseFloat(distributionValue.toFixed(this.tpDistributionMode === 'percent' ? 1 : 2))
+                    percentage: value,
+                    distributionMode: this.tpDistributionMode,
+                    originalValue: value,
                 });
             }
         }
@@ -15343,8 +15372,13 @@ class OrderManager {
             }
         } else if (this.tpDistributionMode === 'lots') {
             const totalQuantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-            if (Math.abs(totalValue - totalQuantity) > 0.01) {
-                errors.push(`⚠️ TP lots must sum to position size (${totalQuantity.toFixed(2)} lots, currently ${totalValue.toFixed(2)} lots)`);
+            const allocated = this._allocateTpLotsByLargestRemainder(
+                totalQuantity,
+                pricedTargets.map((t) => t.percentage || 0)
+            );
+            const allocatedSum = allocated.reduce((s, v) => s + v, 0);
+            if (Math.abs(allocatedSum - totalQuantity) > 0.001) {
+                errors.push(`⚠️ TP lots must sum to position size (${totalQuantity.toFixed(2)} lots, currently ${allocatedSum.toFixed(2)} lots)`);
             }
             if (this.marketType === 'futures') {
                 for (const t of pricedTargets) {
@@ -15659,6 +15693,44 @@ class OrderManager {
     }
 
     /**
+     * Split total lots across TP legs with largest-remainder (centilots) so shares sum exactly.
+     * @param {number} totalLots
+     * @param {number[]} rawLots
+     * @param {number} [decimals=2]
+     * @returns {number[]}
+     */
+    _allocateTpLotsByLargestRemainder(totalLots, rawLots, decimals = 2) {
+        const n = Array.isArray(rawLots) ? rawLots.length : 0;
+        const scale = Math.pow(10, Math.max(0, decimals));
+        const totalUnits = Math.round(Math.max(0, Number(totalLots) || 0) * scale);
+        if (!n || totalUnits <= 0) return (rawLots || []).map(() => 0);
+
+        const units = rawLots.map((q) => Math.max(0, Math.round((Number(q) || 0) * scale)));
+        let sum = units.reduce((a, b) => a + b, 0);
+
+        if (sum === 0) {
+            const per = Math.floor(totalUnits / n);
+            const extra = totalUnits - per * n;
+            return units.map((_, i) => (per + (i < extra ? 1 : 0)) / scale);
+        }
+
+        if (sum === totalUnits) {
+            return units.map((u) => u / scale);
+        }
+
+        const scaled = units.map((c) => (sum > 0 ? (c * totalUnits) / sum : 0));
+        const floors = scaled.map((x) => Math.floor(x));
+        let used = floors.reduce((a, b) => a + b, 0);
+        let rem = totalUnits - used;
+        const order = scaled
+            .map((x, i) => ({ i, frac: x - floors[i] }))
+            .sort((a, b) => b.frac - a.frac || a.i - b.i);
+        const out = [...floors];
+        for (let k = 0; k < rem && k < order.length; k++) out[order[k].i]++;
+        return out.map((u) => u / scale);
+    }
+
+    /**
      * Simulate the placeOrder conversion+normalization so the panel preview
      * matches the ACTUAL percentages that will be used when the order executes.
      * Returns an array of effective percentages (one per tpTarget, summing to 100).
@@ -15675,13 +15747,12 @@ class OrderManager {
         const ps = this.pipSize || 0.0001;
         const pv = this.pipValuePerLot || 10;
 
-        const converted = tpTargets.map(t => {
+        const converted = tpTargets.map((t, idx) => {
             const val = t.percentage || 0;
             if (!(t.price > 0) || val <= 0) return 0;
 
             if (mode === 'percent') return val;
-            if (mode === 'lots') return quantity > 0 ? (val / quantity) * 100 : 0;
-
+            if (mode === 'lots') return 0; // filled below after lot allocation
             // amount mode
             const priceDiff = side === 'BUY' ? (t.price - entryPrice) : (entryPrice - t.price);
             const pipsMove = priceDiff / ps;
@@ -15689,6 +15760,14 @@ class OrderManager {
             const lotsToClose = profitPerLot > 0 ? val / profitPerLot : 0;
             return quantity > 0 ? (lotsToClose / quantity) * 100 : 0;
         });
+
+        if (mode === 'lots') {
+            const rawLots = tpTargets.map((t) => (t.price > 0 ? (t.percentage || 0) : 0));
+            const allocated = this._allocateTpLotsByLargestRemainder(quantity, rawLots);
+            allocated.forEach((lots, i) => {
+                converted[i] = quantity > 0 ? (lots / quantity) * 100 : 0;
+            });
+        }
 
         const total = converted.reduce((s, v) => s + v, 0);
         if (total > 0 && Math.abs(total - 100) > 0.01) {
@@ -22174,11 +22253,17 @@ class OrderManager {
             
             // Filter out targets with no price set and convert to actual percentages
             const currentTpMode = this.tpDistributionMode || 'percent';
-            tpTargets = this.tpTargets
-                .filter(t => t.price > 0)
-                .map(t => {
+            const pricedForOrder = this.tpTargets.filter(t => t.price > 0);
+            const lotAllocated = currentTpMode === 'lots'
+                ? this._allocateTpLotsByLargestRemainder(
+                    quantity,
+                    pricedForOrder.map((t) => t.percentage || 0)
+                )
+                : null;
+            tpTargets = pricedForOrder
+                .map((t, idx) => {
                     let actualPercentage;
-                    const originalValue = t.percentage;
+                    const originalValue = lotAllocated ? lotAllocated[idx] : t.percentage;
                     
                     // Convert distribution value to actual percentage based on mode
                     if (currentTpMode === 'percent') {
@@ -22192,7 +22277,8 @@ class OrderManager {
                         const lotsToClose = profitPerLot > 0 ? t.percentage / profitPerLot : 0;
                         actualPercentage = quantity > 0 ? (lotsToClose / quantity) * 100 : 0;
                     } else if (currentTpMode === 'lots') {
-                        actualPercentage = quantity > 0 ? (t.percentage / quantity) * 100 : 0;
+                        const lots = lotAllocated ? lotAllocated[idx] : t.percentage;
+                        actualPercentage = quantity > 0 ? (lots / quantity) * 100 : 0;
                     }
                     
                     return { 
@@ -25848,6 +25934,7 @@ class OrderManager {
         
         if (positionsToClose.length > 0) {
             this._finalizeOrderVisualsAfterBatchClose();
+            this._scheduleClosedJournalMarkerRedraw();
         }
         
         // Continue tracking MFE/MAE for closed positions
@@ -26287,6 +26374,7 @@ class OrderManager {
                     percentage: percentage,
                     targetId: targetId
                 });
+                this._scheduleClosedJournalMarkerRedraw();
             }
             
             // Show notification
@@ -26938,12 +27026,28 @@ class OrderManager {
             
             // Draw exit marker only on the active chart (skip for cross-pair background closes)
             if (!isBackgroundClose) {
+                // Re-paint partial TP arrows (chart render can run between leg closes)
+                if (Array.isArray(position.partialCloses) && position.partialCloses.length > 0) {
+                    position.partialCloses.forEach((pc) => {
+                        try {
+                            this.drawPartialCloseMarker(position, {
+                                closePrice: pc.closePrice,
+                                closeTime: pc.closeTime,
+                                pnl: pc.pnl || 0,
+                                percentage: pc.percentage,
+                                targetId: pc.targetId,
+                                type: pc.hitType || 'TP-PARTIAL',
+                            });
+                        } catch (_) { /* ignore */ }
+                    });
+                }
                 this.drawExitMarker(position, {
                     closePrice: closePrice,
                     closeTime: closeTime,
                     pnl: totalPnL,
                     type: hitType || 'MANUAL'
                 });
+                this._scheduleClosedJournalMarkerRedraw();
             }
             
             this.removeEntryMarker(orderId);

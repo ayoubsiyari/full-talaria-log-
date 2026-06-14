@@ -863,6 +863,38 @@ function v9TpNormalizeFuturesContractShares(rawQtyStrings, orderQtyFloor) {
   return out;
 }
 
+/** Forex lot-size TP rows: decimal lots per leg summing exactly to orderQty (centilots + largest remainder). */
+function v9TpNormalizeDecimalLotShares(rawQtyStrings, orderQty, decimals = 2) {
+  const n = rawQtyStrings.length;
+  const scale = Math.pow(10, Math.max(0, decimals));
+  const totalUnits = Math.round(Math.max(0, Number(orderQty) || 0) * scale);
+  if (!n || totalUnits <= 0) return rawQtyStrings.map(() => (0).toFixed(decimals));
+
+  const units = rawQtyStrings.map((q) => Math.max(0, Math.round((parseFloat(q) || 0) * scale)));
+  let sum = units.reduce((a, b) => a + b, 0);
+
+  if (sum === 0) {
+    const per = Math.floor(totalUnits / n);
+    const extra = totalUnits - per * n;
+    return units.map((_, i) => ((per + (i < extra ? 1 : 0)) / scale).toFixed(decimals));
+  }
+
+  if (sum === totalUnits) {
+    return units.map((u) => (u / scale).toFixed(decimals));
+  }
+
+  const scaled = units.map((c) => (sum > 0 ? (c * totalUnits) / sum : 0));
+  const floors = scaled.map((x) => Math.floor(x));
+  let used = floors.reduce((a, b) => a + b, 0);
+  let rem = totalUnits - used;
+  const order = scaled
+    .map((x, i) => ({ i, frac: x - floors[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  const out = [...floors];
+  for (let k = 0; k < rem && k < order.length; k++) out[order[k].i]++;
+  return out.map((u) => (u / scale).toFixed(decimals));
+}
+
 /** OM TP percentages + total contracts → integer shares (largest remainder). */
 function v9TpFuturesContractsFromPercentages(percentages, orderQtyFloor) {
   const n = percentages.length;
@@ -926,7 +958,18 @@ function v9OmTpTargetToReactQty(om, targetIndex, sizeMode, symbolType) {
         : [];
     const lots = oq * ((eff[targetIndex] || 0) / 100);
     if (!(lots > 0)) return "0";
-    return symbolType === "futures" ? String(Math.round(lots)) : lots.toFixed(2);
+    if (symbolType === "futures") return String(Math.round(lots));
+    const allocated =
+      typeof om._allocateTpLotsByLargestRemainder === "function" && distMode === "lots"
+        ? om._allocateTpLotsByLargestRemainder(
+            oq,
+            om.tpTargets.map((x) => (x?.price > 0 ? x.percentage || 0 : 0))
+          )
+        : null;
+    if (allocated && allocated[targetIndex] != null) {
+      return Number(allocated[targetIndex]).toFixed(2);
+    }
+    return lots.toFixed(2);
   }
 
   if (sizeMode === "$" && distMode === "amount") {
@@ -12814,6 +12857,22 @@ const TalariaV8bLive = () => {
         });
         return changed ? next : rows;
       }
+      if (rows.length >= 2) {
+        const active = rows.filter((r) => r.enabled !== false);
+        if (active.length >= 2) {
+          const shares = v9TpNormalizeDecimalLotShares(active.map((r) => r.qty), qn, 2);
+          let changed = false;
+          const next = rows.map((row) => {
+            if (row.enabled === false) return row;
+            const ix = active.findIndex((a) => a.id === row.id);
+            if (ix < 0) return row;
+            const w = shares[ix] ?? "0.00";
+            if (String(row.qty) !== w) changed = true;
+            return { ...row, qty: w };
+          });
+          return changed ? next : rows;
+        }
+      }
       return rows;
     });
   }, [orderPanelOpen, sizeMode, riskVal, currentSymbol.type]);
@@ -13987,8 +14046,11 @@ const TalariaV8bLive = () => {
           const oqTpFloor = Math.floor(
             Math.max(0, parseFloat(document.getElementById("orderQuantity")?.value || "0"))
           );
+          const oqTpLots = parseFloat(document.getElementById("orderQuantity")?.value || "0");
           const useFuturesContractTp =
             sizeMode === "#" && currentSymbol.type === "futures" && oqTpFloor > 0;
+          const useForexLotTp =
+            sizeMode === "#" && currentSymbol.type !== "futures" && oqTpLots > 0 && tpActive.length > 1;
           const tpDistMode = v9SizeModeToTpDistribution(sizeMode);
           om.tpDistributionMode = tpDistMode;
           const contractShares = useFuturesContractTp
@@ -13997,17 +14059,25 @@ const TalariaV8bLive = () => {
                 oqTpFloor
               )
             : null;
+          const forexLotShares = useForexLotTp
+            ? v9TpNormalizeDecimalLotShares(tpActive.map((r) => r.qty), oqTpLots, 2)
+            : null;
           const nextTgts = tpActive.map((r, idx) => {
             const rawQty = parseFloat(r.qty) || 0;
+            const lotVal = useFuturesContractTp && contractShares
+              ? contractShares[idx]
+              : useForexLotTp && forexLotShares
+                ? parseFloat(forexLotShares[idx] || "0")
+                : rawQty;
             return {
               id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : idx + 1,
               price: parseFloat(r.price) || 0,
               percentage:
                 useFuturesContractTp && contractShares
                   ? (contractShares[idx] / oqTpFloor) * 100
-                  : rawQty,
+                  : lotVal,
               distributionMode: tpDistMode,
-              originalValue: rawQty,
+              originalValue: lotVal,
             };
           });
           const wantBuyTp = document.getElementById("buyTab")?.classList.contains("active");
@@ -14045,6 +14115,22 @@ const TalariaV8bLive = () => {
                   const ix = tpActive.findIndex((a) => a.id === row.id);
                   if (ix < 0) return row;
                   return { ...row, qty: String(contractShares[ix]) };
+                })
+              );
+            }
+          }
+          if (useForexLotTp && forexLotShares) {
+            let uiDirty = false;
+            for (let i = 0; i < tpActive.length; i++) {
+              if (String(tpActive[i].qty) !== forexLotShares[i]) uiDirty = true;
+            }
+            if (uiDirty) {
+              setTpRows((rows) =>
+                rows.map((row) => {
+                  if (row.enabled === false) return row;
+                  const ix = tpActive.findIndex((a) => a.id === row.id);
+                  if (ix < 0) return row;
+                  return { ...row, qty: forexLotShares[ix] };
                 })
               );
             }
@@ -34300,9 +34386,13 @@ const TalariaV8bLive = () => {
                   return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
                 }
                 let total = prevSum;
-                if (total <= 0) total = Math.max(0.01, parseFloat(riskVal) || 1);
-                const each = (total / n).toFixed(2);
-                return next.map((r) => ({ ...r, qty: each }));
+                if (total <= 0) total = Math.max(0.01, parseFloat(riskVal) || parseFloat(omOrderQtyTxt || "0") || 1);
+                const shares = v9TpNormalizeDecimalLotShares(
+                  Array.from({ length: n }, () => total / n),
+                  total,
+                  2
+                );
+                return next.map((r, i) => ({ ...r, qty: shares[i] ?? (total / n).toFixed(2) }));
               });
               setTimeout(() => {
                 if (tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight;
@@ -34368,6 +34458,19 @@ const TalariaV8bLive = () => {
                     q
                   );
                   return rows.map((r, i) => ({ ...r, qty: String(shares[i] ?? 0) }));
+                }
+                if (sizeMode === "#") {
+                  const q =
+                    parseFloat(omOrderQtyTxt || "0") ||
+                    parseFloat(document.getElementById("orderQuantity")?.value || "0") ||
+                    parseFloat(riskVal || "0") ||
+                    1;
+                  const shares = v9TpNormalizeDecimalLotShares(
+                    Array.from({ length: n }, () => q / n),
+                    q,
+                    2
+                  );
+                  return rows.map((r, i) => ({ ...r, qty: shares[i] ?? (q / n).toFixed(2) }));
                 }
                 const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
                 const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
