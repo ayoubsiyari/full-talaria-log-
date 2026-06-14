@@ -33483,6 +33483,12 @@ class OrderManager {
     _refreshOpenPositionSlTpAfterPartialTpClose(position) {
         if (!position?.id) return;
         try {
+            const orderId = position.id;
+            // Hit TP rows can leave orphan badges/connectors; full SL close runs _sweepOrphanedOrderLevelDom — partial must too.
+            this.removeSLTPLines(orderId);
+            this._sweepOrphanedOrderLevelDom(orderId);
+            this._purgeOrderConnectorsFromAllSurfaces();
+
             this.drawSLTPLines(position);
             this.updateSLTPLines();
             const charts = this._isMultiPanelLayout()
@@ -35403,8 +35409,8 @@ class OrderManager {
                         const idxMatch = i === targetId || String(i) === String(targetId);
                         if (idMatch || idxMatch) { target = t; targetIndex = i; break; }
                     }
-                    if (!target || target.hit) {
-                        if (target?.hit) {
+                    if (!target || !this._tpTargetStillActiveOnChart(position, target, targetIndex)) {
+                        if (target && !this._tpTargetStillActiveOnChart(position, target, targetIndex)) {
                             this._disposeSlTpRowElements({
                                 line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn,
                                 priceBox, priceText, deleteBtn, pctStepperBtn,
@@ -36490,8 +36496,8 @@ class OrderManager {
                 .attr('data-order-id', String(pos.id))
                 .style('pointer-events', 'none');
             if (hasMultiTP) {
-                for (const t of pos.tpTargets) {
-                    if (t.hit || !(t.price > 0)) continue;
+                pos.tpTargets.forEach((t, i) => {
+                    if (!this._tpTargetStillActiveOnChart(pos, t, i)) return;
                     const tpY = yScale(t.price);
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
@@ -36499,7 +36505,7 @@ class OrderManager {
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
                             .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
-                }
+                });
                 const avgG = this.multiTPAvgLines.find((g) => g.orderId === pos.id && g.chart === ch);
                 if (avgG && Number.isFinite(avgG.avgTP)) {
                     const avgY = yScale(avgG.avgTP);
