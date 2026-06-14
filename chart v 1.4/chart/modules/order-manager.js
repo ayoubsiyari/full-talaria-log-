@@ -31062,6 +31062,7 @@ class OrderManager {
                     .style('pointer-events', 'none');
                 if (target.hitLine) {
                     target.hitLine.attr('x1', 0).attr('x2', hitEndX);
+                    this._raiseOrderLevelRevealHit(target.hitLine);
                 }
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
@@ -35280,6 +35281,7 @@ class OrderManager {
                 if (slRevealVisible) {
                     const slHit = this._ensureOrderLevelRevealHitLine(ch, { line, hitLine }, `sl-hit-line sl-${orderId}`);
                     if (slHit) slHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
+                    this._raiseOrderLevelRevealHit(slHit);
                     this._refreshOrderLevelHoverReveal(
                         ch,
                         `open:sl:${orderId}`,
@@ -35651,6 +35653,7 @@ class OrderManager {
                         `tp-hit-line tp-${orderId} tp-target-${tpKey}`
                     );
                     if (tpHit) tpHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
+                    this._raiseOrderLevelRevealHit(tpHit);
                     this._refreshOrderLevelHoverReveal(
                         ch,
                         `open:tp:${orderId}:${tpKey}`,
@@ -36089,6 +36092,7 @@ class OrderManager {
                             .attr('x2', hitEndX)
                             .attr('y1', y)
                             .attr('y2', y);
+                        this._raiseOrderLevelRevealHit(dragHitLine);
                     }
                 }
 
@@ -39892,23 +39896,72 @@ class OrderManager {
         return { kind: 'xy', x, y: Number.isFinite(y) ? y : null };
     }
 
+    _applyOrderLevelRevealBasePos(sel, base) {
+        if (!sel || sel.empty?.() || !base) return;
+        if (base.kind === 'g') {
+            sel.attr('transform', `translate(${base.x}, ${base.y})`);
+        } else if (base.kind === 'xy') {
+            sel.attr('x', base.x);
+            if (base.y != null) sel.attr('y', base.y);
+        }
+    }
+
     _paintOrderLevelRevealSelection(sel, base, visible, animate, slide) {
         if (!sel || sel.empty?.() || !base) return;
-        const dur = animate ? 180 : 0;
-        let t = sel;
-        if (animate && dur && typeof sel.transition === 'function') {
-            t = sel.transition().duration(dur);
+        if (typeof sel.interrupt === 'function') sel.interrupt();
+
+        const finishHidden = () => {
+            this._applyOrderLevelRevealBasePos(sel, base);
+            sel.style('opacity', 0).style('pointer-events', 'none');
+        };
+        const finishVisible = () => {
+            this._applyOrderLevelRevealBasePos(sel, base);
+            sel.style('opacity', 1).style('pointer-events', null);
+        };
+
+        if (!animate) {
+            this._applyOrderLevelRevealBasePos(sel, base);
+            sel.style('opacity', visible ? 1 : 0);
+            sel.style('pointer-events', visible ? null : 'none');
+            return;
         }
-        if (base.kind === 'g') {
-            const tx = visible ? base.x : base.x + slide;
-            t.attr('transform', `translate(${tx}, ${base.y})`);
-        } else if (base.kind === 'xy') {
-            const tx = visible ? base.x : base.x + slide;
-            t.attr('x', tx);
-            if (base.y != null) t.attr('y', base.y);
+
+        if (visible) {
+            if (base.kind === 'xy') {
+                sel.attr('x', base.x + slide).attr('y', base.y ?? sel.attr('y'))
+                    .style('opacity', 0).style('pointer-events', null);
+                sel.transition().duration(180)
+                    .attr('x', base.x)
+                    .style('opacity', 1)
+                    .on('end', finishVisible);
+            } else if (base.kind === 'g') {
+                sel.attr('transform', `translate(${base.x + slide}, ${base.y})`)
+                    .style('opacity', 0).style('pointer-events', null);
+                sel.transition().duration(180)
+                    .attr('transform', `translate(${base.x}, ${base.y})`)
+                    .style('opacity', 1)
+                    .on('end', finishVisible);
+            } else {
+                sel.transition().duration(180).style('opacity', 1)
+                    .on('end', finishVisible);
+            }
+            return;
         }
-        t.style('opacity', visible ? 1 : 0);
-        t.style('pointer-events', visible ? null : 'none');
+
+        if (base.kind === 'xy') {
+            sel.transition().duration(180)
+                .attr('x', base.x + slide)
+                .style('opacity', 0)
+                .on('end', finishHidden);
+        } else if (base.kind === 'g') {
+            sel.transition().duration(180)
+                .attr('transform', `translate(${base.x + slide}, ${base.y})`)
+                .style('opacity', 0)
+                .on('end', finishHidden);
+        } else {
+            sel.transition().duration(180).style('opacity', 0)
+                .on('end', finishHidden);
+        }
     }
 
     _paintOrderLevelHoverReveal(key, visible, animate = true) {
@@ -39982,6 +40035,7 @@ class OrderManager {
         }
 
         cleanChrome.forEach((sel, i) => {
+            if (sel && typeof sel.interrupt === 'function') sel.interrupt();
             entry.bases.set(i, this._readOrderLevelRevealBase(sel));
         });
 
@@ -39994,11 +40048,19 @@ class OrderManager {
         this._orderLevelRevealRegistry.forEach((entry, key) => {
             if (entry.chart !== ch) return;
             entry.chrome.forEach((sel, i) => {
-                if (sel && !sel.empty?.()) entry.bases.set(i, this._readOrderLevelRevealBase(sel));
+                if (!sel || sel.empty?.()) return;
+                if (typeof sel.interrupt === 'function') sel.interrupt();
+                entry.bases.set(i, this._readOrderLevelRevealBase(sel));
             });
             const visible = !!this._orderLevelRevealHover?.get(key);
             this._paintOrderLevelHoverReveal(key, visible, false);
         });
+    }
+
+    _raiseOrderLevelRevealHit(sel) {
+        if (sel && typeof sel.raise === 'function') {
+            try { sel.raise(); } catch (_) { /* ignore */ }
+        }
     }
 
     _ensureOrderLevelRevealHitLine(chart, row, className) {
