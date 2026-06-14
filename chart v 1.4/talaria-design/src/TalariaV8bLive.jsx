@@ -887,6 +887,88 @@ function v9TpDollarBasisForSplit(entryRows, riskVal) {
   return es > 0 ? es : rv;
 }
 
+function v9SizeModeToTpDistribution(sizeMode) {
+  if (sizeMode === "$") return "amount";
+  if (sizeMode === "#") return "lots";
+  return "percent";
+}
+
+/** om.tpTargets[idx] → React row.qty for the active panel size mode (matches chart slice lots). */
+function v9OmTpTargetToReactQty(om, targetIndex, sizeMode, symbolType) {
+  if (!om?.tpTargets?.[targetIndex]) return "0";
+  const t = om.tpTargets[targetIndex];
+  const distMode = t.distributionMode || om.tpDistributionMode || v9SizeModeToTpDistribution(sizeMode);
+  const entryPx =
+    typeof om._getReferenceEntryForOrderMath === "function"
+      ? om._getReferenceEntryForOrderMath()
+      : parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
+  const oq = parseFloat(document.getElementById("orderQuantity")?.value || 0);
+  const side =
+    om.orderSide ||
+    (document.getElementById("buyTab")?.classList.contains("active") ? "BUY" : "SELL");
+
+  if (sizeMode === "#" && symbolType === "futures") {
+    const oqFloor = Math.floor(Math.max(0, oq));
+    const shares = v9TpFuturesContractsFromPercentages(
+      om.tpTargets.map((x) => x.percentage),
+      oqFloor
+    );
+    return String(shares[targetIndex] ?? 0);
+  }
+
+  if (sizeMode === "#") {
+    const eff =
+      typeof om._computeEffectiveTPPercentages === "function"
+        ? om._computeEffectiveTPPercentages(entryPx, oq, side, {
+            tpTargets: om.tpTargets,
+            distributionMode: distMode,
+          })
+        : [];
+    const lots = oq * ((eff[targetIndex] || 0) / 100);
+    if (!(lots > 0)) return "0";
+    return symbolType === "futures" ? String(Math.round(lots)) : lots.toFixed(2);
+  }
+
+  if (sizeMode === "$" && distMode === "amount") {
+    return String(t.percentage ?? 0);
+  }
+
+  if (sizeMode === "%" && distMode === "percent") {
+    return String(t.percentage ?? 0);
+  }
+
+  const eff =
+    typeof om._computeEffectiveTPPercentages === "function"
+      ? om._computeEffectiveTPPercentages(entryPx, oq, side, {
+          tpTargets: om.tpTargets,
+          distributionMode: distMode,
+        })
+      : [];
+  const ePct = eff[targetIndex] || 0;
+  if (sizeMode === "%") {
+    return ePct > 0 ? String(parseFloat(ePct.toFixed(1))) : "0";
+  }
+  return String(t.percentage ?? 0);
+}
+
+/** Share lots for one TP rung — same math as chart labels. */
+function v9OmTpShareLotsAt(om, targetIndex, symbolType) {
+  if (!om?.tpTargets?.[targetIndex]) return symbolType === "futures" ? "0" : "0.00";
+  const entryPx =
+    typeof om._getReferenceEntryForOrderMath === "function"
+      ? om._getReferenceEntryForOrderMath()
+      : parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
+  const oq = parseFloat(document.getElementById("orderQuantity")?.value || 0);
+  const side = om.orderSide || "BUY";
+  const eff =
+    typeof om._computeEffectiveTPPercentages === "function"
+      ? om._computeEffectiveTPPercentages(entryPx, oq, side, { tpTargets: om.tpTargets })
+      : [];
+  const lots = oq * ((eff[targetIndex] || 0) / 100);
+  if (!(lots > 0)) return symbolType === "futures" ? "0" : "0.00";
+  return symbolType === "futures" ? String(Math.round(lots)) : lots.toFixed(2);
+}
+
 function formatV9AccountNum(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "—";
@@ -13907,20 +13989,27 @@ const TalariaV8bLive = () => {
           );
           const useFuturesContractTp =
             sizeMode === "#" && currentSymbol.type === "futures" && oqTpFloor > 0;
+          const tpDistMode = v9SizeModeToTpDistribution(sizeMode);
+          om.tpDistributionMode = tpDistMode;
           const contractShares = useFuturesContractTp
             ? v9TpNormalizeFuturesContractShares(
                 tpActive.map((r) => r.qty),
                 oqTpFloor
               )
             : null;
-          const nextTgts = tpActive.map((r, idx) => ({
-            id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : idx + 1,
-            price: parseFloat(r.price) || 0,
-            percentage:
-              useFuturesContractTp && contractShares
-                ? (contractShares[idx] / oqTpFloor) * 100
-                : parseFloat(r.qty) || 0,
-          }));
+          const nextTgts = tpActive.map((r, idx) => {
+            const rawQty = parseFloat(r.qty) || 0;
+            return {
+              id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : idx + 1,
+              price: parseFloat(r.price) || 0,
+              percentage:
+                useFuturesContractTp && contractShares
+                  ? (contractShares[idx] / oqTpFloor) * 100
+                  : rawQty,
+              distributionMode: tpDistMode,
+              originalValue: rawQty,
+            };
+          });
           const wantBuyTp = document.getElementById("buyTab")?.classList.contains("active");
           nextTgts.sort((a, b) =>
             wantBuyTp ? a.price - b.price : b.price - a.price
@@ -14332,21 +14421,12 @@ const TalariaV8bLive = () => {
 
       if (!rrLocked && omMultiTp && om.tpTargets.length >= 1) {
         const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
-        const lotSizeMode = pm === "lot-size";
-        const wantFuturesContracts =
-          lotSizeMode && om.marketType === "futures";
-        const oqFloorMirror = Math.floor(
-          Math.max(0, parseFloat(document.getElementById("orderQuantity")?.value || "0"))
-        );
-        const pctsAll = om.tpTargets.map((t) => t.percentage);
-        const sharesAll =
-          wantFuturesContracts && oqFloorMirror > 0 && om.tpTargets.length > 0
-            ? v9TpFuturesContractsFromPercentages(pctsAll, oqFloorMirror)
-            : null;
+        const mirrorSizeMode =
+          pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
         const nextTp = om.tpTargets.map((t, ti) => ({
           id: t.id,
           price: String(t.price ?? "0"),
-          qty: sharesAll ? String(sharesAll[ti] ?? 0) : String(t.percentage ?? "0"),
+          qty: v9OmTpTargetToReactQty(om, ti, mirrorSizeMode, om.marketType === "futures" ? "futures" : "forex"),
           enabled: true,
         }));
         const tpSame = (a, b) =>
@@ -34370,6 +34450,14 @@ const TalariaV8bLive = () => {
                   {/* Rows — scrollable after 5 */}
                   <div ref={tpScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
                     {sortedTpRows.map((row, i) => {
+                      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+                      const rowIdx = om?.tpTargets?.length
+                        ? om.tpTargets.findIndex((t) => t && (t.id === row.id || String(t.id) === String(row.id)))
+                        : i;
+                      const effIdx = rowIdx >= 0 ? rowIdx : i;
+                      const shareLotsTxt = om
+                        ? v9OmTpShareLotsAt(om, effIdx, currentSymbol.type)
+                        : (Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type === "futures" ? 0 : 2) : "0.00");
                       const pct = totalQty > 0 ? ((parseFloat(row.qty)||0)/totalQty*100).toFixed(0) : "0";
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1, opacity:row.enabled?1:0.38, transition:"opacity 0.15s" }}>
@@ -34452,14 +34540,14 @@ const TalariaV8bLive = () => {
                               : sizeMode==="$"
                                 ? futuresMinRiskHintTp
                                   ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                  : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>
+                                  : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{shareLotsTxt} {sizeUnit}</>
                                 : sizeMode==="%"
                                   ? futuresMinRiskHintTp
                                     ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                    : <><span style={{ color:c.ts }}>${(parseFloat(row.qty || "0") / 100 * basisAmtTp).toFixed(0)}</span>{" · "}{Number.isFinite(orderQtyNumTp) ? orderQtyNumTp.toFixed(currentSymbol.type==="futures" ? 0 : 2) : "0.00"} {sizeUnit}</>
+                                    : <><span style={{ color:c.ts }}>${(parseFloat(row.qty || "0") / 100 * basisAmtTp).toFixed(0)}</span>{" · "}{shareLotsTxt} {sizeUnit}</>
                                   : futuresMinRiskHintTp
                                     ? <><span style={{ color:"#FFD28A" }}>Need {omFuturesMinRiskTxt}</span></>
-                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{Math.max(0, Math.round(parseFloat(row.qty) || 0))} {sizeUnit}</>}
+                                    : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}{shareLotsTxt} {sizeUnit}</>}
                           </span>
                           <div style={{ flex:1 }}/>
                           {tpRows.length > 1 ? (

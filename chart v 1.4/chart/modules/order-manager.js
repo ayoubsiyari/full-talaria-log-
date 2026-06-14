@@ -15663,15 +15663,19 @@ class OrderManager {
      * matches the ACTUAL percentages that will be used when the order executes.
      * Returns an array of effective percentages (one per tpTarget, summing to 100).
      */
-    _computeEffectiveTPPercentages(entryPrice, quantity, side) {
-        if (!this.tpTargets || this.tpTargets.length === 0 || !(entryPrice > 0) || !(quantity > 0)) {
-            return (this.tpTargets || []).map(t => t.percentage || 0);
+    _computeEffectiveTPPercentages(entryPrice, quantity, side, opts = {}) {
+        const tpTargets = opts.tpTargets || this.tpTargets;
+        if (!tpTargets || tpTargets.length === 0 || !(entryPrice > 0) || !(quantity > 0)) {
+            return (tpTargets || []).map(t => t.percentage || 0);
         }
-        const mode = this.tpDistributionMode || 'percent';
+        const mode = opts.distributionMode
+            || tpTargets[0]?.distributionMode
+            || this.tpDistributionMode
+            || 'percent';
         const ps = this.pipSize || 0.0001;
         const pv = this.pipValuePerLot || 10;
 
-        const converted = this.tpTargets.map(t => {
+        const converted = tpTargets.map(t => {
             const val = t.percentage || 0;
             if (!(t.price > 0) || val <= 0) return 0;
 
@@ -25914,9 +25918,22 @@ class OrderManager {
                     : null;
             const lt = legTgt || (m.tpTargets && m.tpTargets[targetIndex]);
             if (!lt || lt.hit) continue;
-            const frac = (Number(lt.percentage) || 0) / 100;
-            if (!(frac > 0)) continue;
-            const tq = this._multiTpPartialCloseQuantity(m, frac);
+            const entryPx = Number(m.openPrice ?? m.entryPrice) || 0;
+            const baseQty = Number(m.originalQuantity ?? m.quantity) || 0;
+            const sideUpper = String(m.type || m.direction || m.side || 'BUY').toUpperCase();
+            const eff = this._computeEffectiveTPPercentages(entryPx, baseQty, sideUpper, {
+                tpTargets: m.tpTargets,
+                distributionMode: lt.distributionMode || m.tpDistributionMode,
+            });
+            const idxForEff = m.tpTargets
+                ? m.tpTargets.findIndex((tt) => tt === lt || (tt?.id != null && lt?.id != null && String(tt.id) === String(lt.id)))
+                : targetIndex;
+            const ePct = eff[idxForEff >= 0 ? idxForEff : targetIndex] || 0;
+            if (!(ePct > 0)) continue;
+            const frac = ePct / 100;
+            const tq = mode === 'pending'
+                ? baseQty * frac
+                : this._multiTpPartialCloseQuantity(m, frac);
             if (!(tq > 0)) continue;
             lots += tq;
             pnl += this.estimateOpenLegPnLSlice(m, px, tq);
