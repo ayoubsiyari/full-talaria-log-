@@ -32615,41 +32615,19 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
-        // Hover tooltip group (hidden by default)
-        const ttGroup = markerGroup.append('g')
-            .attr('data-role', 'entry-tooltip')
-            .style('display', 'none')
-            .style('pointer-events', 'none');
-
+        // Hover tooltip — toast shell (matches rollback / bottom toasts)
         const sideLabel = isBuy ? 'BUY' : 'SELL';
-        const lines = [
-            `${order.openPrice.toFixed(5)}`,
-            `${order.quantity.toFixed(2)} lots`,
-            sideLabel,
-        ];
-
-        const lineH = 15, ttPad = 5, ttW = 118;
-        const ttH = lines.length * lineH + ttPad * 2;
-        const ttX = x + 14;
-        const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
-
-        ttGroup.append('rect')
-            .attr('x', ttX).attr('y', ttY)
-            .attr('width', ttW).attr('height', ttH)
-            .attr('rx', 4)
-            .attr('fill', 'rgba(15, 23, 42, 0.92)')
-            .attr('stroke', color).attr('stroke-width', 1);
-
-        lines.forEach((txt, i) => {
-            const tagLine = i === lines.length - 1;
-            ttGroup.append('text')
-                .attr('x', ttX + ttPad + 2)
-                .attr('y', ttY + ttPad + (i + 1) * lineH - 3)
-                .attr('fill', tagLine ? color : (i === 0 ? '#f8fafc' : '#cbd5e1'))
-                .attr('font-size', '10px')
-                .attr('font-weight', tagLine || i === 0 ? '700' : '400')
-                .attr('font-family', 'Roboto, sans-serif')
-                .text(txt);
+        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
+            tooltipRole: 'entry-tooltip',
+            anchorX: x,
+            anchorY: arrowCY,
+            above: !isBuy,
+            accentColor: color,
+            lines: [
+                { kind: 'price', text: this.formatPrice(order.openPrice) },
+                { text: `${order.quantity.toFixed(2)} lots` },
+                { kind: 'tag', text: sideLabel },
+            ],
         });
 
         const self = this;
@@ -32792,40 +32770,19 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
-        const ttGroup = markerGroup.append('g')
-            .attr('data-role', 'exit-tooltip')
-            .style('display', 'none')
-            .style('pointer-events', 'none');
-
         const tag = this._tradeMarkerTooltipTag(closeData.type, order);
-        const lineH = 15, ttPad = 5, ttW = 118;
-        const nLines = 3;
-        const ttH = nLines * lineH + ttPad * 2;
-        const ttX = x + 14;
-        const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
-
-        ttGroup.append('rect')
-            .attr('x', ttX).attr('y', ttY)
-            .attr('width', ttW).attr('height', ttH)
-            .attr('rx', 4)
-            .attr('fill', 'rgba(15, 23, 42, 0.92)')
-            .attr('stroke', color).attr('stroke-width', 1);
-
-        const ttLine = (i, text, opts = {}) => {
-            const t = ttGroup.append('text')
-                .attr('x', ttX + ttPad + 2)
-                .attr('y', ttY + ttPad + i * lineH - 3)
-                .attr('fill', opts.fill || '#e2e8f0')
-                .attr('font-size', '10px')
-                .attr('font-weight', opts.bold ? '700' : '400')
-                .attr('font-family', 'Roboto, sans-serif')
-                .text(text);
-            if (opts.role) t.attr('data-role', opts.role);
-        };
-
-        ttLine(1, this.formatPrice(closeData.closePrice), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
-        ttLine(2, `${order.quantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
-        ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
+        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
+            tooltipRole: 'exit-tooltip',
+            anchorX: x,
+            anchorY: arrowCY,
+            above: isBuyExit,
+            accentColor: color,
+            lines: [
+                { kind: 'price', text: this.formatPrice(closeData.closePrice), role: 'exit-price-text' },
+                { text: `${order.quantity.toFixed(2)} lots`, role: 'exit-lots-text' },
+                { kind: 'tag', text: tag, role: 'exit-tag-text' },
+            ],
+        });
 
         const self = this;
         markerGroup
@@ -33011,41 +32968,20 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
-        const ttGroup = markerGroup.append('g')
-            .attr('data-role', 'exit-tooltip')
-            .style('display', 'none')
-            .style('pointer-events', 'none');
-
         const percentText = closeData.percentage ? `${(closeData.percentage * 100).toFixed(0)}%` : '';
         const tag = `TP ${percentText}`.trim();
-        const lineH = 15, ttPad = 5, ttW = 118;
-        const nLines = 3;
-        const ttH = nLines * lineH + ttPad * 2;
-        const ttX = x + 14;
-        const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
-
-        ttGroup.append('rect')
-            .attr('x', ttX).attr('y', ttY)
-            .attr('width', ttW).attr('height', ttH)
-            .attr('rx', 4)
-            .attr('fill', 'rgba(15, 23, 42, 0.92)')
-            .attr('stroke', color).attr('stroke-width', 1);
-
-        const ttLine = (i, text, opts = {}) => {
-            const t = ttGroup.append('text')
-                .attr('x', ttX + ttPad + 2)
-                .attr('y', ttY + ttPad + i * lineH - 3)
-                .attr('fill', opts.fill || '#e2e8f0')
-                .attr('font-size', '10px')
-                .attr('font-weight', opts.bold ? '700' : '400')
-                .attr('font-family', 'Roboto, sans-serif')
-                .text(text);
-            if (opts.role) t.attr('data-role', opts.role);
-        };
-
-        ttLine(1, this.formatPrice(closeData.closePrice), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
-        ttLine(2, `${closeQuantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
-        ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
+        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
+            tooltipRole: 'exit-tooltip',
+            anchorX: x,
+            anchorY: arrowCY,
+            above: isBuyExit,
+            accentColor: color,
+            lines: [
+                { kind: 'price', text: this.formatPrice(closeData.closePrice), role: 'exit-price-text' },
+                { text: `${closeQuantity.toFixed(2)} lots`, role: 'exit-lots-text' },
+                { kind: 'tag', text: tag, role: 'exit-tag-text' },
+            ],
+        });
 
         const self = this;
         markerGroup
@@ -33129,14 +33065,7 @@ class OrderManager {
 
             const tt = marker.select('[data-role="entry-tooltip"]');
             if (!tt.empty()) {
-                const ttX = x + 14;
-                const ttRect = tt.select('rect');
-                const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
-                const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
-                if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
-                tt.selectAll('text').each(function(d, i) {
-                    d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
-                });
+                this._repositionTradeMarkerTooltip(tt, x, arrowCY, !isBuy);
             }
         });
     }
@@ -33175,14 +33104,7 @@ class OrderManager {
 
                 const tt = marker.select('[data-role="exit-tooltip"]');
                 if (!tt.empty()) {
-                    const ttX = x + 14;
-                    const ttRect = tt.select('rect');
-                    const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
-                    const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
-                    if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
-                    tt.selectAll('text').each(function(d, i) {
-                        d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
-                    });
+                    this._repositionTradeMarkerTooltip(tt, x, arrowCY, isBuyExit);
                 }
             });
         }
@@ -33220,14 +33142,7 @@ class OrderManager {
 
                 const tt = marker.select('[data-role="exit-tooltip"]');
                 if (!tt.empty()) {
-                    const ttX = x + 14;
-                    const ttRect = tt.select('rect');
-                    const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
-                    const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
-                    if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
-                    tt.selectAll('text').each(function(d, i) {
-                        d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
-                    });
+                    this._repositionTradeMarkerTooltip(tt, x, arrowCY, isBuyExit);
                 }
             });
         }
