@@ -33296,6 +33296,58 @@ class OrderManager {
         console.log(`📍 Trade markers ${show ? 'shown' : 'hidden'}`);
     }
     
+    _disposeSlTpRowElements(row) {
+        if (!row) return;
+        const keys = [
+            'line', 'labelBox', 'labelAccent', 'labelText', 'pnlBox', 'pnlText', 'closeBtn', 'splitBtn',
+            'priceBox', 'priceText', 'deleteBtn', 'pctDecBtn', 'pctIncBtn', 'tpPlusBadge', 'yAxisHighlight',
+        ];
+        keys.forEach((k) => {
+            if (row[k]) {
+                try { row[k].remove(); } catch (_) { /* ignore */ }
+            }
+        });
+    }
+
+    _disposeOrderLineElements(olEntry) {
+        if (!olEntry) return;
+        const keys = [
+            'line', 'dragHitLine', 'labelBox', 'labelAccent', 'labelText', 'arrow', 'priceBox', 'priceText',
+            'closeBtn', 'pnlBox', 'pnlText', 'slBadge', 'tpBadge', 'tpBadgesContainer', 'entryPlusBadge', 'yAxisHighlight',
+        ];
+        keys.forEach((k) => {
+            if (olEntry[k]) {
+                try { olEntry[k].remove(); } catch (_) { /* ignore */ }
+            }
+        });
+    }
+
+    _orderEntryVisualExistsOnChart(orderId, ch, opts = {}) {
+        const chart = ch || this.chart;
+        const wantPending = !!opts.pending;
+        return (this.orderLines || []).some(
+            (ol) => ol.orderId === orderId
+                && !!ol.isPending === wantPending
+                && (ol.chart || this.chart) === chart
+        );
+    }
+
+    _refreshOrderConnectorsAfterVisualRemoval() {
+        try {
+            if (typeof this._purgeOrderConnectorsFromAllSurfaces === 'function') {
+                this._purgeOrderConnectorsFromAllSurfaces();
+            }
+            const charts = typeof this._collectLayoutCharts === 'function'
+                ? this._collectLayoutCharts()
+                : [this.chart];
+            (charts || []).forEach((c) => {
+                if (c && typeof this._drawExecutedOrderConnectors === 'function') {
+                    this._drawExecutedOrderConnectors(c);
+                }
+            });
+        } catch (_) { /* ignore */ }
+    }
+
     /**
      * Remove order line from chart (handles both active and pending orders)
      */
@@ -33315,6 +33367,7 @@ class OrderManager {
             if (orderLine.line) orderLine.line.remove();
             if (orderLine.dragHitLine) orderLine.dragHitLine.remove();
             if (orderLine.labelBox) orderLine.labelBox.remove();
+            if (orderLine.labelAccent) orderLine.labelAccent.remove();
             if (orderLine.labelText) orderLine.labelText.remove();
             if (orderLine.arrow) orderLine.arrow.remove();
             if (orderLine.priceBox) orderLine.priceBox.remove();
@@ -33332,6 +33385,7 @@ class OrderManager {
         // Remove from array
         this.orderLines = this.orderLines.filter(ol => ol.orderId !== orderId);
         console.log(`✅ Order line removed. Remaining lines: ${this.orderLines.length}`);
+        this._refreshOrderConnectorsAfterVisualRemoval();
     }
     
     /** All open legs in a split / multi-entry group (deduped by **id** only — same row may appear in manager + service lists). */
@@ -33406,23 +33460,36 @@ class OrderManager {
         return false;
     }
 
+    /** Pending order already has TP line(s) on chart — hide the entry-row TP ghost badge. */
+    _pendingOrderHasTpOnChart(po) {
+        if (!po) return false;
+        if (Number(po.takeProfit) > 0) return true;
+        const tt = po.tpTargets;
+        if (Array.isArray(tt) && tt.length > 0) {
+            if (tt.some((t) => t && !t.hit && Number(t.price) > 0)) return true;
+        }
+        const entry = (this.pendingTargetLines || []).find((e) => e.orderId === po.id);
+        if (entry?.targets?.some((t) => t.type === 'TP')) return true;
+        return false;
+    }
+
     /**
      * Dashed TP ghost on pending entry: not on extra split legs once the basket is live (open leg owns TP UI);
      * pre-fill, only primary leg (splitIndex 1) and only while basket has no TP anywhere.
      */
     _shouldShowPendingEntryTpGhost(po, hasMultiTP, hasSingleTP) {
         if (!po) return false;
-        if (!po.isSplitEntry || !po.splitGroupId) {
-            if (hasMultiTP) return true;
-            if (hasSingleTP) return false;
-            return true;
-        }
-        const gid = po.splitGroupId;
-        if (this._splitGroupHasOpenLeg(gid)) return false;
-        if (Number(po.splitIndex) > 1) return false;
-        if (this._splitBasketHasTpOnChart(gid)) return false;
-        if (hasMultiTP) return true;
         if (hasSingleTP) return false;
+
+        if (po.isSplitEntry && po.splitGroupId) {
+            const gid = po.splitGroupId;
+            if (this._splitGroupHasOpenLeg(gid)) return false;
+            if (Number(po.splitIndex) > 1) return false;
+            if (this._splitBasketHasTpOnChart(gid)) return false;
+        }
+
+        if (this._pendingOrderHasTpOnChart(po)) return false;
+
         return true;
     }
 
@@ -33515,19 +33582,30 @@ class OrderManager {
     }
 
     /**
-     * Executed SL row stays classic red; only the $ PnL amount (sl-pnl-text, e.g. +$21) turns green when SL locks profit.
-     * Price pill text (sl-price-text) stays white on red.
-     * @param {object} els - labelBox, labelText, pnlBox, pnlText, priceBox, priceText (D3 selections)
+     * Keep SL toast chrome; only PnL detail color shifts green when SL locks profit (BUY above entry / SELL below).
+     * @param {object} els - labelBox, labelText, labelAccent, pnlBox, pnlText, priceBox, priceText (D3 selections)
      */
     _styleOpenSlProfitProtectionVisuals(order, line, els) {
         if (!order) return;
-        const profit = this._isOpenSlProfitProtection(order, order.stopLoss);
+        const accent = '#ef4444';
         const red = '#f23645';
+        const profit = this._isOpenSlProfitProtection(order, order.stopLoss);
         line?.attr('stroke', red);
-        els.labelBox?.attr('fill', red).attr('stroke', red);
-        els.labelText?.attr('fill', '#ffffff');
-        els.pnlBox?.attr('fill', profit ? 'rgba(8,153,129,0.15)' : 'rgba(242,54,69,0.15)').attr('stroke', profit ? '#089981' : red);
-        els.pnlText?.attr('fill', profit ? '#089981' : '#f23645');
+        this._styleLegacyOrderLevelToastChrome(
+            {
+                labelBox: els.labelBox,
+                labelText: els.labelText,
+                pnlBox: els.pnlBox,
+                pnlText: els.pnlText,
+                labelAccent: els.labelAccent,
+            },
+            accent,
+            { isPreview: false }
+        );
+        if (els.pnlText) {
+            const pnlStr = typeof els.pnlText.text === 'function' ? els.pnlText.text() : '';
+            els.pnlText.attr('fill', profit ? '#089981' : this._orderLevelDetailColor(pnlStr, accent));
+        }
         els.priceBox?.attr('fill', red).attr('stroke', red);
         els.priceText?.attr('fill', '#ffffff');
     }
@@ -33727,6 +33805,7 @@ class OrderManager {
             this._styleOpenSlProfitProtectionVisuals(order, slLine, {
                 labelBox: slLabelBox,
                 labelText: slLabelText,
+                labelAccent: slLabelAccent,
                 pnlBox: slPnlBox,
                 pnlText: slPnlText,
                 priceBox: slPriceBox,
@@ -34199,6 +34278,7 @@ class OrderManager {
                 slToRemove.forEach((slLine) => {
                     if (slLine.line) slLine.line.remove();
                     if (slLine.labelBox) slLine.labelBox.remove();
+                    if (slLine.labelAccent) slLine.labelAccent.remove();
                     if (slLine.labelText) slLine.labelText.remove();
                     if (slLine.pnlBox) slLine.pnlBox.remove();
                     if (slLine.pnlText) slLine.pnlText.remove();
@@ -34219,6 +34299,7 @@ class OrderManager {
                 tpLinesToRemove.forEach(tpLine => {
                     if (tpLine.line) tpLine.line.remove();
                     if (tpLine.labelBox) tpLine.labelBox.remove();
+                    if (tpLine.labelAccent) tpLine.labelAccent.remove();
                     if (tpLine.labelText) tpLine.labelText.remove();
                     if (tpLine.pnlBox) tpLine.pnlBox.remove();
                     if (tpLine.pnlText) tpLine.pnlText.remove();
@@ -34255,18 +34336,7 @@ class OrderManager {
         }
         
         console.log(`✅ All SL/TP/BE lines removed for order #${orderId}`);
-
-        // Drop stale vertical TP/SL connectors immediately after a close (otherwise they lag until next render).
-        try {
-            const charts = typeof this._collectLayoutCharts === 'function'
-                ? this._collectLayoutCharts()
-                : [this.chart];
-            charts.forEach((c) => {
-                if (c && typeof this._drawExecutedOrderConnectors === 'function') {
-                    this._drawExecutedOrderConnectors(c);
-                }
-            });
-        } catch (_) {}
+        this._refreshOrderConnectorsAfterVisualRemoval();
     }
 
     /**
@@ -34848,6 +34918,12 @@ class OrderManager {
             slForChart.forEach(({ orderId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }) => {
                 const position = this.openPositions.find(p => p.id === orderId);
                 if (!position || !position.stopLoss) {
+                    this._disposeSlTpRowElements({
+                        line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText,
+                    });
+                    this.slLines = (this.slLines || []).filter(
+                        (sl) => !(sl.orderId === orderId && (sl.chart || this.chart) === ch)
+                    );
                     return;
                 }
                 
@@ -34888,8 +34964,9 @@ class OrderManager {
                     const closeBtnR = 9;
                     const closeBtnGap = 6;
                     
+                    const stripeW = 3;
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
-                    const labelBW = labelTW + pad * 2;
+                    const labelBW = labelTW + pad * 2 + stripeW;
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
                     
@@ -34898,7 +34975,6 @@ class OrderManager {
                     const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
                     
                     let cx = startX;
-                    const stripeW = 3;
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
                     labelText.attr('x', cx + pad + stripeW).attr('y', y + 4);
                     cx += labelBW + gap;
@@ -35023,7 +35099,18 @@ class OrderManager {
             
             tpForChart.forEach(({ orderId, targetId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn, pctArrowsWidth }) => {
                 const position = this._findOpenPositionById(orderId);
-                if (!position) return;
+                if (!position) {
+                    this._disposeSlTpRowElements({
+                        line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn,
+                        priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn,
+                    });
+                    this.tpLines = (this.tpLines || []).filter(
+                        (tp) => !(tp.orderId === orderId && (tp.chart || this.chart) === ch
+                            && ((targetId === undefined && tp.targetId === undefined)
+                                || String(tp.targetId) === String(targetId)))
+                    );
+                    return;
+                }
                 
                 let tpPrice;
                 let targetIndex = -1;
@@ -35404,6 +35491,10 @@ class OrderManager {
                     orderData = this.pendingOrders.find((p) => p.id === orderId);
                     if (!orderData) {
                         console.log(`   ⚠️ Pending order not found for #${orderId}`);
+                        this._disposeOrderLineElements(olEntry);
+                        this.orderLines = (this.orderLines || []).filter(
+                            (ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)
+                        );
                         return;
                     }
                     price = orderData.entryPrice;
@@ -35411,6 +35502,10 @@ class OrderManager {
                     orderData = this.openPositions.find((p) => p.id === orderId);
                     if (!orderData) {
                         console.log(`   ⚠️ Position not found for order #${orderId}`);
+                        this._disposeOrderLineElements(olEntry);
+                        this.orderLines = (this.orderLines || []).filter(
+                            (ol) => !(ol.orderId === orderId && (ol.chart || this.chart) === ch)
+                        );
                         return;
                     }
                     price = orderData.openPrice;
@@ -35927,8 +36022,10 @@ class OrderManager {
 
         for (const pos of openPositions) {
             if (!pos || seenOpenIds.has(pos.id)) continue;
+            if (pos.status === 'CLOSED') continue;
             seenOpenIds.add(pos.id);
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
+            if (!this._orderEntryVisualExistsOnChart(pos.id, ch, { pending: false })) continue;
             if (pos.isSplitEntry) continue;
             const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 1;
             const tpPx = pos.takeProfit || 0;
@@ -35984,6 +36081,7 @@ class OrderManager {
             if (!po || seenPendingIds.has(po.id)) continue;
             seenPendingIds.add(po.id);
             if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
+            if (!this._orderEntryVisualExistsOnChart(po.id, ch, { pending: true })) continue;
             const hasMultiTP = po.tpTargets && po.tpTargets.length >= 1;
             const tpPx = po.takeProfit || 0;
             const slPx = po.stopLoss || 0;
