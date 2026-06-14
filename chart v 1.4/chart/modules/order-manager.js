@@ -39793,8 +39793,6 @@ class OrderManager {
         const th = o.th || this._tradeMarkerToastTheme();
         const green = th.light ? '#059669' : '#22c55e';
         const red = th.light ? '#dc2626' : '#ef4444';
-        const greenFill = th.light ? '#047857' : '#166534';
-        const redFill = th.light ? '#b91c1c' : '#991b1b';
         const center = !!o.centerAnchor;
         const half = size / 2;
         const bx = center ? -half : 0;
@@ -39825,34 +39823,35 @@ class OrderManager {
         const upPath = g.append('path')
             .attr('class', 'tp-pct-stepper-up order-overlay-sublayer')
             .attr('d', this._arrowUpPath(cx, upCy, arrowSz))
-            .attr('fill', '#ffffff')
+            .attr('fill', th.muted)
             .style('pointer-events', 'none');
 
         const downPath = g.append('path')
             .attr('class', 'tp-pct-stepper-down order-overlay-sublayer')
             .attr('d', this._arrowDownPath(cx, downCy, arrowSz))
-            .attr('fill', '#ffffff')
+            .attr('fill', th.muted)
             .style('pointer-events', 'none');
 
-        const wireHalf = (bgEl, pathEl, accent, fill, fn) => {
+        const wireHalf = (bgEl, pathEl, accent, fn) => {
             const reset = () => {
-                bgEl.attr('fill', fill).attr('stroke', accent);
-                pathEl.attr('fill', '#ffffff');
+                bgEl.attr('fill', th.bg).attr('stroke', th.border);
+                pathEl.attr('fill', th.muted);
             };
-            const hover = () => {
+            const activate = () => {
                 bgEl.attr('fill', accent).attr('stroke', accent);
                 pathEl.attr('fill', '#ffffff');
             };
             reset();
             bgEl.style('pointer-events', 'all')
                 .style('cursor', 'pointer')
-                .on('mouseenter', hover)
                 .on('mouseleave', reset);
             if (fn) {
                 bgEl.on('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
+                    activate();
                     fn(e);
+                    setTimeout(reset, 200);
                 });
             }
             if (o.stopMousedown) {
@@ -39860,8 +39859,8 @@ class OrderManager {
             }
         };
 
-        wireHalf(bgUp, upPath, green, greenFill, o.onIncrease);
-        wireHalf(bgDown, downPath, red, redFill, o.onDecrease);
+        wireHalf(bgUp, upPath, green, o.onIncrease);
+        wireHalf(bgDown, downPath, red, o.onDecrease);
 
         return { bgUp, bgDown, upPath, downPath, size };
     }
