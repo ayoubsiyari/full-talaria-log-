@@ -3280,13 +3280,14 @@ class ReplaySystem {
     }
 
     /**
-     * Wall-clock delay between candle-by-candle steps — matches tick mode compression:
-     * step market duration ÷ speed (e.g. 30× on 1m → ~2s per step, not 30 steps/sec).
+     * Wall-clock delay between candle-by-candle steps.
+     * Uses speed as steps-per-second (1000/speed) — snappy jumps with no tick animation.
+     * Stale-interval guards (_activeCandleLoop, prefetch resume) prevent chart interaction
+     * from stacking timers and running faster than this rate.
      */
     getCandleStepIntervalMs() {
-        const stepMs = this._resolveReplayStepTimeframeMs();
         const speed = Math.max(1, Number(this.speed) || 1);
-        return Math.max(20, Math.floor(stepMs / speed));
+        return Math.max(20, Math.floor(1000 / speed));
     }
     
     /**
