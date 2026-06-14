@@ -8853,19 +8853,24 @@ function v9FormatSizeInputOnBlur(raw, sizeMode, symbolType, accountEquity) {
   return String(n);
 }
 
-/** SIZE rail stepper: $/amount by 1; lot (#) by 0.01; futures contracts by 1. */
-function v9SizeStepperStep(sizeMode, symbolType) {
+/** SIZE rail stepper: $/amount by 1; lot (#) by 0.01 (0.001 at/below 0.01); futures by 1. */
+function v9SizeStepperStep(sizeMode, symbolType, currentVal = null, dir = 1) {
   if (sizeMode === "%") return 0.5;
   if (sizeMode === "$") return 1;
   if (sizeMode === "#") {
     if (symbolType === "futures") return 1;
+    const n = parseFloat(currentVal);
+    if (Number.isFinite(n)) {
+      if (dir < 0 && n <= 0.01) return 0.001;
+      if (n < 0.01) return 0.001;
+    }
     return 0.01;
   }
   return 1;
 }
 
 function v9ApplySizeStepperDelta(rawVal, dir, sizeMode, symbolType, accountEquity = null) {
-  const step = v9SizeStepperStep(sizeMode, symbolType);
+  const step = v9SizeStepperStep(sizeMode, symbolType, rawVal, dir);
   const next = Math.max(0, parseFloat(rawVal || "0") + dir * step);
   let capped = next;
   if (sizeMode === "%") capped = Math.min(100, next);
@@ -8875,7 +8880,7 @@ function v9ApplySizeStepperDelta(rawVal, dir, sizeMode, symbolType, accountEquit
     return String(Math.max(0, Math.floor(capped)));
   }
   if (sizeMode === "#") {
-    const dec = step >= 1 ? 0 : Math.min(3, String(step).split(".")[1]?.length || 2);
+    const dec = step >= 0.01 ? 2 : 3;
     return String(parseFloat(capped.toFixed(dec)));
   }
   if (sizeMode === "$") {
@@ -33581,7 +33586,9 @@ const TalariaV8bLive = () => {
                 );
                 return;
               }
-              const riskStep = field === "risk" ? v9SizeStepperStep(sizeMode, currentSymbol.type) : (stepOverride ?? 1);
+              const riskStep = field === "risk"
+                ? v9SizeStepperStep(sizeMode, currentSymbol.type, entryRows.find((r) => r.id === id)?.[field], dir)
+                : (stepOverride ?? 1);
               setEntryRows((rows) => {
                 const next = rows.map((r) => {
                   if (r.id !== id) return r;

@@ -30954,12 +30954,12 @@ class OrderManager {
                             }
                         );
                     }
-                    target._pctDecBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
+                    target._pctDecBtn.attr('transform', `translate(${xAfterLabel + closeBtnR}, ${y})`);
                     try {
                         if (typeof target._pctDecBtn.raise === 'function') target._pctDecBtn.raise();
                     } catch (_) {}
                     xAfterLabel += arrowSize + arrowGap;
-                    target._pctIncBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
+                    target._pctIncBtn.attr('transform', `translate(${xAfterLabel + closeBtnR}, ${y})`);
                     try {
                         if (typeof target._pctIncBtn.raise === 'function') target._pctIncBtn.raise();
                     } catch (_) {}
@@ -31234,11 +31234,12 @@ class OrderManager {
                 const arrowGap = 2;
                 const pctExtra = target.pctArrowsWidth || 0;
                 const xBase = translateX + dims.width + cBtnGap;
+                const badgeR = arrowSize / 2;
                 if (target._pctDecBtn) {
-                    target._pctDecBtn.attr('transform', `translate(${xBase}, ${clampedY - arrowSize / 2})`);
+                    target._pctDecBtn.attr('transform', `translate(${xBase + badgeR}, ${clampedY})`);
                 }
                 if (target._pctIncBtn) {
-                    target._pctIncBtn.attr('transform', `translate(${xBase + arrowSize + arrowGap}, ${clampedY - arrowSize / 2})`);
+                    target._pctIncBtn.attr('transform', `translate(${xBase + arrowSize + arrowGap + badgeR}, ${clampedY})`);
                 }
                 if (target._deleteBtn) {
                     const closeBtnX = translateX + dims.width + pctExtra + cBtnGap + cBtnR;
@@ -35550,26 +35551,27 @@ class OrderManager {
                     // − / + TP share (open multi-TP) — center-anchored circle badges (r=9)
                     if (pctDecBtn && pctIncBtn && pctW > 0) {
                         const badgeR = tpPctArrowSize / 2;
-                        pctDecBtn.attr('transform', `translate(${cx + badgeR}, ${y})`);
+                        const badgeCenterY = boxY + boxH / 2;
+                        pctDecBtn.attr('transform', `translate(${cx + badgeR}, ${badgeCenterY})`);
                         cx += tpPctArrowSize + tpPctArrowGap;
-                        pctIncBtn.attr('transform', `translate(${cx + badgeR}, ${y})`);
+                        pctIncBtn.attr('transform', `translate(${cx + badgeR}, ${badgeCenterY})`);
                         cx += tpPctArrowSize + tpPctArrowGap;
                     }
 
                     // × delete button (multi-TP only)
                     if (deleteBtn) {
                         deleteBtn.style('display', null)
-                            .attr('transform', `translate(${cx + deleteBtnR}, ${y})`);
+                            .attr('transform', `translate(${cx + deleteBtnR}, ${boxY + boxH / 2})`);
                         cx += deleteBtnR * 2 + gap;
                     }
 
                     // + split button
                     if (splitBtn) {
-                        splitBtn.attr('transform', `translate(${cx + splitBtnR}, ${y})`);
+                        splitBtn.attr('transform', `translate(${cx + splitBtnR}, ${boxY + boxH / 2})`);
                         cx += splitBtnR * 2 + gap;
                     }
 
-                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${boxY + boxH / 2})`);
                 }
 
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
