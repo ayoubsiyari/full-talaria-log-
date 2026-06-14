@@ -18523,14 +18523,13 @@ class Chart {
                             if (!rs._replayForwardEdgeWait) return;
                             rs._replayForwardEdgeWait = false;
                             try {
-                                if (typeof rs.getPlaybackMode === 'function'
-                                    && rs.getPlaybackMode() === 'tick'
-                                    && typeof rs.startTickAnimation === 'function') {
+                                const mode = typeof rs.getPlaybackMode === 'function'
+                                    ? rs.getPlaybackMode()
+                                    : rs.playbackMode;
+                                if (mode === 'tick' && typeof rs.startTickAnimation === 'function') {
                                     rs.startTickAnimation();
-                                } else if (typeof rs.simpleStepForward === 'function'
-                                    && rs.currentIndex < rs.fullRawData.length - 1) {
-                                    rs.simpleStepForward();
                                 }
+                                // Candle mode: playInterval advances on its next tick — do not double-step.
                             } catch (_) { /* ignore */ }
                         });
                     }

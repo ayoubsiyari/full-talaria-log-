@@ -39916,11 +39916,13 @@ class OrderManager {
             .attr('class', `order-level-badge order-level-badge--${kind} ${o.className || ''}`.trim())
             .attr('transform', `translate(${x}, ${y})`)
             .style('cursor', 'pointer');
-        const bg = g.append('circle')
+        const bg = g.append('rect')
             .attr('class', 'order-level-badge-bg')
-            .attr('cx', r)
-            .attr('cy', r)
-            .attr('r', r)
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', size)
+            .attr('height', size)
+            .attr('rx', 2)
             .attr('stroke-width', 1);
         const txt = g.append('text')
             .attr('class', 'order-level-badge-glyph')
@@ -39959,9 +39961,13 @@ class OrderManager {
             .attr('class', `order-level-badge order-level-badge--${kind} ${cssClass || ''}`.trim())
             .attr('pointer-events', 'all')
             .style('cursor', 'pointer');
-        const bg = btn.append('circle')
+        const bg = btn.append('rect')
             .attr('class', 'order-level-badge-bg order-overlay-sublayer')
-            .attr('r', r)
+            .attr('x', -r)
+            .attr('y', -r)
+            .attr('width', r * 2)
+            .attr('height', r * 2)
+            .attr('rx', 2)
             .attr('stroke-width', 1);
         const txt = btn.append('text')
             .attr('class', 'order-level-badge-glyph order-overlay-sublayer')

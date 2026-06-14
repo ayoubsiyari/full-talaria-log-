@@ -21,6 +21,8 @@ class ReplaySystem {
         this._replayForwardEdgeWait = false;
         /** Bumped to invalidate stale tick timeout chains (prefetch must not stack loops). */
         this._activeTickLoop = 0;
+        /** Bumped to invalidate stale candle-by-candle setInterval chains. */
+        this._activeCandleLoop = 0;
 
         // === VIRTUAL TIME SYNC: Track replay position by timestamp, not index ===
         // This ensures all timeframes stay in sync when switching
@@ -3167,6 +3169,7 @@ class ReplaySystem {
      */
     stopAllPlayback() {
         this._activeTickLoop = (this._activeTickLoop || 0) + 1;
+        this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
         if (this._nextCandleTimer) {
             clearTimeout(this._nextCandleTimer);
             this._nextCandleTimer = null;
@@ -3186,10 +3189,20 @@ class ReplaySystem {
             this.syncPlayPauseUI();
             return;
         }
-        
-        
-        // Calculate interval based on speed (candles per second)
-        const interval = Math.max(20, 1000 / this.speed); // Min 20ms
+
+        // Only one candle interval — prefetch / edge resume must not stack timers.
+        this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
+        const loopId = this._activeCandleLoop;
+        if (this.playInterval) {
+            clearInterval(this.playInterval);
+            this.playInterval = null;
+        }
+        if (this._nextCandleTimer) {
+            clearTimeout(this._nextCandleTimer);
+            this._nextCandleTimer = null;
+        }
+
+        const interval = this.getCandleStepIntervalMs();
         
         // Optionally advance immediately (used on first play).
         if (startImmediately) {
@@ -3197,6 +3210,11 @@ class ReplaySystem {
         }
         
         this.playInterval = setInterval(() => {
+            if (loopId !== this._activeCandleLoop) {
+                clearInterval(this.playInterval);
+                this.playInterval = null;
+                return;
+            }
             // Double-check state on each tick
             if (!this.isPlaying || !this.isActive) {
                 clearInterval(this.playInterval);
@@ -3220,6 +3238,55 @@ class ReplaySystem {
 
             this.simpleStepForward();
         }, interval);
+    }
+    
+    /**
+     * Resolve the replay step timeframe (V9 interval / legacy select / chart TF).
+     * @returns {string|null}
+     */
+    _resolveReplayStepTimeframe() {
+        let selectedTimeframe = this.stepTimeframeOverride || null;
+        if (selectedTimeframe) {
+            selectedTimeframe = String(selectedTimeframe).trim();
+        }
+        const hiddenSelect = this.timeframeSelect || document.getElementById('replayTimeframe');
+        if (!selectedTimeframe && hiddenSelect && hiddenSelect.value) {
+            selectedTimeframe = hiddenSelect.value;
+        }
+        if (!selectedTimeframe) {
+            const selectedOption = document.querySelector('#timeframeMenu .timeframe-option.selected');
+            if (selectedOption) {
+                selectedTimeframe = selectedOption.getAttribute('data-value');
+            }
+        }
+        if (selectedTimeframe === 'sync' || !selectedTimeframe) {
+            selectedTimeframe = this.chart?.currentTimeframe || null;
+        }
+        return selectedTimeframe || null;
+    }
+
+    /** Milliseconds of market time represented by one candle-by-candle step. */
+    _resolveReplayStepTimeframeMs() {
+        const tf = this._resolveReplayStepTimeframe();
+        if (tf) {
+            const ms = this.timeframeToMs(tf);
+            if (Number.isFinite(ms) && ms > 0) return ms;
+        }
+        if (Array.isArray(this.fullRawData) && this.fullRawData.length > 1) {
+            const dt = Math.abs(Number(this.fullRawData[1].t) - Number(this.fullRawData[0].t));
+            if (Number.isFinite(dt) && dt > 0) return dt;
+        }
+        return 60000;
+    }
+
+    /**
+     * Wall-clock delay between candle-by-candle steps — matches tick mode compression:
+     * step market duration ÷ speed (e.g. 30× on 1m → ~2s per step, not 30 steps/sec).
+     */
+    getCandleStepIntervalMs() {
+        const stepMs = this._resolveReplayStepTimeframeMs();
+        const speed = Math.max(1, Number(this.speed) || 1);
+        return Math.max(20, Math.floor(stepMs / speed));
     }
     
     /**
@@ -3269,31 +3336,7 @@ class ReplaySystem {
             return this.fullRawData.length - 1;
         }
         
-        // Priority 0: explicit override (V9 can set this directly).
-        let selectedTimeframe = this.stepTimeframeOverride || null;
-        if (selectedTimeframe) {
-            selectedTimeframe = String(selectedTimeframe).trim();
-        }
-        
-        // Try hidden select first
-        const hiddenSelect = this.timeframeSelect || document.getElementById('replayTimeframe');
-        if (!selectedTimeframe && hiddenSelect && hiddenSelect.value) {
-            selectedTimeframe = hiddenSelect.value;
-        }
-        
-        // If not found, try reading from visible dropdown's selected option
-        if (!selectedTimeframe) {
-            const selectedOption = document.querySelector('#timeframeMenu .timeframe-option.selected');
-            if (selectedOption) {
-                selectedTimeframe = selectedOption.getAttribute('data-value');
-            }
-        }
-        
-        
-        // If "sync" is selected, use the chart's current timeframe
-        if (selectedTimeframe === 'sync') {
-            selectedTimeframe = this.chart.currentTimeframe;
-        }
+        const selectedTimeframe = this._resolveReplayStepTimeframe();
         
         if (!selectedTimeframe) {
             // No timeframe selector - advance by one raw candle
@@ -4734,6 +4777,7 @@ class ReplaySystem {
         // Set state first
         this.isPlaying = false;
         this._activeTickLoop = (this._activeTickLoop || 0) + 1;
+        this._activeCandleLoop = (this._activeCandleLoop || 0) + 1;
         
         // Stop active timers first
         if (this._nextCandleTimer) {
