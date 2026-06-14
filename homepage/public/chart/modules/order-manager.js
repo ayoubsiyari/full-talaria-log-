@@ -11582,6 +11582,7 @@ class OrderManager {
 
         if (label === 'TP') {
             const infoText = this._formatTpSlInfoText('TP', price);
+            const detailColor = this._orderLevelDetailColor(infoText, '#22c55e');
             return [
                 {
                     text: 'TP',
@@ -11595,7 +11596,7 @@ class OrderManager {
                     text: infoText,
                     fill: '#0f172a',
                     stroke: '#22c55e',
-                    textColor: '#22c55e',
+                    textColor: detailColor,
                     fontWeight: '700',
                     minWidth: 74,
                     role: 'price'
@@ -17177,9 +17178,16 @@ class OrderManager {
                     const isSingleTpOrSl = lineData.label === 'TP' || lineData.label === 'SL';
                     const isMultiTp = lineData.label && lineData.label.startsWith('TP') && lineData.label !== 'TP';
                     if (isSingleTpOrSl) {
-                        lineData.priceText.text(self._formatTpSlInfoText(lineData.label, newPrice));
+                        const info = self._formatTpSlInfoText(lineData.label, newPrice);
+                        lineData.priceText.text(info);
+                        lineData.priceText.attr(
+                            'fill',
+                            self._orderLevelDetailColor(info, lineData.label === 'TP' ? '#22c55e' : '#ef4444')
+                        );
                     } else if (isMultiTp) {
-                        lineData.priceText.text(self._formatMultiTpInfoText(lineData.label, newPrice));
+                        const info = self._formatMultiTpInfoText(lineData.label, newPrice);
+                        lineData.priceText.text(info);
+                        lineData.priceText.attr('fill', self._orderLevelDetailColor(info, '#22c55e'));
                     } else {
                         lineData.priceText.text(formattedPrice);
                     }
@@ -18053,19 +18061,19 @@ class OrderManager {
                     const enableSL = document.getElementById('enableSL')?.checked;
                     
                     if (entryPrice > 0 && newPrice !== entryPrice) {
-                        // Calculate reward
                         const rewardDistance = Math.abs(newPrice - entryPrice);
                         const rewardPips = rewardDistance / self.pipSize;
                         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-                        const rewardAmount = rewardPips * quantity * self.pipValuePerLot;
-                        
-                        // Update TP display
+                        const sym = self._getSymbol();
+                        const tpPnl = self.estimatePnLForPriceLevel(self.orderSide, entryPrice, newPrice, quantity, sym);
+
                         const tpPipsDisplay = document.getElementById('tpPipsDisplay');
                         const tpAmountDisplay = document.getElementById('tpAmountDisplay');
                         if (tpPipsDisplay) tpPipsDisplay.textContent = `${rewardPips.toFixed(1)} pips`;
-                        if (tpAmountDisplay) tpAmountDisplay.textContent = `${rewardAmount.toFixed(2)}`;
-                        
-                        // Calculate R:R if SL is set
+                        if (tpAmountDisplay) {
+                            tpAmountDisplay.textContent = `${tpPnl >= 0 ? '+' : ''}${tpPnl.toFixed(2)}`;
+                        }
+
                         if (enableSL && slPrice > 0 && slPrice !== entryPrice) {
                             const riskDistance = Math.abs(slPrice - entryPrice);
                             const rr = rewardDistance / riskDistance;
@@ -19265,6 +19273,11 @@ class OrderManager {
         if (!(price > 0) || !(qty > 0)) return fallback;
         const side = (this.orderSide || 'BUY').toUpperCase();
 
+        const formatSigned = (pnl, lots) => {
+            const sign = pnl >= 0 ? '+' : '-';
+            return `${sign}$${Math.abs(pnl).toFixed(2)}  (${this.formatQuantity(lots)})`;
+        };
+
         // Multi-entry: sum each valid level's individual PnL (skip disabled levels)
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
@@ -19282,18 +19295,14 @@ class OrderManager {
                 totalPnl += this.estimatePnLForPriceLevel(side, level.price, price, lots);
             }
             if (totalLots <= 0) return fallback;
-            const absPnl = Math.abs(totalPnl);
-            const sign = label === 'SL' ? '-' : '+';
-            return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(totalLots)})`;
+            return formatSigned(totalPnl, totalLots);
         }
 
         // Single entry
         const entryPx = this._getReferenceEntryForOrderMath();
         if (!(entryPx > 0) || price === entryPx) return fallback;
         const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, qty);
-        const absPnl = Math.abs(pnl);
-        const sign = label === 'SL' ? '-' : '+';
-        return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(qty)})`;
+        return formatSigned(pnl, qty);
     }
 
     /**
@@ -27283,7 +27292,13 @@ class OrderManager {
                         } else {
                             pnl = self.estimateOpenLegPnLSlice(order, newPrice, Number(order.quantity) || 0);
                         }
-                        extraElements.pnlText.text(`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
+                        const pnlStr = `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`;
+                        extraElements.pnlText
+                            .text(pnlStr)
+                            .attr('fill', self._orderLevelDetailColor(
+                                pnlStr,
+                                lineType === 'tp' ? '#22c55e' : '#ef4444'
+                            ));
                     }
                     const boxH = 22;
                     const boxY = newY - boxH / 2;
@@ -31104,6 +31119,7 @@ class OrderManager {
         }
 
         if (target.type === 'TP') {
+            const dragPx = Number.isFinite(Number(target.price)) ? Number(target.price) : null;
             if (target.isPendingMultiTP && pendingOrder.tpTargets && target.tpTargetIndex != null) {
                 const idx = target.tpTargetIndex;
                 const t = pendingOrder.tpTargets[idx];
@@ -31112,27 +31128,35 @@ class OrderManager {
                     pendingOrder,
                     t,
                     idx,
-                    'pending'
+                    'pending',
+                    dragPx
                 );
                 const ladderPct = Number(t.percentage) || 0;
+                const pnlStr = `${tpPnL >= 0 ? '+' : ''}${tpPnL.toFixed(2)}`;
                 tag.text(`TP${idx + 1} (${ladderPct.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`);
-                if (!detail.empty()) detail.text(`${tpPnL >= 0 ? '+' : ''}${tpPnL.toFixed(2)}`);
+                if (!detail.empty()) {
+                    detail.text(pnlStr).attr('fill', this._orderLevelDetailColor(pnlStr, '#22c55e'));
+                }
                 return;
             }
-            if (pendingOrder.takeProfit) {
-                let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.takeProfit, quantity);
+            const tpPrice = dragPx ?? pendingOrder.takeProfit;
+            if (tpPrice) {
+                let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, tpPrice, quantity);
                 let totalTpQty = quantity;
                 if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                     const members = this._getSplitGroupPendingOrders(pendingOrder);
                     tpPnL = members.reduce((sum, m) => {
                         const q = Number(m.quantity) || 0;
                         if (q <= 0) return sum;
-                        return sum + this.estimateOpenLegPnLSlice(m, pendingOrder.takeProfit, q);
+                        return sum + this.estimateOpenLegPnLSlice(m, tpPrice, q);
                     }, 0);
                     totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
                 }
+                const pnlStr = `${tpPnL >= 0 ? '+' : ''}${tpPnL.toFixed(2)}`;
                 tag.text(`TP  ${totalTpQty.toFixed(2)}`);
-                if (!detail.empty()) detail.text(`${tpPnL >= 0 ? '+' : ''}${tpPnL.toFixed(2)}`);
+                if (!detail.empty()) {
+                    detail.text(pnlStr).attr('fill', this._orderLevelDetailColor(pnlStr, '#22c55e'));
+                }
             }
         }
     }
