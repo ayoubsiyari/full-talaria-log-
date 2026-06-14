@@ -26747,6 +26747,7 @@ class Chart {
             'order-drag-hit', 'order-arrow', 'order-pnl-box', 'order-pnl-text', 'order-price-box', 'order-price-text',
             'order-sl-badge', 'order-tp-badge', 'order-tp-badges',
             'sl-line', 'sl-label', 'sl-label-box', 'sl-label-text', 'sl-label-accent', 'sl-pnl-box', 'sl-pnl-text',
+            'sl-hit-line', 'tp-hit-line', 'preview-line-hit',
             'sl-close-btn', 'sl-price-box', 'sl-price-text',
             'tp-line', 'tp-label', 'tp-label-box', 'tp-label-text', 'tp-label-accent', 'tp-pnl-box', 'tp-pnl-text',
             'tp-close-btn', 'tp-price-box', 'tp-price-text', 'tp-delete-btn', 'tp-split-btn',

@@ -16556,6 +16556,7 @@ class OrderManager {
 
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
+        if (!this.isDraggingPreviewLine) this._syncAllPreviewHoverReveal(pc);
     }
 
     updatePreviewLines() {
@@ -16906,6 +16907,7 @@ class OrderManager {
         this._reflowEntryAnchoredTpSlBadges();
         this._reflowMultiTPPreviewBadges();
         this._syncPendingLimitStopConnector();
+        this._syncAllPreviewHoverReveal(previewChart);
         const dm = previewChart && previewChart.drawingManager;
         if (dm && typeof dm.raiseDrawingLayersAboveOrderPreviews === 'function') {
             dm.raiseDrawingLayersAboveOrderPreviews();
@@ -31073,6 +31075,18 @@ class OrderManager {
                     target.priceHighlight.remove();
                     target.priceHighlight = null;
                 }
+                const poId = entry.pendingOrder?.id;
+                const pendingRevealKey = `pending:${poId}:${target.type}:${target.tpTargetIndex ?? target.targetId ?? target.type}`;
+                const pendingChrome = [target.labelGroup, target._pctStepperBtn, target._deleteBtn, target._splitBtn]
+                    .filter((s) => s && !s.empty?.());
+                if (pendingChrome.length && poId != null) {
+                    this._refreshOrderLevelHoverReveal(
+                        ch,
+                        pendingRevealKey,
+                        [target.hitLine, target.line].filter((s) => s && !s.empty?.()),
+                        pendingChrome
+                    );
+                }
                 target.priceHighlight = this.drawYAxisPriceHighlight(
                     target.price,
                     bgColor,
@@ -33341,7 +33355,7 @@ class OrderManager {
     _disposeSlTpRowElements(row) {
         if (!row) return;
         const keys = [
-            'line', 'labelBox', 'labelAccent', 'labelText', 'pnlBox', 'pnlText', 'closeBtn', 'splitBtn',
+            'line', 'hitLine', 'dragHitLine', 'labelBox', 'labelAccent', 'labelText', 'pnlBox', 'pnlText', 'closeBtn', 'splitBtn',
             'priceBox', 'priceText', 'deleteBtn', 'pctStepperBtn', 'tpPlusBadge', 'yAxisHighlight',
         ];
         keys.forEach((k) => {
@@ -34000,6 +34014,13 @@ class OrderManager {
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             this._applyOrderLevelLineStyle(slLine, false);
+
+            const slHitLine = chart.svg.append('line')
+                .attr('class', `sl-hit-line sl-${order.id}`)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', 16)
+                .attr('pointer-events', 'stroke')
+                .style('cursor', 'ns-resize');
             
             const slLabelBox = chart.svg.append('rect')
                 .attr('class', `sl-label-box sl-${order.id}`)
@@ -34087,7 +34108,8 @@ class OrderManager {
             
             slLines.push({ 
                 orderId: order.id, 
-                line: slLine, 
+                line: slLine,
+                hitLine: slHitLine,
                 labelBox: slLabelBox,
                 labelAccent: slLabelAccent,
                 labelText: slLabelText,
@@ -34133,6 +34155,13 @@ class OrderManager {
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     this._applyOrderLevelLineStyle(tpLine, false);
+
+                    const tpHitLine = chart.svg.append('line')
+                        .attr('class', `tp-hit-line tp-${order.id} tp-target-${tpKey}`)
+                        .attr('stroke', 'transparent')
+                        .attr('stroke-width', 16)
+                        .attr('pointer-events', 'stroke')
+                        .style('cursor', 'ns-resize');
                     
                     const tpLabelBox = chart.svg.append('rect')
                         .attr('class', `tp-label-box tp-${order.id} tp-target-${tpKey}`)
@@ -34251,7 +34280,8 @@ class OrderManager {
                     tpLines.push({ 
                         orderId: order.id,
                         targetId: tpKey,
-                        line: tpLine, 
+                        line: tpLine,
+                        hitLine: tpHitLine,
                         labelBox: tpLabelBox,
                         labelAccent: tpLabelAccent,
                         labelText: tpLabelText,
@@ -34290,6 +34320,13 @@ class OrderManager {
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             this._applyOrderLevelLineStyle(tpLine, false);
+
+            const tpHitLine = chart.svg.append('line')
+                .attr('class', `tp-hit-line tp-${order.id}`)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', 16)
+                .attr('pointer-events', 'stroke')
+                .style('cursor', 'ns-resize');
             
             const tpLabelBox = chart.svg.append('rect')
                 .attr('class', `tp-label-box tp-${order.id}`)
@@ -34387,7 +34424,8 @@ class OrderManager {
             
             tpLines.push({ 
                 orderId: order.id, 
-                line: tpLine, 
+                line: tpLine,
+                hitLine: tpHitLine,
                 labelBox: tpLabelBox,
                 labelAccent: tpLabelAccent,
                 labelText: tpLabelText,
@@ -35162,7 +35200,7 @@ class OrderManager {
             
             const updatedSLPrices = new Set();
             
-            slForChart.forEach(({ orderId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }) => {
+            slForChart.forEach(({ orderId, line, hitLine, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }) => {
                 const position = this.openPositions.find(p => p.id === orderId);
                 if (!position || !position.stopLoss) {
                     this._disposeSlTpRowElements({
@@ -35237,6 +35275,18 @@ class OrderManager {
 
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 this._applyOrderLevelLineStyle(line, false);
+
+                const slRevealVisible = labelBox && labelBox.style('display') !== 'none';
+                if (slRevealVisible) {
+                    const slHit = this._ensureOrderLevelRevealHitLine(ch, { line, hitLine }, `sl-hit-line sl-${orderId}`);
+                    if (slHit) slHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
+                    this._refreshOrderLevelHoverReveal(
+                        ch,
+                        `open:sl:${orderId}`,
+                        [slHit, line].filter((s) => s && !s.empty?.()),
+                        [labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn].filter((s) => s && !s.empty?.())
+                    );
+                }
 
                 this._styleOpenSlProfitProtectionVisuals(position, line, {
                     labelBox,
@@ -35344,7 +35394,7 @@ class OrderManager {
             const updatedTPLineKeys = new Set();
             const tpRankMapsByOrder = new Map();
             
-            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctStepperBtn, pctArrowsWidth }) => {
+            tpForChart.forEach(({ orderId, targetId, line, hitLine, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctStepperBtn, pctArrowsWidth }) => {
                 const position = this._findOpenPositionById(orderId);
                 if (!position) {
                     this._disposeSlTpRowElements({
@@ -35591,6 +35641,24 @@ class OrderManager {
 
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 this._applyOrderLevelLineStyle(line, false);
+
+                const tpRevealVisible = labelBox && labelBox.style('display') !== 'none';
+                if (tpRevealVisible) {
+                    const tpKey = (targetId !== undefined && targetId !== null) ? String(targetId) : 'st';
+                    const tpHit = this._ensureOrderLevelRevealHitLine(
+                        ch,
+                        { line, hitLine },
+                        `tp-hit-line tp-${orderId} tp-target-${tpKey}`
+                    );
+                    if (tpHit) tpHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
+                    this._refreshOrderLevelHoverReveal(
+                        ch,
+                        `open:tp:${orderId}:${tpKey}`,
+                        [tpHit, line].filter((s) => s && !s.empty?.()),
+                        [labelBox, labelAccent, labelText, pnlBox, pnlText, pctStepperBtn, deleteBtn, splitBtn, closeBtn]
+                            .filter((s) => s && !s.empty?.())
+                    );
+                }
                 
                 yAxisHighlightPrices.tp.add(tpPrice);
             });
@@ -35990,6 +36058,22 @@ class OrderManager {
                     }
 
                     closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+
+                    const entryChrome = [labelBox, olEntry.labelAccent, labelText, arrow, pnlBox, pnlText, closeBtn];
+                    if (slBadge && slBadge.style('display') !== 'none') entryChrome.push(slBadge);
+                    if (tpBadge && tpBadge.style('display') !== 'none') entryChrome.push(tpBadge);
+                    if (olEntry.tpBadgesContainer && olEntry.tpBadgesContainer.style('display') !== 'none') {
+                        entryChrome.push(olEntry.tpBadgesContainer);
+                    }
+                    if (olEntry.entryPlusBadge && olEntry.entryPlusBadge.style('display') !== 'none') {
+                        entryChrome.push(olEntry.entryPlusBadge);
+                    }
+                    this._refreshOrderLevelHoverReveal(
+                        ch,
+                        `${isPending ? 'pending' : 'open'}:entry:${orderId}`,
+                        [dragHitLine, line].filter((s) => s && !s.empty?.()),
+                        entryChrome.filter((s) => s && !s.empty?.())
+                    );
                 }
 
                 if (!skipPendingEntryGeom) {
@@ -36062,7 +36146,10 @@ class OrderManager {
         // Pending TP/SL/BE targets are positioned only in positionPendingOrderTargets (right-anchored).
         // Do not fold them into minX or shift them here — that caused horizontal snap on click/drag.
 
-        if (!Number.isFinite(minX) || minX === Infinity) return;
+        if (!Number.isFinite(minX) || minX === Infinity) {
+            this._repaintAllOrderLevelHoverReveal(ch);
+            return;
+        }
 
         // Shift SL label groups
         (this.slLines || []).forEach((sl) => {
@@ -36206,6 +36293,8 @@ class OrderManager {
                 if (Number.isFinite(x2)) g._connector.attr('x2', x2 - dx);
             }
         });
+
+        this._repaintAllOrderLevelHoverReveal(ch);
     }
 
     _orderConnectorAnchorX(ch) {
@@ -39782,6 +39871,176 @@ class OrderManager {
 
 
     /** × cancel on entry / SL rows — centered on the dashed line, inline after badges. */
+
+    _orderLevelRevealSlidePx() {
+        return 16;
+    }
+
+    _readOrderLevelRevealBase(sel) {
+        if (!sel || sel.empty?.()) return null;
+        const node = sel.node?.();
+        if (!node) return null;
+        const tag = node.tagName?.toLowerCase();
+        if (tag === 'g') {
+            const m = /translate\(([-\d.]+)[,\s]+([-\d.]+)\)/.exec(sel.attr('transform') || '');
+            if (!m) return { kind: 'opacity' };
+            return { kind: 'g', x: parseFloat(m[1]), y: parseFloat(m[2]) };
+        }
+        const x = parseFloat(sel.attr('x'));
+        const y = parseFloat(sel.attr('y'));
+        if (!Number.isFinite(x)) return { kind: 'opacity' };
+        return { kind: 'xy', x, y: Number.isFinite(y) ? y : null };
+    }
+
+    _paintOrderLevelRevealSelection(sel, base, visible, animate, slide) {
+        if (!sel || sel.empty?.() || !base) return;
+        const dur = animate ? 180 : 0;
+        let t = sel;
+        if (animate && dur && typeof sel.transition === 'function') {
+            t = sel.transition().duration(dur);
+        }
+        if (base.kind === 'g') {
+            const tx = visible ? base.x : base.x + slide;
+            t.attr('transform', `translate(${tx}, ${base.y})`);
+        } else if (base.kind === 'xy') {
+            const tx = visible ? base.x : base.x + slide;
+            t.attr('x', tx);
+            if (base.y != null) t.attr('y', base.y);
+        }
+        t.style('opacity', visible ? 1 : 0);
+        t.style('pointer-events', visible ? null : 'none');
+    }
+
+    _paintOrderLevelHoverReveal(key, visible, animate = true) {
+        const entry = this._orderLevelRevealRegistry?.get(key);
+        if (!entry) return;
+        const slide = this._orderLevelRevealSlidePx();
+        entry.chrome.forEach((sel, i) => {
+            const base = entry.bases.get(i);
+            if (base) this._paintOrderLevelRevealSelection(sel, base, visible, animate, slide);
+        });
+    }
+
+    _wireOrderLevelHoverReveal(key) {
+        if (!this._orderLevelRevealWired) this._orderLevelRevealWired = new Set();
+        if (this._orderLevelRevealWired.has(key)) return;
+        this._orderLevelRevealWired.add(key);
+        if (!this._orderLevelRevealHover) this._orderLevelRevealHover = new Map();
+
+        let hideTimer = null;
+        const show = () => {
+            if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+            this._orderLevelRevealHover.set(key, true);
+            this._paintOrderLevelHoverReveal(key, true, true);
+        };
+        const scheduleHide = () => {
+            if (this.isDraggingPreviewLine || this._isDraggingOrderLine || this._isDraggingPendingTarget) return;
+            if (hideTimer) clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => {
+                this._orderLevelRevealHover.set(key, false);
+                this._paintOrderLevelHoverReveal(key, false, true);
+            }, 90);
+        };
+
+        const bind = (sel) => {
+            if (!sel || sel.empty?.()) return;
+            sel
+                .on('mouseenter.reveal', show)
+                .on('mouseleave.reveal', scheduleHide);
+        };
+
+        const attach = () => {
+            const e = this._orderLevelRevealRegistry?.get(key);
+            if (!e) return;
+            (e.hits || []).forEach(bind);
+            (e.chrome || []).forEach(bind);
+        };
+        attach();
+        const regEntry = this._orderLevelRevealRegistry?.get(key);
+        if (regEntry) regEntry._attachRevealHover = attach;
+    }
+
+    _refreshOrderLevelHoverReveal(ch, key, hits, chrome) {
+        if (!key || !ch) return;
+        if (!this._orderLevelRevealRegistry) this._orderLevelRevealRegistry = new Map();
+        if (!this._orderLevelRevealHover) this._orderLevelRevealHover = new Map();
+
+        const cleanHits = (hits || []).filter((s) => s && !s.empty?.());
+        const cleanChrome = (chrome || []).filter((s) => s && !s.empty?.());
+        if (!cleanHits.length || !cleanChrome.length) return;
+
+        let entry = this._orderLevelRevealRegistry.get(key);
+        if (!entry) {
+            entry = { chart: ch, hits: cleanHits, chrome: cleanChrome, bases: new Map() };
+            this._orderLevelRevealRegistry.set(key, entry);
+            this._wireOrderLevelHoverReveal(key);
+        } else {
+            entry.chart = ch;
+            entry.hits = cleanHits;
+            entry.chrome = cleanChrome;
+            if (typeof entry._attachRevealHover === 'function') entry._attachRevealHover();
+        }
+
+        cleanChrome.forEach((sel, i) => {
+            entry.bases.set(i, this._readOrderLevelRevealBase(sel));
+        });
+
+        const visible = !!this._orderLevelRevealHover.get(key);
+        this._paintOrderLevelHoverReveal(key, visible, false);
+    }
+
+    _repaintAllOrderLevelHoverReveal(ch) {
+        if (!this._orderLevelRevealRegistry || !ch) return;
+        this._orderLevelRevealRegistry.forEach((entry, key) => {
+            if (entry.chart !== ch) return;
+            entry.chrome.forEach((sel, i) => {
+                if (sel && !sel.empty?.()) entry.bases.set(i, this._readOrderLevelRevealBase(sel));
+            });
+            const visible = !!this._orderLevelRevealHover?.get(key);
+            this._paintOrderLevelHoverReveal(key, visible, false);
+        });
+    }
+
+    _ensureOrderLevelRevealHitLine(chart, row, className) {
+        if (!chart?.svg || !row?.line) return row?.hitLine || null;
+        if (row.hitLine && row.hitLine.node()?.parentNode) return row.hitLine;
+        row.hitLine = chart.svg.append('line')
+            .attr('class', className)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 16)
+            .attr('pointer-events', 'stroke')
+            .style('cursor', 'ns-resize');
+        return row.hitLine;
+    }
+
+    _syncPreviewLineHoverReveal(lineData, ch, keySuffix) {
+        if (!lineData?.labelGroup || !lineData?.hitLine || lineData.isBadge) return;
+        const key = `preview:${keySuffix}`;
+        this._refreshOrderLevelHoverReveal(ch, key, [lineData.hitLine, lineData.line].filter(Boolean), [lineData.labelGroup]);
+    }
+
+    _syncAllPreviewHoverReveal(pc) {
+        if (!this.previewLines || !pc) return;
+        const sync = (ld, suffix) => { if (ld) this._syncPreviewLineHoverReveal(ld, pc, suffix); };
+        sync(this.previewLines.entry, 'entry');
+        sync(this.previewLines.tp, 'tp');
+        sync(this.previewLines.sl, 'sl');
+        sync(this.previewLines.be, 'be');
+        sync(this.previewLines.avgEntry, 'avg');
+        (this.previewLines.multipleTPs || []).forEach((ld, i) => sync(ld, `mtp:${i}`));
+        (this.previewLines.splitEntries || []).forEach((ld, i) => sync(ld, `split:${i}`));
+        if (this.previewLines.sl?.isBadge && this.previewLines.sl.labelGroup) {
+            this._refreshOrderLevelHoverReveal(pc, 'preview:sl-badge', [this.previewLines.entry?.hitLine], [this.previewLines.sl.labelGroup]);
+        }
+        if (this.previewLines.tp?.isBadge && this.previewLines.tp.labelGroup) {
+            this._refreshOrderLevelHoverReveal(pc, 'preview:tp-badge', [this.previewLines.entry?.hitLine], [this.previewLines.tp.labelGroup]);
+        }
+        (this.previewLines.multiTPBadges || []).forEach((bd, i) => {
+            if (bd?.labelGroup) {
+                this._refreshOrderLevelHoverReveal(pc, `preview:mtp-badge:${i}`, [this.previewLines.entry?.hitLine], [bd.labelGroup]);
+            }
+        });
+    }
 
     _tpPctStepperSize() {
         return 18;
