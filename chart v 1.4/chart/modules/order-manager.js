@@ -11995,16 +11995,36 @@ class OrderManager {
     }
 
     /**
-     * Single-entry preview: place TP/SL badges immediately after the entry tag (MARKET BUY + ✓ ✕),
-     * not near the price axis — matches the original drawer layout.
+     * Single-entry preview: TP/SL badges beside the entry tag.
+     * Multi-entry (2+ legs): anchor beside the Avg Entry row (drawn before TP/SL).
      */
     _useEntryAnchoredTpSlBadges() {
-        return !!(this.previewLines?.entry && !this.isMultiEntryMode);
+        return !!this.previewLines?.entry;
+    }
+
+    /** Y-axis price for entry-anchored TP/SL badges (weighted avg when multi-entry). */
+    _getPreviewTpSlBadgeAnchorPrice() {
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const priced = (this.multiEntryLevels || []).filter(l => l.price > 0);
+        if (this.isMultiEntryMode && priced.length > 1) {
+            const avg = this._calcMultiEntryPreviewAvgPrice();
+            if (avg > 0) return avg;
+        }
+        return entryPrice;
+    }
+
+    /** Label row TP/SL badges attach to (Avg Entry when multi-leg, else primary entry). */
+    _getPreviewTpSlBadgeAnchorLine() {
+        const priced = (this.multiEntryLevels || []).filter(l => l.price > 0);
+        if (this.isMultiEntryMode && priced.length > 1 && this.previewLines?.avgEntry?.labelGroup) {
+            return this.previewLines.avgEntry;
+        }
+        return this.previewLines?.entry || null;
     }
 
     /** Right edge X of the entry preview label group (includes action buttons when present). */
     _getPreviewEntryLabelRightEdgeX() {
-        const entry = this.previewLines?.entry;
+        const entry = this._getPreviewTpSlBadgeAnchorLine();
         if (!entry?.labelGroup) return null;
         const tr = entry.labelGroup.attr('transform') || '';
         const m = /translate\(([^,]+)/.exec(tr);
@@ -12030,29 +12050,34 @@ class OrderManager {
      */
     _syncEntryAnchoredPreviewBadgesWithEntry(entryPrice, entryYPx) {
         if (!this._useEntryAnchoredTpSlBadges()) return;
-        if (!(entryPrice > 0) || !Number.isFinite(entryYPx)) return;
 
-        const pricedLv = (this.multiEntryLevels || []).filter(l => l.price > 0);
-        const skipTp = this.isMultiEntryMode && pricedLv.length > 1;
+        const anchorPx = this._getPreviewTpSlBadgeAnchorPrice();
+        const pch = this.previewLines?._previewChart || this._getPreviewChart();
+        let anchorY = entryYPx;
+        if (pch?.scales?.yScale && anchorPx > 0) {
+            anchorY = pch.scales.yScale(anchorPx);
+        } else if (!(anchorPx > 0)) {
+            return;
+        }
 
         const tp = this.previewLines?.tp;
-        if (!skipTp && tp && !this.tpManuallyPositioned && tp.isBadge && tp.labelGroup) {
-            tp.price = entryPrice;
-            this.positionPreviewLabel(tp, entryYPx);
+        if (tp && !this.tpManuallyPositioned && tp.isBadge && tp.labelGroup) {
+            tp.price = anchorPx;
+            this.positionPreviewLabel(tp, anchorY);
         }
 
         const sl = this.previewLines?.sl;
         if (sl && !this.slManuallyPositioned && sl.isBadge && sl.labelGroup) {
-            sl.price = entryPrice;
-            this.positionPreviewLabel(sl, entryYPx);
+            sl.price = anchorPx;
+            this.positionPreviewLabel(sl, anchorY);
         }
 
         const mtp = this.previewLines?.multiTPBadges;
         if (mtp?.length) {
             mtp.forEach((bd) => {
                 if (bd?.labelGroup) {
-                    bd.price = entryPrice;
-                    this.positionPreviewLabel(bd, entryYPx + (bd._stackOffsetY || 0));
+                    bd.price = anchorPx;
+                    this.positionPreviewLabel(bd, anchorY + (bd._stackOffsetY || 0));
                 }
             });
         }
@@ -16290,15 +16315,21 @@ class OrderManager {
         const updateLabelY = (lineData, yPixel) => {
             if (!lineData || !lineData.labelGroup) return;
 
-            // Entry-anchored SL/TP badges sit on the entry row — not at targetPrice Y.
+            // Entry-anchored SL/TP badges sit on the anchor row (Avg Entry when multi-leg).
             if (lineData.isBadge && this._useEntryAnchoredTpSlBadges()
                 && (lineData.label === 'TP' || lineData.label === 'SL')) {
-                const entry = this.previewLines?.entry;
-                if (entry?.price > 0 && pc.scales?.yScale) {
-                    lineData.price = entry.price;
-                    this.positionPreviewLabel(lineData, pc.scales.yScale(entry.price));
+                const isTp = lineData.label === 'TP';
+                const isSl = lineData.label === 'SL';
+                if ((isTp && this.tpManuallyPositioned) || (isSl && this.slManuallyPositioned)) {
+                    // Full line / manual badge — follow target price Y below.
+                } else {
+                    const anchorPx = this._getPreviewTpSlBadgeAnchorPrice();
+                    if (anchorPx > 0 && pc.scales?.yScale) {
+                        lineData.price = anchorPx;
+                        this.positionPreviewLabel(lineData, pc.scales.yScale(anchorPx));
+                        return;
+                    }
                 }
-                return;
             }
 
             // Badges have custom horizontal placement logic; recompute fully on width changes.
@@ -16618,12 +16649,7 @@ class OrderManager {
         if (slEnabled && !(slPrice > 0)) this.slManuallyPositioned = false;
         if (tpEnabled && !(tpPrice > 0)) this.tpManuallyPositioned = false;
 
-        let tpBadgeAnchorPrice = entryPrice;
-        if (this.isMultiEntryMode && this.splitEntriesEnabled && this.multiEntryLevels
-            && this.multiEntryLevels.filter(l => l.price > 0).length > 1) {
-            const avgTP = this._calcMultiEntryAvgPrice();
-            if (avgTP > 0) tpBadgeAnchorPrice = avgTP;
-        }
+        const tpSlBadgeAnchor = this._getPreviewTpSlBadgeAnchorPrice();
 
         const pipSizePE = this.pipSize || 0.0001;
         const pipValuePE = this.pipValuePerLot || 10;
@@ -16730,7 +16756,7 @@ class OrderManager {
             // Draw stacked badges on the entry line for unset targets
             const unsetTargets = this.tpTargets.filter(t => !(t.price > 0));
             if (unsetTargets.length > 0) {
-                this._drawMultiTPPreviewBadges(entryPrice, unsetTargets);
+                this._drawMultiTPPreviewBadges(tpSlBadgeAnchor, unsetTargets);
             }
 
             // Draw Avg TP line when at least 1 target has a price set
@@ -16757,7 +16783,7 @@ class OrderManager {
                     }
                 } else {
                     this.slManuallyPositioned = false;
-                    this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
+                    this.previewLines.sl = this.drawPreviewBadge(tpSlBadgeAnchor, '#f23645', 'SL', slPrice);
                 }
             }
 
@@ -16769,7 +16795,7 @@ class OrderManager {
                     }
                 } else {
                     this.tpManuallyPositioned = false;
-                    this.previewLines.tp = this.drawPreviewBadge(tpBadgeAnchorPrice, '#089981', 'TP', tpPrice);
+                    this.previewLines.tp = this.drawPreviewBadge(tpSlBadgeAnchor, '#089981', 'TP', tpPrice);
                 }
             }
         }
@@ -16784,7 +16810,7 @@ class OrderManager {
                     }
                 } else {
                     this.slManuallyPositioned = false;
-                    this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
+                    this.previewLines.sl = this.drawPreviewBadge(tpSlBadgeAnchor, '#f23645', 'SL', slPrice);
                 }
             }
         }
@@ -19630,6 +19656,10 @@ class OrderManager {
         const slVal = parseFloat(slInput?.value || 0);
 
         if (this.orderSide === 'BUY') {
+            if (slVal > 0 && slVal < low - pad) {
+                this.slManuallyPositioned = true;
+                return;
+            }
             const need = !(slVal > 0) || slVal >= low - pad;
             if (!need) {
                 if (slVal > 0) this.slManuallyPositioned = true;
@@ -19638,6 +19668,10 @@ class OrderManager {
             const proposed = parseFloat((low - offsetPips * pip).toFixed(this.getPricePrecision()));
             if (slInput) slInput.value = this.formatPrice(proposed);
         } else {
+            if (slVal > 0 && slVal > high + pad) {
+                this.slManuallyPositioned = true;
+                return;
+            }
             const need = !(slVal > 0) || slVal <= high + pad;
             if (!need) {
                 if (slVal > 0) this.slManuallyPositioned = true;
@@ -33582,7 +33616,7 @@ class OrderManager {
     _reflowMultiTPPreviewBadges() {
         const pch = this.previewLines?._previewChart || this._getPreviewChart();
         if (!pch?.scales?.yScale || !this.previewLines?.multiTPBadges?.length) return;
-        const entryPx = parseFloat(document.getElementById('orderEntryPrice')?.value || 0)
+        const entryPx = this._getPreviewTpSlBadgeAnchorPrice()
             || this.previewLines.entry?.price
             || 0;
         if (!(entryPx > 0)) return;

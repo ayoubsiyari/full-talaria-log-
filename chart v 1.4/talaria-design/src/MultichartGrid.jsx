@@ -1230,27 +1230,17 @@ function applyIframeFocusBorder(cellEl) {
     overlay = document.createElement("div");
     overlay.setAttribute(IFRAME_FOCUS_BORDER_ATTR, "1");
     overlay.setAttribute("aria-hidden", "true");
-    // Bright, thick TradingView-style focus border. Previous values
-    // (2px / #3a6db5 / soft inset shadow) read as "barely tinted" on
-    // a dark chart background — user couldn't tell which panel was
-    // selected. New look:
-    //   • 3px solid border in #2962ff (TradingView's active-blue)
-    //   • outer glow via box-shadow that bleeds 6-12px into the gap
-    //     so even the panel sides next to a peer panel are obviously
-    //     highlighted
-    //   • stronger inset glow so the border is unmistakable against
-    //     the chart canvas it's painted on top of
+    // Bright TradingView-style focus border (0.75px).
     overlay.style.cssText = [
         "position: absolute",
         "inset: 0",
         "pointer-events: none",
-        "border: 3px solid #2962ff",
+        "border: 0.75px solid #2962ff",
         "border-radius: 2px",
         "box-sizing: border-box",
         "box-shadow: " + [
-            "0 0 0 1px rgba(41,98,255,0.85)",
-            "0 0 12px 2px rgba(41,98,255,0.55)",
-            "inset 0 0 14px rgba(41,98,255,0.25)",
+            "0 0 6px 1px rgba(41,98,255,0.35)",
+            "inset 0 0 6px rgba(41,98,255,0.18)",
         ].join(", "),
         "z-index: 2147483647",
     ].join(";");
@@ -1281,16 +1271,14 @@ function applyHostFocusOutline(focused) {
             overlay = document.createElement("div");
             overlay.id = HOST_FOCUS_OVERLAY_ID;
             overlay.setAttribute("aria-hidden", "true");
-            // Clean TradingView-style frame: 2px solid blue with a
-            // single 1px halo. Matches the iframe focus frame exactly
-            // so focus state reads identically across all panels.
+            // Clean TradingView-style frame: 0.75px solid blue with a soft halo.
             overlay.style.cssText = [
                 "position: absolute",
                 "inset: 0",
                 "pointer-events: none",
-                "border: 2px solid #2962ff",
+                "border: 0.75px solid #2962ff",
                 "box-sizing: border-box",
-                "box-shadow: 0 0 0 1px rgba(41,98,255,0.45)",
+                "box-shadow: 0 0 6px 1px rgba(41,98,255,0.35)",
                 "z-index: 2147483647",
             ].join(";");
             wrapper.appendChild(overlay);
@@ -5502,7 +5490,7 @@ export default function MultichartGrid({
                 special case, no Chromium iframe-compositing bypass
                 needed.
 
-            Visual: clean 2px solid #2962ff with a 1px halo. Matches
+            Visual: 0.75px solid #2962ff with a soft halo. Matches
             TradingView's focused-tile treatment. */}
         {focusedRect && (
             <div
@@ -5521,12 +5509,11 @@ export default function MultichartGrid({
                     // reads against the dark chart background. Even
                     // at a glance the user should see "this panel
                     // is selected" without squinting.
-                    border: "3px solid #2962ff",
+                    border: "0.75px solid #2962ff",
                     boxSizing: "border-box",
                     boxShadow: [
-                        "0 0 0 1px #2962ff",                // crisp outer line
-                        "0 0 8px 2px rgba(41,98,255,0.55)", // soft outer glow
-                        "inset 0 0 8px rgba(41,98,255,0.30)", // inner glow
+                        "0 0 6px 1px rgba(41,98,255,0.35)",
+                        "inset 0 0 6px rgba(41,98,255,0.18)",
                     ].join(", "),
                     // High z-index inside #chart-container's stacking
                     // context — above #chartWrapper (z:13) and the
