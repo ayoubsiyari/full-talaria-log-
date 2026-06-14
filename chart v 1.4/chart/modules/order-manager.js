@@ -16557,6 +16557,10 @@ class OrderManager {
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
         if (!this.isDraggingPreviewLine) this._syncAllPreviewHoverReveal(pc);
+        else {
+            this._clipPreviewEntryHitLineForAnchoredBadges();
+            this._raiseEntryAnchoredPreviewBadgesToFront();
+        }
     }
 
     updatePreviewLines() {
@@ -17154,6 +17158,7 @@ class OrderManager {
                     if (t.closest('.split-handle')) return false;
                     if (t.closest('.preview-entry-level-delete-btn')) return false;
                     if (t.closest('.preview-enable-multi-modes-btn')) return false;
+                    if (t.closest('.preview-badge-group')) return false;
                 }
                 return true;
             })
@@ -21890,10 +21895,26 @@ class OrderManager {
             .attr('x1', 0)
             .attr('x2', lineEndX);
         if (lineData.hitLine) {
+            let hitEndX = lineEndX;
+            const isMainEntry = lineData.label === 'Entry'
+                || (typeof lineData.label === 'string' && /^Entry#/.test(lineData.label));
+            if (isMainEntry && !lineData.isBadge && this._useEntryAnchoredTpSlBadges()) {
+                const entryRight = this._getPreviewEntryLabelRightEdgeX();
+                if (entryRight != null) hitEndX = Math.max(0, entryRight);
+            }
             lineData.hitLine
                 .attr('x1', 0)
-                .attr('x2', lineEndX);
+                .attr('x2', hitEndX);
         }
+    }
+
+    /** Keep entry drag hit-strip off SL/TP badge chips (badges stay draggable). */
+    _clipPreviewEntryHitLineForAnchoredBadges() {
+        const entry = this.previewLines?.entry;
+        if (!entry?.hitLine || !this._useEntryAnchoredTpSlBadges()) return;
+        const entryRight = this._getPreviewEntryLabelRightEdgeX();
+        if (entryRight == null) return;
+        entry.hitLine.attr('x2', Math.max(0, entryRight));
     }
 
     _removePendingLimitStopConnector() {
@@ -39870,8 +39891,21 @@ class OrderManager {
             if (!sel || sel.empty?.()) return;
             if (typeof sel.interrupt === 'function') sel.interrupt();
             this._clearOrderLevelRevealSlide(sel);
-            sel.style('opacity', 1).style('pointer-events', null);
+            sel.style('opacity', 1);
             sel.on('mouseenter.reveal', null).on('mouseleave.reveal', null);
+            const node = sel.node?.();
+            const cls = node?.getAttribute?.('class') || '';
+            const isInteractivePreview = /preview-label-group|preview-badge-group/.test(cls);
+            if (isInteractivePreview) {
+                sel.style('pointer-events', 'all');
+            } else if (sel.style('pointer-events') === 'none') {
+                if (/order-label|pending-order-label|sl-label|tp-label/.test(cls)
+                    || node?.tagName?.toLowerCase() === 'g') {
+                    sel.style('pointer-events', 'all');
+                } else {
+                    sel.style('pointer-events', null);
+                }
+            }
         });
     }
 
@@ -40033,6 +40067,12 @@ class OrderManager {
         allPreviewRows.forEach((ld) => {
             if (ld?.labelGroup) this._ensureOrderLevelChromeVisible([ld.labelGroup]);
         });
+
+        [this.previewLines.entry?.hitLine, this.previewLines.entry?.line].forEach((sel) => {
+            sel?.on('mouseenter.reveal', null).on('mouseleave.reveal', null);
+        });
+        this._clipPreviewEntryHitLineForAnchoredBadges();
+        this._raiseEntryAnchoredPreviewBadgesToFront();
     }
 
     _tpPctStepperSize() {
