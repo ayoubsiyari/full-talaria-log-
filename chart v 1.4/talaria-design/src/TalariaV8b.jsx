@@ -12687,6 +12687,7 @@ const TalariaV8b = () => {
                       )}
                       <span style={{fontSize:targets.length>1?12:15,fontWeight:700,fontVariantNumeric:"tabular-nums",
                         color:isHit?c.gn:"rgba(0,212,161,0.45)"}}>{t.price||r.tp}</span>
+                      {t.pct&&targets.length>1&&<span style={{fontSize:9,color:c.tm}}>{t.pct}</span>}
                     </div>
                     );
                   })}

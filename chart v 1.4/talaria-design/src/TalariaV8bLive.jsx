@@ -14390,9 +14390,10 @@ const TalariaV8bLive = () => {
 
         const slRowPx = String(slRows[0]?.price ?? "0");
         const slPx = parseFloat(slRowPx);
+        const reactBridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
         if (!skipPosSync) {
           if (slEnabled && (slPx > 0 || v9IsPartialDecimalInput(slRowPx))) {
-            if (v9OmManualHiddenPriceWins(om, "slPrice", slRowPx)) {
+            if (!reactBridgeLead && v9OmManualHiddenPriceWins(om, "slPrice", slRowPx)) {
               const domSl = document.getElementById("slPrice")?.value ?? "";
               if (domSl && !v9IsPartialDecimalInput(domSl)) {
                 setSlRows((rows) => {
@@ -14404,6 +14405,7 @@ const TalariaV8bLive = () => {
               }
             } else {
               setIn("slPrice", slRowPx);
+              if (om && slPx > 0) om.slManuallyPositioned = true;
             }
           } else if (!slEnabled) {
             setIn("slPrice", "0");
@@ -14418,7 +14420,7 @@ const TalariaV8bLive = () => {
             tp0?.enabled !== false &&
             (tpPx > 0 || v9IsPartialDecimalInput(tpRowPx))
           ) {
-            if (v9OmManualHiddenPriceWins(om, "tpPrice", tpRowPx)) {
+            if (!reactBridgeLead && v9OmManualHiddenPriceWins(om, "tpPrice", tpRowPx)) {
               const domTp = document.getElementById("tpPrice")?.value ?? "";
               if (domTp && !v9IsPartialDecimalInput(domTp)) {
                 setTpRows((rows) => {
@@ -14430,6 +14432,7 @@ const TalariaV8bLive = () => {
               }
             } else {
               setIn("tpPrice", tpRowPx);
+              if (om && tpPx > 0) om.tpManuallyPositioned = true;
             }
           } else if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled === false) {
             setIn("tpPrice", "0");
@@ -34144,6 +34147,8 @@ const TalariaV8bLive = () => {
             const slRow = slRows[0];
             const updSl = (val) => {
               markOrderControlBridge();
+              const om = window.chart?.orderManager;
+              if (om && parseFloat(val) > 0) om.slManuallyPositioned = true;
               setSlRows((rows) => (rows.length ? [{ ...rows[0], price: val }] : rows));
             };
             const stepSl = (dir) => {
@@ -34152,7 +34157,9 @@ const TalariaV8bLive = () => {
               setSlRows((rows) => {
                 if (!rows.length) return rows;
                 const r0 = rows[0];
-                return [{ ...r0, price: v9StepOrderPrice(r0.price, dir, omStep) }];
+                const nextPx = v9StepOrderPrice(r0.price, dir, omStep);
+                if (omStep) omStep.slManuallyPositioned = true;
+                return [{ ...r0, price: nextPx }];
               });
             };
             const arw = (onClick, up, hk) => {
@@ -34516,7 +34523,14 @@ const TalariaV8bLive = () => {
               currentSymbol.type === "futures" &&
               omFuturesMinRiskTxt &&
               (!Number.isFinite(tpTotalLotsForHint) || tpTotalLotsForHint < 1);
-            const updTp  = (id, field, val) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
+            const updTp  = (id, field, val) => {
+              markOrderControlBridge();
+              if (field === "price") {
+                const om = window.chart?.orderManager;
+                if (om && parseFloat(val) > 0) om.tpManuallyPositioned = true;
+              }
+              setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
+            };
             const orderLotTotalTp = v9TpOrderLotTotal(riskVal, omOrderQtyTxt, sizeMode, currentSymbol.type);
             const stepTp = (id, field, dir, step = 1) => {
               markOrderControlBridge();
@@ -34551,7 +34565,9 @@ const TalariaV8bLive = () => {
                     };
                   }
                   if (field === "price") {
-                    return { ...r, [field]: v9StepOrderPrice(r[field], dir, omStep) };
+                    const nextPx = v9StepOrderPrice(r[field], dir, omStep);
+                    if (omStep) omStep.tpManuallyPositioned = true;
+                    return { ...r, [field]: nextPx };
                   }
                   return {
                     ...r,
@@ -36083,6 +36099,7 @@ const TalariaV8bLive = () => {
                       )}
                       <span style={{fontSize:targets.length>1?12:15,fontWeight:700,fontVariantNumeric:"tabular-nums",
                         color:isHit?c.gn:"rgba(0,212,161,0.45)"}}>{t.price||r.tp}</span>
+                      {t.pct&&targets.length>1&&<span style={{fontSize:9,color:c.tm}}>{t.pct}</span>}
                     </div>
                     );
                   })}

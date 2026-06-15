@@ -217,6 +217,120 @@ function attachJournalTagsToRow(om, row, order) {
   row.preTags = extractPreTagsFromSources(j, order);
   row.postTags = extractPostTagsFromSources(j);
   attachTradeMetricsToRow(om, row, order, j);
+  attachMultiLegDisplayToRow(om, row, order, j);
+}
+
+/** All pending/open/closed legs sharing a split-entry group id. */
+function collectSplitGroupOrders(om, order) {
+  if (!order?.splitGroupId || !om) return null;
+  const gid = order.splitGroupId;
+  const match = (o) => o && o.splitGroupId === gid;
+  const members = [];
+  const seen = new Set();
+  for (const list of [om.pendingOrders, om.openPositions, om.closedPositions]) {
+    if (!Array.isArray(list)) continue;
+    for (const o of list) {
+      if (!match(o)) continue;
+      const id = o.id;
+      if (id == null || seen.has(id)) continue;
+      seen.add(id);
+      members.push(o);
+    }
+  }
+  if (members.length <= 1) return null;
+  members.sort((a, b) => (a.splitIndex || 0) - (b.splitIndex || 0));
+  return members;
+}
+
+function formatTpPctLabel(pct) {
+  if (pct == null) return null;
+  const x = Number(pct);
+  if (!Number.isFinite(x)) return null;
+  return (x <= 1 ? (x * 100).toFixed(0) : x.toFixed(0)) + "%";
+}
+
+/**
+ * Entry legs for trade card / journal UI: { price, qty?, filled? }[].
+ * Returns null when only a single entry should be shown (caller uses row.entry).
+ */
+function buildTradeEntryLegs(om, order, journal, fmtPx, fmtQty) {
+  if (journal?.splitEntries?.length > 1) {
+    return journal.splitEntries.map((e) => ({
+      price: fmtPx(e.openPrice ?? e.entryPrice ?? e.price),
+      qty: fmtQty(e.lotSize ?? e.quantity),
+      filled: true,
+    }));
+  }
+  if (journal?.scaledEntries?.length > 1) {
+    return journal.scaledEntries.map((e) => ({
+      price: fmtPx(e.openPrice ?? e.price ?? e.entryPrice),
+      qty: fmtQty(e.quantity ?? e.lotSize),
+      filled: true,
+    }));
+  }
+  const group = order ? collectSplitGroupOrders(om, order) : null;
+  if (group) {
+    return group.map((o) => ({
+      price: fmtPx(o.openPrice ?? o.entryPrice),
+      qty: fmtQty(o.quantity),
+      filled: o.status === "OPEN" || o.status === "closed" || !!o.openTime,
+    }));
+  }
+  return null;
+}
+
+/**
+ * TP legs for trade card: { price, hit?, pct? }[].
+ * Returns null when only a single TP should be shown (caller uses row.tp).
+ */
+function buildTradeTargetLegs(order, journal, fmtPx) {
+  const snap = journal?.multiTpSnapshot || journal?.active_tps_at_exit;
+  let tpList = Array.isArray(snap) && snap.length > 0 ? snap : null;
+  if (!tpList && Array.isArray(order?.tpTargets) && order.tpTargets.length > 0) {
+    tpList = order.tpTargets;
+  }
+  if (!tpList || tpList.length <= 1) {
+    if (!(journal?.hasMultipleTakeProfits && tpList?.length === 1)) return null;
+  }
+  if (!tpList || tpList.length <= 1) return null;
+  return tpList.map((t, i) => ({
+    price: fmtPx(t.price),
+    hit: !!t.hit,
+    pct: formatTpPctLabel(t.percentage),
+    label: `TP${i + 1}`,
+  }));
+}
+
+function attachMultiLegDisplayToRow(om, row, order, journal) {
+  const resolvedOrder =
+    order
+    || (om && row?.omId != null
+      ? (om.closedPositions || []).find((o) => Number(o.id) === Number(row.omId))
+        || (om.openPositions || []).find((o) => Number(o.id) === Number(row.omId))
+        || (om.pendingOrders || []).find((o) => Number(o.id) === Number(row.omId))
+      : null);
+  const fmtPx = (p) => {
+    const x = Number.parseFloat(p);
+    if (!Number.isFinite(x)) return "—";
+    try {
+      return typeof om.formatPrice === "function" ? om.formatPrice(x) : String(x);
+    } catch (_) {
+      return String(x);
+    }
+  };
+  const fmtQty = (q) => {
+    const x = Number.parseFloat(q);
+    if (!Number.isFinite(x)) return undefined;
+    try {
+      return typeof om.formatQuantity === "function" ? om.formatQuantity(x) : x.toFixed(2);
+    } catch (_) {
+      return x.toFixed(2);
+    }
+  };
+  const entries = buildTradeEntryLegs(om, resolvedOrder, journal, fmtPx, fmtQty);
+  if (entries?.length > 1) row.entries = entries;
+  const targets = buildTradeTargetLegs(resolvedOrder, journal, fmtPx);
+  if (targets?.length > 1) row.targets = targets;
 }
 
 function computePlannedRRFromPrices(entry, sl, tp) {
@@ -348,6 +462,7 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
           : undefined,
     };
     attachTradeMetricsToRow(om, row, null, j);
+    attachMultiLegDisplayToRow(om, row, null, j);
     rows.push(row);
   });
 }

@@ -4834,6 +4834,89 @@ class OrderManager {
     }
     
     /**
+     * Multi-entry / multi-TP summary block for trade detail modals (journal + history).
+     */
+    _renderTradeMultiLegSummaryHtml(trade) {
+        if (!trade || typeof trade !== 'object') return '';
+
+        const entryRows = [];
+        const split = Array.isArray(trade.splitEntries) ? trade.splitEntries : [];
+        if (split.length > 1) {
+            split.forEach((e, i) => {
+                const px = e.openPrice ?? e.entryPrice ?? e.price;
+                if (px == null) return;
+                entryRows.push({
+                    label: `Entry ${e.splitIndex != null ? e.splitIndex : i + 1}`,
+                    price: px,
+                    qty: e.lotSize ?? e.quantity
+                });
+            });
+        } else if (Array.isArray(trade.scaledEntries) && trade.scaledEntries.length > 1) {
+            trade.scaledEntries.forEach((e, i) => {
+                const px = e.openPrice ?? e.price ?? e.entryPrice;
+                if (px == null) return;
+                entryRows.push({
+                    label: `Entry ${i + 1}`,
+                    price: px,
+                    qty: e.quantity ?? e.lotSize
+                });
+            });
+        }
+
+        const tpRows = [];
+        const snap = trade.multiTpSnapshot || trade.active_tps_at_exit;
+        let tps = Array.isArray(snap) && snap.length > 1 ? snap : null;
+        if (!tps && Array.isArray(trade.tpTargets) && trade.tpTargets.length > 1) {
+            tps = trade.tpTargets;
+        }
+        if (tps) {
+            tps.forEach((t, i) => {
+                if (t.price == null) return;
+                const pct = t.percentage;
+                let pctLabel = '';
+                if (pct != null && Number.isFinite(Number(pct))) {
+                    const x = Number(pct);
+                    pctLabel = (x <= 1 ? (x * 100).toFixed(0) : x.toFixed(0)) + '%';
+                }
+                tpRows.push({
+                    label: `TP${i + 1}`,
+                    price: t.price,
+                    pct: pctLabel,
+                    hit: !!t.hit
+                });
+            });
+        }
+
+        if (entryRows.length <= 1 && tpRows.length <= 1) return '';
+
+        const legRow = (rows, title, priceColor) => {
+            if (!rows.length) return '';
+            return `
+                <div style="margin-bottom: ${tpRows.length && entryRows.length ? '16px' : '0'};">
+                    <div style="color: #94a3b8; font-size: 11px; font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">${title}</div>
+                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; padding: 10px 12px;">
+                        ${rows.map((r) => `
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,0.1); font-size: 13px;">
+                                <span style="color: #cbd5e1; font-weight: 600;">${r.label}${r.hit ? ' ✓' : ''}</span>
+                                <span style="color: ${priceColor}; font-weight: 700;">$${this.formatPrice(r.price)}</span>
+                                ${r.qty != null && Number.isFinite(Number(r.qty)) ? `<span style="color: #64748b; font-size: 11px;">${Number(r.qty).toFixed(2)} lots</span>` : ''}
+                                ${r.pct ? `<span style="color: #64748b; font-size: 11px;">${r.pct}</span>` : ''}
+                            </div>`).join('')}
+                    </div>
+                </div>`;
+        };
+
+        return `
+            <div style="background: rgba(30,41,59,0.3); border: 1px solid rgba(148,163,184,0.15); border-radius: 8px; padding: 24px; margin-bottom: 28px;">
+                <div style="color: #cbd5e1; font-size: 12px; font-weight: 600; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Entry &amp; take-profit ladder
+                </div>
+                ${legRow(entryRows, 'Entry levels', '#e5e7eb')}
+                ${legRow(tpRows, 'Take-profit levels', '#22c55e')}
+            </div>`;
+    }
+
+    /**
      * Show detailed view of a specific trade
      */
     showTradeDetails(trade) {
@@ -5073,6 +5156,8 @@ class OrderManager {
                     <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.rewardToRiskRatio ? trade.rewardToRiskRatio + ':1' : '—'}</div>
                 </div>
             </div>
+
+            ${this._renderTradeMultiLegSummaryHtml(trade)}
 
             <!-- Additional Details -->
             <div style="background: rgba(30,41,59,0.3); border: 1px solid rgba(148,163,184,0.15); border-radius: 8px; padding: 24px; margin-bottom: 28px;">
