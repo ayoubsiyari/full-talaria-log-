@@ -20869,9 +20869,24 @@ class Chart {
         }
 
         const labelIntervalMs   = labelInterval * timeframeMs;
-        const tickAlignmentBaseTs = this.data[0] && Number.isFinite(this.data[0].t)
+        // Anchor tick alignment to a DATA-INDEPENDENT reference (local midnight of
+        // the first bar's day) instead of the raw first-bar timestamp. Anchoring to
+        // this.data[0].t meant every backward-pan history load shifted the anchor,
+        // so the whole vertical-grid / time-axis tick set re-aligned and visibly
+        // "rebuilt" mid-drag. Local midnight differs between days only by whole days,
+        // which are exact multiples of any day-dividing interval (5m,15m,30m,1h,…),
+        // so `delta % labelIntervalMs` is invariant to which bars are loaded — the
+        // grid stays fixed while dragging and ticks land on round local clock times.
+        let tickAlignmentBaseTs = this.data[0] && Number.isFinite(this.data[0].t)
             ? this.data[0].t
             : 0;
+        if (this.data[0] && Number.isFinite(this.data[0].t)
+            && labelIntervalMs > 0 && 86400000 % labelIntervalMs === 0) {
+            const d0 = this.convertToTimezone(this.data[0].t);
+            const msOfDay0 = (((d0.getUTCHours() * 60 + d0.getUTCMinutes()) * 60
+                + d0.getUTCSeconds()) * 1000) + d0.getUTCMilliseconds();
+            tickAlignmentBaseTs = this.data[0].t - msOfDay0;
+        }
 
         const scanFromRaw = Math.floor(Math.max(0, firstVisibleIdx));
         const bufferCandles = Math.max(labelInterval * 3, Math.ceil((minSpacing * 4) / Math.max(0.001, candleSpacing)));
@@ -20904,7 +20919,14 @@ class Chart {
             } else if (useReplayIndexCadence) {
                 // Replay intraday mode: keep axis cadence tied to candle index
                 // so labels stay visually ranged while running and paused.
-                isRound = idx % Math.max(1, labelInterval) === 0;
+                // Anchor the modulo to the LAST bar, not raw index 0: a backward-pan
+                // history load shifts every index by the number of prepended bars,
+                // which (with a raw `idx % interval`) re-aligned the whole tick set
+                // and made the axis rebuild mid-drag. (idx - lastIdx) shifts by the
+                // same amount, so the cadence stays fixed while dragging.
+                const liv = Math.max(1, labelInterval);
+                const anchorIdx = this.data.length - 1;
+                isRound = ((((idx - anchorIdx) % liv) + liv) % liv) === 0;
             } else {
                 // Keep intraday cadence deterministic without depending on timezone offset.
                 // Tolerant divisibility: strict `delta % interval === 0` can miss ticks across
