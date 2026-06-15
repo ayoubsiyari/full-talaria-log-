@@ -33580,6 +33580,19 @@ class OrderManager {
             this._sweepOrphanedOrderLevelDom(orderId);
             this._purgeOrderConnectorsFromAllSurfaces();
 
+            // The sweep above also removed the entry/order line DOM (`.order-<id>`).
+            // That's correct for a FULL close, but on a PARTIAL TP the position is
+            // still open — so the "buy/sell" entry line must come back. drawOrderLine
+            // no-ops while an orderLines record exists, so drop the now-detached
+            // record(s) first, then redraw with the reduced remaining quantity.
+            (this.orderLines || [])
+                .filter((ol) => ol && ol.orderId === orderId && !ol.isPending)
+                .forEach((ol) => { try { this._disposeOrderLineElements(ol); } catch (_e) { /* ignore */ } });
+            this.orderLines = (this.orderLines || []).filter(
+                (ol) => !(ol && ol.orderId === orderId && !ol.isPending)
+            );
+            this.drawOrderLine(position);
+
             this.drawSLTPLines(position);
             this.updateSLTPLines();
             const charts = this._isMultiPanelLayout()
