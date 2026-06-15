@@ -12242,7 +12242,6 @@ class OrderManager {
         if (!Number.isFinite(clientY)) return;
 
         const PAD = 10;
-        const clientX = container.__omX;
         const wrapRect = container.getBoundingClientRect();
         const localY = clientY - wrapRect.top;
         const yScale = ch?.scales?.yScale;
@@ -12266,15 +12265,6 @@ class OrderManager {
             el.style.pointerEvents = 'all';
             void el.getBoundingClientRect(); // commit opacity:1 before re-enabling the fade
             el.style.transition = prevTransition || 'opacity 0.12s ease';
-
-            // The badge was rebuilt in its default color; if the pointer is actually
-            // over it, restore the hover color now so it doesn't flash on every tick.
-            if (Number.isFinite(clientX) && typeof el.__omApplyHover === 'function') {
-                const overExact = r.width > 0 && r.height > 0
-                    && clientX >= r.left && clientX <= r.right
-                    && clientY >= r.top && clientY <= r.bottom;
-                if (overExact) el.__omApplyHover();
-            }
         }
     }
 
@@ -36529,7 +36519,6 @@ class OrderManager {
             container.addEventListener('mousemove', (e) => {
                 container.__omInside = true;
                 container.__omY = e.clientY;
-                container.__omX = e.clientX;
                 schedule();
             }, { passive: true });
             container.addEventListener('mouseleave', () => {
@@ -40659,26 +40648,18 @@ class OrderManager {
 
     _wireOrderLevelBadgeHover(host, bg, txt, th, spec) {
         const accent = spec.hoverAccent || spec.accent;
-        const node = host.node?.();
-        const reset = () => {
-            bg.attr('fill', th.bg).attr('stroke', th.border);
-            txt.attr('fill', th.muted);
-            if (node) node.__omHovered = false;
-        };
-        const hover = () => {
-            bg.attr('fill', accent).attr('stroke', accent);
-            txt.attr('fill', '#ffffff');
-            if (node) node.__omHovered = true;
-        };
-        reset();
-        // Expose so re-renders (live preview rebuilds the badge each tick) can restore
-        // the hover color on the fresh element without waiting for a new mouseenter,
-        // which would otherwise make the color flash.
-        if (node) {
-            node.__omApplyHover = hover;
-            node.__omApplyReset = reset;
-        }
-        host.on('mouseenter', hover).on('mouseleave', reset);
+        // Color is driven by native CSS :hover (see _ensureLevelCtrlHoverStyles), NOT
+        // JS mouseenter/mouseleave. A live preview recreates and moves these badges on
+        // every price tick; with JS events the badge slid under a stationary cursor and
+        // fired spurious leave/enter, flashing the color. CSS :hover is recomputed by
+        // the browser each frame against the real pointer position, so it never flashes.
+        host
+            .style('--olb-bg', th.bg)
+            .style('--olb-border', th.border)
+            .style('--olb-accent', accent)
+            .style('--olb-muted', th.muted);
+        bg.attr('fill', th.bg).attr('stroke', th.border);
+        txt.attr('fill', th.muted);
     }
 
     /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
