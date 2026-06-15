@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { buildLiveTradeRowsFromOrderManager } from "./orderManagerTradeRows.js";
+import { buildLiveTradeRowsFromOrderManager, resolveTradeCardRR } from "./orderManagerTradeRows.js";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -12510,22 +12510,7 @@ const TalariaV8b = () => {
       {tradeCard&&(()=>{
         const r=tradeCard;
         const isLong=r.side==="LONG";
-        const entryP=parseFloat(r.entry)||0, slP=parseFloat(r.sl)||0, tpP=parseFloat(r.tp)||0;
-        const exitP=r.exit&&r.exit!=="—"?parseFloat(r.exit):NaN;
-        const rrRisk=Math.abs(entryP-slP), rrReward=Math.abs(tpP-entryP);
-        const plannedRR=Number.isFinite(r.plannedRR)?r.plannedRR:(rrRisk>0?rrReward/rrRisk:0);
-        let rrVal=null;
-        if(r.status==="closed"){
-          const stored=Number.parseFloat(r.rMultiple);
-          if(Number.isFinite(stored)) rrVal=stored;
-          else if(rrRisk>0&&Number.isFinite(exitP)) rrVal=isLong?(exitP-entryP)/rrRisk:(entryP-exitP)/rrRisk;
-        } else {
-          rrVal=plannedRR;
-        }
-        const rrStr=rrVal==null||!Number.isFinite(rrVal)?"—":`${rrVal>=0?"+":""}${rrVal.toFixed(2)}R`;
-        const rrCol=r.status==="closed"
-          ? (rrVal==null||!Number.isFinite(rrVal)?c.tm:rrVal>0?c.gn:rrVal<0?c.rd:c.tm)
-          : (rrRisk>0?(plannedRR>=1?c.gn:c.rd):c.tm);
+        const { rrStr, rrCol, rrRisk } = resolveTradeCardRR(r, c);
         const statusCol=r.status==="open"?c.gn:r.status==="pending"?"#FF8C42":c.tm;
         const isActive=r.status==="open"||r.status==="pending";
         const canEditPre=r.status==="pending"||r.status==="open";

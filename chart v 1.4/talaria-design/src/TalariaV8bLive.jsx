@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId, axisTextNeedsContrastFix, contrastingAxisTextColor } from "./v9ThemeSync.js";
-import { buildLiveTradeRowsFromOrderManager, syncOrderManagerBalanceFromLedger } from "./orderManagerTradeRows.js";
+import { buildLiveTradeRowsFromOrderManager, syncOrderManagerBalanceFromLedger, resolveTradeCardRR } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
   ChartSymbolBadge,
@@ -35945,10 +35945,7 @@ const TalariaV8bLive = () => {
       {tradeCard&&(()=>{
         const r=tradeCard;
         const isLong=r.side==="LONG";
-        const entryP=parseFloat(r.entry)||0, slP=parseFloat(r.sl)||0, tpP=parseFloat(r.tp)||0;
-        const rrRisk=Math.abs(entryP-slP), rrReward=Math.abs(tpP-entryP);
-        const rrVal=rrRisk>0?rrReward/rrRisk:0;
-        const rrStr=rrRisk>0?rrVal.toFixed(2)+"R":"—";
+        const { rrStr, rrCol, rrRisk } = resolveTradeCardRR(r, c);
         const statusCol=r.status==="open"?c.gn:r.status==="pending"?"#FF8C42":c.tm;
         const isActive=r.status==="open"||r.status==="pending";
         const canEditPre=r.status==="pending"||r.status==="open";
@@ -36098,7 +36095,7 @@ const TalariaV8bLive = () => {
             <div style={{display:"flex",alignItems:"stretch",borderBottom:`1px solid ${c.br}`,flexShrink:0,background:"rgba(255,255,255,0.012)"}}>
               {[
                 {label:"P&L",      val:r.pnl,  col:r.pc,  big:true},
-                {label:"R:R",      val:rrStr,  col:rrRisk>0?(rrVal>=1?c.gn:c.rd):c.tm},
+                {label:"R:R",      val:rrStr,  col:rrCol},
                 {label:"DURATION", val:r.dur,  col:r.dur==="—"?c.tm:c.ts},
                 {label:"SIZE",     val:r.sz,   col:c.tx, unit:sizeUnit},
               ].map(({label,val,col,big,unit},si)=>(

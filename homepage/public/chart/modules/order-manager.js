@@ -11953,7 +11953,7 @@ class OrderManager {
                 className: 'tp-close-btn preview-tp-sl-close-btn',
                 x: offsetX,
                 y: (height - 18) / 2,
-                levelPrice,
+                
                 onClick: () => {
                     if (isSingleTpPreviewLine) self._removePreviewSingleTP();
                     else self._removePreviewSingleSL();
@@ -11985,7 +11985,7 @@ class OrderManager {
                 className: 'tp-close-btn preview-tp-sl-close-btn',
                 x: offsetX,
                 y: (height - 18) / 2,
-                levelPrice,
+                
                 onClick: (event) => {
                     event.stopPropagation();
                     const key = lineData.targetId != null ? lineData.targetId : lineData.targetIndex;
@@ -12002,7 +12002,7 @@ class OrderManager {
                     className: 'preview-tp-split-add-btn',
                     x: offsetX,
                     y: (height - 18) / 2,
-                    levelPrice,
+                   
                     onClick: (e) => {
                         e.stopPropagation();
                         self._splitPreviewTPFromLine(lineData.price);
@@ -12052,7 +12052,7 @@ class OrderManager {
                     className: 'preview-entry-level-delete-btn',
                     x: bb.width + gap,
                     y: (height - 18) / 2,
-                    levelPrice,
+                  
                     stopMousedown: true,
                     onClick: (event) => {
                         event.preventDefault();
@@ -12079,7 +12079,7 @@ class OrderManager {
                 className: 'entry-action-btn entry-place-btn',
                 x: actX,
                 y: (height - r * 2) / 2,
-                levelPrice,
+                
                 onClick: (event) => {
                     event.stopPropagation();
                     self.placeAdvancedOrder({ keepPanelOpen: true });
@@ -12090,7 +12090,7 @@ class OrderManager {
                 className: 'entry-action-btn entry-cancel-btn',
                 x: actX,
                 y: (height - r * 2) / 2,
-                levelPrice,
+                
                 onClick: (event) => {
                     event.stopPropagation();
                     self.closeOrderRailFromChartCancel();
@@ -16468,11 +16468,7 @@ class OrderManager {
                 if (entry?.price > 0 && pc.scales?.yScale) {
                     lineData.price = entry.price;
                     this.positionPreviewLabel(lineData, pc.scales.yScale(entry.price));
-                    if (lineData.labelGroup) {
-                        lineData.labelGroup.selectAll('.om-level-ctrl').each(function () {
-                            this.setAttribute('data-level-price', String(entry.price));
-                        });
-                    }
+                    
                 }
                 return;
             }
@@ -16589,9 +16585,7 @@ class OrderManager {
                     if (bd && bd.labelGroup) {
                         bd.price = entryPx;
                         this.positionPreviewLabel(bd, ey + (bd._stackOffsetY || 0));
-                        bd.labelGroup.selectAll('.om-level-ctrl').each(function () {
-                            this.setAttribute('data-level-price', String(entryPx));
-                        });
+                        
                     }
                 });
             }
