@@ -3935,7 +3935,10 @@ class Chart {
         const storeTf = this._questdbStoreResolution(timeframe);
         const params = new URLSearchParams({
             timeframe: String(storeTf || '1m'),
-            limit: String(Math.max(100, Math.min(2000, Number(limit) || 2000))),
+            // Server accepts up to 10000 (see GET /candles `limit = min(limit, 10000)`).
+            // The old 2000 client cap made a zoomed-out 1m drag trickle in many
+            // sequential round-trips; callers now size the chunk to the viewport.
+            limit: String(Math.max(100, Math.min(10000, Number(limit) || 2000))),
             direction: direction === 'forward' ? 'forward' : 'backward',
         });
         if (Number.isFinite(Number(cursorTs))) {
@@ -18248,11 +18251,28 @@ class Chart {
             panLimit = Math.ceil(rawCandlesPerSecond * targetRunwaySeconds) + 1500;
             panLimit = Math.max(1500, Math.min(10000, panLimit));
         } else {
-            panLimit = Math.min(2000, panLimit);
+            // Manual panning: size the chunk to how many candles are on screen so
+            // a single request fills the viewport. When zoomed out far on 1m the
+            // old fixed 2000-bar chunk was a tiny fraction of the visible span, so
+            // dragging left/right needed many sequential debounced round-trips
+            // (the "loads too slow when zoomed out" symptom). Keep a 2000 floor for
+            // normal zoom (healthy prefetch buffer) and an 8000 ceiling so a single
+            // merge/indicator recompute stays responsive.
+            let visibleCandles = 0;
+            try {
+                const mm = this.margin || { l: 60, r: 60 };
+                const cwPx = Math.max(1, (this.w || 0) - mm.l - mm.r);
+                const sp = this.getCandleSpacing();
+                if (sp > 0) visibleCandles = cwPx / sp;
+            } catch (_e) { /* ignore */ }
+            const want = Math.ceil(visibleCandles * 2);
+            panLimit = Math.max(2000, Math.min(8000, Number.isFinite(want) && want > 0 ? want : 2000));
         }
         this._panLoadLimit = panLimit;
         
-        const barLimit = Math.min(2000, panLimit);
+        // Replay keeps the proven 2000-bar cadence; manual panning may pull a
+        // larger chunk so a zoomed-out viewport fills in one request.
+        const barLimit = isReplay ? Math.min(2000, panLimit) : Math.min(10000, panLimit);
         const storeTf = this._questdbStoreResolution(tf);
 
         // Replay: use fullRawData edges — _serverCursors can lag after 1m TF hot-swap.

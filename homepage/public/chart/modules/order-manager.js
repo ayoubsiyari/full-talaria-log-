@@ -2197,7 +2197,7 @@ class OrderManager {
             refTarget.hit = true;
             refTarget._noTriggerBeforeTime = null;
             refTarget._noTriggerBeforeTick = undefined;
-            const allHit = position.tpTargets.every((t) => t && t.hit);
+            const allHit = this._multiTpAllActiveTargetsHit(position);
             const ct = allHit ? 'TP' : 'TP-PARTIAL';
             pushTpRow({
                 id: position.id,
@@ -2225,7 +2225,7 @@ class OrderManager {
             if ((Number(m.quantity) || 0) <= 0) continue;
             const mt = this._findMatchingTpTargetOnLeg(m, refTarget);
             if (!mt) continue;
-            const allHit = m.tpTargets.every((t) => t && t.hit);
+            const allHit = this._multiTpAllActiveTargetsHit(m);
             const ct = allHit ? 'TP' : 'TP-PARTIAL';
             pushTpRow({
                 id: m.id,
@@ -26311,6 +26311,20 @@ class OrderManager {
             console.log(`✅ Partial close: #${orderId} | Closed ${(percentage * 100).toFixed(0)}% (${closeQuantity.toFixed(2)} lots) | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} | Cumulative Partial P&L: $${position.partialClosePnL.toFixed(2)} | Remaining: ${position.quantity.toFixed(2)} lots | Balance: $${this.balance.toFixed(2)}`);
             
             this._refreshOpenPositionSlTpAfterPartialTpClose(position);
+
+            const remQty = Number(position.quantity) || 0;
+            const minLot = this.getMarketConfig()?.minSize ?? 0.01;
+            const allActiveHit = this._multiTpAllActiveTargetsHit(position);
+            const dustRemainder = remQty > 0 && remQty <= minLot * 0.501;
+            if (!position._finalizingMultiTpRemainder && (allActiveHit || dustRemainder)) {
+                position._finalizingMultiTpRemainder = true;
+                try {
+                    this.closePositionAtPrice(orderId, closePrice, 'TP', null, targetId, bgCloseTime);
+                } finally {
+                    delete position._finalizingMultiTpRemainder;
+                }
+                return;
+            }
             
             // Draw partial profit marker only on the active chart
             if (!isBackgroundClose) {
@@ -30032,41 +30046,6 @@ class OrderManager {
 
             // --- Draw connector on the right side (open positions only — not pending/preview) ---
             if (g._connector) { try { g._connector.remove(); } catch (_) {} g._connector = null; }
-            const hasPendingLeg = openOrders.some((o) => o.status === 'PENDING');
-            const refOrder = openOrders.find(o => o.status === 'OPEN') || openOrders[0];
-            const tpPx = this._splitGroupConnectorTpPrice(refOrder);
-            const slPx = refOrder?.stopLoss || 0;
-            if (!hasPendingLeg && (tpPx > 0 || slPx > 0)) {
-                const connGroup = ch.svg.append('g')
-                    .attr('class', `split-avg-connector split-avg-${g.splitGroupId}`)
-                    .style('pointer-events', 'none');
-                g._connector = connGroup;
-                const connX = rightEdge + 4;
-                const tpY = tpPx > 0 ? yScale(tpPx) : null;
-                const slY = slPx > 0 ? yScale(slPx) : null;
-                if (Number.isFinite(tpY)) {
-                    connGroup.append('line')
-                        .attr('x1', connX).attr('x2', connX)
-                        .attr('y1', y).attr('y2', tpY)
-                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
-                    connGroup.append('circle')
-                        .attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                }
-                if (Number.isFinite(slY)) {
-                    connGroup.append('line')
-                        .attr('x1', connX).attr('x2', connX)
-                        .attr('y1', y).attr('y2', slY)
-                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
-                    connGroup.append('circle')
-                        .attr('cx', connX).attr('cy', slY).attr('r', 2.5)
-                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                }
-                connGroup.append('circle')
-                    .attr('cx', connX).attr('cy', y).attr('r', 2.5)
-                    .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                try { connGroup.lower(); } catch (_) {}
-            }
 
             // --- Position individual order lines, aligned to same left edge ---
             // Skip individual line repositioning during active drag to avoid fighting the drag handler
@@ -33952,6 +33931,16 @@ class OrderManager {
         }
     }
 
+    _multiTpActiveTargets(position) {
+        if (!position?.tpTargets?.length) return [];
+        return position.tpTargets.filter((t) => t && t.price > 0 && (Number(t.percentage) || 0) > 0);
+    }
+
+    _multiTpAllActiveTargetsHit(position) {
+        const active = this._multiTpActiveTargets(position);
+        return active.length > 0 && active.every((t) => t.hit);
+    }
+
     /**
      * Whether a TP ladder row should still be shown / counted: for split groups, any leg with that target !hit.
      */
@@ -36467,76 +36456,8 @@ class OrderManager {
 
     _drawExecutedOrderConnectors(ch) {
         if (!ch?.svg) return;
+        // Vertical entry↔TP/SL connector lines disabled — purge any stale groups only.
         this._purgeOrderConnectorsFromSvg(ch.svg, ch);
-        if (!ch?.scales?.yScale) return;
-        const yScale = ch.scales.yScale;
-        const connX = this._orderConnectorAnchorX(ch);
-        const closedIds = new Set((this.closedPositions || []).map((p) => p?.id).filter((id) => id != null).map(String));
-        const managerOpenIds = new Set((this.openPositions || []).map((p) => p?.id).filter((id) => id != null));
-
-        const openPositions = [...(this.openPositions || [])];
-        const seenOpenIds = new Set();
-
-        for (const pos of openPositions) {
-            if (!pos || seenOpenIds.has(pos.id)) continue;
-            if (pos.status === 'CLOSED' || closedIds.has(String(pos.id))) continue;
-            if (!managerOpenIds.has(pos.id)) continue;
-            seenOpenIds.add(pos.id);
-            if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
-            if (!this._orderEntryVisualExistsOnChart(pos.id, ch, { pending: false })) continue;
-            if (pos.isSplitEntry) continue;
-            const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 1;
-            const tpPx = pos.takeProfit || 0;
-            const slPx = pos.stopLoss || 0;
-            if (tpPx <= 0 && slPx <= 0 && !hasMultiTP) continue;
-            const entryY = yScale(pos.openPrice);
-            if (!Number.isFinite(entryY)) continue;
-            const cg = ch.svg.append('g')
-                .attr('class', 'exec-order-connector')
-                .attr('data-order-id', String(pos.id))
-                .style('pointer-events', 'none');
-            if (hasMultiTP) {
-                pos.tpTargets.forEach((t, i) => {
-                    if (!this._tpTargetStillActiveOnChart(pos, t, i)) return;
-                    const tpY = yScale(t.price);
-                    if (Number.isFinite(tpY)) {
-                        cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
-                        cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                    }
-                });
-                const avgG = this.multiTPAvgLines.find((g) => g.orderId === pos.id && g.chart === ch);
-                if (avgG && Number.isFinite(avgG.avgTP)) {
-                    const avgY = yScale(avgG.avgTP);
-                    if (Number.isFinite(avgY)) {
-                        cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
-                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                    }
-                }
-            } else if (tpPx > 0) {
-                const tpY = yScale(tpPx);
-                if (Number.isFinite(tpY)) {
-                    cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
-                    cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                }
-            }
-            if (slPx > 0) {
-                const slY = yScale(slPx);
-                if (Number.isFinite(slY)) {
-                    cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', slY)
-                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
-                    cg.append('circle').attr('cx', connX).attr('cy', slY).attr('r', 2.5)
-                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                }
-            }
-            const eColor = pos.type === 'BUY' ? '#2962ff' : '#f23645';
-            cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
-                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
-            try { cg.lower(); } catch (_) {}
-        }
     }
 
     removeEntryMarker(orderId) {
