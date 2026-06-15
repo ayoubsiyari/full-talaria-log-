@@ -12619,6 +12619,53 @@ class OrderManager {
     }
 
     /**
+     * Fresh draft after place ("Make new order") or when a just-placed pending order is cancelled.
+     */
+    beginNewOrderDraft() {
+        this._orderPlacedAwaitingReset = false;
+        const placeBtn = document.getElementById('placeOrderButton');
+        if (placeBtn) placeBtn.style.background = '';
+
+        this.removePreviewLines();
+        this.clearPendingOrderEditingState();
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = false;
+        this._resetMultiEntryStateForNewOrder();
+
+        this.orderType = 'market';
+        document.querySelectorAll('.order-type-btn').forEach((b) => {
+            b.classList.toggle('active', b.dataset.type === 'market');
+        });
+
+        const multipleTPToggle = document.getElementById('multipleTPToggle');
+        const multipleTPSettings = document.getElementById('multipleTPSettings');
+        if (multipleTPToggle) multipleTPToggle.checked = false;
+        if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+        this._syncMultiTPButtonState();
+
+        this.updateOrderPanelPrice();
+
+        try {
+            window.dispatchEvent(new CustomEvent('talaria:order-rail-reset-draft'));
+        } catch (_) { /* ignore */ }
+
+        setTimeout(() => {
+            this.syncDefaultTargetsToEntry();
+            this.calculatePositionFromRisk();
+            this.calculateAdvancedRiskReward();
+            this.updatePlaceButtonText();
+            requestAnimationFrame(() => {
+                this.updatePreviewLines();
+                if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+                    this.chart.updateSVGPointerEvents();
+                }
+            });
+        }, 100);
+    }
+
+    /**
      * After place: close drawer, or keep it open with the same reset as preview ✓ ("Make new order").
      */
     _finalizeOrderPanelAfterPlace(opts = {}) {
@@ -13993,42 +14040,8 @@ class OrderManager {
         
         // Place order button
         placeBtn.onclick = () => {
-            // "Make new order" state: full reset + draw preview lines for new order
             if (this._orderPlacedAwaitingReset) {
-                this._orderPlacedAwaitingReset = false;
-                placeBtn.style.background = '';
-
-                this.removePreviewLines();
-                this.clearPendingOrderEditingState();
-                this.tpManuallyPositioned = false;
-                this.slManuallyPositioned = false;
-                this._resetMultiEntryStateForNewOrder();
-
-                // Reset order type back to market for the new order
-                this.orderType = 'market';
-                document.querySelectorAll('.order-type-btn').forEach(b => {
-                    b.classList.toggle('active', b.dataset.type === 'market');
-                });
-
-                const multipleTPToggle = document.getElementById('multipleTPToggle');
-                const multipleTPSettings = document.getElementById('multipleTPSettings');
-        if (multipleTPToggle) multipleTPToggle.checked = false;
-        if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
-        this._syncMultiTPButtonState();
-
-        this.updateOrderPanelPrice();
-        setTimeout(() => {
-                    this.syncDefaultTargetsToEntry();
-                    this.calculatePositionFromRisk();
-                    this.calculateAdvancedRiskReward();
-                    this.updatePlaceButtonText();
-                    requestAnimationFrame(() => {
-                        this.updatePreviewLines();
-                        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
-                            this.chart.updateSVGPointerEvents();
-                        }
-                    });
-                }, 100);
+                this.beginNewOrderDraft();
                 return;
             }
 
@@ -15680,6 +15693,7 @@ class OrderManager {
     updateOrderPanelPrice() {
         if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
         if (this._previewEntryLinkedToRiskReward) return;
+        if (this._orderPlacedAwaitingReset) return;
         const ot = this.orderType
             || document.querySelector('#orderPanel .order-type-btn.active')?.dataset?.type
             || 'market';
@@ -17129,7 +17143,8 @@ class OrderManager {
     }
 
     /**
-     * TP vs SL while dragging: SELL → below entry and below SL; BUY → above SL only (TP may sit below entry).
+     * TP vs entry/SL while dragging preview lines:
+     * BUY → TP above entry and above SL; SELL → TP below entry and below SL.
      */
     _clampTpDragPrice(side, tpPrice, entryPrice, slPrice, pipSize) {
         let p = Number(tpPrice);
@@ -17149,10 +17164,32 @@ class OrderManager {
             }
             return p;
         }
+        // BUY: TP must stay above entry (profit side) and above SL when set.
+        if (Number.isFinite(e) && e > 0) {
+            p = Math.max(p, e + pad);
+        }
         if (Number.isFinite(sl) && sl > 0) {
             p = Math.max(p, sl + pad);
         }
         return p;
+    }
+
+    /**
+     * Preview-only: SL must stay on the loss side of entry (BUY → below entry, SELL → above).
+     * Open positions may later trail SL to breakeven / profit — do not use this on executed lines.
+     */
+    _clampPreviewSlDragPriceVsEntry(side, slPrice, entryPrice, pipSize) {
+        let p = Number(slPrice);
+        const ps = Number(pipSize) > 0 ? pipSize : (this.pipSize || 0.0001);
+        const pad = Math.max(ps * 0.5, 1e-12);
+        if (!Number.isFinite(p)) return p;
+        const e = Number(entryPrice);
+        if (!Number.isFinite(e) || !(e > 0)) return p;
+        const s = String(side || 'BUY').toUpperCase();
+        if (s === 'SELL') {
+            return Math.max(p, e + pad);
+        }
+        return Math.min(p, e - pad);
     }
 
     /**
@@ -17344,6 +17381,10 @@ class OrderManager {
                     const tpRef = self._getPreviewTpReferenceForSlClamp();
                     if (tpRef != null) {
                         newPrice = self._clampSlDragPriceVsTp(self.orderSide, newPrice, tpRef, self.pipSize);
+                    }
+                    const entryPxSl = self._getReferenceEntryForOrderMath();
+                    if (entryPxSl > 0) {
+                        newPrice = self._clampPreviewSlDragPriceVsEntry(self.orderSide, newPrice, entryPxSl, self.pipSize);
                     }
                     clampedY = ch.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
@@ -18289,8 +18330,26 @@ class OrderManager {
                     if (tpRef != null) {
                         newPrice = self._clampSlDragPriceVsTp(self.orderSide, newPrice, tpRef, self.pipSize);
                     }
+                    const entryPxSl = self._getReferenceEntryForOrderMath();
+                    if (entryPxSl > 0) {
+                        newPrice = self._clampPreviewSlDragPriceVsEntry(self.orderSide, newPrice, entryPxSl, self.pipSize);
+                    }
                     clampedY = ch.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                }
+                if (label === 'TP') {
+                    const entryPxTp = self._getReferenceEntryForOrderMath();
+                    let slP = parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const slPrev = self.previewLines.sl;
+                    if (slPrev && !slPrev.isBadge && Number.isFinite(slPrev.price) && slPrev.price > 0) {
+                        slP = slPrev.price;
+                    }
+                    const enableSLTp = document.getElementById('enableSL')?.checked;
+                    if (entryPxTp > 0 || (enableSLTp && slP > 0)) {
+                        newPrice = self._clampTpDragPrice(self.orderSide, newPrice, entryPxTp, slP, self.pipSize);
+                        clampedY = ch.scales.yScale(newPrice);
+                        clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                    }
                 }
 
                 // Mark as manually positioned and convert to full line
@@ -31933,6 +31992,10 @@ class OrderManager {
         this.updatePositionsPanel();
         if (typeof this.updateOrderLines === 'function') {
             this.updateOrderLines();
+        }
+
+        if (this._orderPlacedAwaitingReset || this.editingPendingOrderId === orderId) {
+            this.beginNewOrderDraft();
         }
     }
 

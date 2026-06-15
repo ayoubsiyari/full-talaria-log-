@@ -8848,6 +8848,7 @@ function v9ApplyLiveEntryPriceToRows(setEntryRows, entryPriceStr) {
 /** Market orders: entry preview must track live close — not a stale React row price. */
 function v9ShouldAnchorEntryToLiveMarket(om) {
   if (!om) return true;
+  if (om._previewEntryDecoupledFromRR) return false;
   const src = om._previewEntrySource;
   if (src === "riskReward" || src === "manual") return false;
   if (src === "market") return true;
@@ -8857,6 +8858,7 @@ function v9ShouldAnchorEntryToLiveMarket(om) {
 /** Market orders: entry preview must track live close — not a stale React row price. */
 function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
   if (!om || om.isDraggingPreviewLine) return;
+  if (om._orderPlacedAwaitingReset) return;
   if (!v9ShouldAnchorEntryToLiveMarket(om)) return;
   const activeOt =
     document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
@@ -8871,6 +8873,29 @@ function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
   try {
     om.updatePreviewLines?.();
   } catch (_) {}
+}
+
+/** Lightweight live market entry tick — updates hidden + React rows; preview only when price moves. */
+function v9TickMarketOrderEntryFromChart(om, setEntryRows) {
+  if (!om || om.isDraggingPreviewLine || om._orderPlacedAwaitingReset) return;
+  if (!v9ShouldAnchorEntryToLiveMarket(om)) return;
+  const activeOt =
+    document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
+    om.orderType ||
+    "market";
+  if (activeOt !== "market") return;
+  const prev = parseFloat(document.getElementById("orderEntryPrice")?.value || "0");
+  try {
+    om.updateOrderPanelPrice?.();
+  } catch (_) {}
+  const ep = document.getElementById("orderEntryPrice")?.value ?? "";
+  if (ep) v9ApplyLiveEntryPriceToRows(setEntryRows, ep);
+  const next = parseFloat(ep);
+  if (Number.isFinite(next) && Number.isFinite(prev) && Math.abs(next - prev) >= 1e-10) {
+    try {
+      om.updatePreviewLines?.();
+    } catch (_) {}
+  }
 }
 
 const CHART_TARGET_DRAG_LEAD_MS = 600;
@@ -9220,9 +9245,25 @@ const TalariaV8bLive = () => {
 
   useEffect(() => {
     const onClearDraft = () => setScreenshots([]);
+    const onResetDraft = () => {
+      markOrderControlBridge();
+      setSlRows([{ id: Date.now(), price: "0" }]);
+      setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
+      setEntryRows((rows) => [
+        { id: rows[0]?.id ?? 0, price: "0", risk: String(riskVal || rows[0]?.risk || "100") },
+      ]);
+      setOrderType("market");
+      queueMicrotask(() => {
+        v9RefreshMarketOrderEntryFromChart(window.chart?.orderManager, setEntryRows);
+      });
+    };
     window.addEventListener("talaria:order-rail-clear-draft", onClearDraft);
-    return () => window.removeEventListener("talaria:order-rail-clear-draft", onClearDraft);
-  }, []);
+    window.addEventListener("talaria:order-rail-reset-draft", onResetDraft);
+    return () => {
+      window.removeEventListener("talaria:order-rail-clear-draft", onClearDraft);
+      window.removeEventListener("talaria:order-rail-reset-draft", onResetDraft);
+    };
+  }, [riskVal]);
 
   /** OrderManager legacy journal modal → V9 trade card when `showTradeJournalModal` dispatches on the live shell. */
   useEffect(() => {
@@ -14583,25 +14624,33 @@ const TalariaV8bLive = () => {
       /** Header + margin read from native OM (must run even when React leads the input bridge). */
       const syncOmHeaderAndMargin = () => {
         try {
-          if (isOmBridgeLead(omPanelBridgeRef.current.control) && om) {
+          const omLocal = window.chart?.orderManager;
+          if (omLocal) {
             const now = Date.now();
             if (now - omHeaderRecalcRef.current > 50) {
               omHeaderRecalcRef.current = now;
               const activeOt =
                 document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
-                om.orderType;
-              if (activeOt === "market" && !om.isDraggingPreviewLine && !isOmBridgeLead(omPanelBridgeRef.current.control)
-                  && v9ShouldAnchorEntryToLiveMarket(om)) {
+                omLocal.orderType;
+              const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
+              if (
+                activeOt === "market" &&
+                !omLocal.isDraggingPreviewLine &&
+                !bridgeLead &&
+                !omLocal._orderPlacedAwaitingReset &&
+                !omLocal.editingPendingOrderId &&
+                v9ShouldAnchorEntryToLiveMarket(omLocal)
+              ) {
                 try {
-                  om.updateOrderPanelPrice?.();
+                  v9TickMarketOrderEntryFromChart(omLocal, setEntryRows);
                 } catch (_) {}
               } else {
                 try {
-                  om.calculatePositionFromRisk?.();
+                  omLocal.calculatePositionFromRisk?.();
                 } catch (_) {}
               }
               try {
-                om.calculateAdvancedRiskReward?.();
+                omLocal.calculateAdvancedRiskReward?.();
               } catch (_) {}
             }
           }
