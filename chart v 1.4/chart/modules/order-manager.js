@@ -14957,15 +14957,6 @@ class OrderManager {
     /**
      * Remove a TP target (deprecated - now using auto-calculate)
      */
-    removeTPTarget(id) {
-        // Decrement number of targets and recalculate
-        const numInput = document.getElementById('numTPTargets');
-        if (numInput && this.tpTargets && this.tpTargets.length > 2) {
-            numInput.value = this.tpTargets.length - 1;
-            this.calculateTPTargetsFromNumber(this.tpTargets.length - 1);
-        }
-    }
-    
     /**
      * Mutates tpTargets distribution in place (same rules as panel +/-). Used for preview and pending orders.
      * @param {'percent'|'amount'|'lots'} mode
@@ -15026,14 +15017,6 @@ class OrderManager {
             });
         }
         return true;
-    }
-
-    _findPendingOrderById(orderId) {
-        let po = (this.pendingOrders || []).find(o => o.id === orderId);
-        if (!po && this.orderService?.pendingOrders) {
-            po = this.orderService.pendingOrders.find(o => o.id === orderId);
-        }
-        return po || null;
     }
 
     /** Keep split-group pending legs' tpTargets percentages in sync with primary. */
@@ -23989,112 +23972,6 @@ class OrderManager {
         }
         
         console.log('✅ Trading panel setup complete');
-    }
-    
-    /**
-     * Open a buy order at current price
-     */
-    openBuyOrder() {
-        if (!this.replaySystem || !this.replaySystem.isActive) {
-            alert('Replay mode must be active to place orders');
-            return;
-        }
-        
-        const currentCandle = this.getCurrentCandle();
-        if (!currentCandle) {
-            alert('No price data available');
-            return;
-        }
-        
-        const price = currentCandle.c; // Close price
-        const ctxChart = this._getOrderContextChart() || this.chart;
-        const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
-        
-        // Calculate default SL/TP (50 pips below/above for BUY)
-        const pipSize = price * 0.001; // 0.1%
-        const defaultSL = price - (50 * pipSize);
-        const defaultTP = price + (100 * pipSize);
-        
-        const order = {
-            id: this.orderIdCounter++,
-            type: 'BUY',
-            openPrice: price,
-            openTime: timestamp,
-            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
-            quantity: 1, // Default quantity
-            status: 'OPEN',
-            stopLoss: defaultSL,
-            takeProfit: defaultTP
-        };
-
-        this._applyPreTradeVariablesFromOrderPanel(order);
-        
-        if (this.orderService) {
-            this.orderService.registerOpenOrder(order);
-        } else {
-            this.attachStrategyVariablesToOrder(order);
-            this.openPositions.push(order);
-            this.orders.push(order);
-        }
-        
-        console.log(`✅ BUY order opened: #${order.id} @ $${price.toFixed(2)}`);
-        console.log(`   SL: $${defaultSL.toFixed(2)} | TP: $${defaultTP.toFixed(2)}`);
-        
-        this.drawOrderLine(order);
-        this.drawSLTPLines(order);
-        this.updatePositionsPanel();
-        this.showPositionsPanel();
-    }
-    
-    /**
-     * Open a sell order at current price
-     */
-    openSellOrder() {
-        if (!this.replaySystem || !this.replaySystem.isActive) {
-            alert('Replay mode must be active to place orders');
-            return;
-        }
-        
-        const currentCandle = this.getCurrentCandle();
-        if (!currentCandle) {
-            alert('No price data available');
-            return;
-        }
-        
-        const price = currentCandle.c;
-        const ctxChart = this._getOrderContextChart() || this.chart;
-        const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
-        
-        // Calculate default SL/TP (50 pips above/below for SELL)
-        const pipSize = price * 0.001; // 0.1%
-        const defaultSL = price + (50 * pipSize);
-        const defaultTP = price - (100 * pipSize);
-        
-        const order = {
-            id: this.orderIdCounter++,
-            type: 'SELL',
-            openPrice: price,
-            openTime: timestamp,
-            entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
-            quantity: 1,
-            status: 'OPEN',
-            stopLoss: defaultSL,
-            takeProfit: defaultTP
-        };
-
-        this._applyPreTradeVariablesFromOrderPanel(order);
-        
-        this.attachStrategyVariablesToOrder(order);
-        this.openPositions.push(order);
-        this.orders.push(order);
-        
-        console.log(`✅ SELL order opened: #${order.id} @ $${price.toFixed(2)}`);
-        console.log(`   SL: $${defaultSL.toFixed(2)} | TP: $${defaultTP.toFixed(2)}`);
-        
-        this.drawOrderLine(order);
-        this.drawSLTPLines(order);
-        this.updatePositionsPanel();
-        this.showPositionsPanel();
     }
     
     /**
