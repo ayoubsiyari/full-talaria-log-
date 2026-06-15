@@ -35945,7 +35945,7 @@ const TalariaV8bLive = () => {
       {tradeCard&&(()=>{
         const r=tradeCard;
         const isLong=r.side==="LONG";
-        const { rrStr, rrCol, rrRisk } = resolveTradeCardRR(r, c);
+        const { rrStr, rrCol, rrRisk, plannedAtEntryStr, showPlannedAtEntry } = resolveTradeCardRR(r, c);
         const statusCol=r.status==="open"?c.gn:r.status==="pending"?"#FF8C42":c.tm;
         const isActive=r.status==="open"||r.status==="pending";
         const canEditPre=r.status==="pending"||r.status==="open";
@@ -36095,13 +36095,14 @@ const TalariaV8bLive = () => {
             <div style={{display:"flex",alignItems:"stretch",borderBottom:`1px solid ${c.br}`,flexShrink:0,background:"rgba(255,255,255,0.012)"}}>
               {[
                 {label:"P&L",      val:r.pnl,  col:r.pc,  big:true},
-                {label:"R:R",      val:rrStr,  col:rrCol},
+                {label:"R:R",      val:rrStr,  col:rrCol, sub:showPlannedAtEntry?`Plan ${plannedAtEntryStr}`:null},
                 {label:"DURATION", val:r.dur,  col:r.dur==="—"?c.tm:c.ts},
                 {label:"SIZE",     val:r.sz,   col:c.tx, unit:sizeUnit},
-              ].map(({label,val,col,big,unit},si)=>(
+              ].map(({label,val,col,big,unit,sub},si)=>(
                 <div key={si} style={{flex:1,padding:"6px 12px",borderRight:si<3?`1px solid ${c.br}`:"none"}}>
                   <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:2}}>{label}</div>
                   <div style={{fontSize:big?18:14,fontWeight:800,color:col,fontVariantNumeric:"tabular-nums",lineHeight:1.1}}>{val}</div>
+                  {sub&&<div style={{fontSize:9,fontWeight:500,color:c.tm,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{sub}</div>}
                   {unit&&<div style={{fontSize:9,color:c.ts,marginTop:1,letterSpacing:"0.04em"}}>{unit}</div>}
                 </div>
               ))}

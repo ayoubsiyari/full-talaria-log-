@@ -2284,6 +2284,81 @@ class OrderManager {
         };
     }
 
+    /**
+     * Planned R:R frozen at entry (initial SL + original TP plan). Unaffected by later SL moves.
+     */
+    _computePlannedRRAtEntry(position) {
+        if (!position) return null;
+        const side = String(position.type || position.direction || 'BUY').toUpperCase();
+        const isLong = side !== 'SELL' && side !== 'SHORT';
+        const entryPx = Number(
+            position.array_base_price ?? position.openPrice ?? position.entryPrice
+        );
+        const slPx = Number(
+            position.initial_sl ?? position.initialStopLoss ?? position.stopLoss
+        );
+        const riskUsd = Number(position.originalRiskAmount ?? position.riskAmount);
+        const qty = Number(position.originalQuantity ?? position.quantity);
+        if (!(entryPx > 0) || !(slPx > 0)) return null;
+
+        const sym = position.ticker || position.symbol || this._getSymbol();
+        const tpList = position.plannedTpSnapshot
+            || (Array.isArray(position.tpTargets) && position.tpTargets.length > 0 ? position.tpTargets : null);
+
+        if (Array.isArray(tpList) && tpList.length > 1 && qty > 0 && riskUsd > 0) {
+            let ePcts = null;
+            try {
+                ePcts = this._computeEffectiveTPPercentages(entryPx, qty, side, { tpTargets: tpList });
+            } catch (_) {
+                ePcts = null;
+            }
+            let rewardUsd = 0;
+            tpList.forEach((t, i) => {
+                const tpPx = Number(t.price);
+                const ePct = ePcts ? ePcts[i] : Number(t.percentage) || 0;
+                if (!(tpPx > 0) || !(ePct > 0)) return;
+                const partialQty = qty * (ePct / 100);
+                const priceDiff = isLong ? tpPx - entryPx : entryPx - tpPx;
+                if (priceDiff > 0) {
+                    rewardUsd += Math.max(
+                        0,
+                        this.estimatePnLForPriceLevel(side, entryPx, tpPx, partialQty, sym)
+                    );
+                }
+            });
+            if (rewardUsd > 0) return rewardUsd / riskUsd;
+        }
+
+        const tpPx = Number(position.initial_takeProfit ?? position.takeProfit);
+        if (!(tpPx > 0)) return null;
+        const riskPx = Math.abs(entryPx - slPx);
+        if (!(riskPx > 0)) return null;
+        const rewardPx = Math.abs(tpPx - entryPx);
+        return rewardPx / riskPx;
+    }
+
+    /** Snapshot entry plan (initial SL/TP + planned R) on position or pending order. */
+    _freezePlannedRRAtEntry(order) {
+        if (!order) return;
+        if (!order.plannedTpSnapshot && Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
+            order.plannedTpSnapshot = order.tpTargets.map((t) => ({
+                id: t.id,
+                price: t.price,
+                percentage: t.percentage,
+            }));
+        }
+        if (order.initial_takeProfit == null && order.takeProfit > 0) {
+            order.initial_takeProfit = order.takeProfit;
+        }
+        if (order.initial_sl == null && order.stopLoss > 0) {
+            order.initial_sl = order.stopLoss;
+        }
+        const rr = this._computePlannedRRAtEntry(order);
+        if (rr != null && Number.isFinite(rr)) {
+            order.plannedRRAtEntry = parseFloat(rr.toFixed(4));
+        }
+    }
+
     canSwitchToTicker(targetTicker) {
         const next = String(targetTicker || '').replace('/', '').toUpperCase();
         if (!next) return true;
@@ -3542,6 +3617,22 @@ class OrderManager {
             if (entry.rMultiple == null || entry.rMultiple === '') {
                 entry.rMultiple = (pnlNum / riskBasis).toFixed(2);
             }
+        }
+
+        if (entry.plannedRRAtEntry == null) {
+            const planned = position.plannedRRAtEntry ?? this._computePlannedRRAtEntry(position);
+            if (planned != null && Number.isFinite(planned)) {
+                entry.plannedRRAtEntry = parseFloat(Number(planned).toFixed(4));
+            }
+        }
+        if (!entry.plannedTpSnapshot && position.plannedTpSnapshot) {
+            entry.plannedTpSnapshot = position.plannedTpSnapshot.map((t) => ({ ...t }));
+        }
+        if (entry.initial_takeProfit == null && position.initial_takeProfit != null) {
+            entry.initial_takeProfit = position.initial_takeProfit;
+        }
+        if (entry.initial_sl == null && (position.initial_sl ?? position.initialStopLoss) != null) {
+            entry.initial_sl = position.initial_sl ?? position.initialStopLoss;
         }
 
         if (entry.savedAt == null) entry.savedAt = Date.now();
@@ -5184,8 +5275,12 @@ class OrderManager {
                     <div style="color: ${(trade.rMultiple || 0) >= 0 ? '#22c55e' : '#ef4444'}; font-size: 15px; font-weight: 700;">${trade.rMultiple !== undefined && trade.rMultiple !== null ? trade.rMultiple.toFixed(2) + 'R' : '—'}</div>
                 </div>
                 <div>
-                    <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">RR (Planned)</div>
-                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.rewardToRiskRatio ? trade.rewardToRiskRatio + ':1' : '—'}</div>
+                    <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">RR (Planned at Entry)</div>
+                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${
+                        trade.plannedRRAtEntry != null && Number.isFinite(Number(trade.plannedRRAtEntry))
+                            ? Number(trade.plannedRRAtEntry).toFixed(2) + 'R'
+                            : (trade.rewardToRiskRatio ? trade.rewardToRiskRatio + ':1' : '—')
+                    }</div>
                 </div>
             </div>
 
@@ -12125,6 +12220,52 @@ class OrderManager {
         const detailSel = lineData.labelGroup.select('.order-level-toast-detail');
         lineData.priceText = detailSel.empty() ? null : detailSel;
         this.positionPreviewLabel(lineData, overrideY);
+        // Controls were just recreated at opacity:0. A live preview (e.g. MARKET entry
+        // following price) re-renders on every tick, so without this the buttons keep
+        // resetting to 0 and only fade back via a throttled rAF — they blink and can't
+        // be clicked. Reveal the ones already under the cursor now, with no fade.
+        this._applyImmediateLevelCtrlHover(lineData);
+    }
+
+    /**
+     * Reveal freshly-(re)created `.om-level-ctrl` controls in a preview label group
+     * immediately (no opacity transition) when the cursor is already on that level.
+     * Prevents hover flicker on live previews that re-render their labels every tick.
+     */
+    _applyImmediateLevelCtrlHover(lineData) {
+        const groupNode = lineData?.labelGroup?.node?.();
+        if (!groupNode) return;
+        const ch = this._previewChartFromContext(lineData);
+        const container = ch?.svg?.node?.()?.parentElement;
+        if (!container || !container.__omInside) return;
+        const clientY = container.__omY;
+        if (!Number.isFinite(clientY)) return;
+
+        const PAD = 10;
+        const wrapRect = container.getBoundingClientRect();
+        const localY = clientY - wrapRect.top;
+        const yScale = ch?.scales?.yScale;
+        const badges = groupNode.querySelectorAll('.om-level-ctrl');
+
+        for (let i = 0; i < badges.length; i++) {
+            const el = badges[i];
+            const r = el.getBoundingClientRect();
+            let show = r.height > 0 && clientY >= r.top - PAD && clientY <= r.bottom + PAD;
+            if (!show && yScale) {
+                const lp = parseFloat(el.getAttribute('data-level-price'));
+                if (Number.isFinite(lp)) {
+                    const band = Math.max(PAD, (r.height || 0) / 2 + PAD);
+                    show = Math.abs(localY - yScale(lp)) <= band;
+                }
+            }
+            if (!show) continue;
+            const prevTransition = el.style.transition;
+            el.style.transition = 'none';
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'all';
+            void el.getBoundingClientRect(); // commit opacity:1 before re-enabling the fade
+            el.style.transition = prevTransition || 'opacity 0.12s ease';
+        }
     }
 
     /**
@@ -22898,6 +23039,10 @@ class OrderManager {
                         tpTargets: cloneTpTargets(tpTargets),
                         partialCloses: [],
                         partialClosePnL: 0,
+                        sl_modifications: [],
+                        trail_sl_path: [],
+                        initial_sl: slEnabled && slPrice > 0 ? slPrice : null,
+                        array_base_price: fillPx,
                         splitGroupId,
                         splitIndex: idx + 1,
                         splitTotal: validLevels.length,
@@ -23327,6 +23472,7 @@ class OrderManager {
 
         this._consumeRailScreenshotsForOrder(order);
         this._applyPreTradeVariablesFromOrderPanel(order);
+        this._freezePlannedRRAtEntry(order);
 
         if (order.tpTargets && order.tpTargets.length > 0) {
             const guardTick = this._getCurrentTickSnapshot().tick;
@@ -23501,6 +23647,7 @@ class OrderManager {
 
         this._consumeRailScreenshotsForOrder(pendingOrder);
         this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
+        this._freezePlannedRRAtEntry(pendingOrder);
         
         // Reset scaling flag after storing
         if (this.scaleNextOrder) {
@@ -23575,6 +23722,7 @@ class OrderManager {
 
         this._consumeRailScreenshotsForOrder(pendingOrder, { onlyIfFirstSplit: true });
         this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
+        this._freezePlannedRRAtEntry(pendingOrder);
 
         if (this.orderService) {
             this.orderService.registerPendingOrder(pendingOrder);
@@ -25230,6 +25378,17 @@ class OrderManager {
             strategyVariables: pendingOrder.strategyVariables || null,
             railScreenshots: pendingOrder.railScreenshots || null
         };
+
+        if (pendingOrder.plannedRRAtEntry != null) {
+            order.plannedRRAtEntry = pendingOrder.plannedRRAtEntry;
+        }
+        if (pendingOrder.plannedTpSnapshot) {
+            order.plannedTpSnapshot = pendingOrder.plannedTpSnapshot.map((t) => ({ ...t }));
+        }
+        if (pendingOrder.initial_takeProfit != null) {
+            order.initial_takeProfit = pendingOrder.initial_takeProfit;
+        }
+        this._freezePlannedRRAtEntry(order);
 
         // Guard multi-TP targets against triggering on the fill candle
         if (order.tpTargets && order.tpTargets.length > 0) {
@@ -27021,7 +27180,39 @@ class OrderManager {
                     rMultiple: totalRisk > 0 ? (totalPnL / totalRisk) : null,
                     riskAmount: totalRisk,
                     riskPerTrade: totalRisk,
-                    rewardToRiskRatio: null,
+                    plannedRRAtEntry: (() => {
+                        let w = 0;
+                        let rSum = 0;
+                        for (const e of splitInfo.entries) {
+                            const risk = Number(e.originalRiskAmount ?? e.riskAmount) || 0;
+                            const pr = Number(e.plannedRRAtEntry ?? this._computePlannedRRAtEntry(e));
+                            if (risk > 0 && Number.isFinite(pr)) {
+                                rSum += pr * risk;
+                                w += risk;
+                            }
+                        }
+                        if (w > 0) return parseFloat((rSum / w).toFixed(4));
+                        const p = firstEntry.plannedRRAtEntry ?? this._computePlannedRRAtEntry(firstEntry);
+                        return p != null && Number.isFinite(p) ? parseFloat(Number(p).toFixed(4)) : null;
+                    })(),
+                    plannedTpSnapshot: tpRefLeg.plannedTpSnapshot
+                        || (multiTpSnapshot ? multiTpSnapshot.map((t) => ({ ...t })) : null),
+                    initial_sl: firstEntry.initial_sl ?? firstEntry.stopLoss,
+                    initial_takeProfit: firstEntry.initial_takeProfit ?? firstEntry.takeProfit ?? null,
+                    rewardToRiskRatio: (() => {
+                        let w = 0;
+                        let rSum = 0;
+                        for (const e of splitInfo.entries) {
+                            const risk = Number(e.originalRiskAmount ?? e.riskAmount) || 0;
+                            const pr = Number(e.plannedRRAtEntry ?? this._computePlannedRRAtEntry(e));
+                            if (risk > 0 && Number.isFinite(pr)) {
+                                rSum += pr * risk;
+                                w += risk;
+                            }
+                        }
+                        const p = w > 0 ? rSum / w : (firstEntry.plannedRRAtEntry ?? this._computePlannedRRAtEntry(firstEntry));
+                        return p != null && Number.isFinite(p) ? Number(p).toFixed(2) : null;
+                    })(),
                     holdingTimeHours: parseFloat(totalHoldingHours),
                     dayOfWeek: dayNames[firstOpenDate.getDay()],
                     hourOfEntry: firstOpenDate.getHours(),
@@ -27137,10 +27328,25 @@ class OrderManager {
                     mae: position.mae || null,
                     highestPrice: position.highestPrice || null,
                     lowestPrice: position.lowestPrice || null,
-                    rMultiple: position.riskAmount ? (totalPnL / position.riskAmount) : null,
+                    rMultiple: (() => {
+                        const risk = position.originalRiskAmount || position.riskAmount;
+                        return risk > 0 ? (totalPnL / risk) : null;
+                    })(),
                     riskAmount: position.riskAmount || 0,
-                    riskPerTrade: position.riskAmount || 0,
-                    rewardToRiskRatio: rewardToRiskRatio,
+                    riskPerTrade: position.originalRiskAmount || position.riskAmount || 0,
+                    plannedRRAtEntry: position.plannedRRAtEntry ?? this._computePlannedRRAtEntry(position),
+                    plannedTpSnapshot: position.plannedTpSnapshot
+                        ? position.plannedTpSnapshot.map((t) => ({ ...t }))
+                        : (Array.isArray(position.tpTargets)
+                            ? position.tpTargets.map((t) => ({
+                                id: t.id, price: t.price, percentage: t.percentage
+                            }))
+                            : null),
+                    initial_takeProfit: position.initial_takeProfit ?? position.takeProfit ?? null,
+                    rewardToRiskRatio: (() => {
+                        const p = position.plannedRRAtEntry ?? this._computePlannedRRAtEntry(position);
+                        return p != null && Number.isFinite(p) ? Number(p).toFixed(2) : rewardToRiskRatio;
+                    })(),
                     holdingTimeHours: parseFloat(holdingTimeHours),
                     dayOfWeek: dayNames[openDate.getDay()],
                     hourOfEntry: openDate.getHours(),
