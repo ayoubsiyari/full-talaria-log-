@@ -33600,7 +33600,7 @@ class OrderManager {
     
     /**
      * Draw exit marker on chart (TradingView style — arrow + tick + hover tooltip)
-     * Aggregates P&L for markers at the same price level (for split entries)
+     * One marker per order leg so lots match the entry marker on the same connector.
      */
     drawExitMarker(order, closeData, targetChart = null) {
         if (targetChart == null && this._isMultiPanelLayout()) {
@@ -33635,8 +33635,12 @@ class OrderManager {
         if (!this.exitMarkers) this.exitMarkers = [];
 
         const priceKey = this.formatPrice(closeData.closePrice);
+        const orderIdKey = String(order.id);
         const existingMarker = this.exitMarkers.find(m =>
-            m.priceKey === priceKey && m.time === closeData.closeTime && (m.chart || this.chart) === chart
+            String(m.orderId) === orderIdKey
+            && m.priceKey === priceKey
+            && m.time === closeData.closeTime
+            && (m.chart || this.chart) === chart
         );
 
         if (existingMarker) {
@@ -33644,21 +33648,15 @@ class OrderManager {
             if (!existingNode || !existingNode.parentNode) {
                 this.exitMarkers = this.exitMarkers.filter((m) => m !== existingMarker);
             } else {
-                existingMarker.totalPnL += closeData.pnl;
                 const exitLots = this._resolveExitMarkerLots(order, closeData);
-                existingMarker.totalQuantity += exitLots;
-                existingMarker.count++;
-                if (!existingMarker.linkedOrderIds) {
-                    existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
-                }
-                const nid = String(order.id);
-                if (!existingMarker.linkedOrderIds.includes(nid)) {
-                    existingMarker.linkedOrderIds.push(nid);
-                }
-                existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
+                existingMarker.totalPnL = closeData.pnl;
+                existingMarker.totalQuantity = exitLots;
+                existingMarker.count = 1;
+                existingMarker.linkedOrderIds = [orderIdKey];
+                existingMarker.marker.attr('data-linked-order-ids', orderIdKey);
                 const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
                 if (!lotsTxt.empty()) {
-                    lotsTxt.text(this._tradeMarkerLotsLabel(existingMarker.totalQuantity));
+                    lotsTxt.text(this._tradeMarkerLotsLabel(exitLots));
                 }
                 this._drawTradeConnector(order, closeData, chart);
                 return;
@@ -33810,7 +33808,7 @@ class OrderManager {
     /**
      * Draw partial close marker on chart (for TP partial hits)
      * Uses the same TradingView-style arrow + tick + hover tooltip as drawExitMarker.
-     * Aggregates P&L for markers at the same price level (for split entries).
+     * One marker per order leg + TP target so lots match the entry marker.
      */
     drawPartialCloseMarker(order, closeData, targetChart = null) {
         if (targetChart == null && this._isMultiPanelLayout()) {
@@ -33838,29 +33836,28 @@ class OrderManager {
         if (!this.partialCloseMarkers) this.partialCloseMarkers = [];
 
         const priceKey = this.formatPrice(closeData.closePrice);
+        const orderIdKey = String(order.id);
+        const targetIdKey = closeData.targetId;
         const existingMarker = this.partialCloseMarkers.find(m =>
-            m.priceKey === priceKey && m.time === closeData.closeTime && (m.chart || this.chart) === chart
+            String(m.orderId) === orderIdKey
+            && m.targetId === targetIdKey
+            && m.priceKey === priceKey
+            && m.time === closeData.closeTime
+            && (m.chart || this.chart) === chart
         );
 
         if (existingMarker) {
-            existingMarker.totalPnL += closeData.pnl;
             const partialLots = this._resolvePartialCloseMarkerLots(order, closeData);
-            existingMarker.totalQuantity += partialLots;
-            existingMarker.count++;
-            if (!existingMarker.linkedOrderIds) {
-                existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
-            }
-            const nid = String(order.id);
-            if (!existingMarker.linkedOrderIds.includes(nid)) {
-                existingMarker.linkedOrderIds.push(nid);
-            }
-            existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
+            existingMarker.totalPnL = closeData.pnl;
+            existingMarker.totalQuantity = partialLots;
+            existingMarker.count = 1;
+            existingMarker.linkedOrderIds = [orderIdKey];
+            existingMarker.marker.attr('data-linked-order-ids', orderIdKey);
             const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
             if (!lotsTxt.empty()) {
-                lotsTxt.text(this._tradeMarkerLotsLabel(existingMarker.totalQuantity));
+                lotsTxt.text(this._tradeMarkerLotsLabel(partialLots));
             }
             this._drawTradeConnector(order, closeData, chart);
-            console.log(`   📊 Aggregated partial close: ${existingMarker.count} positions, total P&L: ${existingMarker.totalPnL.toFixed(2)}`);
             return;
         }
 
