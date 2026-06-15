@@ -932,6 +932,18 @@ function v9TpOrderLotTotal(riskVal, omOrderQtyTxt, sizeMode, symbolType) {
   return symbolType === "futures" ? Math.floor(qCore) : qCore;
 }
 
+/** Lot-size (#) / $ / %: total size for Entry (+) affordances — multi-entry uses row sum. */
+function v9EntryOrderLotTotal(riskVal, omOrderQtyTxt, sizeMode, symbolType, entryRows) {
+  if (sizeMode === "#" && Array.isArray(entryRows) && entryRows.length > 1) {
+    const sum = entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+    if (sum > 0) return symbolType === "futures" ? Math.floor(sum) : sum;
+  }
+  if (sizeMode === "#") return v9TpOrderLotTotal(riskVal, omOrderQtyTxt, sizeMode, symbolType);
+  const qOm = Math.max(0, parseFloat(omOrderQtyTxt || "0"));
+  if (qOm > 0) return qOm;
+  return Math.max(0, parseFloat(riskVal || "0"));
+}
+
 /** Single TP (#): clamp leg qty to [0, orderTotal]. */
 function v9TpClampSingleLotQty(rawVal, orderTotal, symbolType) {
   if (rawVal === "" || rawVal === ".") return rawVal;
@@ -13120,7 +13132,10 @@ const TalariaV8bLive = () => {
   const chartEntryPlusSplitUiOff =
     typeof window !== "undefined" && window.__CHART_ENV?.DISABLE_ORDER_ENTRY_PLUS_UI !== false;
   /** Show Entry/TP (+): futures need ≥1 whole contract; spot/forex/etc. allow fractional lots (>0). */
-  const v9OrderQtyForSplitUi = Math.max(0, parseFloat(omOrderQtyTxt || "0"));
+  const v9OrderQtyForSplitUi = Math.max(
+    0,
+    v9EntryOrderLotTotal(riskVal, omOrderQtyTxt, sizeMode, currentSymbol.type, entryRows)
+  );
   const v9EntryTpPlusVisible =
     !chartEntryPlusSplitUiOff &&
     (currentSymbol.type === "futures"
@@ -13232,6 +13247,32 @@ const TalariaV8bLive = () => {
       return [{ ...r0, risk: want }];
     });
   }, [orderPanelOpen, sizeMode, riskVal]);
+
+  /** Lot-size (#): when SIZE changes, scale multi-entry row lots to the new total. */
+  useEffect(() => {
+    if (!orderPanelOpen || sizeMode !== "#") return;
+    if (entryRows.length < 2) return;
+    const total = Math.max(0, parseFloat(riskVal || "0"));
+    if (!(total > 0)) return;
+    const sum = entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+    if (Math.abs(sum - total) <= 0.005) return;
+    markOrderControlBridge();
+    setEntryRows((rows) => {
+      if (currentSymbol.type === "futures") {
+        const shares = v9TpNormalizeFuturesContractShares(
+          rows.map((r) => r.risk),
+          Math.floor(total)
+        );
+        return rows.map((r, i) => ({ ...r, risk: String(shares[i] ?? 0) }));
+      }
+      const shares = v9TpNormalizeDecimalLotShares(
+        rows.map((r) => r.risk),
+        total,
+        2
+      );
+      return rows.map((r, i) => ({ ...r, risk: shares[i] ?? "0.00" }));
+    });
+  }, [orderPanelOpen, sizeMode, riskVal, entryRows.length, currentSymbol.type]);
 
   /** $-mode: TP row $ amounts must sum to order basis (SIZE / entry total), not a stale partial. */
   useEffect(() => {
@@ -14206,10 +14247,15 @@ const TalariaV8bLive = () => {
           if (br && !br.checked) br.click();
         } else {
           // Lot-size (#): `riskVal` is lots/contracts in the rail SIZE field.
-          // Entry edits sync into `riskVal` via onBlur/stepRow before this runs.
-          // Only seed from #orderQuantity when OM leads (e.g. switching $/% → # tab).
+          // Multi-entry: row lots drive SIZE — do not overwrite with stale #orderQuantity.
           let lotCore = parseFloat(riskVal || "0");
-          if (!isOmBridgeLead(omPanelBridgeRef.current.control)) {
+          const entryLotSum =
+            entryRows.length > 1
+              ? entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0)
+              : 0;
+          if (entryLotSum > 0) {
+            lotCore = entryLotSum;
+          } else if (!isOmBridgeLead(omPanelBridgeRef.current.control)) {
             const oq = parseFloat(
               String(document.getElementById("orderQuantity")?.value ?? "").replace(/,/g, "") || "0"
             );
@@ -14235,15 +14281,6 @@ const TalariaV8bLive = () => {
               setRiskVal((prev) => (prev === lotStr ? prev : lotStr));
             } catch (_) {}
           });
-        }
-
-        // Recompute size immediately after risk-mode + inputs sync (otherwise #orderQuantity / readouts
-        // can lag one tick when switching $ ↔ % ↔ #).
-        if (om && !skipPosSync) {
-          try {
-            om.calculatePositionFromRisk?.();
-            om.calculateAdvancedRiskReward?.();
-          } catch (_) {}
         }
 
         // Multi-entry / multi-TP: chart preview uses orderManager.multiEntryLevels + tpTargets (see order-manager.js).
@@ -14300,7 +14337,17 @@ const TalariaV8bLive = () => {
             // Keep #orderEntryPrice + splitEntries aligned when already in multi mode.
             om.syncMultiEntryToSplitEntries?.();
           }
-        } else if (!skipPosSync && entryRows.length === 1 && om?.isMultiEntryMode) {
+        }
+
+        // Recompute size after multi-entry rows are mirrored — running earlier rebalance wiped user splits.
+        if (om && !skipPosSync) {
+          try {
+            om.calculatePositionFromRisk?.();
+            om.calculateAdvancedRiskReward?.();
+          } catch (_) {}
+        }
+
+        if (!skipPosSync && entryRows.length === 1 && om?.isMultiEntryMode) {
           const omLevelCount = om.multiEntryLevels?.length ?? 0;
           const entryAddLead = isOmBridgeLead(omPanelBridgeRef.current.entryAdd);
           if (entryAddLead || omLevelCount > 1) {

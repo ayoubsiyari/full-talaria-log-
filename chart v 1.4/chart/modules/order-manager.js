@@ -14769,7 +14769,19 @@ class OrderManager {
             }
 
             if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-                this._rebalanceLevelAmountsToTarget();
+                const legSum = this.multiEntryLevels.reduce(
+                    (s, l) => s + (Number(l.amount) || 0),
+                    0,
+                );
+                const eps = 0.005;
+                // V9 multi-entry: per-row lots already sum to SIZE — do not rescale on every tick.
+                if (legSum > 0 && lotSize > 0 && Math.abs(legSum - lotSize) <= eps) {
+                    const snapped = this._roundQtyToStep(legSum);
+                    const qtyInput = document.getElementById('orderQuantity');
+                    if (qtyInput) qtyInput.value = this._formatQty(snapped);
+                } else {
+                    this._rebalanceLevelAmountsToTarget();
+                }
                 this.updateMultiEntrySummary();
                 requestAnimationFrame(() => this.updatePreviewLines());
                 this.updatePlaceButtonText();
