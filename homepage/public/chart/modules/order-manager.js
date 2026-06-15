@@ -22444,7 +22444,6 @@ class OrderManager {
      *   clear-preview to peer multichart panels (avoids ping-pong when parent syncs).
      */
     removePreviewLines(opt) {
-        console.log('🗑️ Removing preview lines...');
         this._removePendingLimitStopConnector();
         // Always drop preview avg-TP registry entry — previewLines may already be null while SVG orphans remain.
         this.removeMultiTPAvgLine('__preview__');
@@ -22465,7 +22464,6 @@ class OrderManager {
                         if (this.previewLines[key].yAxisHighlight) {
                             this.previewLines[key].yAxisHighlight.remove();
                         }
-                        console.log(`   ✅ Removed ${key} preview ${this.previewLines[key].isBadge ? 'badge' : 'line'}`);
                     } catch (e) {
                         console.warn(`   ⚠️ Error removing ${key} preview:`, e);
                     }
@@ -22485,7 +22483,6 @@ class OrderManager {
                         if (tpLine.yAxisHighlight) {
                             tpLine.yAxisHighlight.remove();
                         }
-                        console.log(`   ✅ Removed multiple TP #${index + 1} preview line`);
                     } catch (e) {
                         console.warn(`   ⚠️ Error removing multiple TP #${index + 1}:`, e);
                     }
@@ -22514,7 +22511,6 @@ class OrderManager {
                         if (splitLine.labelGroup) {
                             splitLine.labelGroup.remove();
                         }
-                        console.log(`   ✅ Removed split entry #${index + 1} preview line`);
                     } catch (e) {
                         console.warn(`   ⚠️ Error removing split entry #${index + 1}:`, e);
                     }
@@ -22539,8 +22535,6 @@ class OrderManager {
 
         // Aggressively remove any orphaned preview elements (all panels + DOM SVG roots)
         this._stripPreviewOrphansFromAllChartSurfaces();
-
-        console.log('✅ Preview lines cleanup complete');
 
         // Multichart: notify parent / grid so peer tiles clear draft preview in sync.
         const skipMc = !!(opt && opt.multichartSkipBroadcast);
