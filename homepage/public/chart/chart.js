@@ -18255,9 +18255,15 @@ class Chart {
             // a single request fills the viewport. When zoomed out far on 1m the
             // old fixed 2000-bar chunk was a tiny fraction of the visible span, so
             // dragging left/right needed many sequential debounced round-trips
-            // (the "loads too slow when zoomed out" symptom). Keep a 2000 floor for
-            // normal zoom (healthy prefetch buffer) and an 8000 ceiling so a single
-            // merge/indicator recompute stays responsive.
+            // (the "loads too slow when zoomed out" symptom).
+            //
+            // But an oversized chunk has the opposite problem: each load's merge +
+            // full reslice/resample runs synchronously on the main thread, so a
+            // huge chunk makes the drag itself freeze/stutter while loading. We
+            // size to ~1.25× the visible span (enough to fill in one request) and
+            // cap at 5000 so each load's recompute stays short and the drag stays
+            // smooth. The mid-pan prefetch (below) pulls the next batch ahead of
+            // time, so a moderate chunk still loads without trickling.
             let visibleCandles = 0;
             try {
                 const mm = this.margin || { l: 60, r: 60 };
@@ -18265,8 +18271,8 @@ class Chart {
                 const sp = this.getCandleSpacing();
                 if (sp > 0) visibleCandles = cwPx / sp;
             } catch (_e) { /* ignore */ }
-            const want = Math.ceil(visibleCandles * 2);
-            panLimit = Math.max(2000, Math.min(8000, Number.isFinite(want) && want > 0 ? want : 2000));
+            const want = Math.ceil(visibleCandles * 1.25);
+            panLimit = Math.max(2000, Math.min(5000, Number.isFinite(want) && want > 0 ? want : 2000));
         }
         this._panLoadLimit = panLimit;
         

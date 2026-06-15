@@ -2763,6 +2763,20 @@ class ReplaySystem {
                 if (this._tfSwitchSkipHeavyIndicators) {
                     runRecalc = false;
                 }
+                // While the user is actively dragging the chart (manual backward
+                // pan loading history), a synchronous full indicator recalc over
+                // the whole loaded slice blocks the drag — the panning freezes /
+                // lags, worst when zoomed out where each load pulls a big chunk.
+                // Defer the recalc until the interaction settles; the new bars
+                // still render this frame, indicators catch up ~120ms after the
+                // drag stops. Playback (isPlaying) keeps its existing cadence.
+                if (runRecalc && !this.isPlaying
+                    && typeof this.chart._isChartViewPanning === 'function'
+                    && this.chart._isChartViewPanning()
+                    && typeof this.chart._deferIndicatorRecalcAfterZoomFill === 'function') {
+                    this.chart._deferIndicatorRecalcAfterZoomFill(120);
+                    runRecalc = false;
+                }
                 if (runRecalc) {
                     this.chart.recalculateIndicators();
                 }
