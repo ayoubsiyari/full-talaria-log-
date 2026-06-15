@@ -249,6 +249,76 @@ function formatTpPctLabel(pct) {
   return (x <= 1 ? (x * 100).toFixed(0) : x.toFixed(0)) + "%";
 }
 
+function formatUsdProfit(n) {
+  if (!Number.isFinite(n)) return null;
+  const sign = n >= 0 ? "+" : "-";
+  return `${sign}$${Math.abs(n).toFixed(2)}`;
+}
+
+function resolveTradeSide(order, journal, row) {
+  const raw = String(
+    order?.type || order?.direction || journal?.type || journal?.direction
+      || (row?.side === "SHORT" ? "SELL" : "BUY")
+  ).toUpperCase();
+  return raw === "SELL" || raw === "SHORT" ? "SELL" : "BUY";
+}
+
+/** Weighted avg entry for multi-TP $ math (matches order panel reward calc). */
+function resolveTradeEntryPxForTpMath(om, order, journal, row) {
+  const group = order ? collectSplitGroupOrders(om, order) : null;
+  if (group && group.length > 1) {
+    let sum = 0;
+    let qSum = 0;
+    for (const o of group) {
+      const q = Number(o.quantity) || 0;
+      const px = Number(o.openPrice ?? o.entryPrice) || 0;
+      if (q > 0 && px > 0) {
+        sum += px * q;
+        qSum += q;
+      }
+    }
+    if (qSum > 0) return sum / qSum;
+  }
+  if (journal?.splitEntries?.length > 1) {
+    let sum = 0;
+    let qSum = 0;
+    for (const e of journal.splitEntries) {
+      const q = Number(e.lotSize ?? e.quantity) || 0;
+      const px = Number(e.openPrice ?? e.entryPrice ?? e.price) || 0;
+      if (q > 0 && px > 0) {
+        sum += px * q;
+        qSum += q;
+      }
+    }
+    if (qSum > 0) return sum / qSum;
+  }
+  const px = Number(order?.openPrice ?? order?.entryPrice ?? journal?.entryPrice ?? journal?.openPrice);
+  if (Number.isFinite(px) && px > 0) return px;
+  const parsed = Number.parseFloat(String(row?.entry ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function resolveTradeQtyForTpMath(om, order, journal, row) {
+  const group = order ? collectSplitGroupOrders(om, order) : null;
+  if (group && group.length > 1) {
+    const t = group.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+    if (t > 0) return t;
+  }
+  const q = Number(order?.originalQuantity ?? order?.quantity ?? journal?.quantity);
+  if (Number.isFinite(q) && q > 0) return q;
+  const parsed = Number.parseFloat(row?.sz);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function findTpBreakdownRow(breakdown, target, index) {
+  if (!Array.isArray(breakdown) || !breakdown.length) return null;
+  if (target?.id != null) {
+    const byId = breakdown.find((b) => b.targetId != null && String(b.targetId) === String(target.id));
+    if (byId) return byId;
+  }
+  return breakdown[index] || null;
+}
+
 /**
  * Entry legs for trade card / journal UI: { price, qty?, filled? }[].
  * Returns null when only a single entry should be shown (caller uses row.entry).
@@ -280,10 +350,10 @@ function buildTradeEntryLegs(om, order, journal, fmtPx, fmtQty) {
 }
 
 /**
- * TP legs for trade card: { price, hit?, pct? }[].
+ * TP legs for trade card: { price, hit?, pct?, profit?, profitUsd? }[].
  * Returns null when only a single TP should be shown (caller uses row.tp).
  */
-function buildTradeTargetLegs(order, journal, fmtPx) {
+function buildTradeTargetLegs(order, journal, fmtPx, om, row) {
   const snap = journal?.multiTpSnapshot || journal?.active_tps_at_exit;
   let tpList = Array.isArray(snap) && snap.length > 0 ? snap : null;
   if (!tpList && Array.isArray(order?.tpTargets) && order.tpTargets.length > 0) {
@@ -293,12 +363,84 @@ function buildTradeTargetLegs(order, journal, fmtPx) {
     if (!(journal?.hasMultipleTakeProfits && tpList?.length === 1)) return null;
   }
   if (!tpList || tpList.length <= 1) return null;
-  return tpList.map((t, i) => ({
-    price: fmtPx(t.price),
-    hit: !!t.hit,
-    pct: formatTpPctLabel(t.percentage),
-    label: `TP${i + 1}`,
-  }));
+
+  const side = resolveTradeSide(order, journal, row);
+  const entryPx = resolveTradeEntryPxForTpMath(om, order, journal, row);
+  const qty = resolveTradeQtyForTpMath(om, order, journal, row);
+  const symbol = order?.ticker || order?.symbol || journal?.ticker || journal?.symbol || null;
+  const breakdown = Array.isArray(journal?.tpRealizedBreakdown) ? journal.tpRealizedBreakdown : null;
+  const isClosed = row?.status === "closed";
+
+  let ePcts = null;
+  if (om && typeof om._computeEffectiveTPPercentages === "function" && entryPx > 0 && qty > 0) {
+    try {
+      ePcts = om._computeEffectiveTPPercentages(entryPx, qty, side, { tpTargets: tpList });
+    } catch (_) {
+      ePcts = null;
+    }
+  }
+
+  return tpList.map((t, i) => {
+    const tpPx = Number.parseFloat(t.price);
+    let profitUsd = null;
+
+    const br = findTpBreakdownRow(breakdown, t, i);
+    if (br) {
+      const lots = Number(br.lotsClosed) || 0;
+      const gp = Number(br.pnl);
+      if (Number.isFinite(gp) && (lots > 0 || Math.abs(gp) > 1e-8)) {
+        profitUsd = gp;
+      }
+    }
+
+    if (profitUsd == null && Number.isFinite(tpPx) && entryPx > 0 && qty > 0 && om) {
+      const rawPct = ePcts ? ePcts[i] : Number(t.percentage) || 0;
+      const ePct = rawPct > 0 ? rawPct : 0;
+      if (ePct > 0) {
+        const partialQty = qty * (ePct / 100);
+        const priceDiff = side === "BUY" ? tpPx - entryPx : entryPx - tpPx;
+        if (priceDiff > 0 && typeof om.estimatePnLForPriceLevel === "function") {
+          profitUsd = Math.max(0, om.estimatePnLForPriceLevel(side, entryPx, tpPx, partialQty, symbol));
+        }
+      }
+    }
+
+    const pctSource = ePcts ? ePcts[i] : t.percentage;
+    return {
+      price: fmtPx(t.price),
+      hit: !!t.hit,
+      pct: formatTpPctLabel(pctSource),
+      profit: formatUsdProfit(profitUsd),
+      profitUsd: Number.isFinite(profitUsd) ? profitUsd : null,
+      label: `TP${i + 1}`,
+      isRealized: !!(isClosed && br && (Number(br.lotsClosed) || 0) > 0),
+    };
+  });
+}
+
+function computeTargetsTotalProfit(targets, journal, row) {
+  if (!targets?.length) return null;
+  const breakdown = Array.isArray(journal?.tpRealizedBreakdown) ? journal.tpRealizedBreakdown : null;
+  const isClosed = row?.status === "closed";
+
+  if (isClosed && breakdown?.length) {
+    let sum = 0;
+    let hasRealized = false;
+    breakdown.forEach((b) => {
+      const gp = Number(b.pnl);
+      const lots = Number(b.lotsClosed) || 0;
+      if (Number.isFinite(gp) && (lots > 0 || Math.abs(gp) > 1e-8)) {
+        sum += gp;
+        hasRealized = true;
+      }
+    });
+    const fin = Number(journal?.finalClosePnL);
+    if (Number.isFinite(fin) && Math.abs(fin) > 1e-8) sum += fin;
+    if (hasRealized || Math.abs(sum) > 1e-8) return sum;
+  }
+
+  const planned = targets.reduce((s, t) => s + (Number.isFinite(t.profitUsd) ? t.profitUsd : 0), 0);
+  return planned > 0 ? planned : null;
 }
 
 function attachMultiLegDisplayToRow(om, row, order, journal) {
@@ -329,8 +471,18 @@ function attachMultiLegDisplayToRow(om, row, order, journal) {
   };
   const entries = buildTradeEntryLegs(om, resolvedOrder, journal, fmtPx, fmtQty);
   if (entries?.length > 1) row.entries = entries;
-  const targets = buildTradeTargetLegs(resolvedOrder, journal, fmtPx);
-  if (targets?.length > 1) row.targets = targets;
+  const targets = buildTradeTargetLegs(resolvedOrder, journal, fmtPx, om, row);
+  if (targets?.length > 1) {
+    row.targets = targets;
+    const totalUsd = computeTargetsTotalProfit(targets, journal, row);
+    if (totalUsd != null && Number.isFinite(totalUsd)) {
+      row.targetsTotalProfit = formatUsdProfit(totalUsd);
+      row.targetsTotalProfitUsd = totalUsd;
+      row.targetsTotalIsRealized = row.status === "closed"
+        && Array.isArray(journal?.tpRealizedBreakdown)
+        && journal.tpRealizedBreakdown.some((b) => (Number(b.lotsClosed) || 0) > 0);
+    }
+  }
 }
 
 function computePlannedRRFromPrices(entry, sl, tp) {

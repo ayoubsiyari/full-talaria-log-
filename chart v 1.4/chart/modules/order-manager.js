@@ -4870,19 +4870,50 @@ class OrderManager {
             tps = trade.tpTargets;
         }
         if (tps) {
+            const entryPx = parseFloat(trade.entryPrice || trade.openPrice || 0);
+            const qty = parseFloat(trade.quantity || trade.originalQuantity || 0);
+            const side = String(trade.type || trade.direction || 'BUY').toUpperCase();
+            const dir = side === 'SELL' ? 'SELL' : 'BUY';
+            const sym = trade.ticker || trade.symbol;
+            let ePcts = null;
+            if (entryPx > 0 && qty > 0 && typeof this._computeEffectiveTPPercentages === 'function') {
+                try {
+                    ePcts = this._computeEffectiveTPPercentages(entryPx, qty, dir, { tpTargets: tps });
+                } catch (_) { /* ignore */ }
+            }
+            const breakdown = Array.isArray(trade.tpRealizedBreakdown) ? trade.tpRealizedBreakdown : null;
             tps.forEach((t, i) => {
                 if (t.price == null) return;
+                const tpPx = parseFloat(t.price);
+                let profitUsd = null;
+                const br = breakdown && (breakdown.find((b) => b.targetId != null && t.id != null && String(b.targetId) === String(t.id)) || breakdown[i]);
+                if (br && Number.isFinite(Number(br.pnl))) profitUsd = Number(br.pnl);
+                if (profitUsd == null && entryPx > 0 && qty > 0 && Number.isFinite(tpPx)) {
+                    const ePct = ePcts ? (ePcts[i] || 0) : (Number(t.percentage) || 0);
+                    if (ePct > 0) {
+                        const partialQty = qty * (ePct / 100);
+                        const diff = dir === 'BUY' ? tpPx - entryPx : entryPx - tpPx;
+                        if (diff > 0) {
+                            profitUsd = Math.max(0, this.estimatePnLForPriceLevel(dir, entryPx, tpPx, partialQty, sym));
+                        }
+                    }
+                }
                 const pct = t.percentage;
                 let pctLabel = '';
                 if (pct != null && Number.isFinite(Number(pct))) {
                     const x = Number(pct);
                     pctLabel = (x <= 1 ? (x * 100).toFixed(0) : x.toFixed(0)) + '%';
                 }
+                let profitLabel = '';
+                if (profitUsd != null && Number.isFinite(profitUsd)) {
+                    profitLabel = (profitUsd >= 0 ? '+' : '-') + '$' + Math.abs(profitUsd).toFixed(2);
+                }
                 tpRows.push({
                     label: `TP${i + 1}`,
                     price: t.price,
                     pct: pctLabel,
-                    hit: !!t.hit
+                    hit: !!t.hit,
+                    profit: profitLabel
                 });
             });
         }
@@ -4901,6 +4932,7 @@ class OrderManager {
                                 <span style="color: ${priceColor}; font-weight: 700;">$${this.formatPrice(r.price)}</span>
                                 ${r.qty != null && Number.isFinite(Number(r.qty)) ? `<span style="color: #64748b; font-size: 11px;">${Number(r.qty).toFixed(2)} lots</span>` : ''}
                                 ${r.pct ? `<span style="color: #64748b; font-size: 11px;">${r.pct}</span>` : ''}
+                                ${r.profit ? `<span style="color: #22c55e; font-size: 11px; font-weight: 700;">${r.profit}</span>` : ''}
                             </div>`).join('')}
                     </div>
                 </div>`;
@@ -16445,7 +16477,22 @@ class OrderManager {
         };
 
         const updateYAxisHighlight = (lineData, yPixel) => {
-            if (!lineData || !lineData.yAxisHighlight) return;
+            if (!lineData || !lineData.price) return;
+            const detached = !lineData.yAxisHighlight
+                || !lineData.yAxisHighlight.node?.()
+                || !lineData.yAxisHighlight.node().parentNode;
+            if (detached && lineData.color && lineData.label) {
+                const axisClassLabel = (typeof lineData.label === 'string' && lineData.label.startsWith('BE @'))
+                    ? 'be'
+                    : lineData.label;
+                lineData.yAxisHighlight = this.drawYAxisPriceHighlight(
+                    lineData.price, lineData.color, axisClassLabel, 0, pc, { isPreview: true }
+                );
+                if (lineData.disabled && lineData.yAxisHighlight) {
+                    lineData.yAxisHighlight.style('opacity', 0.45);
+                }
+            }
+            if (!lineData.yAxisHighlight) return;
             const rect = lineData.yAxisHighlight.select('rect');
             const highlightHeight = parseFloat(rect.attr('height')) || 24;
             const rightMargin = pc.margin?.r || 70;
@@ -36116,7 +36163,9 @@ class OrderManager {
 
         ch.svg.selectAll('.y-axis-pending-highlight').remove();
         ch.svg.selectAll('.y-axis-entry-highlight').remove();
-        ch.svg.selectAll('.y-axis-price-highlight').remove();
+        // Keep draft preview pills (`.preview-y-axis-highlight`) — they are owned by
+        // updatePreviewLinePositions / updatePreviewLines, not open-order rows.
+        ch.svg.selectAll('.y-axis-price-highlight:not(.preview-y-axis-highlight)').remove();
 
         const lines = (this.orderLines || []).filter((ol) => (ol.chart || this.chart) === ch);
 

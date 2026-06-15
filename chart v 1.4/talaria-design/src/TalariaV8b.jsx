@@ -12679,7 +12679,7 @@ const TalariaV8b = () => {
                   {targets.map((t,ti)=>{
                     const isHit=t.hit===true;
                     return(
-                    <div key={ti} style={{display:"flex",alignItems:"center",gap:4,marginBottom:targets.length>1?4:0}}>
+                    <div key={ti} style={{display:"flex",alignItems:"center",gap:4,marginBottom:targets.length>1?4:0,flexWrap:"wrap"}}>
                       {targets.length>1&&(
                         isHit
                           ? <div style={{width:5,height:5,borderRadius:"50%",background:c.gn,flexShrink:0,boxShadow:`0 0 4px ${c.gn}`}}/>
@@ -12688,9 +12688,15 @@ const TalariaV8b = () => {
                       <span style={{fontSize:targets.length>1?12:15,fontWeight:700,fontVariantNumeric:"tabular-nums",
                         color:isHit?c.gn:"rgba(0,212,161,0.45)"}}>{t.price||r.tp}</span>
                       {t.pct&&targets.length>1&&<span style={{fontSize:9,color:c.tm}}>{t.pct}</span>}
+                      {t.profit&&targets.length>1&&<span style={{fontSize:9,fontWeight:700,color:isHit?c.gn:"rgba(0,212,161,0.55)",fontVariantNumeric:"tabular-nums",marginLeft:"auto"}}>{t.profit}</span>}
                     </div>
                     );
                   })}
+                  {targets.length>1&&r.targetsTotalProfit&&(
+                    <div style={{fontSize:10,fontWeight:700,color:c.gn,fontVariantNumeric:"tabular-nums",marginTop:5,paddingTop:4,borderTop:`1px solid ${c.br}`}}>
+                      {r.targetsTotalIsRealized?"Total":"Plan"} {r.targetsTotalProfit}
+                    </div>
+                  )}
                   {r.exit!=="—"&&<div style={{fontSize:10,color:r.pc,fontVariantNumeric:"tabular-nums",marginTop:3}}>exit {r.exit}</div>}
                 </div>
 

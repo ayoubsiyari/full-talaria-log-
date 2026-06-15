@@ -19920,14 +19920,14 @@ class Chart {
         if (typeof om.updateOrderLines === 'function') {
             om.updateOrderLines(this);
         }
+        if (typeof om.updatePreviewLinePositions === 'function') {
+            om.updatePreviewLinePositions();
+        }
         if (typeof om.updateMfeMaeMarkers === 'function') {
             om.updateMfeMaeMarkers(this);
         }
         if (panActive) {
             return;
-        }
-        if (typeof om.updatePreviewLinePositions === 'function') {
-            om.updatePreviewLinePositions();
         }
         if (typeof om._scheduleDraftPreviewRedrawIfNeeded === 'function') {
             om._scheduleDraftPreviewRedrawIfNeeded(this);
@@ -20502,10 +20502,10 @@ class Chart {
             if (typeof this.orderManager.updateOrderLines === 'function') {
                 this.orderManager.updateOrderLines(this);
             }
+            if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
+                this.orderManager.updatePreviewLinePositions();
+            }
             if (!chartViewPanning) {
-                if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
-                    this.orderManager.updatePreviewLinePositions();
-                }
                 if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
                     this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
                 }
