@@ -355,6 +355,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
       allowBackNavigation: newSessRollback,
       protectionPreset: newSessProtect,
       commission: newSessTradingCostsEnabled ? (sessCommission || "Per Lot") : "None",
+      trading_costs_enabled: newSessTradingCostsEnabled,
       rollback_allowed: newSessRollback,
       replayMode: sessReplayMode,
       replaySpeed: sessReplaySpeed,
@@ -370,7 +371,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
         p1Amt: { dl: sessP1DailyLossAmt, dd: sessP1MaxDDAmt, pt: sessP1ProfitTargetAmt },
         p2Amt: { dl: sessP2DailyLossAmt, dd: sessP2MaxDDAmt, pt: sessP2ProfitTargetAmt },
       } : null,
-      instruments: instrRows,
+      instruments: newSessTradingCostsEnabled
+        ? instrRows
+        : instrRows.map((row: Record<string, unknown>) => ({ ...row, spread: 0, commission: 0 })),
     };
   }
 

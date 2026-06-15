@@ -1817,6 +1817,16 @@ class OrderManager {
         return this._getPositionPipValue(position);
     }
 
+    /** True when session was created with Real-World Trading Costs enabled. */
+    _sessionTradingCostsEnabled() {
+        const sess = this.chart?.backtestingSession;
+        if (!sess || typeof sess !== 'object') return true;
+        if (sess.trading_costs_enabled === false) return false;
+        if (sess.trading_costs_enabled === true) return true;
+        const c = String(sess.commission ?? '').trim();
+        return c !== 'None' && c !== 'none';
+    }
+
     /**
      * Read spread / commission from instrument row — `spread_pips: 0` from a bad materialize pass
      * must not block fallback to legacy `spread` / `commission` fields on the same row.
@@ -1824,6 +1834,9 @@ class OrderManager {
     _readInstrumentSpreadPips(inst) {
         if (!inst || typeof inst !== 'object') return 0;
         const fromPips = Number.parseFloat(inst.spread_pips ?? inst.spreadPips);
+        if (!this._sessionTradingCostsEnabled()) {
+            return Number.isFinite(fromPips) ? fromPips : 0;
+        }
         if (Number.isFinite(fromPips) && fromPips > 0) return fromPips;
         const fromRaw = Number.parseFloat(inst.spread);
         if (Number.isFinite(fromRaw) && fromRaw > 0) return fromRaw;
@@ -1835,6 +1848,9 @@ class OrderManager {
         const fromSide = Number.parseFloat(
             inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? inst.commission_per_lot
         );
+        if (!this._sessionTradingCostsEnabled()) {
+            return Number.isFinite(fromSide) ? fromSide : 0;
+        }
         if (Number.isFinite(fromSide) && fromSide > 0) return fromSide;
         const raw = Number.parseFloat(inst.commission);
         if (!Number.isFinite(raw) || !(raw > 0)) return Number.isFinite(fromSide) ? fromSide : 0;
@@ -1847,6 +1863,16 @@ class OrderManager {
         const t = String(ticker || inst?.ticker || this._getActiveTicker() || '').toUpperCase();
         const norm = t.replace(/\//g, '');
         let row = inst && typeof inst === 'object' ? { ...inst } : { ticker: t || norm };
+
+        if (!this._sessionTradingCostsEnabled()) {
+            row.spread_pips = 0;
+            row.spreadPips = 0;
+            row.commission_per_lot_per_side = 0;
+            row.commissionPerLotPerSide = 0;
+            row.commission_per_lot = 0;
+            if (t) row.ticker = t;
+            return row;
+        }
 
         let spread = this._readInstrumentSpreadPips(row);
         let commSide = this._readInstrumentCommissionPerSide(row);
@@ -2653,14 +2679,15 @@ class OrderManager {
             return;
         }
         const cfg = this.getMarketConfig();
+        const costsOn = this._sessionTradingCostsEnabled();
         const inst = this._getActiveInstrumentSettings();
-        const spread = this._readInstrumentSpreadPips(inst);
-        const comm = this._readInstrumentCommissionPerSide(inst);
+        const spread = costsOn ? this._readInstrumentSpreadPips(inst) : 0;
+        const comm = costsOn ? this._readInstrumentCommissionPerSide(inst) : 0;
         const pipUnit = cfg.showTicks ? 'pts' : 'pips';
-        const spreadStr = Number.isFinite(spread)
+        const spreadStr = costsOn && Number.isFinite(spread) && spread > 0
             ? (Math.abs(spread) >= 100 ? spread.toFixed(1) : spread.toFixed(2))
             : '—';
-        const commStr = Number.isFinite(comm) ? `$${comm.toFixed(2)}` : '—';
+        const commStr = costsOn && Number.isFinite(comm) && comm > 0 ? `$${comm.toFixed(2)}` : '—';
         el.innerHTML = `
             <span title="Typical spread for this pair (session instrument)">Spread: <strong>${spreadStr}</strong> ${pipUnit}</span>
             <span style="opacity:0.45;margin:0 5px;">·</span>

@@ -1020,6 +1020,7 @@ class Chart {
         // Only explicit "None" disables costs — legacy sessions may have per-instrument
         // spread/commission without a trading_costs bundle.
         const costsOff = commissionRaw === 'None' || commissionRaw === 'none';
+        normalized.trading_costs_enabled = !costsOff;
 
         const tc =
             normalized.trading_costs && typeof normalized.trading_costs === 'object'
@@ -1045,6 +1046,8 @@ class Chart {
             if (!row || typeof row !== 'object') return;
 
             if (costsOff) {
+                row.spread = 0;
+                row.commission = 0;
                 row.spread_pips = 0;
                 row.spreadPips = 0;
                 row.commission_per_lot_per_side = 0;

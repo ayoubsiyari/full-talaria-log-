@@ -14807,9 +14807,16 @@ const TalariaV8bLive = () => {
           if (sm) spreadHdr = `${sm[1]} ${(sm[2] || "pips").toLowerCase()}`;
           if (cm) commHdr = cm[1];
         } else if (om && typeof om._getActiveInstrumentSettings === "function") {
+          const costsOn =
+            typeof om._sessionTradingCostsEnabled === "function"
+              ? om._sessionTradingCostsEnabled()
+              : String(om.chart?.backtestingSession?.commission ?? "").trim() !== "None";
           const inst = om._getActiveInstrumentSettings();
           const mt = om.marketType;
-          if (mt === "futures") {
+          if (!costsOn) {
+            spreadHdr = "—";
+            commHdr = "—";
+          } else if (mt === "futures") {
             const spreadTicks = Number.parseFloat(
               inst.spread_pips ??
                 inst.spreadPips ??
