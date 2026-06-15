@@ -16688,7 +16688,7 @@ class OrderManager {
         }
         // Always draggable so levels below min lot can be moved back; { disabled: true } is visual-only (faded).
         let mainEntryOpts = null;
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+        if (this.isMultiEntryMode && this.multiEntryLevels?.length > 0) {
             const mainLv = this.multiEntryLevels.find(l => l.price > 0);
             if (mainLv) {
                 const ok = this._multiEntryLevelMeetsMinLot(mainLv, slPrice, pipSizePE, pipValuePE, minLotPE);
@@ -16696,7 +16696,11 @@ class OrderManager {
             }
         }
         if (this.isMultiEntryMode && this.multiEntryLevels?.length > 0) {
-            mainEntryOpts = { ...(mainEntryOpts || {}), multiEntryLevelId: this.multiEntryLevels[0].id };
+            const sortedMain = [...this.multiEntryLevels]
+                .filter((l) => l && l.price > 0)
+                .sort((a, b) => ((this.orderSide === 'SELL') ? b.price - a.price : a.price - b.price))[0];
+            const mainId = sortedMain?.id ?? this.multiEntryLevels[0].id;
+            mainEntryOpts = { ...(mainEntryOpts || {}), multiEntryLevelId: mainId };
         }
         this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true, undefined, undefined, mainEntryOpts);
 
@@ -16796,8 +16800,9 @@ class OrderManager {
         } else {
             // Single TP mode: draw SL before TP when both are badges so TP can sit to the right of SL
             // (entry-anchored layout in positionPreviewLabel).
+            // Multi-entry: always draw full SL/TP lines at their prices when set (badges on avg entry are easy to miss).
             if (slEnabled) {
-                if (this.slManuallyPositioned && slPrice > 0) {
+                if (slPrice > 0 && (this.slManuallyPositioned || this.isMultiEntryMode)) {
                     this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
                     if (this.previewLines.sl) {
                         this.previewLines.sl.targetPrice = slPrice;
@@ -16809,7 +16814,7 @@ class OrderManager {
             }
 
             if (tpEnabled) {
-                if (this.tpManuallyPositioned && tpPrice > 0) {
+                if (tpPrice > 0 && (this.tpManuallyPositioned || this.isMultiEntryMode)) {
                     this.previewLines.tp = this.drawPreviewLine(tpPrice, '#089981', 'TP', null, true);
                     if (this.previewLines.tp) {
                         this.previewLines.tp.targetPrice = tpPrice;
@@ -19359,6 +19364,33 @@ class OrderManager {
     }
 
     /**
+     * Weighted average entry for chart preview (multi-entry).
+     * Uses risk/amount weights only — does not filter by min-lot so lines still draw while legs are tight to SL.
+     */
+    _calcMultiEntryPreviewAvgPrice() {
+        const levels = (this.multiEntryLevels || []).filter((l) => l && l.price > 0);
+        if (levels.length === 0) {
+            const ep = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            return Number.isFinite(ep) && ep > 0 ? ep : 0;
+        }
+        if (levels.length === 1) return levels[0].price;
+        const totalAmount = levels.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+        if (totalAmount > 0) {
+            return levels.reduce((s, l) => s + l.price * (Number(l.amount) || 0), 0) / totalAmount;
+        }
+        return levels.reduce((s, l) => s + l.price, 0) / levels.length;
+    }
+
+    /** Lot count for the Avg Entry preview label (falls back to order qty when per-leg sizing is unavailable). */
+    _calcMultiEntryPreviewTotalLots() {
+        const implied = this._getMultiEntryImpliedTotalLots();
+        if (implied > 0) return implied;
+        const oq = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        if (oq > 0) return oq;
+        return this._calcMultiEntryTotalLots();
+    }
+
+    /**
      * Calculate weighted average entry price
      */
     _calcMultiEntryAvgPrice() {
@@ -19716,16 +19748,19 @@ class OrderManager {
             return;
         }
 
-        // Use first valid level as main entry
-        const mainLevel = validLevels[0];
+        // BUY: lowest price is main entry; SELL: highest — matches V9 row sort + reward ladder.
+        const sorted = [...validLevels].sort((a, b) => {
+            return (this.orderSide === 'SELL') ? b.price - a.price : a.price - b.price;
+        });
+        const mainLevel = sorted[0];
         const mainInput = document.getElementById('orderEntryPrice');
         if (mainInput) mainInput.value = this.formatPrice(mainLevel.price);
 
         // Remaining levels become split entries
-        const totalAmount = validLevels.reduce((s, l) => s + l.amount, 0);
-        for (let i = 1; i < validLevels.length; i++) {
-            const lvl = validLevels[i];
-            const pct = totalAmount > 0 ? Math.round((lvl.amount / totalAmount) * 100) : Math.round(100 / validLevels.length);
+        const totalAmount = sorted.reduce((s, l) => s + l.amount, 0);
+        for (let i = 1; i < sorted.length; i++) {
+            const lvl = sorted[i];
+            const pct = totalAmount > 0 ? Math.round((lvl.amount / totalAmount) * 100) : Math.round(100 / sorted.length);
 
             // Auto-detect order type
             const currentCandle = this.getCurrentCandle();
