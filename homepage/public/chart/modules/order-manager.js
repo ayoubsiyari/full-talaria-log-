@@ -16609,7 +16609,17 @@ class OrderManager {
         // race setDraftPreview (preview vanishes, SL drag feels broken).
         this.removePreviewLines({ multichartSkipBroadcast: true });
 
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        // Multi-entry: React rows or chart "+" can enable splits before #orderEntryPrice is mirrored.
+        // removePreviewLines() already ran — resolve a priced leg instead of leaving SL/TP wiped.
+        if (!(entryPrice > 0) && this.isMultiEntryMode && Array.isArray(this.multiEntryLevels)) {
+            const pricedLeg = this.multiEntryLevels.find((l) => l && l.price > 0);
+            if (pricedLeg) {
+                entryPrice = pricedLeg.price;
+                const mainInput = document.getElementById('orderEntryPrice');
+                if (mainInput) mainInput.value = this.formatPrice(entryPrice);
+            }
+        }
         const tpEnabled = document.getElementById('enableTP')?.checked;
         const slEnabled = document.getElementById('enableSL')?.checked;
 

@@ -14034,6 +14034,7 @@ const TalariaV8bLive = () => {
         const omHasMultiTp = mtpOn && Array.isArray(om?.tpTargets) && om.tpTargets.length > 1;
 
         if (!skipPosSync && entryRows.length > 1 && om) {
+          const domEntryPx = parseFloat(document.getElementById("orderEntryPrice")?.value || "0") || 0;
           const want = entryRows.map((r, i) => {
             let pid = r.id;
             if (typeof pid === "number" && Number.isFinite(pid)) {
@@ -14043,9 +14044,11 @@ const TalariaV8bLive = () => {
             } else {
               pid = om.multiEntryLevels?.[i]?.id ?? i + 1;
             }
+            let rowPx = parseFloat(r.price) || 0;
+            if (!(rowPx > 0) && i === 0 && domEntryPx > 0) rowPx = domEntryPx;
             return {
               id: pid,
-              price: parseFloat(r.price) || 0,
+              price: rowPx,
               amount: parseFloat(r.risk) || 0,
             };
           });
@@ -14080,28 +14083,43 @@ const TalariaV8bLive = () => {
             om.syncMultiEntryToSplitEntries?.();
           }
         } else if (!skipPosSync && entryRows.length === 1 && om?.isMultiEntryMode) {
-          try {
-            om.setEntryMode(false);
-          } catch (_) {}
-          const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
-          const domOtSingle = document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type;
-          const activeOtSingle = domOtSingle || orderType;
-          if (activeOtSingle === "market" && !bridgeLead && v9ShouldAnchorEntryToLiveMarket(om)) {
-            await fillLiveEntryFromFocusedMultichartTile();
-            v9ApplyLiveEntryPriceToRows(
-              setEntryRows,
-              document.getElementById("orderEntryPrice")?.value ?? ""
-            );
+          const omLevelCount = om.multiEntryLevels?.length ?? 0;
+          const entryAddLead = isOmBridgeLead(omPanelBridgeRef.current.entryAdd);
+          if (entryAddLead || omLevelCount > 1) {
+            // Chart "+" or panel "+" enabled multi-entry — do not collapse OM while React catches up.
+            if (omLevelCount > 1 && !entryAddLead) {
+              const next = om.multiEntryLevels.map((l) => ({
+                id: l.id,
+                price: String(l.price ?? "0"),
+                risk: String(l.amount ?? "0"),
+              }));
+              setEntryRows(next);
+              om.syncMultiEntryToSplitEntries?.();
+            }
           } else {
-            const entryPx = parseFloat(entryRows[0]?.price ?? "0");
-            if (entryPx > 0) {
-              setIn("orderEntryPrice", String(entryPx));
-              if (bridgeLead) {
-                const ot = v9SyncOrderTypeFromEntryPrice(om, buySell);
-                setOrderType((prev) => (prev === ot ? prev : ot));
-              }
-            } else if (!bridgeLead && v9ShouldAnchorEntryToLiveMarket(om)) {
+            try {
+              om.setEntryMode(false);
+            } catch (_) {}
+            const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
+            const domOtSingle = document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type;
+            const activeOtSingle = domOtSingle || orderType;
+            if (activeOtSingle === "market" && !bridgeLead && v9ShouldAnchorEntryToLiveMarket(om)) {
               await fillLiveEntryFromFocusedMultichartTile();
+              v9ApplyLiveEntryPriceToRows(
+                setEntryRows,
+                document.getElementById("orderEntryPrice")?.value ?? ""
+              );
+            } else {
+              const entryPx = parseFloat(entryRows[0]?.price ?? "0");
+              if (entryPx > 0) {
+                setIn("orderEntryPrice", String(entryPx));
+                if (bridgeLead) {
+                  const ot = v9SyncOrderTypeFromEntryPrice(om, buySell);
+                  setOrderType((prev) => (prev === ot ? prev : ot));
+                }
+              } else if (!bridgeLead && v9ShouldAnchorEntryToLiveMarket(om)) {
+                await fillLiveEntryFromFocusedMultichartTile();
+              }
             }
           }
         } else if (!skipPosSync && !omHasMultiEntry) {
@@ -33734,14 +33752,17 @@ const TalariaV8bLive = () => {
                   return next.map((r) => ({ ...r, risk: each }));
                 }
 
+                const domEntryPx = parseFloat(document.getElementById("orderEntryPrice")?.value || "0") || 0;
                 const want = rows.map((r, i) => {
                   let pid = r.id;
                   if (typeof pid !== "number" || !Number.isFinite(pid)) {
                     pid = om.multiEntryLevels?.[i]?.id ?? i + 1;
                   }
+                  let rowPx = parseFloat(r.price) || 0;
+                  if (!(rowPx > 0) && i === 0 && domEntryPx > 0) rowPx = domEntryPx;
                   return {
                     id: pid,
-                    price: parseFloat(r.price) || 0,
+                    price: rowPx,
                     amount: parseFloat(r.risk) || 0,
                   };
                 });
