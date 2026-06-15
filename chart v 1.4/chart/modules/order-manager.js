@@ -33240,24 +33240,25 @@ class OrderManager {
             if (!existingNode || !existingNode.parentNode) {
                 this.exitMarkers = this.exitMarkers.filter((m) => m !== existingMarker);
             } else {
-            existingMarker.totalPnL += closeData.pnl;
-            const exitLots = this._resolveExitMarkerLots(order, closeData);
-            existingMarker.totalQuantity += exitLots;
-            existingMarker.count++;
-            if (!existingMarker.linkedOrderIds) {
-                existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
+                existingMarker.totalPnL += closeData.pnl;
+                const exitLots = this._resolveExitMarkerLots(order, closeData);
+                existingMarker.totalQuantity += exitLots;
+                existingMarker.count++;
+                if (!existingMarker.linkedOrderIds) {
+                    existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
+                }
+                const nid = String(order.id);
+                if (!existingMarker.linkedOrderIds.includes(nid)) {
+                    existingMarker.linkedOrderIds.push(nid);
+                }
+                existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
+                const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
+                if (!lotsTxt.empty()) {
+                    lotsTxt.text(this._tradeMarkerLotsLabel(existingMarker.totalQuantity));
+                }
+                this._drawTradeConnector(order, closeData, chart);
+                return;
             }
-            const nid = String(order.id);
-            if (!existingMarker.linkedOrderIds.includes(nid)) {
-                existingMarker.linkedOrderIds.push(nid);
-            }
-            existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
-            const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
-            if (!lotsTxt.empty()) {
-                lotsTxt.text(this._tradeMarkerLotsLabel(existingMarker.totalQuantity));
-            }
-            this._drawTradeConnector(order, closeData, chart);
-            return;
         }
 
         const candleSpacing = chart.getCandleSpacing();

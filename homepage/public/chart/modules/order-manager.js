@@ -32700,6 +32700,34 @@ class OrderManager {
         return closest;
     }
 
+    /** Map replay playhead (often raw tick `t`) onto a resampled `chart.data` bucket index. */
+    _chartPlayheadBucketIndex(ch) {
+        const data = ch?.data;
+        if (!Array.isArray(data) || !data.length) return -1;
+        const live = this._getCurrentCandleForChart(ch);
+        const liveT = Number(live?.t);
+        if (!Number.isFinite(liveT)) return data.length - 1;
+        const idx = this._findCandleIndexForTime(data, liveT, { skipNearestFallback: false });
+        return idx >= 0 ? idx : data.length - 1;
+    }
+
+    /** True when `timeMs` falls inside chart bar `barIdx` (or the forming last bar). */
+    _closeTimeInsideChartBar(data, barIdx, timeMs, ch) {
+        if (!Array.isArray(data) || barIdx < 0 || barIdx >= data.length) return false;
+        const ct = Number(timeMs);
+        const barOpen = Number(data[barIdx].t);
+        if (!Number.isFinite(ct) || !Number.isFinite(barOpen)) return false;
+        const nextOpen = barIdx + 1 < data.length ? Number(data[barIdx + 1].t) : NaN;
+        if (Number.isFinite(nextOpen) && nextOpen > barOpen) {
+            return ct >= barOpen && ct < nextOpen;
+        }
+        const tfMs = typeof ch?.parseTimeframe === 'function'
+            ? ch.parseTimeframe(ch.currentTimeframe)
+            : 60000;
+        const period = Number.isFinite(tfMs) && tfMs > 0 ? tfMs : 60000;
+        return ct >= barOpen && ct < barOpen + period;
+    }
+
     /**
      * Replay-aware candle index for an event time (exit / partial / **entry** markers & connectors).
      * During tick replay the forming bar uses animatingCandle.t while chart.data is updated in the
@@ -32718,20 +32746,39 @@ class OrderManager {
             return -1;
         }
 
+        const playheadBucket = () => this._chartPlayheadBucketIndex(ch);
+
         if (replayActive) {
             const live = this._getCurrentCandleForChart(ch);
-            if (live && Number.isFinite(Number(live.t)) && ct === Number(live.t)) {
-                return data.length - 1;
+            const liveT = Number(live?.t);
+            if (Number.isFinite(liveT) && (ct === liveT || Math.abs(ct - liveT) < 1)) {
+                const idx = playheadBucket();
+                if (idx >= 0) return idx;
             }
             if (rs.animatingCandle) {
                 const animT = Number(rs.animatingCandle.t);
-                if (Number.isFinite(animT) && ct === animT) {
-                    return data.length - 1;
+                if (Number.isFinite(animT) && (ct === animT || Math.abs(ct - animT) < 1)) {
+                    const idx = playheadBucket();
+                    if (idx >= 0) return idx;
                 }
             }
         }
 
-        return this._findCandleIndexForTime(data, ct, { skipNearestFallback: replayActive });
+        let idx = this._findCandleIndexForTime(data, ct, { skipNearestFallback: replayActive });
+
+        // Tick replay + coarse chart TF: closeTime is raw playhead `t` but chart.data is resampled —
+        // period containment can fail until the bucket is appended; anchor to the playhead bucket.
+        if (idx === -1 && replayActive && this._isMarkerTimeVisibleInReplay(ch, ct)) {
+            const playIdx = playheadBucket();
+            if (playIdx >= 0 && this._closeTimeInsideChartBar(data, playIdx, ct, ch)) {
+                idx = playIdx;
+            } else if (playIdx === data.length - 1) {
+                const lastOpen = Number(data[playIdx]?.t);
+                if (Number.isFinite(lastOpen) && ct >= lastOpen) idx = playIdx;
+            }
+        }
+
+        return idx;
     }
 
     /**
@@ -32828,6 +32875,11 @@ class OrderManager {
         scanRange(idx0, Math.min(n - 1, idx0 + WIN));
         if (best < 0) scanRange(idx0, n - 1);
         return best >= 0 ? best : idx0;
+    }
+
+    /** Exit marker column: same price-coherence scan as entry (SL/TP can print off-bucket in tick replay). */
+    _refineExitMarkerIndexForClose(ch, idx0, closeTime, closePrice) {
+        return this._refineEntryMarkerIndexForOpen(ch, idx0, closeTime, closePrice);
     }
 
     /**
@@ -33163,8 +33215,18 @@ class OrderManager {
         const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
-        if (dataIndex === -1) return;
+        let dataIndex = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
+        if (dataIndex >= 0 && closeData.closePrice != null) {
+            dataIndex = this._refineExitMarkerIndexForClose(
+                chart, dataIndex, closeData.closeTime, closeData.closePrice
+            );
+        }
+        if (dataIndex === -1) {
+            if (this._isMarkerTimeVisibleInReplay(chart, closeData.closeTime)) {
+                this._scheduleClosedJournalMarkerRedraw();
+            }
+            return;
+        }
 
         if (!this.exitMarkers) this.exitMarkers = [];
 
@@ -33174,24 +33236,29 @@ class OrderManager {
         );
 
         if (existingMarker) {
-            existingMarker.totalPnL += closeData.pnl;
-            const exitLots = this._resolveExitMarkerLots(order, closeData);
-            existingMarker.totalQuantity += exitLots;
-            existingMarker.count++;
-            if (!existingMarker.linkedOrderIds) {
-                existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
+            const existingNode = existingMarker.marker?.node?.();
+            if (!existingNode || !existingNode.parentNode) {
+                this.exitMarkers = this.exitMarkers.filter((m) => m !== existingMarker);
+            } else {
+                existingMarker.totalPnL += closeData.pnl;
+                const exitLots = this._resolveExitMarkerLots(order, closeData);
+                existingMarker.totalQuantity += exitLots;
+                existingMarker.count++;
+                if (!existingMarker.linkedOrderIds) {
+                    existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
+                }
+                const nid = String(order.id);
+                if (!existingMarker.linkedOrderIds.includes(nid)) {
+                    existingMarker.linkedOrderIds.push(nid);
+                }
+                existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
+                const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
+                if (!lotsTxt.empty()) {
+                    lotsTxt.text(this._tradeMarkerLotsLabel(existingMarker.totalQuantity));
+                }
+                this._drawTradeConnector(order, closeData, chart);
+                return;
             }
-            const nid = String(order.id);
-            if (!existingMarker.linkedOrderIds.includes(nid)) {
-                existingMarker.linkedOrderIds.push(nid);
-            }
-            existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
-            const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
-            if (!lotsTxt.empty()) {
-                lotsTxt.text(this._tradeMarkerLotsLabel(existingMarker.totalQuantity));
-            }
-            this._drawTradeConnector(order, closeData, chart);
-            return;
         }
 
         const candleSpacing = chart.getCandleSpacing();
