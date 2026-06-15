@@ -16575,6 +16575,7 @@ class OrderManager {
         if (!previewChart?.svg) {
             return;
         }
+        this._ensureLevelCtrlHover(previewChart);
         if (!this._ensurePreviewChartScales(previewChart)) {
             return;
         }
@@ -40292,9 +40293,13 @@ class OrderManager {
         const o = opts || {};
         const size = this._tpPctStepperSize();
         const g = parentGroup.append('g')
-            .attr('class', `order-level-badge tp-pct-stepper tp-percentage-control ${o.className || ''}`.trim())
+            .attr('class', `order-level-badge om-level-ctrl tp-pct-stepper tp-percentage-control ${o.className || ''}`.trim())
             .attr('transform', `translate(${o.x ?? 0}, ${o.y ?? 0})`)
-            .style('cursor', 'pointer');
+            .style('cursor', 'pointer')
+            // Hidden until the cursor is at this level's height (see _ensureLevelCtrlHover).
+            .style('opacity', 0)
+            .style('pointer-events', 'none')
+            .style('transition', 'opacity 0.12s ease');
         this._populateTpPctStepper(g, {
             centerAnchor: false,
             onIncrease: o.onIncrease,
@@ -40317,9 +40322,13 @@ class OrderManager {
         const x = o.x ?? 0;
         const y = o.y ?? 0;
         const g = parentGroup.append('g')
-            .attr('class', `order-level-badge order-level-badge--${kind} ${o.className || ''}`.trim())
+            .attr('class', `order-level-badge om-level-ctrl order-level-badge--${kind} ${o.className || ''}`.trim())
             .attr('transform', `translate(${x}, ${y})`)
-            .style('cursor', 'pointer');
+            .style('cursor', 'pointer')
+            // Hidden until the cursor is at this level's height (see _ensureLevelCtrlHover).
+            .style('opacity', 0)
+            .style('pointer-events', 'none')
+            .style('transition', 'opacity 0.12s ease');
         const bg = g.append('rect')
             .attr('class', 'order-level-badge-bg')
             .attr('x', 0)
