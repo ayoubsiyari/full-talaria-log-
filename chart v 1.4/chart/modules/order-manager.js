@@ -1760,6 +1760,98 @@ class OrderManager {
         return perSide * 2 * q;
     }
 
+    /** Round-trip commission for an arbitrary lot slice (partial closes / previews). */
+    _roundTripCommissionForLots(position, lots) {
+        const q = Number(lots) || 0;
+        if (!(q > 0)) return 0;
+        return this._getCommissionPerLotSideForPosition(position) * 2 * q;
+    }
+
+    /** Session spread in native units (pips for forex, ticks for futures — stored as spread_pips). */
+    _getSpreadPipsForPosition(position) {
+        const st = position?.instrument_settings || position || {};
+        let spread = Number.parseFloat(st.spread_pips ?? st.spreadPips ?? st.spread ?? 0) || 0;
+        if (!(spread > 0)) {
+            const t = this._positionTicker(position) || st.ticker;
+            if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function' && t) {
+                const inst = this.orderService.getInstrumentSettings(t, {});
+                spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? inst.spread ?? 0) || 0;
+            }
+        }
+        return spread;
+    }
+
+    /** Half-spread as a price distance (uses tickSize for futures, pipSize otherwise). */
+    _halfSpreadPriceDistance(positionOrSettings, markPrice) {
+        const spreadUnits = this._getSpreadPipsForPosition(positionOrSettings);
+        if (!(spreadUnits > 0)) return 0;
+        const t = this._positionTicker(positionOrSettings) || positionOrSettings?.ticker || this._getSymbol();
+        const mark = Number(markPrice);
+        if (window.marketCalcEngine && t) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(t, this.marketType);
+                if (calc?.specs?.type === 'futures' && Number(calc.specs.tickSize) > 0) {
+                    return (spreadUnits / 2) * calc.specs.tickSize;
+                }
+                if (Number(calc?.specs?.pipSize) > 0) {
+                    return (spreadUnits / 2) * calc.specs.pipSize;
+                }
+            } catch (_) { /* fall through */ }
+        }
+        const pipS = this._getPositionPipSize(positionOrSettings);
+        return (spreadUnits / 2) * pipS;
+    }
+
+    /** Worse fill on entry: BUY pays ask (+half spread), SELL receives bid (−half spread). */
+    _applyHalfSpreadEntryPrice(midPrice, side, positionOrSettings) {
+        const mid = Number(midPrice);
+        if (!Number.isFinite(mid)) return midPrice;
+        const half = this._halfSpreadPriceDistance(positionOrSettings, mid);
+        if (!(half > 0)) return mid;
+        return String(side || '').toUpperCase() === 'SELL' ? mid - half : mid + half;
+    }
+
+    /** Worse fill on exit: close long at bid (−half spread), close short at ask (+half spread). */
+    _applyHalfSpreadExitPrice(midPrice, positionSide, positionOrSettings) {
+        const mid = Number(midPrice);
+        if (!Number.isFinite(mid)) return midPrice;
+        const half = this._halfSpreadPriceDistance(positionOrSettings, mid);
+        if (!(half > 0)) return mid;
+        return String(positionSide || '').toUpperCase() === 'BUY' ? mid - half : mid + half;
+    }
+
+    /**
+     * Net P&L preview (entry + exit half-spread + round-trip commission) for panel / chart labels.
+     * When costs are zero this matches gross price-move P&L.
+     */
+    _estimateNetPnLPreview(side, entryPx, exitPx, qty, instrumentRef = null) {
+        const s = side === 'SELL' ? 'SELL' : 'BUY';
+        const q = Number(qty) || 0;
+        if (!(q > 0)) return 0;
+        const ref = instrumentRef || {
+            instrument_settings: this._getActiveInstrumentSettings(),
+            ticker: this._getSymbol(),
+            type: s,
+        };
+        if (!ref.type) ref.type = s;
+        const entry = this._applyHalfSpreadEntryPrice(entryPx, s, ref);
+        const exit = this._applyHalfSpreadExitPrice(exitPx, s, ref);
+        const sym = ref.ticker || this._getSymbol();
+        const gross = this.estimatePnLForPriceLevel(s, entry, exit, q, sym);
+        return gross - this._roundTripCommissionForLots(ref, q);
+    }
+
+    /** Net P&L at TP/SL for an open leg (entry already spread-adjusted on fill). */
+    _estimateNetPnLAtExitLevel(leg, levelPrice, sliceQty) {
+        if (!leg) return 0;
+        const q = Number(sliceQty) || 0;
+        if (!(q > 0)) return 0;
+        const side = (leg.type || leg.direction) === 'SELL' ? 'SELL' : 'BUY';
+        const exitPx = this._applyHalfSpreadExitPrice(levelPrice, side, leg);
+        const gross = this.estimateOpenLegPnLSlice(leg, exitPx, q);
+        return gross - this._roundTripCommissionForLots(leg, q);
+    }
+
     /**
      * SL chart label: net $ at stop (gross − round-trip comm per leg).
      * Split / multi-entry: **shared** SL — sum all open legs so the line matches total size and basket P&L at that stop.
@@ -1769,19 +1861,16 @@ class OrderManager {
         const sp = Number(stopPrice);
         if (!Number.isFinite(sp)) return 0;
         if (order.isSplitEntry && order.splitGroupId) {
-            let gross = 0;
-            let comm = 0;
+            let net = 0;
             for (const m of this._getSplitGroupOpenPositions(order)) {
                 const mq = Number(m.quantity) || 0;
                 if (mq <= 0) continue;
-                gross += this.estimateOpenLegPnLSlice(m, sp, mq);
-                comm += this._getRoundTripCommissionUsd(m);
+                net += this._estimateNetPnLAtExitLevel(m, sp, mq);
             }
-            return gross - comm;
+            return net;
         }
         const q = Number(order.quantity) || 0;
-        const g = this.estimateOpenLegPnLSlice(order, sp, q);
-        return g - this._getRoundTripCommissionUsd(order);
+        return this._estimateNetPnLAtExitLevel(order, sp, q);
     }
 
     /** Total open lots for split group (shared SL label), else this order’s qty. */
