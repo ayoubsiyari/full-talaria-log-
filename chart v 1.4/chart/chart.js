@@ -18888,9 +18888,19 @@ class Chart {
     _getSpacingForCandleWidth(cw) {
         const w = Number(cw);
         if (!Number.isFinite(w)) return 7;
-        if (w <= 0.5) return Math.max(0.2, w);
-        // TradingView-like gutter: ~1px at default zoom, scales up slightly on wide bars.
-        const gap = Math.max(1, Math.round(w * 0.167));
+        if (w <= 0) return 0.2;
+        // Continuous gutter (no discontinuity).
+        //
+        // The old code had a hard split: a separate `w <= 0.5` branch (gap 0)
+        // plus `Math.max(1, …)` for w > 0.5 (gap ≥ 1px). That made spacing jump
+        // ~3× right at w = 0.5 — so a single wheel tick crossing that boundary
+        // zoomed out far more than the others ("one tick zooms too much").
+        //
+        // This keeps the same look for normal/wide bars — ~1px gutter for
+        // w in [2, 6] and ~w*0.167 for fat bars — but tapers the gutter
+        // smoothly to 0 for thin bars, so spacing is monotonic and continuous
+        // and every wheel tick changes the zoom by the same proportion.
+        const gap = Math.max(w * 0.167, Math.min(1, w * 0.5));
         return w + gap;
     }
 
