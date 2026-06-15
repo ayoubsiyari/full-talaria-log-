@@ -32778,6 +32778,7 @@ class OrderManager {
         const x = chart.dataIndexToPixel(dataIndex);
         const y = yScale(order.openPrice);
         const candle = chart.data[dataIndex];
+        if (!candle) return;
         const isBuy = order.type === 'BUY';
         const sz = 12;
         const gap = 4;
@@ -32933,6 +32934,7 @@ class OrderManager {
         const x = chart.dataIndexToPixel(dataIndex);
         const y = yScale(closeData.closePrice);
         const candle = chart.data[dataIndex];
+        if (!candle) return;
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
@@ -33131,6 +33133,7 @@ class OrderManager {
         const x = chart.dataIndexToPixel(dataIndex);
         const y = yScale(closeData.closePrice);
         const candle = chart.data[dataIndex];
+        if (!candle) return;
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
@@ -33248,6 +33251,7 @@ class OrderManager {
             const x = c.dataIndexToPixel(dataIndex);
             const y = c.scales.yScale(price);
             const candle = c.data[dataIndex];
+            if (!candle) return;
             const isBuy = type === 'BUY';
             const sz = 12;
             const gap = 4;
@@ -33283,6 +33287,7 @@ class OrderManager {
                 if (dataIndex === -1) return;
 
                 const candle = ch.data[dataIndex];
+                if (!candle) return;
                 const candleSpacing = ch.getCandleSpacing();
                 const x = ch.dataIndexToPixel(dataIndex);
                 const y = mainY(price);
@@ -33321,6 +33326,7 @@ class OrderManager {
                 if (dataIndex === -1) return;
 
                 const candle = ch.data[dataIndex];
+                if (!candle) return;
                 const candleSpacing = ch.getCandleSpacing();
                 const x = ch.dataIndexToPixel(dataIndex);
                 const y = partialY(price);
