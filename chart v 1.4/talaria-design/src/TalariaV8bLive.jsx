@@ -9037,17 +9037,40 @@ function v9OrderPriceTickStep(om) {
   return Math.pow(10, -prec);
 }
 
-function v9StepOrderPrice(currentStr, dir, om) {
-  const cur = parseFloat(currentStr);
-  const base = Number.isFinite(cur) ? cur : 0;
+function v9StepOrderPrice(currentStr, dir, om, entryAnchor) {
   const step = v9OrderPriceTickStep(om);
-  let next = Math.max(0, base + dir * step);
   const prec =
     om && typeof om.getPricePrecision === "function" ? om.getPricePrecision() : 5;
+  let base = parseFloat(currentStr);
+  if (!(Number.isFinite(base) && base > 0)) {
+    const anchor =
+      typeof entryAnchor === "number"
+        ? entryAnchor
+        : parseFloat(entryAnchor ?? "");
+    if (Number.isFinite(anchor) && anchor > 0) {
+      base = anchor;
+    } else {
+      base = 0;
+    }
+  }
+  let next = base + dir * step;
+  if (!(next > 0)) next = 0;
   if (om && typeof om.formatPrice === "function") {
     return om.formatPrice(next, prec);
   }
   return Number.isFinite(next) ? next.toFixed(prec) : "0";
+}
+
+/** Entry / market price used when SL or TP steppers start from 0. */
+function v9ResolveEntryAnchorPrice(om, entryRowPrice) {
+  const fromRow = parseFloat(entryRowPrice ?? "");
+  if (Number.isFinite(fromRow) && fromRow > 0) return fromRow;
+  const ep = parseFloat(
+    (typeof document !== "undefined" ? document.getElementById("orderEntryPrice")?.value : "") || "0"
+  );
+  if (Number.isFinite(ep) && ep > 0) return ep;
+  const live = v9GetCurrentMarketPrice(om);
+  return live > 0 ? live : 0;
 }
 
 function v9GetCurrentMarketPrice(om) {
@@ -9264,7 +9287,7 @@ const TalariaV8bLive = () => {
   const [sizeMode, setSizeMode] = useState("$");
   const [riskVal, setRiskVal] = useState("100");
   const [riskBasis, setRiskBasis] = useState("balance");
-  const [slEnabled, setSlEnabled] = useState(false);
+  const [slEnabled, setSlEnabled] = useState(true);
   const [entryRows, setEntryRows] = useState([{ id:0, price:"0", risk:"100" }]);
   const entryScrollRef = useRef(null);
   const [slRows, setSlRows] = useState([{ id:0, price:"0" }]);
@@ -9328,6 +9351,7 @@ const TalariaV8bLive = () => {
     const onClearDraft = () => setScreenshots([]);
     const onResetDraft = () => {
       markOrderControlBridge();
+      setSlEnabled(true);
       setSlRows([{ id: Date.now(), price: "0" }]);
       setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
       setEntryRows((rows) => [
@@ -34326,10 +34350,11 @@ const TalariaV8bLive = () => {
             const stepSl = (dir) => {
               markOrderControlBridge();
               const omStep = window.chart?.orderManager;
+              const entryAnchor = v9ResolveEntryAnchorPrice(omStep, entryRows[0]?.price);
               setSlRows((rows) => {
                 if (!rows.length) return rows;
                 const r0 = rows[0];
-                const nextPx = v9StepOrderPrice(r0.price, dir, omStep);
+                const nextPx = v9StepOrderPrice(r0.price, dir, omStep, entryAnchor);
                 if (omStep) omStep.slManuallyPositioned = true;
                 return [{ ...r0, price: nextPx }];
               });
@@ -34707,6 +34732,7 @@ const TalariaV8bLive = () => {
             const stepTp = (id, field, dir, step = 1) => {
               markOrderControlBridge();
               const omStep = window.chart?.orderManager;
+              const entryAnchor = v9ResolveEntryAnchorPrice(omStep, entryRows[0]?.price);
               setTpRows((rows) => {
                 let next = rows.map((r) => {
                   if (r.id !== id) return r;
@@ -34737,7 +34763,7 @@ const TalariaV8bLive = () => {
                     };
                   }
                   if (field === "price") {
-                    const nextPx = v9StepOrderPrice(r[field], dir, omStep);
+                    const nextPx = v9StepOrderPrice(r[field], dir, omStep, entryAnchor);
                     if (omStep) omStep.tpManuallyPositioned = true;
                     return { ...r, [field]: nextPx };
                   }

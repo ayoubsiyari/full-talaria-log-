@@ -13084,6 +13084,11 @@ class OrderManager {
 
         this.updateOrderPanelPrice();
 
+        const enableSL = document.getElementById('enableSL');
+        if (enableSL) enableSL.checked = true;
+        const slInputs = document.getElementById('slInputs');
+        if (slInputs) slInputs.style.display = 'flex';
+
         try {
             window.dispatchEvent(new CustomEvent('talaria:order-rail-reset-draft'));
         } catch (_) { /* ignore */ }
@@ -19997,7 +20002,9 @@ class OrderManager {
 
     /**
      * Weighted average entry for chart preview (multi-entry).
-     * Uses risk/amount weights only — does not filter by min-lot so lines still draw while legs are tight to SL.
+     * Lot-weighted (the real average fill price = Σ price·lots / Σ lots) so the chart
+     * Avg Entry line matches the panel footer Avg. Falls back to risk/amount weighting
+     * when lots aren't sizable yet (no SL set) so the line still draws.
      */
     _calcMultiEntryPreviewAvgPrice() {
         const levels = (this.multiEntryLevels || []).filter((l) => l && l.price > 0);
@@ -20006,6 +20013,18 @@ class OrderManager {
             return Number.isFinite(ep) && ep > 0 ? ep : 0;
         }
         if (levels.length === 1) return levels[0].price;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const ps = this.pipSize || 0.0001;
+        const pv = this.pipValuePerLot || 10;
+        let lotWeighted = 0, lotTotal = 0;
+        for (const l of levels) {
+            const lots = this._calcLevelLotSizeNumeric(l, slPrice, ps, pv);
+            if (lots > 0) {
+                lotWeighted += l.price * lots;
+                lotTotal += lots;
+            }
+        }
+        if (lotTotal > 0) return lotWeighted / lotTotal;
         const totalAmount = levels.reduce((s, l) => s + (Number(l.amount) || 0), 0);
         if (totalAmount > 0) {
             return levels.reduce((s, l) => s + l.price * (Number(l.amount) || 0), 0) / totalAmount;
@@ -20090,10 +20109,12 @@ class OrderManager {
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const ps = this.pipSize || 0.0001;
         const pv = this.pipValuePerLot || 10;
-        const minLot = this.getMarketConfig()?.minSize ?? 0.01;
         let totalWeighted = 0, totalLots = 0;
         for (const l of levels) {
-            if (!this._multiEntryLevelMeetsMinLot(l, slPrice, ps, pv, minLot)) continue;
+            // Include EVERY priced leg with real lots — matches the per-row display
+            // (_calcLevelLotSize) and the placement filter (price>0 && amount>0). Gating
+            // on _multiEntryLevelMeetsMinLot here silently dropped a leg that's tight to SL
+            // (so the footer Avg/Qty disagreed with the rows and with what actually places).
             const lots = this._calcLevelLotSizeNumeric(l, slPrice, ps, pv);
             if (lots > 0) {
                 totalWeighted += l.price * lots;
@@ -20114,11 +20135,13 @@ class OrderManager {
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const pipSize = this.pipSize || 0.0001;
         const pipValue = this.pipValuePerLot || 10;
-        const minLotS = this.getMarketConfig()?.minSize ?? 0.01;
         let totalLots = 0;
         (this.multiEntryLevels || []).forEach(l => {
             if (!(l.price > 0)) return;
-            if (!this._multiEntryLevelMeetsMinLot(l, slPrice, pipSize, pipValue, minLotS)) return;
+            // Sum every priced leg with real lots so the summary Qty matches the per-row
+            // lots and the orders that actually get placed (placement does not gate on
+            // _multiEntryLevelMeetsMinLot). Previously a leg tight to SL was dropped here,
+            // so the footer/SIZE total undercounted what the user is really ordering.
             const lots = this._calcLevelLotSizeNumeric(l, slPrice, pipSize, pipValue);
             if (lots > 0) totalLots += lots;
         });
@@ -32686,15 +32709,82 @@ class OrderManager {
         );
     }
 
+    /** Replay rollback cut in ms (handles sec/ms and legacy string timestamps). */
+    _replayCutoffMs(cutoffTime) {
+        if (cutoffTime == null || !Number.isFinite(Number(cutoffTime))) return null;
+        return this._normalizeMarkerTimestamp(cutoffTime);
+    }
+
+    /** Trade start time aligned with entry markers (fill candle), not shifted openTime. */
+    _effectiveTradeEntryMs(trade) {
+        if (!trade) return null;
+        const raw = trade.entryMarkerTimeMs ?? trade.entry_marker_time_ms
+            ?? trade.openTime ?? trade.entryTime;
+        const ms = this._normalizeMarkerTimestamp(raw);
+        return Number.isFinite(ms) ? ms : null;
+    }
+
+    /** Trade full exit time in ms, or null when still open / unknown. */
+    _effectiveTradeExitMs(trade) {
+        if (!trade) return null;
+        const raw = trade.closeTime ?? trade.exitTime;
+        const ms = this._normalizeMarkerTimestamp(raw);
+        return Number.isFinite(ms) ? ms : null;
+    }
+
+    /**
+     * keepClosed — finished before cut; resurrectOpen — started before cut, still open at cut;
+     * remove — started on/after cut (only the trade(s) you cut forward).
+     */
+    _classifyTradeAtReplayCutoff(trade, cutoffMs) {
+        if (cutoffMs == null || !Number.isFinite(cutoffMs)) return 'remove';
+        const entry = this._effectiveTradeEntryMs(trade);
+        const exit = this._effectiveTradeExitMs(trade);
+        if (entry != null && entry >= cutoffMs) return 'remove';
+        if (exit != null && exit < cutoffMs) return 'keepClosed';
+        if (entry != null && entry < cutoffMs) return 'resurrectOpen';
+        return 'remove';
+    }
+
+    /** Re-open a closed leg at the replay cut (strip close fields; keep partials before cut). */
+    _resurrectClosedPositionForReplayCut(pos, cutoffMs) {
+        const p = { ...pos };
+        p.status = 'OPEN';
+        delete p.closePrice;
+        delete p.closeTime;
+        delete p.closeType;
+        delete p.pnl;
+        delete p.realizedPnL;
+
+        const partials = Array.isArray(p.partialCloses) ? p.partialCloses.slice() : [];
+        if (partials.length > 0) {
+            const kept = partials.filter((pc) => {
+                const pt = this._normalizeMarkerTimestamp(pc.closeTime);
+                return Number.isFinite(pt) && pt < cutoffMs;
+            });
+            const closedLots = kept.reduce((s, pc) => s + (Number(pc.quantity) || 0), 0);
+            const orig = Number(p.originalQuantity ?? p.quantity);
+            p.partialCloses = kept;
+            if (Number.isFinite(orig) && orig > 0) {
+                const remaining = orig - closedLots;
+                p.quantity = remaining > 0 ? remaining : orig;
+            }
+            p.partialClosePnL = kept.reduce((s, pc) => s + (Number(pc.pnl) || 0), 0);
+        }
+
+        return p;
+    }
+
     /**
      * Close/cancel orders and remove trade visuals on rewind ("Go back").
      * @param {number} [cutoffTime] - If provided, only remove trades that
-     *   occurred AFTER this timestamp; trades fully completed before it are
-     *   preserved and their markers will be redrawn after chart data updates.
+     *   started on/after this timestamp; trades fully completed before it are
+     *   preserved; trades that were still open at the cut are restored as open.
      *   If omitted, ALL trades and visuals are wiped (legacy behaviour).
      */
     forceCloseAllOrders(cutoffTime) {
-        const selective = cutoffTime != null && Number.isFinite(cutoffTime);
+        const cutoffMs = this._replayCutoffMs(cutoffTime);
+        const selective = cutoffMs != null;
 
         const allPending = [
             ...(this.pendingOrders || []),
@@ -32706,29 +32796,36 @@ class OrderManager {
         // --- Partition data by cutoff when in selective mode -----------------
         let preservedClosed = [], removedClosedIds = new Set();
         let preservedOpen = [], removedOpen = [];
+        let resurrectedOpen = [];
         let preservedPendingIds = new Set();
 
         if (selective) {
             (this.closedPositions || []).forEach(pos => {
-                const ct = pos.closeTime ?? pos.exitTime;
-                if (ct && ct < cutoffTime) {
+                const kind = this._classifyTradeAtReplayCutoff(pos, cutoffMs);
+                if (kind === 'keepClosed') {
                     preservedClosed.push(pos);
+                } else if (kind === 'resurrectOpen') {
+                    resurrectedOpen.push(this._resurrectClosedPositionForReplayCut(pos, cutoffMs));
+                    removedClosedIds.add(pos.id);
                 } else {
                     removedClosedIds.add(pos.id);
                 }
             });
             (this.openPositions || []).forEach(pos => {
-                if (pos.openTime && pos.openTime < cutoffTime) {
+                const entry = this._effectiveTradeEntryMs(pos);
+                if (entry != null && entry < cutoffMs) {
                     preservedOpen.push(pos);
                 } else {
                     removedOpen.push(pos);
                 }
             });
             allPending.forEach(po => {
-                if (po.placedTime && po.placedTime < cutoffTime) {
+                const placed = this._normalizeMarkerTimestamp(po.placedTime);
+                if (Number.isFinite(placed) && placed < cutoffMs) {
                     preservedPendingIds.add(po.id);
                 }
             });
+            preservedOpen = preservedOpen.concat(resurrectedOpen);
         }
 
         // 1. Cancel pending orders (all, or only future ones) ----------------
@@ -32766,8 +32863,7 @@ class OrderManager {
         if (selective) {
             const j0 = (this.tradeJournal || []).length;
             this.tradeJournal = (this.tradeJournal || []).filter((trade) => {
-                const ct = trade.closeTime ?? trade.exitTime;
-                return ct && Number.isFinite(ct) && ct < cutoffTime;
+                return this._classifyTradeAtReplayCutoff(trade, cutoffMs) === 'keepClosed';
             });
             removedJournalCount = j0 - this.tradeJournal.length;
             if (removedJournalCount > 0) {
@@ -32857,8 +32953,9 @@ class OrderManager {
                 }
                 this.showNotification(msg, 'info');
             }
-            console.log(`🧹 forceCloseAllOrders (selective @ ${cutoffTime}): ` +
-                `kept ${preservedClosed.length} closed + ${preservedOpen.length} open, ` +
+            console.log(`🧹 forceCloseAllOrders (selective @ ${cutoffMs}): ` +
+                `kept ${preservedClosed.length} closed + ${preservedOpen.length} open ` +
+                `(+${resurrectedOpen.length} resurrected), ` +
                 `removed ${removedClosedIds.size} closed + ${removedOpen.length} open, ` +
                 `journal −${removedJournalCount} (now ${(this.tradeJournal || []).length})`);
         } else {
