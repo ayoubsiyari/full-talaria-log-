@@ -1711,6 +1711,93 @@ class OrderManager {
         return Number.isFinite(value) && value > 0 ? value : (this.pipValuePerLot || 10);
     }
 
+    /** Pip/tick step for BE offset + trigger (futures → registry tickSize, else instrument pip). */
+    _getBreakevenUnitSize(ref = null) {
+        const ticker = ref
+            ? (this._positionTicker(ref) || ref.ticker || ref.symbol)
+            : (this._getSymbol() || this._getActiveTicker());
+        if (window.marketCalcEngine && ticker) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(ticker, this.marketType);
+                if (calc?.specs?.type === 'futures' && Number(calc.specs.tickSize) > 0) {
+                    return calc.specs.tickSize;
+                }
+                if (Number(calc?.specs?.pipSize) > 0) return calc.specs.pipSize;
+                if (Number(calc?.specs?.tickSize) > 0) return calc.specs.tickSize;
+            } catch (_) { /* fall through */ }
+        }
+        if (ref) return this._getPositionPipSize(ref);
+        const inst = this._getActiveInstrumentSettings();
+        const pip = Number.parseFloat(inst.pip_size ?? inst.pipSize);
+        if (Number.isFinite(pip) && pip > 0) return pip;
+        return this.pipSize || 0.0001;
+    }
+
+    /** $/lot per pip/tick for BE $-mode and fee offset (panel or open leg). */
+    _getBreakevenPipValue(ref = null, markPrice) {
+        const mark = Number(markPrice);
+        const ticker = ref
+            ? (this._positionTicker(ref) || ref.ticker || ref.symbol)
+            : (this._getSymbol() || this._getActiveTicker());
+        if (window.marketCalcEngine && ticker) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(ticker, this.marketType);
+                if (calc && typeof calc.calcPipValuePerLot === 'function') {
+                    const pv = calc.calcPipValuePerLot(Number.isFinite(mark) && mark > 0 ? mark : undefined);
+                    if (Number.isFinite(pv) && pv > 0) return pv;
+                }
+                if (Number(calc?.specs?.tickValue) > 0) return calc.specs.tickValue;
+            } catch (_) { /* fall through */ }
+        }
+        if (ref) return this._getPositionPipValueForPnL(ref, mark);
+        const inst = this._getActiveInstrumentSettings();
+        const pvl = Number.parseFloat(inst.pip_value_per_lot ?? inst.pipValuePerLot);
+        if (Number.isFinite(pvl) && pvl > 0) return pvl;
+        return this.pipValuePerLot || 10;
+    }
+
+    /**
+     * Entry price that must be reached before auto-BE fires (E1 / first split leg — matches panel ladder).
+     */
+    _beTriggerAnchorEntry(position) {
+        if (!position) return 0;
+        if (position.isSplitEntry && position.splitGroupId) {
+            const first = this._getSplitGroupFirstActivatedEntryPrice(position);
+            if (first > 0) return first;
+        }
+        return Number(position.openPrice) || 0;
+    }
+
+    /** Nearest active TP for BE SL clamp (lowest TP for BUY, highest for SELL). */
+    _resolvePrimaryTakeProfitPrice(position) {
+        if (!position) return null;
+        const side = (position.type || 'BUY').toUpperCase();
+        if (Array.isArray(position.tpTargets) && position.tpTargets.length > 0) {
+            const active = position.tpTargets
+                .map((t) => Number.parseFloat(t?.price))
+                .filter((p) => Number.isFinite(p) && p > 0);
+            if (active.length > 0) {
+                return side === 'BUY' ? Math.min(...active) : Math.max(...active);
+            }
+        }
+        const tp = Number.parseFloat(position.takeProfit);
+        return Number.isFinite(tp) && tp > 0 ? tp : null;
+    }
+
+    /** Keep BE stop on the loss side of TP (one tick/pip buffer) so SL cannot jump past TP. */
+    _clampBreakevenStopLoss(position, proposedSl) {
+        const sl = Number(proposedSl);
+        if (!Number.isFinite(sl)) return proposedSl;
+        const tp = this._resolvePrimaryTakeProfitPrice(position);
+        if (tp == null || !Number.isFinite(tp)) return sl;
+        const unit = this._getBreakevenUnitSize(position);
+        const buf = unit > 0 ? unit : 1e-8;
+        const side = (position.type || 'BUY').toUpperCase();
+        if (side === 'BUY' && sl >= tp - buf) return tp - buf;
+        if (side === 'SELL' && sl <= tp + buf) return tp + buf;
+        return sl;
+    }
+
     /**
      * Pip $/lot aligned with `_enginePnL` / marketCalcEngine (varies with mark on crosses).
      * Falls back to position snapshot when the engine is unavailable.
@@ -2029,12 +2116,14 @@ class OrderManager {
     _slStopAtBreakevenAvgEntry(leg, basketAvgEntry, markForFee, pipOffsetOverride = null) {
         if (!leg) return basketAvgEntry;
         const pipOff = pipOffsetOverride != null ? pipOffsetOverride : (leg.breakevenSettings?.pipOffset || 0);
-        const ps = this._getPositionPipSize(leg);
-        const pipOffsetPrice = pipOff * ps;
+        const unit = this._getBreakevenUnitSize(leg);
+        const pipOffsetPrice = pipOff * unit;
         const netFee = this._getNetBreakevenCommissionPriceOffset(leg, markForFee);
         const side = (leg.type || 'BUY').toUpperCase();
-        if (side === 'SELL') return basketAvgEntry - pipOffsetPrice - netFee;
-        return basketAvgEntry + pipOffsetPrice + netFee;
+        let sl = side === 'SELL'
+            ? basketAvgEntry - pipOffsetPrice - netFee
+            : basketAvgEntry + pipOffsetPrice + netFee;
+        return this._clampBreakevenStopLoss(leg, sl);
     }
 
     /** Order panel preview: anchor entry for BE R/pips/$ (weighted avg when multi-entry split mode). */
@@ -2159,8 +2248,8 @@ class OrderManager {
         const q = Number(position?.quantity) || 0;
         const mark = Number(markPriceForPip);
         const pipMark = Number.isFinite(mark) && mark > 0 ? mark : (Number(position?.openPrice) || undefined);
-        const pipV = this._getPositionPipValueForPnL(position, pipMark);
-        const pipS = this._getPositionPipSize(position);
+        const pipV = this._getBreakevenPipValue(position, pipMark);
+        const pipS = this._getBreakevenUnitSize(position);
         if (!(q > 0) || !(pipV > 0) || !(pipS > 0)) return 0;
         const pips = commUsd / (pipV * q);
         return pips * pipS;
@@ -17303,6 +17392,8 @@ class OrderManager {
             
             const beAnchor = this._breakevenRiskAnchorPriceFromLadder();
             const beLots = this._previewBreakevenAnchorLots();
+            const beUnit = this._getBreakevenUnitSize();
+            const bePipVal = this._getBreakevenPipValue();
             let beTriggerPrice = 0;
             const riskDistance = Math.abs(beAnchor - slPrice);
             
@@ -17318,12 +17409,12 @@ class OrderManager {
                     const rInput = document.getElementById('breakevenPips');
                     if (rInput) { rInput.value = parseFloat(rVal.toFixed(2)); beValue = rVal; }
                 } else if (beMode === 'pips') {
-                    const bePips = Math.round(beDistance / this.pipSize);
+                    const bePips = Math.round(beDistance / beUnit);
                     const pipsInput = document.getElementById('breakevenPips');
                     if (pipsInput) { pipsInput.value = bePips; beValue = bePips; }
                 } else if (beMode === 'amount') {
-                    const bePips = Math.round(beDistance / this.pipSize);
-                    const beAmount = bePips * beLots * this.pipValuePerLot;
+                    const bePips = Math.round(beDistance / beUnit);
+                    const beAmount = bePips * beLots * bePipVal;
                     const amountInput = document.getElementById('breakevenAmount');
                     if (amountInput) { amountInput.value = Math.round(beAmount); beValue = Math.round(beAmount); }
                 }
@@ -17334,14 +17425,14 @@ class OrderManager {
                     ? beAnchor + profitDistance 
                     : beAnchor - profitDistance;
             } else if (beMode === 'pips') {
-                const profitPrice = beValue * this.pipSize;
+                const profitPrice = beValue * beUnit;
                 beTriggerPrice = this.orderSide === 'BUY' 
                     ? beAnchor + profitPrice 
                     : beAnchor - profitPrice;
             } else {
-                const denom = (beLots > 0 ? beLots : quantity) * this.pipValuePerLot;
+                const denom = (beLots > 0 ? beLots : quantity) * bePipVal;
                 const profitPips = beValue / denom;
-                const profitPrice = profitPips * this.pipSize;
+                const profitPrice = profitPips * beUnit;
                 beTriggerPrice = this.orderSide === 'BUY' 
                     ? beAnchor + profitPrice 
                     : beAnchor - profitPrice;
@@ -20852,6 +20943,8 @@ class OrderManager {
 
         const beAnchor = this._breakevenRiskAnchorPriceFromLadder();
         const beLots = this._previewBreakevenAnchorLots();
+        const beUnit = this._getBreakevenUnitSize();
+        const bePipVal = this._getBreakevenPipValue();
         if (!beAnchor) return NaN;
 
         let beTriggerPrice = 0;
@@ -20869,14 +20962,14 @@ class OrderManager {
                 ? beAnchor + profitDistance
                 : beAnchor - profitDistance;
         } else if (beMode === 'pips') {
-            const profitPrice = beValue * this.pipSize;
+            const profitPrice = beValue * beUnit;
             beTriggerPrice = this.orderSide === 'BUY'
                 ? beAnchor + profitPrice
                 : beAnchor - profitPrice;
         } else {
-            const denom = (beLots > 0 ? beLots : quantity) * this.pipValuePerLot;
+            const denom = (beLots > 0 ? beLots : quantity) * bePipVal;
             const profitPips = beValue / denom;
-            const profitPrice = profitPips * this.pipSize;
+            const profitPrice = profitPips * beUnit;
             beTriggerPrice = this.orderSide === 'BUY'
                 ? beAnchor + profitPrice
                 : beAnchor - profitPrice;
@@ -20905,13 +20998,16 @@ class OrderManager {
                 if (rInput) rInput.value = parseFloat(rVal.toFixed(2));
             }
         } else if (beMode === 'pips') {
-            const newPips = profit / this.pipSize;
+            const beUnit = this._getBreakevenUnitSize();
+            const newPips = profit / beUnit;
             const pipsInput = document.getElementById('breakevenPips');
             if (pipsInput) pipsInput.value = Math.round(newPips);
         } else {
-            const profitPips = profit / this.pipSize;
+            const beUnit = this._getBreakevenUnitSize();
+            const bePipVal = this._getBreakevenPipValue();
+            const profitPips = profit / beUnit;
             const qUse = beLots > 0 ? beLots : 1;
-            const newAmount = profitPips * qUse * this.pipValuePerLot;
+            const newAmount = profitPips * qUse * bePipVal;
             const amountInput = document.getElementById('breakevenAmount');
             if (amountInput) amountInput.value = Math.round(newAmount);
             const visibleInput = document.getElementById('breakevenPips');
@@ -23678,13 +23774,16 @@ class OrderManager {
                     ? entryPrice + profitDistance 
                     : entryPrice - profitDistance;
             } else if (breakevenSettings.mode === 'pips') {
-                const profitPrice = breakevenSettings.value * this.pipSize;
+                const beUnit = this._getBreakevenUnitSize();
+                const profitPrice = breakevenSettings.value * beUnit;
                 beTriggerPrice = this.orderSide === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
             } else {
-                const profitPips = breakevenSettings.value / (quantity * this.pipValuePerLot);
-                const profitPrice = profitPips * this.pipSize;
+                const beUnit = this._getBreakevenUnitSize();
+                const bePipVal = this._getBreakevenPipValue();
+                const profitPips = breakevenSettings.value / (quantity * bePipVal);
+                const profitPrice = profitPips * beUnit;
                 beTriggerPrice = this.orderSide === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
@@ -25887,17 +25986,16 @@ class OrderManager {
                 if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
                     !(position.trailingStop && position.trailingStop.activated)) {
                     let shouldTrigger = false;
-                    const posPipSize = this._getPositionPipSize(position);
-                    
-                    // For split-entry groups use weighted avg entry for trigger + placement
-                    const beEntryBuy = this._getSplitGroupAvgEntry(position);
+                    const posPipSize = this._getBreakevenUnitSize(position);
+                    const triggerEntry = this._beTriggerAnchorEntry(position);
+                    const placementEntry = this._getSplitGroupAvgEntry(position);
 
                     if (position.breakevenSettings.mode === 'rr') {
-                        const riskDist = Math.abs(beEntryBuy - position.stopLoss);
+                        const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
-                        shouldTrigger = (high - beEntryBuy) >= triggerDist;
+                        shouldTrigger = (high - triggerEntry) >= triggerDist;
                     } else if (position.breakevenSettings.mode === 'pips') {
-                        const currentPipsProfit = (high - beEntryBuy) / posPipSize;
+                        const currentPipsProfit = (high - triggerEntry) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
                         shouldTrigger = this._replayCandlePlaybackActive()
@@ -25914,8 +26012,9 @@ class OrderManager {
                             ? Number.parseFloat(currentCandle.c)
                             : position.openPrice;
                         const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position, markBePip);
-                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, AvgEntry (BE anchor): ${beEntryBuy.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
-                        position.stopLoss = this._slStopAtBreakevenAvgEntry(position, beEntryBuy, markBePip);
+                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, TriggerEntry: ${triggerEntry.toFixed(5)}, AvgEntry (BE placement): ${placementEntry.toFixed(5)}, pipOffset: ${pipOffset}, unit: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
+                        position.stopLoss = this._slStopAtBreakevenAvgEntry(position, placementEntry, markBePip);
+                        position._slIsBreakevenPlacement = true;
                         console.log(`      New SL = avgEntry + pts + net(fees) → ${position.stopLoss.toFixed(5)} (gross P&L at SL ≈ round-trip commission for this leg)`);
                         position.breakevenSettings.triggered = true;
                         
@@ -25943,7 +26042,7 @@ class OrderManager {
                             (this.openPositions || [])
                                 .filter(p => p.splitGroupId === position.splitGroupId && p.id !== position.id)
                                 .forEach(sib => {
-                                    sib.stopLoss = this._slStopAtBreakevenAvgEntry(sib, beEntryBuy, markBePip, pipOffset);
+                                    sib.stopLoss = this._slStopAtBreakevenAvgEntry(sib, placementEntry, markBePip, pipOffset);
                                     sib._slIsBreakevenPlacement = true;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
                                     sib._beTriggeredBarT = currentCandle.t;
@@ -26216,17 +26315,16 @@ class OrderManager {
                 if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
                     !(position.trailingStop && position.trailingStop.activated)) {
                     let shouldTrigger = false;
-                    const posPipSize = this._getPositionPipSize(position);
-                    
-                    // For split-entry groups use weighted avg entry for trigger + placement
-                    const beEntrySell = this._getSplitGroupAvgEntry(position);
+                    const posPipSize = this._getBreakevenUnitSize(position);
+                    const triggerEntry = this._beTriggerAnchorEntry(position);
+                    const placementEntry = this._getSplitGroupAvgEntry(position);
 
                     if (position.breakevenSettings.mode === 'rr') {
-                        const riskDist = Math.abs(beEntrySell - position.stopLoss);
+                        const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
-                        shouldTrigger = (beEntrySell - low) >= triggerDist;
+                        shouldTrigger = (triggerEntry - low) >= triggerDist;
                     } else if (position.breakevenSettings.mode === 'pips') {
-                        const currentPipsProfit = (beEntrySell - low) / posPipSize;
+                        const currentPipsProfit = (triggerEntry - low) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
                         shouldTrigger = this._replayCandlePlaybackActive()
@@ -26243,8 +26341,9 @@ class OrderManager {
                             ? Number.parseFloat(currentCandle.c)
                             : position.openPrice;
                         const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position, markBePipSell);
-                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, AvgEntry (BE anchor): ${beEntrySell.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
-                        position.stopLoss = this._slStopAtBreakevenAvgEntry(position, beEntrySell, markBePipSell);
+                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, TriggerEntry: ${triggerEntry.toFixed(5)}, AvgEntry (BE placement): ${placementEntry.toFixed(5)}, pipOffset: ${pipOffset}, unit: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
+                        position.stopLoss = this._slStopAtBreakevenAvgEntry(position, placementEntry, markBePipSell);
+                        position._slIsBreakevenPlacement = true;
                         console.log(`      New SL = avgEntry − pts − net(fees) → ${position.stopLoss.toFixed(5)} (gross P&L at SL ≈ round-trip commission for this leg)`);
                         position.breakevenSettings.triggered = true;
                         
@@ -26272,7 +26371,7 @@ class OrderManager {
                             (this.openPositions || [])
                                 .filter(p => p.splitGroupId === position.splitGroupId && p.id !== position.id)
                                 .forEach(sib => {
-                                    sib.stopLoss = this._slStopAtBreakevenAvgEntry(sib, beEntrySell, markBePipSell, pipOffset);
+                                    sib.stopLoss = this._slStopAtBreakevenAvgEntry(sib, placementEntry, markBePipSell, pipOffset);
                                     sib._slIsBreakevenPlacement = true;
                                     sib._beTriggeredBarT = currentCandle.t;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
@@ -27868,9 +27967,11 @@ class OrderManager {
                 startPrice = order.takeProfit;
                 dragStartPrice = order.takeProfit;
             } else if (lineType === 'be') {
-                // For BE line, calculate current trigger price (split: avg entry + group qty)
-                const beRef = self._beChartReferenceEntryOpen(order);
+                // For BE line, calculate current trigger price (first leg anchor + instrument unit size)
+                const beRef = self._beTriggerAnchorEntry(order);
                 const beQ = self._beChartBreakevenQtyOpen(order);
+                const beUnit = self._getBreakevenUnitSize(order);
+                const bePipVal = self._getBreakevenPipValue(order);
                 if (order.breakevenSettings.mode === 'rr') {
                     const riskDist = Math.abs(beRef - order.stopLoss);
                     const profitDistance = order.breakevenSettings.value * riskDist;
@@ -27878,14 +27979,14 @@ class OrderManager {
                         ? beRef + profitDistance
                         : beRef - profitDistance;
                 } else if (order.breakevenSettings.mode === 'pips') {
-                    const profitPrice = order.breakevenSettings.value * self.pipSize;
+                    const profitPrice = order.breakevenSettings.value * beUnit;
                     startPrice = order.type === 'BUY' 
                         ? beRef + profitPrice 
                         : beRef - profitPrice;
                 } else {
-                    const denom = (beQ > 0 ? beQ : Number(order.quantity) || 1) * self.pipValuePerLot;
+                    const denom = (beQ > 0 ? beQ : Number(order.quantity) || 1) * bePipVal;
                     const profitPips = order.breakevenSettings.value / denom;
-                    const profitPrice = profitPips * self.pipSize;
+                    const profitPrice = profitPips * beUnit;
                     startPrice = order.type === 'BUY' 
                         ? beRef + profitPrice 
                         : beRef - profitPrice;
@@ -27973,9 +28074,11 @@ class OrderManager {
                         }
                     }
                 } else if (lineType === 'be') {
-                    // Update breakevenSettings value based on new price (split: vs weighted avg entry)
-                    const beRef = self._beChartReferenceEntryOpen(order);
+                    // Update breakevenSettings value based on new price (vs first-leg trigger anchor)
+                    const beRef = self._beTriggerAnchorEntry(order);
                     const beQ = self._beChartBreakevenQtyOpen(order);
+                    const beUnit = self._getBreakevenUnitSize(order);
+                    const bePipVal = self._getBreakevenPipValue(order);
                     const dist = order.type === 'BUY'
                         ? newPrice - beRef
                         : beRef - newPrice;
@@ -27984,11 +28087,11 @@ class OrderManager {
                             const riskDist = Math.abs(beRef - order.stopLoss);
                             if (riskDist > 0) order.breakevenSettings.value = parseFloat((dist / riskDist).toFixed(2));
                         } else if (order.breakevenSettings.mode === 'pips') {
-                            order.breakevenSettings.value = parseFloat((dist / self.pipSize).toFixed(1));
+                            order.breakevenSettings.value = parseFloat((dist / beUnit).toFixed(1));
                         } else {
-                            const pips = dist / self.pipSize;
+                            const pips = dist / beUnit;
                             const qUse = beQ > 0 ? beQ : (Number(order.quantity) || 1);
-                            order.breakevenSettings.value = parseFloat((pips * qUse * self.pipValuePerLot).toFixed(2));
+                            order.breakevenSettings.value = parseFloat((pips * qUse * bePipVal).toFixed(2));
                         }
                     }
                     if (order.isSplitEntry && order.splitGroupId) {
@@ -31579,14 +31682,17 @@ class OrderManager {
                     ? entryPrice + profitDistance 
                     : entryPrice - profitDistance;
             } else if (pendingOrder.breakevenSettings.mode === 'pips') {
-                const profitPrice = pendingOrder.breakevenSettings.value * this.pipSize;
+                const beUnit = this._getBreakevenUnitSize(pendingOrder);
+                const profitPrice = pendingOrder.breakevenSettings.value * beUnit;
                 beTriggerPrice = pendingOrder.direction === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
             } else {
-                const denom = (beQtyPend > 0 ? beQtyPend : Number(pendingOrder.quantity) || 1) * this.pipValuePerLot;
+                const beUnit = this._getBreakevenUnitSize(pendingOrder);
+                const bePipVal = this._getBreakevenPipValue(pendingOrder);
+                const denom = (beQtyPend > 0 ? beQtyPend : Number(pendingOrder.quantity) || 1) * bePipVal;
                 const profitPips = pendingOrder.breakevenSettings.value / denom;
-                const profitPrice = profitPips * this.pipSize;
+                const profitPrice = profitPips * beUnit;
                 beTriggerPrice = pendingOrder.direction === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
@@ -35299,9 +35405,11 @@ class OrderManager {
         if (order.autoBreakeven && order.breakevenSettings && !order.breakevenSettings.triggered && order.stopLoss) {
             console.log(`  🛡️ Drawing BE trigger line for order #${order.id} (triggered=${order.breakevenSettings.triggered})`);
             
-            // Calculate BE trigger price (split: weighted avg entry + group lots for $ mode — same as updatePositions)
-            const entryPrice = this._beChartReferenceEntryOpen(order);
+            // Calculate BE trigger price (split: first leg for trigger, weighted avg for SL placement)
+            const entryPrice = this._beTriggerAnchorEntry(order);
             const beQty = this._beChartBreakevenQtyOpen(order);
+            const beUnit = this._getBreakevenUnitSize(order);
+            const bePipVal = this._getBreakevenPipValue(order);
             let beTriggerPrice = 0;
             
             if (order.breakevenSettings.mode === 'rr') {
@@ -35311,14 +35419,14 @@ class OrderManager {
                     ? entryPrice + profitDistance
                     : entryPrice - profitDistance;
             } else if (order.breakevenSettings.mode === 'pips') {
-                const profitPrice = order.breakevenSettings.value * this.pipSize;
+                const profitPrice = order.breakevenSettings.value * beUnit;
                 beTriggerPrice = order.type === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
             } else {
-                const denom = (beQty > 0 ? beQty : Number(order.quantity) || 1) * this.pipValuePerLot;
+                const denom = (beQty > 0 ? beQty : Number(order.quantity) || 1) * bePipVal;
                 const profitPips = order.breakevenSettings.value / denom;
-                const profitPrice = profitPips * this.pipSize;
+                const profitPrice = profitPips * beUnit;
                 beTriggerPrice = order.type === 'BUY' 
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;

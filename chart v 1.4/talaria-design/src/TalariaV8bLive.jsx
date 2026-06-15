@@ -9420,7 +9420,7 @@ const TalariaV8bLive = () => {
   const [slBeUnit, setSlBeUnit] = useState("rr"); // "rr" | "pips" | "dollar"
   const [slBeUnitDrop, setSlBeUnitDrop] = useState(false);
   const [slBeTrigger, setSlBeTrigger] = useState("1.5");
-  const [slBeOffset, setSlBeOffset] = useState("5");
+  const [slBeOffset, setSlBeOffset] = useState("0");
   const [slTslUnit, setSlTslUnit] = useState("rr"); // "rr" | "pips" | "dollar"
   const [slTslUnitDrop, setSlTslUnitDrop] = useState(false);
   const [slTslActivation, setSlTslActivation] = useState("1");
