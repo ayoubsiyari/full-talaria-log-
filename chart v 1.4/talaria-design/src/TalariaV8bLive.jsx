@@ -14686,8 +14686,16 @@ const TalariaV8bLive = () => {
               spreadHdr = `${Number.isInteger(spreadTicks) ? String(spreadTicks) : spreadTicks.toFixed(2)} ticks`;
             if (Number.isFinite(commSide) && commSide > 0) commHdr = `$${(commSide * 2).toFixed(2)}`;
           } else if (mt === "forex") {
-            const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? 0);
-            const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+            const spread = Number.parseFloat(
+              inst.spread_pips ?? inst.spreadPips ?? inst.spread ?? 0
+            );
+            const comm = Number.parseFloat(
+              inst.commission_per_lot_per_side ??
+                inst.commissionPerLotPerSide ??
+                inst.commission_per_lot ??
+                inst.commission ??
+                0
+            );
             const cfg = typeof om.getMarketConfig === "function" ? om.getMarketConfig() : {};
             const pipUnit = cfg?.showTicks ? "pts" : "pips";
             if (Number.isFinite(spread))

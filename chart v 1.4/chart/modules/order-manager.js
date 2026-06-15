@@ -1731,21 +1731,73 @@ class OrderManager {
     }
 
     /**
+     * Read spread / commission from instrument row — `spread_pips: 0` from a bad materialize pass
+     * must not block fallback to legacy `spread` / `commission` fields on the same row.
+     */
+    _readInstrumentSpreadPips(inst) {
+        if (!inst || typeof inst !== 'object') return 0;
+        const fromPips = Number.parseFloat(inst.spread_pips ?? inst.spreadPips);
+        if (Number.isFinite(fromPips) && fromPips > 0) return fromPips;
+        const fromRaw = Number.parseFloat(inst.spread);
+        if (Number.isFinite(fromRaw) && fromRaw > 0) return fromRaw;
+        return Number.isFinite(fromPips) ? fromPips : 0;
+    }
+
+    _readInstrumentCommissionPerSide(inst) {
+        if (!inst || typeof inst !== 'object') return 0;
+        const fromSide = Number.parseFloat(
+            inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? inst.commission_per_lot
+        );
+        if (Number.isFinite(fromSide) && fromSide > 0) return fromSide;
+        const raw = Number.parseFloat(inst.commission);
+        if (!Number.isFinite(raw) || !(raw > 0)) return Number.isFinite(fromSide) ? fromSide : 0;
+        const asset = String(inst.asset_class || inst.assetClass || this.marketType || '').toLowerCase();
+        if (asset.includes('stock') || asset.includes('equit') || asset.includes('crypto')) return raw;
+        return raw / 2;
+    }
+
+    _ensureInstrumentCostFieldsMaterialized(inst, ticker) {
+        const t = String(ticker || inst?.ticker || this._getActiveTicker() || '').toUpperCase();
+        const norm = t.replace(/\//g, '');
+        let row = inst && typeof inst === 'object' ? { ...inst } : { ticker: t || norm };
+
+        let spread = this._readInstrumentSpreadPips(row);
+        let commSide = this._readInstrumentCommissionPerSide(row);
+
+        if (!(spread > 0) || !(commSide > 0)) {
+            const sess = this.chart?.backtestingSession;
+            const map = sess?.instruments;
+            const fallback = (map && (map[norm] || map[t])) || null;
+            if (fallback) {
+                if (!(spread > 0)) spread = this._readInstrumentSpreadPips(fallback);
+                if (!(commSide > 0)) commSide = this._readInstrumentCommissionPerSide(fallback);
+            }
+        }
+
+        row.spread_pips = spread;
+        row.spreadPips = spread;
+        row.commission_per_lot_per_side = commSide;
+        row.commissionPerLotPerSide = commSide;
+        row.commission_per_lot = commSide;
+        if (t) row.ticker = t;
+        return row;
+    }
+
+    /**
      * $/lot/side for commission — position snapshot first, then session instrument (same ticker).
      * If both are missing, net-BE offset is 0 and SL stays at gross entry → journal can still show −2×comm×lots.
      */
     _getCommissionPerLotSideForPosition(position) {
         const st = position?.instrument_settings || {};
-        let perSide = Number.parseFloat(
-            st.commission_per_lot ?? st.commission_per_lot_per_side ?? st.commissionPerLotPerSide ?? 0
-        ) || 0;
+        let perSide = this._readInstrumentCommissionPerSide(st);
         if (perSide > 0) return perSide;
         const t = this._positionTicker(position);
         if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function' && t) {
-            const inst = this.orderService.getInstrumentSettings(t, {});
-            perSide = Number.parseFloat(
-                inst.commission_per_lot ?? inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0
-            ) || 0;
+            const inst = this._ensureInstrumentCostFieldsMaterialized(
+                this.orderService.getInstrumentSettings(t, {}),
+                t
+            );
+            perSide = this._readInstrumentCommissionPerSide(inst);
         }
         return perSide;
     }
@@ -1770,12 +1822,15 @@ class OrderManager {
     /** Session spread in native units (pips for forex, ticks for futures — stored as spread_pips). */
     _getSpreadPipsForPosition(position) {
         const st = position?.instrument_settings || position || {};
-        let spread = Number.parseFloat(st.spread_pips ?? st.spreadPips ?? st.spread ?? 0) || 0;
+        let spread = this._readInstrumentSpreadPips(st);
         if (!(spread > 0)) {
             const t = this._positionTicker(position) || st.ticker;
             if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function' && t) {
-                const inst = this.orderService.getInstrumentSettings(t, {});
-                spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? inst.spread ?? 0) || 0;
+                const inst = this._ensureInstrumentCostFieldsMaterialized(
+                    this.orderService.getInstrumentSettings(t, {}),
+                    t
+                );
+                spread = this._readInstrumentSpreadPips(inst);
             }
         }
         return spread;
@@ -2494,7 +2549,7 @@ class OrderManager {
                 }
             } catch (e) { /* keep session / fallback base */ }
         }
-        return base;
+        return this._ensureInstrumentCostFieldsMaterialized(base, ticker);
     }
 
     /**
@@ -2510,8 +2565,8 @@ class OrderManager {
         }
         const cfg = this.getMarketConfig();
         const inst = this._getActiveInstrumentSettings();
-        const spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? 0);
-        const comm = Number.parseFloat(inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0);
+        const spread = this._readInstrumentSpreadPips(inst);
+        const comm = this._readInstrumentCommissionPerSide(inst);
         const pipUnit = cfg.showTicks ? 'pts' : 'pips';
         const spreadStr = Number.isFinite(spread)
             ? (Math.abs(spread) >= 100 ? spread.toFixed(1) : spread.toFixed(2))

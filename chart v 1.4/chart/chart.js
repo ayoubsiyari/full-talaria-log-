@@ -1060,9 +1060,17 @@ class Chart {
                     row.commission_per_lot_per_side ??
                         row.commissionPerLotPerSide ??
                         row.commission_per_lot ??
-                        row.commission ??
                         0,
                 ) || 0;
+
+            if (!(commSide > 0)) {
+                const rawComm = Number.parseFloat(row.commission ?? 0) || 0;
+                if (rawComm > 0) {
+                    const asset = classifyAsset(String(row.ticker || key).toUpperCase(), row);
+                    commSide =
+                        asset === 'Forex' || asset === 'Futures' ? rtToPerSide(rawComm) : rawComm;
+                }
+            }
 
             if (tc) {
                 const ticker = String(row.ticker || key).toUpperCase();
@@ -1090,18 +1098,6 @@ class Chart {
                     if (bucket && bucket.commission != null && bucket.commission !== '') {
                         commSide = rtToPerSide(bucket.commission);
                     }
-                }
-            }
-
-            const hasExplicitPerSide =
-                (row.commission_per_lot_per_side != null && row.commission_per_lot_per_side !== '') ||
-                (row.commissionPerLotPerSide != null && row.commissionPerLotPerSide !== '') ||
-                (row.commission_per_lot != null && row.commission_per_lot !== '');
-
-            if (!hasExplicitPerSide && commSide > 0) {
-                const asset = classifyAsset(String(row.ticker || key).toUpperCase(), row);
-                if (asset === 'Forex' || asset === 'Futures') {
-                    commSide = rtToPerSide(commSide);
                 }
             }
 
