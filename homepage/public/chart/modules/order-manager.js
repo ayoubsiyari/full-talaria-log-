@@ -630,7 +630,7 @@ class OrderManager {
         svg.selectAll('.preview-line-hit').remove();
         svg.selectAll('.preview-label-group').remove();
         svg.selectAll('.preview-badge-group').remove();
-        svg.selectAll('.y-axis-price-highlight').remove();
+        svg.selectAll('.preview-y-axis-highlight').remove();
         svg.selectAll('.split-entry-line').remove();
         svg.selectAll('.split-entry-label-group').remove();
         svg.selectAll('.split-drag-ghost').remove();
@@ -17047,7 +17047,7 @@ class OrderManager {
         
         // Add Y-axis price highlight for all preview lines (BE: line shows "BE @ …" only; axis shows the level price)
         const axisClassLabel = (typeof label === 'string' && label.startsWith('BE @')) ? 'be' : label;
-        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, axisClassLabel, 0, chart);
+        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, axisClassLabel, 0, chart, { isPreview: true });
         if (disabled && lineData.yAxisHighlight) {
             lineData.yAxisHighlight.style('opacity', 0.45);
         }
@@ -21697,16 +21697,17 @@ class OrderManager {
         }
     }
 
-    drawYAxisPriceHighlight(price, color, label, yOffset = 0, targetChart = null) {
+    drawYAxisPriceHighlight(price, color, label, yOffset = 0, targetChart = null, opts = null) {
         const hChart = targetChart || this.chart;
         if (!hChart?.scales?.yScale || !hChart?.svg) return null;
 
         const y = hChart.scales.yScale(price);
         const priceText = this.formatPrice(price);
+        const isPreview = !!(opts && opts.isPreview);
         
         // Create highlight group on the Y-axis with high z-index
         const highlightGroup = hChart.svg.append('g')
-            .attr('class', `y-axis-price-highlight y-axis-${label.toLowerCase()}-highlight`)
+            .attr('class', `y-axis-price-highlight y-axis-${label.toLowerCase()}-highlight${isPreview ? ' preview-y-axis-highlight' : ''}`)
             .style('pointer-events', 'none')
             .style('isolation', 'isolate');
 

@@ -20917,16 +20917,22 @@ class Chart {
             if (isCalendarTf) {
                 isRound = (idx - scanFrom) % Math.max(1, labelInterval) === 0;
             } else if (useReplayIndexCadence) {
-                // Replay intraday mode: keep axis cadence tied to candle index
-                // so labels stay visually ranged while running and paused.
-                // Anchor the modulo to the LAST bar, not raw index 0: a backward-pan
-                // history load shifts every index by the number of prepended bars,
-                // which (with a raw `idx % interval`) re-aligned the whole tick set
-                // and made the axis rebuild mid-drag. (idx - lastIdx) shifts by the
-                // same amount, so the cadence stays fixed while dragging.
-                const liv = Math.max(1, labelInterval);
-                const anchorIdx = this.data.length - 1;
-                isRound = ((((idx - anchorIdx) % liv) + liv) % liv) === 0;
+                // Anchor cadence to ABSOLUTE local time (same as manual panning),
+                // NOT to a bar index. Index-anchored cadence pinned the grid/time
+                // ticks to fixed pixels while the replay playhead advanced — they
+                // relabeled in place instead of scrolling with the candles. Time
+                // anchoring ties each tick to a specific bar, so the whole grid +
+                // time axis moves as one with the chart during replay, exactly like
+                // dragging. (tickAlignmentBaseTs is local midnight → stable across
+                // history loads too, so it doesn't jump when older bars stream in.)
+                const deltaFromBase = candle.t - tickAlignmentBaseTs;
+                if (labelIntervalMs > 0 && Number.isFinite(deltaFromBase)) {
+                    const rem = ((deltaFromBase % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
+                    const tol = 0.5;
+                    isRound = rem < tol || rem > labelIntervalMs - tol;
+                } else {
+                    isRound = false;
+                }
             } else {
                 // Keep intraday cadence deterministic without depending on timezone offset.
                 // Tolerant divisibility: strict `delta % interval === 0` can miss ticks across
@@ -20992,11 +20998,10 @@ class Chart {
                 pPrevDay = pDay; pPrevMonth = pMonth; pPrevYear = pYear;
 
                 let pIsRound;
-                if (useReplayIndexCadence) {
-                    const liv = Math.max(1, labelInterval);
-                    const anchorIdx = this.data.length - 1;
-                    pIsRound = ((((pi - anchorIdx) % liv) + liv) % liv) === 0;
-                } else {
+                {
+                    // Time-anchored (matches the visible-range cadence above) so the
+                    // projected left-edge ticks line up with and scroll alongside the
+                    // real ones — for both replay and manual panning.
                     const deltaFromBase = ts - tickAlignmentBaseTs;
                     const rem = ((deltaFromBase % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
                     const tol = 0.5;
