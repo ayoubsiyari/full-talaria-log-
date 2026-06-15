@@ -36716,6 +36716,7 @@ class OrderManager {
         const ch = sourceChart || this.chart;
         if (ch?.svg) {
             this._purgeOrderOverlayArtifacts(ch);
+            this._reconcileOrphanLabelAccents(ch);
             this._ensureLevelCtrlHover(ch);
         }
         if (!ch?.scales) {
@@ -37189,6 +37190,60 @@ class OrderManager {
         if (!ch) return 0;
         const yAxisWidth = ch.margin?.r || 70;
         return ch.w - yAxisWidth - 6;
+    }
+
+    /**
+     * Remove orphaned `*-label-accent` rects whose order is no longer live. These vertical
+     * accent strips are appended straight to `chart.svg` (not inside a label group), so the
+     * line/connector purges never touch them. When an order transitions pending→executed or
+     * is deleted on a TP/SL hit, the stale accent lingers as a "small line" near the levels.
+     * Pending and executed share an id, so we must match by accent TYPE (pending/order/sl/tp/be)
+     * against the matching live registry, not just the id.
+     */
+    _reconcileOrphanLabelAccents(ch) {
+        if (!ch?.svg?.selectAll) return;
+        const pendingIds = new Set();
+        (this.pendingOrders || []).forEach((o) => { if (o?.id != null) pendingIds.add(String(o.id)); });
+        (this.orderLines || []).forEach((o) => { if (o?.isPending && o.orderId != null) pendingIds.add(String(o.orderId)); });
+        const execIds = new Set();
+        (this.orderLines || []).forEach((o) => { if (!o?.isPending && o?.orderId != null) execIds.add(String(o.orderId)); });
+        (this.positions || this.openPositions || []).forEach((p) => { if (p?.id != null) execIds.add(String(p.id)); });
+        const idSet = (arr) => {
+            const s = new Set();
+            (arr || []).forEach((o) => { if (o?.orderId != null) s.add(String(o.orderId)); });
+            return s;
+        };
+        const slIds = idSet(this.slLines);
+        const tpIds = idSet(this.tpLines);
+        const beIds = idSet(this.beLines);
+
+        const isLive = (cls) => {
+            const id = (re) => { const m = cls.match(re); return m ? m[1] : null; };
+            if (cls.includes('pending-order-label-accent')) {
+                const i = id(/\bpending-(\d+)\b/); return i == null || pendingIds.has(i);
+            }
+            if (cls.includes('sl-label-accent')) {
+                const i = id(/\bsl-(\d+)\b/); return i == null || slIds.has(i);
+            }
+            if (cls.includes('tp-label-accent')) {
+                const i = id(/\btp-(\d+)\b/); return i == null || tpIds.has(i);
+            }
+            if (cls.includes('be-label-accent')) {
+                const i = id(/\bbe-(\d+)\b/); return i == null || beIds.has(i);
+            }
+            if (cls.includes('order-label-accent')) {
+                const i = id(/\border-(\d+)\b/); return i == null || execIds.has(i);
+            }
+            return true;
+        };
+
+        ch.svg.selectAll('[class*="label-accent"]').each(function () {
+            const cls = (this.getAttribute && this.getAttribute('class')) || '';
+            if (!cls.includes('label-accent')) return;
+            if (!isLive(cls)) {
+                try { this.remove(); } catch (_) { /* ignore */ }
+            }
+        });
     }
 
     /** Dedupe orphan `.order-line` / `.pending-order-line` DOM nodes (registry is source of truth). */

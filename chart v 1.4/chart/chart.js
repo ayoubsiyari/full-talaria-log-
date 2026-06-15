@@ -1017,11 +1017,9 @@ class Chart {
         if (!instruments || typeof instruments !== 'object') return;
 
         const commissionRaw = normalized.commission;
-        const costsOff =
-            commissionRaw === 'None' ||
-            commissionRaw === 'none' ||
-            commissionRaw === '' ||
-            normalized.trading_costs == null;
+        // Only explicit "None" disables costs — legacy sessions may have per-instrument
+        // spread/commission without a trading_costs bundle.
+        const costsOff = commissionRaw === 'None' || commissionRaw === 'none';
 
         const tc =
             normalized.trading_costs && typeof normalized.trading_costs === 'object'
@@ -1092,6 +1090,18 @@ class Chart {
                     if (bucket && bucket.commission != null && bucket.commission !== '') {
                         commSide = rtToPerSide(bucket.commission);
                     }
+                }
+            }
+
+            const hasExplicitPerSide =
+                (row.commission_per_lot_per_side != null && row.commission_per_lot_per_side !== '') ||
+                (row.commissionPerLotPerSide != null && row.commissionPerLotPerSide !== '') ||
+                (row.commission_per_lot != null && row.commission_per_lot !== '');
+
+            if (!hasExplicitPerSide && commSide > 0) {
+                const asset = classifyAsset(String(row.ticker || key).toUpperCase(), row);
+                if (asset === 'Forex' || asset === 'Futures') {
+                    commSide = rtToPerSide(commSide);
                 }
             }
 
