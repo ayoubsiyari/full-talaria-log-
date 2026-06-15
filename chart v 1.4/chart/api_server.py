@@ -19157,6 +19157,16 @@ def _merge_csv_tail_onto_1m_candles(
     if not candles:
         return candles
     last_ts = float(candles[-1]["t"])
+    # Only relevant when the served window actually reaches the binary's tail
+    # (i.e. the user is viewing the most recent bars and a FirstRate merge left
+    # the CSV ahead of stale tiles). For backward pans into old history,
+    # `last_ts` is far below the binary's end — appending the recent CSV tail
+    # would be WRONG (it dumps the newest bars onto an old window, e.g. a 2019
+    # window came back with `returned: 26524` instead of the requested ~1500)
+    # AND it costs a 25k-line CSV read on every pan request (~4.5s). Skip it.
+    bin_last = _chart_binary_last_ts_ms(int(file_id), "1m")
+    if bin_last is not None and last_ts < float(bin_last) - _CSV_AHEAD_OF_BINARY_SLACK_MS:
+        return candles
     if not _csv_ahead_of_chart_binary(int(file_id), db_file, served_last_ts=last_ts):
         return candles
     csv_path = _resolve_dataset_csv_for_file(db_file)
