@@ -2352,18 +2352,17 @@ class OrderManager {
         if (!risk || risk <= 0) return null;
 
         const parts = Array.isArray(position.partialCloses) ? position.partialCloses : [];
-        let pnl_gross = 0;
+        let pnl_net = 0;
         let commission_total = 0;
 
         parts.forEach(pc => {
-            pnl_gross += (pc.pnl || 0);
+            pnl_net += (pc.pnl || 0);
             commission_total += (pc.commission || 0);
         });
-        // Add the final-leg PnL (already on position after full close)
-        pnl_gross += (position.finalClosePnL || 0);
+        pnl_net += (position.finalClosePnL || position.pnl || 0);
         commission_total += (position.finalCommission || 0);
 
-        const pnl_net = pnl_gross - commission_total;
+        const pnl_gross = pnl_net + commission_total;
         return {
             actual_rr_gross: pnl_gross / risk,
             actual_rr_net:   pnl_net  / risk,
@@ -22573,6 +22572,16 @@ class OrderManager {
      */
     _syncPendingLimitStopConnector() {
         this._removePendingLimitStopConnector();
+        // The vertical entry/TP/SL guide was removed from the design, but stale vertical
+        // stubs (x1≈x2, connector colors) can orphan onto the draft-preview SVG and show
+        // up as a "small line" glitch near the levels. Candles render to <canvas>, so a
+        // vertical-line sweep of the SVG overlay is safe (it never touches price bars and
+        // skips the horizontal entry/TP/SL/BE level lines).
+        const ch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (ch?.svg) {
+            this._purgeOrphanVerticalConnectorLines(ch.svg, ch, { fullPlot: true });
+            this._purgeDetachedConnectorGraphics(ch.svg, ch, { fullPlot: true });
+        }
     }
 
     validateOrder(orderType, orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity = null, positionSizeMode = null, slEnabled = false) {
@@ -31423,14 +31432,24 @@ class OrderManager {
             });
         } else if (pendingOrder.takeProfit) {
             // Single TP - calculate P&L (sum all legs for scale-in)
-            let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.takeProfit, quantity);
+            let tpPnL = this._estimateNetPnLPreview(
+                pendingOrder.direction || pendingOrder.type,
+                pendingOrder.entryPrice,
+                pendingOrder.takeProfit,
+                quantity
+            );
             let totalTpQty = quantity;
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 tpPnL = members.reduce((sum, m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return sum;
-                    return sum + this.estimateOpenLegPnLSlice(m, pendingOrder.takeProfit, q);
+                    return sum + this._estimateNetPnLPreview(
+                        m.direction || m.type,
+                        m.entryPrice,
+                        pendingOrder.takeProfit,
+                        q
+                    );
                 }, 0);
                 totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             }
@@ -31447,18 +31466,25 @@ class OrderManager {
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 let gross = 0;
-                let comm = 0;
                 members.forEach((m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return;
-                    gross += this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
-                    comm += this._getRoundTripCommissionUsd(m);
+                    gross += this._estimateNetPnLPreview(
+                        m.direction || m.type,
+                        m.entryPrice,
+                        pendingOrder.stopLoss,
+                        q
+                    );
                 });
-                slPnL = gross - comm;
+                slPnL = gross;
                 totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             } else {
-                slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity)
-                    - this._getRoundTripCommissionUsd(pendingOrder);
+                slPnL = this._estimateNetPnLPreview(
+                    pendingOrder.direction || pendingOrder.type,
+                    pendingOrder.entryPrice,
+                    pendingOrder.stopLoss,
+                    quantity
+                );
             }
             const labelText = `SL  ${totalSlQty.toFixed(2)}`;
             const pnlStr = `${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
@@ -31775,18 +31801,25 @@ class OrderManager {
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 let gross = 0;
-                let comm = 0;
                 members.forEach((m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return;
-                    gross += this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
-                    comm += this._getRoundTripCommissionUsd(m);
+                    gross += this._estimateNetPnLPreview(
+                        m.direction || m.type,
+                        m.entryPrice,
+                        pendingOrder.stopLoss,
+                        q
+                    );
                 });
-                slPnL = gross - comm;
+                slPnL = gross;
                 totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             } else {
-                slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity)
-                    - this._getRoundTripCommissionUsd(pendingOrder);
+                slPnL = this._estimateNetPnLPreview(
+                    pendingOrder.direction || pendingOrder.type,
+                    pendingOrder.entryPrice,
+                    pendingOrder.stopLoss,
+                    quantity
+                );
             }
             tag.text(`SL  ${totalSlQty.toFixed(2)}`);
             if (!detail.empty()) detail.text(`${slPnL >= 0 ? '+' : ''}${slPnL.toFixed(2)}`);
@@ -31816,14 +31849,24 @@ class OrderManager {
             }
             const tpPrice = dragPx ?? pendingOrder.takeProfit;
             if (tpPrice) {
-                let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, tpPrice, quantity);
+                let tpPnL = this._estimateNetPnLPreview(
+                    pendingOrder.direction || pendingOrder.type,
+                    pendingOrder.entryPrice,
+                    tpPrice,
+                    quantity
+                );
                 let totalTpQty = quantity;
                 if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                     const members = this._getSplitGroupPendingOrders(pendingOrder);
                     tpPnL = members.reduce((sum, m) => {
                         const q = Number(m.quantity) || 0;
                         if (q <= 0) return sum;
-                        return sum + this.estimateOpenLegPnLSlice(m, tpPrice, q);
+                        return sum + this._estimateNetPnLPreview(
+                            m.direction || m.type,
+                            m.entryPrice,
+                            tpPrice,
+                            q
+                        );
                     }, 0);
                     totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
                 }
@@ -35055,13 +35098,13 @@ class OrderManager {
             console.log(`  🎯 Drawing single TP line at ${order.takeProfit.toFixed(2)}`);
             
             // Calculate potential profit at TP — sum all legs for scale-in
-            let tpPnL = this.estimateOpenLegPnLSlice(order, order.takeProfit, Number(order.quantity) || 0);
+            let tpPnL = this._estimateNetPnLAtExitLevel(order, order.takeProfit, Number(order.quantity) || 0);
             if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
                 const members = this._getSplitGroupOpenPositions(order);
                 tpPnL = members.reduce((sum, m) => {
                     const mq = Number(m.quantity) || 0;
                     if (mq <= 0) return sum;
-                    return sum + this.estimateOpenLegPnLSlice(m, order.takeProfit, mq);
+                    return sum + this._estimateNetPnLAtExitLevel(m, order.takeProfit, mq);
                 }, 0);
             }
             

@@ -22479,6 +22479,16 @@ class OrderManager {
      */
     _syncPendingLimitStopConnector() {
         this._removePendingLimitStopConnector();
+        // The vertical entry/TP/SL guide was removed from the design, but stale vertical
+        // stubs (x1≈x2, connector colors) can orphan onto the draft-preview SVG and show
+        // up as a "small line" glitch near the levels. Candles render to <canvas>, so a
+        // vertical-line sweep of the SVG overlay is safe (it never touches price bars and
+        // skips the horizontal entry/TP/SL/BE level lines).
+        const ch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (ch?.svg) {
+            this._purgeOrphanVerticalConnectorLines(ch.svg, ch, { fullPlot: true });
+            this._purgeDetachedConnectorGraphics(ch.svg, ch, { fullPlot: true });
+        }
     }
 
     validateOrder(orderType, orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity = null, positionSizeMode = null, slEnabled = false) {
