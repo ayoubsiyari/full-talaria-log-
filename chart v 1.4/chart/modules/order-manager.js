@@ -14857,6 +14857,11 @@ class OrderManager {
                 if (Number.isFinite(actualRisk) && actualRisk > 0) risk = actualRisk;
             }
         }
+
+        if (hasValidSL && slContextEntry > 0 && slPrice > 0 && quantity > 0 && this.positionSizeMode === 'lot-size') {
+            const netAtSl = this._estimateNetPnLPreview(this.orderSide, slContextEntry, slPrice, quantity);
+            if (Number.isFinite(netAtSl) && netAtSl < 0) risk = Math.abs(netAtSl);
+        }
         
         // Reward: use MarketCalculationEngine (same as chart TP/SL labels) so JPY / cross / tick
         // specs match position sizing; manual pipSize×pipValue can be wrong and inflate $ reward.
@@ -14884,7 +14889,7 @@ class OrderManager {
                         
                         if (priceDiff > 0) {
                             const partialQuantity = qtyForReward * (ePct / 100);
-                            const partialReward = Math.max(0, this.estimatePnLForPriceLevel(
+                            const partialReward = Math.max(0, this._estimateNetPnLPreview(
                                 this.orderSide, effectiveEntryForReward, tpPx, partialQuantity));
                             reward += partialReward;
                             console.log(`      Added ${partialReward.toFixed(2)}, total reward now: ${reward.toFixed(2)}`);
@@ -14913,12 +14918,12 @@ class OrderManager {
                             if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
                             const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
                             if (lots > 0) {
-                                reward += this.estimatePnLForPriceLevel(this.orderSide, l.price, tpPrice, lots);
+                                reward += this._estimateNetPnLPreview(this.orderSide, l.price, tpPrice, lots);
                             }
                         }
                         reward = Math.max(0, reward);
                     } else {
-                        reward = Math.max(0, this.estimatePnLForPriceLevel(
+                        reward = Math.max(0, this._estimateNetPnLPreview(
                             this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward));
                     }
                 }
@@ -15846,7 +15851,7 @@ class OrderManager {
             if (entryPrice > 0 && target.price > 0 && effectivePct > 0) {
                 const shareQty = quantity * (effectivePct / 100);
                 if (shareQty > 0) {
-                    profitUsd = Math.max(0, this.estimatePnLForPriceLevel(side, entryPrice, target.price, shareQty));
+                    profitUsd = Math.max(0, this._estimateNetPnLPreview(side, entryPrice, target.price, shareQty));
                 }
             }
 
@@ -15887,7 +15892,7 @@ class OrderManager {
                 if (entryPrice > 0 && t.price > 0 && ePct > 0) {
                     const shareQ = quantity * (ePct / 100);
                     if (shareQ > 0) {
-                        totalProfit += Math.max(0, this.estimatePnLForPriceLevel(side, entryPrice, t.price, shareQ));
+                        totalProfit += Math.max(0, this._estimateNetPnLPreview(side, entryPrice, t.price, shareQ));
                     }
                 }
             });
@@ -23093,7 +23098,11 @@ class OrderManager {
                 })();
 
                 if (effectiveOrderType === 'market') {
-                    const fillPx = currentPrice;
+                    const fillPx = this._applyHalfSpreadEntryPrice(
+                        currentPrice,
+                        this.orderSide,
+                        { instrument_settings: activeInstrumentSettings, ticker: activeTicker }
+                    );
                     const order = {
                         id: this.orderIdCounter++,
                         symbol: activeTicker,
@@ -23513,6 +23522,8 @@ class OrderManager {
         }
         
         // Market order: execute immediately
+        const fillInstRef = { instrument_settings: activeInstrumentSettings, ticker: activeTicker };
+        entryPrice = this._applyHalfSpreadEntryPrice(entryPrice, this.orderSide, fillInstRef);
         const order = {
             id: this.orderIdCounter++,
             symbol: activeTicker,
@@ -24297,7 +24308,13 @@ class OrderManager {
             return;
         }
         
-        const price = currentCandle.c;
+        const act = this._getActiveTicker();
+        const inst = this._getActiveInstrumentSettings();
+        const price = this._applyHalfSpreadEntryPrice(
+            currentCandle.c,
+            'BUY',
+            { instrument_settings: inst, ticker: act }
+        );
         const ctxChart = this._getOrderContextChart() || this.chart;
         const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
@@ -24306,12 +24323,12 @@ class OrderManager {
         const defaultSL = price - (50 * pipSize);
         const defaultTP = price + (100 * pipSize);
         
-        const act = this._getActiveTicker();
         const order = {
             id: this.orderIdCounter++,
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
+            instrument_settings: inst,
             type: 'BUY',
             openPrice: price,
             openTime: timestamp,
@@ -24360,7 +24377,13 @@ class OrderManager {
             return;
         }
         
-        const price = currentCandle.c;
+        const act = this._getActiveTicker();
+        const inst = this._getActiveInstrumentSettings();
+        const price = this._applyHalfSpreadEntryPrice(
+            currentCandle.c,
+            'SELL',
+            { instrument_settings: inst, ticker: act }
+        );
         const ctxChart = this._getOrderContextChart() || this.chart;
         const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
@@ -24369,12 +24392,12 @@ class OrderManager {
         const defaultSL = price + (50 * pipSize);
         const defaultTP = price - (100 * pipSize);
         
-        const act = this._getActiveTicker();
         const order = {
             id: this.orderIdCounter++,
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
+            instrument_settings: inst,
             type: 'SELL',
             openPrice: price,
             openTime: timestamp,
@@ -24579,17 +24602,11 @@ class OrderManager {
         }
         const closeTime = currentCandle.t;
         
-        // Calculate P&L via MarketCalculationEngine (correct formula per asset class)
-        // Falls back to pipSize×pipValuePerLot when engine is unavailable.
-        const pnl = this._enginePnL(
-            position.type,
-            position.openPrice,
-            closePrice,
-            position.quantity,
-            closePrice,
-            position.ticker || position.symbol || this._getActiveTicker(),
-            position.instrument_settings || null
-        );
+        const execClosePrice = this._applyHalfSpreadExitPrice(closePrice, position.type, position);
+        const gross = this.estimateOpenLegPnLSlice(position, execClosePrice, position.quantity);
+        const commRt = this._roundTripCommissionForLots(position, position.quantity);
+        const pnl = gross - commRt;
+        closePrice = execClosePrice;
         
         // Update position
         position.closePrice = closePrice;
@@ -25396,6 +25413,17 @@ class OrderManager {
             }
         }
         
+        executionPrice = this._applyHalfSpreadEntryPrice(
+            executionPrice,
+            pendingOrder.direction,
+            pendingOrder.instrument_settings
+                ? pendingOrder
+                : {
+                    instrument_settings: this._getActiveInstrumentSettings(),
+                    ticker: pendingOrder.ticker || pendingOrder.symbol || this._getActiveTicker(),
+                }
+        );
+
         const gapInfo = hadGap ? ` (GAP: ${pendingOrder.entryPrice.toFixed(5)} → ${executionPrice.toFixed(5)})` : '';
         console.log(`✅ Executing ${pendingOrder.orderType.toUpperCase()} ${pendingOrder.direction} Order #${pendingOrder.id} @ ${executionPrice.toFixed(5)}${gapInfo}`);
         
@@ -26531,7 +26559,7 @@ class OrderManager {
                 : this._multiTpPartialCloseQuantity(m, frac);
             if (!(tq > 0)) continue;
             lots += tq;
-            pnl += this.estimateOpenLegPnLSlice(m, px, tq);
+            pnl += this._estimateNetPnLAtExitLevel(m, px, tq);
         }
         return { pnl, lots };
     }
@@ -26747,28 +26775,13 @@ class OrderManager {
             return;
         }
         
-        // SL / BE / STOP_OUT gross must use `estimateOpenLegPnLSlice` — same path as the SL line $ box
-        // (`_slChartNetPnLAtStopForOpenOrder`). `_enginePnL` can differ slightly on crosses (mark/symbol),
-        // which is invisible on one leg but shows up as a "small gap" when split entries sum several legs.
-        const posSettings = position.instrument_settings || null;
-        const stopLikeExit =
-            hitType === 'SL' || hitType === 'BE' || hitType === 'STOP_OUT';
-        const gross = stopLikeExit
-            ? this.estimateOpenLegPnLSlice(position, closePrice, closeQuantity)
-            : this._enginePnL(
-                position.type,
-                position.openPrice,
-                closePrice,
-                closeQuantity,
-                closePrice,
-                posTicker || activeTicker,
-                posSettings
-            );
-        // TP paths stay `_enginePnL` gross so they match TP preview; stops: gross − round-trip comm per lots closed.
-        const commRt =
-            this._getCommissionPerLotSideForPosition(position) * 2 * closeQuantity;
-        const pnl =
-            stopLikeExit && Number.isFinite(commRt) ? gross - commRt : gross;
+        const execClosePrice = this._applyHalfSpreadExitPrice(closePrice, position.type, position);
+
+        // Spread-adjusted exit + round-trip commission on every close (matches chart labels / milestone spec).
+        const gross = this.estimateOpenLegPnLSlice(position, execClosePrice, closeQuantity);
+        const commRt = this._roundTripCommissionForLots(position, closeQuantity);
+        const pnl = gross - commRt;
+        closePrice = execClosePrice;
 
         // Update balance
         this.balance += pnl;
@@ -26820,7 +26833,7 @@ class OrderManager {
                 bar: _barAtExit,
                 quantity: closeQuantity,
                 pnl: pnl,
-                pnl_net: pnl - _commission,
+                pnl_net: pnl,
                 commission: _commission,
                 rr_at_exit: _rr_at_exit,
                 percentage: percentage,
@@ -36584,7 +36597,38 @@ class OrderManager {
      * ignores SVG pointer-events (the #drawingSvg root is pointer-events:none, so its
      * own mouseleave is unreliable) and instead listens on the chart container.
      */
+    /**
+     * Inject (once) the CSS that colors `.order-level-badge` controls via native :hover.
+     * Colors come from per-badge CSS vars set in `_wireOrderLevelBadgeHover`. Using :hover
+     * instead of JS mouseenter/mouseleave avoids color flashing when a live preview
+     * recreates/moves the badge under a stationary cursor every tick.
+     */
+    _ensureLevelCtrlHoverStyles() {
+        if (typeof document === 'undefined') return;
+        if (document.getElementById('omLevelCtrlHoverStyles')) return;
+        const st = document.createElement('style');
+        st.id = 'omLevelCtrlHoverStyles';
+        st.textContent = `
+            .order-level-badge .order-level-badge-bg {
+                fill: var(--olb-bg);
+                stroke: var(--olb-border);
+            }
+            .order-level-badge .order-level-badge-glyph {
+                fill: var(--olb-muted);
+            }
+            .order-level-badge:hover .order-level-badge-bg {
+                fill: var(--olb-accent);
+                stroke: var(--olb-accent);
+            }
+            .order-level-badge:hover .order-level-badge-glyph {
+                fill: #ffffff;
+            }
+        `;
+        (document.head || document.documentElement).appendChild(st);
+    }
+
     _ensureLevelCtrlHover(ch) {
+        this._ensureLevelCtrlHoverStyles();
         const svgSel = ch && ch.svg;
         const svgNode = svgSel && svgSel.node && svgSel.node();
         if (!svgNode) return;
