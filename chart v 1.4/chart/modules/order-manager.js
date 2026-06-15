@@ -18661,7 +18661,7 @@ class OrderManager {
                         const rewardPips = rewardDistance / self.pipSize;
                         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
                         const sym = self._getSymbol();
-                        const tpPnl = self.estimatePnLForPriceLevel(self.orderSide, entryPrice, newPrice, quantity, sym);
+                        const tpPnl = self._estimateNetPnLPreview(self.orderSide, entryPrice, newPrice, quantity);
 
                         const tpPipsDisplay = document.getElementById('tpPipsDisplay');
                         const tpAmountDisplay = document.getElementById('tpAmountDisplay');

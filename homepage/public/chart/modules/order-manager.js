@@ -1760,6 +1760,98 @@ class OrderManager {
         return perSide * 2 * q;
     }
 
+    /** Round-trip commission for an arbitrary lot slice (partial closes / previews). */
+    _roundTripCommissionForLots(position, lots) {
+        const q = Number(lots) || 0;
+        if (!(q > 0)) return 0;
+        return this._getCommissionPerLotSideForPosition(position) * 2 * q;
+    }
+
+    /** Session spread in native units (pips for forex, ticks for futures — stored as spread_pips). */
+    _getSpreadPipsForPosition(position) {
+        const st = position?.instrument_settings || position || {};
+        let spread = Number.parseFloat(st.spread_pips ?? st.spreadPips ?? st.spread ?? 0) || 0;
+        if (!(spread > 0)) {
+            const t = this._positionTicker(position) || st.ticker;
+            if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function' && t) {
+                const inst = this.orderService.getInstrumentSettings(t, {});
+                spread = Number.parseFloat(inst.spread_pips ?? inst.spreadPips ?? inst.spread ?? 0) || 0;
+            }
+        }
+        return spread;
+    }
+
+    /** Half-spread as a price distance (uses tickSize for futures, pipSize otherwise). */
+    _halfSpreadPriceDistance(positionOrSettings, markPrice) {
+        const spreadUnits = this._getSpreadPipsForPosition(positionOrSettings);
+        if (!(spreadUnits > 0)) return 0;
+        const t = this._positionTicker(positionOrSettings) || positionOrSettings?.ticker || this._getSymbol();
+        const mark = Number(markPrice);
+        if (window.marketCalcEngine && t) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(t, this.marketType);
+                if (calc?.specs?.type === 'futures' && Number(calc.specs.tickSize) > 0) {
+                    return (spreadUnits / 2) * calc.specs.tickSize;
+                }
+                if (Number(calc?.specs?.pipSize) > 0) {
+                    return (spreadUnits / 2) * calc.specs.pipSize;
+                }
+            } catch (_) { /* fall through */ }
+        }
+        const pipS = this._getPositionPipSize(positionOrSettings);
+        return (spreadUnits / 2) * pipS;
+    }
+
+    /** Worse fill on entry: BUY pays ask (+half spread), SELL receives bid (−half spread). */
+    _applyHalfSpreadEntryPrice(midPrice, side, positionOrSettings) {
+        const mid = Number(midPrice);
+        if (!Number.isFinite(mid)) return midPrice;
+        const half = this._halfSpreadPriceDistance(positionOrSettings, mid);
+        if (!(half > 0)) return mid;
+        return String(side || '').toUpperCase() === 'SELL' ? mid - half : mid + half;
+    }
+
+    /** Worse fill on exit: close long at bid (−half spread), close short at ask (+half spread). */
+    _applyHalfSpreadExitPrice(midPrice, positionSide, positionOrSettings) {
+        const mid = Number(midPrice);
+        if (!Number.isFinite(mid)) return midPrice;
+        const half = this._halfSpreadPriceDistance(positionOrSettings, mid);
+        if (!(half > 0)) return mid;
+        return String(positionSide || '').toUpperCase() === 'BUY' ? mid - half : mid + half;
+    }
+
+    /**
+     * Net P&L preview (entry + exit half-spread + round-trip commission) for panel / chart labels.
+     * When costs are zero this matches gross price-move P&L.
+     */
+    _estimateNetPnLPreview(side, entryPx, exitPx, qty, instrumentRef = null) {
+        const s = side === 'SELL' ? 'SELL' : 'BUY';
+        const q = Number(qty) || 0;
+        if (!(q > 0)) return 0;
+        const ref = instrumentRef || {
+            instrument_settings: this._getActiveInstrumentSettings(),
+            ticker: this._getSymbol(),
+            type: s,
+        };
+        if (!ref.type) ref.type = s;
+        const entry = this._applyHalfSpreadEntryPrice(entryPx, s, ref);
+        const exit = this._applyHalfSpreadExitPrice(exitPx, s, ref);
+        const sym = ref.ticker || this._getSymbol();
+        const gross = this.estimatePnLForPriceLevel(s, entry, exit, q, sym);
+        return gross - this._roundTripCommissionForLots(ref, q);
+    }
+
+    /** Net P&L at TP/SL for an open leg (entry already spread-adjusted on fill). */
+    _estimateNetPnLAtExitLevel(leg, levelPrice, sliceQty) {
+        if (!leg) return 0;
+        const q = Number(sliceQty) || 0;
+        if (!(q > 0)) return 0;
+        const side = (leg.type || leg.direction) === 'SELL' ? 'SELL' : 'BUY';
+        const exitPx = this._applyHalfSpreadExitPrice(levelPrice, side, leg);
+        const gross = this.estimateOpenLegPnLSlice(leg, exitPx, q);
+        return gross - this._roundTripCommissionForLots(leg, q);
+    }
+
     /**
      * SL chart label: net $ at stop (gross − round-trip comm per leg).
      * Split / multi-entry: **shared** SL — sum all open legs so the line matches total size and basket P&L at that stop.
@@ -1769,19 +1861,16 @@ class OrderManager {
         const sp = Number(stopPrice);
         if (!Number.isFinite(sp)) return 0;
         if (order.isSplitEntry && order.splitGroupId) {
-            let gross = 0;
-            let comm = 0;
+            let net = 0;
             for (const m of this._getSplitGroupOpenPositions(order)) {
                 const mq = Number(m.quantity) || 0;
                 if (mq <= 0) continue;
-                gross += this.estimateOpenLegPnLSlice(m, sp, mq);
-                comm += this._getRoundTripCommissionUsd(m);
+                net += this._estimateNetPnLAtExitLevel(m, sp, mq);
             }
-            return gross - comm;
+            return net;
         }
         const q = Number(order.quantity) || 0;
-        const g = this.estimateOpenLegPnLSlice(order, sp, q);
-        return g - this._getRoundTripCommissionUsd(order);
+        return this._estimateNetPnLAtExitLevel(order, sp, q);
     }
 
     /** Total open lots for split group (shared SL label), else this order’s qty. */
@@ -2263,18 +2352,17 @@ class OrderManager {
         if (!risk || risk <= 0) return null;
 
         const parts = Array.isArray(position.partialCloses) ? position.partialCloses : [];
-        let pnl_gross = 0;
+        let pnl_net = 0;
         let commission_total = 0;
 
         parts.forEach(pc => {
-            pnl_gross += (pc.pnl || 0);
+            pnl_net += (pc.pnl || 0);
             commission_total += (pc.commission || 0);
         });
-        // Add the final-leg PnL (already on position after full close)
-        pnl_gross += (position.finalClosePnL || 0);
+        pnl_net += (position.finalClosePnL || position.pnl || 0);
         commission_total += (position.finalCommission || 0);
 
-        const pnl_net = pnl_gross - commission_total;
+        const pnl_gross = pnl_net + commission_total;
         return {
             actual_rr_gross: pnl_gross / risk,
             actual_rr_net:   pnl_net  / risk,
@@ -14768,6 +14856,11 @@ class OrderManager {
                 if (Number.isFinite(actualRisk) && actualRisk > 0) risk = actualRisk;
             }
         }
+
+        if (hasValidSL && slContextEntry > 0 && slPrice > 0 && quantity > 0 && this.positionSizeMode === 'lot-size') {
+            const netAtSl = this._estimateNetPnLPreview(this.orderSide, slContextEntry, slPrice, quantity);
+            if (Number.isFinite(netAtSl) && netAtSl < 0) risk = Math.abs(netAtSl);
+        }
         
         // Reward: use MarketCalculationEngine (same as chart TP/SL labels) so JPY / cross / tick
         // specs match position sizing; manual pipSize×pipValue can be wrong and inflate $ reward.
@@ -14795,7 +14888,7 @@ class OrderManager {
                         
                         if (priceDiff > 0) {
                             const partialQuantity = qtyForReward * (ePct / 100);
-                            const partialReward = Math.max(0, this.estimatePnLForPriceLevel(
+                            const partialReward = Math.max(0, this._estimateNetPnLPreview(
                                 this.orderSide, effectiveEntryForReward, tpPx, partialQuantity));
                             reward += partialReward;
                             console.log(`      Added ${partialReward.toFixed(2)}, total reward now: ${reward.toFixed(2)}`);
@@ -14824,12 +14917,12 @@ class OrderManager {
                             if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
                             const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
                             if (lots > 0) {
-                                reward += this.estimatePnLForPriceLevel(this.orderSide, l.price, tpPrice, lots);
+                                reward += this._estimateNetPnLPreview(this.orderSide, l.price, tpPrice, lots);
                             }
                         }
                         reward = Math.max(0, reward);
                     } else {
-                        reward = Math.max(0, this.estimatePnLForPriceLevel(
+                        reward = Math.max(0, this._estimateNetPnLPreview(
                             this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward));
                     }
                 }
@@ -15757,7 +15850,7 @@ class OrderManager {
             if (entryPrice > 0 && target.price > 0 && effectivePct > 0) {
                 const shareQty = quantity * (effectivePct / 100);
                 if (shareQty > 0) {
-                    profitUsd = Math.max(0, this.estimatePnLForPriceLevel(side, entryPrice, target.price, shareQty));
+                    profitUsd = Math.max(0, this._estimateNetPnLPreview(side, entryPrice, target.price, shareQty));
                 }
             }
 
@@ -15798,7 +15891,7 @@ class OrderManager {
                 if (entryPrice > 0 && t.price > 0 && ePct > 0) {
                     const shareQ = quantity * (ePct / 100);
                     if (shareQ > 0) {
-                        totalProfit += Math.max(0, this.estimatePnLForPriceLevel(side, entryPrice, t.price, shareQ));
+                        totalProfit += Math.max(0, this._estimateNetPnLPreview(side, entryPrice, t.price, shareQ));
                     }
                 }
             });
@@ -18568,7 +18661,7 @@ class OrderManager {
                         const rewardPips = rewardDistance / self.pipSize;
                         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
                         const sym = self._getSymbol();
-                        const tpPnl = self.estimatePnLForPriceLevel(self.orderSide, entryPrice, newPrice, quantity, sym);
+                        const tpPnl = self._estimateNetPnLPreview(self.orderSide, entryPrice, newPrice, quantity);
 
                         const tpPipsDisplay = document.getElementById('tpPipsDisplay');
                         const tpAmountDisplay = document.getElementById('tpAmountDisplay');
@@ -23014,7 +23107,11 @@ class OrderManager {
                 })();
 
                 if (effectiveOrderType === 'market') {
-                    const fillPx = currentPrice;
+                    const fillPx = this._applyHalfSpreadEntryPrice(
+                        currentPrice,
+                        this.orderSide,
+                        { instrument_settings: activeInstrumentSettings, ticker: activeTicker }
+                    );
                     const order = {
                         id: this.orderIdCounter++,
                         symbol: activeTicker,
@@ -23071,6 +23168,7 @@ class OrderManager {
                     }
                     if (idx === 0) this._consumeRailScreenshotsForOrder(order);
                     this._applyPreTradeVariablesFromOrderPanel(order);
+                    this._freezePlannedRRAtEntry(order);
                     if (this.orderService) {
                         this.orderService.registerOpenOrder(order);
                     } else {
@@ -23433,6 +23531,8 @@ class OrderManager {
         }
         
         // Market order: execute immediately
+        const fillInstRef = { instrument_settings: activeInstrumentSettings, ticker: activeTicker };
+        entryPrice = this._applyHalfSpreadEntryPrice(entryPrice, this.orderSide, fillInstRef);
         const order = {
             id: this.orderIdCounter++,
             symbol: activeTicker,
@@ -24217,7 +24317,13 @@ class OrderManager {
             return;
         }
         
-        const price = currentCandle.c;
+        const act = this._getActiveTicker();
+        const inst = this._getActiveInstrumentSettings();
+        const price = this._applyHalfSpreadEntryPrice(
+            currentCandle.c,
+            'BUY',
+            { instrument_settings: inst, ticker: act }
+        );
         const ctxChart = this._getOrderContextChart() || this.chart;
         const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
@@ -24226,12 +24332,12 @@ class OrderManager {
         const defaultSL = price - (50 * pipSize);
         const defaultTP = price + (100 * pipSize);
         
-        const act = this._getActiveTicker();
         const order = {
             id: this.orderIdCounter++,
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
+            instrument_settings: inst,
             type: 'BUY',
             openPrice: price,
             openTime: timestamp,
@@ -24280,7 +24386,13 @@ class OrderManager {
             return;
         }
         
-        const price = currentCandle.c;
+        const act = this._getActiveTicker();
+        const inst = this._getActiveInstrumentSettings();
+        const price = this._applyHalfSpreadEntryPrice(
+            currentCandle.c,
+            'SELL',
+            { instrument_settings: inst, ticker: act }
+        );
         const ctxChart = this._getOrderContextChart() || this.chart;
         const timestamp = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
@@ -24289,12 +24401,12 @@ class OrderManager {
         const defaultSL = price + (50 * pipSize);
         const defaultTP = price - (100 * pipSize);
         
-        const act = this._getActiveTicker();
         const order = {
             id: this.orderIdCounter++,
             symbol: act,
             ticker: act,
             sourceFileId: this._chartSourceFileId(),
+            instrument_settings: inst,
             type: 'SELL',
             openPrice: price,
             openTime: timestamp,
@@ -24499,17 +24611,11 @@ class OrderManager {
         }
         const closeTime = currentCandle.t;
         
-        // Calculate P&L via MarketCalculationEngine (correct formula per asset class)
-        // Falls back to pipSize×pipValuePerLot when engine is unavailable.
-        const pnl = this._enginePnL(
-            position.type,
-            position.openPrice,
-            closePrice,
-            position.quantity,
-            closePrice,
-            position.ticker || position.symbol || this._getActiveTicker(),
-            position.instrument_settings || null
-        );
+        const execClosePrice = this._applyHalfSpreadExitPrice(closePrice, position.type, position);
+        const gross = this.estimateOpenLegPnLSlice(position, execClosePrice, position.quantity);
+        const commRt = this._roundTripCommissionForLots(position, position.quantity);
+        const pnl = gross - commRt;
+        closePrice = execClosePrice;
         
         // Update position
         position.closePrice = closePrice;
@@ -25316,6 +25422,17 @@ class OrderManager {
             }
         }
         
+        executionPrice = this._applyHalfSpreadEntryPrice(
+            executionPrice,
+            pendingOrder.direction,
+            pendingOrder.instrument_settings
+                ? pendingOrder
+                : {
+                    instrument_settings: this._getActiveInstrumentSettings(),
+                    ticker: pendingOrder.ticker || pendingOrder.symbol || this._getActiveTicker(),
+                }
+        );
+
         const gapInfo = hadGap ? ` (GAP: ${pendingOrder.entryPrice.toFixed(5)} → ${executionPrice.toFixed(5)})` : '';
         console.log(`✅ Executing ${pendingOrder.orderType.toUpperCase()} ${pendingOrder.direction} Order #${pendingOrder.id} @ ${executionPrice.toFixed(5)}${gapInfo}`);
         
@@ -26451,7 +26568,7 @@ class OrderManager {
                 : this._multiTpPartialCloseQuantity(m, frac);
             if (!(tq > 0)) continue;
             lots += tq;
-            pnl += this.estimateOpenLegPnLSlice(m, px, tq);
+            pnl += this._estimateNetPnLAtExitLevel(m, px, tq);
         }
         return { pnl, lots };
     }
@@ -26667,28 +26784,13 @@ class OrderManager {
             return;
         }
         
-        // SL / BE / STOP_OUT gross must use `estimateOpenLegPnLSlice` — same path as the SL line $ box
-        // (`_slChartNetPnLAtStopForOpenOrder`). `_enginePnL` can differ slightly on crosses (mark/symbol),
-        // which is invisible on one leg but shows up as a "small gap" when split entries sum several legs.
-        const posSettings = position.instrument_settings || null;
-        const stopLikeExit =
-            hitType === 'SL' || hitType === 'BE' || hitType === 'STOP_OUT';
-        const gross = stopLikeExit
-            ? this.estimateOpenLegPnLSlice(position, closePrice, closeQuantity)
-            : this._enginePnL(
-                position.type,
-                position.openPrice,
-                closePrice,
-                closeQuantity,
-                closePrice,
-                posTicker || activeTicker,
-                posSettings
-            );
-        // TP paths stay `_enginePnL` gross so they match TP preview; stops: gross − round-trip comm per lots closed.
-        const commRt =
-            this._getCommissionPerLotSideForPosition(position) * 2 * closeQuantity;
-        const pnl =
-            stopLikeExit && Number.isFinite(commRt) ? gross - commRt : gross;
+        const execClosePrice = this._applyHalfSpreadExitPrice(closePrice, position.type, position);
+
+        // Spread-adjusted exit + round-trip commission on every close (matches chart labels / milestone spec).
+        const gross = this.estimateOpenLegPnLSlice(position, execClosePrice, closeQuantity);
+        const commRt = this._roundTripCommissionForLots(position, closeQuantity);
+        const pnl = gross - commRt;
+        closePrice = execClosePrice;
 
         // Update balance
         this.balance += pnl;
@@ -26740,7 +26842,7 @@ class OrderManager {
                 bar: _barAtExit,
                 quantity: closeQuantity,
                 pnl: pnl,
-                pnl_net: pnl - _commission,
+                pnl_net: pnl,
                 commission: _commission,
                 rr_at_exit: _rr_at_exit,
                 percentage: percentage,
@@ -31330,14 +31432,24 @@ class OrderManager {
             });
         } else if (pendingOrder.takeProfit) {
             // Single TP - calculate P&L (sum all legs for scale-in)
-            let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.takeProfit, quantity);
+            let tpPnL = this._estimateNetPnLPreview(
+                pendingOrder.direction || pendingOrder.type,
+                pendingOrder.entryPrice,
+                pendingOrder.takeProfit,
+                quantity
+            );
             let totalTpQty = quantity;
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 tpPnL = members.reduce((sum, m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return sum;
-                    return sum + this.estimateOpenLegPnLSlice(m, pendingOrder.takeProfit, q);
+                    return sum + this._estimateNetPnLPreview(
+                        m.direction || m.type,
+                        m.entryPrice,
+                        pendingOrder.takeProfit,
+                        q
+                    );
                 }, 0);
                 totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             }
@@ -31354,18 +31466,25 @@ class OrderManager {
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 let gross = 0;
-                let comm = 0;
                 members.forEach((m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return;
-                    gross += this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
-                    comm += this._getRoundTripCommissionUsd(m);
+                    gross += this._estimateNetPnLPreview(
+                        m.direction || m.type,
+                        m.entryPrice,
+                        pendingOrder.stopLoss,
+                        q
+                    );
                 });
-                slPnL = gross - comm;
+                slPnL = gross;
                 totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             } else {
-                slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity)
-                    - this._getRoundTripCommissionUsd(pendingOrder);
+                slPnL = this._estimateNetPnLPreview(
+                    pendingOrder.direction || pendingOrder.type,
+                    pendingOrder.entryPrice,
+                    pendingOrder.stopLoss,
+                    quantity
+                );
             }
             const labelText = `SL  ${totalSlQty.toFixed(2)}`;
             const pnlStr = `${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
@@ -31682,18 +31801,25 @@ class OrderManager {
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 let gross = 0;
-                let comm = 0;
                 members.forEach((m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return;
-                    gross += this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
-                    comm += this._getRoundTripCommissionUsd(m);
+                    gross += this._estimateNetPnLPreview(
+                        m.direction || m.type,
+                        m.entryPrice,
+                        pendingOrder.stopLoss,
+                        q
+                    );
                 });
-                slPnL = gross - comm;
+                slPnL = gross;
                 totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             } else {
-                slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity)
-                    - this._getRoundTripCommissionUsd(pendingOrder);
+                slPnL = this._estimateNetPnLPreview(
+                    pendingOrder.direction || pendingOrder.type,
+                    pendingOrder.entryPrice,
+                    pendingOrder.stopLoss,
+                    quantity
+                );
             }
             tag.text(`SL  ${totalSlQty.toFixed(2)}`);
             if (!detail.empty()) detail.text(`${slPnL >= 0 ? '+' : ''}${slPnL.toFixed(2)}`);
@@ -31723,14 +31849,24 @@ class OrderManager {
             }
             const tpPrice = dragPx ?? pendingOrder.takeProfit;
             if (tpPrice) {
-                let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, tpPrice, quantity);
+                let tpPnL = this._estimateNetPnLPreview(
+                    pendingOrder.direction || pendingOrder.type,
+                    pendingOrder.entryPrice,
+                    tpPrice,
+                    quantity
+                );
                 let totalTpQty = quantity;
                 if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                     const members = this._getSplitGroupPendingOrders(pendingOrder);
                     tpPnL = members.reduce((sum, m) => {
                         const q = Number(m.quantity) || 0;
                         if (q <= 0) return sum;
-                        return sum + this.estimateOpenLegPnLSlice(m, tpPrice, q);
+                        return sum + this._estimateNetPnLPreview(
+                            m.direction || m.type,
+                            m.entryPrice,
+                            tpPrice,
+                            q
+                        );
                     }, 0);
                     totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
                 }
@@ -34962,13 +35098,13 @@ class OrderManager {
             console.log(`  🎯 Drawing single TP line at ${order.takeProfit.toFixed(2)}`);
             
             // Calculate potential profit at TP — sum all legs for scale-in
-            let tpPnL = this.estimateOpenLegPnLSlice(order, order.takeProfit, Number(order.quantity) || 0);
+            let tpPnL = this._estimateNetPnLAtExitLevel(order, order.takeProfit, Number(order.quantity) || 0);
             if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
                 const members = this._getSplitGroupOpenPositions(order);
                 tpPnL = members.reduce((sum, m) => {
                     const mq = Number(m.quantity) || 0;
                     if (mq <= 0) return sum;
-                    return sum + this.estimateOpenLegPnLSlice(m, order.takeProfit, mq);
+                    return sum + this._estimateNetPnLAtExitLevel(m, order.takeProfit, mq);
                 }, 0);
             }
             
