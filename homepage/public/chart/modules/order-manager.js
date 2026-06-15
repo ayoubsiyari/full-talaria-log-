@@ -30263,8 +30263,8 @@ class OrderManager {
                 if (!Number.isFinite(oy)) continue;
                 const boxY = oy - boxH / 2;
 
-                ml.line?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
-                ml.dragHitLine?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
+                ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
+                ml.dragHitLine?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
 
                 if (ml.priceBox) ml.priceBox.style('display', 'none');
                 if (ml.priceText) ml.priceText.style('display', 'none');
@@ -30452,6 +30452,11 @@ class OrderManager {
         if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) {
             return;
         }
+
+        const alreadyDrawn = (this.orderLines || []).some(
+            (ol) => ol.orderId === pendingOrder.id && ol.isPending && (ol.chart || this.chart) === chart
+        );
+        if (alreadyDrawn) return;
 
         // TradingView-like visual styling for pending lines.
         const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
@@ -35978,7 +35983,7 @@ class OrderManager {
 
         const ch = sourceChart || this.chart;
         if (ch?.svg) {
-            this._purgeReplayOrderLineArtifacts(ch);
+            this._purgeOrderOverlayArtifacts(ch);
         }
         if (!ch?.scales) {
             console.log('⚠️ updateOrderLines: Scales not ready');
@@ -36270,6 +36275,9 @@ class OrderManager {
             this.positionPendingOrderTargets(ch);
         }
         this._alignAllOrderLabels(ch);
+        if (ch?.svg) {
+            this._purgeOrderOverlayArtifacts(ch);
+        }
     }
 
     /**
@@ -36439,10 +36447,6 @@ class OrderManager {
             if (g.lotsText) g.lotsText.attr('x', parseFloat(g.lotsText.attr('x')) - dx);
             if (g.pnlBox) g.pnlBox.attr('x', parseFloat(g.pnlBox.attr('x')) - dx);
             if (g.pnlText) g.pnlText.attr('x', parseFloat(g.pnlText.attr('x')) - dx);
-            if (g._connector) {
-                const x2 = parseFloat(g._connector.attr('x2'));
-                if (Number.isFinite(x2)) g._connector.attr('x2', x2 - dx);
-            }
         });
     }
 
@@ -36491,19 +36495,92 @@ class OrderManager {
                 if (n !== keeper) try { n.remove(); } catch (_) {}
             });
         }
+
+        // Duplicate label accent stripes (3px rects) stack as vertical blue bars beside labels.
+        const accentGroups = new Map();
+        ch.svg.selectAll('.order-label-accent, .pending-order-label-accent').each(function () {
+            const el = this;
+            const cls = el.getAttribute('class') || '';
+            const idMatch = cls.match(/\b(?:pending|order)-(\d+)\b/);
+            const key = idMatch
+                ? `${idMatch[1]}:${cls.includes('pending-order-label-accent') ? 'p' : 'o'}`
+                : `orphan:${accentGroups.size}`;
+            if (!accentGroups.has(key)) accentGroups.set(key, []);
+            accentGroups.get(key).push(el);
+        });
+        for (const [key, nodes] of accentGroups) {
+            if (key.startsWith('orphan:')) {
+                nodes.forEach((n) => { try { n.remove(); } catch (_) {} });
+                continue;
+            }
+            const [oid, kind] = key.split(':');
+            const isPending = kind === 'p';
+            const ol = (this.orderLines || []).find(
+                (o) => String(o.orderId) === oid && !!o.isPending === isPending && (o.chart || this.chart) === ch
+            );
+            if (!ol) {
+                nodes.forEach((n) => { try { n.remove(); } catch (_) {} });
+                continue;
+            }
+            const regNode = ol.labelAccent?.node?.();
+            const keeper = (regNode && regNode.isConnected && nodes.includes(regNode))
+                ? regNode
+                : nodes[nodes.length - 1];
+            if (keeper && (!regNode || !regNode.isConnected || regNode !== keeper)) {
+                try { ol.labelAccent = d3.select(keeper); } catch (_) {}
+            }
+            nodes.forEach((n) => {
+                if (n !== keeper) try { n.remove(); } catch (_) {}
+            });
+        }
     }
 
-    /** During replay: purge connector stubs + duplicate entry lines before repositioning. */
-    _purgeReplayOrderLineArtifacts(ch) {
+    /** Purge connector stubs + duplicate entry lines before/after repositioning. */
+    _purgeOrderOverlayArtifacts(ch) {
         if (!ch?.svg) return;
-        const rs = this._playbackReplaySystem();
-        if (!rs?.isActive) return;
         this._purgeOrderConnectorsFromSvg(ch.svg, ch);
         this._reconcileOrderLineDomForChart(ch);
         const plotOpts = { fullPlot: true };
         this._purgeDetachedConnectorGraphics(ch.svg, ch, plotOpts);
         this._purgeOrphanVerticalConnectorLines(ch.svg, ch, plotOpts);
+        this._purgeOrphanVerticalConnectorRects(ch.svg, ch, plotOpts);
         ch.svg.selectAll('.preview-pending-connector, .preview-pending-connector-dot').remove();
+        ch.svg.selectAll('[class*="split-avg-connector"], .exec-order-connector').remove();
+    }
+
+    /** Detached narrow vertical rects without label-accent class (orphan connector stripes). */
+    _purgeOrphanVerticalConnectorRects(svg, ch, opts) {
+        if (!svg?.selectAll) return;
+        const fullPlot = !!(opts && opts.fullPlot);
+        const w = Number(ch?.w) || 0;
+        const marginR = ch?.margin?.r || 70;
+        const marginL = ch?.margin?.l || 60;
+        const plotRight = w > 0 ? w - marginR : w;
+        const orderAccentFills = new Set(['#2962ff', '#f23645', '#26a69a', '#22c55e', '#eab308', '#089981', '#ca8a04', '#ef4444']);
+        svg.selectAll('rect').each(function () {
+            const el = this;
+            if (!el?.getAttribute) return;
+            const cls = el.getAttribute('class') || '';
+            if (cls.includes('order-label-accent') || cls.includes('pending-order-label-accent')) return;
+            if (cls.includes('order-label-box') || cls.includes('pending-order-label-box')
+                || cls.includes('order-level-toast') || cls.includes('split-avg')
+                || cls.includes('pnl-box') || cls.includes('price-box')) return;
+            const x = parseFloat(el.getAttribute('x'));
+            const width = parseFloat(el.getAttribute('width') || '0');
+            const height = parseFloat(el.getAttribute('height') || '0');
+            if (!Number.isFinite(x) || width > 6 || height < 8) return;
+            if (fullPlot && w > 0 && (x < marginL || x > plotRight)) return;
+            const fill = String(el.getAttribute('fill') || '').toLowerCase();
+            if (!orderAccentFills.has(fill) && !this._isConnectorStrokeColor(fill)) return;
+            if (width <= 4 && height >= 8 && height <= 40) {
+                try { el.remove(); } catch (_) {}
+            }
+        }.bind(this));
+    }
+
+    /** @deprecated alias */
+    _purgeReplayOrderLineArtifacts(ch) {
+        this._purgeOrderOverlayArtifacts(ch);
     }
 
     _purgeOrderConnectorsForOrder(orderId) {
@@ -36641,11 +36718,18 @@ class OrderManager {
             const el = this;
             if (!el?.getAttribute) return;
             const cls = el.getAttribute('class') || '';
-            if (cls.includes('order-line') || cls.includes('order-drag-hit') || cls.includes('tp-line') || cls.includes('sl-line')
-                || cls.includes('be-line') || cls.includes('pending-') || cls.includes('trade-connector')) return;
             const x1 = parseFloat(el.getAttribute('x1'));
             const x2 = parseFloat(el.getAttribute('x2'));
             if (!Number.isFinite(x1) || !Number.isFinite(x2) || Math.abs(x1 - x2) > 0.5) return;
+
+            // Corrupted hit areas must stay horizontal — vertical stubs are always orphans.
+            if (cls.includes('order-drag-hit') || cls.includes('pending-order-hit-line')) {
+                try { el.remove(); } catch (_) {}
+                return;
+            }
+            if (cls.includes('order-line') || cls.includes('tp-line') || cls.includes('sl-line')
+                || cls.includes('be-line') || cls.includes('pending-') || cls.includes('trade-connector')) return;
+
             let nearAnchor;
             if (fullPlot) {
                 nearAnchor = x1 >= marginL && x1 <= plotRight;

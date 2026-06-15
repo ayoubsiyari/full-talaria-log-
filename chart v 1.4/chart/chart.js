@@ -20965,6 +20965,62 @@ class Chart {
             candidates.push({ idx, isBoundary: useBoundaryLabel, label });
         }
 
+        // Extrapolate PAST ticks (left of the first loaded bar) so the vertical
+        // grid + time axis keep rendering while you drag right into history that
+        // hasn't loaded yet (otherwise the empty left area shows no grid/time).
+        // Mirrors the future-tick block below: positions are projected by the
+        // timeframe and get replaced by real ticks once the bars arrive.
+        if (this.data.length > 0 && !isCalendarTf && labelIntervalMs > 0 && firstVisibleIdx < 0) {
+            const firstTs = this.data[0].t;
+            const pastStartIdx = Math.floor(firstVisibleIdx) - 1;
+            let pPrevDay = -1, pPrevMonth = -1, pPrevYear = -1;
+            {
+                const seedTz = this.convertToTimezone(firstTs + (pastStartIdx - 1) * timeframeMs);
+                pPrevDay = seedTz.getUTCDate();
+                pPrevMonth = seedTz.getUTCMonth();
+                pPrevYear = seedTz.getUTCFullYear();
+            }
+            for (let pi = pastStartIdx; pi < 0; pi++) {
+                const ts = firstTs + pi * timeframeMs;
+                const tzp = this.convertToTimezone(ts);
+                const pDay = tzp.getUTCDate(), pMonth = tzp.getUTCMonth(), pYear = tzp.getUTCFullYear();
+
+                let pIsBoundary = false, pBoundaryLabel = null;
+                if (pYear !== pPrevYear)        { pIsBoundary = true; pBoundaryLabel = String(pYear); }
+                else if (pMonth !== pPrevMonth) { pIsBoundary = true; pBoundaryLabel = monthNames[pMonth]; }
+                else if (!suppressDayBoundaries && pDay !== pPrevDay) { pIsBoundary = true; pBoundaryLabel = String(pDay); }
+                pPrevDay = pDay; pPrevMonth = pMonth; pPrevYear = pYear;
+
+                let pIsRound;
+                if (useReplayIndexCadence) {
+                    const liv = Math.max(1, labelInterval);
+                    const anchorIdx = this.data.length - 1;
+                    pIsRound = ((((pi - anchorIdx) % liv) + liv) % liv) === 0;
+                } else {
+                    const deltaFromBase = ts - tickAlignmentBaseTs;
+                    const rem = ((deltaFromBase % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
+                    const tol = 0.5;
+                    pIsRound = rem < tol || rem > labelIntervalMs - tol;
+                }
+
+                const hasPBoundary = pIsBoundary && !!pBoundaryLabel;
+                const shouldEmitPast = suppressDayBoundaries
+                    ? hasPBoundary
+                    : (pIsRound || (!suppressIntradayBoundaryLabels && allowStandaloneBoundaries && hasPBoundary));
+                if (!shouldEmitPast) continue;
+
+                const usePBoundaryLabel = suppressDayBoundaries
+                    ? hasPBoundary
+                    : (!suppressIntradayBoundaryLabels && hasPBoundary && (allowStandaloneBoundaries || pIsRound));
+                const plbl = usePBoundaryLabel
+                    ? pBoundaryLabel
+                    : ((isDailyOrHigher || intradayCalendarMode)
+                        ? monthNames[pMonth] + ' ' + pDay
+                        : this._formatSessionClock(tzp, false));
+                candidates.push({ idx: pi, isBoundary: !!usePBoundaryLabel, label: plbl });
+            }
+        }
+
         // Extrapolate future ticks
         const lastRealIdx = this.data.length - 1;
         if (this.data.length > 0 && !isCalendarTf && labelIntervalMs > 0 && lastVisibleIdx > lastRealIdx) {
