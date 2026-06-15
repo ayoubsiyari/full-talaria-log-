@@ -14772,11 +14772,7 @@ class OrderManager {
                 const calculatedRisk = window.marketCalcEngine && this._getSymbol()
                     ? this._engineRisk(entryPrice, slPrice, lotSize, entryPrice)
                     : slDistanceInPips * lotSize * (this.pipValuePerLot || 10);
-                
-                console.log(`📊 Risk Calculation (Lot Size Mode):`);
-                console.log(`   Lot Size: ${lotSize.toFixed(2)} lots`);
-                console.log(`   SL Distance: ${slDistance.toFixed(5)} (${slDistanceInPips.toFixed(2)} pips)`);
-                console.log(`   Calculated Risk: $${calculatedRisk.toFixed(2)}`);
+                void calculatedRisk;
             }
             
             this.updatePlaceButtonText();
@@ -14829,16 +14825,7 @@ class OrderManager {
         // Falls back to pipSize×pipValuePerLot when engine is unavailable.
         const positionSize = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
         const slDistanceInPips = slDistance / (this.pipSize || 0.0001); // kept for logging only
-        
-        console.log(`📊 Position Size Calculation (${this.positionSizeMode}) [engine: ${!!window.marketCalcEngine}]:`);
-        console.log(`   Order Side: ${this.orderSide}`);
-        console.log(`   Entry: ${entryPrice.toFixed(5)} | SL: ${slPrice.toFixed(5)}`);
-        console.log(`   Risk: $${riskAmount.toFixed(2)}`);
-        console.log(`   SL Distance: ${slDistance.toFixed(5)} (${slDistanceInPips.toFixed(2)} pips)`);
-        console.log(`   Pip Size: ${this.pipSize}`);
-        console.log(`   Pip Value/Lot: $${this.pipValuePerLot}`);
-        console.log(`   Position Size: ${positionSize.toFixed(2)} lots`);
-        console.log(`   Verification: ${slDistanceInPips.toFixed(2)} pips × ${positionSize.toFixed(2)} lots × $${this.pipValuePerLot} = $${(slDistanceInPips * positionSize * this.pipValuePerLot).toFixed(2)} risk`);
+        void slDistanceInPips;
         
         // Snap risk-derived qty to the instrument's lot step (futures=1 contract, BTC=0.001, …).
         // Floor-snap so we never exceed the user's risk budget on coarse-step instruments.
@@ -14848,7 +14835,6 @@ class OrderManager {
         const qtyInput = document.getElementById('orderQuantity');
         if (qtyInput) {
             qtyInput.value = this._formatQty(snappedQty);
-            console.log(`📊 Risk Mode: Setting orderQuantity to ${this._formatQty(snappedQty)} (raw ${positionSize.toFixed(4)}, step ${this._getQtyStep()})`);
         }
         
         // Update preview lines to show new lot size on Entry label
