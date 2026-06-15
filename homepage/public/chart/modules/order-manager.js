@@ -11870,6 +11870,7 @@ class OrderManager {
             className: 'preview-enable-multi-modes-btn',
             x: startX,
             y: (height - r * 2) / 2,
+            levelPrice: lineData.price,
             onClick: () => self._applyPreviewActivator(kind),
         });
         lineData.labelGroup.select('.preview-enable-multi-modes-btn')
@@ -11922,6 +11923,7 @@ class OrderManager {
         const segments = this.composePreviewLabelSegments(lineData.label, lineData.price, lineData.color, lineData.direction);
         const gap = 4;
         const height = lineData.smallLabel ? 20 : 24;
+        const levelPrice = lineData.price;
         let offsetX = 0;
 
         const segmentsToRender = lineData.isBadge ? [segments[0]] : segments;
@@ -11951,6 +11953,7 @@ class OrderManager {
                 className: 'tp-close-btn preview-tp-sl-close-btn',
                 x: offsetX,
                 y: (height - 18) / 2,
+                levelPrice,
                 onClick: () => {
                     if (isSingleTpPreviewLine) self._removePreviewSingleTP();
                     else self._removePreviewSingleSL();
@@ -11966,6 +11969,7 @@ class OrderManager {
                 className: 'tp-percentage-control',
                 x: offsetX,
                 y: (height - this._tpPctStepperSize()) / 2,
+                levelPrice,
                 onDecrease: (event) => {
                     this.adjustTPPercentage(lineData.targetIndex, -5);
                 },
@@ -11981,6 +11985,7 @@ class OrderManager {
                 className: 'tp-close-btn preview-tp-sl-close-btn',
                 x: offsetX,
                 y: (height - 18) / 2,
+                levelPrice,
                 onClick: (event) => {
                     event.stopPropagation();
                     const key = lineData.targetId != null ? lineData.targetId : lineData.targetIndex;
@@ -11997,6 +12002,7 @@ class OrderManager {
                     className: 'preview-tp-split-add-btn',
                     x: offsetX,
                     y: (height - 18) / 2,
+                    levelPrice,
                     onClick: (e) => {
                         e.stopPropagation();
                         self._splitPreviewTPFromLine(lineData.price);
@@ -12046,6 +12052,7 @@ class OrderManager {
                     className: 'preview-entry-level-delete-btn',
                     x: bb.width + gap,
                     y: (height - 18) / 2,
+                    levelPrice,
                     stopMousedown: true,
                     onClick: (event) => {
                         event.preventDefault();
@@ -12072,6 +12079,7 @@ class OrderManager {
                 className: 'entry-action-btn entry-place-btn',
                 x: actX,
                 y: (height - r * 2) / 2,
+                levelPrice,
                 onClick: (event) => {
                     event.stopPropagation();
                     self.placeAdvancedOrder({ keepPanelOpen: true });
@@ -12082,6 +12090,7 @@ class OrderManager {
                 className: 'entry-action-btn entry-cancel-btn',
                 x: actX,
                 y: (height - r * 2) / 2,
+                levelPrice,
                 onClick: (event) => {
                     event.stopPropagation();
                     self.closeOrderRailFromChartCancel();
@@ -16459,6 +16468,11 @@ class OrderManager {
                 if (entry?.price > 0 && pc.scales?.yScale) {
                     lineData.price = entry.price;
                     this.positionPreviewLabel(lineData, pc.scales.yScale(entry.price));
+                    if (lineData.labelGroup) {
+                        lineData.labelGroup.selectAll('.om-level-ctrl').each(function () {
+                            this.setAttribute('data-level-price', String(entry.price));
+                        });
+                    }
                 }
                 return;
             }
@@ -16575,6 +16589,9 @@ class OrderManager {
                     if (bd && bd.labelGroup) {
                         bd.price = entryPx;
                         this.positionPreviewLabel(bd, ey + (bd._stackOffsetY || 0));
+                        bd.labelGroup.selectAll('.om-level-ctrl').each(function () {
+                            this.setAttribute('data-level-price', String(entryPx));
+                        });
                     }
                 });
             }
@@ -16697,6 +16714,7 @@ class OrderManager {
 
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
+        this._refreshLevelCtrlHoverIfNeeded(pc);
     }
 
     updatePreviewLines() {
@@ -19786,24 +19804,70 @@ class OrderManager {
         const fallback = this.formatPrice(price);
         if (!(price > 0) || !(qty > 0)) return fallback;
         const side = (this.orderSide || 'BUY').toUpperCase();
-        const entryPx = this._getReferenceEntryForOrderMath();
-        if (!(entryPx > 0) || price === entryPx) return fallback;
 
         let idx = -1;
         if (this.tpTargets && this.tpTargets.length > 0) {
             const match = label.match(/TP(\d+)/);
             if (match) idx = parseInt(match[1], 10) - 1;
         }
+        if (idx < 0) return fallback;
+        const target = this.tpTargets[idx];
+        if (!target) return fallback;
 
-        const effectivePcts = this._computeEffectiveTPPercentages(entryPx, qty, side);
-        const ePct = idx >= 0 && idx < effectivePcts.length ? effectivePcts[idx] : 0;
-        if (ePct <= 0) return fallback;
+        const ticker = (typeof this._getActiveTicker === 'function' ? this._getActiveTicker() : null)
+            || (typeof this._getSymbol === 'function' ? this._getSymbol() : null);
+        const settings = typeof this._getActiveInstrumentSettings === 'function'
+            ? this._getActiveInstrumentSettings()
+            : null;
 
-        const shareQty = qty * (ePct / 100);
-        if (shareQty <= 0) return fallback;
-        const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, shareQty);
+        let pnl = 0;
+        let lots = 0;
+
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
+            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const ps = this.pipSize || 0.0001;
+            const pv = this.pipValuePerLot || 10;
+            const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
+            for (const l of this.multiEntryLevels) {
+                if (!(l.price > 0)) continue;
+                if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
+                const legLots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
+                if (!(legLots > 0)) continue;
+                const synth = {
+                    type: side,
+                    openPrice: l.price,
+                    entryPrice: l.price,
+                    quantity: legLots,
+                    originalQuantity: legLots,
+                    tpTargets: this.tpTargets,
+                    ticker,
+                    instrument_settings: settings,
+                };
+                const m = this._multiTpTargetChartMetrics(synth, target, idx, 'pending', price);
+                pnl += m.pnl;
+                lots += m.lots;
+            }
+        } else {
+            const entryPx = this._getReferenceEntryForOrderMath();
+            if (!(entryPx > 0) || price === entryPx) return fallback;
+            const synth = {
+                type: side,
+                openPrice: entryPx,
+                entryPrice: entryPx,
+                quantity: qty,
+                originalQuantity: qty,
+                tpTargets: this.tpTargets,
+                ticker,
+                instrument_settings: settings,
+            };
+            const m = this._multiTpTargetChartMetrics(synth, target, idx, 'pending', price);
+            pnl = m.pnl;
+            lots = m.lots;
+        }
+
+        if (!(lots > 0)) return fallback;
         const sign = pnl >= 0 ? '+' : '-';
-        return `${sign}$${Math.abs(pnl).toFixed(2)}  (${this.formatQuantity(shareQty)})`;
+        return `${sign}$${Math.abs(pnl).toFixed(2)}  (${this.formatQuantity(lots)})`;
     }
 
     _getReferenceEntryForOrderMath() {
@@ -32613,14 +32677,16 @@ class OrderManager {
         const ts = Number(timestamp);
         if (!Number.isFinite(ts)) return -1;
 
-        // Exact match first
-        let idx = chartData.findIndex(d => d.t === ts);
+        // Exact match first (coerce bar.t — mixed string/number storage breaks === intermittently)
+        let idx = chartData.findIndex((d) => Number(d.t) === ts);
         if (idx !== -1) return idx;
 
         // Find the candle whose period contains the timestamp (handles TF changes)
         for (let i = 0; i < chartData.length; i++) {
-            const nextT = i < chartData.length - 1 ? chartData[i + 1].t : Infinity;
-            if (ts >= chartData[i].t && ts < nextT) return i;
+            const barT = Number(chartData[i].t);
+            if (!Number.isFinite(barT)) continue;
+            const nextT = i < chartData.length - 1 ? Number(chartData[i + 1].t) : Infinity;
+            if (ts >= barT && ts < nextT) return i;
         }
 
         if (opts.skipNearestFallback) return -1;
@@ -36079,6 +36145,70 @@ class OrderManager {
     /**
      * Update order line positions
      */
+    _tagOmLevelCtrlPrice(el, levelPrice) {
+        if (!el) return;
+        const p = Number(levelPrice);
+        if (Number.isFinite(p)) {
+            el.setAttribute('data-level-price', String(p));
+        }
+    }
+
+    /**
+     * Show/hide `.om-level-ctrl` badges for the level under the cursor.
+     * Uses `data-level-price` + yScale (stable during pan/zoom); falls back to
+     * getBoundingClientRect for executed-order badges without the attribute.
+     */
+    _revealLevelCtrlBadges(ch) {
+        const svgNode = ch?.svg?.node?.();
+        if (!svgNode) return;
+        const container = svgNode.parentElement;
+        if (!container) return;
+        const PAD = 10;
+        const inside = !!container.__omInside;
+        const clientY = container.__omY;
+        const badges = svgNode.querySelectorAll('.om-level-ctrl');
+
+        if (!inside || !Number.isFinite(clientY)) {
+            for (let i = 0; i < badges.length; i++) {
+                badges[i].style.opacity = '0';
+                badges[i].style.pointerEvents = 'none';
+            }
+            return;
+        }
+
+        const wrapRect = container.getBoundingClientRect();
+        const localY = clientY - wrapRect.top;
+        const yScale = ch?.scales?.yScale;
+
+        for (let i = 0; i < badges.length; i++) {
+            const el = badges[i];
+            let show = false;
+            const lp = parseFloat(el.getAttribute('data-level-price'));
+            if (yScale && Number.isFinite(lp)) {
+                const levelPixelY = yScale(lp);
+                show = Math.abs(localY - levelPixelY) <= PAD;
+            } else {
+                const r = el.getBoundingClientRect();
+                show = r.height > 0 && clientY >= r.top - PAD && clientY <= r.bottom + PAD;
+            }
+            el.style.opacity = show ? '1' : '0';
+            el.style.pointerEvents = show ? 'all' : 'none';
+        }
+    }
+
+    /** Re-apply hover visibility after preview lines move (pan/zoom) while cursor is still on chart. */
+    _refreshLevelCtrlHoverIfNeeded(ch) {
+        const svgNode = ch?.svg?.node?.();
+        const container = svgNode?.parentElement;
+        if (!container?.__omCtrlBound || !container.__omInside) return;
+        if (container.__omCtrlRaf) return;
+        container.__omCtrlRaf = true;
+        requestAnimationFrame(() => {
+            container.__omCtrlRaf = false;
+            this._revealLevelCtrlBadges(ch);
+        });
+    }
+
     /**
      * Hide the on-chart level control buttons (▲▼ stepper, × close/delete, + split)
      * until the cursor is at that level's height, then fade them in — like TradingView.
@@ -36094,23 +36224,10 @@ class OrderManager {
         if (!svgNode) return;
         const container = svgNode.parentElement;
         if (!container) return;
-        const PAD = 10; // px of slack above/below a badge that still counts as "on the level"
 
         const reveal = () => {
             container.__omCtrlRaf = false;
-            const inside = !!container.__omInside;
-            const y = container.__omY;
-            const badges = svgNode.querySelectorAll('.om-level-ctrl');
-            for (let i = 0; i < badges.length; i++) {
-                const el = badges[i];
-                let show = false;
-                if (inside && Number.isFinite(y)) {
-                    const r = el.getBoundingClientRect();
-                    if (r.height > 0 && y >= r.top - PAD && y <= r.bottom + PAD) show = true;
-                }
-                el.style.opacity = show ? '1' : '0';
-                el.style.pointerEvents = show ? 'all' : 'none';
-            }
+            this._revealLevelCtrlBadges(ch);
         };
         const schedule = () => {
             if (container.__omCtrlRaf) return;
@@ -36132,9 +36249,6 @@ class OrderManager {
                 schedule();
             }, { passive: true });
         }
-        // Re-apply after each render so freshly (re)created badges adopt the current
-        // hover state instead of flashing hidden during live re-renders while hovering.
-        schedule();
     }
 
     updateOrderLines(sourceChart) {
@@ -40399,6 +40513,7 @@ class OrderManager {
             onDecrease: o.onDecrease,
             stopMousedown: o.stopMousedown,
         });
+        this._tagOmLevelCtrlPrice(g.node(), o.levelPrice);
         return { group: g, size };
     }
 
@@ -40450,6 +40565,7 @@ class OrderManager {
         if (o.stopMousedown) {
             g.on('mousedown', (e) => e.stopPropagation());
         }
+        this._tagOmLevelCtrlPrice(g.node(), o.levelPrice);
         return { group: g, size, r };
     }
 

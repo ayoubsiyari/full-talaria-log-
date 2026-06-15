@@ -12695,6 +12695,9 @@ const TalariaV8b = () => {
                   {targets.length>1&&r.targetsTotalProfit&&(
                     <div style={{fontSize:10,fontWeight:700,color:c.gn,fontVariantNumeric:"tabular-nums",marginTop:5,paddingTop:4,borderTop:`1px solid ${c.br}`}}>
                       {r.targetsTotalIsRealized?"Total":"Plan"} {r.targetsTotalProfit}
+                      {r.targetsPlannedProfit&&r.targetsTotalIsRealized&&(
+                        <div style={{fontSize:9,fontWeight:500,color:c.tm,marginTop:2}}>Plan was {r.targetsPlannedProfit}</div>
+                      )}
                     </div>
                   )}
                   {r.exit!=="—"&&<div style={{fontSize:10,color:r.pc,fontVariantNumeric:"tabular-nums",marginTop:3}}>exit {r.exit}</div>}
