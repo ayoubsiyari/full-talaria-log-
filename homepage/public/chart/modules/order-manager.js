@@ -30304,6 +30304,7 @@ class OrderManager {
 
                 ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
                 ml.dragHitLine?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
+                this._positionLegacyOrderLevelToastAccent(ml.labelAccent, ml.labelBox);
 
                 let memberCx = labelBoxX + lbw + gap;
 
@@ -35976,6 +35977,9 @@ class OrderManager {
         }
 
         const ch = sourceChart || this.chart;
+        if (ch?.svg) {
+            this._purgeReplayOrderLineArtifacts(ch);
+        }
         if (!ch?.scales) {
             console.log('⚠️ updateOrderLines: Scales not ready');
             return;
@@ -35988,6 +35992,7 @@ class OrderManager {
 
         ch.svg.selectAll('.y-axis-pending-highlight').remove();
         ch.svg.selectAll('.y-axis-entry-highlight').remove();
+        ch.svg.selectAll('.y-axis-price-highlight').remove();
 
         const lines = (this.orderLines || []).filter((ol) => (ol.chart || this.chart) === ch);
 
@@ -36447,6 +36452,60 @@ class OrderManager {
         return ch.w - yAxisWidth - 6;
     }
 
+    /** Dedupe orphan `.order-line` / `.pending-order-line` DOM nodes (registry is source of truth). */
+    _reconcileOrderLineDomForChart(ch) {
+        if (!ch?.svg?.selectAll) return;
+        const groups = new Map();
+        ch.svg.selectAll('.order-line, .pending-order-line').each(function () {
+            const el = this;
+            const cls = el.getAttribute('class') || '';
+            const isPending = cls.includes('pending-order-line');
+            const idMatch = cls.match(/\b(?:pending|order)-(\d+)\b/);
+            if (!idMatch) {
+                try { el.remove(); } catch (_) {}
+                return;
+            }
+            const key = `${idMatch[1]}:${isPending ? 'p' : 'o'}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(el);
+        });
+
+        for (const [key, nodes] of groups) {
+            const [oid, kind] = key.split(':');
+            const isPending = kind === 'p';
+            const ol = (this.orderLines || []).find(
+                (o) => String(o.orderId) === oid && !!o.isPending === isPending && (o.chart || this.chart) === ch
+            );
+            if (!ol) {
+                nodes.forEach((n) => { try { n.remove(); } catch (_) {} });
+                continue;
+            }
+            const regNode = ol.line?.node?.();
+            const keeper = (regNode && regNode.isConnected && nodes.includes(regNode))
+                ? regNode
+                : nodes[nodes.length - 1];
+            if (keeper && (!regNode || !regNode.isConnected || regNode !== keeper)) {
+                try { ol.line = d3.select(keeper); } catch (_) {}
+            }
+            nodes.forEach((n) => {
+                if (n !== keeper) try { n.remove(); } catch (_) {}
+            });
+        }
+    }
+
+    /** During replay: purge connector stubs + duplicate entry lines before repositioning. */
+    _purgeReplayOrderLineArtifacts(ch) {
+        if (!ch?.svg) return;
+        const rs = this._playbackReplaySystem();
+        if (!rs?.isActive) return;
+        this._purgeOrderConnectorsFromSvg(ch.svg, ch);
+        this._reconcileOrderLineDomForChart(ch);
+        const plotOpts = { fullPlot: true };
+        this._purgeDetachedConnectorGraphics(ch.svg, ch, plotOpts);
+        this._purgeOrphanVerticalConnectorLines(ch.svg, ch, plotOpts);
+        ch.svg.selectAll('.preview-pending-connector, .preview-pending-connector-dot').remove();
+    }
+
     _purgeOrderConnectorsForOrder(orderId) {
         if (orderId == null || typeof document === 'undefined') return;
         const oid = String(orderId);
@@ -36500,15 +36559,21 @@ class OrderManager {
     }
 
     /** Detached vertical stubs at the connector anchor (lost parent group after close). */
-    _purgeDetachedConnectorGraphics(svg, ch) {
+    _purgeDetachedConnectorGraphics(svg, ch, opts) {
         if (!svg?.selectAll) return;
+        const fullPlot = !!(opts && opts.fullPlot);
         const connX = ch ? this._orderConnectorAnchorX(ch) : null;
         const w = Number(ch?.w) || 0;
         const marginR = ch?.margin?.r || 70;
+        const marginL = ch?.margin?.l || 60;
         const minX = w > 0 ? Math.max(0, w - marginR - 36) : 0;
+        const plotRight = w > 0 ? w - marginR : w;
         const anchorTol = 12;
         const nearAnchor = (x) => {
             if (!Number.isFinite(x)) return false;
+            if (fullPlot) {
+                return x >= marginL && x <= plotRight;
+            }
             if (Number.isFinite(connX) && Math.abs(x - connX) <= anchorTol) return true;
             return minX > 0 && x >= minX;
         };
@@ -36562,25 +36627,32 @@ class OrderManager {
     }
 
     /** Remove detached vertical TP/SL/entry connector stubs (x1≈x2 near y-axis anchor). */
-    _purgeOrphanVerticalConnectorLines(svg, ch) {
+    _purgeOrphanVerticalConnectorLines(svg, ch, opts) {
         if (!svg?.selectAll) return;
+        const fullPlot = !!(opts && opts.fullPlot);
         const w = Number(ch?.w) || 0;
         const marginR = ch?.margin?.r || 70;
+        const marginL = ch?.margin?.l || 60;
         const minX = w > 0 ? Math.max(0, w - marginR - 36) : 0;
+        const plotRight = w > 0 ? w - marginR : w;
         const connX = ch ? this._orderConnectorAnchorX(ch) : null;
         const anchorTol = 12;
         svg.selectAll('line').each(function () {
             const el = this;
             if (!el?.getAttribute) return;
             const cls = el.getAttribute('class') || '';
-            if (cls.includes('order-line') || cls.includes('tp-line') || cls.includes('sl-line')
+            if (cls.includes('order-line') || cls.includes('order-drag-hit') || cls.includes('tp-line') || cls.includes('sl-line')
                 || cls.includes('be-line') || cls.includes('pending-') || cls.includes('trade-connector')) return;
             const x1 = parseFloat(el.getAttribute('x1'));
             const x2 = parseFloat(el.getAttribute('x2'));
             if (!Number.isFinite(x1) || !Number.isFinite(x2) || Math.abs(x1 - x2) > 0.5) return;
-            const nearAnchor = (Number.isFinite(connX) && Math.abs(x1 - connX) <= anchorTol)
-                || (minX > 0 && x1 >= minX)
-                || minX === 0;
+            let nearAnchor;
+            if (fullPlot) {
+                nearAnchor = x1 >= marginL && x1 <= plotRight;
+            } else {
+                nearAnchor = (Number.isFinite(connX) && Math.abs(x1 - connX) <= anchorTol)
+                    || (minX > 0 && x1 >= minX);
+            }
             if (!nearAnchor) return;
             const stroke = el.getAttribute('stroke') || '';
             if (!this._isConnectorStrokeColor(stroke)) return;
