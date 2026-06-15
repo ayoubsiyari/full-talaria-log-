@@ -301,10 +301,29 @@ function resolveTradeEntryPxForTpMath(om, order, journal, row) {
 function resolveTradeQtyForTpMath(om, order, journal, row) {
   const group = order ? collectSplitGroupOrders(om, order) : null;
   if (group && group.length > 1) {
-    const t = group.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+    const t = group.reduce(
+      (s, o) => s + (Number(o.originalQuantity ?? o.quantity) || 0),
+      0
+    );
     if (t > 0) return t;
   }
-  const q = Number(order?.originalQuantity ?? order?.quantity ?? journal?.quantity);
+  if (journal?.splitEntries?.length > 1) {
+    const t = journal.splitEntries.reduce(
+      (s, e) => s + (Number(e.lotSize ?? e.quantity) || 0),
+      0
+    );
+    if (t > 0) return t;
+  }
+  if (journal?.scaledEntries?.length > 1) {
+    const t = journal.scaledEntries.reduce(
+      (s, e) => s + (Number(e.quantity ?? e.lotSize) || 0),
+      0
+    );
+    if (t > 0) return t;
+  }
+  const q = Number(
+    order?.originalQuantity ?? order?.quantity ?? journal?.quantity
+  );
   if (Number.isFinite(q) && q > 0) return q;
   const parsed = Number.parseFloat(row?.sz);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -549,6 +568,14 @@ function attachMultiLegDisplayToRow(om, row, order, journal) {
         }
       }
     }
+  }
+  const journalRef =
+    journal
+    || (om && row?.omId != null ? findJournalEntry(om, row.omId) : null);
+  const displayQty = resolveTradeQtyForTpMath(om, resolvedOrder, journalRef, row);
+  if (displayQty > 0) {
+    const szTxt = fmtQty(displayQty);
+    if (szTxt) row.sz = szTxt;
   }
 }
 

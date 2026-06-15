@@ -17367,6 +17367,9 @@ class OrderManager {
         // Entry preview uses a full-width invisible hit strip; SL badge sits left of TP and can
         // end up underneath other preview layers — move badges to top for reliable drags.
         this._raiseEntryAnchoredPreviewBadgesToFront();
+        // Badges were just rebuilt; re-apply hover visibility + color class with final
+        // positions before paint so a live re-render doesn't flash the badge color.
+        this._refreshLevelCtrlHoverIfNeeded(previewChart);
         } finally {
             this._previewTargetChart = null;
         }
@@ -36634,12 +36637,14 @@ class OrderManager {
         const PAD = 10;
         const inside = !!container.__omInside;
         const clientY = container.__omY;
+        const clientX = container.__omX;
         const badges = svgNode.querySelectorAll('.om-level-ctrl');
 
         if (!inside || !Number.isFinite(clientY)) {
             for (let i = 0; i < badges.length; i++) {
                 badges[i].style.opacity = '0';
                 badges[i].style.pointerEvents = 'none';
+                badges[i].classList.remove('om-ctrl-hover');
             }
             return;
         }
@@ -36670,6 +36675,15 @@ class OrderManager {
             }
             el.style.opacity = show ? '1' : '0';
             el.style.pointerEvents = show ? 'all' : 'none';
+            // Drive the hover color from the real cursor position instead of CSS :hover.
+            // A live preview rebuilds these badges every tick; :hover isn't reliably
+            // re-evaluated on a freshly created element under a stationary cursor, so the
+            // color flickered. Setting an explicit class before paint keeps it stable.
+            const overExact = show && r.width > 0 && r.height > 0
+                && Number.isFinite(clientX)
+                && clientX >= r.left && clientX <= r.right
+                && clientY >= r.top && clientY <= r.bottom;
+            el.classList.toggle('om-ctrl-hover', overExact);
         }
     }
 
@@ -36714,11 +36728,13 @@ class OrderManager {
             .order-level-badge .order-level-badge-glyph {
                 fill: var(--olb-muted);
             }
-            .order-level-badge:hover .order-level-badge-bg {
+            .order-level-badge:hover .order-level-badge-bg,
+            .order-level-badge.om-ctrl-hover .order-level-badge-bg {
                 fill: var(--olb-accent);
                 stroke: var(--olb-accent);
             }
-            .order-level-badge:hover .order-level-badge-glyph {
+            .order-level-badge:hover .order-level-badge-glyph,
+            .order-level-badge.om-ctrl-hover .order-level-badge-glyph {
                 fill: #ffffff;
             }
         `;
@@ -36750,6 +36766,7 @@ class OrderManager {
             container.addEventListener('mousemove', (e) => {
                 container.__omInside = true;
                 container.__omY = e.clientY;
+                container.__omX = e.clientX;
                 schedule();
             }, { passive: true });
             container.addEventListener('mouseleave', () => {
