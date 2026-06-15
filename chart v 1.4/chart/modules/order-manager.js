@@ -35987,6 +35987,64 @@ class OrderManager {
     /**
      * Update order line positions
      */
+    /**
+     * Hide the on-chart level control buttons (▲▼ stepper, × close/delete, + split)
+     * until the cursor is at that level's height, then fade them in — like TradingView.
+     * Each control badge is tagged `.om-level-ctrl` and created hidden; here we just
+     * reveal the ones whose vertical band contains the pointer. A level line spans the
+     * full chart width, so y-proximity alone == "mouse on the level". This deliberately
+     * ignores SVG pointer-events (the #drawingSvg root is pointer-events:none, so its
+     * own mouseleave is unreliable) and instead listens on the chart container.
+     */
+    _ensureLevelCtrlHover(ch) {
+        const svgSel = ch && ch.svg;
+        const svgNode = svgSel && svgSel.node && svgSel.node();
+        if (!svgNode) return;
+        const container = svgNode.parentElement;
+        if (!container) return;
+        const PAD = 10; // px of slack above/below a badge that still counts as "on the level"
+
+        const reveal = () => {
+            container.__omCtrlRaf = false;
+            const inside = !!container.__omInside;
+            const y = container.__omY;
+            const badges = svgNode.querySelectorAll('.om-level-ctrl');
+            for (let i = 0; i < badges.length; i++) {
+                const el = badges[i];
+                let show = false;
+                if (inside && Number.isFinite(y)) {
+                    const r = el.getBoundingClientRect();
+                    if (r.height > 0 && y >= r.top - PAD && y <= r.bottom + PAD) show = true;
+                }
+                el.style.opacity = show ? '1' : '0';
+                el.style.pointerEvents = show ? 'all' : 'none';
+            }
+        };
+        const schedule = () => {
+            if (container.__omCtrlRaf) return;
+            container.__omCtrlRaf = true;
+            const raf = (typeof requestAnimationFrame === 'function')
+                ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+            raf(reveal);
+        };
+
+        if (!container.__omCtrlBound) {
+            container.__omCtrlBound = true;
+            container.addEventListener('mousemove', (e) => {
+                container.__omInside = true;
+                container.__omY = e.clientY;
+                schedule();
+            }, { passive: true });
+            container.addEventListener('mouseleave', () => {
+                container.__omInside = false;
+                schedule();
+            }, { passive: true });
+        }
+        // Re-apply after each render so freshly (re)created badges adopt the current
+        // hover state instead of flashing hidden during live re-renders while hovering.
+        schedule();
+    }
+
     updateOrderLines(sourceChart) {
         this._pruneReplayFutureTradeMarkers();
         if (sourceChart === undefined && this._isMultiPanelLayout()) {
@@ -35999,6 +36057,7 @@ class OrderManager {
         const ch = sourceChart || this.chart;
         if (ch?.svg) {
             this._purgeOrderOverlayArtifacts(ch);
+            this._ensureLevelCtrlHover(ch);
         }
         if (!ch?.scales) {
             console.log('⚠️ updateOrderLines: Scales not ready');
@@ -40209,9 +40268,13 @@ class OrderManager {
     /** Combined ↑/↓ square for multi-TP share stepper on chart SVG (center-anchored). */
     _createTpPctStepperOnChart(svg, cssClass, opts = {}) {
         const g = svg.append('g')
-            .attr('class', `order-level-badge tp-pct-stepper tp-percentage-control ${cssClass || ''}`.trim())
+            .attr('class', `order-level-badge om-level-ctrl tp-pct-stepper tp-percentage-control ${cssClass || ''}`.trim())
             .attr('pointer-events', 'all')
-            .style('cursor', 'pointer');
+            .style('cursor', 'pointer')
+            // Hidden until the cursor is at this level's height (see _ensureLevelCtrlHover).
+            .style('opacity', 0)
+            .style('pointer-events', 'none')
+            .style('transition', 'opacity 0.12s ease');
         this._populateTpPctStepper(g, { centerAnchor: true, ...opts });
         return g;
     }
@@ -40299,9 +40362,13 @@ class OrderManager {
         const spec = this._orderLevelBadgeKindSpec(kind);
         const th = this._tradeMarkerToastTheme();
         const btn = svg.append('g')
-            .attr('class', `order-level-badge order-level-badge--${kind} ${cssClass || ''}`.trim())
+            .attr('class', `order-level-badge om-level-ctrl order-level-badge--${kind} ${cssClass || ''}`.trim())
             .attr('pointer-events', 'all')
-            .style('cursor', 'pointer');
+            .style('cursor', 'pointer')
+            // Hidden until the cursor is at this level's height (see _ensureLevelCtrlHover).
+            .style('opacity', 0)
+            .style('pointer-events', 'none')
+            .style('transition', 'opacity 0.12s ease');
         const bg = btn.append('rect')
             .attr('class', 'order-level-badge-bg order-overlay-sublayer')
             .attr('x', -r)
