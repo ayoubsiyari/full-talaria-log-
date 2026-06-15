@@ -16673,9 +16673,9 @@ class OrderManager {
             }
         }
 
-        // Reset manual-position flags when price was cleared (panel reset / multichart sync).
-        if (slEnabled && !(slPrice > 0)) this.slManuallyPositioned = false;
-        if (tpEnabled && !(tpPrice > 0)) this.tpManuallyPositioned = false;
+        // Reset manual-position flags only when toggles are off (not when price input is briefly stale).
+        if (!slEnabled) this.slManuallyPositioned = false;
+        if (!tpEnabled) this.tpManuallyPositioned = false;
 
         const tpSlBadgeAnchor = this._getPreviewTpSlBadgeAnchorPrice();
 
@@ -16815,7 +16815,7 @@ class OrderManager {
                         this.previewLines.sl.targetPrice = slPrice;
                     }
                 } else {
-                    this.slManuallyPositioned = false;
+                    if (!(slPrice > 0)) this.slManuallyPositioned = false;
                     this.previewLines.sl = this.drawPreviewBadge(tpSlBadgeAnchor, '#f23645', 'SL', slPrice);
                 }
             }
@@ -16827,7 +16827,7 @@ class OrderManager {
                         this.previewLines.tp.targetPrice = tpPrice;
                     }
                 } else {
-                    this.tpManuallyPositioned = false;
+                    if (!(tpPrice > 0)) this.tpManuallyPositioned = false;
                     this.previewLines.tp = this.drawPreviewBadge(tpSlBadgeAnchor, '#089981', 'TP', tpPrice);
                 }
             }
@@ -16842,7 +16842,7 @@ class OrderManager {
                         this.previewLines.sl.targetPrice = slPrice;
                     }
                 } else {
-                    this.slManuallyPositioned = false;
+                    if (!(slPrice > 0)) this.slManuallyPositioned = false;
                     this.previewLines.sl = this.drawPreviewBadge(tpSlBadgeAnchor, '#f23645', 'SL', slPrice);
                 }
             }
@@ -17932,6 +17932,14 @@ class OrderManager {
                 isDragging = false;
                 lineData.line.attr('stroke-width', 1).attr('opacity', 0.85);
                 
+                const isTpSlChartDrag =
+                    lineData.label === 'TP' ||
+                    lineData.label === 'SL' ||
+                    (lineData.label && /^TP\d+$/.test(String(lineData.label)));
+                if (isTpSlChartDrag) {
+                    self._lastChartTargetDragAt = Date.now();
+                }
+
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
                 if (self.isMultiEntryMode) {
@@ -18304,6 +18312,9 @@ class OrderManager {
                 }
 
                 // Refresh to convert badge to full line
+                if (label === 'TP' || label === 'SL') {
+                    self._lastChartTargetDragAt = Date.now();
+                }
                 self.updatePreviewLines();
                 
                 // Use requestAnimationFrame to ensure calculation happens after DOM updates

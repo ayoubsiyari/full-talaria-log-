@@ -8873,6 +8873,34 @@ function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
   } catch (_) {}
 }
 
+const CHART_TARGET_DRAG_LEAD_MS = 600;
+
+/** Chart SL/TP drag just finished — React row may still be stale vs #tpPrice/#slPrice. */
+function v9IsChartTargetDragLead(om) {
+  return !!(
+    om?._lastChartTargetDragAt &&
+    Date.now() - om._lastChartTargetDragAt < CHART_TARGET_DRAG_LEAD_MS
+  );
+}
+
+/** Hidden OM input has a chart-dragged price — do not overwrite with stale React row. */
+function v9OmManualHiddenPriceWins(om, hiddenId, reactRowPx) {
+  if (!om) return false;
+  if (v9IsChartTargetDragLead(om)) return true;
+  const manual =
+    hiddenId === "tpPrice"
+      ? om.tpManuallyPositioned
+      : hiddenId === "slPrice"
+        ? om.slManuallyPositioned
+        : false;
+  if (!manual) return false;
+  const dom = String(document.getElementById(hiddenId)?.value ?? "");
+  const domN = parseFloat(dom);
+  const reactN = parseFloat(reactRowPx);
+  if (!Number.isFinite(domN) || domN <= 0) return false;
+  return !Number.isFinite(reactN) || reactN <= 0 || Math.abs(domN - reactN) >= 1e-8;
+}
+
 /** Mid-edit price strings ("", ".", "26.") — do not mirror/overwrite from hidden OM inputs. */
 function v9IsPartialDecimalInput(str) {
   const s = String(str ?? "").trim();
@@ -14364,7 +14392,19 @@ const TalariaV8bLive = () => {
         const slPx = parseFloat(slRowPx);
         if (!skipPosSync) {
           if (slEnabled && (slPx > 0 || v9IsPartialDecimalInput(slRowPx))) {
-            setIn("slPrice", slRowPx);
+            if (v9OmManualHiddenPriceWins(om, "slPrice", slRowPx)) {
+              const domSl = document.getElementById("slPrice")?.value ?? "";
+              if (domSl && !v9IsPartialDecimalInput(domSl)) {
+                setSlRows((rows) => {
+                  if (!rows.length) return rows;
+                  const r0 = rows[0];
+                  if (String(r0.price) === domSl) return rows;
+                  return [{ ...r0, price: domSl }];
+                });
+              }
+            } else {
+              setIn("slPrice", slRowPx);
+            }
           } else if (!slEnabled) {
             setIn("slPrice", "0");
           }
@@ -14378,7 +14418,19 @@ const TalariaV8bLive = () => {
             tp0?.enabled !== false &&
             (tpPx > 0 || v9IsPartialDecimalInput(tpRowPx))
           ) {
-            setIn("tpPrice", tpRowPx);
+            if (v9OmManualHiddenPriceWins(om, "tpPrice", tpRowPx)) {
+              const domTp = document.getElementById("tpPrice")?.value ?? "";
+              if (domTp && !v9IsPartialDecimalInput(domTp)) {
+                setTpRows((rows) => {
+                  if (!rows.length) return rows;
+                  const r0 = rows[0];
+                  if (String(r0.price) === domTp) return rows;
+                  return [{ ...r0, price: domTp }];
+                });
+              }
+            } else {
+              setIn("tpPrice", tpRowPx);
+            }
           } else if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled === false) {
             setIn("tpPrice", "0");
           }
