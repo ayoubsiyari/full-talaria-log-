@@ -18208,10 +18208,22 @@ class Chart {
             }
         }
         
-        // Debounce: replay needs tighter turnaround than manual panning.
+        // Debounce: replay playback needs tighter turnaround than manual panning.
         // Keep non-replay debounce short so pan-left fills the viewport quickly
         // instead of trickling candles in small batches.
-        const debounceMs = isReplay ? 80 : 120;
+        //
+        // While the user is actively dragging the chart, every completed load runs
+        // a full reslice + resample of the entire loaded history (and busts the
+        // resample cache). Firing that ~12×/s makes the drag freeze/stutter when
+        // zoomed out, where the history is large. Space those heavy reslices out
+        // during a manual drag so only a few run per second — the view stays
+        // smooth and the offset compensation keeps bars anchored. Playback keeps
+        // its tight cadence so forward prefetch never starves.
+        const isPlayback = !!(isReplay && this.replaySystem && this.replaySystem.isPlaying);
+        const manualDragActive = !isPlayback
+            && typeof this._isChartViewPanning === 'function'
+            && this._isChartViewPanning();
+        const debounceMs = manualDragActive ? 320 : (isReplay ? 80 : 120);
         const now = Date.now();
         if (!force && this._lastPanLoadTime && now - this._lastPanLoadTime < debounceMs) return true;
 

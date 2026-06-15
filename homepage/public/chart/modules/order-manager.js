@@ -799,6 +799,8 @@ class OrderManager {
         s.selectAll('.be-line,.be-hit-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
         s.selectAll('[class*="split-avg-"]').remove();
         s.selectAll('[class*="multi-tp-avg-"]').remove();
+        this.splitGroupAvgLines = (this.splitGroupAvgLines || []).filter((g) => g.chart !== chart);
+        this.multiTPAvgLines = (this.multiTPAvgLines || []).filter((g) => g.chart !== chart);
         s.selectAll('.exec-order-connector').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
         s.selectAll('g[class*="entry-marker-"]').remove();
@@ -930,6 +932,9 @@ class OrderManager {
             });
         });
 
+        this._rebuildSplitGroupAvgLines();
+        this._rebuildMultiTPAvgLines();
+
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
         try {
             this._redrawMfeMaeMarkersFromState();
@@ -986,6 +991,8 @@ class OrderManager {
                     this.drawPendingOrderTargets(po);
                 } catch (e) { /* ignore */ }
             });
+            this._rebuildSplitGroupAvgLines();
+            this._rebuildMultiTPAvgLines();
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {
                 this._redrawMfeMaeMarkersFromState();
@@ -25204,6 +25211,9 @@ class OrderManager {
         });
         this.drawOrderLine(order);
         this.drawSLTPLines(order);
+        if (order.isSplitEntry && order.splitGroupId) {
+            this._updateSplitGroupAvgLines();
+        }
         
         // Show notification
         const orderTypeLabel = order.wasLimitOrder ? 'Limit' : 'Stop';
@@ -29371,6 +29381,30 @@ class OrderManager {
     }
     
     /**
+     * True when split-group Avg Entry SVG nodes are still attached (not stripped by chart redraw).
+     */
+    _splitGroupAvgDomAlive(g) {
+        try {
+            const n = g?.line?.node?.();
+            return !!(n && n.isConnected);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _disposeSplitGroupAvgEntry(g) {
+        if (!g) return;
+        try { g.line?.remove(); } catch (_) {}
+        try { g.avgBox?.remove(); } catch (_) {}
+        try { g.avgText?.remove(); } catch (_) {}
+        try { g.lotsBox?.remove(); } catch (_) {}
+        try { g.lotsText?.remove(); } catch (_) {}
+        try { g.pnlBox?.remove(); } catch (_) {}
+        try { g.pnlText?.remove(); } catch (_) {}
+        try { g._connector?.remove(); } catch (_) {}
+    }
+
+    /**
      * Draw a persistent Avg Entry line for a split-group after multi-entry placement.
      * Shows total lot size and live aggregated P&L across all orders in the group.
      */
@@ -29385,7 +29419,14 @@ class OrderManager {
 
         charts.forEach((chart) => {
             if (!chart?.svg) return;
-            if (this.splitGroupAvgLines.some((g) => g.splitGroupId === splitGroupId && g.chart === chart)) return;
+            const staleIx = (this.splitGroupAvgLines || []).findIndex(
+                (g) => g.splitGroupId === splitGroupId && g.chart === chart
+            );
+            if (staleIx >= 0) {
+                if (this._splitGroupAvgDomAlive(this.splitGroupAvgLines[staleIx])) return;
+                this._disposeSplitGroupAvgEntry(this.splitGroupAvgLines[staleIx]);
+                this.splitGroupAvgLines.splice(staleIx, 1);
+            }
 
             const yScale = chart.scales?.yScale;
             const y = yScale ? yScale(avgPrice) : 100;
@@ -29466,16 +29507,7 @@ class OrderManager {
     removeSplitGroupAvgLine(splitGroupId) {
         const toRemove = this.splitGroupAvgLines.filter((g) => g.splitGroupId === splitGroupId);
         if (!toRemove.length) return;
-        toRemove.forEach((g) => {
-            try { g.line?.remove(); } catch (_) {}
-            try { g.avgBox?.remove(); } catch (_) {}
-            try { g.avgText?.remove(); } catch (_) {}
-            try { g.lotsBox?.remove(); } catch (_) {}
-            try { g.lotsText?.remove(); } catch (_) {}
-            try { g.pnlBox?.remove(); } catch (_) {}
-            try { g.pnlText?.remove(); } catch (_) {}
-            try { g._connector?.remove(); } catch (_) {}
-        });
+        toRemove.forEach((g) => this._disposeSplitGroupAvgEntry(g));
         this.splitGroupAvgLines = this.splitGroupAvgLines.filter((g) => g.splitGroupId !== splitGroupId);
     }
 
@@ -29497,7 +29529,9 @@ class OrderManager {
         }
         for (const [gid, orders] of groups) {
             if (orders.length < 2) continue;
-            const alreadyDrawn = this.splitGroupAvgLines.some(g => g.splitGroupId === gid);
+            const alreadyDrawn = this.splitGroupAvgLines.some(
+                (g) => g.splitGroupId === gid && this._splitGroupAvgDomAlive(g)
+            );
             if (alreadyDrawn) continue;
             let wSum = 0, lSum = 0;
             for (const o of orders) {
@@ -30051,6 +30085,9 @@ class OrderManager {
             });
             return;
         }
+        if (!this.splitGroupAvgLines || !this.splitGroupAvgLines.length) {
+            this._rebuildSplitGroupAvgLines();
+        }
         if (!this.splitGroupAvgLines || !this.splitGroupAvgLines.length) return;
         const yScale = ch?.scales?.yScale;
         if (!yScale) return;
@@ -30063,34 +30100,65 @@ class OrderManager {
         const closeBtnR = 10;
         const closeBtnGap = 6;
 
+        const labelWidth = (textEl, fallbackChars) => {
+            try {
+                const n = textEl?.node?.();
+                if (!n || !n.isConnected) return fallbackChars * 7 + pad * 2;
+                return n.getBBox().width + pad * 2;
+            } catch (_) {
+                return fallbackChars * 7 + pad * 2;
+            }
+        };
+
         const toRemove = [];
+        const toRebuild = new Set();
+        for (const g of [...(this.splitGroupAvgLines || [])]) {
+            if (g.chart !== ch) continue;
+            if (!this._splitGroupAvgDomAlive(g)) {
+                this._disposeSplitGroupAvgEntry(g);
+                this.splitGroupAvgLines = this.splitGroupAvgLines.filter((x) => x !== g);
+                toRebuild.add(g.splitGroupId);
+            }
+        }
+        if (toRebuild.size) this._rebuildSplitGroupAvgLines();
+        if (!this.splitGroupAvgLines?.length) return;
+
         for (const g of this.splitGroupAvgLines) {
             if (g.chart !== ch) continue;
 
             const openOrders = g.orderIds
                 .map((id) => this._findOpenPositionById(id) || this._findPendingOrderById(id))
                 .filter(Boolean);
-            if (openOrders.length === 0) {
+            const byGid = [
+                ...(this.openPositions || []),
+                ...(this.pendingOrders || []),
+                ...(this.orderService?.openPositions || []),
+                ...(this.orderService?.pendingOrders || [])
+            ].filter((o) => o && o.splitGroupId === g.splitGroupId && o.isSplitEntry);
+            const mergedLegs = new Map(openOrders.map((o) => [o.id, o]));
+            byGid.forEach((o) => { if (!mergedLegs.has(o.id)) mergedLegs.set(o.id, o); });
+            const legs = [...mergedLegs.values()];
+            if (legs.length === 0) {
                 toRemove.push(g.splitGroupId);
                 continue;
             }
             // Single leg left (deleted/cancelled sibling): no multi-entry — remove Avg line.
-            if (openOrders.length < 2) {
+            if (legs.length < 2) {
                 toRemove.push(g.splitGroupId);
                 continue;
             }
 
-            g.orderIds = openOrders.map((o) => o.id);
+            g.orderIds = legs.map((o) => o.id);
 
-            const filledOrders = openOrders.filter((o) => o.status === 'OPEN');
+            const filledOrders = legs.filter((o) => o.status === 'OPEN');
             const filledLots = filledOrders.reduce((s, o) => s + (o.quantity || 0), 0);
 
             // Line position: weighted avg of ALL legs (filled @ openPrice + pending @ entryPrice).
             // Using filled-only here made the Avg jump after place vs initial drawSplitGroupAvgLine().
-            const allLots = openOrders.reduce((s, o) => s + (o.quantity || 0), 0);
+            const allLots = legs.reduce((s, o) => s + (o.quantity || 0), 0);
             let avgPrice;
             if (allLots > 0) {
-                const wSum = openOrders.reduce((s, o) => {
+                const wSum = legs.reduce((s, o) => {
                     const px = o.status === 'OPEN'
                         ? (o.openPrice || 0)
                         : (o.entryPrice || 0);
@@ -30106,16 +30174,16 @@ class OrderManager {
 
             // --- Avg Entry label widths ---
             g.avgText.text('Avg Entry');
-            const avgBW = g.avgText.node().getBBox().width + pad * 2;
+            const avgBW = labelWidth(g.avgText, 9);
 
             const lotsLabel = (filledLots < allLots && filledLots > 0)
                 ? `${this.formatQuantity(filledLots)}/${this.formatQuantity(allLots)}`
                 : this.formatQuantity(allLots);
             g.lotsText.text(lotsLabel);
-            const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
+            const lotsBW = labelWidth(g.lotsText, Math.max(6, lotsLabel.length));
 
             let totalPnl = 0;
-            for (const o of openOrders) {
+            for (const o of legs) {
                 if (o.status === 'OPEN') {
                     const sym = o.ticker || o.symbol || this._getSymbol();
                     const markPx = this._markPriceForOpenPosition(o, ch);
@@ -30126,8 +30194,9 @@ class OrderManager {
             }
             const sign = totalPnl >= 0 ? '+' : '';
             const pnlColor = totalPnl >= 0 ? '#26a69a' : '#f23645';
-            g.pnlText.text(`${sign}${totalPnl.toFixed(2)}`).attr('fill', pnlColor);
-            const pnlBW = g.pnlText.node().getBBox().width + pad * 2;
+            const pnlLabel = `${sign}${totalPnl.toFixed(2)}`;
+            g.pnlText.text(pnlLabel).attr('fill', pnlColor);
+            const pnlBW = labelWidth(g.pnlText, Math.max(7, pnlLabel.length));
 
             const avgTotalW = avgBW + gap + lotsBW + gap + pnlBW;
 
