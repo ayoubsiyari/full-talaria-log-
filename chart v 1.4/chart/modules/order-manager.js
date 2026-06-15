@@ -12383,6 +12383,7 @@ class OrderManager {
         if (!container || !container.__omInside) return;
         const clientY = container.__omY;
         if (!Number.isFinite(clientY)) return;
+        const clientX = container.__omX;
 
         const PAD = 10;
         const wrapRect = container.getBoundingClientRect();
@@ -12401,6 +12402,14 @@ class OrderManager {
                     show = Math.abs(localY - yScale(lp)) <= band;
                 }
             }
+            // Apply the hover color class synchronously (before paint) so dragging a
+            // TP/SL line — which re-renders this badge directly without going through
+            // updatePreviewLines — doesn't flash the color for a frame.
+            const overExact = show && r.width > 0 && r.height > 0
+                && Number.isFinite(clientX)
+                && clientX >= r.left && clientX <= r.right
+                && clientY >= r.top && clientY <= r.bottom;
+            el.classList.toggle('om-ctrl-hover', overExact);
             if (!show) continue;
             const prevTransition = el.style.transition;
             el.style.transition = 'none';
@@ -17367,9 +17376,13 @@ class OrderManager {
         // Entry preview uses a full-width invisible hit strip; SL badge sits left of TP and can
         // end up underneath other preview layers — move badges to top for reliable drags.
         this._raiseEntryAnchoredPreviewBadgesToFront();
-        // Badges were just rebuilt; re-apply hover visibility + color class with final
-        // positions before paint so a live re-render doesn't flash the badge color.
-        this._refreshLevelCtrlHoverIfNeeded(previewChart);
+        // Badges were just rebuilt; re-apply hover visibility + color class SYNCHRONOUSLY
+        // (final positions, before paint) so a live re-render — including while dragging
+        // TP/SL with multiple lines — never flashes the badge color. A rAF refresh could
+        // land a frame late when this runs inside the chart's own render loop.
+        if (previewChart?.svg && previewChart.svg.node?.()?.parentElement?.__omInside) {
+            this._revealLevelCtrlBadges(previewChart);
+        }
         } finally {
             this._previewTargetChart = null;
         }

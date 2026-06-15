@@ -9087,6 +9087,87 @@ function v9ApplyOrderTypeToOm(inferred, om) {
   } catch (_) {}
 }
 
+/** Mirror V9 SL advanced rail (BE / Trailing) into hidden #orderPanel fields placeOrder reads. */
+function v9SyncSlAdvToHiddenOrderPanel({
+  slAdvMode = "none",
+  panelMode = "advanced",
+  slBeUnit = "rr",
+  slBeTrigger = "1.5",
+  slBeOffset = "0",
+  slTslUnit = "rr",
+  slTslActivation = "1",
+  slTslTrail = "0.5",
+  slTslStep = "0.25",
+} = {}) {
+  if (typeof document === "undefined") return;
+  const om = window.chart?.orderManager;
+  const mode = panelMode !== "advanced" ? "none" : (slAdvMode || "none");
+  const unitToOm = (u) => (u === "dollar" ? "amount" : u === "pips" ? "pips" : "rr");
+
+  const setIn = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const s = String(val ?? "");
+    if (el.value === s) return;
+    el.value = s;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  const beTgl = document.getElementById("autoBreakevenToggle");
+  const trTgl = document.getElementById("trailingSLToggle");
+  const beSettings = document.getElementById("breakevenSettings");
+  const trSettings = document.getElementById("trailingSLSettings");
+  const wantBe = mode === "breakeven";
+  const wantTr = mode === "trailing";
+
+  if (om) om._beTrailMutex = true;
+  if (beTgl && beTgl.checked !== wantBe) beTgl.checked = wantBe;
+  if (trTgl && trTgl.checked !== wantTr) trTgl.checked = wantTr;
+  if (om) om._beTrailMutex = false;
+
+  if (wantBe) {
+    const omBeMode = unitToOm(slBeUnit);
+    if (om) om.breakevenMode = omBeMode;
+    document.querySelectorAll(".breakeven-mode-tab").forEach((t) => {
+      t.classList.toggle("active", t.getAttribute("data-mode") === omBeMode);
+    });
+    const unitText = omBeMode === "rr" ? "R" : omBeMode === "pips" ? "Pips" : "$";
+    document.querySelectorAll("[data-be-unit-label]").forEach((el) => { el.textContent = unitText; });
+    document.querySelectorAll(".be-offset-input, .be-offset-label").forEach((el) => {
+      el.style.display = omBeMode === "amount" ? "none" : "";
+    });
+    const trig = slBeTrigger || "0";
+    if (omBeMode === "amount") setIn("breakevenAmount", trig);
+    setIn("breakevenPips", trig);
+    setIn("breakevenPipOffset", slBeOffset ?? "0");
+    if (beSettings) beSettings.classList.remove("is-hidden");
+    if (trSettings) trSettings.classList.add("is-hidden");
+    try { om?.stopTrailingSL?.(); } catch (_) {}
+    try { om?._updateBreakevenSummary?.(); } catch (_) {}
+  } else if (wantTr) {
+    const trMode = unitToOm(slTslUnit);
+    try {
+      if (om && typeof om._setTrailingUnitMode === "function") {
+        if (om.trailingUnitMode !== trMode) om._setTrailingUnitMode(trMode);
+      } else if (om) {
+        om.trailingUnitMode = trMode;
+      }
+    } catch (_) {}
+    setIn("trailingActivateRR", slTslActivation ?? "1");
+    setIn("trailingStepSize", slTslTrail ?? "0.5");
+    setIn("trailingActivatePips", slTslStep ?? "0.25");
+    if (beSettings) beSettings.classList.add("is-hidden");
+    if (trSettings) trSettings.classList.remove("is-hidden");
+    try { om?.initializeTrailingSL?.(); } catch (_) {}
+    try { om?._updateTrailingSummary?.(); } catch (_) {}
+  } else {
+    if (beSettings) beSettings.classList.add("is-hidden");
+    if (trSettings) trSettings.classList.add("is-hidden");
+    try { om?.stopTrailingSL?.(); } catch (_) {}
+  }
+}
+
 function v9SyncOrderTypeFromEntryPrice(om, orderSide) {
   const entryPx = parseFloat(
     (typeof document !== "undefined" ? document.getElementById("orderEntryPrice")?.value : "") || "0"
@@ -14429,6 +14510,18 @@ const TalariaV8bLive = () => {
         setChk("enableSL", slEnabled);
         setChk("enableTP", !!tp0?.enabled);
 
+        v9SyncSlAdvToHiddenOrderPanel({
+          slAdvMode,
+          panelMode,
+          slBeUnit,
+          slBeTrigger,
+          slBeOffset,
+          slTslUnit,
+          slTslActivation,
+          slTslTrail,
+          slTslStep,
+        });
+
         const slRowPx = String(slRows[0]?.price ?? "0");
         const slPx = parseFloat(slRowPx);
         const reactBridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
@@ -14538,7 +14631,29 @@ const TalariaV8bLive = () => {
     }, 80);
 
     return () => clearTimeout(tid);
-  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows, currentSymbol.type, symbol]);
+  }, [
+    orderPanelOpen,
+    buySell,
+    orderType,
+    sizeMode,
+    riskVal,
+    riskBasis,
+    slEnabled,
+    slRows,
+    entryRows,
+    tpRows,
+    currentSymbol.type,
+    symbol,
+    panelMode,
+    slAdvMode,
+    slBeUnit,
+    slBeTrigger,
+    slBeOffset,
+    slTslUnit,
+    slTslActivation,
+    slTslTrail,
+    slTslStep,
+  ]);
 
   // Market preview entry must re-anchor to live price after chart context changes.
   useEffect(() => {
@@ -34302,7 +34417,7 @@ const TalariaV8bLive = () => {
                                 const isHi  = swHov===`sl-adv-${val}`;
                                 return (
                                   <div key={val}
-                                    onClick={()=>{ setSlAdvMode(val); setSlAdvDrop(false); }}
+                                    onClick={()=>{ setSlAdvMode(val); setSlAdvDrop(false); markOrderControlBridge(); }}
                                     onMouseEnter={()=>setSwHov(`sl-adv-${val}`)} onMouseLeave={()=>setSwHov(null)}
                                     style={{ display:"flex", alignItems:"center", padding:"5px 12px", cursor:"default", position:"relative",
                                              background:isAct?c.acD:isHi?"rgba(255,255,255,0.06)":"transparent", transition:"background 0.1s" }}>
@@ -35380,6 +35495,17 @@ const TalariaV8bLive = () => {
                     if (typeof window !== "undefined") {
                       window.__talariaV9RailScreenshots = list.length ? list : null;
                     }
+                    v9SyncSlAdvToHiddenOrderPanel({
+                      slAdvMode,
+                      panelMode,
+                      slBeUnit,
+                      slBeTrigger,
+                      slBeOffset,
+                      slTslUnit,
+                      slTslActivation,
+                      slTslTrail,
+                      slTslStep,
+                    });
                     document.getElementById("placeOrderButton")?.click();
                   }} data-nodrag="1"
                   onMouseEnter={()=>setSwHov("exec-btn")} onMouseLeave={()=>setSwHov(null)}
