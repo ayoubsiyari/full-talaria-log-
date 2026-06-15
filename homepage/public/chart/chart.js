@@ -23164,8 +23164,10 @@ class Chart {
             const yTop = Math.round(Math.min(this.yScale(b.h), this.yScale(b.l)));
             const yBot = Math.round(Math.max(this.yScale(b.h), this.yScale(b.l)));
             if (!Number.isFinite(yTop) || !Number.isFinite(yBot)) continue;
-            const h = yBot - yTop;
-            if (h < 1) continue;
+            // Flat slots (H-L < 1px when zoomed out) were skipped entirely, leaving
+            // empty pixel columns — the "gap" in otherwise continuous candles that
+            // appears/disappears as the y-scale changes with zoom. Draw a 1px mark.
+            const h = Math.max(1, yBot - yTop);
             if (isHollow && b.c >= b.o) {
                 this.ctx.strokeStyle = upColor;
                 this.ctx.lineWidth = 1;
@@ -23188,8 +23190,7 @@ class Chart {
             const yTop = Math.round(Math.min(this.yScale(b.h), this.yScale(b.l)));
             const yBot = Math.round(Math.max(this.yScale(b.h), this.yScale(b.l)));
             if (!Number.isFinite(yTop) || !Number.isFinite(yBot)) continue;
-            const h = yBot - yTop;
-            if (h < 1) continue;
+            const h = Math.max(1, yBot - yTop);
             this.ctx.fillRect(x, yTop, 1, h);
         }
     }

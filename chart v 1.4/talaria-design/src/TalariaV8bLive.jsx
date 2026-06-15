@@ -923,6 +923,50 @@ function v9TpNormalizeDecimalLotShares(rawQtyStrings, orderQty, decimals = 2) {
   return out.map((u) => (u / scale).toFixed(decimals));
 }
 
+/** Lot-size (#) panel: total contracts/lots available for TP legs. */
+function v9TpOrderLotTotal(riskVal, omOrderQtyTxt, sizeMode, symbolType) {
+  if (sizeMode !== "#") return 0;
+  const qRv = Math.max(0, parseFloat(riskVal || "0"));
+  const qOm = Math.max(0, parseFloat(omOrderQtyTxt || "0"));
+  const qCore = qRv >= 1 ? qRv : qOm > 0 ? qOm : qRv;
+  return symbolType === "futures" ? Math.floor(qCore) : qCore;
+}
+
+/** Single TP (#): clamp leg qty to [0, orderTotal]. */
+function v9TpClampSingleLotQty(rawVal, orderTotal, symbolType) {
+  if (rawVal === "" || rawVal === ".") return rawVal;
+  const n = parseFloat(rawVal);
+  if (!Number.isFinite(n)) return symbolType === "futures" ? "0" : "0";
+  const max = Math.max(0, orderTotal);
+  let clamped = Math.max(0, n);
+  if (symbolType === "futures") clamped = Math.round(clamped);
+  if (clamped > max) clamped = max;
+  return symbolType === "futures" ? String(Math.round(clamped)) : String(clamped);
+}
+
+/** Multi TP (#): scale leg lots so the sum equals orderTotal. */
+function v9TpNormalizeMultiLotRows(rows, orderTotal, symbolType) {
+  const active = rows.filter((r) => r.enabled !== false);
+  if (active.length < 2 || !(orderTotal > 0)) return rows;
+  const shares =
+    symbolType === "futures"
+      ? v9TpNormalizeFuturesContractShares(
+          active.map((r) => r.qty),
+          Math.floor(orderTotal)
+        )
+      : v9TpNormalizeDecimalLotShares(active.map((r) => r.qty), orderTotal, 2);
+  let changed = false;
+  const next = rows.map((row) => {
+    if (row.enabled === false) return row;
+    const ix = active.findIndex((a) => a.id === row.id);
+    if (ix < 0) return row;
+    const w = symbolType === "futures" ? String(shares[ix] ?? 0) : shares[ix] ?? "0.00";
+    if (String(row.qty) !== w) changed = true;
+    return { ...row, qty: w };
+  });
+  return changed ? next : rows;
+}
+
 /** OM TP percentages + total contracts → integer shares (largest remainder). */
 function v9TpFuturesContractsFromPercentages(percentages, orderQtyFloor) {
   const n = percentages.length;
@@ -34421,15 +34465,38 @@ const TalariaV8bLive = () => {
               omFuturesMinRiskTxt &&
               (!Number.isFinite(tpTotalLotsForHint) || tpTotalLotsForHint < 1);
             const updTp  = (id, field, val) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
+            const orderLotTotalTp = v9TpOrderLotTotal(riskVal, omOrderQtyTxt, sizeMode, currentSymbol.type);
             const stepTp = (id, field, dir, step = 1) => {
               markOrderControlBridge();
               const omStep = window.chart?.orderManager;
               setTpRows((rows) => {
-                const next = rows.map((r) => {
+                let next = rows.map((r) => {
                   if (r.id !== id) return r;
-                  if (field === "qty" && sizeMode === "#" && currentSymbol.type === "futures") {
-                    const base = Math.round(parseFloat(r[field] || "0") || 0);
-                    return { ...r, [field]: String(Math.max(0, base + dir)) };
+                  if (field === "qty" && sizeMode === "#") {
+                    if (rows.length === 1) {
+                      const base =
+                        currentSymbol.type === "futures"
+                          ? Math.round(parseFloat(r.qty || "0") || 0)
+                          : parseFloat(r.qty || "0") || 0;
+                      const delta = currentSymbol.type === "futures" ? dir : dir * step;
+                      const neu = Math.max(0, base + delta);
+                      const capped = Math.min(neu, Math.max(0, orderLotTotalTp));
+                      return {
+                        ...r,
+                        qty:
+                          currentSymbol.type === "futures"
+                            ? String(Math.round(capped))
+                            : String(capped),
+                      };
+                    }
+                    if (currentSymbol.type === "futures") {
+                      const base = Math.round(parseFloat(r[field] || "0") || 0);
+                      return { ...r, [field]: String(Math.max(0, base + dir)) };
+                    }
+                    return {
+                      ...r,
+                      [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
+                    };
                   }
                   if (field === "price") {
                     return { ...r, [field]: v9StepOrderPrice(r[field], dir, omStep) };
@@ -34439,12 +34506,8 @@ const TalariaV8bLive = () => {
                     [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
                   };
                 });
-                if (field === "qty" && sizeMode === "#" && currentSymbol.type === "futures" && next.length === 1) {
-                  const r0 = next.find((x) => x.id === id) || next[0];
-                  queueMicrotask(() => {
-                    markOrderControlBridge();
-                    setRiskVal(String(r0.qty));
-                  });
+                if (field === "qty" && sizeMode === "#" && next.length > 1 && orderLotTotalTp > 0) {
+                  next = v9TpNormalizeMultiLotRows(next, orderLotTotalTp, currentSymbol.type);
                 }
                 return next;
               });
@@ -34763,22 +34826,49 @@ const TalariaV8bLive = () => {
                               onChange={e => {
                                 const v = e.target.value;
                                 if (sizeMode === "#" && currentSymbol.type === "futures") {
-                                  if (/^\d*$/.test(v)) updTp(row.id,"qty",v);
+                                  if (!/^\d*$/.test(v)) return;
+                                  if (tpRows.length === 1 && orderLotTotalTp > 0 && v !== "") {
+                                    const n = parseInt(v, 10);
+                                    if (!isNaN(n) && n > orderLotTotalTp) {
+                                      updTp(row.id, "qty", String(Math.floor(orderLotTotalTp)));
+                                      return;
+                                    }
+                                  }
+                                  updTp(row.id, "qty", v);
                                   return;
+                                }
+                                if (sizeMode === "#" && tpRows.length === 1 && orderLotTotalTp > 0 && v !== "" && /^\d*\.?\d*$/.test(v)) {
+                                  const n = parseFloat(v);
+                                  if (!isNaN(n) && n > orderLotTotalTp) {
+                                    updTp(row.id, "qty", String(orderLotTotalTp));
+                                    return;
+                                  }
                                 }
                                 if(/^\d*\.?\d*$/.test(v)) updTp(row.id,"qty",v);
                               }}
                               onBlur={e => {
                                 const n = parseFloat(e.target.value);
-                                if (sizeMode === "#" && currentSymbol.type === "futures") {
-                                  const v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
-                                  updTp(row.id,"qty", v);
-                                  if (tpRows.length === 1) {
-                                    queueMicrotask(() => {
-                                      markOrderControlBridge();
-                                      setRiskVal(v);
-                                    });
-                                  }
+                                if (sizeMode === "#") {
+                                  markOrderControlBridge();
+                                  setTpRows((rows) => {
+                                    let v =
+                                      currentSymbol.type === "futures"
+                                        ? String(Math.max(0, Math.round(isNaN(n) ? 0 : n)))
+                                        : isNaN(n)
+                                          ? "0"
+                                          : String(n);
+                                    let working = rows.map((r) => (r.id === row.id ? { ...r, qty: v } : r));
+                                    if (tpRows.length === 1 && orderLotTotalTp > 0) {
+                                      working = working.map((r) =>
+                                        r.id === row.id
+                                          ? { ...r, qty: v9TpClampSingleLotQty(v, orderLotTotalTp, currentSymbol.type) }
+                                          : r
+                                      );
+                                    } else if (tpRows.length > 1 && orderLotTotalTp > 0) {
+                                      working = v9TpNormalizeMultiLotRows(working, orderLotTotalTp, currentSymbol.type);
+                                    }
+                                    return working;
+                                  });
                                   return;
                                 }
                                 updTp(row.id,"qty", isNaN(n)?"0":String(n));
