@@ -36244,13 +36244,22 @@ class OrderManager {
         for (let i = 0; i < badges.length; i++) {
             const el = badges[i];
             let show = false;
+            // Always keep a badge visible while the cursor is over (or right next to)
+            // the badge itself — these controls are ~18-22px tall, taller than PAD,
+            // so a band measured only from the line center would drop out as the user
+            // moves onto the button, causing it to flash and become unclickable.
+            const r = el.getBoundingClientRect();
+            const overBadge = r.height > 0
+                && clientY >= r.top - PAD && clientY <= r.bottom + PAD;
             const lp = parseFloat(el.getAttribute('data-level-price'));
             if (yScale && Number.isFinite(lp)) {
                 const levelPixelY = yScale(lp);
-                show = Math.abs(localY - levelPixelY) <= PAD;
+                // Reveal band must cover the badge's own height so moving onto the
+                // control never leaves the band (prevents hover flicker).
+                const band = Math.max(PAD, (r.height || 0) / 2 + PAD);
+                show = overBadge || Math.abs(localY - levelPixelY) <= band;
             } else {
-                const r = el.getBoundingClientRect();
-                show = r.height > 0 && clientY >= r.top - PAD && clientY <= r.bottom + PAD;
+                show = overBadge;
             }
             el.style.opacity = show ? '1' : '0';
             el.style.pointerEvents = show ? 'all' : 'none';
