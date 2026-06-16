@@ -1164,6 +1164,70 @@ class Chart {
         return null;
     }
 
+    _normSessionSym(t) {
+        return String(t || '').replace(/[\/\s_.-]/g, '').toUpperCase();
+    }
+
+    /**
+     * Last-resort: match session tickers to uploaded datasets when config omitted fileId.
+     */
+    async _resolveFileIdFromSessionTickers(session) {
+        if (!session) return null;
+        const tickers = [];
+        if (Array.isArray(session.tickers)) {
+            session.tickers.forEach((t) => { if (t) tickers.push(String(t)); });
+        }
+        if (Array.isArray(session.instrumentTickers)) {
+            session.instrumentTickers.forEach((t) => { if (t) tickers.push(String(t)); });
+        }
+        if (Array.isArray(session.symbols)) {
+            session.symbols.forEach((row) => {
+                const t = row && (row.symbolName || row.symbol || row.ticker);
+                if (t) tickers.push(String(t));
+            });
+        }
+        if (!tickers.length && session.symbol && !String(session.symbol).includes('symbol')) {
+            tickers.push(String(session.symbol));
+        }
+        const unique = [...new Set(tickers.map((t) => this._normSessionSym(t)).filter(Boolean))];
+        if (!unique.length) return null;
+        try {
+            const res = await fetch('/api/files?session_ready=1', { credentials: 'include' });
+            if (!res.ok) return null;
+            const payload = await res.json();
+            const files = Array.isArray(payload.files) ? payload.files : [];
+            const want = this._normSessionSym(tickers[0]);
+            const match = files.find((f) => {
+                const ft = this._normSessionSym(f.ticker);
+                const fromName = this._normSessionSym(String(f.original_name || f.name || '').replace(/\.csv$/i, ''));
+                return ft === want || fromName === want || fromName.startsWith(want) || want.startsWith(ft);
+            });
+            if (!match || match.id == null) return null;
+            const fid = match.id;
+            session.fileId = fid;
+            if (!session.instruments || typeof session.instruments !== 'object') {
+                session.instruments = {};
+            }
+            const rowKey = this._normSessionSym(tickers[0]);
+            if (!session.instruments[rowKey]) {
+                session.instruments[rowKey] = {
+                    ticker: tickers[0],
+                    fileId: fid,
+                    fileName: match.original_name || match.name,
+                };
+            } else if (!session.instruments[rowKey].fileId) {
+                session.instruments[rowKey].fileId = fid;
+            }
+            try {
+                userStorage.setItem('backtestingSession', JSON.stringify(session));
+            } catch (e) { /* ignore */ }
+            return fid;
+        } catch (e) {
+            console.warn('⚠️ Could not resolve fileId from tickers', e);
+            return null;
+        }
+    }
+
     _formatPairTicker(rawTicker, rawFileName) {
         const ccys = new Set(['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG']);
         const tryFormat = (s) => {
@@ -1517,11 +1581,12 @@ class Chart {
             console.warn('⚠️ Missing data source for instruments:', missingInstrumentData);
             alert(`No data loaded for: ${missingInstrumentData.join(', ')}. Please load data or remove these instruments from the session.`);
         }
-        const fileId = urlParams.get('fileId') || this.getPrimarySessionFileId(session);
+        const fileId = urlParams.get('fileId') || this.getPrimarySessionFileId(session)
+            || await this._resolveFileIdFromSessionTickers(session);
         
         if (!fileId) {
             console.error('❌ No file ID provided');
-            alert('No file specified for backtesting session.');
+            alert('No chart data file for this session. Upload a CSV for your symbol (Chart → Data), create a new session, or pick datasets in the legacy backtest setup.');
             this.backtestingStarted = false;
             return;
         }
