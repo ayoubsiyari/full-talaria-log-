@@ -963,10 +963,9 @@ export function renderSessionsView(ctx, shared) {
                         const fmtD=iso=>{if(!iso)return "";const d=new Date(iso.split("T")[0]+"T00:00:00");return `${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;};
                         const applyD=(raw,setter)=>{
                           const s=raw.trim();
-                          const todayIso=isoToday();
-                          const minIso=sessOverlapMin||"1990-01-01";
-                          const maxIso=sessOverlapMax||todayIso;
-                          const clamp=iso=>iso<minIso?minIso:iso>maxIso?maxIso:iso;
+                          const todayIso=new Date().toISOString().slice(0,10);
+                          const minIso="1990-01-01";
+                          const clamp=iso=>iso<minIso?minIso:iso>todayIso?todayIso:iso;
                           // DD-Mon-YYYY
                           const m1=s.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
                           if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
@@ -977,14 +976,14 @@ export function renderSessionsView(ctx, shared) {
                           const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
                           if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                         };;
-                        const openCal=(e,target,currentIso)=>{const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const fallback=sessDateOverlap.ok?sessDateOverlap.from:null;const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):fallback?new Date(fallback.split("T")[0]+"T00:00:00"):new Date(2020,0,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
+                        const openCal=(e,target,currentIso)=>{const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):new Date(2020,0,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
                         const inpSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                         const chvSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",color:c.ts,borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                         const ChevD=({open})=>(<svg width={8} height={8} viewBox="0 0 8 8" fill="none"><path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>);
-                        const applyPreset=(months,years)=>{if(!sessDateOverlap.ok)return;const overlapEnd=new Date(sessDateOverlap.to.split("T")[0]+"T00:00:00");const overlapStart=new Date(sessDateOverlap.from.split("T")[0]+"T00:00:00");const end=new Date(overlapEnd),start=new Date(end);if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);if(start<overlapStart)start.setTime(overlapStart.getTime());const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
+                        const applyPreset=(months,years)=>{const end=new Date(),start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
                         const presets=[{l:"1M",months:1},{l:"3M",months:3},{l:"6M",months:6},{l:"1Y",years:1},{l:"2Y",years:2},{l:"3Y",years:3},{l:"5Y",years:5},{l:"10Y",years:10}];
                         const unitMax={D:3650,M:120,Y:10};
-                        const randomRange=()=>{if(!sessDateOverlap.ok)return;const lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const overlapStart=new Date(sessDateOverlap.from.split("T")[0]+"T00:00:00");const overlapEnd=new Date(sessDateOverlap.to.split("T")[0]+"T00:00:00");const spanDays=Math.max(1,Math.round((overlapEnd.getTime()-overlapStart.getTime())/86400000));const useLen=Math.min(lenDays,spanDays);const latestStart=new Date(overlapEnd.getTime()-useLen*86400000);if(latestStart<overlapStart)latestStart.setTime(overlapStart.getTime());const s=new Date(overlapStart.getTime()+Math.random()*(latestStart.getTime()-overlapStart.getTime()));const e2=new Date(Math.min(overlapEnd.getTime(),s.getTime()+useLen*86400000));const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
+                        const randomRange=()=>{const today=new Date();today.setHours(0,0,0,0);let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=new Date(today);earliest.setFullYear(earliest.getFullYear()-20);const latest=new Date(today.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
                         return(<>
                           {/* ─── Market + Random row ─── */}
                           <div style={{marginBottom:8,display:"flex",alignItems:"flex-end",gap:8}}>
@@ -1265,11 +1264,6 @@ export function renderSessionsView(ctx, shared) {
                             {/* ── Date Range row ── */}
                             <div>
                               {lbl("Date Range *")}
-                              {dateRangeHint&&(
-                                <div style={{fontSize:9,color:sessDateOverlap.ok?c.tm:c.rd,fontFamily:F,marginTop:-2,marginBottom:6,lineHeight:1.4}}>
-                                  {dateRangeHint}
-                                </div>
-                              )}
                               <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
                                 {/* Date inputs — 50% width matches market dropdown above */}
                                 <div style={{width:"50%",flexShrink:0,display:"flex",gap:6}}>
