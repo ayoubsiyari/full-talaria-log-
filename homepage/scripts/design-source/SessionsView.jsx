@@ -931,18 +931,9 @@ export function renderSessionsView(ctx, shared) {
                       <div style={{border:`1px solid ${sessInfoDone?c.brH:c.br}`,padding:"12px 14px",transition:"opacity 0.2s,border-color 0.2s",...(sessInfoDone?activeBox:lockedBox)}}>
                       {secH("Session Settings")}
                       {(()=>{
-                        const allSymbols=[
-                          {sym:"EURUSD",cat:"Forex"},{sym:"GBPUSD",cat:"Forex"},{sym:"USDJPY",cat:"Forex"},{sym:"USDCHF",cat:"Forex"},{sym:"AUDUSD",cat:"Forex"},
-                          {sym:"NZDUSD",cat:"Forex"},{sym:"USDCAD",cat:"Forex"},{sym:"EURGBP",cat:"Forex"},{sym:"EURJPY",cat:"Forex"},{sym:"GBPJPY",cat:"Forex"},
-                          {sym:"XAUUSD",cat:"Forex"},{sym:"XAGUSD",cat:"Forex"},{sym:"USDSEK",cat:"Forex"},{sym:"USDNOK",cat:"Forex"},
-                          {sym:"NQ",cat:"Futures"},{sym:"ES",cat:"Futures"},{sym:"YM",cat:"Futures"},{sym:"RTY",cat:"Futures"},
-                          {sym:"CL",cat:"Futures"},{sym:"GC",cat:"Futures"},{sym:"SI",cat:"Futures"},{sym:"NG",cat:"Futures"},
-                          {sym:"MNQ",cat:"Futures"},{sym:"MES",cat:"Futures"},{sym:"MYM",cat:"Futures"},{sym:"M2K",cat:"Futures"},
-                          {sym:"MGC",cat:"Futures"},{sym:"MCL",cat:"Futures"},
-                          {sym:"BTCUSD",cat:"Crypto"},{sym:"ETHUSD",cat:"Crypto"},{sym:"BNBUSD",cat:"Crypto"},{sym:"SOLUSD",cat:"Crypto"},{sym:"ADAUSD",cat:"Crypto"},
-                          {sym:"AAPL",cat:"Equities"},{sym:"TSLA",cat:"Equities"},{sym:"NVDA",cat:"Equities"},{sym:"MSFT",cat:"Equities"},{sym:"AMZN",cat:"Equities"},{sym:"GOOG",cat:"Equities"},
-                        ];
+                        const allSymbols=sessionDatasetSymbols;
                         const catMap={"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Stocks":"Equities"};
+                        const marketOptions=["Forex","Futures","Crypto","Stocks"].filter(a=>{const catKey=catMap[a]||a;return allSymbols.some(s=>s.cat===catKey);});
                         const catOf=sym=>allSymbols.find(s=>s.sym===sym)?.cat||"";
                         const assetLabel=cat=>({"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Equities":"Stocks"}[cat]||cat);
                         const totalSelected=newSessTickers.length+newSessSupportTickers.length;
@@ -990,6 +981,12 @@ export function renderSessionsView(ctx, shared) {
                             {/* Market dropdown — width matches Strategy */}
                             <div style={{width:"50%",flexShrink:0}}>
                               {lbl("Markets & Instruments *")}
+                              {sessionFilesLoading&&(
+                                <div style={{fontSize:9,color:c.tm,fontFamily:F,marginBottom:6}}>Loading datasets…</div>
+                              )}
+                              {!sessionFilesLoading&&allSymbols.length===0&&(
+                                <div style={{fontSize:9,color:c.rd,fontFamily:F,marginBottom:6,lineHeight:1.4}}>No session-ready datasets. Add healthy datasets in Admin first.</div>
+                              )}
                               <div style={{position:"relative"}}>
                                 <div onClick={e=>{e.stopPropagation();if(newSessAssetDropOpen){setNewSessAssetDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessAssetDropOpen(true);setDropdown(null);setNewSessStratDropOpen(false);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessAssetDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
@@ -1000,7 +997,7 @@ export function renderSessionsView(ctx, shared) {
                                   <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setNewSessAssetDropOpen(false);setDdAnchor(null);}}/>
                                   <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:ddAnchor.top,left:ddAnchor.left,width:ddAnchor.width,background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 8px 28px rgba(0,0,0,0.7)",zIndex:9999}}>
                                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                                    {["Forex","Futures","Crypto","Stocks"].map(a=>{
+                                    {marketOptions.map(a=>{
                                       const isA=newSessAssetClass===a;const hk="asDrop_"+a;const isH=hov===hk;
                                       return(
                                         <div key={a} onClick={()=>{setNewSessAssetClass(a);setNewSessTickerInput("");setNewSessTickers([]);setNewSessAssetDropOpen(false);setDdAnchor(null);if(a==="Stocks"||a==="Crypto")setSessTradingMode("standard");if(a==="Futures"&&sessTradingMode==="prop"){setNewSessCapital("50000");setSessP1DailyLossAmt("1000");setSessP1MaxDDAmt("2000");setSessP1ProfitTargetAmt("3000");}}}
@@ -1018,10 +1015,11 @@ export function renderSessionsView(ctx, shared) {
                             {/* Random button — aligned to bottom of Market button */}
                             <div style={{display:"flex",alignItems:"center",gap:4,paddingBottom:1}}>
                               <div onClick={()=>{
-                                  const cats=["Forex","Futures","Crypto","Stocks"];
-                                  const randomCat=cats[Math.floor(Math.random()*cats.length)];
+                                  if(!marketOptions.length||!allSymbols.length)return;
+                                  const randomCat=marketOptions[Math.floor(Math.random()*marketOptions.length)];
                                   const catKey=catMap[randomCat]||randomCat;
                                   const pool=allSymbols.filter(s=>s.cat===catKey);
+                                  if(!pool.length)return;
                                   const picks=[...pool].sort(()=>Math.random()-0.5).slice(0,Math.min(newSessRandomCount,10)).map(s=>s.sym);
                                   setNewSessAssetClass(randomCat);
                                   if(randomCat==="Stocks"||randomCat==="Crypto")setSessTradingMode("standard");

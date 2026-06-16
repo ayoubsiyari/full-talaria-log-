@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 
@@ -209,7 +209,44 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     Forex: { spread: "1.2", commission: "0", pipSize: "0.0001", pipVal: "10", contractSize: "100000", minLot: "0.01", lotStep: "0.01" },
     Futures: { spread: "0.25", commission: "2.50", pipSize: "0.25", pipVal: "12.50", contractSize: "1", minLot: "1", lotStep: "1" },
     Crypto: { spread: "15", commission: "0", pipSize: "1", pipVal: "1", contractSize: "1", minLot: "0.001", lotStep: "0.001" },
+    Stocks: { spread: "0.02", commission: "0.02", pipSize: "0.01", pipVal: "1", contractSize: "1", minLot: "1", lotStep: "1" },
   };
+
+  const [sessionApiFiles, setSessionApiFiles] = useState<Record<string, unknown>[]>([]);
+  const [sessionFilesLoading, setSessionFilesLoading] = useState(false);
+
+  function normSessionSym(t: string) {
+    return String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
+  }
+
+  function assetClassToPickerCat(assetClass: string) {
+    const a = String(assetClass || "").toLowerCase();
+    if (a.includes("future")) return "Futures";
+    if (a.includes("crypto")) return "Crypto";
+    if (a.includes("stock") || a.includes("equit")) return "Equities";
+    return "Forex";
+  }
+
+  function findApiFileForSymbol(sym: string, apiFiles: Record<string, unknown>[]) {
+    const key = normSessionSym(sym);
+    return apiFiles.find((f) => {
+      const ft = normSessionSym(String(f.ticker || ""));
+      const fromName = normSessionSym(String(f.original_name || f.name || "").replace(/\.csv$/i, ""));
+      return ft === key || fromName === key || fromName.startsWith(key) || key.startsWith(ft);
+    }) || null;
+  }
+
+  const sessionDatasetSymbols = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { sym: string; cat: string }[] = [];
+    sessionApiFiles.forEach((f) => {
+      const sym = normSessionSym(String(f.ticker || ""));
+      if (!sym || seen.has(sym)) return;
+      seen.add(sym);
+      out.push({ sym, cat: assetClassToPickerCat(String(f.asset_class || "")) });
+    });
+    return out.sort((a, b) => a.sym.localeCompare(b.sym));
+  }, [sessionApiFiles]);
 
   const instrRows = newSessFiles.map((fid: string) => {
     const f = availFiles.find(a => a.id === fid);
@@ -278,6 +315,107 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     prevOpen.current = open;
   }, [open, resetFormToDefaults, initialState]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setSessionFilesLoading(true);
+    fetch("/api/files?session_ready=1", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { files: [] }))
+      .then((payload) => {
+        if (!cancelled) {
+          setSessionApiFiles(Array.isArray(payload?.files) ? payload.files : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSessionApiFiles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSessionFilesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || sessionFilesLoading || !sessionDatasetSymbols.length) return;
+    const catToMarket: Record<string, string> = { Forex: "Forex", Futures: "Futures", Crypto: "Crypto", Equities: "Stocks" };
+    const markets = [...new Set(sessionDatasetSymbols.map((s) => catToMarket[s.cat] || "Forex"))];
+    if (!markets.includes(newSessAssetClass)) {
+      setNewSessAssetClass(markets[0] || "Forex");
+    }
+    const avail = new Set(sessionDatasetSymbols.map((s) => s.sym));
+    setNewSessTickers((prev) => prev.filter((t) => avail.has(t)));
+    setNewSessSupportTickers((prev) => prev.filter((t) => avail.has(t)));
+  }, [open, sessionFilesLoading, sessionDatasetSymbols]);
+
+  async function loadSessionApiFiles() {
+    if (sessionApiFiles.length) return sessionApiFiles;
+    const res = await fetch("/api/files?session_ready=1", { credentials: "include" });
+    if (!res.ok) {
+      throw new Error("Could not load your chart datasets. Check that you are logged in.");
+    }
+    const payload = await res.json();
+    const files = Array.isArray(payload?.files) ? payload.files : [];
+    setSessionApiFiles(files);
+    return files;
+  }
+
+  async function resolveInstrumentsForTickers(tickers: string[]) {
+    const unique = [...new Set(tickers.map((t) => String(t || "").trim()).filter(Boolean))];
+    if (!unique.length) {
+      return {
+        instruments: {} as Record<string, Record<string, unknown>>,
+        files: [] as { id: string | number; name: string }[],
+        primaryFileId: null as string | number | null,
+        fileName: null as string | null,
+        missing: [] as string[],
+      };
+    }
+
+    const apiFiles = await loadSessionApiFiles();
+    const instruments: Record<string, Record<string, unknown>> = {};
+    const files: { id: string | number; name: string }[] = [];
+    const missing: string[] = [];
+
+    unique.forEach((sym) => {
+      const match = findApiFileForSymbol(sym, apiFiles);
+      if (!match) {
+        missing.push(sym);
+        return;
+      }
+      const assetKey =
+        String(match.asset_class || newSessAssetClass || "Forex").includes("Future") ? "Futures"
+        : String(match.asset_class || "").includes("Crypto") ? "Crypto"
+        : String(match.asset_class || "").includes("Stock") ? "Stocks"
+        : "Forex";
+      const def = instrDefaults[assetKey] || instrDefaults.Forex;
+      const rowKey = normSessionSym(sym);
+      const row: Record<string, unknown> = {
+        ticker: sym,
+        symbol: sym,
+        fileId: match.id,
+        fileName: match.original_name || match.name,
+        asset: assetKey,
+        asset_class: assetKey,
+        ...def,
+      };
+      instruments[rowKey] = row;
+      files.push({
+        id: match.id as string | number,
+        name: String(match.original_name || match.name || sym),
+      });
+    });
+
+    return {
+      instruments,
+      files,
+      primaryFileId: files[0]?.id ?? null,
+      fileName: files[0]?.name ?? null,
+      missing,
+    };
+  }
+
   const closeNewSess = () => {
     setNewSessFilePickerOpen(false);
     setNewSessTickerInput("");
@@ -333,12 +471,36 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     );
   };
 
-  function buildChartConfig(): Record<string, unknown> { const primary = newSessTickers[0] || newSessSymbol || "NQ";
+  async function buildChartConfig(): Promise<Record<string, unknown>> {
+    const primary = newSessTickers[0] || newSessSymbol || "NQ";
     const sessionName = newSessName.trim() || "Backtest Session";
     const startDate = (newSessStart || "").split("T")[0] || "";
     const endDate = (newSessEnd || "").split("T")[0] || "";
     const modeType = sessTradingMode === "prop" ? "propfirm" : "standard";
-    
+    const tickers = newSessTickers.length > 0 ? [...newSessTickers] : [primary];
+
+    const resolved = await resolveInstrumentsForTickers(tickers);
+    if (!resolved.primaryFileId) {
+      const miss = resolved.missing.length ? resolved.missing.join(", ") : tickers.join(", ");
+      throw new Error(
+        `No chart data file found for ${miss}. Upload a CSV dataset for these symbols first (Chart → Data), then start the session again.`
+      );
+    }
+    if (resolved.missing.length > 0) {
+      throw new Error(
+        `Missing chart data for: ${resolved.missing.join(", ")}. Upload datasets for every selected symbol or remove them from the session.`
+      );
+    }
+
+    const instruments = Object.fromEntries(
+      Object.entries(resolved.instruments).map(([k, row]) => {
+        if (!newSessTradingCostsEnabled) {
+          return [k, { ...row, spread: 0, commission: 0 }];
+        }
+        return [k, row];
+      })
+    );
+
     return {
       type: modeType,
       sessionName,
@@ -350,7 +512,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       asset_class: newSessAssetClass,
       trading_mode: sessTradingMode,
       symbol: newSessTickers.length === 1 ? newSessTickers[0] : newSessTickers.length > 1 ? `${newSessTickers.length} symbols` : primary,
-      symbols: newSessTickers.map(sym => ({ symbolName: sym })),
+      fileId: resolved.primaryFileId,
+      fileName: resolved.fileName,
+      files: resolved.files,
+      instruments,
+      symbols: tickers.map((sym) => ({
+        symbolName: sym,
+        fileId: instruments[normSessionSym(sym)]?.fileId,
+      })),
       startDate,
       endDate,
       startBalance: String(newSessCapital || "10000"),
@@ -364,7 +533,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       defaultRisk: parseFloat(sessRiskVal || "1") || 1,
       allowBackNavigation: newSessRollback,
       protectionPreset: newSessProtect,
-      // Legacy `sessCommission` defaults to "none" — must not be written when Real-World Trading Costs is on.
       commission: newSessTradingCostsEnabled ? "Per Lot" : "None",
       trading_costs_enabled: newSessTradingCostsEnabled,
       rollback_allowed: newSessRollback,
@@ -405,17 +573,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
         p1Amt: { dl: sessP1DailyLossAmt, dd: sessP1MaxDDAmt, pt: sessP1ProfitTargetAmt },
         p2Amt: { dl: sessP2DailyLossAmt, dd: sessP2MaxDDAmt, pt: sessP2ProfitTargetAmt },
       } : null,
-       instruments: newSessTradingCostsEnabled
-        ? instrRows
-        : instrRows.map((row: Record<string, unknown>) => ({ ...row, spread: 0, commission: 0 })),
-   
     };
   }
 
   async function persistSession(): Promise<number | null> {
     const sessionName = newSessName.trim() || "Backtest Session";
     const session_type = sessTradingMode === "prop" ? "propfirm" : "personal";
-    const config = buildChartConfig();    const res = await fetch("/api/sessions", {
+    const config = await buildChartConfig();    const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
