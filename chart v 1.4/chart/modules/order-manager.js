@@ -11968,7 +11968,8 @@ class OrderManager {
                 const level = this.multiEntryLevels[0];
                 const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                 const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
-                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${lotSize}`;
+                // Level number (E1) so the primary entry badge matches the RR drawing + placed line.
+                const fullLabel = `E1 ${orderTypeRaw.toUpperCase()} ${sideUpper} ${lotSize}`;
                 return [
                     {
                         text: fullLabel,
@@ -12047,7 +12048,8 @@ class OrderManager {
             const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
             const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
 
-            const fullLabel = `${splitOrderType} ${sideUpper} ${lotSize}`;
+            // Level number (E1/E2/…) so split entry badges match the RR drawing + placed line.
+            const fullLabel = `E${levelNum} ${splitOrderType} ${sideUpper} ${lotSize}`;
             
             return [
                 {
@@ -29838,13 +29840,18 @@ class OrderManager {
             .attr('width', 3)
             .style('pointer-events', 'none');
 
+        // Split-entry legs keep their ladder level number (E1, E2, …) when filled, matching
+        // the RR drawing, the preview, and the pending-line badges.
+        const filledLevelPrefix = (order.isSplitEntry && order.splitIndex != null)
+            ? `E${order.splitIndex} `
+            : '';
         const labelText = chart.svg.append('text')
             .attr('class', `order-label-text order-${order.id}`)
             .attr('font-size', '11px')
             .attr('font-weight', '700')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
-            .text(`${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
+            .text(`${filledLevelPrefix}${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
 
         const arrow = chart.svg.append('text')
             .attr('class', `order-arrow order-${order.id}`)
@@ -31299,12 +31306,18 @@ class OrderManager {
         
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'LIMIT' : 'STOP';
         const directionLabel = pendingOrder.direction;
+        // Split-entry legs carry their ladder level number (E1, E2, …) so the placed
+        // entry lines keep the same identity as the RR-tool drawing and the numbered
+        // TP lines (TP1/TP2/…). Single (non-split) orders have no level prefix.
+        const entryLevelPrefix = (pendingOrder.isSplitEntry && pendingOrder.splitIndex != null)
+            ? `E${pendingOrder.splitIndex} `
+            : '';
         const labelText = chart.svg.append('text')
             .attr('class', `pending-order-label-text pending-${pendingOrder.id}`)
             .attr('font-size', '11px')
             .attr('font-weight', '700')
             .style('cursor', 'pointer')
-            .text(`${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
+            .text(`${entryLevelPrefix}${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
 
         this._styleLegacyOrderLevelToastChrome(
             { labelBox, labelText, labelAccent },
@@ -31443,7 +31456,7 @@ class OrderManager {
                     pendingOrder.orderType = newType;
                 }
 
-                const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${dragStartQty.toFixed(2)}`;
+                const typeLabel = `${entryLevelPrefix}${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${dragStartQty.toFixed(2)}`;
                 labelText.text(typeLabel);
                 self._drawExecutedOrderConnectors(chart);
             })
@@ -31476,7 +31489,7 @@ class OrderManager {
                 }
 
                 pendingOrder.quantity = self._getPendingPlacedQuantity(pendingOrder);
-                const finalTypeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
+                const finalTypeLabel = `${entryLevelPrefix}${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
                 labelText.text(finalTypeLabel);
 
                 // Redraw targets to update P&L with new lot size
