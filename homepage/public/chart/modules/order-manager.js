@@ -41427,12 +41427,26 @@ class OrderManager {
             .text(spec.glyph);
         this._wireOrderLevelBadgeHover(g, bg, txt, th, spec);
         if (o.onClick) {
-            g.on('click', (e) => {
+            // Fire on pointerdown (the press) rather than click. These preview badges are
+            // destroyed+recreated on every chart re-render (replay ticks, hover reveal), so a
+            // `click` — which needs mousedown AND mouseup on the SAME element — is frequently
+            // lost when the element vanishes between press and release, forcing the user to
+            // click several times. pointerdown acts on the first press; the trailing click is
+            // debounced to a no-op. mousedown is swallowed so the underlying line never drags.
+            let lastFire = 0;
+            const fire = (e) => {
                 e.stopPropagation();
+                if (e.cancelable) e.preventDefault();
+                const now = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now() : Date.now();
+                if (now - lastFire < 400) return;
+                lastFire = now;
                 o.onClick(e);
-            });
-        }
-        if (o.stopMousedown) {
+            };
+            g.on('pointerdown', fire);
+            g.on('mousedown', (e) => e.stopPropagation());
+            g.on('click', fire);
+        } else if (o.stopMousedown) {
             g.on('mousedown', (e) => e.stopPropagation());
         }
         this._tagOmLevelCtrlPrice(g.node(), o.levelPrice);
@@ -41476,13 +41490,23 @@ class OrderManager {
             .text(spec.glyph);
         this._wireOrderLevelBadgeHover(btn, bg, txt, th, spec);
         if (o.onClick) {
-            btn.on('click', (e) => {
+            // Fire on pointerdown — see _appendOrderLevelBadgeToGroup: badges recreated on
+            // every re-render make plain `click` (mousedown+mouseup on the same element)
+            // unreliable, so act on the first press and debounce the trailing click.
+            let lastFire = 0;
+            const fire = (e) => {
                 e.stopPropagation();
-                e.preventDefault();
+                if (e.cancelable) e.preventDefault();
+                const now = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now() : Date.now();
+                if (now - lastFire < 400) return;
+                lastFire = now;
                 o.onClick(e);
-            });
-        }
-        if (o.stopMousedown) {
+            };
+            btn.on('pointerdown', fire);
+            btn.on('mousedown', (e) => e.stopPropagation());
+            btn.on('click', fire);
+        } else if (o.stopMousedown) {
             btn.on('mousedown', (e) => e.stopPropagation());
         }
         return btn;
