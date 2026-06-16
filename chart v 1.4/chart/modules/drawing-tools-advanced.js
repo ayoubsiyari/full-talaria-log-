@@ -2856,7 +2856,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                         if (typeof event.preventDefault === 'function') event.preventDefault();
                         if (!om || typeof om.pushRiskRewardToolToManager !== 'function'
                             || typeof om.removeMultiEntryLevel !== 'function') return;
-                        om.pushRiskRewardToolToManager(self);
+                        om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
                         const lv = om.multiEntryLevels && om.multiEntryLevels[entryLevelIndex];
                         if (!lv || lv.id == null) return;
                         om.removeMultiEntryLevel(lv.id);
@@ -3165,7 +3165,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                             if (typeof event.preventDefault === 'function') event.preventDefault();
                             if (!om || typeof om.pushRiskRewardToolToManager !== 'function'
                                 || typeof om.removeTPTarget !== 'function') return;
-                            om.pushRiskRewardToolToManager(self);
+                            om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
                             const t = om.tpTargets && om.tpTargets[tpTargetIndex];
                             if (!t || t.id == null) return;
                             om.removeTPTarget(t.id);

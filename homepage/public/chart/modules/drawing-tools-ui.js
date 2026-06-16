@@ -30617,10 +30617,8 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
 
-        if (om && typeof om.pushRiskRewardToolToManager === 'function') {
-
+        if (om && typeof om.pushRiskRewardToolToManager === 'function' && om._rrExecuteArmed) {
             om.pushRiskRewardToolToManager(drawing);
-
         }
 
         if (om && typeof om.initRrMirrorControls === 'function') {

@@ -8873,6 +8873,16 @@ function v9ShouldAnchorEntryToLiveMarket(om) {
   return !om._previewEntryLinkedToRiskReward;
 }
 
+/** RR tool selected but Execute not clicked — order rail must stay independent of tool ladder. */
+function v9IsRrSelectedWithoutExecute(om) {
+  return !!(
+    om &&
+    !om._rrExecuteArmed &&
+    typeof om._getSelectedRiskRewardDrawing === "function" &&
+    om._getSelectedRiskRewardDrawing()
+  );
+}
+
 /** Market orders: entry preview must track live close — not a stale React row price. */
 function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
   if (!om || om.isDraggingPreviewLine) return;
@@ -14215,7 +14225,7 @@ const TalariaV8bLive = () => {
         };
 
         const om = window.chart?.orderManager;
-        const skipPosSync = !!om?.isDraggingPreviewLine;
+        const skipPosSync = !!om?.isDraggingPreviewLine || v9IsRrSelectedWithoutExecute(om);
 
         const fillLiveEntryFromFocusedMultichartTile = async () => {
           const g = typeof window !== "undefined" ? window.__multichartGrid : null;
@@ -14942,6 +14952,8 @@ const TalariaV8bLive = () => {
 
       if (isOmBridgeLead(omPanelBridgeRef.current.control)) return;
 
+      const rrGatePanel = v9IsRrSelectedWithoutExecute(om);
+      if (!rrGatePanel) {
       const ep = document.getElementById("orderEntryPrice")?.value ?? "";
       const slp = document.getElementById("slPrice")?.value ?? "";
       const tpp = document.getElementById("tpPrice")?.value ?? "";
@@ -15058,8 +15070,9 @@ const TalariaV8bLive = () => {
           return next;
         });
       }
+      }
 
-      if (!isOmBridgeLead(omPanelBridgeRef.current.control)) {
+      if (!isOmBridgeLead(omPanelBridgeRef.current.control) && !rrGatePanel) {
         const buyOn = document.getElementById("buyTab")?.classList.contains("active");
         const side = buyOn ? "buy" : "sell";
         setBuySell((prev) => (prev === side ? prev : side));

@@ -21499,6 +21499,8 @@ class OrderManager {
      */
     pushRiskRewardToolToManager(drawing, opts = {}) {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
+        // Tool → order draft sync only after Execute, except internal RR +/- / drag math (rrToolInternal).
+        if (!this._rrExecuteArmed && !opts.rrToolInternal) return;
         if (this._getActiveDraftOrderType() === 'market') {
             this._previewEntryLinkedToRiskReward = false;
         }
@@ -21841,7 +21843,7 @@ class OrderManager {
     }
 
     riskRewardAddBEFromTool(drawing) {
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         const trailingTgl = document.getElementById('trailingSLToggle');
         if (trailingTgl?.checked) {
             this._beTrailMutex = true;
@@ -21867,7 +21869,7 @@ class OrderManager {
      * SL + on RR tool: trailing stop — sync panel inputs, enable trailing, disable BE / BE line on drawing.
      */
     riskRewardAddTrailFromTool(drawing) {
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         const beTgl = document.getElementById('autoBreakevenToggle');
         if (beTgl?.checked) {
             this._beTrailMutex = true;
@@ -22145,7 +22147,7 @@ class OrderManager {
 
     /** Drag BE line on the risk/reward tool — updates breakeven inputs like dragging the chart BE preview. */
     riskRewardSyncBEDragFromTool(drawing, newY) {
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
         let p = parseFloat(parseFloat(newY).toFixed(prec));
         if (typeof drawing.sanitizeBreakevenTriggerPrice === 'function') {
@@ -22162,7 +22164,7 @@ class OrderManager {
      * Risk/reward +: same as preview TP line + ( _splitPreviewTPFromLine → addTPFromSplit ).
      */
     riskRewardAddTPFromTool(drawing) {
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         this._splitPreviewTPFromLineForRiskRewardTool(drawing);
         this.pullRiskRewardToolFromManager(drawing);
     }
@@ -22252,7 +22254,7 @@ class OrderManager {
      * toward TP (same default offset as the first ladder), re-equalizing amounts.
      */
     riskRewardAddEntryFromTool(drawing) {
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [drawing.points[0].y];
         const currentPrice = drawing.points[0].y;
         if (!this.isMultiEntryMode || !this.multiEntryLevels?.length || allE.length <= 1) {
@@ -22319,7 +22321,7 @@ class OrderManager {
      * Keep tpTargets[i] in sync when dragging an extra TP handle on the risk/reward tool (preview uses same rule).
      */
     riskRewardSyncTpDragFromTool(drawing, sortedTargetIndex, newY) {
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         if (!document.getElementById('multipleTPToggle')?.checked || !this.tpTargets?.length) {
             const tpp = document.getElementById('tpPrice');
             if (tpp) tpp.value = this.formatPrice(newY);
@@ -22346,7 +22348,7 @@ class OrderManager {
      * Primary TP handle (farthest line) — last index in sorted tpTargets.
      */
     riskRewardSyncPrimaryTpDragFromTool(drawing, newY) {
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         if (!document.getElementById('multipleTPToggle')?.checked || !this.tpTargets?.length) {
             const tpp = document.getElementById('tpPrice');
             if (tpp) tpp.value = this.formatPrice(newY);
@@ -22367,7 +22369,9 @@ class OrderManager {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
         this._previewEntryDecoupledFromRR = false;
         this._previewEntryLinkedToRiskReward = true;
-        const entryOpts = { forceEntry: true };
+        const entryOpts = this._rrExecuteArmed
+            ? { forceEntry: true }
+            : { rrToolInternal: true, forceEntry: true };
         this.pushRiskRewardToolToManager(drawing, entryOpts);
         const prec = this.getPricePrecision();
         const raw = parseFloat(parseFloat(newY).toFixed(prec));
@@ -22385,8 +22389,10 @@ class OrderManager {
         }
 
         this.pushRiskRewardToolToManager(drawing, entryOpts);
-        this._autoDetectOrderTypeFromEntry();
-        this._dispatchRrOrderPrefilledEvent();
+        if (this._rrExecuteArmed) {
+            this._autoDetectOrderTypeFromEntry();
+            this._dispatchRrOrderPrefilledEvent();
+        }
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
         this.pullRiskRewardToolFromManager(drawing, entryOpts);
@@ -22396,7 +22402,7 @@ class OrderManager {
      * Extra entry leg drag — same as preview Entry# line drag (multiEntryLevels price).
      */
     riskRewardSyncEntryDragFromTool(drawing, extraIndex, newY) {
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, { rrToolInternal: true });
         const prec = this.getPricePrecision();
         const pRaw = parseFloat(parseFloat(newY).toFixed(prec));
         const p = typeof drawing.sanitizeExtraEntryPrice === 'function'

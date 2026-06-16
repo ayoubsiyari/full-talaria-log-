@@ -1017,9 +1017,18 @@ class Chart {
         if (!instruments || typeof instruments !== 'object') return;
 
         const commissionRaw = normalized.commission;
-        // Only explicit "None" disables costs — legacy sessions may have per-instrument
-        // spread/commission without a trading_costs bundle.
-        const costsOff = commissionRaw === 'None' || commissionRaw === 'none';
+        const explicitCosts = normalized.trading_costs_enabled;
+        const hasTradingCostsBundle =
+            normalized.trading_costs &&
+            typeof normalized.trading_costs === 'object' &&
+            (normalized.trading_costs.costs || normalized.trading_costs.spreads);
+        // Honor explicit toggle from session modal; fall back to legacy commission field.
+        const costsOff =
+            explicitCosts === false
+                ? true
+                : explicitCosts === true || hasTradingCostsBundle
+                  ? false
+                  : commissionRaw === 'None' || commissionRaw === 'none';
         normalized.trading_costs_enabled = !costsOff;
 
         const tc =
@@ -1077,11 +1086,17 @@ class Chart {
 
             if (tc) {
                 const ticker = String(row.ticker || key).toUpperCase();
+                const normTicker = ticker.replace(/\//g, '');
                 const asset = classifyAsset(ticker, row);
+                const spreadRaw =
+                    tc.spreads &&
+                    (tc.spreads[ticker] != null && tc.spreads[ticker] !== ''
+                        ? tc.spreads[ticker]
+                        : tc.spreads[normTicker] != null && tc.spreads[normTicker] !== ''
+                          ? tc.spreads[normTicker]
+                          : null);
                 const spOv =
-                    tc.spreads && tc.spreads[ticker] != null && tc.spreads[ticker] !== ''
-                        ? Number.parseFloat(tc.spreads[ticker])
-                        : NaN;
+                    spreadRaw != null && spreadRaw !== '' ? Number.parseFloat(spreadRaw) : NaN;
                 if (Number.isFinite(spOv)) spread = spOv;
 
                 if (asset === 'Futures') {

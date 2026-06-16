@@ -465,7 +465,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       defaultRisk: parseFloat(sessRiskVal || "1") || 1,
       allowBackNavigation: newSessRollback,
       protectionPreset: newSessProtect,
-      commission: newSessTradingCostsEnabled ? (sessCommission || "Per Lot") : "None",
+      // Legacy `sessCommission` defaults to "none" — must not be written when Real-World Trading Costs is on.
+      commission: newSessTradingCostsEnabled ? "Per Lot" : "None",
       trading_costs_enabled: newSessTradingCostsEnabled,
       rollback_allowed: newSessRollback,
       replayMode: sessReplayMode,
@@ -473,7 +474,30 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       timezone: newSessTimezone,
       dst: newSessDST,
       advanced_order: newSessAdvancedOrder,
-      trading_costs: newSessTradingCostsEnabled ? { costs: newSessCosts, spreads: newSessSymbolSpreads, futuresMargins: newSessFuturesData } : null,
+      trading_costs: newSessTradingCostsEnabled
+        ? {
+            costs: newSessCosts,
+            spreads: (() => {
+              const defaultSpreads: Record<string, string> = {
+                EURUSD: "0.8", GBPUSD: "1.0", USDJPY: "0.8", USDCHF: "1.1", AUDUSD: "0.8",
+                NZDUSD: "1.2", USDCAD: "1.1", EURGBP: "1.1", EURJPY: "1.3", GBPJPY: "1.9",
+                XAUUSD: "0.30", XAGUSD: "0.03", USDSEK: "3.0", USDNOK: "3.5",
+                NQ: "1", ES: "1", YM: "1", RTY: "1", CL: "1", GC: "1", SI: "1", NG: "1",
+                MNQ: "1", MES: "1", MYM: "1", M2K: "1", MGC: "1", MCL: "1",
+                AAPL: "0.01", TSLA: "0.01", NVDA: "0.01", MSFT: "0.01", AMZN: "0.01", GOOG: "0.02",
+                BTCUSD: "0.01", ETHUSD: "0.01", BNBUSD: "0.03", SOLUSD: "0.04", ADAUSD: "0.08",
+              };
+              const merged: Record<string, string> = {};
+              [...newSessTickers, ...newSessSupportTickers].forEach((sym) => {
+                const k = normSessionSym(sym);
+                const v = newSessSymbolSpreads[k] ?? defaultSpreads[k];
+                if (v != null && v !== "") merged[k] = String(v);
+              });
+              return merged;
+            })(),
+            futuresMargins: newSessFuturesData,
+          }
+        : null,
       prop_rules: sessTradingMode === "prop" ? {
         numPhases: sessNumPhases,
         challengeType: sessChallengeType,
