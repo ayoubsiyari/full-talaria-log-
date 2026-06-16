@@ -87,6 +87,7 @@ class OrderManager {
             this._syncingTpRRInput = false;
             this.breakevenMode = 'rr';
             this.mfeMaeTrackingHours = 4;
+            this.mfeMaeTrackingEnabled = true;
             this.tradeJournal = [];
             this.mfeMaeTrackingPositions = [];
             this.symbolPrecision = 5;
@@ -4213,6 +4214,12 @@ class OrderManager {
         
         // Load MFE/MAE settings from localStorage
         try {
+            const savedEnabled = userStorage.getItem('mfeMaeTrackingEnabled');
+            if (savedEnabled === '0' || savedEnabled === 'false') {
+                this.mfeMaeTrackingEnabled = false;
+            } else if (savedEnabled === '1' || savedEnabled === 'true') {
+                this.mfeMaeTrackingEnabled = true;
+            }
             const savedHours = userStorage.getItem('mfeMaeTrackingHours');
             if (savedHours) {
                 this.mfeMaeTrackingHours = parseFloat(savedHours);
@@ -4692,6 +4699,41 @@ class OrderManager {
     }
     
     /**
+     * Apply MFE/MAE tracking prefs (session modal or in-chart settings modal).
+     */
+    applyMfeMaeSettings(opts = {}) {
+        const enabled = opts.enabled !== false;
+        this.mfeMaeTrackingEnabled = enabled;
+        if (!enabled) {
+            this.mfeMaeTrackingHours = 0;
+            try {
+                userStorage.setItem('mfeMaeTrackingEnabled', '0');
+            } catch (e) {
+                console.warn('Could not save MFE/MAE enabled flag:', e);
+            }
+            return;
+        }
+        const hours = Number.parseFloat(opts.hours);
+        if (Number.isFinite(hours) && hours > 0) {
+            this.mfeMaeTrackingHours = hours;
+        }
+        const mode = opts.mode === 'candles' ? 'candles' : 'hours';
+        this.postExitTrackingMode = mode;
+        const candles = Number.parseInt(opts.candles, 10);
+        if (Number.isFinite(candles) && candles > 0) {
+            this.postExitTrackingCandles = candles;
+        }
+        try {
+            userStorage.setItem('mfeMaeTrackingEnabled', '1');
+            userStorage.setItem('mfeMaeTrackingHours', String(this.mfeMaeTrackingHours));
+            userStorage.setItem('postExitTrackingMode', this.postExitTrackingMode);
+            userStorage.setItem('postExitTrackingCandles', String(this.postExitTrackingCandles));
+        } catch (e) {
+            console.warn('Could not save MFE/MAE settings:', e);
+        }
+    }
+
+    /**
      * Show MFE/MAE settings modal
      */
     showMfeMaeSettings() {
@@ -4826,19 +4868,12 @@ class OrderManager {
             const newMode = document.getElementById('postExitTrackingModeInput').value === 'candles' ? 'candles' : 'hours';
             const newCandles = Number.parseInt(document.getElementById('postExitTrackingCandlesInput').value, 10);
             if (newHours > 0) {
-                this.mfeMaeTrackingHours = newHours;
-                this.postExitTrackingMode = newMode;
-                if (Number.isFinite(newCandles) && newCandles > 0) {
-                    this.postExitTrackingCandles = newCandles;
-                }
-                // Save to localStorage
-                try {
-                    userStorage.setItem('mfeMaeTrackingHours', newHours);
-                    userStorage.setItem('postExitTrackingMode', this.postExitTrackingMode);
-                    userStorage.setItem('postExitTrackingCandles', String(this.postExitTrackingCandles));
-                } catch (e) {
-                    console.warn('Could not save MFE/MAE settings:', e);
-                }
+                this.applyMfeMaeSettings({
+                    enabled: true,
+                    hours: newHours,
+                    mode: newMode,
+                    candles: newCandles,
+                });
                 this.showNotification(`⚙️ MFE/MAE updated (${newHours}h, ${this.postExitTrackingMode}, ${this.postExitTrackingCandles} candles)`, 'success');
                 console.log(`⚙️ MFE/MAE updated: ${newHours}h, mode=${this.postExitTrackingMode}, candles=${this.postExitTrackingCandles}`);
             }
@@ -25779,6 +25814,7 @@ class OrderManager {
      * Update MFE/MAE tracking for closed positions
      */
     updateMfeMaeTracking(currentCandle, high, low) {
+        if (this.mfeMaeTrackingEnabled === false) return;
         if (this.mfeMaeTrackingPositions.length === 0) return;
         
         const completedTracking = [];

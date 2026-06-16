@@ -7,6 +7,7 @@ import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
 import { computeOverlapRange, isoToDisplay, spanFromApiFile } from "./backtestModal/dateRangeUtils";
+import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
 
 const F = "'Exo 2', sans-serif";
 
@@ -248,7 +249,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       seen.add(sym);
       out.push({ sym, cat: assetClassToPickerCat(String(f.asset_class || "")) });
     });
-    return out.sort((a, b) => a.sym.localeCompare(b.sym));
+    return out.sort(compareSymbolsByPopularity);
   }, [sessionApiFiles]);
 
   const instrRows = newSessFiles.map((fid: string) => {

@@ -7,6 +7,7 @@ import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
 import { computeOverlapRange, isoToDisplay, spanFromApiFile } from "./backtestModal/dateRangeUtils";
+import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
 
 const F = "'Exo 2', sans-serif";
 
@@ -123,6 +124,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const [newSessAssetClass, setNewSessAssetClass] = useState("Forex");
   const [newSessAdvancedOrder, setNewSessAdvancedOrder] = useState(false);
   const [newSessRollback, setNewSessRollback] = useState(false);
+  const [newSessMfeMaeEnabled, setNewSessMfeMaeEnabled] = useState(true);
+  const [newSessMfeMaeHours, setNewSessMfeMaeHours] = useState("4");
+  const [newSessPostExitMode, setNewSessPostExitMode] = useState<"hours" | "candles">("hours");
+  const [newSessPostExitCandles, setNewSessPostExitCandles] = useState("50");
   const [newSessTradingStyle, setNewSessTradingStyle] = useState("");
   const [newSessStratDropOpen, setNewSessStratDropOpen] = useState(false);
   const [newSessStratHov, setNewSessStratHov] = useState<any>(null);
@@ -248,7 +253,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       seen.add(sym);
       out.push({ sym, cat: assetClassToPickerCat(String(f.asset_class || "")) });
     });
-    return out.sort((a, b) => a.sym.localeCompare(b.sym));
+    return out.sort(compareSymbolsByPopularity);
   }, [sessionApiFiles]);
 
   const instrRows = newSessFiles.map((fid: string) => {
@@ -279,6 +284,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     setNewSessAssetClass("Forex");
     setNewSessAdvancedOrder(false);
     setNewSessRollback(false);
+    setNewSessMfeMaeEnabled(true);
+    setNewSessMfeMaeHours("4");
+    setNewSessPostExitMode("hours");
+    setNewSessPostExitCandles("50");
     setNewSessTradingStyle("");
     setNewSessSupportTickers([]);
     setNewSessSupportAssetClass("Forex");
@@ -546,6 +555,16 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       timezone: newSessTimezone,
       dst: newSessDST,
       advanced_order: newSessAdvancedOrder,
+      mfe_mae_enabled: newSessMfeMaeEnabled,
+      mfe_mae_tracking_hours: parseFloat(newSessMfeMaeHours) || 4,
+      post_exit_tracking_mode: newSessPostExitMode,
+      post_exit_tracking_candles: parseInt(newSessPostExitCandles, 10) || 50,
+      mfe_mae: {
+        enabled: newSessMfeMaeEnabled,
+        tracking_hours: parseFloat(newSessMfeMaeHours) || 4,
+        post_exit_mode: newSessPostExitMode,
+        post_exit_candles: parseInt(newSessPostExitCandles, 10) || 50,
+      },
       trading_costs: newSessTradingCostsEnabled
         ? {
             costs: newSessCosts,
@@ -1324,6 +1343,42 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                           {TlChk(newSessRollback,"chk_rollback","",null)}
                           <span style={{fontSize:10,fontWeight:600,color:newSessRollback?c.ts:c.tm,fontFamily:F,transition:"color 0.12s"}}>Roll back</span>
                           <span style={{fontSize:9,color:c.tm,fontFamily:F}}>— step backward through bars during replay</span>
+                        </div>
+                        <div>
+                          <div style={{height:27,display:"flex",alignItems:"center",gap:8,cursor:"default"}} onClick={()=>setNewSessMfeMaeEnabled(v=>!v)}>
+                            {TlChk(newSessMfeMaeEnabled,"chk_mfeMae","",null)}
+                            <span style={{fontSize:10,fontWeight:600,color:newSessMfeMaeEnabled?c.ts:c.tm,fontFamily:F,transition:"color 0.12s"}}>MFE/MAE tracking</span>
+                            <span style={{fontSize:9,color:c.tm,fontFamily:F}}>— max favorable & adverse excursion</span>
+                          </div>
+                          {newSessMfeMaeEnabled&&(
+                            <div style={{marginTop:8,marginLeft:22,padding:"8px 10px",border:`1px solid ${c.br}`,background:"rgba(255,255,255,0.02)",display:"flex",flexDirection:"column",gap:8}} onClick={e=>e.stopPropagation()}>
+                              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",width:130,flexShrink:0}}>Tracking window</span>
+                                <div style={{position:"relative",width:72,flexShrink:0}}>
+                                  <input type="number" min={0.5} max={168} step={0.5} value={newSessMfeMaeHours} onChange={e=>setNewSessMfeMaeHours(e.target.value)} className="tlr-nospinner"
+                                    style={{...inp({width:"100%",height:24,fontSize:10,padding:"0 6px",textAlign:"center"})}}/>
+                                </div>
+                                <span style={{fontSize:9,color:c.tm,fontFamily:F}}>hours</span>
+                              </div>
+                              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",width:130,flexShrink:0}}>Post-exit mode</span>
+                                <select value={newSessPostExitMode} onChange={e=>setNewSessPostExitMode(e.target.value as "hours" | "candles")}
+                                  style={{...inp({width:170,height:24,fontSize:10,cursor:"default"})}}>
+                                  <option value="hours">Hours window</option>
+                                  <option value="candles">Fixed candle count</option>
+                                </select>
+                              </div>
+                              {newSessPostExitMode==="candles"&&(
+                                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                  <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",width:130,flexShrink:0}}>Post-exit candles</span>
+                                  <div style={{position:"relative",width:72,flexShrink:0}}>
+                                    <input type="number" min={1} max={5000} step={1} value={newSessPostExitCandles} onChange={e=>setNewSessPostExitCandles(e.target.value)} className="tlr-nospinner"
+                                      style={{...inp({width:"100%",height:24,fontSize:10,padding:"0 6px",textAlign:"center"})}}/>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div>
                           <div style={{height:27,display:"flex",alignItems:"center",gap:8,cursor:"default"}} onClick={()=>setNewSessTradingCostsEnabled(v=>!v)}>

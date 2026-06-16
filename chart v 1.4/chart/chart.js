@@ -1154,6 +1154,33 @@ class Chart {
                 om.advancedOrderEnabled = wantAdv;
             }
         } catch (e) { /* ignore */ }
+
+        try {
+            const om = this.orderManager;
+            if (!om || typeof om.applyMfeMaeSettings !== 'function') return;
+            const mfeBlock = session.mfe_mae && typeof session.mfe_mae === 'object' ? session.mfe_mae : null;
+            const enabled = session.mfe_mae_enabled !== false
+                && (mfeBlock ? mfeBlock.enabled !== false : true);
+            const hours = Number.parseFloat(
+                session.mfe_mae_tracking_hours
+                ?? mfeBlock?.tracking_hours
+                ?? mfeBlock?.hours
+            );
+            const modeRaw = session.post_exit_tracking_mode ?? mfeBlock?.post_exit_mode ?? mfeBlock?.mode;
+            const candles = Number.parseInt(
+                session.post_exit_tracking_candles
+                ?? mfeBlock?.post_exit_candles
+                ?? mfeBlock?.candles
+                ?? '',
+                10
+            );
+            om.applyMfeMaeSettings({
+                enabled,
+                hours: Number.isFinite(hours) && hours > 0 ? hours : om.mfeMaeTrackingHours,
+                mode: modeRaw === 'candles' ? 'candles' : 'hours',
+                candles: Number.isFinite(candles) && candles > 0 ? candles : om.postExitTrackingCandles,
+            });
+        } catch (e) { /* ignore */ }
     }
 
     /**
