@@ -2779,88 +2779,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const root = this.group.append('g')
                     .attr('class', 'rr-order-panel-style-row')
                     .style('pointer-events', 'all');
-                let offsetX = 0;
+                const levelPrice = cfg.price;
                 const yCtrl = (ctrlH) => (height - ctrlH) / 2;
 
-                if (cfg.showEntryQtyControls && typeof cfg.entryLevelIndex === 'number') {
-                    const li = cfg.entryLevelIndex;
-                    const yBadge = yCtrl(18);
-                    const dec = om._appendOrderLevelBadgeToGroup(root, 'minus', {
-                        className: 'rr-entry-qty-minus',
-                        x: offsetX,
-                        y: yBadge,
-                        onClick: () => {
-                            if (typeof om.adjustMultiEntryLevelAmount !== 'function') return;
-                            om.adjustMultiEntryLevelAmount(li, -1);
-                            rerenderRrAfterOm();
-                        },
-                    });
-                    offsetX += dec.size + gap;
-                    const inc = om._appendOrderLevelBadgeToGroup(root, 'plus', {
-                        className: 'rr-entry-qty-plus',
-                        x: offsetX,
-                        y: yBadge,
-                        onClick: () => {
-                            if (typeof om.adjustMultiEntryLevelAmount !== 'function') return;
-                            om.adjustMultiEntryLevelAmount(li, 1);
-                            rerenderRrAfterOm();
-                        },
-                    });
-                    offsetX += inc.size + gap;
-                    om._appendOrderLevelBadgeToGroup(root, 'close', {
-                        className: 'rr-entry-qty-close',
-                        x: offsetX,
-                        y: yBadge,
-                        onClick: () => {
-                            if (typeof om.pushRiskRewardToolToManager !== 'function'
-                                || typeof om.removeMultiEntryLevel !== 'function') return;
-                            om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
-                            const lv = om.multiEntryLevels && om.multiEntryLevels[li];
-                            if (!lv || lv.id == null) return;
-                            om.removeMultiEntryLevel(lv.id);
-                            rerenderRrAfterOm();
-                        },
-                    });
-                    offsetX += 18 + gap;
-                }
-
-                if (cfg.showTpPctControls && typeof cfg.tpTargetIndex === 'number' && cfg.tpTargetIndex >= 0) {
-                    const tIdx = cfg.tpTargetIndex;
-                    const stepper = om._appendTpPctStepperToGroup(root, {
-                        className: 'rr-tp-pct-stepper',
-                        x: offsetX,
-                        y: yCtrl(om._tpPctStepperSize()),
-                        levelPrice: cfg.price,
-                        onDecrease: () => {
-                            if (typeof om.adjustTPPercentage !== 'function') return;
-                            om.adjustTPPercentage(tIdx, -5);
-                            rerenderRrAfterOm();
-                        },
-                        onIncrease: () => {
-                            if (typeof om.adjustTPPercentage !== 'function') return;
-                            om.adjustTPPercentage(tIdx, +5);
-                            rerenderRrAfterOm();
-                        },
-                    });
-                    offsetX += stepper.size + 2;
-                    om._appendOrderLevelBadgeToGroup(root, 'close', {
-                        className: 'rr-tp-close',
-                        x: offsetX,
-                        y: yCtrl(18),
-                        onClick: () => {
-                            if (typeof om.pushRiskRewardToolToManager !== 'function'
-                                || typeof om.removeTPTarget !== 'function') return;
-                            om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
-                            const t = om.tpTargets && om.tpTargets[tIdx];
-                            if (!t || t.id == null) return;
-                            om.removeTPTarget(t.id);
-                            rerenderRrAfterOm();
-                        },
-                    });
-                    offsetX += 18 + gap;
-                }
-
-                const labelG = root.append('g').attr('transform', `translate(${offsetX}, 0)`);
+                // Same layout as renderPreviewLabel: toast label first, controls after on the right.
+                const labelG = root.append('g').attr('transform', 'translate(0, 0)');
                 let dims;
                 if (cfg.tagText != null) {
                     dims = om.buildRrToolLevelToastInGroup(labelG, {
@@ -2880,22 +2803,94 @@ class BaseRiskRewardTool extends BaseDrawing {
                         height,
                     });
                 }
-                offsetX += dims.width;
+                let offsetX = dims.width + gap;
+
+                if (cfg.showEntryLegDelete && typeof cfg.entryLevelIndex === 'number') {
+                    const li = cfg.entryLevelIndex;
+                    const del = om._appendOrderLevelBadgeToGroup(root, 'close', {
+                        className: 'preview-entry-level-delete-btn rr-entry-leg-delete',
+                        x: offsetX,
+                        y: yCtrl(18),
+                        levelPrice,
+                        stopMousedown: true,
+                        onClick: () => {
+                            if (typeof om.pushRiskRewardToolToManager !== 'function'
+                                || typeof om.removeMultiEntryLevel !== 'function') return;
+                            om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
+                            const lv = om.multiEntryLevels && om.multiEntryLevels[li];
+                            if (!lv || lv.id == null) return;
+                            om.removeMultiEntryLevel(lv.id);
+                            rerenderRrAfterOm();
+                        },
+                    });
+                    offsetX += del.size + gap;
+                }
+
+                if (cfg.showTpPctControls && typeof cfg.tpTargetIndex === 'number' && cfg.tpTargetIndex >= 0) {
+                    const tIdx = cfg.tpTargetIndex;
+                    const stepperGap = 2;
+                    const stepper = om._appendTpPctStepperToGroup(root, {
+                        className: 'tp-percentage-control rr-tp-pct-stepper',
+                        x: offsetX,
+                        y: yCtrl(om._tpPctStepperSize()),
+                        levelPrice,
+                        stopMousedown: true,
+                        onDecrease: () => {
+                            if (typeof om.pushRiskRewardToolToManager === 'function') {
+                                om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
+                            }
+                            if (typeof om.adjustTPPercentage !== 'function') return;
+                            om.adjustTPPercentage(tIdx, -5);
+                            rerenderRrAfterOm();
+                        },
+                        onIncrease: () => {
+                            if (typeof om.pushRiskRewardToolToManager === 'function') {
+                                om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
+                            }
+                            if (typeof om.adjustTPPercentage !== 'function') return;
+                            om.adjustTPPercentage(tIdx, +5);
+                            rerenderRrAfterOm();
+                        },
+                    });
+                    offsetX += stepper.size + stepperGap;
+                    const closeBadge = om._appendOrderLevelBadgeToGroup(root, 'close', {
+                        className: 'tp-close-btn preview-tp-sl-close-btn rr-tp-close',
+                        x: offsetX,
+                        y: yCtrl(18),
+                        levelPrice,
+                        stopMousedown: true,
+                        onClick: () => {
+                            if (typeof om.pushRiskRewardToolToManager !== 'function'
+                                || typeof om.removeTPTarget !== 'function') return;
+                            om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
+                            const t = om.tpTargets && om.tpTargets[tIdx];
+                            if (!t || t.id == null) return;
+                            om.removeTPTarget(t.id);
+                            rerenderRrAfterOm();
+                        },
+                    });
+                    offsetX += closeBadge.size + gap;
+                }
 
                 const bx = Math.max(zoneX1 + edgePad, zoneX2 - edgePad - offsetX);
                 const by = lineYpx - height / 2;
                 root.attr('transform', `translate(${bx}, ${by})`);
 
                 if (this.selected && cfg.handleRole) {
-                    root.append('rect')
+                    labelG.append('rect')
                         .attr('class', 'custom-handle rr-mini-badge-drag-hit')
                         .attr('data-handle-role', cfg.handleRole)
                         .attr('x', 0)
                         .attr('y', 0)
-                        .attr('width', offsetX)
+                        .attr('width', dims.width)
                         .attr('height', height)
                         .attr('fill', 'transparent')
-                        .style('cursor', 'ns-resize');
+                        .style('cursor', 'ns-resize')
+                        .style('pointer-events', 'all');
+                }
+                root.selectAll('.om-level-ctrl').raise();
+                if (typeof om._applyImmediateLevelCtrlHoverForGroup === 'function' && this.chart) {
+                    om._applyImmediateLevelCtrlHoverForGroup(root.node(), this.chart);
                 }
             };
 
@@ -2903,8 +2898,8 @@ class BaseRiskRewardTool extends BaseDrawing {
             const omMulti = om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0;
             /** Only show E1/E2+ mini-badges when there is a real ladder (2+ rungs). One OM row = single entry — no "E1" label. */
             const omMultiEntryLadder = omMulti && om.multiEntryLevels.length > 1;
-            const showEntryQtyControls = omMultiEntryLadder
-                && typeof om.adjustMultiEntryLevelAmount === 'function';
+            const showEntryLegDelete = omMultiEntryLadder
+                && typeof om.removeMultiEntryLevel === 'function';
 
             /**
              * Multi-entry: mini badge plus [−]/[+] (same steps as panel multi-entry amount steppers).
@@ -3154,7 +3149,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                         direction: sideStr,
                         handleRole: entryRole,
                         entryLevelIndex: i,
-                        showEntryQtyControls,
+                        showEntryLegDelete,
                         legacyLineTexts: entryLineParts,
                         legacyFill: entryFill,
                     });
@@ -3705,6 +3700,15 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.group.selectAll('g.rr-mini-level-badge, g.rr-order-panel-style-row').raise();
         this.group.selectAll('g.rr-tp-mini-pct-controls').raise();
         this.group.selectAll('g.rr-entry-mini-qty-controls').raise();
+
+        if (om && typeof om._refreshLevelCtrlHoverIfNeeded === 'function' && this.chart) {
+            if (typeof om._ensureLevelCtrlHover === 'function') {
+                try { om._ensureLevelCtrlHover(this.chart); } catch (_e) { /* ignore */ }
+            }
+            requestAnimationFrame(() => {
+                try { om._refreshLevelCtrlHoverIfNeeded(this.chart); } catch (_e) { /* ignore */ }
+            });
+        }
 
         return this.group;
     }

@@ -12533,10 +12533,8 @@ class OrderManager {
      * immediately (no opacity transition) when the cursor is already on that level.
      * Prevents hover flicker on live previews that re-render their labels every tick.
      */
-    _applyImmediateLevelCtrlHover(lineData) {
-        const groupNode = lineData?.labelGroup?.node?.();
+    _applyImmediateLevelCtrlHoverForGroup(groupNode, ch) {
         if (!groupNode) return;
-        const ch = this._previewChartFromContext(lineData);
         const container = ch?.svg?.node?.()?.parentElement;
         if (!container || !container.__omInside) return;
         const clientY = container.__omY;
@@ -12560,9 +12558,6 @@ class OrderManager {
                     show = Math.abs(localY - yScale(lp)) <= band;
                 }
             }
-            // Apply the hover color class synchronously (before paint) so dragging a
-            // TP/SL line — which re-renders this badge directly without going through
-            // updatePreviewLines — doesn't flash the color for a frame.
             const overExact = show && r.width > 0 && r.height > 0
                 && Number.isFinite(clientX)
                 && clientX >= r.left && clientX <= r.right
@@ -12573,9 +12568,16 @@ class OrderManager {
             el.style.transition = 'none';
             el.style.opacity = '1';
             el.style.pointerEvents = 'all';
-            void el.getBoundingClientRect(); // commit opacity:1 before re-enabling the fade
+            void el.getBoundingClientRect();
             el.style.transition = prevTransition || 'opacity 0.12s ease';
         }
+    }
+
+    _applyImmediateLevelCtrlHover(lineData) {
+        const groupNode = lineData?.labelGroup?.node?.();
+        if (!groupNode) return;
+        const ch = this._previewChartFromContext(lineData);
+        this._applyImmediateLevelCtrlHoverForGroup(groupNode, ch);
     }
 
     /**
@@ -37105,6 +37107,20 @@ class OrderManager {
         }
     }
 
+    /** Chart preview badges + RR tool row controls (drawing SVG). */
+    _collectOmLevelCtrlBadgeNodes(ch) {
+        const nodes = [];
+        const chartSvg = ch?.svg?.node?.();
+        if (chartSvg) {
+            nodes.push(...chartSvg.querySelectorAll('.om-level-ctrl'));
+        }
+        const drawSvg = ch?.drawingManager?.svg?.node?.();
+        if (drawSvg && drawSvg !== chartSvg) {
+            nodes.push(...drawSvg.querySelectorAll('.rr-order-panel-style-row .om-level-ctrl'));
+        }
+        return nodes;
+    }
+
     /**
      * Show/hide `.om-level-ctrl` badges for the level under the cursor.
      * Uses `data-level-price` + yScale (stable during pan/zoom); falls back to
@@ -37119,7 +37135,7 @@ class OrderManager {
         const inside = !!container.__omInside;
         const clientY = container.__omY;
         const clientX = container.__omX;
-        const badges = svgNode.querySelectorAll('.om-level-ctrl');
+        const badges = this._collectOmLevelCtrlBadgeNodes(ch);
 
         if (!inside || !Number.isFinite(clientY)) {
             for (let i = 0; i < badges.length; i++) {
@@ -41592,15 +41608,18 @@ class OrderManager {
             reset();
             bgEl.style('pointer-events', 'all')
                 .style('cursor', 'pointer')
+                .on('mouseenter', activate)
                 .on('mouseleave', reset);
             if (fn) {
-                bgEl.on('click', (e) => {
+                const fire = (e) => {
                     e.stopPropagation();
-                    e.preventDefault();
+                    if (e.cancelable) e.preventDefault();
                     activate();
                     fn(e);
                     setTimeout(reset, 200);
-                });
+                };
+                bgEl.on('pointerdown', fire);
+                bgEl.on('click', fire);
             }
             if (o.stopMousedown) {
                 bgEl.on('mousedown', (e) => e.stopPropagation());
@@ -41653,6 +41672,9 @@ class OrderManager {
             onDecrease: o.onDecrease,
             stopMousedown: o.stopMousedown,
         });
+        if (o.stopMousedown) {
+            g.on('mousedown', (e) => e.stopPropagation());
+        }
         this._tagOmLevelCtrlPrice(g.node(), o.levelPrice);
         return { group: g, size };
     }
