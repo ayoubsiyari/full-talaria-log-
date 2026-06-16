@@ -21390,6 +21390,14 @@ class OrderManager {
         return null;
     }
 
+    /**
+     * After RR Execute, chart preview lines own TP/entry/SL/Avg TP labels — hide RR-tool ladder badges.
+     */
+    shouldSuppressRrToolLadderLabels(drawing) {
+        if (!this._rrExecuteArmed || !drawing) return false;
+        return this._getSelectedRiskRewardDrawing() === drawing;
+    }
+
     _getActiveDraftOrderType() {
         return this.orderType
             || document.querySelector('#orderPanel .order-type-btn.active')?.dataset?.type
@@ -21423,6 +21431,10 @@ class OrderManager {
         this.updatePlaceButtonText();
         requestAnimationFrame(() => {
             this.updatePreviewLines();
+            const dm = drawing._drawingManager?.() || this.chart?.drawingManager;
+            if (dm && typeof dm.renderDrawing === 'function') {
+                try { dm.renderDrawing(drawing); } catch (_e) { /* ignore */ }
+            }
             if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
                 try { this.chart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
             }
@@ -21431,9 +21443,14 @@ class OrderManager {
 
     /** Selecting a different RR tool (or deselecting) clears Execute — preview stays off until Execute again. */
     disarmRiskRewardToolExecute() {
+        const drawing = this._getSelectedRiskRewardDrawing();
         this._rrExecuteArmed = false;
-        if (this._getSelectedRiskRewardDrawing()) {
+        if (drawing) {
             this.removePreviewLines();
+            const dm = drawing._drawingManager?.() || this.chart?.drawingManager;
+            if (dm && typeof dm.renderDrawing === 'function') {
+                try { dm.renderDrawing(drawing); } catch (_e) { /* ignore */ }
+            }
         }
     }
 

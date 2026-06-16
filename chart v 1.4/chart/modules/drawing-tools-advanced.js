@@ -2086,6 +2086,10 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
         const avgTpYpx = Number.isFinite(avgTpPrice) ? scales.yScale(avgTpPrice) : NaN;
 
+        const omForLabels = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+        const suppressRrLadderLabels = typeof omForLabels?.shouldSuppressRrToolLadderLabels === 'function'
+            && omForLabels.shouldSuppressRrToolLadderLabels(this);
+
         // Zone fill split at weighted avg (multi-entry). Drag gap / primary strip stay on E1 (below).
         const riskTop = Math.min(avgEntryYpx, worstStopPx);
         const riskBot = Math.max(avgEntryYpx, worstStopPx);
@@ -2271,8 +2275,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
         });
-        // Multi-TP: solid line at distribution-weighted average TP (same weights as panel % when aligned).
-        if (hasMultiTP && Number.isFinite(avgTpYpx)) {
+        // Multi-TP: solid line at distribution-weighted average TP (chart preview draws its own when Execute is on).
+        if (hasMultiTP && Number.isFinite(avgTpYpx) && !suppressRrLadderLabels) {
             this.group.append('line')
                 .attr('class', 'rr-avg-tp-zone-edge')
                 .attr('x1', zoneX1)
@@ -3072,6 +3076,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     }
                 }
             };
+            if (!suppressRrLadderLabels) {
             if (omMultiEntryLadder) {
                 const entryBadgeRows = [];
                 om.multiEntryLevels.forEach((lv, i) => {
@@ -3486,6 +3491,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     legacyLineTexts: ['Avg TP', `${lotStr} lot`],
                     legacyFill: 'rgba(240, 170, 120, 0.92)',
                 });
+            }
             }
 
             // Execute button moved to floating toolbar
