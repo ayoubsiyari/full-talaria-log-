@@ -443,6 +443,7 @@ const FUTURES_ROOTS_FOR_INFER = [
   "ZF",
   "ZT",
   "HO",
+  "HOG",
   "RB",
   "6E",
   "6B",
@@ -462,7 +463,7 @@ function futuresSuffixLooksLikeContract(rest) {
 
 export function inferChartAssetClass(ticker) {
   const u = String(ticker || "")
-    .replace(/[\s/\-]/g, "")
+    .replace(/[\s/\-_.]/g, "")
     .toUpperCase();
   if (!u) return "Futures";
 
@@ -482,14 +483,40 @@ export function inferChartAssetClass(ticker) {
 
   if (/^[A-Z]{6}$/.test(u)) return "Forex";
 
-  if (/^[A-Z]{1,5}$/.test(u)) return "Stocks";
+  const KNOWN_STOCKS = new Set([
+    "AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "GOOG", "GOOGL", "META", "NFLX", "AMD", "INTC",
+  ]);
+  if (KNOWN_STOCKS.has(u)) return "Stocks";
+
+  if (/^[A-Z]{1,5}$/.test(u)) return "Futures";
 
   return "Futures";
 }
 
+export function extractDatasetTicker(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const noExt = s.replace(/\.(csv|CSV)$/i, "");
+  const flat = noExt.replace(/[\s_\-./]/g, "").toUpperCase();
+  if (flat.length >= 6) {
+    const m = flat.match(/([A-Z]{6})/);
+    if (m) {
+      const p = m[1];
+      const b = p.slice(0, 3);
+      const q = p.slice(3);
+      if (currencyCountry[b] && currencyCountry[q]) return `${b}/${q}`;
+    }
+  }
+  const tfStrip = flat.replace(/(M\d+|MIN|H\d+|D\d+|W\d+).*$/i, "");
+  if (tfStrip && tfStrip.length >= 2) return tfStrip;
+  const head = noExt.split(/[_\-.]/)[0];
+  return head ? head.toUpperCase() : flat;
+}
+
 export function normalizeSymForBadge(symbol) {
-  return String(symbol || "")
-    .replace(/[\s/\-]/g, "")
+  const extracted = extractDatasetTicker(symbol);
+  return String(extracted || symbol || "")
+    .replace(/\//g, "")
     .toUpperCase();
 }
 
@@ -635,7 +662,11 @@ export function ChartSymbolBadge({ sym, asset, w = 11, h = 10, fontFamily = "'Ex
   }
 
   if (normAsset === "Futures") {
-    return futuresSvg(sym, w, h, fontFamily);
+    return (
+      <div style={{ borderRadius: 2, overflow: "hidden", flexShrink: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.55)" }}>
+        <FlagSvg code="US" w={w} h={h} />
+      </div>
+    );
   }
 
   const src = urls[srcIdx];

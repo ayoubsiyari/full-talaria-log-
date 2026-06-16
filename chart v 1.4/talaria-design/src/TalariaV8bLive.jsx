@@ -6,6 +6,7 @@ import {
   FlagSvg,
   ChartSymbolBadge,
   chartAssetFromSymbolObj,
+  extractDatasetTicker,
   normalizeSymForBadge,
   resolveSessionChartSymbol,
 } from "./chartSymbolBadge.jsx";
@@ -8761,19 +8762,21 @@ function v9ParseFxPairForDropdown(raw) {
 }
 
 function v9BuildSessionSymbolEntry(ticker, fileId, assetClass, known = V9_KNOWN_SYMBOL_CATALOG) {
+  const rawLabel = String(ticker || "").trim();
+  const cleanedTicker = extractDatasetTicker(rawLabel) || rawLabel;
   const badgeAsset =
     assetClass != null && String(assetClass).trim() ? String(assetClass).trim() : undefined;
   const withBadge = (row) => (badgeAsset ? { ...row, badgeAsset } : row);
-  let found = known.find((s) => s.id === ticker);
-  if (!found && ticker) found = known.find((s) => v9NormSymKey(s.id) === v9NormSymKey(ticker));
-  if (found) return withBadge({ ...found, fileId });
-  const parts = (ticker || "").split("/");
+  let found = known.find((s) => s.id === cleanedTicker);
+  if (!found && cleanedTicker) found = known.find((s) => v9NormSymKey(s.id) === v9NormSymKey(cleanedTicker));
+  if (found) return withBadge({ ...found, id: found.id, name: rawLabel || found.name, fileId });
+  const parts = (cleanedTicker || "").split("/");
   if (parts.length === 2 && parts[0].length === 3 && parts[1].length === 3) {
     const b = parts[0].toUpperCase();
     const q = parts[1].toUpperCase();
     return withBadge({
       id: `${b}/${q}`,
-      name: `${b} / ${q}`,
+      name: rawLabel || `${b} / ${q}`,
       type: "forex",
       base: b,
       quote: q,
@@ -8781,9 +8784,15 @@ function v9BuildSessionSymbolEntry(ticker, fileId, assetClass, known = V9_KNOWN_
       fileId,
     });
   }
-  const fx = v9ParseFxPairForDropdown(ticker);
-  if (fx) return withBadge({ ...fx, fileId });
-  return withBadge({ id: ticker, name: ticker, type: "other", cat: "BACKTEST", fileId });
+  const fx = v9ParseFxPairForDropdown(cleanedTicker);
+  if (fx) return withBadge({ ...fx, name: rawLabel || fx.name, fileId });
+  return withBadge({
+    id: cleanedTicker,
+    name: rawLabel || cleanedTicker,
+    type: "other",
+    cat: "BACKTEST",
+    fileId,
+  });
 }
 
 /** Session pair list for symbol dropdowns — same source as header MARKETS picker. */
@@ -9936,11 +9945,19 @@ const TalariaV8bLive = () => {
                 if (chart?._formatPairTicker)
                   display =
                     chart._formatPairTicker(rawName, "") ||
+                    extractDatasetTicker(rawName) ||
                     rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
-                else display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
+                else
+                  display =
+                    extractDatasetTicker(rawName) ||
+                    rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
               } catch (_) {
-                display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
+                display =
+                  extractDatasetTicker(rawName) ||
+                  rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
               }
+            } else {
+              display = extractDatasetTicker(display) || display;
             }
             const assetHint = f.asset_class ?? f.asset ?? null;
             if (display && String(display).trim())

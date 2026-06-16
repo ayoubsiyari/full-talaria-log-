@@ -2751,6 +2751,153 @@ class BaseRiskRewardTool extends BaseDrawing {
             const tpInnerFill = 'rgba(22, 101, 52, 0.92)';
             const beFill = 'rgba(120, 53, 15, 0.92)';
             const slExtraFill = 'rgba(127, 29, 29, 0.88)';
+            const entryLineColor = sideStr === 'BUY' ? '#2962ff' : '#f23645';
+            const tpLineColor = '#089981';
+
+            const rerenderRrAfterOm = () => {
+                if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                    om.syncSelectedRiskRewardDrawingFromPanel();
+                }
+                const dmR = self._drawingManager();
+                if (dmR) dmR.renderDrawing(self);
+            };
+            /** RR ladder row — order-panel toast label + circle / TP stepper controls. */
+            const appendRrOrderPanelStyleRow = (lineYpx, cfg) => {
+                const canOrderStyle = om
+                    && typeof om.buildRrToolLevelToastInGroup === 'function'
+                    && typeof om._appendOrderLevelBadgeToGroup === 'function';
+                if (!canOrderStyle) {
+                    const legacy = (cfg.legacyLineTexts || []).filter((x) => x != null && String(x).length > 0);
+                    if (legacy.length) {
+                        appendRrMiniBadge(lineYpx, legacy, cfg.legacyFill || entryFill, cfg.handleRole);
+                    }
+                    return;
+                }
+                const height = 24;
+                const gap = 4;
+                const edgePad = 4;
+                const root = this.group.append('g')
+                    .attr('class', 'rr-order-panel-style-row')
+                    .style('pointer-events', 'all');
+                let offsetX = 0;
+                const yCtrl = (ctrlH) => (height - ctrlH) / 2;
+
+                if (cfg.showEntryQtyControls && typeof cfg.entryLevelIndex === 'number') {
+                    const li = cfg.entryLevelIndex;
+                    const yBadge = yCtrl(18);
+                    const dec = om._appendOrderLevelBadgeToGroup(root, 'minus', {
+                        className: 'rr-entry-qty-minus',
+                        x: offsetX,
+                        y: yBadge,
+                        onClick: () => {
+                            if (typeof om.adjustMultiEntryLevelAmount !== 'function') return;
+                            om.adjustMultiEntryLevelAmount(li, -1);
+                            rerenderRrAfterOm();
+                        },
+                    });
+                    offsetX += dec.size + gap;
+                    const inc = om._appendOrderLevelBadgeToGroup(root, 'plus', {
+                        className: 'rr-entry-qty-plus',
+                        x: offsetX,
+                        y: yBadge,
+                        onClick: () => {
+                            if (typeof om.adjustMultiEntryLevelAmount !== 'function') return;
+                            om.adjustMultiEntryLevelAmount(li, 1);
+                            rerenderRrAfterOm();
+                        },
+                    });
+                    offsetX += inc.size + gap;
+                    om._appendOrderLevelBadgeToGroup(root, 'close', {
+                        className: 'rr-entry-qty-close',
+                        x: offsetX,
+                        y: yBadge,
+                        onClick: () => {
+                            if (typeof om.pushRiskRewardToolToManager !== 'function'
+                                || typeof om.removeMultiEntryLevel !== 'function') return;
+                            om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
+                            const lv = om.multiEntryLevels && om.multiEntryLevels[li];
+                            if (!lv || lv.id == null) return;
+                            om.removeMultiEntryLevel(lv.id);
+                            rerenderRrAfterOm();
+                        },
+                    });
+                    offsetX += 18 + gap;
+                }
+
+                if (cfg.showTpPctControls && typeof cfg.tpTargetIndex === 'number' && cfg.tpTargetIndex >= 0) {
+                    const tIdx = cfg.tpTargetIndex;
+                    const stepper = om._appendTpPctStepperToGroup(root, {
+                        className: 'rr-tp-pct-stepper',
+                        x: offsetX,
+                        y: yCtrl(om._tpPctStepperSize()),
+                        levelPrice: cfg.price,
+                        onDecrease: () => {
+                            if (typeof om.adjustTPPercentage !== 'function') return;
+                            om.adjustTPPercentage(tIdx, -5);
+                            rerenderRrAfterOm();
+                        },
+                        onIncrease: () => {
+                            if (typeof om.adjustTPPercentage !== 'function') return;
+                            om.adjustTPPercentage(tIdx, +5);
+                            rerenderRrAfterOm();
+                        },
+                    });
+                    offsetX += stepper.size + 2;
+                    om._appendOrderLevelBadgeToGroup(root, 'close', {
+                        className: 'rr-tp-close',
+                        x: offsetX,
+                        y: yCtrl(18),
+                        onClick: () => {
+                            if (typeof om.pushRiskRewardToolToManager !== 'function'
+                                || typeof om.removeTPTarget !== 'function') return;
+                            om.pushRiskRewardToolToManager(self, { rrToolInternal: true });
+                            const t = om.tpTargets && om.tpTargets[tIdx];
+                            if (!t || t.id == null) return;
+                            om.removeTPTarget(t.id);
+                            rerenderRrAfterOm();
+                        },
+                    });
+                    offsetX += 18 + gap;
+                }
+
+                const labelG = root.append('g').attr('transform', `translate(${offsetX}, 0)`);
+                let dims;
+                if (cfg.tagText != null) {
+                    dims = om.buildRrToolLevelToastInGroup(labelG, {
+                        tagText: cfg.tagText,
+                        detailText: cfg.detailText,
+                        detailColor: cfg.detailColor,
+                        accent: cfg.accent,
+                        height,
+                        minWidth: cfg.minWidth,
+                    });
+                } else {
+                    dims = om.buildRrToolLevelToastInGroup(labelG, {
+                        label: cfg.label,
+                        price: cfg.price,
+                        color: cfg.color,
+                        direction: cfg.direction,
+                        height,
+                    });
+                }
+                offsetX += dims.width;
+
+                const bx = Math.max(zoneX1 + edgePad, zoneX2 - edgePad - offsetX);
+                const by = lineYpx - height / 2;
+                root.attr('transform', `translate(${bx}, ${by})`);
+
+                if (this.selected && cfg.handleRole) {
+                    root.append('rect')
+                        .attr('class', 'custom-handle rr-mini-badge-drag-hit')
+                        .attr('data-handle-role', cfg.handleRole)
+                        .attr('x', 0)
+                        .attr('y', 0)
+                        .attr('width', offsetX)
+                        .attr('height', height)
+                        .attr('fill', 'transparent')
+                        .style('cursor', 'ns-resize');
+                }
+            };
 
             const hasDrawnExtras = (this.meta.extraEntries || []).length > 0;
             const omMulti = om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0;
@@ -2996,11 +3143,21 @@ class BaseRiskRewardTool extends BaseDrawing {
                 entryBadgeRows.forEach(({ i, yPix, displayY, entryLineParts }) => {
                     const lineY = Number.isFinite(displayY) ? displayY : yPix;
                     const entryRole = i === 0 ? 'rr-primary-entry' : `rr-extra-entry-${i - 1}`;
-                    if (showEntryQtyControls) {
-                        appendRrEntryMiniBadgeWithQtyControls(lineY, entryLineParts, entryFill, i);
-                    } else {
-                        appendRrMiniBadge(lineY, entryLineParts, entryFill, entryRole);
-                    }
+                    const rowPrice = i === 0 ? entry.y : (this.meta.extraEntries || [])[i - 1]?.y;
+                    const previewLabel = om && typeof om.composeRrToolEntryPreviewLabel === 'function'
+                        ? om.composeRrToolEntryPreviewLabel(i, rowPrice)
+                        : `Entry#${i + 1}:limit`;
+                    appendRrOrderPanelStyleRow(lineY, {
+                        label: previewLabel,
+                        price: rowPrice,
+                        color: entryLineColor,
+                        direction: sideStr,
+                        handleRole: entryRole,
+                        entryLevelIndex: i,
+                        showEntryQtyControls,
+                        legacyLineTexts: entryLineParts,
+                        legacyFill: entryFill,
+                    });
                 });
             } else if (hasDrawnExtras) {
                 const fallbackLot = Number.isFinite(quantity) ? quantity.toFixed(2) : '—';
@@ -3016,7 +3173,16 @@ class BaseRiskRewardTool extends BaseDrawing {
                 entryBadgeRows.forEach((r, idx) => {
                     const lineY = Number.isFinite(r.displayY) ? r.displayY : r.yPix;
                     const entryRole = idx === 0 ? 'rr-primary-entry' : `rr-extra-entry-${idx - 1}`;
-                    appendRrMiniBadge(lineY, r.lineTexts, entryFill, entryRole);
+                    const rowPrice = idx === 0 ? entry.y : (this.meta.extraEntries || [])[idx - 1]?.y;
+                    appendRrOrderPanelStyleRow(lineY, {
+                        label: `Entry#${idx + 1}:limit`,
+                        price: rowPrice,
+                        color: entryLineColor,
+                        direction: sideStr,
+                        handleRole: entryRole,
+                        legacyLineTexts: r.lineTexts,
+                        legacyFill: entryFill,
+                    });
                 });
             }
 
@@ -3282,11 +3448,18 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const sub = subParts.length ? subParts.join(' · ') : '—';
                     const tIdx = findOmTpTargetIndex(rp);
                     const hr = tpRoleForRp(rp);
-                    if (sortedOm.length > 1 && tIdx >= 0) {
-                        appendRrTpMiniBadgeWithPctControls(yy, [`TP${tpNum}`, sub], tpInnerFill, tIdx, hr);
-                    } else {
-                        appendRrMiniBadge(yy, [`TP${tpNum}`, sub], tpInnerFill, hr);
-                    }
+                    const tpLabel = `TP${tpNum}`;
+                    appendRrOrderPanelStyleRow(yy, {
+                        label: tpLabel,
+                        price: rp,
+                        color: tpLineColor,
+                        direction: null,
+                        handleRole: hr,
+                        tpTargetIndex: tIdx,
+                        showTpPctControls: sortedOm.length > 1 && tIdx >= 0,
+                        legacyLineTexts: [`TP${tpNum}`, sub],
+                        legacyFill: tpInnerFill,
+                    });
                 };
 
                 (this.meta.extraTargets || []).forEach((row) => {
@@ -3311,7 +3484,15 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             (this.meta.extraStops || []).forEach((row, i) => {
                 if (!row || !Number.isFinite(row.y)) return;
-                appendRrMiniBadge(scales.yScale(row.y), [`SL${i + 2}`], slExtraFill, `rr-extra-stop-${i}`);
+                appendRrOrderPanelStyleRow(scales.yScale(row.y), {
+                    label: 'SL',
+                    price: row.y,
+                    color: '#f23645',
+                    direction: null,
+                    handleRole: `rr-extra-stop-${i}`,
+                    legacyLineTexts: [`SL${i + 2}`],
+                    legacyFill: slExtraFill,
+                });
             });
 
             if (beLinePx != null) {
@@ -3328,13 +3509,28 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const a = parseFloat(beAmtInput?.value || '50');
                     beSub = Number.isFinite(a) ? `$${Math.round(a)}` : '—';
                 }
-                appendRrMiniBadge(beLinePx, ['BE', beSub], beFill, 'rr-be-line');
+                appendRrOrderPanelStyleRow(beLinePx, {
+                    label: `BE @ ${beSub}`,
+                    price: this.meta.rrBreakevenLine.y,
+                    color: '#f59e0b',
+                    direction: null,
+                    handleRole: 'rr-be-line',
+                    legacyLineTexts: ['BE', beSub],
+                    legacyFill: beFill,
+                });
             }
 
             if (hasMultiTP && Number.isFinite(avgTpYpx) && Number.isFinite(avgTpPrice)) {
-                const avgTpFill = 'rgba(240, 170, 120, 0.92)';
                 const lotStr = Number.isFinite(quantity) && quantity > 0 ? quantity.toFixed(2) : '—';
-                appendRrMiniBadge(avgTpYpx, ['Avg TP', `${lotStr} lot`], avgTpFill, null);
+                appendRrOrderPanelStyleRow(avgTpYpx, {
+                    tagText: 'Avg TP',
+                    detailText: `${lotStr} lots`,
+                    detailColor: '#fde68a',
+                    accent: '#eab308',
+                    minWidth: 64,
+                    legacyLineTexts: ['Avg TP', `${lotStr} lot`],
+                    legacyFill: 'rgba(240, 170, 120, 0.92)',
+                });
             }
 
             // Execute button moved to floating toolbar
@@ -3506,7 +3702,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Right-edge labels must sit above transparent drag strips (`rr-primary-entry-drag-hit`, `rr-extra-drag-hit`),
         // otherwise badges look missing / unclickable. `rr-mini-level-badge` (fallback E1/E2, SL, BE, Avg TP) was not
         // raised before — only TP/entry qty groups were.
-        this.group.selectAll('g.rr-mini-level-badge').raise();
+        this.group.selectAll('g.rr-mini-level-badge, g.rr-order-panel-style-row').raise();
         this.group.selectAll('g.rr-tp-mini-pct-controls').raise();
         this.group.selectAll('g.rr-entry-mini-qty-controls').raise();
 

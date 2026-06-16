@@ -404,6 +404,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       files.push({
         id: match.id as string | number,
         name: String(match.original_name || match.name || sym),
+        asset_class: assetKey,
+        ticker: sym,
       });
     });
 

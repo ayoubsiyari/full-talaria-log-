@@ -41386,6 +41386,67 @@ class OrderManager {
         return { width: totalW, height };
     }
 
+    /** Detect limit/stop/market for one RR ladder entry price (same rules as draft panel). */
+    _rrOrderTypeForEntryPrice(entryPrice) {
+        const currentCandle = this.getCurrentCandle();
+        const currentPrice = currentCandle?.c || currentCandle?.close || 0;
+        if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !currentPrice || currentPrice <= 0) {
+            return this.orderType || 'limit';
+        }
+        const pip = this._getBreakevenUnitSize();
+        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 0.5, Math.abs(currentPrice) * 1e-10);
+        if (atMarket) return 'market';
+        if (this.orderSide === 'BUY') return entryPrice > currentPrice ? 'stop' : 'limit';
+        return entryPrice < currentPrice ? 'stop' : 'limit';
+    }
+
+    /** Preview label key for RR tool entry row i (matches composePreviewLabelSegments Entry / Entry#N). */
+    composeRrToolEntryPreviewLabel(levelIndex, entryPrice) {
+        const idx = Number.isFinite(levelIndex) ? levelIndex : 0;
+        const levels = this.multiEntryLevels || [];
+        if (idx === 0 && levels.length <= 1) return 'Entry';
+        const ot = this._rrOrderTypeForEntryPrice(entryPrice);
+        return `Entry#${idx + 1}:${ot}`;
+    }
+
+    /**
+     * RR tool ladder row — same toast shell as draft preview / pending order lines.
+     * @returns {{ width: number, height: number }}
+     */
+    buildRrToolLevelToastInGroup(parentGroup, opts = {}) {
+        const o = opts || {};
+        if (o.tagText != null) {
+            return this._buildOrderLevelToastLabelInGroup(parentGroup, {
+                tagText: String(o.tagText),
+                detailText: o.detailText != null && o.detailText !== '' ? String(o.detailText) : null,
+                detailColor: o.detailColor || null,
+                accent: o.accent || this._tradeMarkerToastTheme().accentDefault,
+                isPreview: true,
+                height: o.height || 24,
+                smallLabel: !!o.smallLabel,
+                minWidth: o.minWidth,
+            });
+        }
+        const label = o.label != null ? String(o.label) : '';
+        const price = Number.isFinite(o.price) ? o.price : 0;
+        const color = o.color || '#2962ff';
+        const direction = o.direction || this.orderSide || 'BUY';
+        const segments = this.composePreviewLabelSegments(label, price, color, direction);
+        const tagSeg = segments[0] || { text: label, minWidth: 72 };
+        const detailSeg = segments.length > 1 ? segments[1] : null;
+        const accent = this._accentColorForTradeMarkerTag(label, color);
+        return this._buildOrderLevelToastLabelInGroup(parentGroup, {
+            tagText: tagSeg.text,
+            detailText: detailSeg?.text ?? null,
+            detailColor: detailSeg?.textColor ?? null,
+            accent,
+            isPreview: true,
+            height: o.height || 24,
+            smallLabel: !!o.smallLabel,
+            minWidth: tagSeg.minWidth,
+        });
+    }
+
     /** Style legacy separate labelBox/pnlBox pairs to match toast shell (with optional 3px accent stripe). */
     _styleLegacyOrderLevelToastChrome(els, accent, opts) {
         const o = opts || {};
