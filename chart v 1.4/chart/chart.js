@@ -727,6 +727,7 @@ class Chart {
 
             // Price line (last close horizontal line)
             showPriceLine: true,
+            showSpreadMarker: true,
             priceLineColor: '#2962ff',
             priceLinePattern: 'dashed', // 'solid' | 'dashed' | 'dotted' | 'longDash'
             priceLineWidth: 1,
@@ -14589,10 +14590,15 @@ class Chart {
             }
         }
 
-        // Update synthetic sell/buy tickets with a dynamic spread
+        // Update sell/buy tickets from session spread (bid/ask), not a synthetic % spread
         const midPrice = candle.c;
-        const spread = Math.max(midPrice * 0.0005, 0.0001); // 5 bps minimum spread
-        updateTickets(midPrice - spread, midPrice + spread);
+        const ba = typeof this.resolveSessionBidAsk === 'function' ? this.resolveSessionBidAsk(midPrice) : null;
+        if (ba) {
+            updateTickets(ba.bid, ba.ask);
+        } else {
+            const spread = Math.max(midPrice * 0.0005, 0.0001);
+            updateTickets(midPrice - spread, midPrice + spread);
+        }
     }
     
     /**
@@ -21961,6 +21967,145 @@ class Chart {
     }
 
     /**
+     * Resolve bid/ask from session spread (order-manager half-spread rules).
+     * Mid = last/close; BUY fills at ask (+half), SELL at bid (−half).
+     */
+    resolveSessionBidAsk(midPrice) {
+        const mid = Number(midPrice);
+        if (!Number.isFinite(mid) || mid <= 0) return null;
+
+        const session = this.backtestingSession;
+        if (session && session.trading_costs_enabled === false) return null;
+
+        const om = this._getOrderManagerForSessionPersistence();
+        if (om && typeof om._halfSpreadPriceDistance === 'function') {
+            const inst =
+                typeof om._getActiveInstrumentSettings === 'function'
+                    ? om._getActiveInstrumentSettings()
+                    : {
+                          ticker:
+                              typeof om._getActiveTicker === 'function'
+                                  ? om._getActiveTicker()
+                                  : this.currentSymbol,
+                      };
+            const half = om._halfSpreadPriceDistance(inst, mid);
+            const spreadUnits =
+                typeof om._getSpreadPipsForPosition === 'function'
+                    ? om._getSpreadPipsForPosition(inst)
+                    : 0;
+            if (Number.isFinite(half) && half > 0) {
+                return { bid: mid - half, ask: mid + half, half, spreadUnits };
+            }
+        }
+
+        if (!session || !session.instruments || typeof session.instruments !== 'object') return null;
+        const sym = String(this.currentSymbol || '').replace(/[/\s_.-]/g, '').toUpperCase();
+        const row =
+            Object.values(session.instruments).find((r) => {
+                const t = String(r?.ticker || '').replace(/[/\s_.-]/g, '').toUpperCase();
+                return t && t === sym;
+            }) || null;
+        const spreadUnits = Number.parseFloat(row?.spread_pips ?? row?.spreadPips ?? row?.spread ?? 0) || 0;
+        if (!(spreadUnits > 0)) return null;
+
+        let half = 0;
+        if (window.marketCalcEngine && sym) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                if (calc?.specs?.type === 'futures' && Number(calc.specs.tickSize) > 0) {
+                    half = (spreadUnits / 2) * calc.specs.tickSize;
+                } else if (Number(calc?.specs?.pipSize) > 0) {
+                    half = (spreadUnits / 2) * calc.specs.pipSize;
+                }
+            } catch (_) { /* ignore */ }
+        }
+        if (!(half > 0)) {
+            const pipS = Number.parseFloat(row?.pip_size ?? row?.pipSize ?? 0.0001) || 0.0001;
+            half = (spreadUnits / 2) * pipS;
+        }
+        if (!(half > 0)) return null;
+        return { bid: mid - half, ask: mid + half, half, spreadUnits };
+    }
+
+    /**
+     * MT5-style bid/ask spread bracket on the price axis (vertical line + colored ticks).
+     */
+    drawSpreadAxisMark(visible, midPrice) {
+        if (this.chartSettings.showSpreadMarker === false) return;
+        if (!this.yScale) return;
+
+        const price =
+            Number.isFinite(midPrice) ? midPrice : this.resolveEffectiveCurrentPrice(visible);
+        const ba = this.resolveSessionBidAsk(price);
+        if (!ba) return;
+
+        const m = this.margin;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const yPlotTop = m.t;
+        const yPlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
+
+        const yBid = this.yScale(ba.bid);
+        const yAsk = this.yScale(ba.ask);
+        if (!Number.isFinite(yBid) || !Number.isFinite(yAsk)) return;
+
+        const yTop = Math.min(yBid, yAsk);
+        const yBot = Math.max(yBid, yAsk);
+        if (yBot < yPlotTop || yTop > yPlotBottom) return;
+
+        const axisLeft = !!this.priceAxisLeft;
+        const axisW = axisLeft ? m.l : m.r;
+        const axisX = axisLeft ? 0 : this.w - m.r;
+        const bracketX = axisLeft ? axisX + axisW - 4 : axisX + 4;
+        const tickLen = Math.min(14, Math.max(6, axisW * 0.35));
+        const bidColor = this.chartSettings.spreadBidColor || '#2196F3';
+        const askColor = this.chartSettings.spreadAskColor || '#EF5350';
+
+        this.ctx.save();
+
+        // Vertical spread bracket on the price scale (MT5-style)
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeStyle = 'rgba(148, 163, 184, 0.9)';
+        this.ctx.beginPath();
+        this.ctx.moveTo(bracketX, yBid);
+        this.ctx.lineTo(bracketX, yAsk);
+        this.ctx.stroke();
+
+        const drawTick = (y, color) => {
+            this.ctx.strokeStyle = color;
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            const x0 = axisLeft ? bracketX - tickLen : bracketX;
+            const x1 = axisLeft ? bracketX : bracketX + tickLen;
+            this.ctx.moveTo(x0, y);
+            this.ctx.lineTo(x1, y);
+            this.ctx.stroke();
+        };
+        drawTick(yBid, bidColor);
+        drawTick(yAsk, askColor);
+
+        // Label spread units when zoomed out (bracket thinner than ~8px)
+        const gapPx = Math.abs(yAsk - yBid);
+        const spreadLabel =
+            Number.isFinite(ba.spreadUnits) && ba.spreadUnits > 0
+                ? ba.spreadUnits >= 100
+                    ? ba.spreadUnits.toFixed(1)
+                    : ba.spreadUnits.toFixed(2)
+                : '';
+        if (spreadLabel && gapPx < 10) {
+            const labelX = axisLeft ? bracketX - tickLen - 2 : bracketX + tickLen + 2;
+            this.ctx.font = `600 ${Math.max(9, (this.chartSettings.scaleTextSize || 11) - 1)}px Roboto`;
+            this.ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
+            this.ctx.textAlign = axisLeft ? 'right' : 'left';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(spreadLabel, labelX, (yBid + yAsk) / 2);
+        }
+
+        this.ctx.restore();
+    }
+
+    /**
      * Draw current price label on the right side (live price indicator)
      */
     drawCurrentPriceLabel(visible) {
@@ -22081,6 +22226,8 @@ class Chart {
             this.ctx.font = `600 ${this.chartSettings.scaleTextSize - 1}px Roboto`;
             this.ctx.fillText(countdownText, labelX + labelWidth / 2, labelY + priceHeight + countdownHeight / 2);
         }
+
+        this.drawSpreadAxisMark(visible, currentPrice);
 
     }
     

@@ -15093,10 +15093,8 @@ class OrderManager {
             if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
                 // Use effective percentages (same conversion+normalization as placeOrder)
                 const ePcts = this._computeEffectiveTPPercentages(effectiveEntryForReward, qtyForReward, this.orderSide);
-                console.log(`📊 Calculating reward for ${this.tpTargets.length} TP targets, mode: ${this.tpDistributionMode}`);
                 this.tpTargets.forEach((target, index) => {
                     const ePct = ePcts[index] || 0;
-                    console.log(`   Target ${index + 1}: price=${target.price?.toFixed(5)}, raw=${target.percentage}, effectivePct=${ePct.toFixed(1)}%`);
                     if (target.price > 0 && ePct > 0) {
                         const tpPx = Number.parseFloat(target.price);
                         let priceDiff;
@@ -15111,11 +15109,9 @@ class OrderManager {
                             const partialReward = Math.max(0, this._estimateNetPnLPreview(
                                 this.orderSide, effectiveEntryForReward, tpPx, partialQuantity));
                             reward += partialReward;
-                            console.log(`      Added ${partialReward.toFixed(2)}, total reward now: ${reward.toFixed(2)}`);
                         }
                     }
                 });
-                console.log(`   Final calculated reward: $${reward.toFixed(2)}`);
             } else if (tpPrice > 0) {
                 let priceDiff;
                 if (this.orderSide === 'BUY') {

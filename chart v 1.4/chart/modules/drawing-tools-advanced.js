@@ -1522,12 +1522,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
             this.meta.risk.lotSize = Math.max(0.01, lots);
             this.meta.risk.riskMode = 'lot-size';
-            const entry = this.meta.risk.entryPrice || 0;
-            const stop = this.meta.risk.stopPrice || 0;
-            const slPips = entry && stop ? Math.abs(entry - stop) / pip : 0;
-            const pipVal = om?.pipValuePerLot || 10;
-            const riskUsd = slPips > 0 ? lots * slPips * pipVal : 0;
-            console.log(`🔄 Lot size mode: ${this.meta.risk.lotSize.toFixed(2)} lots → ~$${riskUsd.toFixed(2)} risk @ ${slPips.toFixed(1)} pips`);
             return;
         }
 
@@ -1554,8 +1548,6 @@ class BaseRiskRewardTool extends BaseDrawing {
         const slPips = slDistance / pip;
         const calculatedLots = riskUSD / (slPips * pipValue);
         this.meta.risk.lotSize = Math.max(0.01, calculatedLots);
-
-        console.log(`🔄 Lot size recalculated: ${this.meta.risk.lotSize.toFixed(2)} lots for risk $${riskUSD.toFixed(2)} @ ${slPips.toFixed(1)} pips`);
     }
 
     setAccountSize(value) {
