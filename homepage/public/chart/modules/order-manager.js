@@ -1479,8 +1479,17 @@ class OrderManager {
      *   moves with replay ticks/candles.
      * - Other instruments: same session tick index + that bar's OHLC (deterministic path) so
      *   dock PnL moves smoothly; else panel last close, else cached bar close.
+     * When trading costs are on, converts mid → exit-side quote (bid for longs, ask for shorts)
+     * so floating P&L matches an immediate market close (entry already paid the entry-side spread).
      */
     _resolveUnrealizedMarkPrice(position, currentCandle) {
+        const mid = this._resolveMidMarkPrice(position, currentCandle);
+        if (!Number.isFinite(mid)) return null;
+        return this._exitMarkForUnrealizedPnL(position, mid);
+    }
+
+    /** Mid/last quote before exit-side spread adjustment (candle close or background bar). */
+    _resolveMidMarkPrice(position, currentCandle) {
         if (!position || !currentCandle) return null;
         const tMs = Number(currentCandle.t);
         if (!Number.isFinite(tMs)) return null;
@@ -1512,6 +1521,16 @@ class OrderManager {
         }
 
         return this._resolveBackgroundMarkPrice(position, tMs);
+    }
+
+    /** Exit-side mark: longs close at bid (−half spread), shorts at ask (+half spread). */
+    _exitMarkForUnrealizedPnL(position, midPrice) {
+        const mid = Number(midPrice);
+        if (!Number.isFinite(mid)) return midPrice;
+        if (!this._sessionTradingCostsEnabled()) return mid;
+        const side = String(position?.type || position?.direction || 'BUY').toUpperCase();
+        const exitPx = this._applyHalfSpreadExitPrice(mid, side, position);
+        return Number.isFinite(exitPx) ? exitPx : mid;
     }
 
     /** Last resampled close from a panel chart showing this ticker (same TF as main). */
