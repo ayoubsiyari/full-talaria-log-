@@ -8046,6 +8046,12 @@ class OrderManager {
             // Screenshots
             entryScreenshot: order.entryScreenshot || null, // Captured on order placement
             exitScreenshot: exitScreenshot || null, // Captured on trade close
+            railScreenshots: Array.isArray(order.railScreenshots)
+                ? order.railScreenshots.map((r) => ({
+                      dataUrl: r.dataUrl,
+                      name: r.name,
+                  }))
+                : [],
             
             // Metadata (instrument_settings omitted — spread/commission/pip scalars below; analytics_core + normalization use those or fall back to instrument_settings on older rows)
             savedAt: Date.now(),
@@ -19315,6 +19321,12 @@ class OrderManager {
                 return;
             }
             order.railScreenshots = list;
+            const prevJe = order.journalEntry && typeof order.journalEntry === 'object' ? order.journalEntry : {};
+            order.journalEntry = {
+                ...prevJe,
+                railScreenshots: list.map((r) => ({ dataUrl: r.dataUrl, name: r.name })),
+                timestamp: Date.now(),
+            };
             if (typeof window !== 'undefined') window.__talariaV9RailScreenshots = null;
         } catch (_e) {
             if (typeof window !== 'undefined') window.__talariaV9RailScreenshots = null;

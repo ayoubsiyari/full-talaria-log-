@@ -8235,6 +8235,57 @@ function clampScreenshotSlot(arr, maxN = MAX_SCREENSHOTS_PRE_POST) {
   return arr.slice(0, maxN);
 }
 
+function screenshotSrcFromRecord(rec) {
+  if (!rec) return null;
+  if (typeof rec === "string" && rec.trim()) return rec.trim();
+  const url = rec.dataUrl || rec.screenshot || rec.url || rec.src;
+  return typeof url === "string" && url.trim() ? url.trim() : null;
+}
+
+/** Pre-trade screenshots from order rail uploads, chart capture, or persisted journal. */
+function railScreenshotSrcList(order, journal) {
+  const out = [];
+  const push = (src) => {
+    if (src && !out.includes(src)) out.push(src);
+  };
+  for (const rec of [
+    ...(Array.isArray(journal?.railScreenshots) ? journal.railScreenshots : []),
+    ...(Array.isArray(order?.railScreenshots) ? order.railScreenshots : []),
+  ]) {
+    push(screenshotSrcFromRecord(rec));
+  }
+  if (journal?.entryScreenshot) push(journal.entryScreenshot);
+  if (order?.entryScreenshot) push(order.entryScreenshot);
+  for (const ent of Array.isArray(journal?.entryScreenshots) ? journal.entryScreenshots : []) {
+    push(screenshotSrcFromRecord(ent));
+  }
+  return clampScreenshotSlot(out);
+}
+
+function mergeTradeScreenshotState(prev, rowId, order, journal) {
+  const ex = prev[rowId] || {};
+  const pre = clampScreenshotSlot([...(ex.pre || [])]);
+  const post = clampScreenshotSlot([...(ex.post || [])]);
+  for (const src of railScreenshotSrcList(order, journal)) {
+    if (!pre.includes(src)) pre.push(src);
+  }
+  if (journal?.exitScreenshot && !post.includes(journal.exitScreenshot)) post.push(journal.exitScreenshot);
+  const nextPre = clampScreenshotSlot(pre);
+  const nextPost = clampScreenshotSlot(post);
+  if (!nextPre.length && !nextPost.length && !ex.pre?.length && !ex.post?.length) return prev;
+  return {
+    ...prev,
+    [rowId]: { ...ex, pre: nextPre, post: nextPost },
+  };
+}
+
+function railScreenshotsFromPreSlot(preArr) {
+  return clampScreenshotSlot(preArr || []).map((dataUrl, i) => ({
+    dataUrl,
+    name: `pre-${i + 1}`,
+  }));
+}
+
 async function fetchJournalEndpoint(path, init = {}) {
   const headers = { ...journalAuthHeaders(), ...(init.headers || {}) };
   const req = { credentials: "include", cache: "no-store", ...init, headers };
@@ -9443,16 +9494,7 @@ const TalariaV8bLive = () => {
           setTradeCardPreTags([...r.preTags]);
           setTradeCardPostTags([...r.postTags]);
           setTradeCardNotes(notesMap[r.id] || noteFallback || "");
-          if (j && (j.entryScreenshot || j.exitScreenshot)) {
-            setTradeScreenshots((prev) => {
-              const ex = prev[r.id] || {};
-              const pre = clampScreenshotSlot([...(ex.pre || [])]);
-              const post = clampScreenshotSlot([...(ex.post || [])]);
-              if (j.entryScreenshot && !pre.includes(j.entryScreenshot)) pre.push(j.entryScreenshot);
-              if (j.exitScreenshot && !post.includes(j.exitScreenshot)) post.push(j.exitScreenshot);
-              return { ...prev, [r.id]: { ...ex, pre: clampScreenshotSlot(pre), post: clampScreenshotSlot(post) } };
-            });
-          }
+          setTradeScreenshots((prev) => mergeTradeScreenshotState(prev, r.id, order, j));
           setOmTradeRev((n) => n + 1);
           return;
         }
@@ -32862,25 +32904,17 @@ const TalariaV8bLive = () => {
                       const tid=r.omId;
                       let noteFallback="";
                       let j=null;
+                      let order=null;
                       if(om&&tid!=null){
                         j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
-                        const order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
+                        order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
                         noteFallback=j?.v9TradeNotes||order?.journalEntry?.v9TradeNotes||order?.journalEntry?.preTradeNotes?.reason||"";
                       }
                       setTradeCard(r);
                       setTradeCardPreTags([...r.preTags]);
                       setTradeCardPostTags([...r.postTags]);
                       setTradeCardNotes(tradeNotes[r.id]||noteFallback||"");
-                      if(j&&(j.entryScreenshot||j.exitScreenshot)){
-                        setTradeScreenshots((prev)=>{
-                          const ex=prev[r.id]||{};
-                          const pre=clampScreenshotSlot([...(ex.pre||[])]);
-                          const post=clampScreenshotSlot([...(ex.post||[])]);
-                          if(j.entryScreenshot&&!pre.includes(j.entryScreenshot))pre.push(j.entryScreenshot);
-                          if(j.exitScreenshot&&!post.includes(j.exitScreenshot))post.push(j.exitScreenshot);
-                          return {...prev,[r.id]:{...ex,pre:clampScreenshotSlot(pre),post:clampScreenshotSlot(post)}};
-                        });
-                      }
+                      setTradeScreenshots((prev)=>mergeTradeScreenshotState(prev,r.id,order,j));
                     };
                     const isActive=r.status==="open"||r.status==="pending";
                     return(
@@ -33026,10 +33060,13 @@ const TalariaV8bLive = () => {
                           const omRow=typeof window!=="undefined"?window.chart?.orderManager:null;
                           const tid=r.omId;
                           const jRow=tid!=null&&Array.isArray(omRow?.tradeJournal)?omRow.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
+                          const orderRow=tid!=null?(omRow?.pendingOrders?.find(o=>o.id===tid)||omRow?.openPositions?.find(o=>o.id===tid)||omRow?.closedPositions?.find(o=>o.id===tid)):null;
                           const fromSt=tradeScreenshots[r.id]||{};
                           const pre=clampScreenshotSlot([...(fromSt.pre||[])]);
                           const post=clampScreenshotSlot([...(fromSt.post||[])]);
-                          if(jRow?.entryScreenshot&&!pre.includes(jRow.entryScreenshot))pre.push(jRow.entryScreenshot);
+                          for(const src of railScreenshotSrcList(orderRow,jRow)){
+                            if(!pre.includes(src))pre.push(src);
+                          }
                           if(jRow?.exitScreenshot&&!post.includes(jRow.exitScreenshot))post.push(jRow.exitScreenshot);
                           const allSs=[...clampScreenshotSlot(pre),...clampScreenshotSlot(post)];
                           return allSs.length>0?(
@@ -36318,6 +36355,13 @@ const TalariaV8bLive = () => {
                   jv.preTradeNotes={...(jv.preTradeNotes||{}),tags:tradeCardPreTags.join(", ")};
                 }
                 jv.v9TradeNotes=tradeCardNotes;
+                const tsShots=tradeScreenshots[r.id];
+                if(tsShots?.pre?.length){
+                  const railList=railScreenshotsFromPreSlot(tsShots.pre);
+                  order.railScreenshots=railList;
+                  jv.railScreenshots=railList;
+                  jv.entryScreenshot=tsShots.pre[tsShots.pre.length-1];
+                }
                 jv.timestamp=Date.now();
                 order.journalEntry=jv;
                 if(typeof om.persistRuntimeOrderState==="function")om.persistRuntimeOrderState({critical:true});
@@ -36335,7 +36379,10 @@ const TalariaV8bLive = () => {
                 const sym=order?.ticker||order?.symbol||existing.ticker||existing.symbol;
                 if(sym){patch.ticker=sym;patch.symbol=sym;}
                 const tsShots=tradeScreenshots[r.id];
-                if(tsShots?.pre?.length)patch.entryScreenshot=tsShots.pre[tsShots.pre.length-1];
+                if(tsShots?.pre?.length){
+                  patch.entryScreenshot=tsShots.pre[tsShots.pre.length-1];
+                  patch.railScreenshots=railScreenshotsFromPreSlot(tsShots.pre);
+                }
                 if(tsShots?.post?.length)patch.exitScreenshot=tsShots.post[tsShots.post.length-1];
                 om.upsertJournalEntry({...existing,...patch});
                 if(typeof om.persistJournal==="function")om.persistJournal();

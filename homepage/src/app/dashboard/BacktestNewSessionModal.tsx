@@ -170,7 +170,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const [dropdown, setDropdown] = useState<any>(null);
   const [ddAnchor, setDdAnchor] = useState<any>(null);
 
-  const Z = 1.05;
+  // Viewport-fixed dropdowns use getBoundingClientRect() — must not scale (was 1.05 for design mockup zoom).
+  const Z = 1;
   const I = IconI;
 
   const sep = <div style={{ margin: "12px 0", height: 1, background: `linear-gradient(90deg,transparent,${c.br} 20%,${c.br} 80%,transparent)` }} />;
