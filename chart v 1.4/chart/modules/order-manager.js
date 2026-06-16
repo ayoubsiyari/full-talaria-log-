@@ -16165,11 +16165,9 @@ class OrderManager {
      */
     updateOrderPanelPrice() {
         if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
-        if (this._previewEntryLinkedToRiskReward) return;
+        const ot = this._getActiveDraftOrderType();
+        if (this._previewEntryLinkedToRiskReward && ot !== 'market') return;
         if (this._orderPlacedAwaitingReset) return;
-        const ot = this.orderType
-            || document.querySelector('#orderPanel .order-type-btn.active')?.dataset?.type
-            || 'market';
         if (ot === 'limit' || ot === 'stop') return;
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
@@ -16178,7 +16176,15 @@ class OrderManager {
         if (priceInput) {
             const closePx = Number.parseFloat(currentCandle.c ?? currentCandle.close);
             if (!Number.isFinite(closePx)) return;
-            priceInput.value = this.formatPrice(closePx);
+            const prev = parseFloat(priceInput.value || '0');
+            const nextStr = this.formatPrice(closePx);
+            const next = parseFloat(nextStr);
+            priceInput.value = nextStr;
+            if (this._isDraftOrderPreviewActive()
+                && Number.isFinite(next) && Number.isFinite(prev)
+                && Math.abs(next - prev) >= 1e-10) {
+                this.updatePreviewLines();
+            }
         }
         
         // Set default TP and SL aligned with entry
@@ -16198,8 +16204,7 @@ class OrderManager {
         if (!this.replaySystem || !this.replaySystem.isActive) return;
         if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
 
-        const orderPanelEl = document.getElementById('orderPanel');
-        if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) return;
+        if (!this._isDraftOrderPreviewActive()) return;
         if (this._orderPlacedAwaitingReset) return;
         if (this.isDraggingPreviewLine) return;
 
@@ -16234,9 +16239,9 @@ class OrderManager {
 
         priceInput.value = newPrice.toFixed(precision);
 
-        // Always shift TP with entry to maintain pip distance (risk stays constant)
+        // Shift TP/SL with entry only when not pinned by RR tool or manual drag.
         const tpEnabled = document.getElementById('enableTP')?.checked;
-        if (tpEnabled) {
+        if (tpEnabled && !this.tpManuallyPositioned) {
             const tpInput = document.getElementById('tpPrice');
             if (tpInput) {
                 const oldTP = parseFloat(tpInput.value || 0);
@@ -16244,9 +16249,8 @@ class OrderManager {
             }
         }
 
-        // Always shift SL with entry to maintain pip distance (risk stays constant)
         const slEnabled = document.getElementById('enableSL')?.checked;
-        if (slEnabled) {
+        if (slEnabled && !this.slManuallyPositioned) {
             const slInput = document.getElementById('slPrice');
             if (slInput) {
                 const oldSL = parseFloat(slInput.value || 0);
@@ -16255,7 +16259,7 @@ class OrderManager {
         }
 
         const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
-        if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+        if (multipleTPEnabled && !this.tpManuallyPositioned && this.tpTargets && this.tpTargets.length > 0) {
             this.tpTargets.forEach(target => {
                 if (target.price > 0) {
                     target.price = parseFloat((target.price + delta).toFixed(precision));
@@ -19989,11 +19993,22 @@ class OrderManager {
         console.log('🟦OM-DIAG removeMultiEntryLevel()', { id, levels: this.multiEntryLevels?.map(l => l.id) });
         const ix = this.multiEntryLevels.findIndex((l) => l.id === id);
         if (ix === -1) { console.log('🟦OM-DIAG removeMultiEntryLevel: id not found'); return; }
-        if (this.multiEntryLevels.length <= 1) {
-            this.toggleEntryMode();
+
+        const remaining = this.multiEntryLevels.filter((l) => l.id !== id);
+
+        // Down to a single leg → leave multi-entry mode and restore that leg as a normal
+        // single entry. setEntryMode(false) copies multiEntryLevels[0].price into the entry
+        // field, so keep `remaining` in place while it runs, then clear the ladder so the
+        // green "+" / "Multi" affordance starts a fresh pair from the current entry again.
+        if (remaining.length <= 1) {
+            this.multiEntryLevels = remaining;
+            this.setEntryMode(false);
+            this.multiEntryLevels = [];
+            this.multiEntryIdCounter = 1;
             return;
         }
-        this.multiEntryLevels = this.multiEntryLevels.filter((l) => l.id !== id);
+
+        this.multiEntryLevels = remaining;
         // Scale remaining levels proportionally to restore the total risk/lot target
         // (equalizeMultiEntryAmounts resets to equal split — this preserves relative weights)
         this._rebalanceLevelAmountsToTarget();
@@ -21368,6 +21383,7 @@ class OrderManager {
             this.tpManuallyPositioned = true;
             this.slManuallyPositioned = true;
             this.updateOrderPanelPrice();
+            this.updatePreviewLines();
             this._dispatchRrOrderPrefilledEvent();
             return;
         }
@@ -21431,6 +21447,9 @@ class OrderManager {
      */
     pushRiskRewardToolToManager(drawing, opts = {}) {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
+        if (this._getActiveDraftOrderType() === 'market') {
+            this._previewEntryLinkedToRiskReward = false;
+        }
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         this.orderSide = isLong ? 'BUY' : 'SELL';
         const entry = drawing.points[0].y;

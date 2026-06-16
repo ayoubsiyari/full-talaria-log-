@@ -8861,6 +8861,12 @@ function v9ApplyLiveEntryPriceToRows(setEntryRows, entryPriceStr) {
 function v9ShouldAnchorEntryToLiveMarket(om) {
   if (!om) return true;
   if (om._previewEntryDecoupledFromRR) return false;
+  const activeOt =
+    document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
+    om.orderType ||
+    "market";
+  // Market tab: entry always follows live price; RR tool only drives TP/SL.
+  if (activeOt === "market") return true;
   const src = om._previewEntrySource;
   if (src === "riskReward" || src === "manual") return false;
   if (src === "market") return true;
