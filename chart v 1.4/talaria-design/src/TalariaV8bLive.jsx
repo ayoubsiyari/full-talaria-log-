@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId, axisTextNeedsContrastFix, contrastingAxisTextColor } from "./v9ThemeSync.js";
-import { buildLiveTradeRowsFromOrderManager, syncOrderManagerBalanceFromLedger, resolveTradeCardRR } from "./orderManagerTradeRows.js";
+import { buildLiveTradeRowsFromOrderManager, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
   ChartSymbolBadge,
@@ -9329,6 +9329,8 @@ const TalariaV8bLive = () => {
   /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
   const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
   const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
+  /** Open split-group trade: weighted actual entry/TP + fill/hit counts for ACTUAL AVG footer rows. */
+  const [omPanelActualAvg, setOmPanelActualAvg] = useState(null);
   /** Row 2 header: spread / commission from session instrument (create-session); margin from #marginLevelBadge. */
   const [omHeaderSpreadTxt, setOmHeaderSpreadTxt] = useState("—");
   const [omHeaderCommTxt, setOmHeaderCommTxt] = useState("—");
@@ -15189,6 +15191,24 @@ const TalariaV8bLive = () => {
         } catch (_) {}
       }
       setOmEntryAvgPriceTxt((prev) => (prev === entryAvgStr ? prev : entryAvgStr));
+
+      const panelActual = computeOrderPanelActualAvgFromOm(om);
+      setOmPanelActualAvg((prev) => {
+        const a = panelActual;
+        const b = prev;
+        if (!a && !b) return prev;
+        if (!a || !b) return a;
+        if (
+          a.actualAvgEntry === b.actualAvgEntry
+          && a.actualAvgTarget === b.actualAvgTarget
+          && a.filledCount === b.filledCount
+          && a.entryCount === b.entryCount
+          && a.hitCount === b.hitCount
+          && a.targetCount === b.targetCount
+          && a.showActualAvg === b.showActualAvg
+        ) return prev;
+        return a;
+      });
 
       const tpStats = Array.from(document.querySelectorAll("#multipleTPList .order-tp-multi__row")).map((row) => {
         const rr = row.querySelector(".order-tp-multi__row-rr input")?.value?.trim() ?? "—";
@@ -28229,7 +28249,13 @@ const TalariaV8bLive = () => {
                         const slStr = sl.toFixed(prec);
                         const tpStr = tp.toFixed(prec);
 
-                        om.pushRiskRewardToolToManager(sel);
+                        // forceEntry: the draft order type is still the default 'market' at this
+                        // point, and pushRiskRewardToolToManager() skips the entry / multi-entry sync
+                        // for market drafts ("preserve entry"). Without forcing, the RR tool's extra
+                        // entries (E2+) never reach multiEntryLevels and isMultiEntryMode stays false,
+                        // so placing the order only creates Entry 1. _autoDetectOrderTypeFromEntry()
+                        // below then resolves the real limit/stop/market type from the pushed entry.
+                        om.pushRiskRewardToolToManager(sel, { forceEntry: true });
                         const slChk = document.getElementById('enableSL');
                         if (slChk) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
                         const tpChk = document.getElementById('enableTP');
@@ -28250,7 +28276,20 @@ const TalariaV8bLive = () => {
                         om._updateTrailingSummary?.();
                         om._applyPrecisionToInputs?.();
 
-                        setEntryRows([{ id: 0, price: entryStr, risk: "100" }]);
+                        // Mirror the full RR ladder into the React rail. When the tool has E2+,
+                        // pushRiskRewardToolToManager(forceEntry) populated om.multiEntryLevels +
+                        // isMultiEntryMode; forcing a single row here would drop those extra legs.
+                        const omEntryLevels = Array.isArray(om.multiEntryLevels) ? om.multiEntryLevels : [];
+                        if (om.isMultiEntryMode && omEntryLevels.length > 1) {
+                          setEntryRows(omEntryLevels.map((l, li) => ({
+                            id: l.id != null ? l.id : li,
+                            price: String(l.price ?? entryStr),
+                            risk: String(l.amount ?? "0"),
+                          })));
+                          setPanelMode("advanced");
+                        } else {
+                          setEntryRows([{ id: 0, price: entryStr, risk: "100" }]);
+                        }
                         setSlRows([{ id: 0, price: slStr }]);
                         setSlEnabled(true);
                         setTpRows([{ id: 0, price: tpStr, qty: "100", enabled: true }]);
@@ -34398,6 +34437,16 @@ const TalariaV8bLive = () => {
                       </span>
                     </div>
                   )}
+                  {omPanelActualAvg?.showActualAvg && omPanelActualAvg.actualAvgEntry && entryRows.length > 1 && (
+                    <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(74,106,255,0.06)" }}>
+                      <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.06em" }}>ACTUAL AVG</span>
+                      <div style={{ flex:1 }}/>
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
+                        Entry <span style={{ color:c.tx, fontWeight:700 }}>{omPanelActualAvg.actualAvgEntry}</span>
+                        <span style={{ color:c.ts }}> ({omPanelActualAvg.filledCount}/{omPanelActualAvg.entryCount} filled)</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -35270,6 +35319,16 @@ const TalariaV8bLive = () => {
                       {" "}{currentSymbol.type==="futures" ? "ticks" : "pips"}
                     </span>
                   </div>
+                  {omPanelActualAvg?.showActualAvg && omPanelActualAvg.actualAvgTarget && tpRows.length > 1 && (
+                    <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(0,212,161,0.06)" }}>
+                      <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.06em" }}>ACTUAL AVG</span>
+                      <div style={{ flex:1 }}/>
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
+                        Target <span style={{ color:c.gn, fontWeight:700 }}>{omPanelActualAvg.actualAvgTarget}</span>
+                        <span style={{ color:c.ts }}> ({omPanelActualAvg.hitCount}/{omPanelActualAvg.targetCount} hit)</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -36179,14 +36238,18 @@ const TalariaV8bLive = () => {
         const topGrad=isLong?`linear-gradient(90deg,transparent,${c.gn},transparent)`:`linear-gradient(90deg,transparent,${c.rd},transparent)`;
         const entries=r.entries?.length>0?r.entries:[{price:r.entry,qty:r.sz,filled:true}];
         const targets=r.targets?.length>0?r.targets:[{price:r.tp}];
-        const totalEntryQty=entries.reduce((s,e)=>s+(parseFloat(e.qty)||0),0);
-        const avgEntry=entries.length>1&&totalEntryQty>0?(entries.reduce((s,e)=>s+(parseFloat(e.price||0))*(parseFloat(e.qty)||1),0)/entries.reduce((s,e)=>s+(parseFloat(e.qty)||1),0)).toFixed(2):null;
-        const avgTarget=targets.length>1?(targets.reduce((s,t)=>s+parseFloat(t.price||0),0)/targets.length).toFixed(2):null;
-        const filledEntries=entries.filter(e=>e.filled===true);
-        const hitTargets=targets.filter(t=>t.hit===true);
-        const actualAvgEntry=filledEntries.length>0&&filledEntries.length<entries.length?(filledEntries.reduce((s,e)=>s+parseFloat(e.price||0),0)/filledEntries.length).toFixed(2):null;
-        const actualAvgTarget=hitTargets.length>0&&hitTargets.length<targets.length?(hitTargets.reduce((s,t)=>s+parseFloat(t.price||0),0)/hitTargets.length).toFixed(2):null;
-        const showAvgRow=entries.length>1||targets.length>1;
+        const omTc=typeof window!=="undefined"?window.chart?.orderManager:null;
+        const avgM=r.avgMetrics||computeTradeCardAvgMetrics(entries,targets,omTc);
+        const showAvgRow=avgM.showAvgRow??(entries.length>1||targets.length>1);
+        const avgEntry=avgM.plannedAvgEntry??null;
+        const avgTarget=avgM.plannedAvgTarget??null;
+        const actualAvgEntry=avgM.actualAvgEntry??null;
+        const actualAvgTarget=avgM.actualAvgTarget??null;
+        const filledCount=avgM.filledCount??entries.filter((e)=>e.filled===true).length;
+        const entryCount=avgM.entryCount??entries.length;
+        const hitCount=avgM.hitCount??targets.filter((t)=>t.hit===true).length;
+        const targetCount=avgM.targetCount??targets.length;
+        const showActualAvg=avgM.showActualAvg??((actualAvgEntry||actualAvgTarget)?true:false);
         const sizeUnit=r.sym.includes("/")?((r.sym.startsWith("XAU")||r.sym.startsWith("XAG"))?"oz":"Lots"):"Contracts";
         const hasProtection=!!(r.breakeven||r.trailingSL);
         const saveCard=()=>{
@@ -36444,19 +36507,19 @@ const TalariaV8bLive = () => {
                       </div>}
                     </div>
                   )}
-                  {(actualAvgEntry||actualAvgTarget)&&(
+                  {(showActualAvg&&(actualAvgEntry||actualAvgTarget))&&(
                     <div style={{gridColumn:"1/-1",borderTop:`1px solid ${c.br}`,padding:"5px 14px",display:"flex",alignItems:"center",gap:20,background:"rgba(255,255,255,0.008)"}}>
                       <span style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",flexShrink:0}}>ACTUAL AVG</span>
                       {actualAvgEntry&&<div style={{display:"flex",alignItems:"center",gap:6}}>
                         <span style={{fontSize:9,color:c.ts}}>Entry</span>
                         <span style={{fontSize:11,fontWeight:700,color:c.tx,fontVariantNumeric:"tabular-nums"}}>{actualAvgEntry}</span>
-                        <span style={{fontSize:9,color:c.ts}}>({filledEntries.length}/{entries.length} filled)</span>
+                        <span style={{fontSize:9,color:c.ts}}>({filledCount}/{entryCount} filled)</span>
                       </div>}
                       {actualAvgEntry&&actualAvgTarget&&<div style={{width:1,height:10,background:c.br,flexShrink:0}}/>}
                       {actualAvgTarget&&<div style={{display:"flex",alignItems:"center",gap:6}}>
                         <span style={{fontSize:9,color:c.ts}}>Target</span>
                         <span style={{fontSize:11,fontWeight:700,color:c.gn,fontVariantNumeric:"tabular-nums"}}>{actualAvgTarget}</span>
-                        <span style={{fontSize:9,color:c.ts}}>({hitTargets.length}/{targets.length} hit)</span>
+                        <span style={{fontSize:9,color:c.ts}}>({hitCount}/{targetCount} hit)</span>
                       </div>}
                     </div>
                   )}

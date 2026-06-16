@@ -386,11 +386,49 @@ function resolveTpChartMetricsMode(order, row) {
   return "open";
 }
 
+function isSplitLegFilled(o) {
+  if (!o) return false;
+  const st = String(o.status || "").toUpperCase();
+  return st === "OPEN" || st === "CLOSED" || !!o.openTime;
+}
+
+function weightedAvgPrice(legs, getPx, getWeight) {
+  let sum = 0;
+  let wSum = 0;
+  for (const leg of legs) {
+    const px = Number(getPx(leg));
+    const w = Number(getWeight(leg)) || 0;
+    if (Number.isFinite(px) && px > 0 && w > 0) {
+      sum += px * w;
+      wSum += w;
+    }
+  }
+  return wSum > 0 ? sum / wSum : null;
+}
+
+function fmtTradePx(om, px) {
+  const x = Number(px);
+  if (!Number.isFinite(x)) return null;
+  try {
+    return typeof om?.formatPrice === "function" ? om.formatPrice(x) : x.toFixed(2);
+  } catch (_) {
+    return String(x);
+  }
+}
+
 /**
  * Entry legs for trade card / journal UI: { price, qty?, filled? }[].
  * Returns null when only a single entry should be shown (caller uses row.entry).
  */
-function buildTradeEntryLegs(om, order, journal, fmtPx, fmtQty) {
+function buildTradeEntryLegs(om, order, journal, fmtPx, fmtQty, row) {
+  const group = order ? collectSplitGroupOrders(om, order) : null;
+  if (group) {
+    return group.map((o) => ({
+      price: fmtPx(o.openPrice ?? o.entryPrice),
+      qty: fmtQty(o.quantity),
+      filled: isSplitLegFilled(o),
+    }));
+  }
   if (journal?.splitEntries?.length > 1) {
     return journal.splitEntries.map((e) => ({
       price: fmtPx(e.openPrice ?? e.entryPrice ?? e.price),
@@ -405,14 +443,6 @@ function buildTradeEntryLegs(om, order, journal, fmtPx, fmtQty) {
       filled: true,
     }));
   }
-  const group = order ? collectSplitGroupOrders(om, order) : null;
-  if (group) {
-    return group.map((o) => ({
-      price: fmtPx(o.openPrice ?? o.entryPrice),
-      qty: fmtQty(o.quantity),
-      filled: o.status === "OPEN" || o.status === "closed" || !!o.openTime,
-    }));
-  }
   return null;
 }
 
@@ -421,10 +451,16 @@ function buildTradeEntryLegs(om, order, journal, fmtPx, fmtQty) {
  * Returns null when only a single TP should be shown (caller uses row.tp).
  */
 function buildTradeTargetLegs(order, journal, fmtPx, om, row) {
-  const snap = journal?.multiTpSnapshot || journal?.active_tps_at_exit;
-  let tpList = Array.isArray(snap) && snap.length > 0 ? snap : null;
-  if (!tpList && Array.isArray(order?.tpTargets) && order.tpTargets.length > 0) {
+  const isActive = row?.status === "open" || row?.status === "pending";
+  let tpList = null;
+  if (isActive && Array.isArray(order?.tpTargets) && order.tpTargets.length > 0) {
     tpList = order.tpTargets;
+  } else {
+    const snap = journal?.multiTpSnapshot || journal?.active_tps_at_exit;
+    tpList = Array.isArray(snap) && snap.length > 0 ? snap : null;
+    if (!tpList && Array.isArray(order?.tpTargets) && order.tpTargets.length > 0) {
+      tpList = order.tpTargets;
+    }
   }
   if (!tpList || tpList.length <= 1) {
     if (!(journal?.hasMultipleTakeProfits && tpList?.length === 1)) return null;
@@ -543,7 +579,7 @@ function attachMultiLegDisplayToRow(om, row, order, journal) {
       return x.toFixed(2);
     }
   };
-  const entries = buildTradeEntryLegs(om, resolvedOrder, journal, fmtPx, fmtQty);
+  const entries = buildTradeEntryLegs(om, resolvedOrder, journal, fmtPx, fmtQty, row);
   if (entries?.length > 1) row.entries = entries;
   const targets = buildTradeTargetLegs(resolvedOrder, journal, fmtPx, om, row);
   if (targets?.length > 1) {
@@ -569,6 +605,9 @@ function attachMultiLegDisplayToRow(om, row, order, journal) {
       }
     }
   }
+  if ((entries?.length > 1) || (targets?.length > 1)) {
+    row.avgMetrics = computeTradeCardAvgMetrics(entries, targets, om);
+  }
   const journalRef =
     journal
     || (om && row?.omId != null ? findJournalEntry(om, row.omId) : null);
@@ -577,6 +616,101 @@ function attachMultiLegDisplayToRow(om, row, order, journal) {
     const szTxt = fmtQty(displayQty);
     if (szTxt) row.sz = szTxt;
   }
+}
+
+/**
+ * Planned + actual weighted averages for multi-entry / multi-TP trade cards and panels.
+ */
+export function computeTradeCardAvgMetrics(entries, targets, om) {
+  const ent = Array.isArray(entries) ? entries : [];
+  const tgt = Array.isArray(targets) ? targets : [];
+  const multiEntry = ent.length > 1;
+  const multiTp = tgt.length > 1;
+  if (!multiEntry && !multiTp) return { showAvgRow: false };
+
+  const filled = ent.filter((e) => e.filled === true);
+  const hit = tgt.filter((t) => t.hit === true);
+
+  const plannedAvgEntry = multiEntry
+    ? fmtTradePx(om, weightedAvgPrice(ent, (e) => parseFloat(e.price), (e) => parseFloat(e.qty) || 1))
+    : null;
+
+  const plannedAvgTarget = multiTp
+    ? fmtTradePx(om, weightedAvgPrice(tgt, (t) => parseFloat(t.price), () => 1))
+    : null;
+
+  const actualAvgEntry = filled.length > 0 && multiEntry
+    ? fmtTradePx(om, weightedAvgPrice(filled, (e) => parseFloat(e.price), (e) => parseFloat(e.qty) || 1))
+    : null;
+
+  const actualAvgTarget = hit.length > 0 && multiTp
+    ? fmtTradePx(om, weightedAvgPrice(hit, (t) => parseFloat(t.price), (t) => {
+      const pct = parseFloat(String(t.pct || "").replace("%", ""));
+      return Number.isFinite(pct) && pct > 0 ? pct : 1;
+    }))
+    : null;
+
+  return {
+    showAvgRow: true,
+    plannedAvgEntry,
+    plannedAvgTarget,
+    actualAvgEntry,
+    actualAvgTarget,
+    filledCount: filled.length,
+    entryCount: ent.length,
+    hitCount: hit.length,
+    targetCount: tgt.length,
+    showActualAvg: (filled.length > 0 && multiEntry) || (hit.length > 0 && multiTp),
+  };
+}
+
+/**
+ * Live ACTUAL AVG for the order panel while a split-group trade is open (partial fills / TP hits).
+ */
+export function computeOrderPanelActualAvgFromOm(om) {
+  if (!om) return null;
+  const openLegs = (om.openPositions || []).filter((p) => p?.isSplitEntry && p.splitGroupId);
+  if (!openLegs.length) return null;
+
+  const gid = openLegs[0].splitGroupId;
+  const filled = (om.openPositions || []).filter((p) => p.splitGroupId === gid);
+  const pending = (om.pendingOrders || []).filter((p) => p.splitGroupId === gid);
+  const totalEntry = filled.length + pending.length;
+  if (totalEntry <= 1) return null;
+
+  const actualEntryPx = weightedAvgPrice(
+    filled,
+    (p) => p.openPrice ?? p.entryPrice,
+    (p) => p.quantity
+  );
+
+  const ref = filled[0] || pending[0];
+  const tpTargets = Array.isArray(ref?.tpTargets) ? ref.tpTargets : [];
+  const hitTps = tpTargets.filter((t) => t?.hit);
+  const totalTp = tpTargets.length;
+
+  let actualTpPx = null;
+  if (hitTps.length > 0 && typeof om._weightedAvgTPFromPricedTargets === "function") {
+    try {
+      actualTpPx = om._weightedAvgTPFromPricedTargets(hitTps, "open", ref);
+    } catch (_) {}
+  }
+  if (actualTpPx == null && hitTps.length > 0) {
+    actualTpPx = weightedAvgPrice(hitTps, (t) => t.price, (t) => t.percentage || 1);
+  }
+
+  const filledCount = filled.length;
+  const hitCount = hitTps.length;
+
+  return {
+    actualAvgEntry: fmtTradePx(om, actualEntryPx),
+    actualAvgTarget: fmtTradePx(om, actualTpPx),
+    filledCount,
+    entryCount: totalEntry,
+    hitCount,
+    targetCount: totalTp,
+    showActualAvg: filledCount > 0 || hitCount > 0,
+  };
 }
 
 function computePlannedRRFromPrices(entry, sl, tp) {

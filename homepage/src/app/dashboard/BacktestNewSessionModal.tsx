@@ -2,14 +2,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SymbolBadge } from "./backtestModal/SymbolBadge";
-import { normalizeBadgeAsset } from "./backtestModal/symbolIcons";
-import { computeOverlapRange, clampIso, isoToDisplay } from "./backtestModal/dateRangeUtils";
-import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
-import { JOURNAL_API_BASE, journalAuthHeaders, syncJournalTokenFromSession } from "@/lib/journalApi";
-
-const MON_D_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import FlagSvg from "./backtestModal/FlagSvg";
+import { currencyCountry } from "./backtestModal/FlagSvg";
 
 const F = "'Exo 2', sans-serif";
 
@@ -35,19 +30,13 @@ function IconI({ n, s = 18, cl = "currentColor" }: { n: string; s?: number; cl?:
   return null;
 }
 
-export type BacktestNewSessionInitialState = {
-  playbook?: string;
-  sessionName?: string;
-};
-
 export type BacktestNewSessionModalProps = {
   open: boolean;
   onClose: () => void;
   onSaved?: () => void | Promise<void>;
-  initialState?: BacktestNewSessionInitialState | null;
 };
 
-export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }: BacktestNewSessionModalProps) {
+export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewSessionModalProps) {
   const c = {
     ac: "#2643F7", acL: "#4A6AFF", acD: "rgba(38,67,247,0.08)", acB: "rgba(38,67,247,0.22)", acG: "rgba(74,106,255,0.35)",
     gold: "#C9A84C",
@@ -132,6 +121,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const [newSessSymDropOpen, setNewSessSymDropOpen] = useState(false);
   const [newSessAssetDropOpen, setNewSessAssetDropOpen] = useState(false);
   const [newSessAssetHov, setNewSessAssetHov] = useState<any>(null);
+  const [newSessMarketOpen, setNewSessMarketOpen] = useState(false);
   const [newSessSupportTickers, setNewSessSupportTickers] = useState<string[]>([]);
   const [newSessSupportAssetClass, setNewSessSupportAssetClass] = useState("Forex");
   const [newSessSupportInput, setNewSessSupportInput] = useState("");
@@ -172,6 +162,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const [dropdown, setDropdown] = useState<any>(null);
   const [ddAnchor, setDdAnchor] = useState<any>(null);
 
+  const Z = 1.05;
   const I = IconI;
 
   const sep = <div style={{ margin: "12px 0", height: 1, background: `linear-gradient(90deg,transparent,${c.br} 20%,${c.br} 80%,transparent)` }} />;
@@ -198,252 +189,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     padding: "0 8px", height: 27, fontFamily: F, outline: "none", width: "100%", boxSizing: "border-box", ...extra,
   });
 
-  type AvailFile = {
-    id: string;
-    name: string;
-    ticker: string;
-    tf: string;
-    from: string;
-    to: string;
-    size: string;
-    asset: "Forex" | "Futures" | "Crypto" | "Stocks";
-    /** Present when loaded via `/api/files?session_ready=1` (admin-aligned health). */
-    health?: string;
-    ready_timeframes?: number;
-  };
-
-  type StrategyOption = {
-    value: string;
-    label: string;
-    description: string;
-    variables: unknown[];
-  };
-
-  const [availFiles, setAvailFiles] = useState<AvailFile[]>([]);
-  const [filesLoading, setFilesLoading] = useState(false);
-  const [filesError, setFilesError] = useState<string | null>(null);
-  const [fileMetaLoaded, setFileMetaLoaded] = useState<Record<string, boolean>>({});
-  const [myStrategies, setMyStrategies] = useState<StrategyOption[]>([]);
-
-  useEffect(() => {
-    if (!open || filesLoading || availFiles.length > 0) return;
-    setFilesLoading(true);
-    setFilesError(null);
-
-    const symCat: Record<string, AvailFile["asset"]> = {
-      EURUSD: "Forex", GBPUSD: "Forex", USDJPY: "Forex", USDCHF: "Forex", AUDUSD: "Forex", NZDUSD: "Forex",
-      USDCAD: "Forex", EURGBP: "Forex", EURJPY: "Forex", GBPJPY: "Forex", XAUUSD: "Forex", XAGUSD: "Forex",
-      BTCUSD: "Crypto", ETHUSD: "Crypto", BNBUSD: "Crypto", SOLUSD: "Crypto", ADAUSD: "Crypto", XRPUSD: "Crypto", DOGEUSD: "Crypto",
-      NQ: "Futures", ES: "Futures", YM: "Futures", RTY: "Futures", MNQ: "Futures", MES: "Futures",
-      MYM: "Futures", M2K: "Futures", MGC: "Futures", MCL: "Futures", CL: "Futures", GC: "Futures", SI: "Futures", NG: "Futures",
-      AAPL: "Stocks", TSLA: "Stocks", NVDA: "Stocks", MSFT: "Stocks", AMZN: "Stocks", GOOG: "Stocks",
-    };
-    const inferAsset = (name: string, ticker: string): AvailFile["asset"] => {
-      const n = String(name || "").toUpperCase();
-      const t = String(ticker || "").toUpperCase();
-      if (symCat[t]) return symCat[t];
-      if (/(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|CRYPTO|USDT|USDC)/.test(t) || /(CRYPTO|USDT|USDC)/.test(n)) return "Crypto";
-      if (/(NQ|ES|YM|RTY|MNQ|MES|MYM|M2K|MGC|MCL|CL|GC|SI|NG|FUTURE)/.test(t) || /(FUTURE|CME|CBOT|NYMEX|COMEX)/.test(n)) return "Futures";
-      if (/^[A-Z]{3}[A-Z]{3}$/.test(t) || /(FOREX|FX)/.test(n)) return "Forex";
-      if (/(STOCK|NASDAQ|NYSE)/.test(n) || /^[A-Z]{1,5}$/.test(t)) return "Stocks";
-      return "Forex";
-    };
-
-    const guessTicker = (name: string) => {
-      const base = name.replace(/\\.csv$/i, "");
-      const first = base.split(/[ _-]/)[0];
-      if (first && /^[A-Z0-9]{2,10}$/.test(first)) return first;
-      const six = base.slice(0, 6);
-      if (/^[A-Z]{3}[A-Z]{3}$/.test(six)) return six;
-      return base.toUpperCase();
-    };
-
-    const guessTf = (name: string) => {
-      const m = name.match(/_(M\\d+|H\\d+|D\\d+|W\\d+|1m|5m|15m|30m|1H|4H|1D)/i);
-      if (!m) return "1m";
-      const t = m[1].toUpperCase();
-      if (t === "1M") return "1m";
-      if (t === "M5") return "5m";
-      if (t === "M15") return "15m";
-      if (t === "M30") return "30m";
-      if (t === "H1" || t === "1H") return "1H";
-      if (t === "H4" || t === "4H") return "4H";
-      if (t === "D1" || t === "1D") return "1D";
-      return t;
-    };
-
-    void fetch("/api/files?session_ready=1", { credentials: "include" })
-      .then(res => {
-        if (!res.ok) throw new Error(String(res.status));
-        return res.json() as Promise<{
-          files: {
-            id: number;
-            original_name: string;
-            row_count: number;
-            description?: string | null;
-            ticker?: string | null;
-            asset_class?: string | null;
-            health?: string;
-            ready_timeframes?: number;
-          }[];
-        }>;
-      })
-      .then(payload => {
-        const next: AvailFile[] = (payload.files || []).map(f => {
-          const name = f.original_name || `File ${f.id}`;
-          const serverTicker = String(f.ticker || "").trim().toUpperCase();
-          const ticker = serverTicker || guessTicker(name);
-          const serverAsset = normalizeBadgeAsset(f.asset_class || undefined);
-          const asset = (serverAsset as AvailFile["asset"] | undefined) || inferAsset(name, ticker);
-          const tf = guessTf(name);
-          const approxSize = f.row_count ? `${(f.row_count / 1_000_000).toFixed(2)}M rows` : "rows";
-          return {
-            id: String(f.id),
-            name,
-            ticker,
-            tf,
-            from: "",
-            to: "",
-            size: approxSize,
-            asset,
-            health: f.health,
-            ready_timeframes: f.ready_timeframes,
-          };
-        });
-        setAvailFiles(next);
-        if (next.length === 0) {
-          setFilesError(
-            "No chart-ready datasets on the server yet. Build binaries in Admin → Datasets until health is healthy or partial, then refresh."
-          );
-        }
-      })
-      .catch(err => {
-        console.error("Failed to load /api/files?session_ready=1", err);
-        setFilesError("Failed to load datasets. Start the backtest server first.");
-      })
-      .finally(() => {
-        setFilesLoading(false);
-      });
-  }, [open, filesLoading, availFiles.length]);
-
-  const selectedFilesForSession = availFiles.filter(f => newSessFiles.includes(f.id));
-  const fallbackFilesByTicker = newSessTickers
-    .map(t => availFiles.find(f => (f.ticker || "").toUpperCase() === String(t || "").toUpperCase()))
-    .filter((f): f is AvailFile => !!f);
-  const effectiveFiles = useMemo(() => {
-    const list = selectedFilesForSession.length > 0 ? selectedFilesForSession : fallbackFilesByTicker;
-    const seen = new Set<string>();
-    return list.filter(f => {
-      if (seen.has(f.id)) return false;
-      seen.add(f.id);
-      return true;
-    });
-  }, [selectedFilesForSession, fallbackFilesByTicker]);
-  const primaryEffectiveFile = effectiveFiles[0] || null;
-
-  const fileIdsForMeta = useMemo(() => effectiveFiles.map(f => f.id).filter(Boolean), [effectiveFiles]);
-
-  useEffect(() => {
-    if (!open || availFiles.length === 0 || fileIdsForMeta.length === 0) return;
-    const pending = fileIdsForMeta.filter(fid => !fileMetaLoaded[fid]);
-    if (pending.length === 0) return;
-
-    const toIsoDate = (ts: number | null | undefined) => {
-      if (!ts || !Number.isFinite(ts)) return "";
-      return new Date(ts).toISOString().slice(0, 10);
-    };
-    const pickBestTf = (timeframes: Record<string, { status?: string }> | undefined) => {
-      if (!timeframes) return "";
-      const prefer = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
-      const keys = Object.keys(timeframes).filter(k => timeframes[k]?.status === "ready");
-      if (!keys.length) return "";
-      for (const tf of prefer) {
-        const hit = keys.find(k => k.toLowerCase() === tf);
-        if (hit) return hit;
-      }
-      return keys[0];
-    };
-
-    pending.forEach(fid => {
-      void fetch(`/api/file/${encodeURIComponent(fid)}/meta`, { credentials: "include" })
-        .then(r => (r.ok ? r.json() : null))
-        .then((meta: any) => {
-          if (!meta) return;
-          setAvailFiles(prev => prev.map(f => {
-            if (f.id !== fid) return f;
-            const from = toIsoDate(meta.start_ts) || f.from;
-            const to = toIsoDate(meta.end_ts) || f.to;
-            const tf = pickBestTf(meta.timeframes) || f.tf;
-            return { ...f, from, to, tf };
-          }));
-        })
-        .catch(() => {
-          // Keep UI usable even when per-file metadata endpoint fails.
-        })
-        .finally(() => {
-          setFileMetaLoaded(prev => ({ ...prev, [fid]: true }));
-        });
-    });
-  }, [open, availFiles, fileIdsForMeta, fileMetaLoaded]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    const journalInit: RequestInit = {
-      credentials: "include",
-      headers: journalAuthHeaders(),
-    };
-
-    const payloadToOptions = (payload: any): StrategyOption[] => {
-      const list = Array.isArray(payload?.strategies)
-        ? payload.strategies
-        : Array.isArray(payload?.data?.strategies)
-          ? payload.data.strategies
-          : [];
-      return list
-        .map((s: any) => {
-          const id = s?.id;
-          const name = String(s?.name || "").trim();
-          if (!id || !name) return null;
-          const vars = Array.isArray(s?.strategy_definition?.variables) ? s.strategy_definition.variables : [];
-          const desc = String(s?.description || "").trim();
-          return { value: `strategy:${id}`, label: name, description: desc, variables: vars } as StrategyOption;
-        })
-        .filter((x: StrategyOption | null): x is StrategyOption => !!x);
-    };
-
-    let cancelled = false;
-
-    void (async () => {
-      await syncJournalTokenFromSession();
-      /** Prefer journal first: FastAPI `/api/strategies` returns 200 + `{ strategies: [] }` as a shim and often wins Promise.any(), hiding real journal data. */
-      try {
-        const rj = await fetch(`${JOURNAL_API_BASE}/strategies`, journalInit);
-        if (rj.ok) {
-          const payload = await rj.json();
-          if (!cancelled) setMyStrategies(payloadToOptions(payload));
-          return;
-        }
-      } catch {
-        /* journal unreachable or CORS */
-      }
-
-      try {
-        const ra = await fetch("/api/strategies", journalInit);
-        if (ra.ok) {
-          const payload = await ra.json();
-          if (!cancelled) setMyStrategies(payloadToOptions(payload));
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+  const availFiles = [
+    { id: "f1", name: "EURUSD_M1_2020-2024.csv", ticker: "EURUSD", tf: "1m", from: "2020-01-02", to: "2024-12-31", size: "4.2 GB", asset: "Forex" },
+    { id: "f2", name: "GBPUSD_M5_2018-2024.csv", ticker: "GBPUSD", tf: "5m", from: "2018-03-01", to: "2024-12-31", size: "1.8 GB", asset: "Forex" },
+    { id: "f3", name: "NQ_M1_2019-2024.csv", ticker: "NQ", tf: "1m", from: "2019-01-02", to: "2024-12-31", size: "6.1 GB", asset: "Futures" },
+    { id: "f4", name: "ES_M5_2017-2024.csv", ticker: "ES", tf: "5m", from: "2017-06-01", to: "2024-12-31", size: "2.3 GB", asset: "Futures" },
+    { id: "f5", name: "XAUUSD_H1_2015-2024.csv", ticker: "XAUUSD", tf: "1H", from: "2015-01-05", to: "2024-12-31", size: "820 MB", asset: "Forex" },
+    { id: "f6", name: "BTCUSD_M15_2020-2024.csv", ticker: "BTCUSD", tf: "15m", from: "2020-01-01", to: "2024-12-31", size: "1.1 GB", asset: "Crypto" },
+    { id: "f7", name: "USDJPY_M1_2021-2024.csv", ticker: "USDJPY", tf: "1m", from: "2021-01-04", to: "2024-12-31", size: "2.9 GB", asset: "Forex" },
+  ];
 
   const instrDefaults: Record<string, any> = {
     Forex: { spread: "1.2", commission: "0", pipSize: "0.0001", pipVal: "10", contractSize: "100000", minLot: "0.01", lotStep: "0.01" },
@@ -457,100 +211,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     const def = instrDefaults[f.asset] || instrDefaults.Forex;
     return { ...f, ...def };
   }).filter(Boolean);
-
-  const strategyMap = myStrategies.reduce((acc: Record<string, StrategyOption>, s) => {
-    acc[s.value] = s;
-    return acc;
-  }, {});
-  const selectedStrategy = strategyMap[newSessPlaybook] || null;
-
-  const tickersMissingDataset = newSessTickers.filter(
-    t => !availFiles.some(f => (f.ticker || "").toUpperCase() === String(t).toUpperCase())
-  );
-  const metaLoadingForBounds = fileIdsForMeta.some(fid => !fileMetaLoaded[fid]);
-  const filesWithRange = effectiveFiles.filter(f => f.from && f.to);
-  const overlap = computeOverlapRange(effectiveFiles);
-  const boundsReady =
-    effectiveFiles.length > 0 &&
-    !metaLoadingForBounds &&
-    filesWithRange.length === effectiveFiles.length &&
-    overlap.hasOverlap;
-  const availableStartIso = boundsReady ? overlap.start : "";
-  const availableEndIso = boundsReady ? overlap.end : "";
-
-  const dateBoundsHint = useMemo(() => {
-    if (filesLoading) return "Loading datasets…";
-    if (filesError) return filesError;
-    if (newSessTickers.length === 0 && newSessFiles.length === 0) {
-      return "Select at least one trading pair to see available dates.";
-    }
-    if (tickersMissingDataset.length > 0) {
-      return `No chart dataset for: ${tickersMissingDataset.join(", ")}. Pick symbols with server data.`;
-    }
-    if (metaLoadingForBounds) {
-      return `Loading date ranges for ${effectiveFiles.map(f => f.ticker || f.name).join(", ")}…`;
-    }
-    if (overlap.conflict) {
-      const per = effectiveFiles
-        .filter(f => f.from && f.to)
-        .map(f => `${f.ticker}: ${f.from} → ${f.to}`)
-        .join(" · ");
-      return `No overlapping range across selected symbols. ${per}`;
-    }
-    if (!boundsReady) {
-      return "Waiting for dataset date metadata…";
-    }
-    if (effectiveFiles.length === 1) {
-      const f = effectiveFiles[0];
-      return `Available for ${f.ticker}: ${f.from} → ${f.to}`;
-    }
-    const per = effectiveFiles.map(f => `${f.ticker} ${f.from}→${f.to}`).join(" · ");
-    return `Overlap (${effectiveFiles.length} symbols): ${availableStartIso} → ${availableEndIso}. ${per}`;
-  }, [
-    filesLoading,
-    filesError,
-    newSessTickers.length,
-    newSessFiles.length,
-    tickersMissingDataset,
-    metaLoadingForBounds,
-    overlap.conflict,
-    boundsReady,
-    effectiveFiles,
-    availableStartIso,
-    availableEndIso,
-  ]);
-
-  useEffect(() => {
-    if (!availableStartIso || !availableEndIso) return;
-    const clampStart = (iso: string) => clampIso(iso, availableStartIso, availableEndIso);
-    setNewSessStart(prev => {
-      if (!prev) return prev;
-      const next = clampStart(prev);
-      return next === prev ? prev : next;
-    });
-    setNewSessEnd(prev => {
-      if (!prev) return prev;
-      const endMin = [availableStartIso, newSessStart].filter(Boolean).sort().slice(-1)[0] || availableStartIso;
-      const next = clampIso(prev, endMin, availableEndIso);
-      return next === prev ? prev : next;
-    });
-  }, [availableStartIso, availableEndIso, newSessStart, newSessTickers.join(","), newSessFiles.join(",")]);
-
-  useEffect(() => {
-    if (!newSessStart) {
-      if (newSessStartInput) setNewSessStartInput("");
-      return;
-    }
-    setNewSessStartInput(isoToDisplay(newSessStart, MON_D_LABELS));
-  }, [newSessStart]);
-
-  useEffect(() => {
-    if (!newSessEnd) {
-      if (newSessEndInput) setNewSessEndInput("");
-      return;
-    }
-    setNewSessEndInput(isoToDisplay(newSessEnd, MON_D_LABELS));
-  }, [newSessEnd]);
 
   const resetFormToDefaults = useCallback(() => {
     setNewSessName("");
@@ -588,6 +248,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     setNewSessStratDropOpen(false);
     setNewSessSymDropOpen(false);
     setNewSessAssetDropOpen(false);
+    setNewSessMarketOpen(false);
     setNewSessSymPickerOpen(false);
     setNewSessSupPickerOpen(false);
     setNewSessTradingCostsEnabled(false);
@@ -603,15 +264,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
 
   const prevOpen = useRef(false);
   useEffect(() => {
-    if (open && !prevOpen.current) {
-      resetFormToDefaults();
-      const playbook = (initialState?.playbook || "").trim();
-      const sessionName = (initialState?.sessionName || "").trim();
-      if (playbook) setNewSessPlaybook(playbook);
-      if (sessionName) setNewSessName(sessionName);
-    }
+    if (open && !prevOpen.current) resetFormToDefaults();
     prevOpen.current = open;
-  }, [open, resetFormToDefaults, initialState]);
+  }, [open, resetFormToDefaults]);
 
   const closeNewSess = () => {
     setNewSessFilePickerOpen(false);
@@ -620,6 +275,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     setNewSessStratDropOpen(false);
     setNewSessSymDropOpen(false);
     setNewSessAssetDropOpen(false);
+    setNewSessMarketOpen(false);
     setNewSessSupportInput("");
     setNewSessSupportFocus(false);
     setNewSessSupportDropOpen(false);
@@ -635,7 +291,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
   const lockedBox = { opacity: 0.35, pointerEvents: "none" as const, userSelect: "none" as const };
   const activeBox = {};
-  const isValid2 = !!(newSessName && newSessTickers.length > 0 && newSessStart && newSessEnd && newSessCapital && primaryEffectiveFile);
+  const isValid2 = !!(newSessName && newSessTickers.length > 0 && newSessStart && newSessEnd && newSessCapital);
 
   const TlChk = (on: boolean, hKey: string, label: string | null, toggle: any, accent?: string) => {
     const ac = accent || c.acL;
@@ -668,127 +324,35 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   };
 
   function buildChartConfig(): Record<string, unknown> {
-    const selectedFilesArray = effectiveFiles;
-    const primaryFile = primaryEffectiveFile;
     const primary = newSessTickers[0] || newSessSymbol || "NQ";
     const sessionName = newSessName.trim() || "Backtest Session";
     const startDate = (newSessStart || "").split("T")[0] || "";
     const endDate = (newSessEnd || "").split("T")[0] || "";
     const modeType = sessTradingMode === "prop" ? "propfirm" : "standard";
-    const strategy_id =
-      typeof newSessPlaybook === "string" && newSessPlaybook.startsWith("strategy:")
-        ? parseInt(newSessPlaybook.split(":")[1] || "", 10) || null
-        : null;
-    const strategy_variables = selectedStrategy?.variables || [];
-    const strategy_name = selectedStrategy?.label || (newSessPlaybook || "General");
-    const strategy_description = selectedStrategy?.description || "";
-    const playbook_display = strategy_name;
-    const startBalance = String(newSessCapital || "10000");
-    const accountCurrency = newSessCurrency || "USD";
-    const fileId = primaryFile ? Number(primaryFile.id) : null;
-    const fileName = primaryFile?.name || "";
-    const symbols = newSessTickers.map(sym => {
-      const match = selectedFilesArray.find(f => (f.ticker || "").toUpperCase() === String(sym || "").toUpperCase());
-      const resolvedFileId = match ? Number(match.id) : fileId;
-      return { symbolName: sym, fileId: resolvedFileId };
-    });
-    const instrumentsByTicker = instrRows.reduce((acc: Record<string, unknown>, row: any) => {
-      const fileRef = selectedFilesArray.find(
-        f => (f.ticker || "").toUpperCase() === String(row.ticker || "").toUpperCase() || String(f.id) === String(row.id),
-      );
-      acc[row.ticker] = {
-        fileId: fileRef ? Number(fileRef.id) : fileId,
-        ticker: row.ticker,
-        asset_class: fileRef?.asset,
-        timeframe: row.tf,
-        spread: newSessTradingCostsEnabled ? row.spread : 0,
-        commission: newSessTradingCostsEnabled ? row.commission : 0,
-        pip_size: parseFloat(row.pipSize || row.pip_size || "0"),
-        pip_value_per_lot: parseFloat(row.pipVal || row.pip_value_per_lot || "0"),
-        contract_size: parseFloat(row.contractSize || row.contract_size || "0"),
-        min_lot: parseFloat(row.minLot || row.min_lot || "0"),
-        lot_step: parseFloat(row.lotStep || row.lot_step || "0"),
-      };
-      return acc;
-    }, {});
-
-    if (Object.keys(instrumentsByTicker).length === 0) {
-      newSessTickers.forEach((ticker) => {
-        const fileRef = selectedFilesArray.find(f => (f.ticker || "").toUpperCase() === String(ticker || "").toUpperCase()) || primaryFile;
-        if (!fileRef) return;
-        const def = instrDefaults[fileRef.asset] || instrDefaults.Forex;
-        instrumentsByTicker[ticker] = {
-          fileId: Number(fileRef.id),
-          ticker,
-          asset_class: fileRef.asset,
-          timeframe: fileRef.tf || newSessTf,
-          spread: newSessTradingCostsEnabled ? def.spread : 0,
-          commission: newSessTradingCostsEnabled ? def.commission : 0,
-          pip_size: parseFloat(def.pipSize || "0"),
-          pip_value_per_lot: parseFloat(def.pipVal || "0"),
-          contract_size: parseFloat(def.contractSize || "0"),
-          min_lot: parseFloat(def.minLot || "0"),
-          lot_step: parseFloat(def.lotStep || "0"),
-        };
-      });
-    }
-
-    const p1DailyLossPct = parseFloat(sessP1DailyLossPct || "0") || 0;
-    const p1TotalDdPct = parseFloat(sessP1TotalDDPct || "0") || 0;
-    const p1ProfitTargetPct = parseFloat(sessP1ProfitTargetPct || "0") || 0;
-    const p1DailyLossAmt = parseFloat(sessP1DailyLossAmt || "0") || 0;
-    const p1TotalDdAmt = parseFloat(sessP1MaxDDAmt || "0") || 0;
-    const p1ProfitTargetAmt = parseFloat(sessP1ProfitTargetAmt || "0") || 0;
-    const p2DailyLossPct = parseFloat(sessP2DailyLossPct || "0") || 0;
-    const p2TotalDdPct = parseFloat(sessP2TotalDDPct || "0") || 0;
-    const p2ProfitTargetPct = parseFloat(sessP2ProfitTargetPct || "0") || 0;
-    const p2DailyLossAmt = parseFloat(sessP2DailyLossAmt || "0") || 0;
-    const p2TotalDdAmt = parseFloat(sessP2MaxDDAmt || "0") || 0;
-    const p2ProfitTargetAmt = parseFloat(sessP2ProfitTargetAmt || "0") || 0;
-    const minTradingDays = sessP1MinDaysEnabled ? (parseInt(sessP1MinDays || "0", 10) || 0) : 0;
-    const leverageNumber = parseFloat(String(sessLeverage || "").split(":")[1] || String(sessLeverage || "0")) || 0;
-
     return {
       type: modeType,
-      name: sessionName,
       sessionName,
-      projectName: sessionName,
       description: newSessDescription,
       playbook: newSessPlaybook || "",
-      playbook_display,
-      strategy_id,
-      strategy_variables,
-      strategy_name,
-      strategy_description,
-      fileId,
-      fileName,
-      files: selectedFilesArray,
+      strategy_name: newSessPlaybook || "",
       tickers: newSessTickers,
       supporting_tickers: newSessSupportTickers,
       asset_class: newSessAssetClass,
       trading_mode: sessTradingMode,
       symbol: newSessTickers.length === 1 ? newSessTickers[0] : newSessTickers.length > 1 ? `${newSessTickers.length} symbols` : primary,
-      symbols,
-      selectedSymbols: symbols,
-      activeFileIndex: 0,
-      instruments: instrumentsByTicker,
+      symbols: newSessTickers.map(sym => ({ symbolName: sym })),
       startDate,
       endDate,
-      startBalance,
-      capital: parseFloat(startBalance) || 0,
-      created: new Date().toISOString(),
-      timeframe: newSessTf,
-      account_currency: accountCurrency,
-      accountCurrency,
+      startBalance: String(newSessCapital || "10000"),
+      account_currency: newSessCurrency,
       leverage: sessLeverage,
       margin_call_level: parseFloat(newSessMarginCall || "100"),
       stop_out_level: parseFloat(newSessStopOut || "50"),
       max_risk_per_trade_pct: parseFloat(newSessMaxRisk || "0") || null,
-      marketType: [String(newSessAssetClass || "Forex").toLowerCase()],
+      timeframe: newSessTf,
       defaultRiskType: sessRiskMode,
       defaultRisk: parseFloat(sessRiskVal || "1") || 1,
       allowBackNavigation: newSessRollback,
-      forwardTestingOnly: sessTradingMode === "prop",
       protectionPreset: newSessProtect,
       commission: newSessTradingCostsEnabled ? (sessCommission || "Per Lot") : "None",
       trading_costs_enabled: newSessTradingCostsEnabled,
@@ -802,60 +366,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       prop_rules: sessTradingMode === "prop" ? {
         numPhases: sessNumPhases,
         challengeType: sessChallengeType,
-        propCategory: sessPropCat,
-        propFirm: sessPropFirm,
-        leverage: sessLeverage,
-        leverageNumber,
-        p1Pct: { dl: p1DailyLossPct, dd: p1TotalDdPct, pt: p1ProfitTargetPct },
-        p2Pct: { dl: p2DailyLossPct, dd: p2TotalDdPct, pt: p2ProfitTargetPct },
-        p1Amt: { dl: p1DailyLossAmt, dd: p1TotalDdAmt, pt: p1ProfitTargetAmt },
-        p2Amt: { dl: p2DailyLossAmt, dd: p2TotalDdAmt, pt: p2ProfitTargetAmt },
-        p1MinDays: sessP1MinDaysEnabled ? (parseInt(sessP1MinDays || "0", 10) || 0) : 0,
-        p2MinDays: sessP2MinDaysEnabled ? (parseInt(sessP2MinDays || "0", 10) || 0) : 0,
-        minTradingDays,
-        maxPosition: parseFloat(sessMaxLotSize || sessMaxContracts || "0") || 0,
-        maxPositionEnabled: sessMaxPosEnabled || sessMaxContractsEnabled,
-        maxPositionUnit: sessMaxPosUnit,
-        maxContracts: parseInt(sessMaxContracts || "0", 10) || 0,
-        maxContractsEnabled: sessMaxContractsEnabled,
-        consistencyRule: sessConsistencyRule,
-        consistencyPct: parseFloat(sessConsistencyPct || "0") || 0,
-        weekendHold: sessWeekendHold,
-        trailingDrawdown: sessTrailingDrawdown,
-        dailyLossEnabled: sessDailyLossEnabled,
+        p1Pct: { dl: sessP1DailyLossPct, dd: sessP1TotalDDPct, pt: sessP1ProfitTargetPct },
+        p2Pct: { dl: sessP2DailyLossPct, dd: sessP2TotalDDPct, pt: sessP2ProfitTargetPct },
+        p1Amt: { dl: sessP1DailyLossAmt, dd: sessP1MaxDDAmt, pt: sessP1ProfitTargetAmt },
+        p2Amt: { dl: sessP2DailyLossAmt, dd: sessP2MaxDDAmt, pt: sessP2ProfitTargetAmt },
       } : null,
-      challenge: sessTradingMode === "prop",
-      challengeType: sessChallengeType,
-      minTradingDays,
-      minTradingDaysEnabled: sessP1MinDaysEnabled,
-      maxDailyLoss: {
-        percent: p1DailyLossPct,
-        dollar: p1DailyLossAmt,
-      },
-      maxTotalLoss: {
-        percent: p1TotalDdPct,
-        dollar: p1TotalDdAmt,
-      },
-      profitTarget: p1ProfitTargetPct,
-      profitTargetUsd: p1ProfitTargetAmt,
-      maxDailyLossPercent: p1DailyLossPct,
-      maxDailyLossDollar: p1DailyLossAmt,
-      maxTotalLossPercent: p1TotalDdPct,
-      maxTotalLossDollar: p1TotalDdAmt,
-      leverageNumber,
-      maxPosition: parseFloat(sessMaxLotSize || sessMaxContracts || "0") || 0,
-      maxPositionEnabled: sessMaxPosEnabled || sessMaxContractsEnabled,
-      maxPositionUnit: sessMaxPosUnit,
-      maxContracts: parseInt(sessMaxContracts || "0", 10) || 0,
-      maxContractsEnabled: sessMaxContractsEnabled,
-      consistencyRule: sessConsistencyRule,
-      consistencyPct: parseFloat(sessConsistencyPct || "0") || 0,
-      weekendHold: sessWeekendHold,
-      trailingDrawdown: sessTrailingDrawdown,
-      dailyLossEnabled: sessDailyLossEnabled,
-      futMinDays: parseInt(sessFutMinDays || "0", 10) || 0,
-      futMinDaysEnabled: sessFutMinDaysEnabled,
-      daylightSavingTime: newSessDST ? "enabled" : "disabled",
+      instruments: newSessTradingCostsEnabled
+        ? instrRows
+        : instrRows.map((row: Record<string, unknown>) => ({ ...row, spread: 0, commission: 0 })),
     };
   }
 
@@ -889,12 +407,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     }
   };
 
-  const calMinIso =
-    newSessCalTarget === "end"
-      ? [availableStartIso, newSessStart].filter(Boolean).sort().slice(-1)[0] || availableStartIso
-      : availableStartIso;
-  const calMaxIso = availableEndIso;
-
   const startNewSession = async () => {
     if (!isValid2) return;
     try {
@@ -910,15 +422,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       } catch { /* ignore */ }
       await onSaved?.();
       closeNewSess();
-      if (sessTradingMode === "prop") {
-        const mode = "propfirm";
-        const q = id != null ? `?mode=${encodeURIComponent(mode)}&sessionId=${encodeURIComponent(String(id))}` : `?mode=${encodeURIComponent(mode)}`;
-        window.location.href = `/chart/index.html${q}`;
-      } else {
-        const mode = "backtest";
-        const q = id != null ? `?mode=${encodeURIComponent(mode)}&sessionId=${encodeURIComponent(String(id))}` : `?mode=${encodeURIComponent(mode)}`;
-        window.location.href = `/chart/index.html${q}`;
-      }
+      const mode = sessTradingMode === "prop" ? "propfirm" : "backtest";
+      const q = id != null ? `?mode=${encodeURIComponent(mode)}&sessionId=${encodeURIComponent(String(id))}` : `?mode=${encodeURIComponent(mode)}`;
+      window.location.href = `/chart/index.html${q}`;
     } catch (e: any) {
       window.alert(`Failed to start session: ${e?.message || e}`);
     }
@@ -957,7 +463,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                       <div style={{border:`1px solid ${c.brH}`,padding:"12px 14px"}}>
                       {secH("Session Info")}
                       {(()=>{
-                        const allGroups:[string, StrategyOption[]][]=[["My Strategies",myStrategies]];
+                        const myStrats=["EMA Crossover","London Breakout","VWAP Scalp","Golden Cross Trend","Volume Breakout"];
+                        const commStrats=["Momentum Surge","ICT Model A","SMC Liquidity Grab"];
+                        const allGroups=[["My Strategies",myStrats],["Saved Strategies",commStrats]];
                         return(<>
                           {/* Session name + strategy: left 50% column, New Strategy button beside it */}
                           <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
@@ -971,10 +479,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               {/* Row 2: strategy dropdown – same full width */}
                               <div style={{position:"relative"}}>
                                 {lbl("Strategy")}
-                                <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+3,left:r.left,width:r.width});setNewSessStratDropOpen(true);setDropdown(null);}}}
+                                <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessStratDropOpen(true);setDropdown(null);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessStratDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
                                   <span style={{flex:1,color:newSessPlaybook?c.tx:c.tm,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                    {selectedStrategy?.label || newSessPlaybook || "— None —"}
+                                    {newSessPlaybook||"— None —"}
                                   </span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${newSessStratDropOpen?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 </div>
@@ -991,16 +499,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                     {allGroups.map(([groupLabel,items])=>(
                                       <div key={groupLabel}>
                                         <div style={{padding:"5px 10px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",borderTop:"1px solid rgba(140,160,255,0.08)"}}>{groupLabel}</div>
-                                        {items.length===0&&(
-                                          <div style={{padding:"6px 10px 8px",fontSize:10,color:c.tm,fontFamily:F}}>
-                                            No strategies found. Create one in Strategy Builder.
-                                          </div>
-                                        )}
-                                        {items.map(s=>{const isAct=newSessPlaybook===s.value;const isH=newSessStratHov===s.value;return(
-                                          <div key={s.value} onClick={()=>{setNewSessPlaybook(s.value);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(s.value)} onMouseLeave={()=>setNewSessStratHov(null)}
+                                        {items.map(s=>{const isAct=newSessPlaybook===s;const isH=newSessStratHov===s;return(
+                                          <div key={s} onClick={()=>{setNewSessPlaybook(s);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(s)} onMouseLeave={()=>setNewSessStratHov(null)}
                                             style={{display:"flex",alignItems:"center",padding:"5px 10px 5px 14px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
                                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s.label}</span>
+                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s}</span>
                                           </div>
                                         );})}
                                       </div>
@@ -1010,8 +513,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               </div>
                             </div>
                             {/* New Strategy button – bottom-aligned beside the 50% block */}
-                            <div onClick={()=>{window.location.href="/dashboard/strategies/";}}
-                              style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
+                            <div style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
                               onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                               onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                               <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
@@ -1031,45 +533,41 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                       <div style={{border:`1px solid ${sessInfoDone?c.brH:c.br}`,padding:"12px 14px",transition:"opacity 0.2s,border-color 0.2s",...(sessInfoDone?activeBox:lockedBox)}}>
                       {secH("Session Settings")}
                       {(()=>{
-                        const staticSymbols:{sym:string;cat:string}[]=[];
-                        const fileSymbols = availFiles
-                          .filter(f=>f.ticker)
-                          .map(f=>({sym:String(f.ticker).toUpperCase(),cat:f.asset==="Stocks"?"Equities":f.asset}));
-                        const allSymbols = [...staticSymbols, ...fileSymbols].reduce<{sym:string;cat:string}[]>((acc, cur)=>{
-                          if (!acc.some(x=>x.sym===cur.sym)) acc.push(cur);
-                          return acc;
-                        }, []);
+                        const allSymbols=[
+                          {sym:"EURUSD",cat:"Forex"},{sym:"GBPUSD",cat:"Forex"},{sym:"USDJPY",cat:"Forex"},{sym:"USDCHF",cat:"Forex"},{sym:"AUDUSD",cat:"Forex"},
+                          {sym:"NZDUSD",cat:"Forex"},{sym:"USDCAD",cat:"Forex"},{sym:"EURGBP",cat:"Forex"},{sym:"EURJPY",cat:"Forex"},{sym:"GBPJPY",cat:"Forex"},
+                          {sym:"XAUUSD",cat:"Forex"},{sym:"XAGUSD",cat:"Forex"},{sym:"USDSEK",cat:"Forex"},{sym:"USDNOK",cat:"Forex"},
+                          {sym:"NQ",cat:"Futures"},{sym:"ES",cat:"Futures"},{sym:"YM",cat:"Futures"},{sym:"RTY",cat:"Futures"},
+                          {sym:"CL",cat:"Futures"},{sym:"GC",cat:"Futures"},{sym:"SI",cat:"Futures"},{sym:"NG",cat:"Futures"},
+                          {sym:"MNQ",cat:"Futures"},{sym:"MES",cat:"Futures"},{sym:"MYM",cat:"Futures"},{sym:"M2K",cat:"Futures"},
+                          {sym:"MGC",cat:"Futures"},{sym:"MCL",cat:"Futures"},
+                          {sym:"BTCUSD",cat:"Crypto"},{sym:"ETHUSD",cat:"Crypto"},{sym:"BNBUSD",cat:"Crypto"},{sym:"SOLUSD",cat:"Crypto"},{sym:"ADAUSD",cat:"Crypto"},
+                          {sym:"AAPL",cat:"Equities"},{sym:"TSLA",cat:"Equities"},{sym:"NVDA",cat:"Equities"},{sym:"MSFT",cat:"Equities"},{sym:"AMZN",cat:"Equities"},{sym:"GOOG",cat:"Equities"},
+                        ];
                         const catMap={"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Stocks":"Equities"};
-                        const MAJOR_FOREX=["EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","NZDUSD","USDCAD","EURGBP","EURJPY","GBPJPY","EURCHF","AUDJPY","CADJPY","NZDJPY","GBPCHF","EURAUD","EURNZD","AUDNZD","AUDCAD","GBPAUD","GBPNZD","XAUUSD","XAGUSD"];
-                        const MAJOR_FUTURES=["ES","NQ","MNQ","MES","YM","RTY","MYM","M2K","CL","GC","SI","NG","ZB","ZN","ZF","ZT","6E","6B","6J","6A","6C","MGC","MCL"];
-                        const MAJOR_CRYPTO=["BTCUSD","ETHUSD","SOLUSD","XRPUSD","BNBUSD","ADAUSD","DOGEUSD","DOTUSD","AVAXUSD","LINKUSD","MATICUSD","LTCUSD"];
-                        const MAJOR_STOCKS=["AAPL","MSFT","GOOGL","GOOG","AMZN","META","NVDA","TSLA","AMD","SPY","QQQ","IWM","DIA","JPM","V","JNJ"];
-                        const sortSymbolsMajorFirst=(pool)=>{
-                          const rank=(sym,cat)=>{
-                            const s=String(sym||"").toUpperCase();
-                            const list=cat==="Forex"?MAJOR_FOREX:cat==="Futures"?MAJOR_FUTURES:cat==="Crypto"?MAJOR_CRYPTO:cat==="Equities"?MAJOR_STOCKS:null;
-                            if(!list)return 50000;
-                            const i=list.indexOf(s);
-                            return i>=0?i:50000;
-                          };
-                          return [...pool].sort((a,b)=>{const ra=rank(a.sym,a.cat),rb=rank(b.sym,b.cat);if(ra!==rb)return ra-rb;return a.sym.localeCompare(b.sym);});
-                        };
                         const catOf=sym=>allSymbols.find(s=>s.sym===sym)?.cat||"";
                         const assetLabel=cat=>({"Forex":"Forex","Futures":"Futures","Crypto":"Crypto","Equities":"Stocks"}[cat]||cat);
                         const totalSelected=newSessTickers.length+newSessSupportTickers.length;
-                        const mkFlags=(sym,sz=13)=>(<SymbolBadge sym={sym} asset={catOf(sym)} w={sz} h={sz} fontFamily={F}/>);
-                        const mkCell=(t,onDel)=>(<div key={t} style={{display:"flex",alignItems:"center",padding:"2px 4px 2px 3px",background:c.sf,border:`1px solid ${c.brH}`,gap:3,minWidth:0}}>{mkFlags(t,12)}<span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t}</span><span onClick={onDel} style={{fontSize:13,lineHeight:1,color:c.tm,cursor:"default",flexShrink:0,marginLeft:5,transition:"color 0.1s"}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span></div>);
+                        const pairInfo=sym=>{if(sym.length===6){const b=sym.slice(0,3),q=sym.slice(3,6);if(currencyCountry[b]&&currencyCountry[q])return{b,q};}return null;};
+                        const mkFlags=(sym,sz=11)=>{
+                          const pr=pairInfo(sym);const fw=Math.round(sz*15/11),fh=sz;
+                          if(pr){return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.7)",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.5)",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);}
+                          const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"Au"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"}};
+                          if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily="'Exo 2',sans-serif">{m.label}</text></svg>);}
+                          const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};
+                          if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily="'Exo 2',sans-serif">{cr.label}</text></svg>);}
+                          return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
+                        };
+                        const mkCell=(t,onDel)=>(<div key={t} style={{display:"flex",alignItems:"center",padding:"2px 4px 2px 3px",background:c.sf,border:`1px solid ${c.brH}`,gap:3,minWidth:0}}>{mkFlags(t,10)}<span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t}</span><span onClick={onDel} style={{fontSize:13,lineHeight:1,color:c.tm,cursor:"default",flexShrink:0,marginLeft:5,transition:"color 0.1s"}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span></div>);
                         /* ── date helpers (shared with grid below) ── */
                         const MON_D=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                         const MONS_D=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
                         const fmtD=iso=>{if(!iso)return "";const d=new Date(iso.split("T")[0]+"T00:00:00");return `${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;};
-                        const applyD=(raw,setter,{isEnd=false}={})=>{
-                          if(!availableStartIso||!availableEndIso)return;
+                        const applyD=(raw,setter)=>{
                           const s=raw.trim();
-                          const endMin=isEnd?[availableStartIso,newSessStart].filter(Boolean).sort().slice(-1)[0]:availableStartIso;
-                          const minIso=endMin||availableStartIso;
-                          const maxIso=availableEndIso;
-                          const clamp=iso=>clampIso(iso,minIso,maxIso);
+                          const todayIso=new Date().toISOString().slice(0,10);
+                          const minIso="1990-01-01";
+                          const clamp=iso=>iso<minIso?minIso:iso>todayIso?todayIso:iso;
                           // DD-Mon-YYYY
                           const m1=s.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
                           if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
@@ -1079,15 +577,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                           // MM/DD/YYYY
                           const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
                           if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
-                        };
-                        const openCal=(e,target,currentIso)=>{if(!availableStartIso||!availableEndIso)return;const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width,calH=260;const rawL=r.left,rawB=r.bottom,rawTop=r.top;const spaceBelow=window.innerHeight-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);const anchor=currentIso||availableStartIso;const d=new Date(anchor.split("T")[0]+"T00:00:00");setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth-w-8)),width:w});setNewSessCalTarget(target);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
+                        };;
+                        const openCal=(e,target,currentIso)=>{const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):new Date(2020,0,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
                         const inpSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                         const chvSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",color:c.ts,borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                         const ChevD=({open})=>(<svg width={8} height={8} viewBox="0 0 8 8" fill="none"><path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>);
-                        const applyPreset=(months,years)=>{if(!availableStartIso||!availableEndIso)return;let end=new Date(availableEndIso+"T00:00:00");let start=new Date(end);if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const earliest=new Date(availableStartIso+"T00:00:00");if(start<earliest)start=earliest;const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
+                        const applyPreset=(months,years)=>{const end=new Date(),start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
                         const presets=[{l:"1M",months:1},{l:"3M",months:3},{l:"6M",months:6},{l:"1Y",years:1},{l:"2Y",years:2},{l:"3Y",years:3},{l:"5Y",years:5},{l:"10Y",years:10}];
                         const unitMax={D:3650,M:120,Y:10};
-                        const randomRange=()=>{if(!availableStartIso||!availableEndIso)return;let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=new Date(availableStartIso+"T00:00:00");const maxEnd=new Date(availableEndIso+"T00:00:00");const latest=new Date(maxEnd.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(Math.min(s.getTime()+lenDays*86400000,maxEnd.getTime()));const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
+                        const randomRange=()=>{const today=new Date();today.setHours(0,0,0,0);let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=new Date(today);earliest.setFullYear(earliest.getFullYear()-20);const latest=new Date(today.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
                         return(<>
                           {/* ─── Market + Random row ─── */}
                           <div style={{marginBottom:8,display:"flex",alignItems:"flex-end",gap:8}}>
@@ -1095,7 +593,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                             <div style={{width:"50%",flexShrink:0}}>
                               {lbl("Markets & Instruments *")}
                               <div style={{position:"relative"}}>
-                                <div onClick={e=>{e.stopPropagation();if(newSessAssetDropOpen){setNewSessAssetDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+3,left:r.left,width:r.width});setNewSessAssetDropOpen(true);setDropdown(null);setNewSessStratDropOpen(false);}}}
+                                <div onClick={e=>{e.stopPropagation();if(newSessAssetDropOpen){setNewSessAssetDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessAssetDropOpen(true);setDropdown(null);setNewSessStratDropOpen(false);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessAssetDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
                                   <span style={{flex:1,fontSize:11,fontWeight:600,color:c.tx,fontFamily:F}}>{newSessAssetClass}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${newSessAssetDropOpen?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1164,7 +662,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                           {/* ─── Instruments + Date Range ─── */}
                           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:4}}>
                             {/* ── Full-width symbol display rectangle ── */}
-                            <div style={{background:c.el,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",cursor:"default",transition:"border-color 0.12s",width:"100%",boxSizing:"border-box"}}>
+                            <div style={{background:c.el,border:`1px solid ${newSessMarketOpen?c.acB:c.brH}`,display:"flex",flexDirection:"column",cursor:"default",transition:"border-color 0.12s",width:"100%",boxSizing:"border-box"}}
+                              onClick={()=>setNewSessMarketOpen(true)}>
                               {/* TRADING section */}
                               <div style={{padding:"5px 10px 0"}}>
                                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -1199,7 +698,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start"}}>
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom+2,left:r.left});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
+                                  <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
                                     onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");e.currentTarget.style.filter="brightness(1.12)";}}
                                     onMouseLeave={e=>{setHov(null);e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
@@ -1220,7 +719,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                       <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
                                         {(()=>{
                                           const catKey=catMap[newSessAssetClass]||newSessAssetClass;
-                                          const pool=sortSymbolsMajorFirst(allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase()))));
+                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase())));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
                                           return pool.map(s=>{
                                             const isChk=newSessTickers.includes(s.sym);
@@ -1237,7 +736,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                                   {!isChk&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1} fill="none" strokeLinecap="square" opacity={0.5}/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1} fill="none" strokeLinecap="square" opacity={0.5}/></>}
                                                   {isChk&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
                                                 </svg>
-                                                {mkFlags(s.sym,12)}
+                                                {mkFlags(s.sym,10)}
                                                 <span style={{fontSize:10,fontWeight:isChk?700:500,color:isChk?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s.sym}</span>
                                               </div>
                                             );
@@ -1294,7 +793,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start",opacity:newSessSupportEnabled?1:0.35,pointerEvents:newSessSupportEnabled?"auto":"none",transition:"opacity 0.15s"}}>
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom+2,left:r.left});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
+                                  <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
                                     onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#a07000,#e8c252)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(200,150,0,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -1329,7 +828,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                       <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
                                         {(()=>{
                                           const catKey=catMap[newSessSupPickerCat]||newSessSupPickerCat;
-                                          const pool=sortSymbolsMajorFirst(allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase()))));
+                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase())));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
                                           return pool.map(s=>{
                                             const isChk=newSessSupportTickers.includes(s.sym);
@@ -1345,7 +844,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                                   {!isChk&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.5)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.5)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
                                                   {isChk&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.9)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.9)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.15}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
                                                 </svg>
-                                                {mkFlags(s.sym,12)}
+                                                {mkFlags(s.sym,10)}
                                                 <span style={{fontSize:10,fontWeight:isChk?700:500,color:isChk?"rgba(232,194,82,0.9)":isH?c.tx:c.ts,fontFamily:F}}>{s.sym}</span>
                                               </div>
                                             );
@@ -1386,7 +885,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                     <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>End</div>
                                     <div style={{display:"flex",alignItems:"center",background:c.well,border:`1px solid ${newSessCalOpen&&newSessCalTarget==="end"?c.acL:(newSessEnd&&newSessStart&&newSessEnd<newSessStart?c.rd:c.brH)}`,transition:"border-color 0.12s"}}>
                                       <input value={newSessEndInput} placeholder="DD-Mon-YYYY" onClick={e=>e.stopPropagation()}
-                                        onChange={e=>{setNewSessEndInput(e.target.value);applyD(e.target.value,v=>{if(!newSessStart||v>=newSessStart)setNewSessEnd(v);},{isEnd:true});setNewSessActivePreset(null);}}
+                                        onChange={e=>{setNewSessEndInput(e.target.value);applyD(e.target.value,v=>{if(!newSessStart||v>=newSessStart)setNewSessEnd(v);});setNewSessActivePreset(null);}}
                                         onBlur={()=>{if(newSessEnd&&newSessStart&&newSessEnd<newSessStart){setNewSessEnd("");setNewSessEndInput("");}else if(newSessEnd){setNewSessEndInput(fmtD(newSessEnd));}}}
                                         style={inpSx}/>
                                       <div onClick={e=>{e.stopPropagation();if(newSessCalOpen&&newSessCalTarget==="end"){setNewSessCalOpen(false);}else{openCal(e,"end",newSessEnd);}}} style={chvSx}>
@@ -1434,7 +933,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                     const ddKey="randUnitDrop";
                                     return(
                                       <div style={{position:"relative",width:88,flexShrink:0}}>
-                                        <div onClick={e=>{e.stopPropagation();if(dropdown===ddKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown(ddKey);}}}
+                                        <div onClick={e=>{e.stopPropagation();if(dropdown===ddKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown(ddKey);}}}
                                           style={{height:27,display:"flex",alignItems:"center",padding:"0 22px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===ddKey?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                           <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{curLabel}</span>
                                           <svg style={{position:"absolute",right:6,top:"50%",transform:`translateY(-50%) rotate(${dropdown===ddKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1482,15 +981,296 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                 );
                               })}
                             </div>
-                            <div style={{marginTop:6,fontSize:9,color:overlap.conflict?c.rd:c.tm,fontFamily:F}}>
-                              {dateBoundsHint}
-                            </div>
-                            {!primaryEffectiveFile && (
-                              <div style={{marginTop:4,fontSize:9,color:c.rd,fontFamily:F}}>
-                                No dataset linked to selected trading pair(s). Use the + picker to select datasets.
+                          </div>
+                          {/* ── Market sub-window ── */}
+                            {newSessMarketOpen&&(
+                              <div style={{position:"fixed",inset:0,zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center"}}
+                                onClick={()=>setNewSessMarketOpen(false)}>
+                                <div onClick={e=>e.stopPropagation()}
+                                  style={{position:"relative",width:860,height:480,background:c.sf,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",animation:"tlrPopIn 0.18s ease",boxShadow:"0 24px 80px rgba(0,0,0,0.92)",fontFamily:F,overflow:"hidden"}}>
+                                  {/* Top accent */}
+                                  <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
+                                  {/* Header */}
+                                  <div style={{display:"flex",alignItems:"center",padding:"9px 14px",flexShrink:0}}>
+                                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" style={{marginRight:8,flexShrink:0}}><rect x="3" y="3" width="7" height="18" rx="0.8" stroke={c.acL} strokeWidth="1.5"/><rect x="14" y="8" width="7" height="13" rx="0.8" stroke={c.acL} strokeWidth="1.5"/><line x1="3" y1="12" x2="10" y2="12" stroke={c.acL} strokeWidth="1" opacity="0.45"/><line x1="14" y1="15" x2="21" y2="15" stroke={c.acL} strokeWidth="1" opacity="0.45"/></svg>
+                                    <span style={{fontSize:12,fontWeight:700,color:c.tx,flex:1}}>Configure Markets</span>
+                                    <div onClick={()=>setNewSessMarketOpen(false)}
+                                      onMouseEnter={()=>setHov("mktCfgX")} onMouseLeave={()=>setHov(null)}
+                                      style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:hov==="mktCfgX"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s"}}>
+                                      <I n="x" s={18} cl={hov==="mktCfgX"?c.rd:c.ts}/>
+                                    </div>
+                                  </div>
+                                  <div style={{height:1,background:c.br,flexShrink:0}}/>
+                                  {/* Body: two columns side by side */}
+                                  <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+
+                                    {/* ── LEFT: TRADING ── */}
+                                    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                                      {/* Column header */}
+                                      <div style={{height:34,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:`1px solid ${c.br}`}}>
+                                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                          <div style={{width:2,height:11,background:c.acL,boxShadow:`0 0 5px ${c.acG}`}}/>
+                                          <span style={{fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:F}}>Trading</span>
+                                          <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}
+                                            onMouseEnter={()=>setNewSessInfoHov("cfg-trading")}
+                                            onMouseLeave={()=>setNewSessInfoHov(null)}>
+                                            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={c.tm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",cursor:"default",flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                            {newSessInfoHov==="cfg-trading"&&(
+                                              <div style={{position:"absolute",left:0,top:"calc(100% + 6px)",background:c.el,border:`1px solid ${c.br}`,zIndex:200,whiteSpace:"nowrap",pointerEvents:"none"}}>
+                                                <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+                                                <div style={{padding:"5px 10px",fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>Instruments you will actively trade — orders and P&L are tracked</div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                          {newSessTickers.length>0&&(
+                                            <div onClick={()=>setNewSessTickers([])}
+                                              onMouseEnter={()=>setHov("mktTrdClr")} onMouseLeave={()=>setHov(null)}
+                                              style={{display:"flex",alignItems:"center",gap:3,cursor:"default",color:hov==="mktTrdClr"?c.rd:c.tm,transition:"color 0.1s"}}>
+                                              <I n="trashDraw" s={11} cl={hov==="mktTrdClr"?c.rd:c.tm}/>
+                                            </div>
+                                          )}
+                                          <span style={{fontSize:10,fontWeight:700,color:c.acL,fontFamily:F}}>{newSessTickers.length}<span style={{color:c.tm,fontWeight:500}}>/10</span></span>
+                                        </div>
+                                      </div>
+                                      {/* Selected chips strip — TRADING */}
+                                      <div style={{height:80,flexShrink:0,borderBottom:`1px solid ${c.br}`,padding:"6px 14px",display:"flex",flexWrap:"wrap",alignItems:"flex-start",alignContent:"flex-start",gap:4,overflow:"hidden"}}>
+                                        {newSessTickers.length===0?(
+                                          <span style={{fontSize:9,color:c.tm,fontFamily:F,fontStyle:"italic",whiteSpace:"nowrap"}}>No trading symbols selected</span>
+                                        ):newSessTickers.map(sym=>(
+                                          <div key={sym} style={{width:90,display:"flex",alignItems:"center",gap:3,padding:"2px 5px",background:"transparent",border:`1px solid rgba(140,160,255,0.28)`,flexShrink:0,overflow:"hidden"}}>
+                                            <div style={{flexShrink:0}}>{mkFlags(sym,10)}</div>
+                                            <span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sym}</span>
+                                            <span onClick={()=>setNewSessTickers(p=>p.filter(x=>x!==sym))} style={{fontSize:12,lineHeight:1,color:c.tm,cursor:"default",transition:"color 0.1s",flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {/* Category tabs — locked to selected market */}
+                                      {(()=>{
+                                        const mktTabs=["Forex","Futures","Crypto","Stocks"];
+                                        const mktIdx=mktTabs.indexOf(newSessAssetClass);
+                                        return(
+                                          <div style={{position:"relative",display:"flex",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
+                                            {mktTabs.map(a=>{
+                                              const isAct=newSessAssetClass===a;
+                                              const isLocked=!isAct;
+                                              return(
+                                                <div key={a}
+                                                  style={{flex:1,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:isAct?700:500,color:isAct?c.acL:"rgba(255,255,255,0.2)",cursor:"not-allowed",background:"transparent",transition:"color 0.12s",userSelect:"none",opacity:isLocked?0.45:1}}>
+                                                  {a}
+                                                </div>
+                                              );
+                                            })}
+                                            <div style={{position:"absolute",bottom:0,height:1.5,width:"25%",left:`${mktIdx*25}%`,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>
+                                          </div>
+                                        );
+                                      })()}
+                                      {/* Search */}
+                                      <div style={{padding:"7px 14px",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
+                                        <div style={{display:"flex",alignItems:"center",background:c.el,border:`1px solid ${newSessTickerFocus?c.acB:c.brH}`,height:25,padding:"0 8px",gap:5,transition:"border-color 0.12s"}}>
+                                          <svg width={9} height={9} viewBox="0 0 16 16" fill="none" style={{flexShrink:0,opacity:0.4}}><circle cx="7" cy="7" r="5" stroke={c.ts} strokeWidth="1.6"/><line x1="11" y1="11" x2="14" y2="14" stroke={c.ts} strokeWidth="1.6" strokeLinecap="round"/></svg>
+                                          <input value={newSessTickerInput} onChange={e=>setNewSessTickerInput(e.target.value.toUpperCase().replace(/[^A-Z0-9.]/g,""))}
+                                            onFocus={()=>setNewSessTickerFocus(true)} onBlur={()=>setNewSessTickerFocus(false)}
+                                            placeholder="Search…"
+                                            style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0}}/>
+                                          {newSessTickerInput&&<div onClick={()=>setNewSessTickerInput("")} style={{fontSize:13,color:c.tm,cursor:"default",lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color=c.ts} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</div>}
+                                        </div>
+                                      </div>
+                                      {/* Symbol list */}
+                                      {(()=>{
+                                        const primCat=catMap[newSessAssetClass]||newSessAssetClass;
+                                        const primList=allSymbols.filter(s=>s.cat===primCat&&(newSessTickerInput.trim()?s.sym.includes(newSessTickerInput.trim()):true));
+                                        return(
+                                          <div style={{flex:1,overflowY:"auto"}} className="tlr-scroll">
+                                            {primList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>No results</div>:primList.map(({sym})=>{
+                                              const isSel=newSessTickers.includes(sym);
+                                              const isOther=newSessSupportTickers.includes(sym);
+                                              const isMax=!isSel&&newSessTickers.length>=10;
+                                              const blocked=isOther||isMax;
+                                              return(
+                                                <div key={sym} onClick={()=>{if(blocked)return;if(isSel)setNewSessTickers(p=>p.filter(x=>x!==sym));else setNewSessTickers(p=>[...p,sym]);}}
+                                                  style={{display:"flex",alignItems:"center",padding:"5px 14px",cursor:blocked?"not-allowed":"default",position:"relative",background:"transparent",opacity:isOther?0.35:isMax?0.5:1,transition:"background 0.1s"}}
+                                                  onMouseEnter={e=>{if(!blocked)e.currentTarget.style.background="rgba(255,255,255,0.04)";}}
+                                                  onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
+                                                  {isSel&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                                                  <div style={{width:10,height:10,flexShrink:0,marginRight:8}}>
+                                                    <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
+                                                      <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isSel?c.acL:"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                      <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={isSel?c.acL:"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                      {isSel&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
+                                                    </svg>
+                                                  </div>
+                                                  <div style={{marginRight:8,flexShrink:0}}>{mkFlags(sym,12)}</div>
+                                                  <span style={{flex:1,fontSize:11,fontWeight:isSel?700:500,color:isSel?c.acL:c.ts,fontFamily:F}}>{sym}</span>
+                                                  {isOther&&<span style={{fontSize:8,fontWeight:700,color:"rgba(232,194,82,0.65)",fontFamily:F,flexShrink:0}}>SUPPORTING</span>}
+                                                  {isMax&&!isOther&&<span style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,flexShrink:0}}>MAX</span>}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+
+                                    {/* Vertical divider */}
+                                    <div style={{width:1,flexShrink:0,background:`linear-gradient(180deg,transparent,${c.br} 12%,${c.br} 88%,transparent)`}}/>
+
+                                    {/* ── RIGHT: SUPPORTING ── */}
+                                    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                                      {/* Column header */}
+                                      <div style={{height:34,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:`1px solid ${c.br}`}}>
+                                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                          <div style={{width:2,height:11,background:newSessSupportEnabled?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.15)",boxShadow:newSessSupportEnabled?`0 0 5px rgba(232,194,82,0.35)`:"none",transition:"background 0.15s"}}/>
+                                          {/* Enable/disable checkbox */}
+                                          {(()=>{
+                                            const isH=hov==="mktSupEnable";
+                                            const on=newSessSupportEnabled;
+                                            const bCol=on?"rgba(232,194,82,0.85)":isH?c.ts:"rgba(140,160,255,0.22)";
+                                            return(
+                                              <div onClick={()=>setNewSessSupportEnabled(v=>!v)}
+                                                onMouseEnter={()=>setHov("mktSupEnable")} onMouseLeave={()=>setHov(null)}
+                                                style={{width:10,height:10,flexShrink:0,cursor:"default"}}>
+                                                <svg width={10} height={10} style={{display:"block",overflow:"visible"}}>
+                                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                  {!on&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
+                                                  {on&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.15}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
+                                                </svg>
+                                              </div>
+                                            );
+                                          })()}
+                                          <span style={{fontSize:9,fontWeight:800,color:newSessSupportEnabled?"rgba(232,194,82,0.9)":c.tm,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:F,transition:"color 0.15s"}}>Supporting</span>
+                                          <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}
+                                            onMouseEnter={()=>setNewSessInfoHov("cfg-supporting")}
+                                            onMouseLeave={()=>setNewSessInfoHov(null)}>
+                                            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={c.tm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",cursor:"default",flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                            {newSessInfoHov==="cfg-supporting"&&(
+                                              <div style={{position:"absolute",left:0,top:"calc(100% + 6px)",background:c.el,border:`1px solid ${c.br}`,zIndex:200,whiteSpace:"nowrap",pointerEvents:"none"}}>
+                                                <div style={{height:2,background:`linear-gradient(90deg,rgba(232,194,82,0.3),rgba(232,194,82,0.8),rgba(232,194,82,0.3))`}}/>
+                                                <div style={{padding:"5px 10px",fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>View-only instruments for context — no orders, no P&L tracking</div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                          {newSessSupportTickers.length>0&&(
+                                            <div onClick={()=>setNewSessSupportTickers([])}
+                                              onMouseEnter={()=>setHov("mktSupClr")} onMouseLeave={()=>setHov(null)}
+                                              style={{display:"flex",alignItems:"center",gap:3,cursor:"default",color:hov==="mktSupClr"?c.rd:c.tm,transition:"color 0.1s"}}>
+                                              <I n="trashDraw" s={11} cl={hov==="mktSupClr"?c.rd:c.tm}/>
+                                            </div>
+                                          )}
+                                          <span style={{fontSize:10,fontWeight:700,color:"rgba(232,194,82,0.9)",fontFamily:F}}>{newSessSupportTickers.length}<span style={{color:c.tm,fontWeight:500}}>/10</span></span>
+                                        </div>
+                                      </div>
+                                      {/* Column body — dimmed when supporting disabled */}
+                                      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",opacity:newSessSupportEnabled?1:0.3,pointerEvents:newSessSupportEnabled?"auto":"none",transition:"opacity 0.18s"}}>
+                                      {/* Selected chips strip — SUPPORTING */}
+                                      <div style={{height:80,flexShrink:0,borderBottom:`1px solid ${c.br}`,padding:"6px 14px",display:"flex",flexWrap:"wrap",alignItems:"flex-start",alignContent:"flex-start",gap:4,overflow:"hidden"}}>
+                                        {newSessSupportTickers.length===0?(
+                                          <span style={{fontSize:9,color:c.tm,fontFamily:F,fontStyle:"italic",whiteSpace:"nowrap"}}>No supporting symbols selected</span>
+                                        ):newSessSupportTickers.map(sym=>(
+                                          <div key={sym} style={{width:90,display:"flex",alignItems:"center",gap:3,padding:"2px 5px",background:"transparent",border:`1px solid rgba(232,194,82,0.3)`,flexShrink:0,overflow:"hidden"}}>
+                                            <div style={{flexShrink:0}}>{mkFlags(sym,10)}</div>
+                                            <span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sym}</span>
+                                            <span onClick={()=>setNewSessSupportTickers(p=>p.filter(x=>x!==sym))} style={{fontSize:12,lineHeight:1,color:c.tm,cursor:"default",transition:"color 0.1s",flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {/* Category tabs — gold accent */}
+                                      {(()=>{
+                                        const supTabs=["Forex","Futures","Crypto","Stocks"];
+                                        const supIdx=supTabs.indexOf(newSessSupportAssetClass);
+                                        return(
+                                          <div style={{position:"relative",display:"flex",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
+                                            {supTabs.map(a=>{
+                                              const isAct=newSessSupportAssetClass===a;
+                                              const hk=`mktSupTab-${a}`;
+                                              const isH=hov===hk;
+                                              return(
+                                                <div key={a} onClick={()=>{setNewSessSupportAssetClass(a);setNewSessSupportInput("");}}
+                                                  onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
+                                                  style={{flex:1,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:isAct?700:500,color:isAct?"rgba(232,194,82,0.9)":isH?c.tx:c.ts,cursor:"default",background:isH&&!isAct?"rgba(255,255,255,0.04)":"transparent",transition:"color 0.12s,background 0.12s"}}>
+                                                  {a}
+                                                </div>
+                                              );
+                                            })}
+                                            <div style={{position:"absolute",bottom:0,height:1.5,width:"25%",left:`${supIdx*25}%`,transition:"left 0.22s cubic-bezier(0.4,0,0.2,1)",background:`linear-gradient(90deg,transparent,rgba(232,194,82,0.85),transparent)`,boxShadow:`0 0 6px rgba(232,194,82,0.4)`,pointerEvents:"none"}}/>
+                                          </div>
+                                        );
+                                      })()}
+                                      {/* Search */}
+                                      <div style={{padding:"7px 14px",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
+                                        <div style={{display:"flex",alignItems:"center",background:c.el,border:`1px solid ${newSessSupportFocus?"rgba(232,194,82,0.5)":c.brH}`,height:25,padding:"0 8px",gap:5,transition:"border-color 0.12s"}}>
+                                          <svg width={9} height={9} viewBox="0 0 16 16" fill="none" style={{flexShrink:0,opacity:0.4}}><circle cx="7" cy="7" r="5" stroke={c.ts} strokeWidth="1.6"/><line x1="11" y1="11" x2="14" y2="14" stroke={c.ts} strokeWidth="1.6" strokeLinecap="round"/></svg>
+                                          <input value={newSessSupportInput} onChange={e=>setNewSessSupportInput(e.target.value.toUpperCase().replace(/[^A-Z0-9.]/g,""))}
+                                            onFocus={()=>setNewSessSupportFocus(true)} onBlur={()=>setNewSessSupportFocus(false)}
+                                            placeholder="Search…"
+                                            style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0}}/>
+                                          {newSessSupportInput&&<div onClick={()=>setNewSessSupportInput("")} style={{fontSize:13,color:c.tm,cursor:"default",lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color=c.ts} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</div>}
+                                        </div>
+                                      </div>
+                                      {/* Symbol list */}
+                                      {(()=>{
+                                        const suppCat=catMap[newSessSupportAssetClass]||newSessSupportAssetClass;
+                                        const suppList=allSymbols.filter(s=>s.cat===suppCat&&(newSessSupportInput.trim()?s.sym.includes(newSessSupportInput.trim()):true));
+                                        return(
+                                          <div style={{flex:1,overflowY:"auto"}} className="tlr-scroll">
+                                            {suppList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>No results</div>:suppList.map(({sym})=>{
+                                              const isSel=newSessSupportTickers.includes(sym);
+                                              const isOther=newSessTickers.includes(sym);
+                                              const isMax=!isSel&&newSessSupportTickers.length>=10;
+                                              const blocked=isOther||isMax;
+                                              return(
+                                                <div key={sym} onClick={()=>{if(blocked)return;if(isSel)setNewSessSupportTickers(p=>p.filter(x=>x!==sym));else setNewSessSupportTickers(p=>[...p,sym]);}}
+                                                  style={{display:"flex",alignItems:"center",padding:"5px 14px",cursor:blocked?"not-allowed":"default",position:"relative",background:"transparent",opacity:isOther?0.35:isMax?0.5:1,transition:"background 0.1s"}}
+                                                  onMouseEnter={e=>{if(!blocked)e.currentTarget.style.background="rgba(255,255,255,0.04)";}}
+                                                  onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
+                                                  {isSel&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,rgba(232,194,82,0.8),transparent)`,boxShadow:`0 0 6px rgba(232,194,82,0.4)`}}/>}
+                                                  <div style={{width:10,height:10,flexShrink:0,marginRight:8}}>
+                                                    <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
+                                                      <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isSel?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                      <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={isSel?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                      {isSel&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
+                                                    </svg>
+                                                  </div>
+                                                  <div style={{marginRight:8,flexShrink:0}}>{mkFlags(sym,12)}</div>
+                                                  <span style={{flex:1,fontSize:11,fontWeight:isSel?700:500,color:isSel?"rgba(232,194,82,0.9)":c.ts,fontFamily:F}}>{sym}</span>
+                                                  {isOther&&<span style={{fontSize:8,fontWeight:700,color:c.acL,fontFamily:F,flexShrink:0,opacity:0.7}}>TRADING</span>}
+                                                  {isMax&&!isOther&&<span style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,flexShrink:0}}>MAX</span>}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        );
+                                      })()}
+                                      </div>{/* end body wrapper */}
+                                    </div>
+                                  </div>
+
+                                  {/* Bottom bar */}
+                                  <div style={{height:42,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderTop:`1px solid ${c.br}`,background:c.el}}>
+                                    <span style={{fontSize:10,color:c.tm,fontFamily:F}}>
+                                      {(newSessTickers.length+newSessSupportTickers.length)===0?"No markets selected":`${newSessTickers.length}/10 trading · ${newSessSupportTickers.length}/10 supporting`}
+                                    </span>
+                                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                      <div onClick={()=>setNewSessMarketOpen(false)}
+                                        onMouseEnter={()=>setHov("mktCfgCancel")} onMouseLeave={()=>setHov(null)}
+                                        style={{height:27,padding:"0 14px",display:"flex",alignItems:"center",background:hov==="mktCfgCancel"?"rgba(255,255,255,0.07)":"transparent",border:`1px solid ${c.brH}`,cursor:"default",fontSize:10,fontWeight:600,color:hov==="mktCfgCancel"?c.tx:c.ts,letterSpacing:"0.04em",fontFamily:F,transition:"all 0.12s"}}>
+                                        Cancel
+                                      </div>
+                                      <div onClick={()=>setNewSessMarketOpen(false)}
+                                        onMouseEnter={()=>setHov("mktCfgDone")} onMouseLeave={()=>setHov(null)}
+                                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:5,background:`linear-gradient(135deg,${c.ac},${c.acL})`,cursor:"default",fontSize:10,fontWeight:700,color:"#fff",letterSpacing:"0.05em",fontFamily:F,boxShadow:"0 2px 10px rgba(38,67,247,0.35)",filter:hov==="mktCfgDone"?"brightness(1.15)":"brightness(1)",transition:"filter 0.12s"}}>
+                                        <svg width={11} height={11} viewBox="0 0 12 12" fill="none"><path d="M1.5,6 L4.5,9.5 L10.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                        Done
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             )}
-                          </div>
                           {/* ─── Timezone row ─── */}
                           {(()=>{
                             const TZ_OPTS=[
@@ -1513,7 +1293,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                 <div style={{height:27,display:"flex",alignItems:"center",gap:10}}>
                                   <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Time Zone</span>
                                   <div style={{position:"relative",width:170}}>
-                                    <div onClick={e=>{e.stopPropagation();if(dropdown===tzDdKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:Math.max(r.width,200)});setDropdown(tzDdKey);}}}
+                                    <div onClick={e=>{e.stopPropagation();if(dropdown===tzDdKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:Math.max(r.width/Z,200)});setDropdown(tzDdKey);}}}
                                       style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===tzDdKey?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                       <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tzLabel}</span>
                                       <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown===tzDdKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1584,33 +1364,49 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                             </div>
                           </div>
                           {newSessTradingCostsEnabled&&(()=>{
-                            const symCat={EURUSD:"Forex",GBPUSD:"Forex",USDJPY:"Forex",USDCHF:"Forex",AUDUSD:"Forex",NZDUSD:"Forex",USDCAD:"Forex",EURGBP:"Forex",EURJPY:"Forex",GBPJPY:"Forex",XAUUSD:"Forex",XAGUSD:"Forex",USDSEK:"Forex",USDNOK:"Forex",NQ:"Futures",ES:"Futures",YM:"Futures",RTY:"Futures",CL:"Futures",GC:"Futures",SI:"Futures",NG:"Futures",MNQ:"Futures",MES:"Futures",MYM:"Futures",M2K:"Futures",MGC:"Futures",MCL:"Futures",BTCUSD:"Crypto",ETHUSD:"Crypto",BNBUSD:"Crypto",SOLUSD:"Crypto",ADAUSD:"Crypto",XRPUSD:"Crypto",DOGEUSD:"Crypto",AAPL:"Stocks",TSLA:"Stocks",NVDA:"Stocks",MSFT:"Stocks",AMZN:"Stocks",GOOG:"Stocks"};
+                            const symCat={EURUSD:"Forex",GBPUSD:"Forex",USDJPY:"Forex",USDCHF:"Forex",AUDUSD:"Forex",NZDUSD:"Forex",USDCAD:"Forex",EURGBP:"Forex",EURJPY:"Forex",GBPJPY:"Forex",XAUUSD:"Forex",XAGUSD:"Forex",USDSEK:"Forex",USDNOK:"Forex",NQ:"Futures",ES:"Futures",YM:"Futures",RTY:"Futures",CL:"Futures",GC:"Futures",SI:"Futures",NG:"Futures",MNQ:"Futures",MES:"Futures",MYM:"Futures",M2K:"Futures",MGC:"Futures",MCL:"Futures",BTCUSD:"Crypto",ETHUSD:"Crypto",BNBUSD:"Crypto",SOLUSD:"Crypto",ADAUSD:"Crypto",AAPL:"Stocks",TSLA:"Stocks",NVDA:"Stocks",MSFT:"Stocks",AMZN:"Stocks",GOOG:"Stocks"};
                             const assetOf=cat=>({"Equities":"Stocks"}[cat]||cat);
-                            const catOf2=sym=>assetOf(symCat[sym] || availFiles.find(f=>f.ticker===sym)?.asset || "");
-                            const mkFlags2=sym=>(<SymbolBadge sym={sym} asset={catOf2(sym)} w={12} h={12} fontFamily={F}/>);
+                            const catOf2=sym=>assetOf(symCat[sym]||"");
+                            const pairInfo2=sym=>{if(sym.length===6){const b=sym.slice(0,3),q=sym.slice(3,6);if(currencyCountry[b]&&currencyCountry[q])return{b,q};}return null;};
+                            const mkFlags2=sym=>{
+                              const sz=10,fw=Math.round(sz*15/11),fh=sz;
+                              const pr=pairInfo2(sym);
+                              if(pr)return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.7)",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.5)",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);
+                              const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},MGC:{bg:"#1A1200",fg:"#FFBA00",label:"mGC"},MCL:{bg:"#071510",fg:"#33CC66",label:"mCL"}};
+                              if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}
+                              const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};
+                              if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}
+                              return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
+                            };
+                            const tcStepDecimals=(step)=>{const s=Number(step);if(!Number.isFinite(s)||s<=0)return 2;const p=String(s).split(".");return p[1]?p[1].length:0;};
+                            const tcBumpNum=(val,step,dir)=>{const d=tcStepDecimals(step);const cur=parseFloat(val);const base=Number.isFinite(cur)?cur:0;return Math.max(0,base+dir*step).toFixed(d);};
+                            const tcStepW=18;
                             const mkArrows=(onUp,onDown)=>(
-                              <div style={{position:"absolute",right:0,top:0,bottom:0,width:16,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                                {[[onUp,"▲"],[onDown,"▼"]].map(([fn,ch],ii)=>(
-                                  <button key={ii} onClick={fn}
-                                    onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                                    style={{flex:1,width:16,background:"transparent",border:"none",color:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,lineHeight:1,fontFamily:F,padding:0,borderBottom:ii===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
+                              <div style={{position:"absolute",right:0,top:0,bottom:0,width:tcStepW,display:"flex",flexDirection:"column",gap:2,padding:"1px 1px 1px 0",boxSizing:"border-box",borderLeft:`1px solid ${c.br}`}}>
+                                {[[onUp,"▲","#22c55e","up"],[onDown,"▼","#ef4444","down"]].map(([fn,ch,accent,key])=>(
+                                  <button key={key} type="button"
+                                    onClick={e=>{e.stopPropagation();e.preventDefault();fn(e);}}
+                                    onMouseDown={e=>{e.stopPropagation();e.currentTarget.style.background=accent;e.currentTarget.style.borderColor=accent;e.currentTarget.style.color="#fff";}}
+                                    onMouseUp={e=>{e.currentTarget.style.background=c.el;e.currentTarget.style.borderColor=c.br;e.currentTarget.style.color=c.tm;}}
+                                    onMouseLeave={e=>{e.currentTarget.style.background=c.el;e.currentTarget.style.borderColor=c.br;e.currentTarget.style.color=c.tm;}}
+                                    style={{flex:1,width:"100%",minHeight:0,background:c.el,border:`1px solid ${c.br}`,borderRadius:2,color:c.tm,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,lineHeight:1,fontFamily:F,padding:0,transition:"background 0.1s,color 0.1s,border-color 0.1s"}}>
                                     {ch}
                                   </button>
                                 ))}
                               </div>
                             );
                             const numCell=(val,onChange,step,w=52)=>(
-                              <div style={{position:"relative",width:w,height:20,flexShrink:0,background:c.bg,border:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
+                              <div style={{position:"relative",width:w,height:22,flexShrink:0,background:c.bg,border:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
                                 <input type="number" min={0} step={step} value={val} onChange={onChange} onClick={e=>e.stopPropagation()} className="tlr-nospinner"
-                                  style={{position:"absolute",left:0,right:16,top:0,bottom:0,width:`calc(100% - 16px)`,height:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"center",padding:0,boxSizing:"border-box"}}/>
+                                  style={{position:"absolute",left:0,right:tcStepW,top:0,bottom:0,width:`calc(100% - ${tcStepW}px)`,height:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"center",padding:0,boxSizing:"border-box"}}/>
                                 {mkArrows(
-                                  ()=>onChange({target:{value:String(Math.max(0,Math.round((parseFloat(val||0)+step)*1e6)/1e6))}}),
-                                  ()=>onChange({target:{value:String(Math.max(0,Math.round((parseFloat(val||0)-step)*1e6)/1e6))}})
+                                  ()=>onChange({target:{value:tcBumpNum(val,step,1)}}),
+                                  ()=>onChange({target:{value:tcBumpNum(val,step,-1)}})
                                 )}
                               </div>
                             );
                             const costMeta={
-                              Forex:   {color:c.ts,label:"FOREX",   spreadUnit:"pips",   commUnit:"$/lot RT",commLabel:"Commission",spreadStep:0.1, commStep:0.5,  levOpts:["1:1","1:10","1:30","1:50","1:100","1:200","1:500"],defLev:"1:500",perSymComm:false},
+                              Forex:   {color:c.ts,label:"FOREX",   spreadUnit:"pips",   commUnit:"$/lot RT",commLabel:"Commission",spreadStep:0.1, commStep:0.01, levOpts:["1:1","1:10","1:30","1:50","1:100","1:200","1:500"],defLev:"1:500",perSymComm:false},
                               Futures: {color:c.ts,label:"FUTURES",spreadUnit:"ticks",  commUnit:"$/RT",   commLabel:"Commission",spreadStep:1,   commStep:0.01, levOpts:[],                                                 defLev:"1:20", perSymComm:true, hideLev:true},
                               Stocks:  {color:c.ts,label:"STOCKS", spreadUnit:"$/share",commUnit:"$/share",commLabel:"Commission",spreadStep:0.01,commStep:0.001,levOpts:["1:1","1:2","1:3","1:5","1:10"],                   defLev:"1:5",  perSymComm:false,hideLev:true},
                               Crypto:  {color:c.ts,label:"CRYPTO", spreadUnit:"%",      commUnit:"%",      commLabel:"Taker Fee",  spreadStep:0.001,commStep:0.01,levOpts:["1:1","1:2","1:5","1:10","1:20","1:25","1:50","1:75","1:100","1:125"],defLev:"1:20",perSymComm:false},
@@ -1658,7 +1454,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                           {!meta.perSymComm&&(<><span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap"}}>{meta.commLabel}:</span>{numCell(row.commission,e=>setComm(e.target.value),meta.commStep,58)}<span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap",marginLeft:-4}}>{meta.commUnit}</span></>)}
                                           {!meta.hideLev&&(<><span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap"}}>Leverage:</span>
                                             <div style={{position:"relative",width:62,height:22,flexShrink:0}}>
-                                              <div onClick={e=>{e.stopPropagation();if(dropdown==="lev_"+asset){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,minWidth:r.width});setDropdown("lev_"+asset);setNewSessStratDropOpen(false);}}}
+                                              <div onClick={e=>{e.stopPropagation();if(dropdown==="lev_"+asset){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,minWidth:r.width/Z});setDropdown("lev_"+asset);setNewSessStratDropOpen(false);}}}
                                                 style={{height:22,display:"flex",alignItems:"center",padding:"0 18px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="lev_"+asset?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                                 <span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F}}>{row.leverage||meta.defLev}</span>
                                                 <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="lev_"+asset?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1685,7 +1481,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                         <div>
                                           <div style={{marginBottom:5,paddingBottom:4,borderBottom:`1px solid ${c.br}`}}><span style={{fontSize:9,fontWeight:700,color:c.tm,fontFamily:F,letterSpacing:"0.03em"}}>SPREAD</span><span style={{fontSize:8,fontWeight:500,fontStyle:"italic",color:c.tm,opacity:0.75,marginLeft:4,fontFamily:F}}>{meta.spreadUnit}</span></div>
                                           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4}}>
-                                            {assetSyms.map(sym=>(<div key={sym} style={{display:"grid",gridTemplateColumns:"18px 1fr 48px",alignItems:"center",columnGap:3,background:c.bg,padding:"2px 5px",border:`1px solid ${c.br}`,height:26,boxSizing:"border-box",minWidth:0}}><SymbolBadge sym={sym} asset={catOf2(sym)} w={10} h={10} fontFamily={F}/><span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{sym}</span>{numCell(getSpread(sym),e=>setSpread(sym,e.target.value),meta.spreadStep,48)}</div>))}
+                                            {assetSyms.map(sym=>(<div key={sym} style={{display:"grid",gridTemplateColumns:"14px 1fr 48px",alignItems:"center",columnGap:3,background:c.bg,padding:"2px 5px",border:`1px solid ${c.br}`,height:24,boxSizing:"border-box",minWidth:0}}>{(()=>{const sz=8,fw=Math.round(sz*15/11),fh=sz;const pr=pairInfo2(sym);if(pr)return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},MGC:{bg:"#1A1200",fg:"#FFBA00",label:"mGC"},MCL:{bg:"#071510",fg:"#33CC66",label:"mCL"}};if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35)}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0}}><FlagSvg code="US" w={fw} h={fh}/></div>);})()}<span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{sym}</span>{numCell(getSpread(sym),e=>setSpread(sym,e.target.value),meta.spreadStep,48)}</div>))}
                                           </div>
                                         </div>
                                       ))}
@@ -1797,7 +1593,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                         <div style={{height:27,display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                           <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Challenge Type</span>
                           <div style={{position:"relative",width:130,flexShrink:0}}>
-                            <div onClick={e=>{e.stopPropagation();if(dropdown==="challTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown("challTypeDrop");}}}
+                            <div onClick={e=>{e.stopPropagation();if(dropdown==="challTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("challTypeDrop");}}}
                               style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="challTypeDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                               <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{sessNumPhases===1?"1 Phase":"2 Phase"}</span>
                               <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="challTypeDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1981,7 +1777,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                             <div style={{height:27,display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Drawdown Type</span>
                               <div style={{position:"relative",width:130,flexShrink:0}}>
-                                <div onClick={e=>{e.stopPropagation();if(dropdown==="ddTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown("ddTypeDrop");}}}
+                                <div onClick={e=>{e.stopPropagation();if(dropdown==="ddTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("ddTypeDrop");}}}
                                   style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="ddTypeDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                   <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{sessTrailingDrawdown?"Trailing":"EOD"}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="ddTypeDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -2072,7 +1868,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                             <div style={{height:27,display:"flex",alignItems:"center",gap:10}}>
                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Leverage</span>
                               <div style={{position:"relative",width:130,flexShrink:0}}>
-                                <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();if(dropdown==="sessLevDrop"){setDropdown(null);setDdAnchor(null);}else{setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown("sessLevDrop");}}}
+                                <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();if(dropdown==="sessLevDrop"){setDropdown(null);setDdAnchor(null);}else{setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("sessLevDrop");}}}
                                   style={{...inp({padding:"0 24px 0 8px"}),display:"flex",alignItems:"center",border:`1px solid ${dropdown==="sessLevDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",position:"relative",transition:"border-color 0.12s",boxSizing:"border-box"}}>
                                   <span style={{fontSize:11,fontWeight:700,color:c.tx,fontFamily:F}}>{sessLeverage}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="sessLevDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -2112,7 +1908,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                 const MPU_OPTS=[["lots","Lots"],["%","%"]];
                                 return(
                                   <div style={{position:"relative",width:72,flexShrink:0}}>
-                                    <div onClick={e=>{e.stopPropagation();if(dropdown===mpuKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom+2,left:r.left,width:r.width});setDropdown(mpuKey);}}}
+                                    <div onClick={e=>{e.stopPropagation();if(dropdown===mpuKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown(mpuKey);}}}
                                       style={{height:27,display:"flex",alignItems:"center",padding:"0 22px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===mpuKey?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s",opacity:sessMaxPosEnabled?1:0.4}}>
                                       <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{MPU_OPTS.find(([u])=>u===sessMaxPosUnit)?.[1]||"Lots"}</span>
                                       <svg style={{position:"absolute",right:6,top:"50%",transform:`translateY(-50%) rotate(${dropdown===mpuKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -2170,47 +1966,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                         style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:6,background:isValid2?`linear-gradient(135deg,${c.ac},${c.acL})`:"rgba(38,67,247,0.15)",cursor:isValid2?"default":"not-allowed",fontSize:10,fontWeight:700,color:isValid2?"#fff":"rgba(255,255,255,0.25)",letterSpacing:"0.05em",boxShadow:isValid2?"0 2px 10px rgba(38,67,247,0.35)":"none",filter:hov==="sessStart"&&isValid2?"brightness(1.12)":"brightness(1)",transition:"all 0.12s",flexShrink:0,fontFamily:F}}>
                         <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>
                         Start Session
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-      <SessionDateCalendar
-        open={newSessCalOpen && !!calMinIso && !!calMaxIso}
-        pos={newSessCalPos}
-        label={newSessCalTarget === "end" ? "End date" : "Start date"}
-        minIso={calMinIso}
-        maxIso={calMaxIso}
-        valueIso={newSessCalTarget === "end" ? newSessEnd : newSessStart}
-        viewY={newSessCalViewY}
-        viewM={newSessCalViewM}
-        mode={newSessCalMode}
-        yearBase={newSessCalYearBase}
-        onViewY={setNewSessCalViewY}
-        onViewM={setNewSessCalViewM}
-        onMode={setNewSessCalMode}
-        onYearBase={setNewSessCalYearBase}
-        onSelect={iso => {
-          const fd = isoToDisplay(iso, MON_D_LABELS);
-          if (newSessCalTarget === "start") {
-            setNewSessStart(iso);
-            setNewSessStartInput(fd);
-            if (newSessEnd && newSessEnd < iso) {
-              setNewSessEnd("");
-              setNewSessEndInput("");
-            }
-          } else if (!newSessStart || iso >= newSessStart) {
-            setNewSessEnd(iso);
-            setNewSessEndInput(fd);
-          }
-          setNewSessActivePreset(null);
-        }}
-        onClose={() => setNewSessCalOpen(false)}
-        colors={{ ...c, acB: c.acB }}
-        fontFamily={F}
-        IconClose={props => <IconI n="x" {...props} />}
-      />
       <style>{`
         @keyframes tlrPopIn {
           from { opacity: 0; transform: scale(0.98); }

@@ -1776,29 +1776,35 @@ export function renderSessionsView(ctx, shared) {
                               if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35),boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}
                               return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0,boxShadow:"0 1px 3px rgba(0,0,0,0.6)"}}><FlagSvg code="US" w={fw} h={fh}/></div>);
                             };
+                            const tcStepDecimals=(step)=>{const s=Number(step);if(!Number.isFinite(s)||s<=0)return 2;const p=String(s).split(".");return p[1]?p[1].length:0;};
+                            const tcBumpNum=(val,step,dir)=>{const d=tcStepDecimals(step);const cur=parseFloat(val);const base=Number.isFinite(cur)?cur:0;return Math.max(0,base+dir*step).toFixed(d);};
+                            const tcStepW=18;
                             const mkArrows=(onUp,onDown)=>(
-                              <div style={{position:"absolute",right:0,top:0,bottom:0,width:16,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                                {[[onUp,"▲"],[onDown,"▼"]].map(([fn,ch],ii)=>(
-                                  <button key={ii} onClick={fn}
-                                    onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                                    style={{flex:1,width:16,background:"transparent",border:"none",color:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,lineHeight:1,fontFamily:F,padding:0,borderBottom:ii===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
+                              <div style={{position:"absolute",right:0,top:0,bottom:0,width:tcStepW,display:"flex",flexDirection:"column",gap:2,padding:"1px 1px 1px 0",boxSizing:"border-box",borderLeft:`1px solid ${c.br}`}}>
+                                {[[onUp,"▲","#22c55e","up"],[onDown,"▼","#ef4444","down"]].map(([fn,ch,accent,key])=>(
+                                  <button key={key} type="button"
+                                    onClick={e=>{e.stopPropagation();e.preventDefault();fn(e);}}
+                                    onMouseDown={e=>{e.stopPropagation();e.currentTarget.style.background=accent;e.currentTarget.style.borderColor=accent;e.currentTarget.style.color="#fff";}}
+                                    onMouseUp={e=>{e.currentTarget.style.background=c.el;e.currentTarget.style.borderColor=c.br;e.currentTarget.style.color=c.tm;}}
+                                    onMouseLeave={e=>{e.currentTarget.style.background=c.el;e.currentTarget.style.borderColor=c.br;e.currentTarget.style.color=c.tm;}}
+                                    style={{flex:1,width:"100%",minHeight:0,background:c.el,border:`1px solid ${c.br}`,borderRadius:2,color:c.tm,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,lineHeight:1,fontFamily:F,padding:0,transition:"background 0.1s,color 0.1s,border-color 0.1s"}}>
                                     {ch}
                                   </button>
                                 ))}
                               </div>
                             );
                             const numCell=(val,onChange,step,w=52)=>(
-                              <div style={{position:"relative",width:w,height:20,flexShrink:0,background:c.bg,border:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
+                              <div style={{position:"relative",width:w,height:22,flexShrink:0,background:c.bg,border:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
                                 <input type="number" min={0} step={step} value={val} onChange={onChange} onClick={e=>e.stopPropagation()} className="tlr-nospinner"
-                                  style={{position:"absolute",left:0,right:16,top:0,bottom:0,width:`calc(100% - 16px)`,height:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"center",padding:0,boxSizing:"border-box"}}/>
+                                  style={{position:"absolute",left:0,right:tcStepW,top:0,bottom:0,width:`calc(100% - ${tcStepW}px)`,height:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"center",padding:0,boxSizing:"border-box"}}/>
                                 {mkArrows(
-                                  ()=>onChange({target:{value:String(Math.max(0,Math.round((parseFloat(val||0)+step)*1e6)/1e6))}}),
-                                  ()=>onChange({target:{value:String(Math.max(0,Math.round((parseFloat(val||0)-step)*1e6)/1e6))}})
+                                  ()=>onChange({target:{value:tcBumpNum(val,step,1)}}),
+                                  ()=>onChange({target:{value:tcBumpNum(val,step,-1)}})
                                 )}
                               </div>
                             );
                             const costMeta={
-                              Forex:   {color:c.ts,label:"FOREX",   spreadUnit:"pips",   commUnit:"$/lot RT",commLabel:"Commission",spreadStep:0.1, commStep:0.5,  levOpts:["1:1","1:10","1:30","1:50","1:100","1:200","1:500"],defLev:"1:500",perSymComm:false},
+                              Forex:   {color:c.ts,label:"FOREX",   spreadUnit:"pips",   commUnit:"$/lot RT",commLabel:"Commission",spreadStep:0.1, commStep:0.01, levOpts:["1:1","1:10","1:30","1:50","1:100","1:200","1:500"],defLev:"1:500",perSymComm:false},
                               Futures: {color:c.ts,label:"FUTURES",spreadUnit:"ticks",  commUnit:"$/RT",   commLabel:"Commission",spreadStep:1,   commStep:0.01, levOpts:[],                                                 defLev:"1:20", perSymComm:true, hideLev:true},
                               Stocks:  {color:c.ts,label:"STOCKS", spreadUnit:"$/share",commUnit:"$/share",commLabel:"Commission",spreadStep:0.01,commStep:0.001,levOpts:["1:1","1:2","1:3","1:5","1:10"],                   defLev:"1:5",  perSymComm:false,hideLev:true},
                               Crypto:  {color:c.ts,label:"CRYPTO", spreadUnit:"%",      commUnit:"%",      commLabel:"Taker Fee",  spreadStep:0.001,commStep:0.01,levOpts:["1:1","1:2","1:5","1:10","1:20","1:25","1:50","1:75","1:100","1:125"],defLev:"1:20",perSymComm:false},

@@ -27304,9 +27304,15 @@ class OrderManager {
                         entryInGroup.partialClosePnL = position.partialClosePnL || 0;
                         entryInGroup.closeType = this._journalCloseTypeLabel(position, hitType);
                     }
-                    
+
+                    // Rebuild group entries from the real open/closed positions so the aggregate
+                    // journal sums every leg's actual realized P&L (the same values that moved the
+                    // balance). Fixes multi-entry trades reporting only one leg's profit at TP/SL.
+                    this._reconcileSplitGroupEntriesFromPositions(splitInfo, position);
+
                     // Check if all entries in split group are closed
-                    const allSplitsClosed = splitInfo.entries.every(e => e.status === 'CLOSED');
+                    const allSplitsClosed = splitInfo.entries.length > 0
+                        && splitInfo.entries.every(e => e.status === 'CLOSED');
                     
                     if (allSplitsClosed) {
                         splitInfo.status = 'CLOSED';
@@ -30044,6 +30050,42 @@ class OrderManager {
         this.splitTrades.set(splitGroupId, splitGroup);
         console.log(`📊 Rebuilt splitTrades group ${splitGroupId} from ${entries.length} leg(s) (journal aggregate)`);
         return splitGroup;
+    }
+
+    /**
+     * Sync a split group's `entries` to the authoritative open/closed position objects that
+     * share its splitGroupId. The aggregate journal sums realized P&L from `splitInfo.entries`,
+     * but those references can go stale or miss a leg (fill-timing / object-identity races),
+     * which makes a multi-entry trade under-report — e.g. a 2-leg ladder hitting TP shows only
+     * one leg's profit. The closed position objects carry the same `pnl` that moved the balance,
+     * so rebuilding from them keeps the aggregate exact. Sorted by leg order for stable first/last.
+     */
+    _reconcileSplitGroupEntriesFromPositions(splitInfo, justClosed = null) {
+        if (!splitInfo || !splitInfo.groupId) return;
+        const gid = splitInfo.groupId;
+        const byId = new Map();
+        const scan = [
+            ...(this.closedPositions || []),
+            ...(this.openPositions || []),
+            ...((this.orderService && this.orderService.closedPositions) || []),
+            ...((this.orderService && this.orderService.openPositions) || []),
+        ];
+        for (const p of scan) {
+            if (!p || p.splitGroupId !== gid || !p.isSplitEntry) continue;
+            if (!byId.has(p.id)) byId.set(p.id, p);
+        }
+        if (justClosed && justClosed.splitGroupId === gid && !byId.has(justClosed.id)) {
+            byId.set(justClosed.id, justClosed);
+        }
+        // Keep any pre-existing group entry not represented above (defensive — never drop a leg).
+        for (const e of splitInfo.entries || []) {
+            if (e && !byId.has(e.id)) byId.set(e.id, e);
+        }
+        if (byId.size === 0) return;
+        splitInfo.entries = [...byId.values()].sort(
+            (a, b) => ((a.splitIndex || 0) - (b.splitIndex || 0))
+                || ((a.openTime || 0) - (b.openTime || 0))
+        );
     }
 
     /**
