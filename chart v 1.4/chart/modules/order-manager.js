@@ -16380,8 +16380,8 @@ class OrderManager {
         const currentPrice = currentCandle?.c || currentCandle?.close || 0;
         if (!currentPrice || currentPrice <= 0) return;
 
-        const pip = this.pipSize || 0.0001;
-        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
+        const pip = this._getBreakevenUnitSize();
+        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 0.5, Math.abs(currentPrice) * 1e-10);
 
         let newType;
         if (atMarket) {
@@ -16398,8 +16398,8 @@ class OrderManager {
                 btn.classList.toggle('active', btn.dataset.type === newType);
             });
             this.updatePlaceButtonText();
-            // Keep draft entry tag in sync (LIMIT ↔ STOP ↔ MARKET) when market moves vs fixed entry
-            
+            this.updatePreviewLines();
+            this._dispatchRrOrderPrefilledEvent();
         }
     }
 
@@ -21355,11 +21355,22 @@ class OrderManager {
     }
 
     /**
-     * When an RR tool is selected, sync entry + SL + TP from the tool into the open order draft.
+     * When an RR tool is selected, sync SL + TP from the tool into the open order draft.
+     * Market drafts keep entry at live price; limit/stop drafts also take entry from the tool.
      */
     _syncRiskRewardDrawingToOpenOrderPanel(drawing) {
         if (!drawing) return;
+        const isMarket = this._getActiveDraftOrderType() === 'market';
         this._previewEntryDecoupledFromRR = false;
+        if (isMarket) {
+            this._previewEntryLinkedToRiskReward = false;
+            this.pushRiskRewardToolToManager(drawing, { skipEntry: true });
+            this.tpManuallyPositioned = true;
+            this.slManuallyPositioned = true;
+            this.updateOrderPanelPrice();
+            this._dispatchRrOrderPrefilledEvent();
+            return;
+        }
         this._previewEntryLinkedToRiskReward = true;
         this.pushRiskRewardToolToManager(drawing);
         this.tpManuallyPositioned = true;
@@ -21409,7 +21420,9 @@ class OrderManager {
         if (opts.forceEntry) return false;
         if (opts.skipEntry) return true;
         if (!this._isDraftOrderPreviewActive()) return false;
-        return !!this._previewEntryDecoupledFromRR;
+        if (this._previewEntryDecoupledFromRR) return true;
+        if (this._getActiveDraftOrderType() === 'market') return true;
+        return false;
     }
 
     /**
