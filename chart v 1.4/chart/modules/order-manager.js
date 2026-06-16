@@ -17550,6 +17550,17 @@ class OrderManager {
                     try { root.appendChild(n); } catch (_) {}
                 }
             };
+            // Entry legs + weighted Avg Entry line carry the place/cancel (✓ ✕), delete-leg,
+            // and split (+) action badges. raiseDrawingLayersAboveOrderPreviews() lifts the
+            // drawing/label/temp groups above every order preview, so without re-raising these
+            // the multi-entry ✓ ✕ on the Avg Entry row ends up beneath the drawing layer and
+            // its clicks are swallowed (handler never fires). Raise them before SL/TP so the
+            // SL/TP badges stay topmost as before.
+            lift(this.previewLines?.entry);
+            if (Array.isArray(this.previewLines?.splitEntries)) {
+                this.previewLines.splitEntries.forEach(lift);
+            }
+            lift(this.previewLines?.avgEntry);
             lift(this.previewLines?.sl);
             lift(this.previewLines?.tp);
             if (Array.isArray(this.previewLines?.multiTPBadges)) {
