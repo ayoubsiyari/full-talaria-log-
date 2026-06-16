@@ -9387,7 +9387,10 @@ const TalariaV8bLive = () => {
   }, [tradeNotes]);
 
   useEffect(() => {
-    const onClearDraft = () => setScreenshots([]);
+    const onClearDraft = () => {
+      setScreenshots([]);
+      setNotesText("");
+    };
     const onResetDraft = () => {
       markOrderControlBridge();
       setSlEnabled(true);
@@ -9397,6 +9400,7 @@ const TalariaV8bLive = () => {
         { id: rows[0]?.id ?? 0, price: "0", risk: String(riskVal || rows[0]?.risk || "100") },
       ]);
       setOrderType("market");
+      setNotesText("");
       queueMicrotask(() => {
         v9RefreshMarketOrderEntryFromChart(window.chart?.orderManager, setEntryRows);
       });
@@ -9433,7 +9437,7 @@ const TalariaV8bLive = () => {
             om?.pendingOrders?.find((o) => o.id === tid) ||
             om?.openPositions?.find((o) => o.id === tid) ||
             om?.closedPositions?.find((o) => o.id === tid);
-          const noteFallback = j?.v9TradeNotes || order?.journalEntry?.v9TradeNotes || "";
+          const noteFallback = j?.v9TradeNotes || order?.journalEntry?.v9TradeNotes || order?.journalEntry?.preTradeNotes?.reason || "";
           const notesMap = tradeNotesRef.current;
           setTradeCard(r);
           setTradeCardPreTags([...r.preTags]);
@@ -32861,7 +32865,7 @@ const TalariaV8bLive = () => {
                       if(om&&tid!=null){
                         j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
                         const order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
-                        noteFallback=j?.v9TradeNotes||order?.journalEntry?.v9TradeNotes||"";
+                        noteFallback=j?.v9TradeNotes||order?.journalEntry?.v9TradeNotes||order?.journalEntry?.preTradeNotes?.reason||"";
                       }
                       setTradeCard(r);
                       setTradeCardPreTags([...r.preTags]);
@@ -35689,8 +35693,10 @@ const TalariaV8bLive = () => {
               <div style={{ padding:"0 8px 6px", flexShrink:0 }}>
                 <div onClick={() => {
                     const list = screenshots.map((s) => ({ dataUrl: s.dataUrl, name: s.name || "" }));
+                    const trimmedNotes = String(notesText || "").trim();
                     if (typeof window !== "undefined") {
                       window.__talariaV9RailScreenshots = list.length ? list : null;
+                      window.__talariaV9RailTradeNotes = trimmedNotes || null;
                     }
                     v9SyncSlAdvToHiddenOrderPanel({
                       slAdvMode,

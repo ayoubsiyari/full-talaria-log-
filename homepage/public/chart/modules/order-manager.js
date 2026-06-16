@@ -3903,6 +3903,24 @@ class OrderManager {
             }));
         }
 
+        const posJe = position.journalEntry && typeof position.journalEntry === 'object'
+            ? position.journalEntry
+            : null;
+        if (posJe) {
+            const railNotes = String(posJe.v9TradeNotes || '').trim();
+            if (railNotes && !String(entry.v9TradeNotes || '').trim()) {
+                entry.v9TradeNotes = railNotes;
+            }
+            if (railNotes) {
+                const prevPre = entry.preTradeNotes && typeof entry.preTradeNotes === 'object'
+                    ? entry.preTradeNotes
+                    : {};
+                if (!String(prevPre.reason || '').trim()) {
+                    entry.preTradeNotes = { ...prevPre, reason: railNotes };
+                }
+            }
+        }
+
         const copyArr = (a) => (Array.isArray(a) ? a.slice() : null);
         if (!entry.bar_close_r) {
             const bc = copyArr(position.bar_close_r);
@@ -7946,6 +7964,10 @@ class OrderManager {
             ? String(userPre.setup).trim()
             : defaultSetup;
         const mergedPreNotes = userPre ? { ...userPre, setup: setupStr } : { setup: setupStr };
+        const railNotes = String(order.journalEntry?.v9TradeNotes || mergedPreNotes.reason || '').trim();
+        if (railNotes) {
+            mergedPreNotes.reason = railNotes;
+        }
         
         let journalEntry = {
             // Basic Trade Info
@@ -8019,6 +8041,7 @@ class OrderManager {
             // Notes
             preTradeNotes: mergedPreNotes,
             postTradeNotes: postTradeNotes,
+            v9TradeNotes: railNotes || order.journalEntry?.v9TradeNotes || null,
             
             // Screenshots
             entryScreenshot: order.entryScreenshot || null, // Captured on order placement
@@ -19298,6 +19321,48 @@ class OrderManager {
         }
     }
 
+    /**
+     * V9 React order rail: free-text pre-trade notes from the NOTES textarea.
+     * Consumed once per place — `window.__talariaV9RailTradeNotes` set before #placeOrderButton click.
+     */
+    _consumeV9RailTradeNotesForOrder(order, opts = {}) {
+        if (!order) return;
+        const onlyFirstSplit = opts.onlyIfFirstSplit === true;
+        if (onlyFirstSplit) {
+            const si = order.splitIndex;
+            if (si != null && Number(si) > 1) return;
+        }
+        try {
+            const raw = typeof window !== 'undefined' ? window.__talariaV9RailTradeNotes : null;
+            const notes = String(raw != null ? raw : '').trim();
+            if (typeof window !== 'undefined') window.__talariaV9RailTradeNotes = null;
+            if (!notes) return;
+            const prev = order.journalEntry && typeof order.journalEntry === 'object' ? order.journalEntry : {};
+            const prevPre = prev.preTradeNotes && typeof prev.preTradeNotes === 'object' ? prev.preTradeNotes : {};
+            const defaultSetup = this._getSessionDefaultTradeSetup();
+            order.journalEntry = {
+                ...prev,
+                v9TradeNotes: notes,
+                preTradeNotes: {
+                    ...prevPre,
+                    reason: notes,
+                    setup: (prevPre.setup && String(prevPre.setup).trim())
+                        ? String(prevPre.setup).trim()
+                        : defaultSetup,
+                },
+                timestamp: Date.now(),
+            };
+        } catch (_e) {
+            if (typeof window !== 'undefined') window.__talariaV9RailTradeNotes = null;
+        }
+    }
+
+    /** V9 rail screenshots + NOTES — consumed once per place. */
+    _consumeV9RailDraftForOrder(order, opts = {}) {
+        this._consumeRailScreenshotsForOrder(order, opts);
+        this._consumeV9RailTradeNotesForOrder(order, opts);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // MULTI-ENTRY UI SYSTEM — Panel-based multiple entry level management
     // ═══════════════════════════════════════════════════════════════════════
@@ -23647,7 +23712,7 @@ class OrderManager {
                             t._noTriggerBeforeTick = guardTick;
                         });
                     }
-                    if (idx === 0) this._consumeRailScreenshotsForOrder(order);
+                    if (idx === 0) this._consumeV9RailDraftForOrder(order);
                     this._applyPreTradeVariablesFromOrderPanel(order);
                     this._freezePlannedRRAtEntry(order);
                     if (this.orderService) {
@@ -24078,7 +24143,7 @@ class OrderManager {
             _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick
         };
 
-        this._consumeRailScreenshotsForOrder(order);
+        this._consumeV9RailDraftForOrder(order);
         this._applyPreTradeVariablesFromOrderPanel(order);
         this._freezePlannedRRAtEntry(order);
 
@@ -24256,7 +24321,7 @@ class OrderManager {
             scaleWithExisting: this.scaleNextOrder
         };
 
-        this._consumeRailScreenshotsForOrder(pendingOrder);
+        this._consumeV9RailDraftForOrder(pendingOrder);
         this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
         this._freezePlannedRRAtEntry(pendingOrder);
         
@@ -24331,7 +24396,7 @@ class OrderManager {
             scaleWithExisting: this.scaleNextOrder
         };
 
-        this._consumeRailScreenshotsForOrder(pendingOrder, { onlyIfFirstSplit: true });
+        this._consumeV9RailDraftForOrder(pendingOrder, { onlyIfFirstSplit: true });
         this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
         this._freezePlannedRRAtEntry(pendingOrder);
 
@@ -25293,7 +25358,12 @@ class OrderManager {
                 month: monthNames[openDate.getMonth()],
                 year: openDate.getFullYear(),
                 // Default empty notes (will be updated if user fills out modal)
-                preTradeNotes: position.preTradeNotes || {},
+                preTradeNotes: (() => {
+                    const base = position.journalEntry?.preTradeNotes || position.preTradeNotes || {};
+                    const notes = String(position.journalEntry?.v9TradeNotes || base.reason || '').trim();
+                    return notes ? { ...base, reason: notes } : { ...base };
+                })(),
+                v9TradeNotes: String(position.journalEntry?.v9TradeNotes || position.journalEntry?.preTradeNotes?.reason || '').trim() || null,
                 postTradeNotes: {},
                 tags: [],
                 rulesFollowed: null,
@@ -26004,7 +26074,10 @@ class OrderManager {
             _tpNoTriggerBeforeTime: currentCandle.t,
             _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
             strategyVariables: pendingOrder.strategyVariables || null,
-            railScreenshots: pendingOrder.railScreenshots || null
+            railScreenshots: pendingOrder.railScreenshots || null,
+            journalEntry: pendingOrder.journalEntry
+                ? JSON.parse(JSON.stringify(pendingOrder.journalEntry))
+                : undefined,
         };
 
         if (pendingOrder.plannedRRAtEntry != null) {
