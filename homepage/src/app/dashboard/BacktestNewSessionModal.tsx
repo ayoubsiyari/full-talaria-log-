@@ -936,7 +936,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                           {/* ─── Instruments + Date Range ─── */}
                           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:4}}>
                             {/* ── Full-width symbol display rectangle ── */}
-                            <div style={{background:c.el,border:`1px solid ${newSessMarketOpen?c.acB:c.brH}`,display:"flex",flexDirection:"column",cursor:"default",transition:"border-color 0.12s",width:"100%",boxSizing:"border-box"}}>
+                            <div style={{background:c.el,border:`1px solid ${(newSessSymPickerOpen||newSessSupPickerOpen)?c.acB:c.brH}`,display:"flex",flexDirection:"column",cursor:"default",transition:"border-color 0.12s",width:"100%",boxSizing:"border-box"}}>
                               {/* TRADING section */}
                               <div style={{padding:"5px 10px 0"}}>
                                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -970,8 +970,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               </div>
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start"}}>
                                 {/* Plus button — tall (2 tag rows) */}
-                                <div style={{flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();setNewSessMarketOpen(true);}}
+                                <div style={{position:"relative",flexShrink:0}}>
+                                  <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);setNewSessSupPickerOpen(false);}}}
                                     onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");e.currentTarget.style.filter="brightness(1.12)";}}
                                     onMouseLeave={e=>{setHov(null);e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
@@ -980,6 +980,43 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                       <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
+                                  {newSessSymPickerOpen&&(<>
+                                    <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setNewSessSymPickerOpen(false);}}/>
+                                    <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:newSessSymPickerPos.top,left:newSessSymPickerPos.left,width:160,maxHeight:240,display:"flex",flexDirection:"column",background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 8px 28px rgba(0,0,0,0.7)",zIndex:9999}}>
+                                      <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
+                                      <div style={{padding:"5px 8px",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
+                                        <input autoFocus value={newSessSymPickerSearch} onChange={e=>setNewSessSymPickerSearch(e.target.value)}
+                                          placeholder="Search symbols…"
+                                          style={{width:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:"border-box"}}/>
+                                      </div>
+                                      <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
+                                        {(()=>{
+                                          const catKey=catMap[newSessAssetClass]||newSessAssetClass;
+                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase())));
+                                          if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
+                                          return pool.map(s=>{
+                                            const isChk=newSessTickers.includes(s.sym);
+                                            const hk="spick_"+s.sym;const isH=hov===hk;
+                                            const bCol=isChk?c.acL:isH?c.tx:c.ts;
+                                            return(
+                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessTickers.length<10){setNewSessTickers(p=>[...p,s.sym]);}}}
+                                                onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
+                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessTickers.length>=10?0.35:1,background:isH&&(isChk||newSessTickers.length<10)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
+                                                <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
+                                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                  {!isChk&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1} fill="none" strokeLinecap="square" opacity={0.5}/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1} fill="none" strokeLinecap="square" opacity={0.5}/></>}
+                                                  {isChk&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
+                                                </svg>
+                                                {mkFlags(s.sym,10)}
+                                                <span style={{fontSize:10,fontWeight:isChk?700:500,color:isChk?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s.sym}</span>
+                                              </div>
+                                            );
+                                          });
+                                        })()}
+                                      </div>
+                                    </div>
+                                  </>)}
                                 </div>
                                 {/* Tags — 5 per row, max 2 rows (10 symbols) */}
                                 <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:3,alignContent:"flex-start"}}>
@@ -1027,8 +1064,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               </div>
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start",opacity:newSessSupportEnabled?1:0.35,pointerEvents:newSessSupportEnabled?"auto":"none",transition:"opacity 0.15s"}}>
                                 {/* Plus button — tall (2 tag rows) */}
-                                <div style={{flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();setNewSessMarketOpen(true);}}
+                                <div style={{position:"relative",flexShrink:0}}>
+                                  <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
                                     onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#a07000,#e8c252)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(200,150,0,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -1036,6 +1073,57 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                       <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
+                                  {newSessSupPickerOpen&&(<>
+                                    <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setNewSessSupPickerOpen(false);}}/>
+                                    <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:newSessSupPickerPos.top,left:newSessSupPickerPos.left,width:170,maxHeight:280,display:"flex",flexDirection:"column",background:c.sf,border:"1px solid rgba(232,194,82,0.22)",boxShadow:"0 8px 28px rgba(0,0,0,0.7)",zIndex:9999}}>
+                                      <div style={{height:2,background:"linear-gradient(90deg,rgba(232,194,82,0.3),rgba(232,194,82,0.8),rgba(232,194,82,0.3))",flexShrink:0}}/>
+                                      <div style={{display:"flex",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
+                                        {["Forex","Futures","Crypto","Stocks"].map(cat=>{
+                                          const isA=newSessSupPickerCat===cat;
+                                          const hk="supCatTab_"+cat;const isH=hov===hk;
+                                          return(
+                                            <div key={cat} onClick={()=>{setNewSessSupPickerCat(cat);setNewSessSupPickerSearch("");}}
+                                              onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
+                                              style={{flex:1,padding:"4px 0",textAlign:"center",fontSize:8,fontWeight:isA?700:500,color:isA?"rgba(232,194,82,0.9)":isH?c.tx:c.tm,cursor:"default",transition:"color 0.1s",position:"relative",fontFamily:F,letterSpacing:"0.04em"}}>
+                                              {cat}
+                                              {isA&&<div style={{position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:"linear-gradient(90deg,transparent,rgba(232,194,82,0.8),transparent)"}}/>}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      <div style={{padding:"5px 8px",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
+                                        <input autoFocus value={newSessSupPickerSearch} onChange={e=>setNewSessSupPickerSearch(e.target.value)}
+                                          placeholder="Search symbols…"
+                                          style={{width:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:"border-box"}}/>
+                                      </div>
+                                      <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
+                                        {(()=>{
+                                          const catKey=catMap[newSessSupPickerCat]||newSessSupPickerCat;
+                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase())));
+                                          if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
+                                          return pool.map(s=>{
+                                            const isChk=newSessSupportTickers.includes(s.sym);
+                                            const hk="suppick_"+s.sym;const isH=hov===hk;
+                                            const bCol=isChk?"rgba(232,194,82,0.9)":isH?c.tx:c.ts;
+                                            return(
+                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessSupportTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessSupportTickers.length<10){setNewSessSupportTickers(p=>[...p,s.sym]);}}}
+                                                onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
+                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessSupportTickers.length>=10?0.35:1,background:isH&&(isChk||newSessSupportTickers.length<10)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
+                                                <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
+                                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                                  {!isChk&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.5)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.5)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
+                                                  {isChk&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.9)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.9)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.15}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
+                                                </svg>
+                                                {mkFlags(s.sym,10)}
+                                                <span style={{fontSize:10,fontWeight:isChk?700:500,color:isChk?"rgba(232,194,82,0.9)":isH?c.tx:c.ts,fontFamily:F}}>{s.sym}</span>
+                                              </div>
+                                            );
+                                          });
+                                        })()}
+                                      </div>
+                                    </div>
+                                  </>)}
                                 </div>
                                 {/* Tags — 5 per row, max 2 rows (10 symbols) */}
                                 <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:3,alignContent:"flex-start"}}>
@@ -1165,295 +1253,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               })}
                             </div>
                           </div>
-                          {/* ── Market sub-window ── */}
-                            {newSessMarketOpen&&(
-                              <div style={{position:"fixed",inset:0,zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center"}}
-                                onClick={()=>setNewSessMarketOpen(false)}>
-                                <div onClick={e=>e.stopPropagation()}
-                                  style={{position:"relative",width:860,height:480,background:c.sf,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",animation:"tlrPopIn 0.18s ease",boxShadow:"0 24px 80px rgba(0,0,0,0.92)",fontFamily:F,overflow:"hidden"}}>
-                                  {/* Top accent */}
-                                  <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
-                                  {/* Header */}
-                                  <div style={{display:"flex",alignItems:"center",padding:"9px 14px",flexShrink:0}}>
-                                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" style={{marginRight:8,flexShrink:0}}><rect x="3" y="3" width="7" height="18" rx="0.8" stroke={c.acL} strokeWidth="1.5"/><rect x="14" y="8" width="7" height="13" rx="0.8" stroke={c.acL} strokeWidth="1.5"/><line x1="3" y1="12" x2="10" y2="12" stroke={c.acL} strokeWidth="1" opacity="0.45"/><line x1="14" y1="15" x2="21" y2="15" stroke={c.acL} strokeWidth="1" opacity="0.45"/></svg>
-                                    <span style={{fontSize:12,fontWeight:700,color:c.tx,flex:1}}>Configure Markets</span>
-                                    <div onClick={()=>setNewSessMarketOpen(false)}
-                                      onMouseEnter={()=>setHov("mktCfgX")} onMouseLeave={()=>setHov(null)}
-                                      style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:hov==="mktCfgX"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s"}}>
-                                      <I n="x" s={18} cl={hov==="mktCfgX"?c.rd:c.ts}/>
-                                    </div>
-                                  </div>
-                                  <div style={{height:1,background:c.br,flexShrink:0}}/>
-                                  {/* Body: two columns side by side */}
-                                  <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-
-                                    {/* ── LEFT: TRADING ── */}
-                                    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                                      {/* Column header */}
-                                      <div style={{height:34,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:`1px solid ${c.br}`}}>
-                                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                          <div style={{width:2,height:11,background:c.acL,boxShadow:`0 0 5px ${c.acG}`}}/>
-                                          <span style={{fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:F}}>Trading</span>
-                                          <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}
-                                            onMouseEnter={()=>setNewSessInfoHov("cfg-trading")}
-                                            onMouseLeave={()=>setNewSessInfoHov(null)}>
-                                            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={c.tm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",cursor:"default",flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                            {newSessInfoHov==="cfg-trading"&&(
-                                              <div style={{position:"absolute",left:0,top:"calc(100% + 6px)",background:c.el,border:`1px solid ${c.br}`,zIndex:200,whiteSpace:"nowrap",pointerEvents:"none"}}>
-                                                <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                                                <div style={{padding:"5px 10px",fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>Instruments you will actively trade — orders and P&L are tracked</div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                                          {newSessTickers.length>0&&(
-                                            <div onClick={()=>setNewSessTickers([])}
-                                              onMouseEnter={()=>setHov("mktTrdClr")} onMouseLeave={()=>setHov(null)}
-                                              style={{display:"flex",alignItems:"center",gap:3,cursor:"default",color:hov==="mktTrdClr"?c.rd:c.tm,transition:"color 0.1s"}}>
-                                              <I n="trashDraw" s={11} cl={hov==="mktTrdClr"?c.rd:c.tm}/>
-                                            </div>
-                                          )}
-                                          <span style={{fontSize:10,fontWeight:700,color:c.acL,fontFamily:F}}>{newSessTickers.length}<span style={{color:c.tm,fontWeight:500}}>/10</span></span>
-                                        </div>
-                                      </div>
-                                      {/* Selected chips strip — TRADING */}
-                                      <div style={{height:80,flexShrink:0,borderBottom:`1px solid ${c.br}`,padding:"6px 14px",display:"flex",flexWrap:"wrap",alignItems:"flex-start",alignContent:"flex-start",gap:4,overflow:"hidden"}}>
-                                        {newSessTickers.length===0?(
-                                          <span style={{fontSize:9,color:c.tm,fontFamily:F,fontStyle:"italic",whiteSpace:"nowrap"}}>No trading symbols selected</span>
-                                        ):newSessTickers.map(sym=>(
-                                          <div key={sym} style={{width:90,display:"flex",alignItems:"center",gap:3,padding:"2px 5px",background:"transparent",border:`1px solid rgba(140,160,255,0.28)`,flexShrink:0,overflow:"hidden"}}>
-                                            <div style={{flexShrink:0}}>{mkFlags(sym,10)}</div>
-                                            <span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sym}</span>
-                                            <span onClick={()=>setNewSessTickers(p=>p.filter(x=>x!==sym))} style={{fontSize:12,lineHeight:1,color:c.tm,cursor:"default",transition:"color 0.1s",flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                      {/* Category tabs — locked to selected market */}
-                                      {(()=>{
-                                        const mktTabs=["Forex","Futures","Crypto","Stocks"];
-                                        const mktIdx=mktTabs.indexOf(newSessAssetClass);
-                                        return(
-                                          <div style={{position:"relative",display:"flex",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                                            {mktTabs.map(a=>{
-                                              const isAct=newSessAssetClass===a;
-                                              const isLocked=!isAct;
-                                              return(
-                                                <div key={a}
-                                                  style={{flex:1,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:isAct?700:500,color:isAct?c.acL:"rgba(255,255,255,0.2)",cursor:"not-allowed",background:"transparent",transition:"color 0.12s",userSelect:"none",opacity:isLocked?0.45:1}}>
-                                                  {a}
-                                                </div>
-                                              );
-                                            })}
-                                            <div style={{position:"absolute",bottom:0,height:1.5,width:"25%",left:`${mktIdx*25}%`,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>
-                                          </div>
-                                        );
-                                      })()}
-                                      {/* Search */}
-                                      <div style={{padding:"7px 14px",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
-                                        <div style={{display:"flex",alignItems:"center",background:c.el,border:`1px solid ${newSessTickerFocus?c.acB:c.brH}`,height:25,padding:"0 8px",gap:5,transition:"border-color 0.12s"}}>
-                                          <svg width={9} height={9} viewBox="0 0 16 16" fill="none" style={{flexShrink:0,opacity:0.4}}><circle cx="7" cy="7" r="5" stroke={c.ts} strokeWidth="1.6"/><line x1="11" y1="11" x2="14" y2="14" stroke={c.ts} strokeWidth="1.6" strokeLinecap="round"/></svg>
-                                          <input value={newSessTickerInput} onChange={e=>setNewSessTickerInput(e.target.value.toUpperCase().replace(/[^A-Z0-9.]/g,""))}
-                                            onFocus={()=>setNewSessTickerFocus(true)} onBlur={()=>setNewSessTickerFocus(false)}
-                                            placeholder="Search…"
-                                            style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0}}/>
-                                          {newSessTickerInput&&<div onClick={()=>setNewSessTickerInput("")} style={{fontSize:13,color:c.tm,cursor:"default",lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color=c.ts} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</div>}
-                                        </div>
-                                      </div>
-                                      {/* Symbol list */}
-                                      {(()=>{
-                                        const primCat=catMap[newSessAssetClass]||newSessAssetClass;
-                                        const primList=allSymbols.filter(s=>s.cat===primCat&&(newSessTickerInput.trim()?s.sym.includes(newSessTickerInput.trim()):true));
-                                        return(
-                                          <div style={{flex:1,overflowY:"auto"}} className="tlr-scroll">
-                                            {primList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>No results</div>:primList.map(({sym})=>{
-                                              const isSel=newSessTickers.includes(sym);
-                                              const isOther=newSessSupportTickers.includes(sym);
-                                              const isMax=!isSel&&newSessTickers.length>=10;
-                                              const blocked=isOther||isMax;
-                                              return(
-                                                <div key={sym} onClick={()=>{if(blocked)return;if(isSel)setNewSessTickers(p=>p.filter(x=>x!==sym));else setNewSessTickers(p=>[...p,sym]);}}
-                                                  style={{display:"flex",alignItems:"center",padding:"5px 14px",cursor:blocked?"not-allowed":"default",position:"relative",background:"transparent",opacity:isOther?0.35:isMax?0.5:1,transition:"background 0.1s"}}
-                                                  onMouseEnter={e=>{if(!blocked)e.currentTarget.style.background="rgba(255,255,255,0.04)";}}
-                                                  onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
-                                                  {isSel&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                                  <div style={{width:10,height:10,flexShrink:0,marginRight:8}}>
-                                                    <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-                                                      <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isSel?c.acL:"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                      <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={isSel?c.acL:"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                      {isSel&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
-                                                    </svg>
-                                                  </div>
-                                                  <div style={{marginRight:8,flexShrink:0}}>{mkFlags(sym,12)}</div>
-                                                  <span style={{flex:1,fontSize:11,fontWeight:isSel?700:500,color:isSel?c.acL:c.ts,fontFamily:F}}>{sym}</span>
-                                                  {isOther&&<span style={{fontSize:8,fontWeight:700,color:"rgba(232,194,82,0.65)",fontFamily:F,flexShrink:0}}>SUPPORTING</span>}
-                                                  {isMax&&!isOther&&<span style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,flexShrink:0}}>MAX</span>}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
-
-                                    {/* Vertical divider */}
-                                    <div style={{width:1,flexShrink:0,background:`linear-gradient(180deg,transparent,${c.br} 12%,${c.br} 88%,transparent)`}}/>
-
-                                    {/* ── RIGHT: SUPPORTING ── */}
-                                    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                                      {/* Column header */}
-                                      <div style={{height:34,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:`1px solid ${c.br}`}}>
-                                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                          <div style={{width:2,height:11,background:newSessSupportEnabled?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.15)",boxShadow:newSessSupportEnabled?`0 0 5px rgba(232,194,82,0.35)`:"none",transition:"background 0.15s"}}/>
-                                          {/* Enable/disable checkbox */}
-                                          {(()=>{
-                                            const isH=hov==="mktSupEnable";
-                                            const on=newSessSupportEnabled;
-                                            const bCol=on?"rgba(232,194,82,0.85)":isH?c.ts:"rgba(140,160,255,0.22)";
-                                            return(
-                                              <div onClick={()=>setNewSessSupportEnabled(v=>!v)}
-                                                onMouseEnter={()=>setHov("mktSupEnable")} onMouseLeave={()=>setHov(null)}
-                                                style={{width:10,height:10,flexShrink:0,cursor:"default"}}>
-                                                <svg width={10} height={10} style={{display:"block",overflow:"visible"}}>
-                                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                  {!on&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
-                                                  {on&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.15}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
-                                                </svg>
-                                              </div>
-                                            );
-                                          })()}
-                                          <span style={{fontSize:9,fontWeight:800,color:newSessSupportEnabled?"rgba(232,194,82,0.9)":c.tm,letterSpacing:"0.1em",textTransform:"uppercase",fontFamily:F,transition:"color 0.15s"}}>Supporting</span>
-                                          <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}
-                                            onMouseEnter={()=>setNewSessInfoHov("cfg-supporting")}
-                                            onMouseLeave={()=>setNewSessInfoHov(null)}>
-                                            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={c.tm} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",cursor:"default",flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                            {newSessInfoHov==="cfg-supporting"&&(
-                                              <div style={{position:"absolute",left:0,top:"calc(100% + 6px)",background:c.el,border:`1px solid ${c.br}`,zIndex:200,whiteSpace:"nowrap",pointerEvents:"none"}}>
-                                                <div style={{height:2,background:`linear-gradient(90deg,rgba(232,194,82,0.3),rgba(232,194,82,0.8),rgba(232,194,82,0.3))`}}/>
-                                                <div style={{padding:"5px 10px",fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>View-only instruments for context — no orders, no P&L tracking</div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                                          {newSessSupportTickers.length>0&&(
-                                            <div onClick={()=>setNewSessSupportTickers([])}
-                                              onMouseEnter={()=>setHov("mktSupClr")} onMouseLeave={()=>setHov(null)}
-                                              style={{display:"flex",alignItems:"center",gap:3,cursor:"default",color:hov==="mktSupClr"?c.rd:c.tm,transition:"color 0.1s"}}>
-                                              <I n="trashDraw" s={11} cl={hov==="mktSupClr"?c.rd:c.tm}/>
-                                            </div>
-                                          )}
-                                          <span style={{fontSize:10,fontWeight:700,color:"rgba(232,194,82,0.9)",fontFamily:F}}>{newSessSupportTickers.length}<span style={{color:c.tm,fontWeight:500}}>/10</span></span>
-                                        </div>
-                                      </div>
-                                      {/* Column body — dimmed when supporting disabled */}
-                                      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",opacity:newSessSupportEnabled?1:0.3,pointerEvents:newSessSupportEnabled?"auto":"none",transition:"opacity 0.18s"}}>
-                                      {/* Selected chips strip — SUPPORTING */}
-                                      <div style={{height:80,flexShrink:0,borderBottom:`1px solid ${c.br}`,padding:"6px 14px",display:"flex",flexWrap:"wrap",alignItems:"flex-start",alignContent:"flex-start",gap:4,overflow:"hidden"}}>
-                                        {newSessSupportTickers.length===0?(
-                                          <span style={{fontSize:9,color:c.tm,fontFamily:F,fontStyle:"italic",whiteSpace:"nowrap"}}>No supporting symbols selected</span>
-                                        ):newSessSupportTickers.map(sym=>(
-                                          <div key={sym} style={{width:90,display:"flex",alignItems:"center",gap:3,padding:"2px 5px",background:"transparent",border:`1px solid rgba(232,194,82,0.3)`,flexShrink:0,overflow:"hidden"}}>
-                                            <div style={{flexShrink:0}}>{mkFlags(sym,10)}</div>
-                                            <span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sym}</span>
-                                            <span onClick={()=>setNewSessSupportTickers(p=>p.filter(x=>x!==sym))} style={{fontSize:12,lineHeight:1,color:c.tm,cursor:"default",transition:"color 0.1s",flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                      {/* Category tabs — gold accent */}
-                                      {(()=>{
-                                        const supTabs=["Forex","Futures","Crypto","Stocks"];
-                                        const supIdx=supTabs.indexOf(newSessSupportAssetClass);
-                                        return(
-                                          <div style={{position:"relative",display:"flex",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                                            {supTabs.map(a=>{
-                                              const isAct=newSessSupportAssetClass===a;
-                                              const hk=`mktSupTab-${a}`;
-                                              const isH=hov===hk;
-                                              return(
-                                                <div key={a} onClick={()=>{setNewSessSupportAssetClass(a);setNewSessSupportInput("");}}
-                                                  onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                                  style={{flex:1,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:isAct?700:500,color:isAct?"rgba(232,194,82,0.9)":isH?c.tx:c.ts,cursor:"default",background:isH&&!isAct?"rgba(255,255,255,0.04)":"transparent",transition:"color 0.12s,background 0.12s"}}>
-                                                  {a}
-                                                </div>
-                                              );
-                                            })}
-                                            <div style={{position:"absolute",bottom:0,height:1.5,width:"25%",left:`${supIdx*25}%`,transition:"left 0.22s cubic-bezier(0.4,0,0.2,1)",background:`linear-gradient(90deg,transparent,rgba(232,194,82,0.85),transparent)`,boxShadow:`0 0 6px rgba(232,194,82,0.4)`,pointerEvents:"none"}}/>
-                                          </div>
-                                        );
-                                      })()}
-                                      {/* Search */}
-                                      <div style={{padding:"7px 14px",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
-                                        <div style={{display:"flex",alignItems:"center",background:c.el,border:`1px solid ${newSessSupportFocus?"rgba(232,194,82,0.5)":c.brH}`,height:25,padding:"0 8px",gap:5,transition:"border-color 0.12s"}}>
-                                          <svg width={9} height={9} viewBox="0 0 16 16" fill="none" style={{flexShrink:0,opacity:0.4}}><circle cx="7" cy="7" r="5" stroke={c.ts} strokeWidth="1.6"/><line x1="11" y1="11" x2="14" y2="14" stroke={c.ts} strokeWidth="1.6" strokeLinecap="round"/></svg>
-                                          <input value={newSessSupportInput} onChange={e=>setNewSessSupportInput(e.target.value.toUpperCase().replace(/[^A-Z0-9.]/g,""))}
-                                            onFocus={()=>setNewSessSupportFocus(true)} onBlur={()=>setNewSessSupportFocus(false)}
-                                            placeholder="Search…"
-                                            style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0}}/>
-                                          {newSessSupportInput&&<div onClick={()=>setNewSessSupportInput("")} style={{fontSize:13,color:c.tm,cursor:"default",lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color=c.ts} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</div>}
-                                        </div>
-                                      </div>
-                                      {/* Symbol list */}
-                                      {(()=>{
-                                        const suppCat=catMap[newSessSupportAssetClass]||newSessSupportAssetClass;
-                                        const suppList=allSymbols.filter(s=>s.cat===suppCat&&(newSessSupportInput.trim()?s.sym.includes(newSessSupportInput.trim()):true));
-                                        return(
-                                          <div style={{flex:1,overflowY:"auto"}} className="tlr-scroll">
-                                            {suppList.length===0?<div style={{padding:"20px",fontSize:11,color:c.tm,textAlign:"center",fontFamily:F}}>No results</div>:suppList.map(({sym})=>{
-                                              const isSel=newSessSupportTickers.includes(sym);
-                                              const isOther=newSessTickers.includes(sym);
-                                              const isMax=!isSel&&newSessSupportTickers.length>=10;
-                                              const blocked=isOther||isMax;
-                                              return(
-                                                <div key={sym} onClick={()=>{if(blocked)return;if(isSel)setNewSessSupportTickers(p=>p.filter(x=>x!==sym));else setNewSessSupportTickers(p=>[...p,sym]);}}
-                                                  style={{display:"flex",alignItems:"center",padding:"5px 14px",cursor:blocked?"not-allowed":"default",position:"relative",background:"transparent",opacity:isOther?0.35:isMax?0.5:1,transition:"background 0.1s"}}
-                                                  onMouseEnter={e=>{if(!blocked)e.currentTarget.style.background="rgba(255,255,255,0.04)";}}
-                                                  onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
-                                                  {isSel&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,rgba(232,194,82,0.8),transparent)`,boxShadow:`0 0 6px rgba(232,194,82,0.4)`}}/>}
-                                                  <div style={{width:10,height:10,flexShrink:0,marginRight:8}}>
-                                                    <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-                                                      <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isSel?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                      <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={isSel?"rgba(232,194,82,0.85)":"rgba(140,160,255,0.22)"} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                      {isSel&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.85)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
-                                                    </svg>
-                                                  </div>
-                                                  <div style={{marginRight:8,flexShrink:0}}>{mkFlags(sym,12)}</div>
-                                                  <span style={{flex:1,fontSize:11,fontWeight:isSel?700:500,color:isSel?"rgba(232,194,82,0.9)":c.ts,fontFamily:F}}>{sym}</span>
-                                                  {isOther&&<span style={{fontSize:8,fontWeight:700,color:c.acL,fontFamily:F,flexShrink:0,opacity:0.7}}>TRADING</span>}
-                                                  {isMax&&!isOther&&<span style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F,flexShrink:0}}>MAX</span>}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        );
-                                      })()}
-                                      </div>{/* end body wrapper */}
-                                    </div>
-                                  </div>
-
-                                  {/* Bottom bar */}
-                                  <div style={{height:42,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderTop:`1px solid ${c.br}`,background:c.el}}>
-                                    <span style={{fontSize:10,color:c.tm,fontFamily:F}}>
-                                      {(newSessTickers.length+newSessSupportTickers.length)===0?"No markets selected":`${newSessTickers.length}/10 trading · ${newSessSupportTickers.length}/10 supporting`}
-                                    </span>
-                                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                      <div onClick={()=>setNewSessMarketOpen(false)}
-                                        onMouseEnter={()=>setHov("mktCfgCancel")} onMouseLeave={()=>setHov(null)}
-                                        style={{height:27,padding:"0 14px",display:"flex",alignItems:"center",background:hov==="mktCfgCancel"?"rgba(255,255,255,0.07)":"transparent",border:`1px solid ${c.brH}`,cursor:"default",fontSize:10,fontWeight:600,color:hov==="mktCfgCancel"?c.tx:c.ts,letterSpacing:"0.04em",fontFamily:F,transition:"all 0.12s"}}>
-                                        Cancel
-                                      </div>
-                                      <div onClick={()=>setNewSessMarketOpen(false)}
-                                        onMouseEnter={()=>setHov("mktCfgDone")} onMouseLeave={()=>setHov(null)}
-                                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:5,background:`linear-gradient(135deg,${c.ac},${c.acL})`,cursor:"default",fontSize:10,fontWeight:700,color:"#fff",letterSpacing:"0.05em",fontFamily:F,boxShadow:"0 2px 10px rgba(38,67,247,0.35)",filter:hov==="mktCfgDone"?"brightness(1.15)":"brightness(1)",transition:"filter 0.12s"}}>
-                                        <svg width={11} height={11} viewBox="0 0 12 12" fill="none"><path d="M1.5,6 L4.5,9.5 L10.5,2.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                        Done
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           {/* ─── Timezone row ─── */}
                           {(()=>{
                             const TZ_OPTS=[
