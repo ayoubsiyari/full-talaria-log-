@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
-import { computeOverlapRange, isoToDisplay } from "./backtestModal/dateRangeUtils";
+import { computeOverlapRange, isoToDisplay, spanFromApiFile } from "./backtestModal/dateRangeUtils";
 
 const F = "'Exo 2', sans-serif";
 
@@ -612,18 +612,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const MON_D = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   function datesFromSessionFile(f: Record<string, unknown> | null, sym: string) {
-    if (!f) {
-      const mock = availFiles.find(a => normSessionSym(a.ticker) === normSessionSym(sym));
-      return mock ? { from: mock.from, to: mock.to } : null;
+    const span = spanFromApiFile(f);
+    if (span) return span;
+    const name = f ? String(f.original_name || f.name || "") : "";
+    if (name) {
+      const m4 = name.match(/(\d{4})[-_](\d{4})/);
+      if (m4) return { from: `${m4[1]}-01-01`, to: `${m4[2]}-12-31` };
     }
-    if (f.start_ts && f.end_ts) {
-      const from = String(f.start_ts).split("T")[0];
-      const to = String(f.end_ts).split("T")[0];
-      if (from && to) return { from, to };
-    }
-    const name = String(f.original_name || f.name || "");
-    const m4 = name.match(/(\d{4})[-_](\d{4})/);
-    if (m4) return { from: `${m4[1]}-01-01`, to: `${m4[2]}-12-31` };
     const mock = availFiles.find(a => normSessionSym(a.ticker) === normSessionSym(sym));
     return mock ? { from: mock.from, to: mock.to } : null;
   }
@@ -636,7 +631,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       if (!span) return null;
       return { id: String(i), ticker: t, from: span.from, to: span.to };
     }).filter(Boolean);
-    if (files.length !== tickers.length) return { start: "", end: "", hasOverlap: false };
+    if (!files.length) return { start: "", end: "", hasOverlap: false };
+    if (tickers.length > 1 && files.length !== tickers.length) {
+      return { start: "", end: "", hasOverlap: false };
+    }
     return computeOverlapRange(files);
   }, [newSessTickers, newSessSymbol, sessionApiFiles]);
 

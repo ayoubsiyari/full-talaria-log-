@@ -7041,6 +7041,23 @@ def _dataset_file_health_for_session(
     return health, ready_tf
 
 
+def _dataset_coverage_span(agg_by_tf: dict[str, CSVAggregate]) -> dict[str, object] | None:
+    """First/last bar span for session date pickers (prefer 1m aggregate)."""
+    order: list[str] = ["1m"] + [tf for tf in DATASET_TIMEFRAMES if tf != "1m"]
+    for tf in order:
+        agg = agg_by_tf.get(tf)
+        if agg and agg.start_ts is not None and agg.end_ts is not None:
+            start_ms = float(agg.start_ts)
+            end_ms = float(agg.end_ts)
+            return {
+                "start_ts_ms": start_ms,
+                "end_ts_ms": end_ms,
+                "start_iso": _epoch_ms_to_iso_utc(start_ms),
+                "end_iso": _epoch_ms_to_iso_utc(end_ms),
+            }
+    return None
+
+
 def _dataset_chart_ready_state(db, file_id: int) -> tuple[int, bool]:
     """Count ready timeframes and whether binary integrity passes."""
     aggs_list = db.query(CSVAggregate).filter(CSVAggregate.file_id == int(file_id)).all()
@@ -18523,19 +18540,21 @@ async def get_files(
             )
             if health not in ("healthy", "partial"):
                 continue
-            out_files.append(
-                {
-                    "id": f.id,
-                    "original_name": f.original_name,
-                    "upload_date": f.upload_date.isoformat(),
-                    "row_count": f.row_count,
-                    "description": f.description,
-                    "ticker": ticker,
-                    "asset_class": asset_class,
-                    "health": health,
-                    "ready_timeframes": ready_tf,
-                }
-            )
+            row = {
+                "id": f.id,
+                "original_name": f.original_name,
+                "upload_date": f.upload_date.isoformat(),
+                "row_count": f.row_count,
+                "description": f.description,
+                "ticker": ticker,
+                "asset_class": asset_class,
+                "health": health,
+                "ready_timeframes": ready_tf,
+            }
+            coverage = _dataset_coverage_span(aggs_by_file.get(fid, {}))
+            if coverage:
+                row.update(coverage)
+            out_files.append(row)
         return {"files": out_files}
     finally:
         db.close()
