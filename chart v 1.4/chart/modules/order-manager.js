@@ -13806,12 +13806,7 @@ class OrderManager {
 
         buyTab.onclick = () => {
             applyOrderSideTabs('BUY');
-            // Reset TP/SL positioning flags when switching sides
-            this.tpManuallyPositioned = false;
-            this.slManuallyPositioned = false;
-            if (document.getElementById('multipleTPToggle')?.checked && this.tpTargets?.length) {
-                this.calculateTPTargetsFromNumber(this.tpTargets.length);
-            }
+            this._mirrorSlTpAcrossEntryOnSideSwitch();
             this.updatePlaceButtonText();
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
@@ -13820,12 +13815,7 @@ class OrderManager {
         
         sellTab.onclick = () => {
             applyOrderSideTabs('SELL');
-            // Reset TP/SL positioning flags when switching sides
-            this.tpManuallyPositioned = false;
-            this.slManuallyPositioned = false;
-            if (document.getElementById('multipleTPToggle')?.checked && this.tpTargets?.length) {
-                this.calculateTPTargetsFromNumber(this.tpTargets.length);
-            }
+            this._mirrorSlTpAcrossEntryOnSideSwitch();
             this.updatePlaceButtonText();
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
@@ -20551,6 +20541,87 @@ class OrderManager {
             if (avg > 0) return avg;
         }
         return main;
+    }
+
+    /**
+     * When BUY ↔ SELL toggles, reflect SL/TP across entry so distances stay the same
+     * but land on the correct side for the new direction (newPrice = 2×entry − oldPrice).
+     */
+    _mirrorSlTpAcrossEntryOnSideSwitch() {
+        let entryPrice = this._getReferenceEntryForOrderMath();
+        if (!(entryPrice > 0)) {
+            const candle = this.getCurrentCandle?.();
+            entryPrice = parseFloat(candle?.c ?? candle?.close ?? 0);
+        }
+        if (!(entryPrice > 0)) return;
+
+        const prec = this.getPricePrecision(entryPrice);
+        const mirror = (price) => {
+            const p = parseFloat(price);
+            if (!Number.isFinite(p) || p <= 0) return null;
+            return parseFloat((2 * entryPrice - p).toFixed(prec));
+        };
+
+        const setInputPrice = (id, mirrored) => {
+            if (mirrored == null || mirrored <= 0) return;
+            const el = document.getElementById(id);
+            if (!el) return;
+            const s = this.formatPrice(mirrored);
+            if (el.value === s) return;
+            el.value = s;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+
+        let mirroredAny = false;
+        const slEnabled = document.getElementById('enableSL')?.checked;
+        if (slEnabled) {
+            const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+            if (slPrice > 0) {
+                const m = mirror(slPrice);
+                if (m != null) {
+                    setInputPrice('slPrice', m);
+                    mirroredAny = true;
+                }
+            }
+        }
+
+        const tpEnabled = document.getElementById('enableTP')?.checked;
+        const multiTp = document.getElementById('multipleTPToggle')?.checked;
+        if (multiTp && Array.isArray(this.tpTargets) && this.tpTargets.length > 0) {
+            let changed = false;
+            for (const t of this.tpTargets) {
+                const p = parseFloat(t.price || 0);
+                if (p > 0) {
+                    const m = mirror(p);
+                    if (m != null) {
+                        t.price = m;
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) {
+                mirroredAny = true;
+                this._reorderTpTargetsByPriceForSide(this.tpTargets, this.orderSide);
+                this.renderTPTargets();
+                const topTp = this.tpTargets[this.tpTargets.length - 1]?.price;
+                if (topTp > 0) setInputPrice('tpPrice', topTp);
+            }
+        } else if (tpEnabled) {
+            const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+            if (tpPrice > 0) {
+                const m = mirror(tpPrice);
+                if (m != null) {
+                    setInputPrice('tpPrice', m);
+                    mirroredAny = true;
+                }
+            }
+        }
+
+        if (mirroredAny) {
+            this.slManuallyPositioned = true;
+            this.tpManuallyPositioned = true;
+        }
     }
 
     /**

@@ -936,8 +936,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                           {/* ─── Instruments + Date Range ─── */}
                           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:4}}>
                             {/* ── Full-width symbol display rectangle ── */}
-                            <div style={{background:c.el,border:`1px solid ${newSessMarketOpen?c.acB:c.brH}`,display:"flex",flexDirection:"column",cursor:"default",transition:"border-color 0.12s",width:"100%",boxSizing:"border-box"}}
-                              onClick={()=>setNewSessMarketOpen(true)}>
+                            <div style={{background:c.el,border:`1px solid ${newSessMarketOpen?c.acB:c.brH}`,display:"flex",flexDirection:"column",cursor:"default",transition:"border-color 0.12s",width:"100%",boxSizing:"border-box"}}>
                               {/* TRADING section */}
                               <div style={{padding:"5px 10px 0"}}>
                                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -971,8 +970,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               </div>
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start"}}>
                                 {/* Plus button — tall (2 tag rows) */}
-                                <div style={{position:"relative",flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
+                                <div style={{flexShrink:0}}>
+                                  <div onClick={e=>{e.stopPropagation();setNewSessMarketOpen(true);}}
                                     onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");e.currentTarget.style.filter="brightness(1.12)";}}
                                     onMouseLeave={e=>{setHov(null);e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
@@ -981,44 +980,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                       <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
-                                  {newSessSymPickerOpen&&(<>
-                                    <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setNewSessSymPickerOpen(false);}}/>
-                                    <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:newSessSymPickerPos.top,left:newSessSymPickerPos.left,width:160,maxHeight:240,display:"flex",flexDirection:"column",background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 8px 28px rgba(0,0,0,0.7)",zIndex:9999}}>
-                                      <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
-                                      <div style={{padding:"5px 8px",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                                        <input autoFocus value={newSessSymPickerSearch} onChange={e=>setNewSessSymPickerSearch(e.target.value)}
-                                          placeholder="Search symbols…"
-                                          style={{width:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:"border-box"}}/>
-                                      </div>
-                                      <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
-                                        {(()=>{
-                                          const catKey=catMap[newSessAssetClass]||newSessAssetClass;
-                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase())));
-                                          if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
-                                          return pool.map(s=>{
-                                            const isChk=newSessTickers.includes(s.sym);
-                                            const hk="spick_"+s.sym;const isH=hov===hk;
-                                            const bCol=isChk?c.acL:isH?c.tx:c.ts;
-                                            return(
-                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessTickers.length<10){setNewSessTickers(p=>[...p,s.sym]);}}}
-                                                onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessTickers.length>=10?0.35:1,background:isH&&(isChk||newSessTickers.length<10)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
-                                                {/* TlChk-style bracket checkbox */}
-                                                <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-                                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                  {!isChk&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1} fill="none" strokeLinecap="square" opacity={0.5}/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1} fill="none" strokeLinecap="square" opacity={0.5}/></>}
-                                                  {isChk&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/><circle cx={5} cy={5} r={1.6} fill={c.acL}/></>}
-                                                </svg>
-                                                {mkFlags(s.sym,10)}
-                                                <span style={{fontSize:10,fontWeight:isChk?700:500,color:isChk?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s.sym}</span>
-                                              </div>
-                                            );
-                                          });
-                                        })()}
-                                      </div>
-                                    </div>
-                                  </>)}
                                 </div>
                                 {/* Tags — 5 per row, max 2 rows (10 symbols) */}
                                 <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:3,alignContent:"flex-start"}}>
@@ -1066,8 +1027,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               </div>
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start",opacity:newSessSupportEnabled?1:0.35,pointerEvents:newSessSupportEnabled?"auto":"none",transition:"opacity 0.15s"}}>
                                 {/* Plus button — tall (2 tag rows) */}
-                                <div style={{position:"relative",flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
+                                <div style={{flexShrink:0}}>
+                                  <div onClick={e=>{e.stopPropagation();setNewSessMarketOpen(true);}}
                                     onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#a07000,#e8c252)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(200,150,0,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -1075,58 +1036,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                       <line x1="1" y1="6" x2="11" y2="6" stroke="rgba(255,255,255,0.96)" strokeWidth="1.8" strokeLinecap="round"/>
                                     </svg>
                                   </div>
-                                  {newSessSupPickerOpen&&(<>
-                                    <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setNewSessSupPickerOpen(false);}}/>
-                                    <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:newSessSupPickerPos.top,left:newSessSupPickerPos.left,width:170,maxHeight:280,display:"flex",flexDirection:"column",background:c.sf,border:"1px solid rgba(232,194,82,0.22)",boxShadow:"0 8px 28px rgba(0,0,0,0.7)",zIndex:9999}}>
-                                      <div style={{height:2,background:"linear-gradient(90deg,rgba(232,194,82,0.3),rgba(232,194,82,0.8),rgba(232,194,82,0.3))",flexShrink:0}}/>
-                                      {/* Category tabs */}
-                                      <div style={{display:"flex",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                                        {["Forex","Futures","Crypto","Stocks"].map(cat=>{
-                                          const isA=newSessSupPickerCat===cat;
-                                          const hk="supCatTab_"+cat;const isH=hov===hk;
-                                          return(
-                                            <div key={cat} onClick={()=>{setNewSessSupPickerCat(cat);setNewSessSupPickerSearch("");}}
-                                              onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                              style={{flex:1,padding:"4px 0",textAlign:"center",fontSize:8,fontWeight:isA?700:500,color:isA?"rgba(232,194,82,0.9)":isH?c.tx:c.tm,cursor:"default",transition:"color 0.1s",position:"relative",fontFamily:F,letterSpacing:"0.04em"}}>
-                                              {cat}
-                                              {isA&&<div style={{position:"absolute",bottom:0,left:"10%",right:"10%",height:1,background:"linear-gradient(90deg,transparent,rgba(232,194,82,0.8),transparent)"}}/>}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                      <div style={{padding:"5px 8px",borderBottom:`1px solid ${c.br}`,flexShrink:0}}>
-                                        <input autoFocus value={newSessSupPickerSearch} onChange={e=>setNewSessSupPickerSearch(e.target.value)}
-                                          placeholder="Search symbols…"
-                                          style={{width:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:600,fontFamily:F,padding:0,boxSizing:"border-box"}}/>
-                                      </div>
-                                      <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
-                                        {(()=>{
-                                          const catKey=catMap[newSessSupPickerCat]||newSessSupPickerCat;
-                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase())));
-                                          if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
-                                          return pool.map(s=>{
-                                            const isChk=newSessSupportTickers.includes(s.sym);
-                                            const hk="suppick_"+s.sym;const isH=hov===hk;
-                                            const bCol=isChk?"rgba(232,194,82,0.9)":isH?c.tx:c.ts;
-                                            return(
-                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessSupportTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessSupportTickers.length<10){setNewSessSupportTickers(p=>[...p,s.sym]);}}}
-                                                onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessSupportTickers.length>=10?0.35:1,background:isH&&(isChk||newSessSupportTickers.length<10)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
-                                                <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-                                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-                                                  {!isChk&&isH&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.5)" strokeWidth={1} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.5)" strokeWidth={1} fill="none" strokeLinecap="square"/></>}
-                                                  {isChk&&<><path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(232,194,82,0.9)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(232,194,82,0.9)" strokeWidth={1.3} fill="none" strokeLinecap="square"/><circle cx={5} cy={5} r={2.8} fill="rgba(232,194,82,0.85)" opacity={0.15}/><circle cx={5} cy={5} r={1.6} fill="rgba(232,194,82,0.85)"/></>}
-                                                </svg>
-                                                {mkFlags(s.sym,10)}
-                                                <span style={{fontSize:10,fontWeight:isChk?700:500,color:isChk?"rgba(232,194,82,0.9)":isH?c.tx:c.ts,fontFamily:F}}>{s.sym}</span>
-                                              </div>
-                                            );
-                                          });
-                                        })()}
-                                      </div>
-                                    </div>
-                                  </>)}
                                 </div>
                                 {/* Tags — 5 per row, max 2 rows (10 symbols) */}
                                 <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:3,alignContent:"flex-start"}}>
@@ -2246,6 +2155,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                 </div>
               </div>
             )}
+          </div>
+  );
+}
+
       <SessionDateCalendar
         open={newSessCalOpen}
         pos={newSessCalPos}

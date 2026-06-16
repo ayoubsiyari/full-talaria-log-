@@ -9172,6 +9172,40 @@ function v9GetCurrentMarketPrice(om) {
   }
 }
 
+/** Entry anchor for mirroring SL/TP when toggling BUY ↔ SELL. */
+function v9ResolveDraftEntryPriceForMirror(om, entryRows) {
+  const fromRow = parseFloat(entryRows?.[0]?.price ?? "0");
+  if (Number.isFinite(fromRow) && fromRow > 0) return fromRow;
+  if (typeof document !== "undefined") {
+    const h = parseFloat(document.getElementById("orderEntryPrice")?.value ?? "0");
+    if (Number.isFinite(h) && h > 0) return h;
+  }
+  return v9GetCurrentMarketPrice(om);
+}
+
+/** Reflect a price level across entry (same pip distance, opposite side). */
+function v9MirrorPriceAcrossEntry(price, entryPx, om) {
+  const p = parseFloat(price);
+  let e = parseFloat(entryPx);
+  if (!Number.isFinite(p) || p <= 0) return price;
+  if (!Number.isFinite(e) || e <= 0) {
+    e = v9GetCurrentMarketPrice(om);
+    if (!Number.isFinite(e) || e <= 0) return price;
+  }
+  const prec = typeof om?.getPricePrecision === "function" ? om.getPricePrecision(e) : 5;
+  const mirrored = parseFloat((2 * e - p).toFixed(prec));
+  const fmt = typeof om?.formatPrice === "function" ? om.formatPrice(mirrored) : null;
+  return fmt != null ? String(fmt) : String(mirrored);
+}
+
+function v9FlipSlTpRowsForSideChange(om, entryRows, slRows, tpRows) {
+  const entryPx = v9ResolveDraftEntryPriceForMirror(om, entryRows);
+  const mirror = (px) => v9MirrorPriceAcrossEntry(px, entryPx, om);
+  const nextSl = slRows.map((r) => ({ ...r, price: mirror(r.price) }));
+  const nextTp = tpRows.map((r) => ({ ...r, price: mirror(r.price) }));
+  return { nextSl, nextTp };
+}
+
 /** Tick-sized band: one step off live price → Limit/Stop (OM uses 1.5× pip for typed entry). */
 function v9InferOrderTypeFromEntry(entryPrice, currentPrice, orderSide, om) {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) return "market";
@@ -33902,7 +33936,15 @@ const TalariaV8bLive = () => {
           {/* 3 — BUY / SELL */}
           <div style={{ display:"flex", flexShrink:0, position:"relative" }}>
             {["BUY","SELL"].map((s,i) => { const side=s.toLowerCase(); const a=buySell===side; const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
-              <button type="button" key={s} onClick={()=>{ setBuySell(side); clickHiddenOrderSide(side); }}
+              <button type="button" key={s} onClick={()=>{
+                  if (buySell === side) return;
+                  const omFlip = typeof window !== "undefined" ? window.chart?.orderManager : null;
+                  const { nextSl, nextTp } = v9FlipSlTpRowsForSideChange(omFlip, entryRows, slRows, tpRows);
+                  setSlRows(nextSl);
+                  setTpRows(nextTp);
+                  setBuySell(side);
+                  clickHiddenOrderSide(side);
+                }}
                 onMouseEnter={()=>setSwHov(`bs-${s}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:34, border:"none", borderRight:i===0?"1px solid rgba(140,160,255,0.08)":"none", position:"relative",
                          background:a?(s==="BUY"?c.gnD:c.rdD):isH?(s==="BUY"?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"):"transparent",
