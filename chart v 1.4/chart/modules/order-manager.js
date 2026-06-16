@@ -41323,7 +41323,12 @@ class OrderManager {
         const tagText = String(o.tagText || '');
         const detailText = o.detailText != null && o.detailText !== '' ? String(o.detailText) : null;
         const detailColor = o.detailColor || this._orderLevelDetailColor(detailText, th.text);
-        const shellOpacity = isPreview ? 0.6 : 1;
+        const onRrTool = !!o.rrToolLabel;
+        const shellOpacity = onRrTool ? 1 : (isPreview ? 0.6 : 1);
+        const bgFill = onRrTool
+            ? (th.light ? 'rgba(232, 235, 246, 0.98)' : 'rgba(15, 17, 25, 0.98)')
+            : th.bg;
+        const shellRx = onRrTool ? 3 : 0;
         const font = this._orderLevelLabelFontFamily();
 
         const measure = parentGroup.append('text').style('visibility', 'hidden').attr('font-size', fontSize).attr('font-family', font);
@@ -41348,16 +41353,17 @@ class OrderManager {
             .attr('class', 'order-level-toast-bg')
             .attr('x', 0).attr('y', 0)
             .attr('width', totalW).attr('height', height)
-            .attr('fill', th.bg)
+            .attr('fill', bgFill)
             .attr('stroke', th.border)
             .attr('stroke-width', 1)
-            .attr('rx', 0);
+            .attr('rx', shellRx);
 
         shell.append('rect')
             .attr('class', 'order-level-toast-accent')
             .attr('x', 0).attr('y', 0)
             .attr('width', stripeW).attr('height', height)
-            .attr('fill', accent);
+            .attr('fill', accent)
+            .attr('rx', onRrTool ? 3 : 0);
 
         shell.append('text')
             .attr('class', 'order-level-toast-tag')
@@ -41415,16 +41421,19 @@ class OrderManager {
      */
     buildRrToolLevelToastInGroup(parentGroup, opts = {}) {
         const o = opts || {};
+        const rrOpts = {
+            rrToolLabel: true,
+            height: o.height || 24,
+            smallLabel: !!o.smallLabel,
+            minWidth: o.minWidth,
+        };
         if (o.tagText != null) {
             return this._buildOrderLevelToastLabelInGroup(parentGroup, {
                 tagText: String(o.tagText),
                 detailText: o.detailText != null && o.detailText !== '' ? String(o.detailText) : null,
                 detailColor: o.detailColor || null,
                 accent: o.accent || this._tradeMarkerToastTheme().accentDefault,
-                isPreview: true,
-                height: o.height || 24,
-                smallLabel: !!o.smallLabel,
-                minWidth: o.minWidth,
+                ...rrOpts,
             });
         }
         const label = o.label != null ? String(o.label) : '';
@@ -41435,15 +41444,22 @@ class OrderManager {
         const tagSeg = segments[0] || { text: label, minWidth: 72 };
         const detailSeg = segments.length > 1 ? segments[1] : null;
         const accent = this._accentColorForTradeMarkerTag(label, color);
+        let detailText = detailSeg?.text ?? null;
+        const tagText = tagSeg.text;
+        // Entry rows already embed lot size in tag ("LIMIT BUY 0.93") — skip duplicate detail "0.93".
+        if (detailText && tagText) {
+            const tag = String(tagText).trim();
+            const det = String(detailText).trim();
+            if (det === tag || tag.endsWith(` ${det}`) || tag.endsWith(det)) {
+                detailText = null;
+            }
+        }
         return this._buildOrderLevelToastLabelInGroup(parentGroup, {
-            tagText: tagSeg.text,
-            detailText: detailSeg?.text ?? null,
+            tagText,
+            detailText,
             detailColor: detailSeg?.textColor ?? null,
             accent,
-            isPreview: true,
-            height: o.height || 24,
-            smallLabel: !!o.smallLabel,
-            minWidth: tagSeg.minWidth,
+            ...rrOpts,
         });
     }
 
