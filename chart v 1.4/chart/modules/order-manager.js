@@ -1319,6 +1319,7 @@ class OrderManager {
         const high = Number.parseFloat(bar.h);
         const low = Number.parseFloat(bar.l);
         if (![high, low].every(Number.isFinite)) return;
+        const barQ = this._barQuotesForSltp(position, high, low, bgOpen);
         const barTime = Number(bar.t) || undefined;
         if (barTime != null && position._beTriggeredBarT != null && Number(position._beTriggeredBarT) === Number(barTime)) {
             return;
@@ -1335,14 +1336,14 @@ class OrderManager {
                 _bgBuyTpSorted.forEach((target, index) => {
                     if (!target || target.hit) return;
                     const tp = Number.parseFloat(target.price);
-                    if (!Number.isFinite(tp) || high < tp) return;
+                    if (!Number.isFinite(tp) || barQ.bidHigh < tp) return;
                     const slBgBuy = Number.parseFloat(position.stopLoss);
                     if (Number.isFinite(slBgBuy) && tp <= slBgBuy) return; // trailing SL already above this TP rung (BUY)
                     const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
                     this._pushSplitGroupMultiTpClosesFromHit(position, target, index, fillPx, positionsToClose, queuedSplitTpKeys, barTime);
                 });
                 const sl = Number.parseFloat(position.stopLoss);
-                if (!skipSlBgAfterTrail && Number.isFinite(sl) && low <= sl) {
+                if (!skipSlBgAfterTrail && Number.isFinite(sl) && barQ.bidLow <= sl) {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
                         : (Number.isFinite(low) ? Math.min(sl, low) : sl);
@@ -1350,7 +1351,7 @@ class OrderManager {
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
-                if (!skipSlBgAfterTrail && Number.isFinite(sl) && low <= sl) {
+                if (!skipSlBgAfterTrail && Number.isFinite(sl) && barQ.bidLow <= sl) {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
                         : (Number.isFinite(low) ? Math.min(sl, low) : sl);
@@ -1358,7 +1359,7 @@ class OrderManager {
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     const slBgBuy1 = Number.parseFloat(position.stopLoss);
-                    if (Number.isFinite(tp) && high >= tp && (!Number.isFinite(slBgBuy1) || tp > slBgBuy1)) {
+                    if (Number.isFinite(tp) && barQ.bidHigh >= tp && (!Number.isFinite(slBgBuy1) || tp > slBgBuy1)) {
                         const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
                         positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
@@ -1371,14 +1372,14 @@ class OrderManager {
                 _bgSellTpSorted.forEach((target, index) => {
                     if (!target || target.hit) return;
                     const tp = Number.parseFloat(target.price);
-                    if (!Number.isFinite(tp) || low > tp) return;
+                    if (!Number.isFinite(tp) || barQ.askLow > tp) return;
                     const slBgSell = Number.parseFloat(position.stopLoss);
                     if (Number.isFinite(slBgSell) && tp >= slBgSell) return; // trailing SL already below this TP rung (SELL)
                     const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
                     this._pushSplitGroupMultiTpClosesFromHit(position, target, index, fillPx, positionsToClose, queuedSplitTpKeys, barTime);
                 });
                 const sl = Number.parseFloat(position.stopLoss);
-                if (!skipSlBgAfterTrail && Number.isFinite(sl) && high >= sl) {
+                if (!skipSlBgAfterTrail && Number.isFinite(sl) && barQ.askHigh >= sl) {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
                         : (Number.isFinite(high) ? Math.max(sl, high) : sl);
@@ -1386,7 +1387,7 @@ class OrderManager {
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
-                if (!skipSlBgAfterTrail && Number.isFinite(sl) && high >= sl) {
+                if (!skipSlBgAfterTrail && Number.isFinite(sl) && barQ.askHigh >= sl) {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
                         : (Number.isFinite(high) ? Math.max(sl, high) : sl);
@@ -1394,7 +1395,7 @@ class OrderManager {
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     const slBgSell1 = Number.parseFloat(position.stopLoss);
-                    if (Number.isFinite(tp) && low <= tp && (!Number.isFinite(slBgSell1) || tp < slBgSell1)) {
+                    if (Number.isFinite(tp) && barQ.askLow <= tp && (!Number.isFinite(slBgSell1) || tp < slBgSell1)) {
                         const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
                         positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
@@ -1533,6 +1534,44 @@ class OrderManager {
         return Number.isFinite(exitPx) ? exitPx : mid;
     }
 
+    /**
+     * Chart OHLC is mid/last. MT5: long SL/TP use BID; short SL/TP use ASK.
+     */
+    _halfSpreadForCosts(position, refPrice) {
+        if (!this._sessionTradingCostsEnabled()) return 0;
+        const half = this._halfSpreadPriceDistance(position, refPrice);
+        return Number.isFinite(half) && half > 0 ? half : 0;
+    }
+
+    _bidFromMid(px, position, refPrice) {
+        const p = Number(px);
+        if (!Number.isFinite(p)) return p;
+        const half = this._halfSpreadForCosts(position, refPrice ?? p);
+        return half > 0 ? p - half : p;
+    }
+
+    _askFromMid(px, position, refPrice) {
+        const p = Number(px);
+        if (!Number.isFinite(p)) return p;
+        const half = this._halfSpreadForCosts(position, refPrice ?? p);
+        return half > 0 ? p + half : p;
+    }
+
+    _barQuotesForSltp(position, high, low, open) {
+        const h = Number(high);
+        const l = Number(low);
+        const o = Number(open);
+        const ref = Number.isFinite(h) && Number.isFinite(l) ? (h + l) / 2 : h;
+        return {
+            bidHigh: this._bidFromMid(h, position, ref),
+            bidLow: this._bidFromMid(l, position, ref),
+            askHigh: this._askFromMid(h, position, ref),
+            askLow: this._askFromMid(l, position, ref),
+            bidOpen: Number.isFinite(o) ? this._bidFromMid(o, position, ref) : o,
+            askOpen: Number.isFinite(o) ? this._askFromMid(o, position, ref) : o,
+        };
+    }
+
     /** Last resampled close from a panel chart showing this ticker (same TF as main). */
     _markFromPanelDataLastClose(tickerNorm) {
         const T = this._normalizeTicker(tickerNorm);
@@ -1658,8 +1697,9 @@ class OrderManager {
      * @param {number} level     - the price level to test
      * @param {'above'|'below'} dir - 'above' if trigger is price >= level,
      *                                'below' if trigger is price <= level
+     * @param {object} [position] - when set, MT5 bid/ask quote adjustment on OHLC
      */
-    _tickAnimOverridesGuard(guardTick, candle, level, dir) {
+    _tickAnimOverridesGuard(guardTick, candle, level, dir, position) {
         const rs = this._resolveTickAnimReplaySystem();
         if (!rs) return false;
         const lv = Number(level);
@@ -1678,8 +1718,19 @@ class OrderManager {
         const candlePlayback = !!rs.isActive && mode === 'candle';
 
         if (candlePlayback) {
-            const h = Number.parseFloat(candle.h);
-            const l = Number.parseFloat(candle.l);
+            let h = Number.parseFloat(candle.h);
+            let l = Number.parseFloat(candle.l);
+            if (position && this._sessionTradingCostsEnabled()) {
+                const ref = Number.isFinite(h) && Number.isFinite(l) ? (h + l) / 2 : h;
+                const isBuy = String(position.type || position.direction || 'BUY').toUpperCase() === 'BUY';
+                if (isBuy) {
+                    h = this._bidFromMid(h, position, ref);
+                    l = this._bidFromMid(l, position, ref);
+                } else {
+                    h = this._askFromMid(h, position, ref);
+                    l = this._askFromMid(l, position, ref);
+                }
+            }
             if (dir === 'above') return Number.isFinite(h) && h >= lv;
             return Number.isFinite(l) && l <= lv;
         }
@@ -26219,6 +26270,7 @@ class OrderManager {
             }
             const markForUnrealized = this._resolveUnrealizedMarkPrice(position, currentCandle);
             const markPx = Number.isFinite(markForUnrealized) ? markForUnrealized : Number.parseFloat(currentPrice);
+            const barQ = this._barQuotesForSltp(position, high, low, open);
             if (position._trailSlAccLow != null && Number.isFinite(markPx)) {
                 position._trailSlAccLow = Math.min(position._trailSlAccLow, markPx);
             }
@@ -26257,9 +26309,9 @@ class OrderManager {
                     if (position.breakevenSettings.mode === 'rr') {
                         const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
-                        shouldTrigger = (high - triggerEntry) >= triggerDist;
+                        shouldTrigger = (barQ.bidHigh - triggerEntry) >= triggerDist;
                     } else if (position.breakevenSettings.mode === 'pips') {
-                        const currentPipsProfit = (high - triggerEntry) / posPipSize;
+                        const currentPipsProfit = (barQ.bidHigh - triggerEntry) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
                         shouldTrigger = this._replayCandlePlaybackActive()
@@ -26323,7 +26375,7 @@ class OrderManager {
                 // Check for step-based trailing stop activation and adjustment
                 if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.disabledByManual && !position.trailingStop.beSupersedesTrailing) {
                     // Use HIGH for BUY trailing (matches TP hit detection logic)
-                    const trailPrice = high;
+                    const trailPrice = barQ.bidHigh;
                     const trailDyn = this._getTrailingDynamicsForPosition(position);
                     const tsEff = trailDyn
                         ? { ...position.trailingStop, activationThreshold: trailDyn.activationThreshold, stepSize: trailDyn.stepSize }
@@ -26445,10 +26497,10 @@ class OrderManager {
                         const tpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
                         let tpTgtHit;
                         if (tpTgtGuarded) {
-                            tpTgtHit = this._tickAnimOverridesGuard(target._noTriggerBeforeTick, currentCandle, target.price, 'above');
+                            tpTgtHit = this._tickAnimOverridesGuard(target._noTriggerBeforeTick, currentCandle, target.price, 'above', position);
                             if (!tpTgtHit) return;
                         } else {
-                            tpTgtHit = high >= target.price;
+                            tpTgtHit = barQ.bidHigh >= target.price;
                         }
                         if (tpTgtHit && !suppressTpHitsWhileDraggingTp) {
                             const markPx = Number(currentPrice);
@@ -26497,18 +26549,18 @@ class OrderManager {
                         position._slNoTriggerBeforeTick = undefined;
                     }
                     const effLowForSl = (position._trailSlAccLow != null && Number.isFinite(position._trailSlAccLow))
-                        ? position._trailSlAccLow
-                        : low;
+                        ? this._bidFromMid(position._trailSlAccLow, position, (high + low) / 2)
+                        : barQ.bidLow;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         const slHit = buySLGuarded
-                            ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below'))
+                            ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below', position))
                             : (position.stopLoss && effLowForSl <= position.stopLoss);
                         const _slBuy1 = Number(position.stopLoss);
                         const _tpBuy1 = Number(position.takeProfit);
                         const tpOkBuy = Number.isFinite(_tpBuy1) && _tpBuy1 > 0 && (!Number.isFinite(_slBuy1) || _tpBuy1 > _slBuy1);
                         const tpHit = buyTPGuarded
-                            ? (position.takeProfit && tpOkBuy && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'above'))
-                            : (position.takeProfit && tpOkBuy && high >= position.takeProfit);
+                            ? (position.takeProfit && tpOkBuy && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'above', position))
+                            : (position.takeProfit && tpOkBuy && barQ.bidHigh >= position.takeProfit);
                         if (slHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
@@ -26530,7 +26582,7 @@ class OrderManager {
                     } else {
                         // For multiple TPs, still check SL
                         const multiSlHit = buySLGuarded
-                            ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below'))
+                            ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below', position))
                             : (position.stopLoss && effLowForSl <= position.stopLoss);
                         if (multiSlHit) {
                             position._slNoTriggerBeforeTime = null;
@@ -26586,9 +26638,9 @@ class OrderManager {
                     if (position.breakevenSettings.mode === 'rr') {
                         const riskDist = Math.abs(triggerEntry - position.stopLoss);
                         const triggerDist = position.breakevenSettings.value * riskDist;
-                        shouldTrigger = (triggerEntry - low) >= triggerDist;
+                        shouldTrigger = (triggerEntry - barQ.askLow) >= triggerDist;
                     } else if (position.breakevenSettings.mode === 'pips') {
-                        const currentPipsProfit = (triggerEntry - low) / posPipSize;
+                        const currentPipsProfit = (triggerEntry - barQ.askLow) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
                         shouldTrigger = this._replayCandlePlaybackActive()
@@ -26652,7 +26704,7 @@ class OrderManager {
                 // Check for step-based trailing stop activation and adjustment
                 if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.disabledByManual && !position.trailingStop.beSupersedesTrailing) {
                     // Use LOW for SELL trailing (matches SL hit detection logic)
-                    const trailPrice = low;
+                    const trailPrice = barQ.askLow;
                     const trailDynSell = this._getTrailingDynamicsForPosition(position);
                     const tsEffSell = trailDynSell
                         ? { ...position.trailingStop, activationThreshold: trailDynSell.activationThreshold, stepSize: trailDynSell.stepSize }
@@ -26769,10 +26821,10 @@ class OrderManager {
                         const sellTpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
                         let sellTpTgtHit;
                         if (sellTpTgtGuarded) {
-                            sellTpTgtHit = this._tickAnimOverridesGuard(target._noTriggerBeforeTick, currentCandle, target.price, 'below');
+                            sellTpTgtHit = this._tickAnimOverridesGuard(target._noTriggerBeforeTick, currentCandle, target.price, 'below', position);
                             if (!sellTpTgtHit) return;
                         } else {
-                            sellTpTgtHit = low <= target.price;
+                            sellTpTgtHit = barQ.askLow <= target.price;
                         }
                         if (sellTpTgtHit && !suppressTpHitsWhileDraggingTp) {
                             const markPx = Number(currentPrice);
@@ -26821,18 +26873,18 @@ class OrderManager {
                         position._slNoTriggerBeforeTick = undefined;
                     }
                     const effHighForSl = (position._trailSlAccHigh != null && Number.isFinite(position._trailSlAccHigh))
-                        ? position._trailSlAccHigh
-                        : high;
+                        ? this._askFromMid(position._trailSlAccHigh, position, (high + low) / 2)
+                        : barQ.askHigh;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         const slHitSell = sellSLGuarded
-                            ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above'))
+                            ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above', position))
                             : (position.stopLoss && effHighForSl >= position.stopLoss);
                         const _slSell1 = Number(position.stopLoss);
                         const _tpSell1 = Number(position.takeProfit);
                         const tpOkSell = Number.isFinite(_tpSell1) && _tpSell1 > 0 && (!Number.isFinite(_slSell1) || _tpSell1 < _slSell1);
                         const tpHitSell = sellTPGuarded
-                            ? (position.takeProfit && tpOkSell && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'below'))
-                            : (position.takeProfit && tpOkSell && low <= position.takeProfit);
+                            ? (position.takeProfit && tpOkSell && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'below', position))
+                            : (position.takeProfit && tpOkSell && barQ.askLow <= position.takeProfit);
                         if (slHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
@@ -26854,7 +26906,7 @@ class OrderManager {
                     } else {
                         // For multiple TPs, still check SL
                         const multiSlHitSell = sellSLGuarded
-                            ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above'))
+                            ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above', position))
                             : (position.stopLoss && effHighForSl >= position.stopLoss);
                         if (multiSlHitSell) {
                             position._slNoTriggerBeforeTime = null;
@@ -27218,7 +27270,9 @@ class OrderManager {
             return;
         }
         
-        const execClosePrice = this._applyHalfSpreadExitPrice(closePrice, position.type, position);
+        const execClosePrice = (hitType === 'SL' || hitType === 'BE' || hitType === 'TP' || hitType === 'TP-PARTIAL' || hitType === 'STOP_OUT')
+            ? Number(closePrice)
+            : this._applyHalfSpreadExitPrice(closePrice, position.type, position);
 
         // Spread-adjusted exit + round-trip commission on every close (matches chart labels / milestone spec).
         const gross = this.estimateOpenLegPnLSlice(position, execClosePrice, closeQuantity);
