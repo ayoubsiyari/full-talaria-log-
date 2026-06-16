@@ -3701,12 +3701,13 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.group.selectAll('g.rr-tp-mini-pct-controls').raise();
         this.group.selectAll('g.rr-entry-mini-qty-controls').raise();
 
-        if (om && typeof om._refreshLevelCtrlHoverIfNeeded === 'function' && this.chart) {
-            if (typeof om._ensureLevelCtrlHover === 'function') {
-                try { om._ensureLevelCtrlHover(this.chart); } catch (_e) { /* ignore */ }
+        const omHover = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+        if (omHover && typeof omHover._refreshLevelCtrlHoverIfNeeded === 'function' && this.chart) {
+            if (typeof omHover._ensureLevelCtrlHover === 'function') {
+                try { omHover._ensureLevelCtrlHover(this.chart); } catch (_e) { /* ignore */ }
             }
             requestAnimationFrame(() => {
-                try { om._refreshLevelCtrlHoverIfNeeded(this.chart); } catch (_e) { /* ignore */ }
+                try { omHover._refreshLevelCtrlHoverIfNeeded(this.chart); } catch (_e) { /* ignore */ }
             });
         }
 
