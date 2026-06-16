@@ -567,6 +567,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
               return merged;
             })(),
             futuresMargins: newSessFuturesData,
+            /** Session spread input = distance from mid to bid OR ask (not full bid↔ask width). */
+            spread_semantics: "mid_to_side",
           }
         : null,
       prop_rules: sessTradingMode === "prop" ? {

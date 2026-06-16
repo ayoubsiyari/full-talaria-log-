@@ -567,6 +567,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
               return merged;
             })(),
             futuresMargins: newSessFuturesData,
+            /** Session spread input = distance from mid to bid OR ask (not full bid↔ask width). */
+            spread_semantics: "mid_to_side",
           }
         : null,
       prop_rules: sessTradingMode === "prop" ? {
@@ -1677,8 +1679,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               </div>
                             );
                             const costMeta={
-                              Forex:   {color:c.ts,label:"FOREX",   spreadUnit:"pips",   commUnit:"$/lot RT",commLabel:"Commission",spreadStep:0.1, commStep:0.01, levOpts:["1:1","1:10","1:30","1:50","1:100","1:200","1:500"],defLev:"1:500",perSymComm:false},
-                              Futures: {color:c.ts,label:"FUTURES",spreadUnit:"ticks",  commUnit:"$/RT",   commLabel:"Commission",spreadStep:1,   commStep:0.01, levOpts:[],                                                 defLev:"1:20", perSymComm:true, hideLev:true},
+                              Forex:   {color:c.ts,label:"FOREX",   spreadUnit:"pips (mid→side)",   commUnit:"$/lot RT",commLabel:"Commission",spreadStep:0.1, commStep:0.01, levOpts:["1:1","1:10","1:30","1:50","1:100","1:200","1:500"],defLev:"1:500",perSymComm:false},
+                              Futures: {color:c.ts,label:"FUTURES",spreadUnit:"ticks (mid→side)",  commUnit:"$/RT",   commLabel:"Commission",spreadStep:1,   commStep:0.01, levOpts:[],                                                 defLev:"1:20", perSymComm:true, hideLev:true},
                               Stocks:  {color:c.ts,label:"STOCKS", spreadUnit:"$/share",commUnit:"$/share",commLabel:"Commission",spreadStep:0.01,commStep:0.001,levOpts:["1:1","1:2","1:3","1:5","1:10"],                   defLev:"1:5",  perSymComm:false,hideLev:true},
                               Crypto:  {color:c.ts,label:"CRYPTO", spreadUnit:"%",      commUnit:"%",      commLabel:"Taker Fee",  spreadStep:0.001,commStep:0.01,levOpts:["1:1","1:2","1:5","1:10","1:20","1:25","1:50","1:75","1:100","1:125"],defLev:"1:20",perSymComm:false},
                             };

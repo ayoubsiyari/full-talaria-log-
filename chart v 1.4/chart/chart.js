@@ -22008,20 +22008,24 @@ class Chart {
         const spreadUnits = Number.parseFloat(row?.spread_pips ?? row?.spreadPips ?? row?.spread ?? 0) || 0;
         if (!(spreadUnits > 0)) return null;
 
+        const semantics =
+            session?.trading_costs?.spread_semantics === 'mid_to_side' ? 'mid_to_side' : 'bid_to_ask';
+        const mult = semantics === 'mid_to_side' ? 1 : 0.5;
+
         let half = 0;
         if (window.marketCalcEngine && sym) {
             try {
                 const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
                 if (calc?.specs?.type === 'futures' && Number(calc.specs.tickSize) > 0) {
-                    half = (spreadUnits / 2) * calc.specs.tickSize;
+                    half = spreadUnits * mult * calc.specs.tickSize;
                 } else if (Number(calc?.specs?.pipSize) > 0) {
-                    half = (spreadUnits / 2) * calc.specs.pipSize;
+                    half = spreadUnits * mult * calc.specs.pipSize;
                 }
             } catch (_) { /* ignore */ }
         }
         if (!(half > 0)) {
             const pipS = Number.parseFloat(row?.pip_size ?? row?.pipSize ?? 0.0001) || 0.0001;
-            half = (spreadUnits / 2) * pipS;
+            half = spreadUnits * mult * pipS;
         }
         if (!(half > 0)) return null;
         return { bid: mid - half, ask: mid + half, half, spreadUnits };

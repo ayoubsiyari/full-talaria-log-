@@ -2030,7 +2030,26 @@ class OrderManager {
         return spread;
     }
 
-    /** Half-spread as a price distance (uses tickSize for futures, pipSize otherwise). */
+    /**
+     * `mid_to_side`: spread input = pips/ticks from mid to bid OR ask (MT5-style per side).
+     * `bid_to_ask`: legacy — input was full bid↔ask width (we used half each side).
+     */
+    _getSpreadSemantics() {
+        const tc = this.chart?.backtestingSession?.trading_costs;
+        if (tc?.spread_semantics === 'mid_to_side') return 'mid_to_side';
+        if (tc?.spread_semantics === 'bid_to_ask') return 'bid_to_ask';
+        return 'bid_to_ask';
+    }
+
+    _spreadUnitsToPriceOffset(spreadUnits, unitSize) {
+        const u = Number(spreadUnits);
+        const step = Number(unitSize);
+        if (!(u > 0) || !(step > 0)) return 0;
+        const mult = this._getSpreadSemantics() === 'mid_to_side' ? 1 : 0.5;
+        return u * mult * step;
+    }
+
+    /** One-side spread offset from mid (pips/ticks per session input semantics). */
     _halfSpreadPriceDistance(positionOrSettings, markPrice) {
         const spreadUnits = this._getSpreadPipsForPosition(positionOrSettings);
         if (!(spreadUnits > 0)) return 0;
@@ -2040,18 +2059,18 @@ class OrderManager {
             try {
                 const calc = window.marketCalcEngine.getCalculator(t, this.marketType);
                 if (calc?.specs?.type === 'futures' && Number(calc.specs.tickSize) > 0) {
-                    return (spreadUnits / 2) * calc.specs.tickSize;
+                    return this._spreadUnitsToPriceOffset(spreadUnits, calc.specs.tickSize);
                 }
                 if (Number(calc?.specs?.pipSize) > 0) {
-                    return (spreadUnits / 2) * calc.specs.pipSize;
+                    return this._spreadUnitsToPriceOffset(spreadUnits, calc.specs.pipSize);
                 }
             } catch (_) { /* fall through */ }
         }
         const pipS = this._getPositionPipSize(positionOrSettings);
-        return (spreadUnits / 2) * pipS;
+        return this._spreadUnitsToPriceOffset(spreadUnits, pipS);
     }
 
-    /** Worse fill on entry: BUY pays ask (+half spread), SELL receives bid (−half spread). */
+    /** Worse fill on entry: BUY pays ask (+offset), SELL receives bid (−offset). */
     _applyHalfSpreadEntryPrice(midPrice, side, positionOrSettings) {
         const mid = Number(midPrice);
         if (!Number.isFinite(mid)) return midPrice;
@@ -2770,7 +2789,7 @@ class OrderManager {
             : '—';
         const commStr = costsOn && Number.isFinite(comm) && comm > 0 ? `$${comm.toFixed(2)}` : '—';
         el.innerHTML = `
-            <span title="Typical spread for this pair (session instrument)">Spread: <strong>${spreadStr}</strong> ${pipUnit}</span>
+            <span title="Distance from mid to bid/ask per side (not full bid↔ask width)">Spread: <strong>${spreadStr}</strong> ${pipUnit}</span>
             <span style="opacity:0.45;margin:0 5px;">·</span>
             <span title="Commission per lot per side (per fill)">Comm: <strong>${commStr}</strong> / lot / side</span>
         `;
