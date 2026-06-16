@@ -333,106 +333,12 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     );
   };
 
-  function normSessionSym(t: string) {
-    return String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
-  }
-
-  async function resolveInstrumentsForTickers(tickers: string[]) {
-    const unique = [...new Set(tickers.map((t) => String(t || "").trim()).filter(Boolean))];
-    if (!unique.length) {
-      return {
-        instruments: {} as Record<string, Record<string, unknown>>,
-        files: [] as { id: string | number; name: string }[],
-        primaryFileId: null as string | number | null,
-        fileName: null as string | null,
-        missing: [] as string[],
-      };
-    }
-
-    const res = await fetch("/api/files?session_ready=1", { credentials: "include" });
-    if (!res.ok) {
-      throw new Error("Could not load your chart datasets. Check that you are logged in.");
-    }
-    const payload = await res.json();
-    const apiFiles = Array.isArray(payload?.files) ? payload.files : [];
-
-    const instruments: Record<string, Record<string, unknown>> = {};
-    const files: { id: string | number; name: string }[] = [];
-    const missing: string[] = [];
-
-    unique.forEach((sym) => {
-      const key = normSessionSym(sym);
-      const match = apiFiles.find((f: Record<string, unknown>) => {
-        const ft = normSessionSym(String(f.ticker || ""));
-        const fromName = normSessionSym(String(f.original_name || f.name || "").replace(/\.csv$/i, ""));
-        return ft === key || fromName === key || fromName.startsWith(key) || key.startsWith(ft);
-      });
-      if (!match) {
-        missing.push(sym);
-        return;
-      }
-      const assetKey =
-        String(match.asset_class || newSessAssetClass || "Forex").includes("Future") ? "Futures"
-        : String(match.asset_class || "").includes("Crypto") ? "Crypto"
-        : String(match.asset_class || "").includes("Stock") ? "Stocks"
-        : "Forex";
-      const def = instrDefaults[assetKey] || instrDefaults.Forex;
-      const rowKey = normSessionSym(sym);
-      const row: Record<string, unknown> = {
-        ticker: sym,
-        symbol: sym,
-        fileId: match.id,
-        fileName: match.original_name || match.name,
-        asset: assetKey,
-        asset_class: assetKey,
-        ...def,
-      };
-      instruments[rowKey] = row;
-      files.push({
-        id: match.id as string | number,
-        name: String(match.original_name || match.name || sym),
-      });
-    });
-
-    return {
-      instruments,
-      files,
-      primaryFileId: files[0]?.id ?? null,
-      fileName: files[0]?.name ?? null,
-      missing,
-    };
-  }
-
-  async function buildChartConfig(): Promise<Record<string, unknown>> {
-    const primary = newSessTickers[0] || newSessSymbol || "NQ";
+  function buildChartConfig(): Record<string, unknown> { const primary = newSessTickers[0] || newSessSymbol || "NQ";
     const sessionName = newSessName.trim() || "Backtest Session";
     const startDate = (newSessStart || "").split("T")[0] || "";
     const endDate = (newSessEnd || "").split("T")[0] || "";
     const modeType = sessTradingMode === "prop" ? "propfirm" : "standard";
-    const tickers = newSessTickers.length > 0 ? [...newSessTickers] : [primary];
-
-    const resolved = await resolveInstrumentsForTickers(tickers);
-    if (!resolved.primaryFileId) {
-      const miss = resolved.missing.length ? resolved.missing.join(", ") : tickers.join(", ");
-      throw new Error(
-        `No chart data file found for ${miss}. Upload a CSV dataset for these symbols first (Chart → Data), then start the session again.`
-      );
-    }
-    if (resolved.missing.length > 0) {
-      throw new Error(
-        `Missing chart data for: ${resolved.missing.join(", ")}. Upload datasets for every selected symbol or remove them from the session.`
-      );
-    }
-
-    const instruments = Object.fromEntries(
-      Object.entries(resolved.instruments).map(([k, row]) => {
-        if (!newSessTradingCostsEnabled) {
-          return [k, { ...row, spread: 0, commission: 0 }];
-        }
-        return [k, row];
-      })
-    );
-
+    
     return {
       type: modeType,
       sessionName,
@@ -444,14 +350,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       asset_class: newSessAssetClass,
       trading_mode: sessTradingMode,
       symbol: newSessTickers.length === 1 ? newSessTickers[0] : newSessTickers.length > 1 ? `${newSessTickers.length} symbols` : primary,
-      fileId: resolved.primaryFileId,
-      fileName: resolved.fileName,
-      files: resolved.files,
-      instruments,
-      symbols: tickers.map((sym) => ({
-        symbolName: sym,
-        fileId: instruments[normSessionSym(sym)]?.fileId,
-      })),
+      symbols: newSessTickers.map(sym => ({ symbolName: sym })),
       startDate,
       endDate,
       startBalance: String(newSessCapital || "10000"),
@@ -506,14 +405,17 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
         p1Amt: { dl: sessP1DailyLossAmt, dd: sessP1MaxDDAmt, pt: sessP1ProfitTargetAmt },
         p2Amt: { dl: sessP2DailyLossAmt, dd: sessP2MaxDDAmt, pt: sessP2ProfitTargetAmt },
       } : null,
+       instruments: newSessTradingCostsEnabled
+        ? instrRows
+        : instrRows.map((row: Record<string, unknown>) => ({ ...row, spread: 0, commission: 0 })),
+   
     };
   }
 
   async function persistSession(): Promise<number | null> {
     const sessionName = newSessName.trim() || "Backtest Session";
     const session_type = sessTradingMode === "prop" ? "propfirm" : "personal";
-    const config = await buildChartConfig();
-    const res = await fetch("/api/sessions", {
+    const config = buildChartConfig();    const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
