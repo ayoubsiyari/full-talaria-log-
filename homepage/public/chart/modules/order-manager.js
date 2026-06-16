@@ -11968,8 +11968,7 @@ class OrderManager {
                 const level = this.multiEntryLevels[0];
                 const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                 const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
-                // Level number (E1) so the primary entry badge matches the RR drawing + placed line.
-                const fullLabel = `E1 ${orderTypeRaw.toUpperCase()} ${sideUpper} ${lotSize}`;
+                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${lotSize}`;
                 return [
                     {
                         text: fullLabel,
@@ -12048,8 +12047,7 @@ class OrderManager {
             const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
             const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
 
-            // Level number (E1/E2/…) so split entry badges match the RR drawing + placed line.
-            const fullLabel = `E${levelNum} ${splitOrderType} ${sideUpper} ${lotSize}`;
+            const fullLabel = `${splitOrderType} ${sideUpper} ${lotSize}`;
             
             return [
                 {
@@ -23380,6 +23378,15 @@ class OrderManager {
             let weightedPriceSum = 0;
             let lotsSum = 0;
 
+            // Main/primary leg = panel entry (lowest price for BUY, highest for SELL) — matches
+            // syncMultiEntryToSplitEntries() preview. Only this leg may fill at market; every other
+            // ladder leg keeps its side-based stop/limit type even when it sits within a pip of spot.
+            const _mainLegPrice = (() => {
+                const prices = validLevels.map(l => Number(l.price)).filter(Number.isFinite);
+                if (!prices.length) return null;
+                return (this.orderSide === 'SELL') ? Math.max(...prices) : Math.min(...prices);
+            })();
+
             validLevels.forEach((level, idx) => {
                 const slPips = slEnabled && slPrice > 0
                     ? Math.abs(level.price - slPrice) / pipSz
@@ -23398,11 +23405,14 @@ class OrderManager {
                 if (qtyRounded <= 0) return;
 
                 const effectiveOrderType = (() => {
-                    // Panel "Market" must only fill legs at/near spot; other ladder prices stay limit/stop.
+                    // Panel "Market" must only fill the MAIN leg at spot; every other ladder price
+                    // stays a pending limit/stop (by side) even if it is within a pip of current
+                    // price — otherwise a near-spot STOP/LIMIT leg gets silently turned into a
+                    // market fill, collapsing the ladder onto the market price.
                     const pip = pipSz || this.pipSize || 0.0001;
-                    const atMarket = Number.isFinite(level.price) && Number.isFinite(currentPrice)
-                        && Math.abs(level.price - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
-                    if (this.orderType === 'market' && atMarket) return 'market';
+                    const isMainLeg = _mainLegPrice != null && Number.isFinite(level.price)
+                        && Math.abs(level.price - _mainLegPrice) <= Math.max(pip * 0.25, Math.abs(_mainLegPrice) * 1e-10);
+                    if (this.orderType === 'market' && isMainLeg) return 'market';
                     if (this.orderSide === 'BUY') return level.price > currentPrice ? 'stop' : 'limit';
                     return level.price < currentPrice ? 'stop' : 'limit';
                 })();
@@ -29840,18 +29850,13 @@ class OrderManager {
             .attr('width', 3)
             .style('pointer-events', 'none');
 
-        // Split-entry legs keep their ladder level number (E1, E2, …) when filled, matching
-        // the RR drawing, the preview, and the pending-line badges.
-        const filledLevelPrefix = (order.isSplitEntry && order.splitIndex != null)
-            ? `E${order.splitIndex} `
-            : '';
         const labelText = chart.svg.append('text')
             .attr('class', `order-label-text order-${order.id}`)
             .attr('font-size', '11px')
             .attr('font-weight', '700')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
-            .text(`${filledLevelPrefix}${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
+            .text(`${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
 
         const arrow = chart.svg.append('text')
             .attr('class', `order-arrow order-${order.id}`)
@@ -31306,18 +31311,12 @@ class OrderManager {
         
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'LIMIT' : 'STOP';
         const directionLabel = pendingOrder.direction;
-        // Split-entry legs carry their ladder level number (E1, E2, …) so the placed
-        // entry lines keep the same identity as the RR-tool drawing and the numbered
-        // TP lines (TP1/TP2/…). Single (non-split) orders have no level prefix.
-        const entryLevelPrefix = (pendingOrder.isSplitEntry && pendingOrder.splitIndex != null)
-            ? `E${pendingOrder.splitIndex} `
-            : '';
         const labelText = chart.svg.append('text')
             .attr('class', `pending-order-label-text pending-${pendingOrder.id}`)
             .attr('font-size', '11px')
             .attr('font-weight', '700')
             .style('cursor', 'pointer')
-            .text(`${entryLevelPrefix}${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
+            .text(`${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
 
         this._styleLegacyOrderLevelToastChrome(
             { labelBox, labelText, labelAccent },
@@ -31456,7 +31455,7 @@ class OrderManager {
                     pendingOrder.orderType = newType;
                 }
 
-                const typeLabel = `${entryLevelPrefix}${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${dragStartQty.toFixed(2)}`;
+                const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${dragStartQty.toFixed(2)}`;
                 labelText.text(typeLabel);
                 self._drawExecutedOrderConnectors(chart);
             })
@@ -31489,7 +31488,7 @@ class OrderManager {
                 }
 
                 pendingOrder.quantity = self._getPendingPlacedQuantity(pendingOrder);
-                const finalTypeLabel = `${entryLevelPrefix}${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
+                const finalTypeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
                 labelText.text(finalTypeLabel);
 
                 // Redraw targets to update P&L with new lot size
