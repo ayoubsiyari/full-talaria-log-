@@ -5,6 +5,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
+import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
+import { computeOverlapRange, isoToDisplay } from "./backtestModal/dateRangeUtils";
 
 const F = "'Exo 2', sans-serif";
 
@@ -606,6 +608,66 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       window.alert(`Failed to save session: ${e?.message || e}`);
     }
   };
+
+  const MON_D = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  function datesFromSessionFile(f: Record<string, unknown> | null, sym: string) {
+    if (!f) {
+      const mock = availFiles.find(a => normSessionSym(a.ticker) === normSessionSym(sym));
+      return mock ? { from: mock.from, to: mock.to } : null;
+    }
+    if (f.start_ts && f.end_ts) {
+      const from = String(f.start_ts).split("T")[0];
+      const to = String(f.end_ts).split("T")[0];
+      if (from && to) return { from, to };
+    }
+    const name = String(f.original_name || f.name || "");
+    const m4 = name.match(/(\d{4})[-_](\d{4})/);
+    if (m4) return { from: `${m4[1]}-01-01`, to: `${m4[2]}-12-31` };
+    const mock = availFiles.find(a => normSessionSym(a.ticker) === normSessionSym(sym));
+    return mock ? { from: mock.from, to: mock.to } : null;
+  }
+
+  const sessDateOverlap = useMemo(() => {
+    const tickers = newSessTickers.length ? newSessTickers : (newSessSymbol ? [newSessSymbol] : []);
+    if (!tickers.length) return { start: "", end: "", hasOverlap: false };
+    const files = tickers.map((t, i) => {
+      const span = datesFromSessionFile(findApiFileForSymbol(t, sessionApiFiles), t);
+      if (!span) return null;
+      return { id: String(i), ticker: t, from: span.from, to: span.to };
+    }).filter(Boolean);
+    if (files.length !== tickers.length) return { start: "", end: "", hasOverlap: false };
+    return computeOverlapRange(files);
+  }, [newSessTickers, newSessSymbol, sessionApiFiles]);
+
+  const todayIso = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  const calMinIso = useMemo(() => {
+    const base = sessDateOverlap.hasOverlap ? sessDateOverlap.start : "1990-01-01";
+    if (newSessCalTarget === "end" && newSessStart && newSessStart > base) return newSessStart;
+    return base;
+  }, [sessDateOverlap, newSessCalTarget, newSessStart]);
+
+  const calMaxIso = useMemo(() => (sessDateOverlap.hasOverlap ? sessDateOverlap.end : todayIso), [sessDateOverlap, todayIso]);
+
+  const handleSessCalSelect = useCallback((iso: string) => {
+    const label = isoToDisplay(iso, MON_D);
+    if (newSessCalTarget === "start") {
+      setNewSessStart(iso);
+      setNewSessStartInput(label);
+      if (newSessEnd && newSessEnd < iso) {
+        setNewSessEnd("");
+        setNewSessEndInput("");
+      }
+    } else if (!newSessStart || iso >= newSessStart) {
+      setNewSessEnd(iso);
+      setNewSessEndInput(label);
+    }
+    setNewSessActivePreset(null);
+  }, [newSessCalTarget, newSessStart, newSessEnd]);
 
   const startNewSession = async () => {
     if (!isValid2) return;

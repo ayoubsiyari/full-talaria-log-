@@ -28323,8 +28323,30 @@ const TalariaV8bLive = () => {
                         }
                         setSlRows([{ id: 0, price: slStr }]);
                         setSlEnabled(true);
-                        setTpRows([{ id: 0, price: tpStr, qty: "100", enabled: true }]);
+                        const omTpTargets = Array.isArray(om.tpTargets) ? om.tpTargets : [];
+                        const mtpOn = !!document.getElementById("multipleTPToggle")?.checked;
+                        if (mtpOn && omTpTargets.length > 1) {
+                          const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
+                          const mirrorSizeMode =
+                            pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
+                          const symType = om.marketType === "futures" ? "futures" : "forex";
+                          setTpRows(omTpTargets.map((t, ti) => ({
+                            id: t.id != null ? t.id : ti,
+                            price: String(t.price ?? tpStr),
+                            qty: v9OmTpTargetToReactQty(om, ti, mirrorSizeMode, symType),
+                            enabled: true,
+                          })));
+                          setPanelMode("advanced");
+                        } else {
+                          setTpRows([{ id: 0, price: tpStr, qty: "100", enabled: true }]);
+                        }
                         setBuySell(isLong ? "buy" : "sell");
+                        requestAnimationFrame(() => {
+                          om.updatePreviewLines?.();
+                          if (om.chart && typeof om.chart.updateSVGPointerEvents === "function") {
+                            om.chart.updateSVGPointerEvents();
+                          }
+                        });
                       } catch(err){ console.error('[V9 RR Set Order]', err); }
                     };
                     const delay = alreadyOpen ? 50 : 350;
