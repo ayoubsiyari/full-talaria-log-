@@ -28430,6 +28430,14 @@ class OrderManager {
                 console.log(`📊 Order #${orderId} closed, post-exit tracking until ${new Date(_reanchoredEndTime).toLocaleTimeString()} (anchor: ${new Date(_postExitAnchor).toISOString()})`);
             }
         }
+
+        if (this.mfeMaeTrackingEnabled !== false && position.mfe != null && position.mae != null) {
+            try {
+                this.drawMfeMaeMarkers(position);
+            } catch (err) {
+                console.warn('MFE/MAE marker draw on close failed:', err);
+            }
+        }
         
         // Show trade journal modal for post-trade notes
         // Get P&L from pendingJournalEntry if it exists (for scaled/split trades)
@@ -36371,7 +36379,7 @@ class OrderManager {
 
         const barClamped = Math.max(lo, Math.min(hi, price));
 
-        const yPrice = yPxForPrice(barClamped);
+        const yPrice = yPxForPrice(price) ?? yPxForPrice(barClamped);
         const wickHigh = yPxForPrice(candle.h);
         const wickLow = yPxForPrice(candle.l);
         if (yPrice == null || wickHigh == null || wickLow == null) return null;
@@ -36688,7 +36696,6 @@ class OrderManager {
      * Journal can list MFE/MAE while DOM markers were removed — this keeps chart and journal in sync.
      */
     _redrawMfeMaeMarkersFromState() {
-        return;
         const rows = [];
         const seen = new Set();
         const push = (row) => {
@@ -36794,7 +36801,8 @@ class OrderManager {
      * Draw MFE/MAE markers on chart (aligned with entry-marker coordinate system).
      */
     drawMfeMaeMarkers(position) {
-        return;
+        if (!position || position.id == null) return;
+        this.removeMfeMaeMarkers(position.id);
 
         const self = this;
         const paint = () => {

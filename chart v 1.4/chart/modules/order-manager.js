@@ -28430,6 +28430,14 @@ class OrderManager {
                 console.log(`📊 Order #${orderId} closed, post-exit tracking until ${new Date(_reanchoredEndTime).toLocaleTimeString()} (anchor: ${new Date(_postExitAnchor).toISOString()})`);
             }
         }
+
+        if (this.mfeMaeTrackingEnabled !== false && position.mfe != null && position.mae != null) {
+            try {
+                this.drawMfeMaeMarkers(position);
+            } catch (err) {
+                console.warn('MFE/MAE marker draw on close failed:', err);
+            }
+        }
         
         // Show trade journal modal for post-trade notes
         // Get P&L from pendingJournalEntry if it exists (for scaled/split trades)
