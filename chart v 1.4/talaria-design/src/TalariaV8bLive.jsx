@@ -36500,7 +36500,7 @@ const TalariaV8bLive = () => {
           <div onClick={e=>e.stopPropagation()}
             style={{width:560,background:c.sf,border:`1px solid ${c.brH}`,
               boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 32px ${isLong?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"}`,
-              display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrWinIn 0.18s ease"}}>
+              display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrPopIn 0.18s ease"}}>
             {/* Top accent */}
             <div style={{height:2,background:topGrad,flexShrink:0}}/>
             {/* Header */}
@@ -36809,7 +36809,7 @@ const TalariaV8bLive = () => {
         <div onClick={()=>setTradeActPopup(null)} onPointerDown={(e)=>{ if(e.target===e.currentTarget) setTradeActPopup(null); }}
           style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
           <div onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
-            style={{width:660,maxHeight:"88vh",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 30px rgba(74,106,255,0.12)`,display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrWinIn 0.2s ease"}}>
+            style={{width:660,maxHeight:"88vh",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 30px rgba(74,106,255,0.12)`,display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrPopIn 0.2s ease"}}>
             {/* Top accent */}
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
             {/* Header */}
