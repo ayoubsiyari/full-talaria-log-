@@ -2177,8 +2177,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                         Start Session
                       </div>
                     </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>

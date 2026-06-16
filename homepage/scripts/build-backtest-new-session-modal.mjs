@@ -11,7 +11,7 @@ const tailPath = path.join(__dirname, "backtest-modal-tail.tsx");
 const outPath = path.join(repoRoot, "homepage", "src", "app", "dashboard", "BacktestNewSessionModal.tsx");
 
 const lines = fs.readFileSync(sessionsView, "utf8").split(/\r?\n/);
-let body = lines.slice(832, 2366).join("\n");
+let body = lines.slice(832, 2370).join("\n");
 body = body.replace(/\{newSessOpen&&\(/, "{open && (");
 body = body.replace(/closeNewSess\(\);\s*startNewSession\(\)/g, "void startNewSession()");
 

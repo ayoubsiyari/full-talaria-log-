@@ -1,9 +1,3 @@
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
       <style>{`
         @keyframes tlrPopIn {
           from { opacity: 0; transform: scale(0.98); }
