@@ -1109,52 +1109,20 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     /**
      * VWAP-style average take-profit price across all TP legs (primary + extras).
-     * When multi-TP is on and panel `tpTargets` align with ladder prices, weights = distribution % (same as mini-badges).
-     * Otherwise falls back to the arithmetic mean of ladder TP prices.
+     * Uses the same effective-% weighting as the chart preview Avg TP line.
      */
     _getWeightedAverageTargetPrice() {
+        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+        if (om && typeof om.getWeightedAvgTpPriceForRrDrawing === 'function') {
+            const avg = om.getWeightedAvgTpPriceForRrDrawing(this);
+            if (avg != null && Number.isFinite(avg)) return avg;
+        }
+
         const tPrimary = this.points[2]?.y;
         const extras = (this.meta.extraTargets || []).map((r) => r.y).filter(Number.isFinite);
         const allPrices = Number.isFinite(tPrimary) ? [tPrimary, ...extras] : extras.slice();
         if (allPrices.length < 2) return NaN;
-
-        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-        const prec = typeof om?.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
-        const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(prec)) : p);
-        const mtOn = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
-
-        const meanFallback = () => allPrices.reduce((s, p) => s + p, 0) / allPrices.length;
-
-        if (mtOn && om?.tpTargets?.length > 1) {
-            const sortedOm = [...om.tpTargets].sort((a, b) =>
-                (this.isLong ? a.price - b.price : b.price - a.price));
-            const refP = sortedOm.find((t) => t && Number.isFinite(t.price))?.price;
-            const epsPx = Math.max(1e-10, (Math.abs(refP) || 1) * 1e-9);
-
-            if (sortedOm.length === allPrices.length) {
-                let sumW = 0;
-                let sumPW = 0;
-                let allMatched = true;
-                for (const py of allPrices) {
-                    const pr = rrRoundPx(py);
-                    const leg = sortedOm.find((t) => t && Number.isFinite(t.price)
-                        && Math.abs(rrRoundPx(t.price) - pr) <= epsPx);
-                    if (!leg || !Number.isFinite(leg.percentage)) {
-                        allMatched = false;
-                        break;
-                    }
-                    const w = Number(leg.percentage);
-                    if (w > 0) {
-                        sumW += w;
-                        sumPW += py * w;
-                    }
-                }
-                if (allMatched && sumW > 1e-9) {
-                    return sumPW / sumW;
-                }
-            }
-        }
-        return meanFallback();
+        return allPrices.reduce((s, p) => s + p, 0) / allPrices.length;
     }
 
     /** Worst-case stop price for zone shading (furthest into loss). */
@@ -1522,9 +1490,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
             this.meta.risk.lotSize = Math.max(0.01, lots);
             this.meta.risk.riskMode = 'lot-size';
-            const entry = this.meta.risk.entryPrice || 0;
-            const stop = this.meta.risk.stopPrice || 0;
-            const slPips = entry && stop ? Math.abs(entry - stop) / pip : 0;
             return;
         }
 

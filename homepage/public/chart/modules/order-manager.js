@@ -30516,7 +30516,10 @@ class OrderManager {
         if (mode === 'preview') {
             const qty = orderCtx.quantity || parseFloat(document.getElementById('orderQuantity')?.value) || 1;
             const entry = orderCtx.entryPrice || parseFloat(document.getElementById('orderEntryPrice')?.value) || 0;
-            weights = this._computeEffectiveTPPercentages(entry, qty, orderCtx.type || this.orderSide || 'BUY');
+            const targetsForWeights = orderCtx.tpTargets || this.tpTargets;
+            weights = this._computeEffectiveTPPercentages(
+                entry, qty, orderCtx.type || this.orderSide || 'BUY', { tpTargets: targetsForWeights }
+            );
         } else {
             weights = priced.map(t => t.percentage || 0);
         }
@@ -30528,6 +30531,49 @@ class OrderManager {
         }
         if (priced.length === 1 && (!pctSum || pctSum <= 0)) return priced[0].price;
         return pctSum > 0 ? wSum / pctSum : priced[0].price;
+    }
+
+    /**
+     * Weighted Avg TP for the RR drawing tool (zone line + badge) — same math as preview multiTPAvgLine.
+     * @returns {number|null}
+     */
+    getWeightedAvgTpPriceForRrDrawing(drawing) {
+        if (!drawing) return null;
+        const isLong = drawing.isLong !== false;
+        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
+        const roundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(prec)) : p);
+
+        let priced = (this.tpTargets || []).filter((t) => t && t.price > 0);
+        if (priced.length < 2) {
+            const primary = drawing.points?.[2]?.y;
+            const extras = (drawing.meta?.extraTargets || []).map((r) => r?.y).filter(Number.isFinite);
+            const allRaw = Number.isFinite(primary) ? [primary, ...extras] : extras.slice();
+            if (allRaw.length < 2) return null;
+            const uniq = [...new Set(allRaw.map(roundPx))].sort((a, b) => (isLong ? a - b : b - a));
+            priced = uniq.map((p) => ({ price: p, percentage: 100 / uniq.length }));
+        }
+
+        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value) || 0;
+        if (!(entryPrice > 0) && this.isMultiEntryMode && Array.isArray(this.multiEntryLevels)) {
+            const leg = this.multiEntryLevels.find((l) => l && l.price > 0);
+            if (leg) entryPrice = leg.price;
+        }
+        const qty = parseFloat(document.getElementById('orderQuantity')?.value)
+            || Number(drawing.meta?.risk?.lotSize)
+            || 0;
+        const side = isLong ? 'BUY' : (this.orderSide || 'SELL');
+
+        if (!(entryPrice > 0) || !(qty > 0)) {
+            const prices = priced.map((t) => t.price);
+            return prices.reduce((s, p) => s + p, 0) / prices.length;
+        }
+
+        return this._weightedAvgTPFromPricedTargets(priced, 'preview', {
+            entryPrice,
+            quantity: qty,
+            type: side,
+            tpTargets: priced,
+        });
     }
 
     /**
