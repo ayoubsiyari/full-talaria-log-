@@ -11,7 +11,21 @@ const tailPath = path.join(__dirname, "backtest-modal-tail.tsx");
 const outPath = path.join(repoRoot, "homepage", "src", "app", "dashboard", "BacktestNewSessionModal.tsx");
 
 const lines = fs.readFileSync(sessionsView, "utf8").split(/\r?\n/);
-let body = lines.slice(832, 2370).join("\n");
+const modalStart = lines.findIndex((l) => l.includes("NEW SESSION MODAL overlay"));
+if (modalStart < 0) {
+  throw new Error("Could not find NEW SESSION MODAL overlay marker in SessionsView.jsx");
+}
+let modalEnd = -1;
+for (let i = modalStart; i < lines.length; i++) {
+  // Outermost close of `{newSessOpen && ( ... )}` — 12-space indent in design source.
+  if (/^            \)\}$/.test(lines[i])) {
+    modalEnd = i;
+  }
+}
+if (modalEnd < 0) {
+  throw new Error("Could not find end of newSessOpen modal block in SessionsView.jsx");
+}
+let body = lines.slice(modalStart, modalEnd + 1).join("\n");
 body = body.replace(/\{newSessOpen&&\(/, "{open && (");
 body = body.replace(/closeNewSess\(\);\s*startNewSession\(\)/g, "void startNewSession()");
 

@@ -2155,10 +2155,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                 </div>
               </div>
             )}
-          </div>
-  );
-}
-
       <SessionDateCalendar
         open={newSessCalOpen}
         pos={newSessCalPos}
