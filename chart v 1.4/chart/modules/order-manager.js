@@ -13172,19 +13172,11 @@ class OrderManager {
      * When the order drawer is already open, selecting a different R/R tool should refresh panel inputs.
      */
     syncOrderPanelFromSelectedRiskRewardTool() {
-        const panel = document.getElementById('orderPanel');
-        if (!panel || !panel.classList.contains('visible')) return;
+        if (!this._isDraftOrderPreviewActive()) return;
         if (this.editingPendingOrderId) return;
         const d = this._getSelectedRiskRewardDrawing();
         if (!d) return;
-        this.pushRiskRewardToolToManager(d, this._previewEntryDecoupledFromRR ? { skipEntry: true } : {});
-        if (!this._previewEntryDecoupledFromRR) {
-            this._previewEntryLinkedToRiskReward = true;
-            this.tpManuallyPositioned = true;
-            this.slManuallyPositioned = true;
-            this._autoDetectOrderTypeFromEntry();
-            this._dispatchRrOrderPrefilledEvent();
-        }
+        this._syncRiskRewardDrawingToOpenOrderPanel(d);
         requestAnimationFrame(() => {
             this.updatePreviewLines();
             if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
@@ -21411,14 +21403,7 @@ class OrderManager {
         if (opts.forceEntry) return false;
         if (opts.skipEntry) return true;
         if (!this._isDraftOrderPreviewActive()) return false;
-        if (this._previewEntryDecoupledFromRR) return true;
-        if (!drawing?.points?.[0]) return false;
-        const rrEntry = this._getRiskRewardDrawingEntryPrice(drawing);
-        const panelEntry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-        if (!(panelEntry > 0) || !Number.isFinite(rrEntry)) return false;
-        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision(rrEntry) : 5;
-        const eps = Math.max(Math.pow(10, -prec), Math.abs(rrEntry) * 1e-9);
-        return Math.abs(panelEntry - rrEntry) > eps;
+        return !!this._previewEntryDecoupledFromRR;
     }
 
     /**
@@ -21434,7 +21419,19 @@ class OrderManager {
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
         const preserveEntry = this._shouldPreservePreviewEntryOverRiskReward(drawing, opts);
         const ep = document.getElementById('orderEntryPrice');
-        if (ep && !preserveEntry) ep.value = entry.toFixed(prec);
+        if (ep && !preserveEntry) {
+            const prevEntry = parseFloat(ep.value || '0');
+            const nextEntryStr = entry.toFixed(prec);
+            const nextEntry = parseFloat(nextEntryStr);
+            const entryEps = Math.max(Math.pow(10, -(prec + 1)), Math.abs(entry) * 1e-9);
+            const entryChanged = !Number.isFinite(prevEntry) || Math.abs(prevEntry - nextEntry) > entryEps;
+            ep.value = nextEntryStr;
+            if (this._isDraftOrderPreviewActive()) {
+                this._previewEntryLinkedToRiskReward = true;
+                this._previewEntryDecoupledFromRR = false;
+                if (entryChanged) this._autoDetectOrderTypeFromEntry();
+            }
+        }
         const slp = document.getElementById('slPrice');
         if (slp) slp.value = sl.toFixed(prec);
         const allT = typeof drawing._allTargetPrices === 'function' ? drawing._allTargetPrices() : [drawing.points[2].y];
@@ -22278,14 +22275,17 @@ class OrderManager {
      */
     riskRewardSyncPrimaryEntryDragFromTool(drawing, newY) {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
-        this.pushRiskRewardToolToManager(drawing);
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = true;
+        const entryOpts = { forceEntry: true };
+        this.pushRiskRewardToolToManager(drawing, entryOpts);
         const prec = this.getPricePrecision();
         const raw = parseFloat(parseFloat(newY).toFixed(prec));
         const clamped = typeof drawing.clampPrimaryEntryPrice === 'function'
             ? drawing.clampPrimaryEntryPrice(raw)
             : raw;
         if (!Number.isFinite(clamped) || Math.abs(clamped - drawing.points[0].y) < 1e-12) {
-            this.pullRiskRewardToolFromManager(drawing);
+            this.pullRiskRewardToolFromManager(drawing, entryOpts);
             return;
         }
 
@@ -22294,10 +22294,12 @@ class OrderManager {
             drawing.ensureRiskSettings();
         }
 
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, entryOpts);
+        this._autoDetectOrderTypeFromEntry();
+        this._dispatchRrOrderPrefilledEvent();
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
-        this.pullRiskRewardToolFromManager(drawing);
+        this.pullRiskRewardToolFromManager(drawing, entryOpts);
     }
 
     /**

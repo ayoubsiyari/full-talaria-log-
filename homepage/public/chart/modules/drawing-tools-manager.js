@@ -6045,6 +6045,15 @@ class DrawingToolsManager {
             if (this.tempGroup && !this.tempGroup.empty()) {
                 this.tempGroup.raise();
             }
+            // Drawing layers were just lifted above ALL order previews. The order preview
+            // action badges (place ✓ / cancel ✕, delete-leg ✕, split +, SL/TP) must stay
+            // clickable, so put them back on top. Without this, any chart re-render that
+            // calls this method (pan/zoom, drawing edits) drops the multi-entry ✓/✕ and
+            // delete-leg ✕ underneath the drawing layer and their clicks are swallowed.
+            const om = this.chart?.orderManager;
+            if (om && om.previewLines && typeof om._raiseEntryAnchoredPreviewBadgesToFront === 'function') {
+                om._raiseEntryAnchoredPreviewBadgesToFront();
+            }
         } catch (_e) {
             /* ignore */
         }
