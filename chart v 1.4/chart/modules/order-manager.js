@@ -135,6 +135,8 @@ class OrderManager {
         this._previewEntryDecoupledFromRR = false;
         /** Set by RR Execute prefill — entry is intentionally at RR level (limit/stop), not live market. */
         this._previewEntryLinkedToRiskReward = false;
+        /** False until user clicks Execute on the RR tool settings bar — blocks order preview / panel sync. */
+        this._rrExecuteArmed = false;
         this._pendingPreviewConnector = null; // Vertical limit/stop preview guide (SVG line)
         this._pendingPreviewConnectorDots = []; // Intersection dots on entry/TP/SL levels
         this.entryMarkers = [];
@@ -3895,6 +3897,23 @@ class OrderManager {
         }
         if (!entry.plannedTpSnapshot && position.plannedTpSnapshot) {
             entry.plannedTpSnapshot = position.plannedTpSnapshot.map((t) => ({ ...t }));
+        }
+        if (!entry.plannedEntrySnapshot && position.plannedEntrySnapshot) {
+            entry.plannedEntrySnapshot = position.plannedEntrySnapshot.map((e) => ({ ...e }));
+        }
+        if (entry.hasMultipleTakeProfits == null && position.hasMultipleTakeProfits != null) {
+            entry.hasMultipleTakeProfits = position.hasMultipleTakeProfits;
+        }
+        if (!entry.multiTpSnapshot) {
+            const mtp = position.plannedTpSnapshot
+                || (Array.isArray(position.tpTargets) && position.tpTargets.length > 1
+                    ? position.tpTargets.map((t) => ({
+                        id: t.id, price: t.price, percentage: t.percentage, hit: !!t.hit,
+                    }))
+                    : null);
+            if (Array.isArray(mtp) && mtp.length > 1) {
+                entry.multiTpSnapshot = mtp.map((t) => ({ ...t }));
+            }
         }
         if (entry.initial_takeProfit == null && position.initial_takeProfit != null) {
             entry.initial_takeProfit = position.initial_takeProfit;
@@ -12985,10 +13004,10 @@ class OrderManager {
         }
 
         const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
-        if (rrSelectedOpen) {
+        if (rrSelectedOpen && this._rrExecuteArmed) {
             // RR is the source — entry, SL, and TP all come from the tool (not live market only).
             this._syncRiskRewardDrawingToOpenOrderPanel(rrSelectedOpen);
-        } else {
+        } else if (!rrSelectedOpen) {
             this.updateOrderPanelPrice();
         }
 
@@ -13174,6 +13193,7 @@ class OrderManager {
     syncOrderPanelFromSelectedRiskRewardTool() {
         if (!this._isDraftOrderPreviewActive()) return;
         if (this.editingPendingOrderId) return;
+        if (!this._rrExecuteArmed) return;
         const d = this._getSelectedRiskRewardDrawing();
         if (!d) return;
         this._syncRiskRewardDrawingToOpenOrderPanel(d);
@@ -17179,6 +17199,13 @@ class OrderManager {
 
         // Order was placed via ✓ badge — wait for "Make new order" before drawing anything
         if (this._orderPlacedAwaitingReset) {
+            this.removePreviewLines();
+            return;
+        }
+
+        // RR tool draft: preview/order lines only after Execute on the tool settings bar.
+        const rrSelectedForPreview = this._getSelectedRiskRewardDrawing();
+        if (rrSelectedForPreview && !this._rrExecuteArmed) {
             this.removePreviewLines();
             return;
         }
@@ -21369,15 +21396,40 @@ class OrderManager {
         } catch (_) { /* ignore */ }
     }
 
+    /** User clicked Execute on the RR tool — allow order panel + chart preview to mirror the tool. */
+    armRiskRewardToolExecute(drawing) {
+        if (!drawing) return;
+        this._rrExecuteArmed = true;
+        this._syncRiskRewardDrawingToOpenOrderPanel(drawing, { forceEntry: true });
+        this.calculatePositionFromRisk();
+        this.calculateAdvancedRiskReward();
+        this.updatePlaceButtonText();
+        requestAnimationFrame(() => {
+            this.updatePreviewLines();
+            if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+                try { this.chart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
+            }
+        });
+    }
+
+    /** Selecting a different RR tool (or deselecting) clears Execute — preview stays off until Execute again. */
+    disarmRiskRewardToolExecute() {
+        this._rrExecuteArmed = false;
+        if (this._getSelectedRiskRewardDrawing()) {
+            this.removePreviewLines();
+        }
+    }
+
     /**
      * When an RR tool is selected, sync SL + TP from the tool into the open order draft.
      * Market drafts keep entry at live price; limit/stop drafts also take entry from the tool.
      */
-    _syncRiskRewardDrawingToOpenOrderPanel(drawing) {
+    _syncRiskRewardDrawingToOpenOrderPanel(drawing, opts = {}) {
         if (!drawing) return;
+        if (!this._rrExecuteArmed && !opts.forceExecute) return;
         const isMarket = this._getActiveDraftOrderType() === 'market';
         this._previewEntryDecoupledFromRR = false;
-        if (isMarket) {
+        if (isMarket && !opts.forceEntry) {
             this._previewEntryLinkedToRiskReward = false;
             this.pushRiskRewardToolToManager(drawing, { skipEntry: true });
             this.tpManuallyPositioned = true;
@@ -21388,7 +21440,7 @@ class OrderManager {
             return;
         }
         this._previewEntryLinkedToRiskReward = true;
-        this.pushRiskRewardToolToManager(drawing);
+        this.pushRiskRewardToolToManager(drawing, opts.forceEntry ? { forceEntry: true } : {});
         this.tpManuallyPositioned = true;
         this.slManuallyPositioned = true;
         this._autoDetectOrderTypeFromEntry();
@@ -23377,6 +23429,7 @@ class OrderManager {
             const placedOrderIds = [];
             let weightedPriceSum = 0;
             let lotsSum = 0;
+            const plannedEntrySnapshot = [];
 
             // Main/primary leg = panel entry (lowest price for BUY, highest for SELL) — matches
             // syncMultiEntryToSplitEntries() preview. Only this leg may fill at market; every other
@@ -23416,6 +23469,13 @@ class OrderManager {
                     if (this.orderSide === 'BUY') return level.price > currentPrice ? 'stop' : 'limit';
                     return level.price < currentPrice ? 'stop' : 'limit';
                 })();
+
+                plannedEntrySnapshot.push({
+                    splitIndex: idx + 1,
+                    price: level.price,
+                    quantity: qtyRounded,
+                    orderType: effectiveOrderType,
+                });
 
                 if (effectiveOrderType === 'market') {
                     const fillPx = this._applyHalfSpreadEntryPrice(
@@ -23528,6 +23588,21 @@ class OrderManager {
                 console.log('🟦OM-DIAG ABORT: placedCount===0 (all legs computed 0 lots)');
                 this.showNotification('⚠️ Position size must be greater than 0 lots', 'warning');
                 return;
+            }
+
+            if (plannedEntrySnapshot.length > 1) {
+                const entryPlan = plannedEntrySnapshot.map((e) => ({ ...e }));
+                const stampEntryPlan = (o) => {
+                    if (o && o.splitGroupId === splitGroupId) {
+                        o.plannedEntrySnapshot = entryPlan.map((e) => ({ ...e }));
+                    }
+                };
+                (this.openPositions || []).forEach(stampEntryPlan);
+                (this.pendingOrders || []).forEach(stampEntryPlan);
+                if (this.orderService) {
+                    (this.orderService.openPositions || []).forEach(stampEntryPlan);
+                    (this.orderService.pendingOrders || []).forEach(stampEntryPlan);
+                }
             }
 
             if (placedOrderIds.length > 1 && lotsSum > 0) {
@@ -25828,6 +25903,9 @@ class OrderManager {
         if (pendingOrder.plannedTpSnapshot) {
             order.plannedTpSnapshot = pendingOrder.plannedTpSnapshot.map((t) => ({ ...t }));
         }
+        if (pendingOrder.plannedEntrySnapshot) {
+            order.plannedEntrySnapshot = pendingOrder.plannedEntrySnapshot.map((e) => ({ ...e }));
+        }
         if (pendingOrder.initial_takeProfit != null) {
             order.initial_takeProfit = pendingOrder.initial_takeProfit;
         }
@@ -27692,6 +27770,9 @@ class OrderManager {
                             partialCloses: e.partialCloses || []
                         };
                     }),
+                    plannedEntrySnapshot: firstEntry.plannedEntrySnapshot
+                        ? firstEntry.plannedEntrySnapshot.map((e) => ({ ...e }))
+                        : null,
                     splitGroupId: splitInfo.groupId,
                     numberOfEntries: splitInfo.entries.length,
                     // AUDIT / DISCIPLINE DATA (aggregate across split entries)
@@ -27776,6 +27857,20 @@ class OrderManager {
                                 id: t.id, price: t.price, percentage: t.percentage
                             }))
                             : null),
+                    plannedEntrySnapshot: position.plannedEntrySnapshot
+                        ? position.plannedEntrySnapshot.map((e) => ({ ...e }))
+                        : null,
+                    hasMultipleTakeProfits: Array.isArray(position.plannedTpSnapshot) && position.plannedTpSnapshot.length > 1
+                        || (Array.isArray(position.tpTargets) && position.tpTargets.length > 1),
+                    multiTpSnapshot: (() => {
+                        const snap = position.plannedTpSnapshot
+                            || (Array.isArray(position.tpTargets)
+                                ? position.tpTargets.map((t) => ({
+                                    id: t.id, price: t.price, percentage: t.percentage, hit: !!t.hit,
+                                }))
+                                : null);
+                        return Array.isArray(snap) && snap.length > 1 ? snap.map((t) => ({ ...t })) : null;
+                    })(),
                     initial_takeProfit: position.initial_takeProfit ?? position.takeProfit ?? null,
                     rewardToRiskRatio: (() => {
                         const p = position.plannedRRAtEntry ?? this._computePlannedRRAtEntry(position);

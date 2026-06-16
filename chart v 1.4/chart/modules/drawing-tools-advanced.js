@@ -1985,6 +1985,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             : primaryEntry.toFixed(precOut);
         try {
             if (typeof window !== 'undefined') {
+                if (typeof orderManager.armRiskRewardToolExecute === 'function') {
+                    orderManager._rrExecuteArmed = true;
+                }
                 if (typeof orderManager._dispatchRrOrderPrefilledEvent === 'function') {
                     orderManager._dispatchRrOrderPrefilledEvent();
                 } else {
@@ -2000,6 +2003,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                 }
             }
         } catch (_) { /* ignore */ }
+        requestAnimationFrame(() => {
+            if (typeof orderManager.updatePreviewLines === 'function') {
+                orderManager.updatePreviewLines();
+            }
+        });
     }
 
     /** Remove RR drag-hit layers that use `custom-handle` and survive reuseGroup clears. */

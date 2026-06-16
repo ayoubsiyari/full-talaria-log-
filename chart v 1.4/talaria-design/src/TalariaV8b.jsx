@@ -31,6 +31,69 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+/** Total allocatable TP share for the active size mode ($, %, or # lots/contracts). */
+function getTpAllocationCap(sizeMode, riskVal, accountEquity) {
+  const n = parseFloat(riskVal) || 0;
+  if (sizeMode === "%") return 100;
+  if (sizeMode === "$") return Math.max(0, Math.min(n, accountEquity || n));
+  return Math.max(0, n);
+}
+
+function formatTpAllocation(val, sizeMode) {
+  const n = Math.max(0, val);
+  if (sizeMode === "%") return n.toFixed(1);
+  if (sizeMode === "#") return Number.isInteger(n) ? String(Math.round(n)) : n.toFixed(2);
+  return n.toFixed(2);
+}
+
+/** Apply a TP qty edit; single TP is capped, multi-TP keeps the edited row and rebalances siblings to the cap. */
+function applyTpQtyChange(rows, targetId, rawNext, cap, sizeMode) {
+  if (!rows?.length) return rows;
+  const precision = sizeMode === "%" ? 1 : 2;
+  let next = Math.max(0, Number(rawNext) || 0);
+
+  if (rows.length <= 1) {
+    next = Math.min(next, cap);
+    return rows.map((r) => (r.id === targetId ? { ...r, qty: formatTpAllocation(next, sizeMode) } : r));
+  }
+
+  const idx = rows.findIndex((r) => r.id === targetId);
+  if (idx < 0) return rows;
+  next = Math.min(next, cap);
+
+  const others = rows.filter((_, i) => i !== idx);
+  const remaining = Math.max(0, cap - next);
+  const otherTotal = others.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+
+  let out = rows.map((r) => (r.id === targetId ? { ...r, qty: formatTpAllocation(next, sizeMode) } : { ...r }));
+
+  if (otherTotal > 0) {
+    out = out.map((r) => {
+      if (r.id === targetId) return r;
+      const proportion = (parseFloat(r.qty) || 0) / otherTotal;
+      return { ...r, qty: formatTpAllocation(remaining * proportion, sizeMode) };
+    });
+  } else if (others.length > 0) {
+    const each = remaining / others.length;
+    out = out.map((r) => (r.id === targetId ? r : { ...r, qty: formatTpAllocation(each, sizeMode) }));
+  }
+
+  const sum = out.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+  const diff = cap - sum;
+  if (Math.abs(diff) > Math.pow(10, -precision)) {
+    const lastOther = [...out].reverse().find((r) => r.id !== targetId);
+    if (lastOther) {
+      out = out.map((r) => (
+        r.id === lastOther.id
+          ? { ...r, qty: formatTpAllocation(Math.max(0, (parseFloat(r.qty) || 0) + diff), sizeMode) }
+          : r
+      ));
+    }
+  }
+
+  return out;
+}
+
 /** Selected long/short position drawing from the live chart (optional orientation filter). */
 function resolveSelectedRrDrawing(expectedOrientation) {
   const dm = typeof window !== "undefined" ? (window.chart?.drawingManager || window.drawingManager) : null;
@@ -1107,6 +1170,17 @@ const TalariaV8b = () => {
       setBtmIndPos(null);
     }
   }, [btmTab]);
+
+  // Single TP1: keep qty within total size when SIZE changes.
+  useEffect(() => {
+    setTpRows((rows) => {
+      if (rows.length !== 1) return rows;
+      const cap = getTpAllocationCap(sizeMode, riskVal, accountEquity);
+      const cur = parseFloat(rows[0].qty) || 0;
+      if (cur <= cap + 1e-9) return rows;
+      return [{ ...rows[0], qty: formatTpAllocation(cap, sizeMode) }];
+    });
+  }, [riskVal, sizeMode, accountEquity]);
 
   useEffect(() => {
     const bump = () => setOmTradeRev((n) => n + 1);
@@ -11560,14 +11634,52 @@ const TalariaV8b = () => {
           {/* 8 — TAKE PROFIT */}
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
+            const tpCap = getTpAllocationCap(sizeMode, riskVal, accountEquity);
             const totalQty = tpRows.reduce((s,r) => s + (parseFloat(r.qty)||0), 0);
             const avgTpPrice = tpRows.length ? (tpRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / tpRows.length).toFixed(2) : "0.00";
             const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
-            const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
-            const delTp  = (id) => setTpRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
-            const addTp  = () => { setTpRows(rows => [...rows, {id:Date.now(), price:"0", qty:"0", enabled:true}]); setTimeout(()=>{ if(tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight; }, 0); };
-            const clearTp = () => setTpRows([{id:Date.now(), price:"0", qty:"100", enabled:true}]);
-            const equalizeTp = () => { const each = (100/tpRows.length).toFixed(0); setTpRows(rows => rows.map(r => ({...r, qty:each}))); };
+            const setTpQty = (id, rawVal) => setTpRows((rows) => applyTpQtyChange(rows, id, rawVal, tpCap, sizeMode));
+            const stepTp = (id, field, dir, step=1) => {
+              if (field !== "qty") {
+                setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
+                return;
+              }
+              const stepSize = sizeMode === "%" ? 0.5 : 1;
+              setTpRows((rows) => {
+                const row = rows.find((r) => r.id === id);
+                if (!row) return rows;
+                const next = Math.max(0, (parseFloat(row.qty) || 0) + dir * stepSize);
+                return applyTpQtyChange(rows, id, next, tpCap, sizeMode);
+              });
+            };
+            const delTp  = (id) => setTpRows((rows) => {
+              if (rows.length <= 1) return rows;
+              const next = rows.filter((r) => r.id !== id);
+              if (next.length === 1) {
+                return [{ ...next[0], qty: formatTpAllocation(tpCap, sizeMode) }];
+              }
+              return applyTpQtyChange(next, next[0].id, parseFloat(next[0].qty) || 0, tpCap, sizeMode);
+            });
+            const addTp  = () => {
+              setTpRows((rows) => {
+                const cap = getTpAllocationCap(sizeMode, riskVal, accountEquity);
+                if (rows.length <= 1) {
+                  const half = cap / 2;
+                  return [
+                    { ...rows[0], qty: formatTpAllocation(half, sizeMode) },
+                    { id: Date.now(), price: "0", qty: formatTpAllocation(half, sizeMode), enabled: true },
+                  ];
+                }
+                return [...rows, { id: Date.now(), price: "0", qty: "0", enabled: true }];
+              });
+              setTimeout(()=>{ if(tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight; }, 0);
+            };
+            const clearTp = () => setTpRows([{id:Date.now(), price:"0", qty: formatTpAllocation(tpCap, sizeMode), enabled:true}]);
+            const equalizeTp = () => {
+              const cap = getTpAllocationCap(sizeMode, riskVal, accountEquity);
+              const each = cap / tpRows.length;
+              setTpRows(rows => rows.map(r => ({...r, qty: formatTpAllocation(each, sizeMode)})));
+            };
             const arw = (onClick, up, hk) => {
               const isH = swHov===hk;
               return (
@@ -11688,8 +11800,16 @@ const TalariaV8b = () => {
                             {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:c.ts, lineHeight:1, flexShrink:0 }}>$</span>}
                             {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, lineHeight:1, flexShrink:0 }}>%</span>}
                             <input type="text" value={row.qty}
-                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"qty",e.target.value); }}
-                              onBlur={e => { const n=parseFloat(e.target.value); updTp(row.id,"qty",isNaN(n)?"0":String(n)); }}
+                              onChange={e => {
+                                const v = e.target.value;
+                                if (!/^\d*\.?\d*$/.test(v)) return;
+                                if (tpRows.length === 1 && v !== "" && !isNaN(parseFloat(v)) && parseFloat(v) > tpCap) return;
+                                updTp(row.id,"qty",v);
+                              }}
+                              onBlur={e => {
+                                const n = parseFloat(e.target.value);
+                                setTpQty(row.id, isNaN(n) ? 0 : n);
+                              }}
                               style={{ width:32, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>

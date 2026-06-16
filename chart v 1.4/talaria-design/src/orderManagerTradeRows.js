@@ -237,9 +237,99 @@ function collectSplitGroupOrders(om, order) {
       members.push(o);
     }
   }
-  if (members.length <= 1) return null;
+  if (members.length === 0) return null;
   members.sort((a, b) => (a.splitIndex || 0) - (b.splitIndex || 0));
   return members;
+}
+
+function resolvePlannedEntrySnapshot(order, journal) {
+  const snap =
+    journal?.plannedEntrySnapshot
+    || order?.plannedEntrySnapshot
+    || null;
+  return Array.isArray(snap) && snap.length > 1 ? snap : null;
+}
+
+function resolveFilledEntryLegMap(group, journal) {
+  const map = new Map();
+  if (group) {
+    for (const o of group) {
+      const idx = Number(o.splitIndex) || 0;
+      if (idx > 0) map.set(idx, o);
+    }
+  }
+  if (Array.isArray(journal?.splitEntries)) {
+    journal.splitEntries.forEach((e, i) => {
+      const idx = Number(e.splitIndex) || i + 1;
+      map.set(idx, e);
+    });
+  }
+  return map;
+}
+
+function isPlannedEntryLegFilled(leg, idx, filledMap) {
+  const si = Number(leg?.splitIndex) || idx + 1;
+  const hit = filledMap.get(si);
+  if (!hit) return false;
+  if (hit.openPrice != null || hit.openTime != null || hit.closePrice != null) return true;
+  return isSplitLegFilled(hit);
+}
+
+function resolveTpListForDisplay(order, journal, row) {
+  const isActive = row?.status === "open" || row?.status === "pending";
+  if (isActive && Array.isArray(order?.tpTargets) && order.tpTargets.length > 1) {
+    return order.tpTargets;
+  }
+  const candidates = [
+    journal?.plannedTpSnapshot,
+    order?.plannedTpSnapshot,
+    journal?.multiTpSnapshot,
+    journal?.active_tps_at_exit,
+    order?.tpTargets,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c) && c.length > 1) return c;
+  }
+  const multiFlag =
+    journal?.hasMultipleTakeProfits
+    || order?.hasMultipleTakeProfits;
+  if (multiFlag) {
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length > 0) return c;
+    }
+  }
+  return null;
+}
+
+function mergeTpHitFlags(tpList, journal, order) {
+  const hitById = new Map();
+  const hitByPrice = new Map();
+  const active = journal?.active_tps_at_exit || order?.tpTargets;
+  if (Array.isArray(active)) {
+    active.forEach((t) => {
+      if (t?.hit) {
+        if (t.id != null) hitById.set(String(t.id), true);
+        if (t.targetId != null) hitById.set(String(t.targetId), true);
+        const px = Number.parseFloat(t.price);
+        if (Number.isFinite(px)) hitByPrice.set(px.toFixed(8), true);
+      }
+    });
+  }
+  if (Array.isArray(journal?.tpRealizedBreakdown)) {
+    journal.tpRealizedBreakdown.forEach((b) => {
+      const lots = Number(b.lotsClosed) || 0;
+      const gp = Number(b.pnl) || 0;
+      if (lots > 0 || Math.abs(gp) > 1e-8) {
+        if (b.targetId != null) hitById.set(String(b.targetId), true);
+      }
+    });
+  }
+  return tpList.map((t) => {
+    const px = Number.parseFloat(t.price);
+    const idHit = t.id != null && hitById.get(String(t.id));
+    const pxHit = Number.isFinite(px) && hitByPrice.get(px.toFixed(8));
+    return { ...t, hit: !!(t.hit || idHit || pxHit) };
+  });
 }
 
 function formatTpPctLabel(pct) {
@@ -422,12 +512,26 @@ function fmtTradePx(om, px) {
  */
 function buildTradeEntryLegs(om, order, journal, fmtPx, fmtQty, row) {
   const group = order ? collectSplitGroupOrders(om, order) : null;
-  if (group) {
-    return group.map((o) => ({
-      price: fmtPx(o.openPrice ?? o.entryPrice),
-      qty: fmtQty(o.quantity),
-      filled: isSplitLegFilled(o),
+  const plannedSnap = resolvePlannedEntrySnapshot(order, journal);
+  const filledMap = resolveFilledEntryLegMap(group, journal);
+
+  if (plannedSnap) {
+    return plannedSnap.map((leg, idx) => ({
+      price: fmtPx(leg.price ?? leg.openPrice ?? leg.entryPrice),
+      qty: fmtQty(leg.quantity ?? leg.qty ?? leg.lotSize),
+      filled: isPlannedEntryLegFilled(leg, idx, filledMap),
     }));
+  }
+
+  if (group && group.length > 1) {
+    return group.map((o) => {
+      const st = String(o.status || "").toUpperCase();
+      return {
+        price: fmtPx(o.openPrice ?? o.entryPrice),
+        qty: fmtQty(o.quantity ?? o.placedQuantity),
+        filled: st !== "PENDING" && isSplitLegFilled(o),
+      };
+    });
   }
   if (journal?.splitEntries?.length > 1) {
     return journal.splitEntries.map((e) => ({
@@ -451,21 +555,14 @@ function buildTradeEntryLegs(om, order, journal, fmtPx, fmtQty, row) {
  * Returns null when only a single TP should be shown (caller uses row.tp).
  */
 function buildTradeTargetLegs(order, journal, fmtPx, om, row) {
-  const isActive = row?.status === "open" || row?.status === "pending";
-  let tpList = null;
-  if (isActive && Array.isArray(order?.tpTargets) && order.tpTargets.length > 0) {
-    tpList = order.tpTargets;
-  } else {
-    const snap = journal?.multiTpSnapshot || journal?.active_tps_at_exit;
-    tpList = Array.isArray(snap) && snap.length > 0 ? snap : null;
-    if (!tpList && Array.isArray(order?.tpTargets) && order.tpTargets.length > 0) {
-      tpList = order.tpTargets;
-    }
-  }
+  let tpList = resolveTpListForDisplay(order, journal, row);
   if (!tpList || tpList.length <= 1) {
-    if (!(journal?.hasMultipleTakeProfits && tpList?.length === 1)) return null;
+    const multiFlag = journal?.hasMultipleTakeProfits || order?.hasMultipleTakeProfits;
+    if (!(multiFlag && tpList?.length === 1)) return null;
   }
   if (!tpList || tpList.length <= 1) return null;
+
+  tpList = mergeTpHitFlags(tpList, journal, order);
 
   const side = resolveTradeSide(order, journal, row);
   const breakdown = resolveTpRealizedBreakdown(om, order, journal);

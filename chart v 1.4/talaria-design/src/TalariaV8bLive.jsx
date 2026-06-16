@@ -28249,13 +28249,18 @@ const TalariaV8bLive = () => {
                         const slStr = sl.toFixed(prec);
                         const tpStr = tp.toFixed(prec);
 
-                        // forceEntry: the draft order type is still the default 'market' at this
                         // point, and pushRiskRewardToolToManager() skips the entry / multi-entry sync
-                        // for market drafts ("preserve entry"). Without forcing, the RR tool's extra
-                        // entries (E2+) never reach multiEntryLevels and isMultiEntryMode stays false,
-                        // so placing the order only creates Entry 1. _autoDetectOrderTypeFromEntry()
-                        // below then resolves the real limit/stop/market type from the pushed entry.
-                        om.pushRiskRewardToolToManager(sel, { forceEntry: true });
+                        // for market drafts ("preserve entry"). armRiskRewardToolExecute() forces
+                        // the full ladder into the panel and enables chart preview lines.
+                        if (typeof om.armRiskRewardToolExecute === 'function') {
+                          om.armRiskRewardToolExecute(sel);
+                        } else {
+                          om.pushRiskRewardToolToManager(sel, { forceEntry: true });
+                          om._autoDetectOrderTypeFromEntry();
+                          om.calculatePositionFromRisk();
+                          om.calculateAdvancedRiskReward();
+                          om.updatePlaceButtonText?.();
+                        }
                         const slChk = document.getElementById('enableSL');
                         if (slChk) { slChk.checked = true; slChk.dispatchEvent(new Event('change', {bubbles:true})); }
                         const tpChk = document.getElementById('enableTP');
@@ -28268,10 +28273,6 @@ const TalariaV8bLive = () => {
                         om.slManuallyPositioned = true;
                         om.tpManuallyPositioned = true;
 
-                        om._autoDetectOrderTypeFromEntry();
-                        om.calculatePositionFromRisk();
-                        om.calculateAdvancedRiskReward();
-                        om.updatePlaceButtonText?.();
                         om._updateBreakevenSummary?.();
                         om._updateTrailingSummary?.();
                         om._applyPrecisionToInputs?.();
@@ -28294,13 +28295,6 @@ const TalariaV8bLive = () => {
                         setSlEnabled(true);
                         setTpRows([{ id: 0, price: tpStr, qty: "100", enabled: true }]);
                         setBuySell(isLong ? "buy" : "sell");
-
-                        requestAnimationFrame(() => {
-                          om.updatePreviewLines();
-                          if (om.chart && typeof om.chart.updateSVGPointerEvents === 'function') {
-                            om.chart.updateSVGPointerEvents();
-                          }
-                        });
                       } catch(err){ console.error('[V9 RR Set Order]', err); }
                     };
                     const delay = alreadyOpen ? 50 : 350;

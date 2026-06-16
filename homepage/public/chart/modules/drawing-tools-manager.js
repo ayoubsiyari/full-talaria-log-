@@ -810,9 +810,61 @@ class DrawingToolsManager {
         if (!previewPoints) return;
         this._ensureDrawingsPlotClip();
         drawing.points = previewPoints.map((p) => ({ ...p }));
+        this._syncRRToolExtrasDuringLiveDrag(drawing, startPoints, previewPoints);
         if (drawing.group) drawing.group.attr('transform', null);
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
         this.scheduleRenderDrawing(drawing);
+    }
+
+    _isRiskRewardPositionDrawing(drawing) {
+        return !!(drawing && (drawing.type === 'long-position' || drawing.type === 'short-position'));
+    }
+
+    _snapshotRRDragExtras(drawing) {
+        if (!this._isRiskRewardPositionDrawing(drawing) || !drawing.meta) return null;
+        const m = drawing.meta;
+        const cloneArr = (arr) => (arr || []).map((r) => (r ? { ...r } : r));
+        return {
+            extraTargets: cloneArr(m.extraTargets),
+            extraEntries: cloneArr(m.extraEntries),
+            extraStops: cloneArr(m.extraStops),
+            rrBreakevenLine: m.rrBreakevenLine ? { ...m.rrBreakevenLine } : null,
+        };
+    }
+
+    _beginRRToolWholeDragSnapshot(drawing) {
+        if (!this._isRiskRewardPositionDrawing(drawing)) return;
+        drawing._rrDragExtraSnapshot = this._snapshotRRDragExtras(drawing);
+        if (drawing.meta) delete drawing.meta._rrLiveDragExtrasSynced;
+    }
+
+    _clearRRToolWholeDragSnapshot(drawing) {
+        if (!drawing) return;
+        delete drawing._rrDragExtraSnapshot;
+        if (drawing.meta) delete drawing.meta._rrLiveDragExtrasSynced;
+    }
+
+    /** Keep E2+/extra TP-SL ladder in sync while the whole RR tool moves (not only on drag release). */
+    _syncRRToolExtrasDuringLiveDrag(drawing, startPoints, previewPoints) {
+        if (!this._isRiskRewardPositionDrawing(drawing) || !drawing.meta) return;
+        if (!drawing._rrDragExtraSnapshot) {
+            drawing._rrDragExtraSnapshot = this._snapshotRRDragExtras(drawing);
+        }
+        const snap = drawing._rrDragExtraSnapshot;
+        if (!snap) return;
+        drawing.meta.extraTargets = snap.extraTargets.map((r) => (r ? { ...r } : r));
+        drawing.meta.extraEntries = snap.extraEntries.map((r) => (r ? { ...r } : r));
+        drawing.meta.extraStops = snap.extraStops.map((r) => (r ? { ...r } : r));
+        drawing.meta.rrBreakevenLine = snap.rrBreakevenLine ? { ...snap.rrBreakevenLine } : null;
+        const p0 = startPoints?.[0];
+        const p1 = previewPoints?.[0];
+        if (!p0 || !p1) return;
+        const dy = p1.y - p0.y;
+        if (dy === 0) return;
+        if (typeof drawing.afterPointsMoveDelta === 'function') {
+            drawing.afterPointsMoveDelta(0, dy);
+            drawing.meta._rrLiveDragExtrasSynced = true;
+        }
     }
 
     _parseTimeframe(timeframe) {
@@ -2724,6 +2776,11 @@ class DrawingToolsManager {
         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
             drawing.showAxisHighlights();
         }
+        const om = this.chart?.orderManager;
+        if (om && om._rrExecuteArmed && this._isRiskRewardPositionDrawing(drawing)
+            && typeof om.syncOrderPanelFromSelectedRiskRewardTool === 'function') {
+            om.syncOrderPanelFromSelectedRiskRewardTool();
+        }
     }
 
     /**
@@ -2751,8 +2808,10 @@ class DrawingToolsManager {
         if (typeof drawing.afterPointsMoveDelta === 'function') {
             const p0 = startPoints[0];
             const c0 = drawing.points && drawing.points[0];
-            if (p0 && c0) {
+            if (p0 && c0 && !drawing.meta?._rrLiveDragExtrasSynced) {
                 drawing.afterPointsMoveDelta(c0.x - p0.x, c0.y - p0.y);
+            } else if (drawing.meta?._rrLiveDragExtrasSynced) {
+                delete drawing.meta._rrLiveDragExtrasSynced;
             }
         }
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
@@ -2806,7 +2865,11 @@ class DrawingToolsManager {
             drawing.type
         ));
         if (typeof drawing.afterPointsMoveDelta === 'function') {
-            drawing.afterPointsMoveDelta(dx, dy);
+            if (!drawing.meta?._rrLiveDragExtrasSynced) {
+                drawing.afterPointsMoveDelta(dx, dy);
+            } else {
+                delete drawing.meta._rrLiveDragExtrasSynced;
+            }
         }
         this.clampDrawingPointsToCandleRange(drawing);
         this._syncHorizontalAnchorToolPointY(drawing);
@@ -6973,6 +7036,7 @@ class DrawingToolsManager {
                     
                     // Store original points and start position
                     dragStartPoints = drawing.points.map(p => ({...p}));
+                    self._beginRRToolWholeDragSnapshot(drawing);
                     startDataPoint = getDragDataPoint(event);
                     const [bodySx, bodySy] = self._eventCanvasLocalXY(event.sourceEvent);
                     bodyDragStartScreen = { x: bodySx, y: bodySy };
@@ -6987,6 +7051,7 @@ class DrawingToolsManager {
                             beforeState: self.history ? self.history.captureState(d) : null,
                             startTransform: self._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
                         }));
+                        multiDragStartPoints.forEach((item) => self._beginRRToolWholeDragSnapshot(item.drawing));
                         self._bodyDragActiveDrawings = multiDragStartPoints.map((item) => item.drawing);
                     } else {
                         multiDragStartPoints = null;
@@ -7097,6 +7162,7 @@ class DrawingToolsManager {
                                 item.points,
                                 item.startTransform
                             );
+                            self._clearRRToolWholeDragSnapshot(item.drawing);
                             if (didMove && self.history && item.beforeState) {
                                 self.history.recordModify(item.drawing, item.beforeState);
                             }
@@ -7113,6 +7179,7 @@ class DrawingToolsManager {
                             dragStartPoints,
                             bodyDragStartTransform
                         );
+                        self._clearRRToolWholeDragSnapshot(drawing);
                         if (didMove && self.history && beforeState) {
                             self.history.recordModify(drawing, beforeState);
                         }
@@ -7452,6 +7519,7 @@ class DrawingToolsManager {
             beforeState: this.history ? this.history.captureState(d) : null,
             startTransform: this._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
         }));
+        startStates.forEach((item) => this._beginRRToolWholeDragSnapshot(item.drawing));
         this._directMoveDrawings = drawings;
         this._directMovePendingFrame = false;
         this._directMoveLastEvent = null;
@@ -7515,6 +7583,7 @@ class DrawingToolsManager {
                     item.points,
                     item.startTransform
                 );
+                this._clearRRToolWholeDragSnapshot(item.drawing);
                 if (didMove && moved && this.history && item.beforeState) {
                     this.history.recordModify(item.drawing, item.beforeState);
                 }
@@ -8176,6 +8245,7 @@ class DrawingToolsManager {
         this.singleDragStartPoints = drawing && Array.isArray(drawing.points)
             ? drawing.points.map(p => ({ ...p }))
             : null;
+        this._beginRRToolWholeDragSnapshot(drawing);
         
         // If dragging a drawing that's part of a multi-selection, drag all selected drawings
         if (this.selectedDrawings.length > 1 && this.selectedDrawings.includes(drawing)) {
@@ -8183,6 +8253,7 @@ class DrawingToolsManager {
             // Store initial positions for all selected drawings
             this.multiDragStartPositions = this.selectedDrawings.map(d => {
                 this._ensureDrawingId(d);
+                this._beginRRToolWholeDragSnapshot(d);
                 return ({
                 drawing: d,
                 points: d.points.map(p => ({ ...p })),
@@ -8212,6 +8283,7 @@ class DrawingToolsManager {
         if (this.draggingMultiple && this.multiDragStartPositions) {
             this.multiDragStartPositions.forEach(({ drawing, points, startTransform }) => {
                 const didMove = this._commitDrawingPixelDragDelta(drawing, points, startTransform);
+                this._clearRRToolWholeDragSnapshot(drawing);
                 if (didMove) {
                     this._refreshDrawingTimestampAnchors(drawing);
                     this._renderDrawingAfterGeometryCommit(drawing);
@@ -8225,6 +8297,7 @@ class DrawingToolsManager {
                 this.singleDragStartPoints,
                 this.dragStartOriginalPos || { x: 0, y: 0 }
             );
+            this._clearRRToolWholeDragSnapshot(this.draggingDrawing);
             if (didMove) {
                 this._refreshDrawingTimestampAnchors(this.draggingDrawing);
                 this._renderDrawingAfterGeometryCommit(this.draggingDrawing);
@@ -8267,6 +8340,15 @@ class DrawingToolsManager {
             this.deleteDrawing(drawing); // Pass the drawing object, not ID
             // [debug removed]
             return;
+        }
+
+        const omDisarm = this.chart?.orderManager;
+        if (omDisarm && typeof omDisarm.disarmRiskRewardToolExecute === 'function') {
+            const onlyBefore = this.selectedDrawings.length === 1 ? this.selectedDrawings[0] : null;
+            const reselectingSameOnly = !addToSelection && onlyBefore === drawing;
+            if (!reselectingSameOnly) {
+                omDisarm.disarmRiskRewardToolExecute();
+            }
         }
         
         // Multi-selection with Shift or Ctrl
@@ -8461,6 +8543,10 @@ class DrawingToolsManager {
         }
         if (fromCanvasBackground) {
             notifyMultichartParentSelectionCleared(this.chart);
+        }
+        const omDeselect = this.chart?.orderManager;
+        if (omDeselect && typeof omDeselect.disarmRiskRewardToolExecute === 'function') {
+            omDeselect.disarmRiskRewardToolExecute();
         }
     }
 
