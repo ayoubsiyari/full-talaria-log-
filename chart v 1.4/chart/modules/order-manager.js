@@ -419,14 +419,20 @@ class OrderManager {
      */
     refreshDraftPreviewForActivePanel() {
         const panelEl = document.getElementById('orderPanel');
-        if (!panelEl?.classList.contains('visible')) return;
+        const v9ReactRailOpen = typeof window !== 'undefined'
+            && !!window.__talariaV9ReactOrderUi
+            && !!window.__talariaV9OrderRailOpen;
+        if (!panelEl?.classList.contains('visible') && !v9ReactRailOpen) return;
         if (this._orderPlacedAwaitingReset || this.editingPendingOrderId) return;
         if (this.isDraggingPreviewLine) return;
         if (!this._isMultiPanelLayout()) return;
         this.removePreviewLines();
         requestAnimationFrame(() => {
             const p = document.getElementById('orderPanel');
-            if (!p?.classList.contains('visible')) return;
+            const v9Open = typeof window !== 'undefined'
+                && !!window.__talariaV9ReactOrderUi
+                && !!window.__talariaV9OrderRailOpen;
+            if (!p?.classList.contains('visible') && !v9Open) return;
             if (this._orderPlacedAwaitingReset || this.editingPendingOrderId) return;
             if (this.isDraggingPreviewLine) return;
             this.updatePreviewLines();
@@ -435,7 +441,10 @@ class OrderManager {
 
     _scheduleDraftPreviewRedrawIfNeeded(surfaceChart) {
         const panelEl = document.getElementById('orderPanel');
-        if (!panelEl?.classList.contains('visible')) return;
+        const v9ReactRailOpen = typeof window !== 'undefined'
+            && !!window.__talariaV9ReactOrderUi
+            && !!window.__talariaV9OrderRailOpen;
+        if (!panelEl?.classList.contains('visible') && !v9ReactRailOpen) return;
         if (this._orderPlacedAwaitingReset || this.editingPendingOrderId) return;
         let active = null;
         try {
@@ -12406,7 +12415,7 @@ class OrderManager {
                     className: 'preview-entry-level-delete-btn',
                     x: bb.width + gap,
                     y: (height - 18) / 2,
-                  
+                    levelPrice: lineData.price,
                     stopMousedown: true,
                     onClick: (event) => {
                         event.preventDefault();
@@ -12440,7 +12449,7 @@ class OrderManager {
                 className: 'entry-action-btn entry-place-btn',
                 x: actX,
                 y: (height - r * 2) / 2,
-                
+                levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
                     console.log('🟦OM-DIAG place ✓ clicked', {
@@ -12458,7 +12467,7 @@ class OrderManager {
                 className: 'entry-action-btn entry-cancel-btn',
                 x: actX,
                 y: (height - r * 2) / 2,
-                
+                levelPrice: lineData.price,
                 onClick: (event) => {
                     event.stopPropagation();
                     self.closeOrderRailFromChartCancel();
@@ -17517,6 +17526,9 @@ class OrderManager {
         // land a frame late when this runs inside the chart's own render loop.
         if (previewChart?.svg && previewChart.svg.node?.()?.parentElement?.__omInside) {
             this._revealLevelCtrlBadges(previewChart);
+        }
+        if (previewChart && typeof previewChart.updateSVGPointerEvents === 'function') {
+            try { previewChart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
         }
         } finally {
             this._previewTargetChart = null;

@@ -26728,11 +26728,17 @@ class Chart {
             )
         );
 
+        const orderPanelEl = document.getElementById('orderPanel');
+        const v9ReactRailOpen = typeof window !== 'undefined'
+            && !!window.__talariaV9ReactOrderUi
+            && !!window.__talariaV9OrderRailOpen;
+        const multichartDraftActive = typeof window !== 'undefined'
+            && !!window.__talariaMultichartDraftActive;
         const orderPreviewActive = !!(
             this.orderManager &&
             this.orderManager.previewLines &&
-            document.getElementById('orderPanel') &&
-            document.getElementById('orderPanel').classList.contains('visible')
+            orderPanelEl &&
+            (orderPanelEl.classList.contains('visible') || v9ReactRailOpen || multichartDraftActive)
         );
 
         if (legacyToolActive || drawingManagerActive || orderPreviewActive) {

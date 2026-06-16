@@ -14154,6 +14154,12 @@ const TalariaV8bLive = () => {
     try {
       window.chart?.orderManager?.syncOrderPanelMountTarget?.();
     } catch (_) {}
+    try {
+      const ch = window.chart;
+      if (ch && typeof ch.updateSVGPointerEvents === "function") {
+        ch.updateSVGPointerEvents();
+      }
+    } catch (_) {}
   }, [orderPanelOpen]);
 
   // Push V8b controls into order-manager's hidden inputs so calculations + Place Order match chart.js.
