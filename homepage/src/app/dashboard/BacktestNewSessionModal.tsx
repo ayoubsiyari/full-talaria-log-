@@ -30,13 +30,19 @@ function IconI({ n, s = 18, cl = "currentColor" }: { n: string; s?: number; cl?:
   return null;
 }
 
+export type BacktestNewSessionInitialState = {
+  playbook?: string;
+  sessionName?: string;
+};
+
 export type BacktestNewSessionModalProps = {
   open: boolean;
   onClose: () => void;
   onSaved?: () => void | Promise<void>;
+  initialState?: BacktestNewSessionInitialState | null;
 };
 
-export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewSessionModalProps) {
+export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }: BacktestNewSessionModalProps) {
   const c = {
     ac: "#2643F7", acL: "#4A6AFF", acD: "rgba(38,67,247,0.08)", acB: "rgba(38,67,247,0.22)", acG: "rgba(74,106,255,0.35)",
     gold: "#C9A84C",
@@ -264,9 +270,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
 
   const prevOpen = useRef(false);
   useEffect(() => {
-    if (open && !prevOpen.current) resetFormToDefaults();
+    if (open && !prevOpen.current) {
+      resetFormToDefaults();
+      if (initialState?.sessionName) setNewSessName(initialState.sessionName);
+      if (initialState?.playbook) setNewSessPlaybook(initialState.playbook);
+    }
     prevOpen.current = open;
-  }, [open, resetFormToDefaults]);
+  }, [open, resetFormToDefaults, initialState]);
 
   const closeNewSess = () => {
     setNewSessFilePickerOpen(false);
@@ -1966,6 +1976,12 @@ export function BacktestNewSessionModal({ open, onClose, onSaved }: BacktestNewS
                         style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:6,background:isValid2?`linear-gradient(135deg,${c.ac},${c.acL})`:"rgba(38,67,247,0.15)",cursor:isValid2?"default":"not-allowed",fontSize:10,fontWeight:700,color:isValid2?"#fff":"rgba(255,255,255,0.25)",letterSpacing:"0.05em",boxShadow:isValid2?"0 2px 10px rgba(38,67,247,0.35)":"none",filter:hov==="sessStart"&&isValid2?"brightness(1.12)":"brightness(1)",transition:"all 0.12s",flexShrink:0,fontFamily:F}}>
                         <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>
                         Start Session
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
       <style>{`
         @keyframes tlrPopIn {
           from { opacity: 0; transform: scale(0.98); }
