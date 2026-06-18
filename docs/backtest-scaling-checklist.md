@@ -4,7 +4,7 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 
 **Recommended order:** Track A → Track B → Track C (use Phase 0 metrics to confirm each step).
 
-**Related docs:** [chart-multichart-architecture.md](./chart-multichart-architecture.md) (full system map), [backtest-scaling-test-guide.md](./backtest-scaling-test-guide.md) (steps + expected HTTP/UI output).
+**Related docs:** [chart-multichart-architecture.md](./chart-multichart-architecture.md) (full system map), [backtest-scaling-test-guide.md](./backtest-scaling-test-guide.md) (steps + expected HTTP/UI output), **[client-heavy-scaling-roadmap.md](./client-heavy-scaling-roadmap.md)** (full phased plan: CDN, IndexedDB, horizontal scale).
 
 | Track | Focus | Main win |
 |-------|--------|----------|
@@ -196,7 +196,9 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 
 ### Optional Phase 2 (after A–C)
 
-- [ ] Enable `TILE_CDN_REDIRECT` / object storage for tiles
+See **[client-heavy-scaling-roadmap.md](./client-heavy-scaling-roadmap.md)** for the full step-by-step plan (Phases 1–8).
+
+- [ ] Enable `TILE_CDN_REDIRECT` / object storage for tiles — [tile-cdn-phase2-aws.md](./tile-cdn-phase2-aws.md)
 - [ ] Scale `trading-chart` to N replicas + shared volume/S3
 - [ ] Add PgBouncer
 - [ ] Tier limits in Stripe plans (`max_sessions`, max trades, rate limits per plan)
