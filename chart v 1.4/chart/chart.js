@@ -20394,7 +20394,12 @@ class Chart {
         const nearLoadedLeft = this.offsetX > maxOffset - spacing * 10;
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
         const gapOnLeft = leftIdx < 6;
-        return nearLoadedLeft || gapOnLeft;
+        let spanNeedsHistory = false;
+        if (typeof this._getViewportBarRange === 'function') {
+            const vr = this._getViewportBarRange();
+            spanNeedsHistory = Number.isFinite(vr.first) && vr.first < -1;
+        }
+        return nearLoadedLeft || gapOnLeft || spanNeedsHistory;
     }
 
     /** Debounced backward fetch while dragging replay chart left (TradingView-style). */
@@ -20417,8 +20422,13 @@ class Chart {
         const maxOffset = cw - rightMargin;
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
         const gapOnLeft = leftIdx < 6;
+        let spanNeedsHistory = false;
+        if (typeof this._getViewportBarRange === 'function') {
+            const vr = this._getViewportBarRange();
+            spanNeedsHistory = Number.isFinite(vr.first) && vr.first < -1;
+        }
         const nearLoadedLeft = spacing > 0 && this.offsetX > maxOffset - spacing * 10;
-        const forceProbe = gapOnLeft || nearLoadedLeft;
+        const forceProbe = gapOnLeft || nearLoadedLeft || spanNeedsHistory;
         if (!forceProbe && !this._needsReplayHistoryLoadLeft()) return;
         if (typeof this._tryExtendReplayMasterFromParent === 'function'
             && this._tryExtendReplayMasterFromParent()) {
@@ -20597,9 +20607,10 @@ class Chart {
         
         this.constrainOffset();
         this.render();
+        if (factor < 1 && this.replaySystem?.isActive) {
+            this._scheduleReplayPanLoadLeft();
+        }
     }
-    
-    panBy(dx, dy) {
         this.offsetX += dx;
         if (this.yScale) {
             const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
@@ -25387,7 +25398,10 @@ class Chart {
             clearTimeout(this._wheelPostBurstTimer);
             this._wheelPostBurstTimer = setTimeout(() => {
                 if (this.data && this.data.length > 0) {
-                    if (this._lastWheelZoomDirection === -1) {
+                    if (this.replaySystem?.isActive) {
+                        try { this.constrainOffset(); } catch (_e) {}
+                        this._scheduleReplayPanLoadLeft();
+                    } else if (this._lastWheelZoomDirection === -1) {
                         this._scheduleZoomOutDataFill();
                     } else {
                         try { this.constrainOffset(); } catch (_e) {}
@@ -26255,6 +26269,9 @@ class Chart {
             ) {
                 if (dragType === 'timeAxis') {
                     try { this.constrainOffset(); } catch (_e) {}
+                    if (this.replaySystem?.isActive) {
+                        this._scheduleReplayPanLoadLeft();
+                    }
                 }
                 this._finishAxisZoomInteraction();
                 if (dragType === 'timeAxis') {
