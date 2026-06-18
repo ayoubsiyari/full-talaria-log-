@@ -2869,7 +2869,8 @@ class ReplaySystem {
         }
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
-        if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback) {
+        if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
+            && !this._timeframeChanging) {
             this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
         }
         

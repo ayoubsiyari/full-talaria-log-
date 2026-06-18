@@ -5419,12 +5419,13 @@ class Chart {
                         savedReplayTimestamp,
                         { usingReplay: true }
                     );
+                    const preserveView = replay.userHasPanned || !replay.autoScrollEnabled;
                     if (loaded && typeof replay.goToReplayTimestamp === 'function') {
-                        replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: false });
+                        replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: preserveView });
                     } else if (typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
                         replay.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
                         if (typeof replay.updateChartData === 'function') {
-                            replay.updateChartData(true);
+                            replay.updateChartData(false);
                         }
                     }
                 } catch (e) {
@@ -5627,7 +5628,7 @@ class Chart {
         replay._timeframeChanging = true;
         try {
             if (typeof replay.updateChartData === 'function') {
-                try { replay.updateChartData(true); } catch (e) {
+                try { replay.updateChartData(false); } catch (e) {
                     console.warn('[backtest] updateChartData after TF hot-swap failed', e);
                 }
             }
@@ -5640,7 +5641,7 @@ class Chart {
                 replay.currentIndex = replay.fullRawData.length - 1;
                 const endBar = replay.fullRawData[replay.currentIndex];
                 if (endBar && Number.isFinite(endBar.t)) replay.replayTimestamp = endBar.t;
-                try { replay.updateChartData(true); } catch (_e2) { /* ignore */ }
+                try { replay.updateChartData(false); } catch (_e2) { /* ignore */ }
             }
 
             this._finishTfSwitchViewportRestore();
@@ -17936,8 +17937,12 @@ class Chart {
     _snapReplayViewportAfterTfSwitch(replay, options = {}) {
         if (!replay || !replay.isActive) return;
 
+        const userOwnsViewport = replay.userHasPanned || !replay.autoScrollEnabled;
         const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
-        if (Array.isArray(this.data) && this.data.length > 0 && spacing > 0) {
+        // Do NOT clamp a manually panned viewport — the old maxOffset=spacing*2
+        // snap destroyed "panned back then switch TF" (TradingView keeps the window).
+        if (!userOwnsViewport && !this._chartViewRestored
+            && Array.isArray(this.data) && this.data.length > 0 && spacing > 0) {
             const m = this.margin || { l: 60, r: 60 };
             const plotW = Math.max(1, (this.w || 800) - m.l - m.r);
             const totalW = this.data.length * spacing;
@@ -24503,22 +24508,36 @@ class Chart {
 
         let anchorTs = null;
         let anchorScreenX = null;
+        let anchorMode = 'center';
         const replay = this.replaySystem;
-        if (replay && replay.isActive) {
+        const userOwnsViewport = !!(replay && replay.isActive
+            && (replay.userHasPanned || !replay.autoScrollEnabled));
+
+        const vr = this._getViewportBarRange();
+        const viewportLeftIdx = vr.first;
+        const leftScreenX = this.dataIndexToPixel(viewportLeftIdx);
+
+        if (userOwnsViewport) {
+            // Panned / manual zoom: preserve the visible wall-clock window (TradingView).
+            anchorMode = 'viewportLeft';
+            anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
+            anchorScreenX = leftScreenX;
+        } else if (replay && replay.isActive) {
+            anchorMode = 'playhead';
             anchorTs = this._captureReplayPlayheadMs(replay);
         }
         if (!Number.isFinite(anchorTs)) {
             const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
             const rightBar = this.data[rightBarIdx];
             if (rightBar && Number.isFinite(rightBar.t)) anchorTs = rightBar.t;
+            anchorMode = 'playhead';
         }
-        if (Number.isFinite(anchorTs)) {
+        if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX)) {
             const anchorIdx = this._findClosestBarIndexForTimestamp(anchorTs);
             const spacing = this.getCandleSpacing();
             anchorScreenX = this.dataIndexToPixel(anchorIdx) + spacing / 2;
         }
 
-        const vr = this._getViewportBarRange();
         const leftTs = this.estimateTimestampForDataIndex(vr.first);
         const rightTs = this.estimateTimestampForDataIndex(vr.last);
 
@@ -24527,16 +24546,20 @@ class Chart {
             spanMs,
             leftTs,
             rightTs,
+            viewportLeftIdx,
+            leftScreenX,
+            anchorMode,
             anchorTs,
             anchorScreenX,
             candleWidth: this.candleWidth,
+            offsetX: this.offsetX,
             autoScale: this.autoScale !== false,
             priceZoom: this.priceZoom,
             priceOffset: this.priceOffset,
             manualCenterPrice: this.manualCenterPrice,
             manualRange: this.manualRange,
             priceScaleLocked: !!(this.priceScale && this.priceScale.locked),
-            userHasPanned: !!(replay && replay.userHasPanned),
+            userHasPanned: userOwnsViewport,
             autoScrollEnabled: replay ? replay.autoScrollEnabled !== false : true,
         };
     }
@@ -24561,10 +24584,20 @@ class Chart {
 
         const newBarMs = this._estimateTimeframeStepMs();
         const margin = (Number.isFinite(newBarMs) && newBarMs > 0) ? newBarMs : 0;
+
+        const tsMapsToLoadedBar = (ts) => {
+            if (!Number.isFinite(ts) || !this.data.length) return false;
+            const idx = this._findClosestBarIndexForTimestamp(ts);
+            const bar = this.data[idx];
+            if (!bar || !Number.isFinite(bar.t)) return false;
+            return Math.abs(bar.t - ts) <= margin * 2;
+        };
+
         const anchorCheckTs = Number.isFinite(vp.anchorTs) ? vp.anchorTs : vp.centerTs;
-        // Bail out (→ jumpToLatest) when the captured anchor isn't in the new
-        // data window; restoring there would land on an empty region.
-        if (anchorCheckTs < firstTs - margin || anchorCheckTs > lastTs + margin) {
+        const hasAnchor = tsMapsToLoadedBar(anchorCheckTs)
+            || tsMapsToLoadedBar(vp.centerTs)
+            || tsMapsToLoadedBar(vp.leftTs);
+        if (!hasAnchor) {
             return false;
         }
 
@@ -24604,7 +24637,11 @@ class Chart {
             }
         }
 
-        if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
+        if (vp.anchorMode === 'viewportLeft'
+            && Number.isFinite(vp.leftTs)
+            && Number.isFinite(vp.leftScreenX)) {
+            this._restorePositionAtScreenX(vp.leftTs, targetCandleWidth, vp.leftScreenX);
+        } else if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
             this._restorePositionAtScreenX(vp.anchorTs, targetCandleWidth, vp.anchorScreenX);
         } else {
             this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
@@ -24756,7 +24793,17 @@ class Chart {
             }
             return;
         }
-        // Snapshot missing or anchor outside fetched window — safe fallback.
+        // Soft fallback: center on captured wall-clock center before jumping to latest.
+        const vp = this._tfSwitchViewport;
+        this._tfSwitchViewport = null;
+        if (vp && Number.isFinite(vp.centerTs) && this.data && this.data.length > 0
+            && typeof this._restorePositionToTimestamp === 'function') {
+            this._restorePositionToTimestamp(vp.centerTs, vp.candleWidth);
+            if (typeof this.constrainOffset === 'function') {
+                try { this.constrainOffset(); } catch (_e) { /* ignore */ }
+            }
+            return;
+        }
         if (this.data && this.data.length > 0) {
             if (typeof this.jumpToLatest === 'function') {
                 this.jumpToLatest();
