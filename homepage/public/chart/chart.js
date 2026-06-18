@@ -19116,21 +19116,7 @@ class Chart {
             const cwPan = this.w - mPan.l - mPan.r;
             const candleAndSpacing = this.getCandleSpacing();
             const bufferCandles = 20;
-            let visStart = Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles);
-            let visEnd = Math.min(
-                this.data.length,
-                -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cwPan / candleAndSpacing) + bufferCandles
-            );
-            const normVis = this._normalizeViewportBarRange(
-                visStart, visEnd, this.data.length, cwPan, candleAndSpacing, bufferCandles
-            );
-            const visCount = Math.max(0, normVis.visEnd - normVis.visStart);
-            this.xScale = d3.scaleLinear()
-                .domain([
-                    Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)),
-                    Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visCount,
-                ])
-                .range([mPan.l, this.w - mPan.r]);
+            this._applyViewportXScale(mPan);
 
             if (priceMoved && this._panSnapYDomain && this._panSnapYDomain.length === 2) {
                 const indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -19182,22 +19168,7 @@ class Chart {
             const mW = this.margin;
             const cwW = this.w - mW.l - mW.r;
             const candleAndSpacing = this.getCandleSpacing();
-            const bufferCandles = 20;
-            let visStart = Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles);
-            let visEnd = Math.min(
-                this.data.length,
-                -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cwW / candleAndSpacing) + bufferCandles
-            );
-            const normVis = this._normalizeViewportBarRange(
-                visStart, visEnd, this.data.length, cwW, candleAndSpacing, bufferCandles
-            );
-            const visCount = Math.max(0, normVis.visEnd - normVis.visStart);
-            this.xScale = d3.scaleLinear()
-                .domain([
-                    Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)),
-                    Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visCount,
-                ])
-                .range([mW.l, this.w - mW.r]);
+            this._applyViewportXScale(mW);
             const indPanelH = this.separateIndicatorPanelHeight || 0;
             const plotBottom = this.h - mW.b - indPanelH;
             const ch = this.h - mW.t - mW.b;
@@ -19266,12 +19237,29 @@ class Chart {
         
         // Use consistent candle spacing
         const candleAndSpacing = this.getCandleSpacing();
+        const vp = this._getViewportBarRange();
+        const vpFirst = vp.first;
+        const vpLast = vp.last;
 
-        let visStart = Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles);
+        let visStart = Math.max(0, Math.floor(vpFirst) - bufferCandles);
         let visEnd = Math.min(
             this.data.length,
-            -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cw / candleAndSpacing) + bufferCandles
+            Math.ceil(vpLast) + bufferCandles
         );
+        const hasOnScreenBars = this._viewportHasLoadedBarsOnScreen();
+        if (!hasOnScreenBars || visEnd <= visStart) {
+            this._applyViewportXScale(m);
+            this._preserveYScaleForEmptyViewport(m, plotBottom, volumeOverlayHeight);
+            this.scales = {
+                yScale: this.yScale,
+                xScale: this.xScale,
+                volumeScale: this.volumeScale,
+            };
+            if (this._chartPanRenderLoopActive) {
+                this._panScalesCalculated = true;
+            }
+            return;
+        }
         const normVis = this._normalizeViewportBarRange(visStart, visEnd, this.data.length, cw, candleAndSpacing, bufferCandles);
         visStart = normVis.visStart;
         visEnd = normVis.visEnd;
@@ -19302,13 +19290,21 @@ class Chart {
         
         // FIX: If no visible candles, maintain last valid scales to prevent drawings from disappearing
         if (priceVisible.length === 0 && visCount === 0) {
-            // Only set default scales if we've never had valid data before
+            this._applyViewportXScale(m);
             if (!this.xScale || !this.yScale) {
-                this.xScale = d3.scaleLinear().domain([0, 1]).range([m.l, this.w - m.r]);
                 this.yScale = d3.scaleLinear().domain([0, 1]).range([plotBottom, m.t]);
                 this.volumeScale = d3.scaleLinear().domain([0, 1]).range([plotBottom, plotBottom - volumeOverlayHeight]);
+            } else {
+                this._preserveYScaleForEmptyViewport(m, plotBottom, volumeOverlayHeight);
             }
-            // Otherwise, keep the existing scales so drawings remain visible
+            this.scales = {
+                yScale: this.yScale,
+                xScale: this.xScale,
+                volumeScale: this.volumeScale,
+            };
+            if (this._chartPanRenderLoopActive) {
+                this._panScalesCalculated = true;
+            }
             return;
         }
 
@@ -19436,12 +19432,8 @@ class Chart {
             domainMax = snapMax + priceDy;
         }
 
-        // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized.
-        // Use the true visible bar count (not the decimated series length) so candle X mapping stays correct.
-        this.xScale = d3.scaleLinear()
-            .domain([Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)), 
-                     Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visCount])
-            .range([m.l, this.w - m.r]);
+        // X-axis follows the viewport (not snapped bar window) so time grid scrolls in empty gaps.
+        this._applyViewportXScale(m);
         
         this.yScale = d3.scaleLinear()
             .domain([domainMin, domainMax])
@@ -19552,6 +19544,115 @@ class Chart {
     }
 
     /**
+     * Viewport bar index range from offsetX (may extend before 0 or past data.length).
+     */
+    _getViewportBarRange() {
+        const m = this.margin || { l: 60, r: 60, t: 0, b: 0 };
+        const cw = Math.max(1, this.w - m.l - m.r);
+        const spacing = Math.max(1e-6, this.getCandleSpacing());
+        const first = -this.offsetX / spacing;
+        const last = first + cw / spacing;
+        return { first, last, spacing, cw, m };
+    }
+
+    /** True when at least one loaded bar index overlaps the on-screen plot width. */
+    _viewportHasLoadedBarsOnScreen() {
+        if (!this.data || this.data.length === 0) return false;
+        const { first, last } = this._getViewportBarRange();
+        const lo = Math.ceil(first);
+        const hi = Math.floor(last);
+        return hi >= 0 && lo < this.data.length && hi >= lo;
+    }
+
+    _applyViewportXScale(mArg) {
+        const m = mArg || this.margin || { l: 60, r: 60 };
+        const vp = this._getViewportBarRange();
+        this.xScale = d3.scaleLinear()
+            .domain([vp.first, vp.last])
+            .range([m.l, this.w - m.r]);
+        return vp;
+    }
+
+    /** Keep Y/volume scales when the viewport shows no candles (empty future/past gap). */
+    _preserveYScaleForEmptyViewport(m, plotBottom, volumeOverlayHeight) {
+        let domainMin;
+        let domainMax;
+        if (this._isChartViewPanning() && this._panSnapYDomain && this._panSnapYDomain.length === 2) {
+            const snapPo = Number.isFinite(this._panSnapPriceOffset) ? this._panSnapPriceOffset : this.priceOffset;
+            const priceDy = (this.priceOffset || 0) - snapPo;
+            domainMin = this._panSnapYDomain[0] + priceDy;
+            domainMax = this._panSnapYDomain[1] + priceDy;
+        } else if (
+            this._isWheelZoomBurst()
+            && !this._wheelBurstFinalPass
+            && this._wheelBurstSnapYDomain
+            && this._wheelBurstSnapYDomain.length === 2
+        ) {
+            domainMin = this._wheelBurstSnapYDomain[0];
+            domainMax = this._wheelBurstSnapYDomain[1];
+        } else if (this.yScale && this.yScale.domain().length === 2) {
+            [domainMin, domainMax] = this.yScale.domain();
+        } else if (this.manualCenterPrice != null && this.manualRange != null) {
+            const half = this.manualRange / (2 * Math.max(1e-9, this.priceZoom || 1));
+            domainMin = this.manualCenterPrice - half + (this.priceOffset || 0);
+            domainMax = this.manualCenterPrice + half + (this.priceOffset || 0);
+        } else {
+            domainMin = 0;
+            domainMax = 1;
+        }
+        this.yScale = d3.scaleLinear()
+            .domain([domainMin, domainMax])
+            .range([plotBottom, m.t]);
+        const volDom = this.volumeScale && typeof this.volumeScale.domain === 'function'
+            ? this.volumeScale.domain()
+            : [0, 1];
+        this.volumeScale = d3.scaleLinear()
+            .domain(volDom)
+            .range([plotBottom, plotBottom - volumeOverlayHeight]);
+    }
+
+    /** Timestamp for a bar index — projects beyond loaded data for empty viewport ticks. */
+    _projectBarIndexTimestamp(idx) {
+        if (!this.data || this.data.length === 0) return null;
+        const i = Number(idx);
+        if (!Number.isFinite(i)) return null;
+        const iFloor = Math.floor(i);
+        if (iFloor >= 0 && iFloor < this.data.length) {
+            const c = this.data[iFloor];
+            return c && Number.isFinite(c.t) ? c.t : null;
+        }
+        let tfMs = this.parseTimeframe(String(this.currentTimeframe || '1m').toLowerCase());
+        if (!Number.isFinite(tfMs) || tfMs <= 0) {
+            if (this.data.length >= 2) {
+                const d = this.data[1].t - this.data[0].t;
+                tfMs = Number.isFinite(d) && d > 0 ? d : 60000;
+            } else {
+                tfMs = 60000;
+            }
+        }
+        if (i < 0) return this.data[0].t + i * tfMs;
+        const last = this.data.length - 1;
+        return this.data[last].t + (i - last) * tfMs;
+    }
+
+    _formatTimeLabelForBarIndex(idx) {
+        const ts = this._projectBarIndexTimestamp(idx);
+        if (!Number.isFinite(ts)) return '';
+        const tzDate = this.convertToTimezone(ts);
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const tf = String(this.currentTimeframe || '1m').toLowerCase();
+        const tfMs = this.parseTimeframe(tf);
+        const isDailyOrHigher = Number.isFinite(tfMs) && tfMs >= 86400000;
+        if (isDailyOrHigher || /w$/i.test(tf) || /mo$/i.test(tf)) {
+            return `${monthNames[tzDate.getUTCMonth()]} ${tzDate.getUTCDate()}`;
+        }
+        if (typeof this._formatSessionClock === 'function') {
+            return this._formatSessionClock(tzDate, false);
+        }
+        return `${monthNames[tzDate.getUTCMonth()]} ${tzDate.getUTCDate()}`;
+    }
+
+    /**
      * Guarantee a non-empty bar index window when data exists (zoomed-out pan can briefly
      * push offsetX past the rubber band so visEnd <= visStart and candles disappear).
      */
@@ -19577,9 +19678,13 @@ class Chart {
         const spacing = this.getCandleSpacing();
         let vs = Math.max(0, Math.floor(plotStartIdx) - edgeBuf);
         let ve = Math.min(this.data.length, Math.ceil(plotEndIdx) + edgeBuf);
-        const norm = this._normalizeViewportBarRange(vs, ve, this.data.length, plotPx, spacing, edgeBuf);
-        vs = norm.visStart;
-        ve = norm.visEnd;
+        const loOnScreen = Math.ceil(plotStartIdx);
+        const hiOnScreen = Math.floor(plotEndIdx);
+        if (hiOnScreen < 0 || loOnScreen >= this.data.length || ve <= vs) {
+            this.visibleStartIndex = Math.max(0, loOnScreen);
+            this.visibleEndIndex = Math.min(this.data.length, Math.ceil(plotEndIdx));
+            return [];
+        }
         this.visibleStartIndex = vs;
         this.visibleEndIndex = ve;
 
@@ -20568,16 +20673,18 @@ class Chart {
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
         if (skipHeavyChrome) {
-            // Pan: shift bar-aligned ticks 1:1 with offsetX. Wheel (+ optional pan): rebuild fast ticks.
+            // Pan: shift bar-aligned ticks 1:1 with offsetX. Empty viewport: project ticks from offset.
             if (chartViewPanning && !wheelBurstLight) {
-                this._timeTicks = this._buildPanTimeTicks();
+                this._timeTicks = this._viewportHasLoadedBarsOnScreen()
+                    ? this._buildPanTimeTicks()
+                    : this._buildTimeTicksFast();
             } else {
                 this._timeTicks = this._buildTimeTicksFast();
             }
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (chartViewPanning) {
             this._timeTicks = interactionLiteEarly
-                ? this._buildPanTimeTicks()
+                ? (this._viewportHasLoadedBarsOnScreen() ? this._buildPanTimeTicks() : this._buildTimeTicksFast())
                 : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (wheelBurstLight || timeAxisZoomDragging) {
@@ -20598,8 +20705,8 @@ class Chart {
         const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
         const plotRight = this.w - mVis.r;
         const edgeBuf = 6;
-        const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
-        const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
+        const startIdx = Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf;
+        const endIdx = Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf;
         
         let visible = typeof this._resolveVisibleBarsForPaint === 'function'
             ? this._resolveVisibleBarsForPaint(startIdx, endIdx)
@@ -21041,29 +21148,23 @@ class Chart {
         const plotW = Math.max(1, this.w - m.l - m.r);
         const spacing = Math.max(1e-6, this.getCandleSpacing());
         const minSpacingPx = 72;
-        const firstVisibleIdx = Math.max(0, -this.offsetX / spacing);
+        const firstVisibleIdx = -this.offsetX / spacing;
         const lastVisibleIdx = firstVisibleIdx + plotW / spacing;
         const slotCount = Math.min(12, Math.max(4, Math.floor(plotW / minSpacingPx)));
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const ticks = [];
         let lastX = -Infinity;
         const viewLeft = m.l - minSpacingPx;
         const viewRight = m.l + plotW + minSpacingPx;
         for (let ti = 0; ti <= slotCount; ti++) {
-            const idx = Math.round(
-                firstVisibleIdx + (ti / Math.max(1, slotCount)) * (lastVisibleIdx - firstVisibleIdx)
-            );
-            const idxClamped = Math.max(0, Math.min(this.data.length - 1, idx));
+            const idxRaw = firstVisibleIdx + (ti / Math.max(1, slotCount)) * (lastVisibleIdx - firstVisibleIdx);
             const x = typeof this.dataIndexToPixel === 'function'
-                ? this.dataIndexToPixel(idxClamped)
-                : (m.l + this.offsetX + idxClamped * spacing);
+                ? this.dataIndexToPixel(idxRaw)
+                : (m.l + this.offsetX + idxRaw * spacing);
             if (x < viewLeft || x > viewRight) continue;
             if (x - lastX < minSpacingPx * 0.65 && ti > 0) continue;
-            const candle = this.data[idxClamped];
-            if (!candle || !Number.isFinite(candle.t)) continue;
-            const tzDate = this.convertToTimezone(candle.t);
-            const label = `${monthNames[tzDate.getUTCMonth()]} ${tzDate.getUTCDate()}`;
-            ticks.push({ idx: idxClamped, x, label, isBoundary: true });
+            const label = this._formatTimeLabelForBarIndex(idxRaw);
+            if (!label) continue;
+            ticks.push({ idx: idxRaw, x, label, isBoundary: true });
             lastX = x;
         }
         return ticks;
