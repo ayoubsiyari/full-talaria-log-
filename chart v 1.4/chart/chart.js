@@ -19900,6 +19900,59 @@ class Chart {
     }
 
     /**
+     * True when two OHLC ranges do not overlap (price gap — must not merge when zoomed out).
+     */
+    _ohlcRangesHavePriceGap(a, b) {
+        if (!a || !b) return false;
+        const ref = Math.abs(a.h + a.l + b.h + b.l) * 0.25;
+        const eps = Math.max(1e-8, ref * 2.5e-5);
+        return b.l > a.h + eps || b.h < a.l - eps;
+    }
+
+    _newPixelSlotBucket(d, idx, m, slot, slotPx) {
+        return {
+            o: d.o,
+            h: d.h,
+            l: d.l,
+            c: d.c,
+            vSum: Number(d.v) || 0,
+            midIdx: idx,
+            _pixelX: m.l + slot * slotPx,
+        };
+    }
+
+    /** Merge bar into slot segments — split on price gaps so zoomed-out LOD keeps session gaps visible. */
+    _mergeBarIntoPixelSlot(slots, slot, idx, d, m, slotPx) {
+        let segs = slots[slot];
+        if (!segs) {
+            slots[slot] = [this._newPixelSlotBucket(d, idx, m, slot, slotPx)];
+            return;
+        }
+        const last = segs[segs.length - 1];
+        if (this._ohlcRangesHavePriceGap(last, d)) {
+            segs.push(this._newPixelSlotBucket(d, idx, m, slot, slotPx));
+            return;
+        }
+        if (d.h > last.h) last.h = d.h;
+        if (d.l < last.l) last.l = d.l;
+        last.c = d.c;
+        last.vSum = (last.vSum || 0) + (Number(d.v) || 0);
+        last.midIdx = idx;
+    }
+
+    _flattenPixelSlotSegments(slots) {
+        const out = [];
+        for (let s = 0; s < slots.length; s++) {
+            const segs = slots[s];
+            if (!segs) continue;
+            for (let j = 0; j < segs.length; j++) {
+                if (segs[j]) out.push(segs[j]);
+            }
+        }
+        return out.length ? out : null;
+    }
+
+    /**
      * Merge overlapping sub-pixel bars into fixed pixel slots (1px body + 1px gap).
      * Prevents zoomed-out candles from stacking into a solid line.
      */
@@ -19912,8 +19965,6 @@ class Chart {
         const spacing = this.getCandleSpacing();
         const offsetX = this.offsetX || 0;
 
-        // Always visit every bar — a stride shortcut here dropped bars that mapped to
-        // other pixel slots, so one wheel tick made candles vanish or flatten in place.
         for (let i = 0; i < visible.length; i++) {
             const d = visible[i];
             if (!d) continue;
@@ -19921,31 +19972,10 @@ class Chart {
             const x = m.l + idx * spacing + offsetX;
             const slot = Math.floor((x - m.l) / slotPx);
             if (slot < 0 || slot >= numSlots) continue;
-
-            let bucket = slots[slot];
-            if (!bucket) {
-                slots[slot] = {
-                    o: d.o,
-                    h: d.h,
-                    l: d.l,
-                    c: d.c,
-                    vSum: Number(d.v) || 0,
-                    midIdx: idx,
-                    _pixelX: m.l + slot * slotPx,
-                };
-            } else {
-                if (d.h > bucket.h) bucket.h = d.h;
-                if (d.l < bucket.l) bucket.l = d.l;
-                bucket.c = d.c;
-                bucket.vSum += Number(d.v) || 0;
-            }
+            this._mergeBarIntoPixelSlot(slots, slot, idx, d, m, slotPx);
         }
 
-        const out = [];
-        for (let s = 0; s < numSlots; s++) {
-            if (slots[s]) out.push(slots[s]);
-        }
-        return out.length ? out : null;
+        return this._flattenPixelSlotSegments(slots);
     }
 
     /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
@@ -23779,23 +23809,43 @@ class Chart {
             const i0 = Math.floor(b * step);
             const i1 = Math.min(n - 1, Math.floor((b + 1) * step) - 1);
             if (i0 > i1) continue;
-            const first = visible[i0];
-            let h = first.h;
-            let l = first.l;
-            let volSum = 0;
+            let segStart = i0;
             for (let k = i0; k <= i1; k++) {
                 const row = visible[k];
-                if (row.h > h) h = row.h;
-                if (row.l < l) l = row.l;
-                volSum += Number(row.v) || 0;
+                if (!row) continue;
+                const splitHere = k > segStart
+                    && this._ohlcRangesHavePriceGap(visible[k - 1], row);
+                if (splitHere) {
+                    buckets.push(this._mergeVisibleRangeBucket(visible, segStart, k - 1, base));
+                    segStart = k;
+                }
             }
-            const o = first.o;
-            const c = visible[i1].c;
-            const midIdx = base + Math.floor((i0 + i1) / 2);
-            buckets.push({ o, h, l, c, vSum: volSum, midIdx });
+            if (segStart <= i1) {
+                buckets.push(this._mergeVisibleRangeBucket(visible, segStart, i1, base));
+            }
         }
         return buckets.length ? buckets : null;
     }
+
+    _mergeVisibleRangeBucket(visible, i0, i1, base) {
+        const first = visible[i0];
+        let h = first.h;
+        let l = first.l;
+        let volSum = 0;
+        for (let k = i0; k <= i1; k++) {
+            const row = visible[k];
+            if (row.h > h) h = row.h;
+            if (row.l < l) l = row.l;
+            volSum += Number(row.v) || 0;
+        }
+        return {
+            o: first.o,
+            h,
+            l,
+            c: visible[i1].c,
+            vSum: volSum,
+            midIdx: base + Math.floor((i0 + i1) / 2),
+        };
 
     _normalizeCandleColorKey(color) {
         return String(color || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -23854,9 +23904,6 @@ class Chart {
             const yTop = Math.round(Math.min(this.yScale(b.h), this.yScale(b.l)));
             const yBot = Math.round(Math.max(this.yScale(b.h), this.yScale(b.l)));
             if (!Number.isFinite(yTop) || !Number.isFinite(yBot)) continue;
-            // Flat slots (H-L < 1px when zoomed out) were skipped entirely, leaving
-            // empty pixel columns — the "gap" in otherwise continuous candles that
-            // appears/disappears as the y-scale changes with zoom. Draw a 1px mark.
             const h = Math.max(1, yBot - yTop);
             if (isHollow && b.c >= b.o) {
                 this.ctx.strokeStyle = upColor;

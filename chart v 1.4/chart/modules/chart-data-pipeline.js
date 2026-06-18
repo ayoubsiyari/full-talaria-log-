@@ -209,36 +209,71 @@
                 const i0 = Math.floor(b * step);
                 const i1 = Math.min(n - 1, Math.floor((b + 1) * step) - 1);
                 if (i0 > i1) continue;
-                const first = slice[i0];
-                let h = first.h;
-                let l = first.l;
-                let volSum = 0;
+                const ohlcGap = (a, bRow) => {
+                    if (!a || !bRow) return false;
+                    const ref = Math.abs(a.h + a.l + bRow.h + bRow.l) * 0.25;
+                    const eps = Math.max(1e-8, ref * 2.5e-5);
+                    return bRow.l > a.h + eps || bRow.h < a.l - eps;
+                };
+                let segStart = i0;
                 for (let k = i0; k <= i1; k++) {
                     const row = slice[k];
                     if (!row) continue;
-                    if (row.h > h) h = row.h;
-                    if (row.l < l) l = row.l;
-                    volSum += Number(row.v) || 0;
+                    if (k > segStart && ohlcGap(slice[k - 1], row)) {
+                        const first = slice[segStart];
+                        let h = first.h;
+                        let l = first.l;
+                        let volSum = 0;
+                        for (let j = segStart; j < k; j++) {
+                            const r = slice[j];
+                            if (!r) continue;
+                            if (r.h > h) h = r.h;
+                            if (r.l < l) l = r.l;
+                            volSum += Number(r.v) || 0;
+                        }
+                        buckets.push({
+                            t: first.t,
+                            o: first.o,
+                            h,
+                            l,
+                            c: slice[k - 1].c,
+                            v: volSum,
+                            midIdx: base + Math.floor((segStart + k - 1) / 2),
+                            _pipelineBucket: true,
+                        });
+                        segStart = k;
+                    }
                 }
-                const midIdx = base + Math.floor((i0 + i1) / 2);
-                buckets.push({
-                    t: first.t,
-                    o: first.o,
-                    h,
-                    l,
-                    c: slice[i1].c,
-                    v: volSum,
-                    midIdx,
-                    _pipelineBucket: true,
-                });
+                if (segStart <= i1) {
+                    const first = slice[segStart];
+                    let h = first.h;
+                    let l = first.l;
+                    let volSum = 0;
+                    for (let k = segStart; k <= i1; k++) {
+                        const row = slice[k];
+                        if (!row) continue;
+                        if (row.h > h) h = row.h;
+                        if (row.l < l) l = row.l;
+                        volSum += Number(row.v) || 0;
+                    }
+                    buckets.push({
+                        t: first.t,
+                        o: first.o,
+                        h,
+                        l,
+                        c: slice[i1].c,
+                        v: volSum,
+                        midIdx: base + Math.floor((segStart + i1) / 2),
+                        _pipelineBucket: true,
+                    });
+                }
             }
             return buckets;
         }
 
         /**
          * Pixel-slot OHLC merge for zoomed-out views (1px body + 1px gap per slot).
-         * Iterates source index range directly — avoids allocating a viewport slice array
-         * on every wheel frame (major GC + CPU win when zoomed out).
+         * Splits segments on price gaps so session gaps stay visible when zoomed out.
          */
         _pixelSlotAggregateFromRange(source, visStart, visEnd, plotWidth, m, offsetX, spacing, sliceMode = false) {
             const slotPx = ZOOMED_OUT_SLOT_PX;
@@ -247,6 +282,41 @@
             const i0 = Math.max(0, visStart | 0);
             const i1 = sliceMode ? Math.min(source.length, visEnd | 0) : Math.min(source.length, visEnd | 0);
 
+            const ohlcGap = (a, b) => {
+                if (!a || !b) return false;
+                const ref = Math.abs(a.h + a.l + b.h + b.l) * 0.25;
+                const eps = Math.max(1e-8, ref * 2.5e-5);
+                return b.l > a.h + eps || b.h < a.l - eps;
+            };
+            const newBucket = (d, dataIdx, slot) => ({
+                t: d.t,
+                o: d.o,
+                h: d.h,
+                l: d.l,
+                c: d.c,
+                v: Number(d.v) || 0,
+                midIdx: dataIdx,
+                _pixelX: m.l + slot * slotPx,
+                _pipelineBucket: true,
+            });
+            const mergeBar = (slot, dataIdx, d) => {
+                let segs = slots[slot];
+                if (!segs) {
+                    slots[slot] = [newBucket(d, dataIdx, slot)];
+                    return;
+                }
+                const last = segs[segs.length - 1];
+                if (ohlcGap(last, d)) {
+                    segs.push(newBucket(d, dataIdx, slot));
+                    return;
+                }
+                if (d.h > last.h) last.h = d.h;
+                if (d.l < last.l) last.l = d.l;
+                last.c = d.c;
+                last.v += Number(d.v) || 0;
+                last.midIdx = dataIdx;
+            };
+
             for (let idx = i0; idx < i1; idx++) {
                 const d = sliceMode ? source[idx - i0] : source[idx];
                 if (!d) continue;
@@ -254,32 +324,16 @@
                 const x = m.l + dataIdx * spacing + offsetX;
                 const slot = Math.floor((x - m.l) / slotPx);
                 if (slot < 0 || slot >= numSlots) continue;
-
-                let bucket = slots[slot];
-                if (!bucket) {
-                    slots[slot] = {
-                        t: d.t,
-                        o: d.o,
-                        h: d.h,
-                        l: d.l,
-                        c: d.c,
-                        v: Number(d.v) || 0,
-                        midIdx: dataIdx,
-                        _pixelX: m.l + slot * slotPx,
-                        _pipelineBucket: true,
-                    };
-                } else {
-                    if (d.h > bucket.h) bucket.h = d.h;
-                    if (d.l < bucket.l) bucket.l = d.l;
-                    bucket.c = d.c;
-                    bucket.v += Number(d.v) || 0;
-                    bucket.midIdx = dataIdx;
-                }
+                mergeBar(slot, dataIdx, d);
             }
 
             const out = [];
             for (let s = 0; s < numSlots; s++) {
-                if (slots[s]) out.push(slots[s]);
+                const segs = slots[s];
+                if (!segs) continue;
+                for (let j = 0; j < segs.length; j++) {
+                    if (segs[j]) out.push(segs[j]);
+                }
             }
             return out;
         }
