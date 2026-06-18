@@ -932,7 +932,7 @@ const TalariaV8b = () => {
   const [newsCntSel, setNewsCntSel] = useState({US:1,EU:1,GB:1,JP:1,AU:1,CA:1,DE:1,FR:1,IT:1,CN:1,CH:1});
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [layoutPos, setLayoutPos] = useState({ x: 0, y: 0 });
-  const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
+  const [layoutPanels, setLayoutPanels] = useState({n:4,li:0});
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   const [layoutTab, setLayoutTab] = useState("panels");
   const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
@@ -10807,7 +10807,7 @@ const TalariaV8b = () => {
                 <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0}}>
                   {layoutTab==="panels" && (
                     <div style={{padding:"14px 12px 16px"}}>
-                      {[1,2,3,4,5,6,7,8].map((n)=>{
+                      {[4].map((n)=>{
                         const variants = lyLines[n-1];
                         return (
                           <div key={n} style={{marginBottom:8}}>
