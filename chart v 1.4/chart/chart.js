@@ -19422,46 +19422,6 @@ class Chart {
         );
     }
 
-    /** Horizontal chart drag only — Y domain and price-axis chrome stay fixed. */
-    _isHorizontalChartPan() {
-        if (!this._isChartViewPanning()) return false;
-        if (this._isPriceAxisZoomDragging() || this._isTimeAxisZoomDragging()) return false;
-        if (this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
-            return false;
-        }
-        return true;
-    }
-
-    /** Clear/fill only the plot + time strip during horizontal pan; keep price axis pixels stable. */
-    _clearCanvasForRender() {
-        const bg = this.chartSettings.backgroundColor || '#000000';
-        if (this._isHorizontalChartPan()) {
-            const m = this.margin || { l: 60, r: 60, t: 0, b: 30 };
-            const plotLayout = typeof this._getMainPricePlotLayout === 'function'
-                ? this._getMainPricePlotLayout()
-                : null;
-            const plotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
-            const plotW = Math.max(0, this.w - m.l - m.r);
-            const plotH = Math.max(0, plotBottom - m.t);
-            this.ctx.fillStyle = bg;
-            if (plotW > 0 && plotH > 0) {
-                this.ctx.clearRect(m.l, m.t, plotW, plotH);
-                this.ctx.fillRect(m.l, m.t, plotW, plotH);
-            }
-            const indStackH = Math.max(0, (this.h - m.b) - plotBottom);
-            if (plotW > 0 && indStackH > 0) {
-                this.ctx.clearRect(m.l, plotBottom, plotW, indStackH);
-                this.ctx.fillRect(m.l, plotBottom, plotW, indStackH);
-            }
-            if (m.b > 0) {
-                this.ctx.clearRect(0, this.h - m.b, this.w, m.b);
-                this.ctx.fillRect(0, this.h - m.b, this.w, m.b);
-            }
-            return;
-        }
-        this.ctx.clearRect(0, 0, this.w, this.h);
-    }
-
     /** True while a wheel-zoom burst is active (coalesced fast paints). */
     _isWheelZoomBurst() {
         return typeof this._wheelBurstUntil === 'number' && performance.now() < this._wheelBurstUntil;
@@ -20447,11 +20407,10 @@ class Chart {
             return;
         }
         
-        // Clear canvas (partial during horizontal pan — price axis stays painted)
-        this._clearCanvasForRender();
+        // Clear canvas
+        this.ctx.clearRect(0, 0, this.w, this.h);
         
         const chartViewPanning = this._isChartViewPanning();
-        const horizontalPan = this._isHorizontalChartPan();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
         const interactionFast = this._isInteractionFastRender();
 
@@ -20482,7 +20441,8 @@ class Chart {
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
         if (chartViewPanning) {
-            this._timeTicks = this._buildPanTimeTicks();
+            // Rebuild every pan frame so vertical grid + time labels stay aligned (cached shift left gaps).
+            this._timeTicks = this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (wheelBurstLight || timeAxisZoomDragging) {
             this._timeTicks = this._buildTimeTicks();
@@ -20570,7 +20530,7 @@ class Chart {
                     this.renderSeparatePanelIndicators({ panFast: true });
                 }
             }
-            this.drawAxes({ panHorizontal: horizontalPan });
+            this.drawAxes();
             if (chartViewPanning && !zoomedOutDrag) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
@@ -20678,7 +20638,7 @@ class Chart {
 
         // Draw axes LAST so the price/time axis always overlays candles and other chart content.
         // This makes candles hide behind the axis instead of drawing above it.
-        this.drawAxes({ panHorizontal: horizontalPan });
+        this.drawAxes();
 
         // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
         if (!chartViewPanning) {
@@ -20807,14 +20767,10 @@ class Chart {
     /**
      * Draw axis labels and ticks
      */
-    drawAxes(opts = {}) {
+    drawAxes() {
         if (!this.xScale || !this.yScale) return;
 
-        const panHorizontal = !!opts.panHorizontal;
-
-        if (!panHorizontal) {
-            this._syncAdaptivePriceAxisMargin();
-        }
+        this._syncAdaptivePriceAxisMargin();
         if (!this.isPanel && typeof this._syncDomAxisCursorZones === 'function') {
             this._syncDomAxisCursorZones();
         }
@@ -20832,6 +20788,17 @@ class Chart {
         const axisBorderX = axisLeft ? m.l : this.w - m.r;
         const axisMidX = axisLeft ? m.l / 2 : this.w - m.r / 2;
 
+        // Draw Y-axis background area
+        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
+        this.ctx.fillRect(axisX, 0, axisW, this.h);
+        
+        // Draw X-axis background area (time axis on the bottom) - uses same background as chart
+        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
+        this.ctx.fillRect(axisLeft ? axisW : 0, this.h - m.b, this.w - axisW, m.b);
+        
+        // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
+        this.drawAxisHighlightZones();
+
         const scaleLineColor = this.chartSettings.scaleLinesColor || '#e0e3eb';
         const scaleLineWidth = Math.max(1, parseInt(this.chartSettings.scaleLineWidth, 10) || 2);
         const scaleLinePattern = this.chartSettings.scaleLinePattern || 'solid';
@@ -20846,43 +20813,20 @@ class Chart {
                 this.ctx.setLineDash([]);
             }
         };
-
-        if (!panHorizontal) {
-            // Draw Y-axis background area
-            this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
-            this.ctx.fillRect(axisX, 0, axisW, this.h);
-
-            // Draw Y-axis border line
-            applyScaleLineStyle();
-            this.ctx.beginPath();
-            this.ctx.moveTo(axisBorderX, 0);
-            this.ctx.lineTo(axisBorderX, this.h);
-            this.ctx.stroke();
-        } else {
-            // Plot/price-axis divider only — price strip pixels are preserved during pan.
-            applyScaleLineStyle();
-            this.ctx.beginPath();
-            this.ctx.moveTo(axisBorderX, m.t);
-            this.ctx.lineTo(axisBorderX, pricePlotBottom);
-            this.ctx.stroke();
-        }
-
-        // Draw X-axis background area (time axis on the bottom) - uses same background as chart
-        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
-        this.ctx.fillRect(axisLeft ? axisW : 0, this.h - m.b, this.w - axisW, m.b);
-
-        // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
-        if (!panHorizontal) {
-            this.drawAxisHighlightZones();
-        }
-
-        // Draw X-axis border line (top edge of time axis) - subtle gray
+        
+        // Draw Y-axis border line
         applyScaleLineStyle();
+        this.ctx.beginPath();
+        this.ctx.moveTo(axisBorderX, 0);
+        this.ctx.lineTo(axisBorderX, this.h);
+        this.ctx.stroke();
+        
+        // Draw X-axis border line (top edge of time axis) - subtle gray
         this.ctx.beginPath();
         this.ctx.moveTo(0, this.h - m.b);
         this.ctx.lineTo(this.w, this.h - m.b);
         this.ctx.stroke();
-
+        
         const scaleFont = `${this.chartSettings.scaleTextSize}px Roboto`;
         const axisTextColor = this.resolveAxisTextColor(
             this.chartSettings.scaleTextColor,
@@ -20891,24 +20835,22 @@ class Chart {
         this.ctx.fillStyle = axisTextColor;
         this.ctx.font = scaleFont;
         this.ctx.textAlign = 'center';
-
-        if (!panHorizontal) {
-            // Y-axis (price) labels with improved formatting
-            this.ctx.textAlign = 'center';
-            const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
-            const yTicks = this._getYPriceTicks(numYTicks);
-            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-            const decimals = this.getPriceDecimals(priceRange);
-
-            yTicks.forEach(price => {
-                const y = this.yScale(price);
-                if (y > m.t + 8 && y < pricePlotBottom - 8) {
-                    const text = price.toFixed(decimals);
-                    this.ctx.fillStyle = axisTextColor;
-                    this.ctx.fillText(text, axisMidX, y + 4);
-                }
-            });
-        }
+        
+        // Y-axis (price) labels with improved formatting
+        this.ctx.textAlign = 'center';
+        const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
+        const yTicks = this._getYPriceTicks(numYTicks);
+        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+        const decimals = this.getPriceDecimals(priceRange);
+        
+        yTicks.forEach(price => {
+            const y = this.yScale(price);
+            if (y > m.t + 8 && y < pricePlotBottom - 8) {
+                const text = price.toFixed(decimals);
+                this.ctx.fillStyle = axisTextColor;
+                this.ctx.fillText(text, axisMidX, y + 4);
+            }
+        });
         
         // X-axis (time) labels – use pre-built ticks (synced with vertical grid lines)
         this.ctx.textAlign = 'center';
@@ -23008,11 +22950,11 @@ class Chart {
                 return { plotBottom: plotBottom, plotHeight: Math.max(1, plotBottom - m.t) };
             }).call(this);
 
-        // Create clipping region for chart body (price plot only — not volume or separate panels).
-        // Include the right axis zone so the last candle can slide behind it (TradingView-like).
+        // Clip to the price plot only — never paint candles into the price-axis margin.
         this.ctx.save();
         this.ctx.beginPath();
-        this.ctx.rect(m.l, m.t, this.w - m.l, plotLayout.plotHeight);
+        const plotClipH = Math.max(1, plotLayout.plotBottom - m.t);
+        this.ctx.rect(m.l, m.t, this.w - m.l - m.r, plotClipH);
         this.ctx.clip();
         
         // Transform data for Heikin Ashi if needed
