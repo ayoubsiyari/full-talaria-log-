@@ -21264,6 +21264,9 @@ class Chart {
     }
 
     /**
+     * O(~12) time ticks for zoomed-out interaction — ticks anchored to absolute bar/time
+     * grid so labels scroll with pan/zoom.
+     */
     _buildTimeTicksFast() {
         if (!this.data || this.data.length === 0) return [];
         const vp = this._getViewportBarRange();
