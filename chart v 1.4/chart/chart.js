@@ -21219,10 +21219,51 @@ class Chart {
         return best;
     }
 
+    /** Extend tick list until the viewport right edge has grid/axis coverage. */
+    _fillTimeTicksToViewport(ticks, labelInterval, timeframeMs) {
+        const m = this.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, this.w - m.l - m.r);
+        const minSpacingPx = 50;
+        const vp = this._getViewportBarRange();
+        const viewLeft = m.l;
+        const viewRight = m.l + plotW;
+        const coverRight = viewRight - minSpacingPx * 0.6;
+        const wantTicks = Math.max(4, Math.floor(plotW / minSpacingPx));
+        const step = Math.max(1, Math.floor(labelInterval || this._getFastTimeLabelIntervalBars()));
+        const merged = Array.isArray(ticks) ? ticks.slice() : [];
+        merged.sort((a, b) => a.idx - b.idx);
+
+        let lastX = merged.length ? merged[merged.length - 1].x : -Infinity;
+        let rightMost = merged.length ? merged[merged.length - 1].x : viewLeft - 1;
+        if (rightMost >= coverRight && merged.length >= wantTicks) {
+            return merged;
+        }
+
+        let idx = merged.length
+            ? merged[merged.length - 1].idx + step
+            : this._fastTimeTickAlignStart(vp.first, step, timeframeMs);
+
+        while (idx <= vp.last + step * 2 && merged.length < wantTicks + 4) {
+            const x = typeof this.dataIndexToPixel === 'function'
+                ? this.dataIndexToPixel(idx)
+                : (m.l + this.offsetX + idx * vp.spacing);
+            if (x > viewRight + minSpacingPx) break;
+            if (x >= viewLeft && (merged.length === 0 || x - lastX >= minSpacingPx * 0.65)) {
+                const label = this._formatTimeLabelForBarIndex(idx);
+                if (label) {
+                    merged.push({ idx, x, label, isBoundary: false });
+                    lastX = x;
+                    rightMost = x;
+                }
+            }
+            idx += step;
+            if (rightMost >= coverRight && merged.length >= wantTicks) break;
+        }
+        merged.sort((a, b) => a.idx - b.idx);
+        return merged;
+    }
+
     /**
-     * O(~12) time ticks for zoomed-out interaction — ticks anchored to absolute bar/time
-     * grid so labels scroll with pan/zoom (viewport-fraction slots stay fixed on screen).
-     */
     _buildTimeTicksFast() {
         if (!this.data || this.data.length === 0) return [];
         const vp = this._getViewportBarRange();
@@ -21245,22 +21286,24 @@ class Chart {
         let idx = this._fastTimeTickAlignStart(firstVisibleIdx, labelInterval, timeframeMs);
         const ticks = [];
         let lastX = -Infinity;
-        const viewLeft = m.l - minSpacingPx;
-        const viewRight = m.l + plotW + minSpacingPx;
-        const maxTicks = 14;
-        for (let n = 0; n < maxTicks && idx <= lastVisibleIdx + labelInterval * 2; idx += labelInterval, n++) {
+        const viewLeft = m.l;
+        const viewRight = m.l + plotW;
+        const maxTicks = Math.ceil(plotW / minSpacingPx) + 4;
+        while (idx <= lastVisibleIdx + labelInterval * 2 && ticks.length < maxTicks) {
             const x = typeof this.dataIndexToPixel === 'function'
                 ? this.dataIndexToPixel(idx)
                 : (m.l + this.offsetX + idx * vp.spacing);
-            if (x < viewLeft) continue;
-            if (x > viewRight) break;
-            if (x - lastX < minSpacingPx * 0.65 && ticks.length > 0) continue;
-            const label = this._formatTimeLabelForBarIndex(idx);
-            if (!label) continue;
-            ticks.push({ idx, x, label, isBoundary: false });
-            lastX = x;
+            if (x > viewRight + minSpacingPx * 0.5) break;
+            if (x >= viewLeft - 1 && (ticks.length === 0 || x - lastX >= minSpacingPx * 0.65)) {
+                const label = this._formatTimeLabelForBarIndex(idx);
+                if (label) {
+                    ticks.push({ idx, x, label, isBoundary: false });
+                    lastX = x;
+                }
+            }
+            idx += labelInterval;
         }
-        return ticks;
+        return this._fillTimeTicksToViewport(ticks, labelInterval, timeframeMs);
     }
 
     /**
@@ -21601,7 +21644,7 @@ class Chart {
                 lastX = x;
             }
         }
-        return ticks;
+        return this._fillTimeTicksToViewport(ticks, labelInterval, timeframeMs);
     }
 
     /**
