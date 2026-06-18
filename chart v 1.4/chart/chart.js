@@ -20568,11 +20568,16 @@ class Chart {
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
         if (skipHeavyChrome) {
-            this._timeTicks = this._buildTimeTicksFast();
+            // Pan: shift bar-aligned ticks 1:1 with offsetX. Wheel (+ optional pan): rebuild fast ticks.
+            if (chartViewPanning && !wheelBurstLight) {
+                this._timeTicks = this._buildPanTimeTicks();
+            } else {
+                this._timeTicks = this._buildTimeTicksFast();
+            }
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (chartViewPanning) {
             this._timeTicks = interactionLiteEarly
-                ? this._buildTimeTicksFast()
+                ? this._buildPanTimeTicks()
                 : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (wheelBurstLight || timeAxisZoomDragging) {
@@ -21027,7 +21032,8 @@ class Chart {
     }
     
     /**
-     * O(1) time ticks for zoomed-out wheel burst — avoids scanning 10k+ bars per frame.
+     * O(slotCount) time ticks for zoomed-out interaction — bar-aligned x via dataIndexToPixel
+     * so labels scroll with pan/zoom (fixed screen slots made the time axis look frozen).
      */
     _buildTimeTicksFast() {
         if (!this.data || this.data.length === 0) return [];
@@ -21035,19 +21041,29 @@ class Chart {
         const plotW = Math.max(1, this.w - m.l - m.r);
         const spacing = Math.max(1e-6, this.getCandleSpacing());
         const minSpacingPx = 72;
+        const firstVisibleIdx = Math.max(0, -this.offsetX / spacing);
+        const lastVisibleIdx = firstVisibleIdx + plotW / spacing;
         const slotCount = Math.min(12, Math.max(4, Math.floor(plotW / minSpacingPx)));
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const ticks = [];
         let lastX = -Infinity;
+        const viewLeft = m.l - minSpacingPx;
+        const viewRight = m.l + plotW + minSpacingPx;
         for (let ti = 0; ti <= slotCount; ti++) {
-            const x = m.l + (ti / slotCount) * plotW;
+            const idx = Math.round(
+                firstVisibleIdx + (ti / Math.max(1, slotCount)) * (lastVisibleIdx - firstVisibleIdx)
+            );
+            const idxClamped = Math.max(0, Math.min(this.data.length - 1, idx));
+            const x = typeof this.dataIndexToPixel === 'function'
+                ? this.dataIndexToPixel(idxClamped)
+                : (m.l + this.offsetX + idxClamped * spacing);
+            if (x < viewLeft || x > viewRight) continue;
             if (x - lastX < minSpacingPx * 0.65 && ti > 0) continue;
-            const idx = Math.max(0, Math.min(this.data.length - 1, Math.round((x - m.l - this.offsetX) / spacing)));
-            const candle = this.data[idx];
+            const candle = this.data[idxClamped];
             if (!candle || !Number.isFinite(candle.t)) continue;
             const tzDate = this.convertToTimezone(candle.t);
             const label = `${monthNames[tzDate.getUTCMonth()]} ${tzDate.getUTCDate()}`;
-            ticks.push({ idx, x, label, isBoundary: true });
+            ticks.push({ idx: idxClamped, x, label, isBoundary: true });
             lastX = x;
         }
         return ticks;
