@@ -324,16 +324,23 @@
                     ? RENDER_BAR_BUDGET
                     : Math.min(RENDER_BAR_BUDGET * 2, RENDER_BAR_BUDGET + 400));
 
+            const interactionFast = typeof chart._isInteractionFastRender === 'function'
+                && chart._isInteractionFastRender();
+            const offsetKey = interactionFast
+                ? Math.round(offsetX / Math.max(spacing, ZOOMED_OUT_SLOT_PX))
+                : offsetX.toFixed(2);
+
             const cacheKey = [
                 dv,
                 tf,
                 source.length,
-                offsetX.toFixed(2),
+                offsetKey,
                 spacing.toFixed(4),
                 chart.candleWidth,
                 plotWidth,
                 maxBudget,
                 pixelLod ? 'px' : 'idx',
+                interactionFast ? 'fast' : 'full',
             ].join('|');
 
             if (this._displayCache.key === cacheKey && this._displayCache.series) {
@@ -355,9 +362,11 @@
             }
 
             let display;
+            const visSpan = visEnd - visStart;
+            const usePixelAggregate = pixelLod || visSpan > plotWidth || visSpan > maxBudget;
             if (visEnd <= visStart) {
                 display = [];
-            } else if (pixelLod || (visEnd - visStart) > plotWidth || (visEnd - visStart) > maxBudget) {
+            } else if (usePixelAggregate) {
                 display = this._pixelSlotAggregateFromRange(resampled, visStart, visEnd, plotWidth, m, offsetX, spacing);
             } else if (visEnd - visStart <= maxBudget) {
                 display = new Array(visEnd - visStart);

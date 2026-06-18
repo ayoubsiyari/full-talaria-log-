@@ -4288,7 +4288,7 @@ class Chart {
         this._zoomOutFillTimer = setTimeout(() => {
             this._zoomOutFillTimer = null;
             this._fillVisibleWindowAfterZoomOut().catch(() => {});
-        }, 150);
+        }, 280);
     }
 
     /** Timeframe-aware in-memory bar cap (ZOOM-FIX-10). */
@@ -18833,18 +18833,29 @@ class Chart {
             || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.LARGE_SERIES_THRESHOLD)
             || 8000;
         if (len > threshold || total > threshold) return true;
-        // Zoomed-out live view: bucket to screen pixels before paint (e.g. 3 days of 1m).
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
         const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
-        return spacing < TV_ZOOMED_OUT_SLOT_PX && len > plotPx;
+        if (spacing < TV_ZOOMED_OUT_SLOT_PX && len > plotPx) return true;
+        // Zoomed-out wheel: many bars per pixel even before sub-pixel spacing.
+        const estOnScreen = Math.ceil(plotPx / Math.max(spacing, 1e-6));
+        if (estOnScreen > plotPx * 0.85) return true;
+        return false;
     }
 
     getDisplaySeries() {
         if (!this._shouldUseDisplayPipeline()) {
             return Array.isArray(this.data) ? this.data : [];
         }
-        return this.dataPipeline.buildDisplaySeries({ source: this.data, timeframe: this.currentTimeframe });
+        if (Array.isArray(this._frameDisplaySeries)) {
+            return this._frameDisplaySeries;
+        }
+        const series = this.dataPipeline.buildDisplaySeries({
+            source: this.data,
+            timeframe: this.currentTimeframe,
+        });
+        this._frameDisplaySeries = series;
+        return series;
     }
 
     resampleData(data, timeframe) {
@@ -19153,6 +19164,59 @@ class Chart {
             }
             this._panScalesCalculated = false;
         }
+        // Wheel burst (horizontal zoom): reuse frozen Y domain — skip O(n) OHLC scan every tick.
+        if (
+            this._isWheelZoomBurst()
+            && !this._wheelBurstFinalPass
+            && this._wheelBurstSnapYDomain
+            && this._wheelBurstSnapYDomain.length === 2
+            && this.yScale
+            && this.xScale
+            && this.data
+            && this.data.length > 0
+        ) {
+            const mW = this.margin;
+            const cwW = this.w - mW.l - mW.r;
+            const candleAndSpacing = this.getCandleSpacing();
+            const bufferCandles = 20;
+            let visStart = Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles);
+            let visEnd = Math.min(
+                this.data.length,
+                -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cwW / candleAndSpacing) + bufferCandles
+            );
+            const normVis = this._normalizeViewportBarRange(
+                visStart, visEnd, this.data.length, cwW, candleAndSpacing, bufferCandles
+            );
+            const visCount = Math.max(0, normVis.visEnd - normVis.visStart);
+            this.xScale = d3.scaleLinear()
+                .domain([
+                    Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)),
+                    Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visCount,
+                ])
+                .range([mW.l, this.w - mW.r]);
+            const indPanelH = this.separateIndicatorPanelHeight || 0;
+            const plotBottom = this.h - mW.b - indPanelH;
+            const ch = this.h - mW.t - mW.b;
+            const overlayRatio = typeof this._getVolumeOverlayRatio === 'function'
+                ? this._getVolumeOverlayRatio()
+                : 0;
+            const volumeOverlayHeight = ch * overlayRatio;
+            const domainMin = this._wheelBurstSnapYDomain[0];
+            const domainMax = this._wheelBurstSnapYDomain[1];
+            this.yScale = d3.scaleLinear()
+                .domain([domainMin, domainMax])
+                .range([plotBottom, mW.t]);
+            const volDom = this._wheelBurstSnapVolumeDomain;
+            this.volumeScale = d3.scaleLinear()
+                .domain(Array.isArray(volDom) && volDom.length === 2 ? volDom : [0, 1])
+                .range([plotBottom, plotBottom - volumeOverlayHeight]);
+            this.scales = {
+                yScale: this.yScale,
+                xScale: this.xScale,
+                volumeScale: this.volumeScale,
+            };
+            return;
+        }
         const m = this.margin;
 
         // Price-axis drag only changes Y zoom/offset — skip pipeline + OHLC scan (same idea as wheel burst).
@@ -19458,6 +19522,16 @@ class Chart {
 
     _finishWheelBurstInteraction() {
         this._cancelWheelBurstRender();
+        this._wheelBurstSnapYDomain = null;
+        this._wheelBurstSnapVolumeDomain = null;
+        if (this.drawingManager?.drawings?.length) {
+            const dm = this.drawingManager;
+            dm.drawings.forEach((drawing) => {
+                if (drawing && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
+                    dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                }
+            });
+        }
         this._wheelBurstFinalPass = true;
         this.renderPending = false;
         this.render();
@@ -19667,14 +19741,17 @@ class Chart {
         return spacing < TV_ZOOMED_OUT_SLOT_PX || visibleCount > plotPx;
     }
 
-    /** Zoomed-out view — many sub-pixel bars; use ultra-light paint while dragging. */
+    /** Zoomed-out view — many sub-pixel bars; use ultra-light paint while dragging/zooming. */
     _isZoomedOutPaint(visibleCount) {
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
         const count = visibleCount != null
             ? visibleCount
             : (Array.isArray(this.data) ? this.data.length : 0);
-        return this._shouldUsePixelColumnCandleLod(count, plotPx);
+        if (this._shouldUsePixelColumnCandleLod(count, plotPx)) return true;
+        const spacing = this.getCandleSpacing();
+        const estOnScreen = Math.ceil(plotPx / Math.max(spacing, 1e-6));
+        return estOnScreen > plotPx * 0.85;
     }
 
     _getCandleRenderMaxBuckets(visibleCount, plotPx, opts = {}) {
@@ -20392,6 +20469,8 @@ class Chart {
         // setTimeframe() / _loadTimeframeFromServer() lift this flag once the new bars are
         // committed and the currentTimeframe matches the destination TF.
         if (this._timeframeSwitching || this._pairSwitchLoading) return;
+
+        this._frameDisplaySeries = null;
         
         // Ensure minimum dimensions to prevent rendering issues
         if (this.w < 200 || this.h < 150) {
@@ -20510,19 +20589,19 @@ class Chart {
         // Fast path while panning, wheel-zooming, or axis-dragging: LOD candles + skip heavy overlays.
         if (interactionFast) {
             const panOpts = { panFast: true };
-            const zoomedOutDrag = chartViewPanning && this._isZoomedOutPaint(visible.length);
+            const zoomOutLite = this._isZoomedOutPaint(visible.length);
 
             if (axisZoomDragging && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
             }
 
             this.drawGrid();
-            if (!zoomedOutDrag) {
+            if (!zoomOutLite) {
                 this.drawVolume(visible, panOpts);
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (!zoomedOutDrag) {
+            if (!zoomOutLite) {
                 if (typeof this.drawIndicators === 'function') {
                     this.drawIndicators();
                 }
@@ -20531,27 +20610,29 @@ class Chart {
                 }
             }
             this.drawAxes();
-            if (chartViewPanning && !zoomedOutDrag) {
+            if (!zoomOutLite && chartViewPanning) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
-            if (!zoomedOutDrag && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
+            if (!zoomOutLite && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
             }
-            if (!zoomedOutDrag && this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
+            if (!zoomOutLite && this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
                 try {
                     this.compareOverlay.drawOverlays();
                 } catch (e) {
                     console.error('Error drawing overlays during pan:', e);
                 }
             }
-            if (!zoomedOutDrag && this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
+            if (!zoomOutLite && this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
                 this.compareOverlay.updateInfoPositions();
             }
             this.drawCurrentPriceLabel(visible);
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            this.redrawDrawings();
+            if (!zoomOutLite) {
+                this.redrawDrawings();
+            }
             this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
             if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                 this.syncOverlayIndicatorSelectionOverlay();
@@ -24889,19 +24970,19 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const handleWheel = (e) => {
             e.preventDefault();
-            // 350ms so back-to-back wheel ticks stay inside a single burst (ZOOM-FIX-7).
+            // 450ms so back-to-back wheel ticks stay inside a single burst (ZOOM-FIX-7).
             const burstWasActive = this._isWheelZoomBurst();
-            this._wheelBurstUntil = performance.now() + 350;
+            this._wheelBurstUntil = performance.now() + 450;
             this._markScalesDirty();
             this._clearPanTimeTickCache();
             this._cachedInteractionTimeTicks = null;
-            if (!burstWasActive && this.drawingManager?.drawings?.length) {
-                const dm = this.drawingManager;
-                dm.drawings.forEach((drawing) => {
-                    if (drawing && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
-                        dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
-                    }
-                });
+            if (!burstWasActive && this.yScale) {
+                const dom = this.yScale.domain();
+                this._wheelBurstSnapYDomain = [Number(dom[0]), Number(dom[1])];
+                if (this.volumeScale && typeof this.volumeScale.domain === 'function') {
+                    const vd = this.volumeScale.domain();
+                    this._wheelBurstSnapVolumeDomain = [Number(vd[0]), Number(vd[1])];
+                }
             }
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
@@ -24924,7 +25005,7 @@ class Chart {
                 if (typeof this._finishPanDrawingRedraw === 'function') {
                     this._finishPanDrawingRedraw();
                 }
-            }, 400);
+            }, 500);
 
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
@@ -25016,9 +25097,6 @@ class Chart {
                 }
 
                 this.candleWidth = newWidth;
-                if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
-                    this.dataPipeline.bumpDisplayVersion();
-                }
 
                 const newCandleSpacing = this.getCandleSpacing();
 
