@@ -3146,12 +3146,13 @@ class ReplaySystem {
 
                     this.isPlaying = true;
 
-                    // UX (esp. V9): starting playback should scroll the viewport with the replay head again.
-                    this.autoScrollEnabled = true;
-                    this.userHasPanned = false;
-
-                    if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                        this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: true, render: false });
+                    // Only re-enable follow when the user has not manually moved the viewport.
+                    const preserveManualViewport = this.userHasPanned || !this.autoScrollEnabled;
+                    if (!preserveManualViewport) {
+                        this.autoScrollEnabled = true;
+                        if (typeof this.syncReplayViewportToPlayhead === 'function') {
+                            this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: true, render: false });
+                        }
                     }
 
                     this.showTickProgress(false);
