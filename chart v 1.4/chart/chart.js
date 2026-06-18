@@ -19422,6 +19422,46 @@ class Chart {
         );
     }
 
+    /** Horizontal chart drag only — Y domain and price-axis chrome stay fixed. */
+    _isHorizontalChartPan() {
+        if (!this._isChartViewPanning()) return false;
+        if (this._isPriceAxisZoomDragging() || this._isTimeAxisZoomDragging()) return false;
+        if (this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Clear/fill only the plot + time strip during horizontal pan; keep price axis pixels stable. */
+    _clearCanvasForRender() {
+        const bg = this.chartSettings.backgroundColor || '#000000';
+        if (this._isHorizontalChartPan()) {
+            const m = this.margin || { l: 60, r: 60, t: 0, b: 30 };
+            const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+                ? this._getMainPricePlotLayout()
+                : null;
+            const plotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
+            const plotW = Math.max(0, this.w - m.l - m.r);
+            const plotH = Math.max(0, plotBottom - m.t);
+            this.ctx.fillStyle = bg;
+            if (plotW > 0 && plotH > 0) {
+                this.ctx.clearRect(m.l, m.t, plotW, plotH);
+                this.ctx.fillRect(m.l, m.t, plotW, plotH);
+            }
+            const indStackH = Math.max(0, (this.h - m.b) - plotBottom);
+            if (plotW > 0 && indStackH > 0) {
+                this.ctx.clearRect(m.l, plotBottom, plotW, indStackH);
+                this.ctx.fillRect(m.l, plotBottom, plotW, indStackH);
+            }
+            if (m.b > 0) {
+                this.ctx.clearRect(0, this.h - m.b, this.w, m.b);
+                this.ctx.fillRect(0, this.h - m.b, this.w, m.b);
+            }
+            return;
+        }
+        this.ctx.clearRect(0, 0, this.w, this.h);
+    }
+
     /** True while a wheel-zoom burst is active (coalesced fast paints). */
     _isWheelZoomBurst() {
         return typeof this._wheelBurstUntil === 'number' && performance.now() < this._wheelBurstUntil;
@@ -19667,6 +19707,16 @@ class Chart {
         return spacing < TV_ZOOMED_OUT_SLOT_PX || visibleCount > plotPx;
     }
 
+    /** Zoomed-out view — many sub-pixel bars; use ultra-light paint while dragging. */
+    _isZoomedOutPaint(visibleCount) {
+        const m = this.margin || { l: 60, r: 60 };
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        const count = visibleCount != null
+            ? visibleCount
+            : (Array.isArray(this.data) ? this.data.length : 0);
+        return this._shouldUsePixelColumnCandleLod(count, plotPx);
+    }
+
     _getCandleRenderMaxBuckets(visibleCount, plotPx, opts = {}) {
         if (!visibleCount) return 0;
         if (this._shouldUsePixelColumnCandleLod(visibleCount, plotPx)) {
@@ -19851,7 +19901,7 @@ class Chart {
             this._overlaySnapDomains = null;
         }
         // Pre-warm tick cache so the first pan frame does not stall on _buildTimeTicks().
-        const panTicks = this._buildTimeTicks();
+        const panTicks = this._buildTimeTicks({ panCache: true });
         this._panTimeTickCache = {
             baseOffsetX: this.offsetX,
             ticks: panTicks.map((t) => ({ ...t })),
@@ -19882,8 +19932,11 @@ class Chart {
 
     /** Shift cached time-axis ticks during pan instead of rebuilding every frame. */
     _buildPanTimeTicks() {
+        const m = this.margin || { l: 60, r: 60 };
+        const cw = Math.max(1, this.w - m.l - m.r);
+        const maxShift = Math.max(240, cw * 0.35);
         if (!this._panTimeTickCache) {
-            const ticks = this._buildTimeTicks();
+            const ticks = this._buildTimeTicks({ panCache: true });
             this._panTimeTickCache = {
                 baseOffsetX: this.offsetX,
                 ticks: ticks.map((t) => ({ ...t })),
@@ -19891,6 +19944,14 @@ class Chart {
             return ticks;
         }
         const dx = this.offsetX - this._panTimeTickCache.baseOffsetX;
+        if (Math.abs(dx) > maxShift) {
+            const ticks = this._buildTimeTicks({ panCache: true });
+            this._panTimeTickCache = {
+                baseOffsetX: this.offsetX,
+                ticks: ticks.map((t) => ({ ...t })),
+            };
+            return ticks;
+        }
         return this._panTimeTickCache.ticks.map((t) => ({ ...t, x: t.x + dx }));
     }
 
@@ -19917,10 +19978,23 @@ class Chart {
     }
 
     _stopChartPanRenderLoop() {
+        const wasLooping = this._chartPanRenderLoopActive;
         this._chartPanRenderLoopActive = false;
         if (this._chartPanRenderLoopRaf != null) {
             cancelAnimationFrame(this._chartPanRenderLoopRaf);
             this._chartPanRenderLoopRaf = null;
+        }
+        // Full-quality paint after zoomed-out drag (indicators/volume skipped during loop).
+        if (wasLooping && !this._isChartPanDragging() && this._isZoomedOutPaint()) {
+            if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
+                this.dataPipeline.invalidatePanDisplayCache();
+            }
+            requestAnimationFrame(() => {
+                if (this._isChartPanDragging()) return;
+                this._panScalesCalculated = false;
+                this.renderPending = false;
+                this.render();
+            });
         }
     }
 
@@ -20373,10 +20447,11 @@ class Chart {
             return;
         }
         
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.w, this.h);
+        // Clear canvas (partial during horizontal pan — price axis stays painted)
+        this._clearCanvasForRender();
         
         const chartViewPanning = this._isChartViewPanning();
+        const horizontalPan = this._isHorizontalChartPan();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
         const interactionFast = this._isInteractionFastRender();
 
@@ -20475,36 +20550,41 @@ class Chart {
         // Fast path while panning, wheel-zooming, or axis-dragging: LOD candles + skip heavy overlays.
         if (interactionFast) {
             const panOpts = { panFast: true };
+            const zoomedOutDrag = chartViewPanning && this._isZoomedOutPaint(visible.length);
 
             if (axisZoomDragging && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
             }
 
             this.drawGrid();
-            this.drawVolume(visible, panOpts);
+            if (!zoomedOutDrag) {
+                this.drawVolume(visible, panOpts);
+            }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (typeof this.drawIndicators === 'function') {
-                this.drawIndicators();
+            if (!zoomedOutDrag) {
+                if (typeof this.drawIndicators === 'function') {
+                    this.drawIndicators();
+                }
+                if (typeof this.renderSeparatePanelIndicators === 'function') {
+                    this.renderSeparatePanelIndicators({ panFast: true });
+                }
             }
-            if (typeof this.renderSeparatePanelIndicators === 'function') {
-                this.renderSeparatePanelIndicators({ panFast: true });
-            }
-            this.drawAxes();
-            if (chartViewPanning) {
+            this.drawAxes({ panHorizontal: horizontalPan });
+            if (chartViewPanning && !zoomedOutDrag) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
-            if (this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
+            if (!zoomedOutDrag && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
             }
-            if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
+            if (!zoomedOutDrag && this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
                 try {
                     this.compareOverlay.drawOverlays();
                 } catch (e) {
                     console.error('Error drawing overlays during pan:', e);
                 }
             }
-            if (this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
+            if (!zoomedOutDrag && this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
                 this.compareOverlay.updateInfoPositions();
             }
             this.drawCurrentPriceLabel(visible);
@@ -20598,7 +20678,7 @@ class Chart {
 
         // Draw axes LAST so the price/time axis always overlays candles and other chart content.
         // This makes candles hide behind the axis instead of drawing above it.
-        this.drawAxes();
+        this.drawAxes({ panHorizontal: horizontalPan });
 
         // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
         if (!chartViewPanning) {
@@ -20727,10 +20807,14 @@ class Chart {
     /**
      * Draw axis labels and ticks
      */
-    drawAxes() {
+    drawAxes(opts = {}) {
         if (!this.xScale || !this.yScale) return;
 
-        this._syncAdaptivePriceAxisMargin();
+        const panHorizontal = !!opts.panHorizontal;
+
+        if (!panHorizontal) {
+            this._syncAdaptivePriceAxisMargin();
+        }
         if (!this.isPanel && typeof this._syncDomAxisCursorZones === 'function') {
             this._syncDomAxisCursorZones();
         }
@@ -20748,17 +20832,6 @@ class Chart {
         const axisBorderX = axisLeft ? m.l : this.w - m.r;
         const axisMidX = axisLeft ? m.l / 2 : this.w - m.r / 2;
 
-        // Draw Y-axis background area
-        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
-        this.ctx.fillRect(axisX, 0, axisW, this.h);
-        
-        // Draw X-axis background area (time axis on the bottom) - uses same background as chart
-        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
-        this.ctx.fillRect(axisLeft ? axisW : 0, this.h - m.b, this.w - axisW, m.b);
-        
-        // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
-        this.drawAxisHighlightZones();
-
         const scaleLineColor = this.chartSettings.scaleLinesColor || '#e0e3eb';
         const scaleLineWidth = Math.max(1, parseInt(this.chartSettings.scaleLineWidth, 10) || 2);
         const scaleLinePattern = this.chartSettings.scaleLinePattern || 'solid';
@@ -20773,20 +20846,43 @@ class Chart {
                 this.ctx.setLineDash([]);
             }
         };
-        
-        // Draw Y-axis border line
-        applyScaleLineStyle();
-        this.ctx.beginPath();
-        this.ctx.moveTo(axisBorderX, 0);
-        this.ctx.lineTo(axisBorderX, this.h);
-        this.ctx.stroke();
-        
+
+        if (!panHorizontal) {
+            // Draw Y-axis background area
+            this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
+            this.ctx.fillRect(axisX, 0, axisW, this.h);
+
+            // Draw Y-axis border line
+            applyScaleLineStyle();
+            this.ctx.beginPath();
+            this.ctx.moveTo(axisBorderX, 0);
+            this.ctx.lineTo(axisBorderX, this.h);
+            this.ctx.stroke();
+        } else {
+            // Plot/price-axis divider only — price strip pixels are preserved during pan.
+            applyScaleLineStyle();
+            this.ctx.beginPath();
+            this.ctx.moveTo(axisBorderX, m.t);
+            this.ctx.lineTo(axisBorderX, pricePlotBottom);
+            this.ctx.stroke();
+        }
+
+        // Draw X-axis background area (time axis on the bottom) - uses same background as chart
+        this.ctx.fillStyle = this.chartSettings.backgroundColor || '#000000';
+        this.ctx.fillRect(axisLeft ? axisW : 0, this.h - m.b, this.w - axisW, m.b);
+
+        // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
+        if (!panHorizontal) {
+            this.drawAxisHighlightZones();
+        }
+
         // Draw X-axis border line (top edge of time axis) - subtle gray
+        applyScaleLineStyle();
         this.ctx.beginPath();
         this.ctx.moveTo(0, this.h - m.b);
         this.ctx.lineTo(this.w, this.h - m.b);
         this.ctx.stroke();
-        
+
         const scaleFont = `${this.chartSettings.scaleTextSize}px Roboto`;
         const axisTextColor = this.resolveAxisTextColor(
             this.chartSettings.scaleTextColor,
@@ -20795,22 +20891,24 @@ class Chart {
         this.ctx.fillStyle = axisTextColor;
         this.ctx.font = scaleFont;
         this.ctx.textAlign = 'center';
-        
-        // Y-axis (price) labels with improved formatting
-        this.ctx.textAlign = 'center';
-        const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
-        const yTicks = this._getYPriceTicks(numYTicks);
-        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = this.getPriceDecimals(priceRange);
-        
-        yTicks.forEach(price => {
-            const y = this.yScale(price);
-            if (y > m.t + 8 && y < pricePlotBottom - 8) {
-                const text = price.toFixed(decimals);
-                this.ctx.fillStyle = axisTextColor;
-                this.ctx.fillText(text, axisMidX, y + 4);
-            }
-        });
+
+        if (!panHorizontal) {
+            // Y-axis (price) labels with improved formatting
+            this.ctx.textAlign = 'center';
+            const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
+            const yTicks = this._getYPriceTicks(numYTicks);
+            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            const decimals = this.getPriceDecimals(priceRange);
+
+            yTicks.forEach(price => {
+                const y = this.yScale(price);
+                if (y > m.t + 8 && y < pricePlotBottom - 8) {
+                    const text = price.toFixed(decimals);
+                    this.ctx.fillStyle = axisTextColor;
+                    this.ctx.fillText(text, axisMidX, y + 4);
+                }
+            });
+        }
         
         // X-axis (time) labels – use pre-built ticks (synced with vertical grid lines)
         this.ctx.textAlign = 'center';
@@ -20851,7 +20949,7 @@ class Chart {
      * Build time-axis tick list once per render frame.
      * Returns [{idx, x, label, isBoundary}] – used by both drawGrid() and drawAxes().
      */
-    _buildTimeTicks() {
+    _buildTimeTicks(options = {}) {
         if (!this.data || this.data.length === 0) return [];
         const m = this.margin;
         const candleSpacing = this.getCandleSpacing();
@@ -21171,8 +21269,9 @@ class Chart {
         candidates.sort((a, b) => a.idx - b.idx);
         const ticks = [];
         let lastX = -Infinity;
-        const viewLeft  = m.l + 20;
-        const viewRight = this.w - m.r - 20;
+        const panBufferPx = options.panCache ? Math.max(240, cw * 0.4) : 0;
+        const viewLeft  = m.l + 20 - panBufferPx;
+        const viewRight = this.w - m.r - 20 + panBufferPx;
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
             const gap = useUniformIntradayTicks ? 0 : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);

@@ -59,6 +59,8 @@
         }
 
         invalidatePanDisplayCache() {
+            this._displayCache.key = '';
+            this._displayCache.series = null;
             this._panDisplayCache = null;
         }
 
