@@ -6338,11 +6338,19 @@ class ReplaySystem {
                     });
                 }
             } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                this.syncReplayViewportToPlayhead(this.chart, {
-                    centerPlayhead: true,
-                    resetPriceScale: false,
-                    render: true,
-                });
+                const pendingVp = this.chart._tfSwitchViewport;
+                const willRestoreViewport = pendingVp
+                    && Number.isFinite(pendingVp.anchorTs);
+                if (!willRestoreViewport) {
+                    this.syncReplayViewportToPlayhead(this.chart, {
+                        centerPlayhead: true,
+                        resetPriceScale: false,
+                        render: true,
+                    });
+                } else if (typeof this.chart.render === 'function') {
+                    this.chart.renderPending = true;
+                    this.chart.render();
+                }
             } else if (typeof this.chart.render === 'function') {
                 this.chart.renderPending = true;
                 this.chart.render();

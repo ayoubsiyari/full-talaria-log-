@@ -24518,15 +24518,26 @@ class Chart {
             anchorScreenX = this.dataIndexToPixel(anchorIdx) + spacing / 2;
         }
 
+        const vr = this._getViewportBarRange();
+        const leftTs = this.estimateTimestampForDataIndex(vr.first);
+        const rightTs = this.estimateTimestampForDataIndex(vr.last);
+
         this._tfSwitchViewport = {
             centerTs,
             spanMs,
+            leftTs,
+            rightTs,
             anchorTs,
             anchorScreenX,
             candleWidth: this.candleWidth,
             autoScale: this.autoScale !== false,
             priceZoom: this.priceZoom,
-            priceOffset: this.priceOffset
+            priceOffset: this.priceOffset,
+            manualCenterPrice: this.manualCenterPrice,
+            manualRange: this.manualRange,
+            priceScaleLocked: !!(this.priceScale && this.priceScale.locked),
+            userHasPanned: !!(replay && replay.userHasPanned),
+            autoScrollEnabled: replay ? replay.autoScrollEnabled !== false : true,
         };
     }
 
@@ -24561,17 +24572,36 @@ class Chart {
         const plotW = this.w - m.l - m.r;
         if (!(plotW > 0)) return false;
 
-        // TradingView parity: keep the same horizontal zoom (candle width); only
-        // reposition so the playhead / last candle stays at the same screen X.
-        const targetCandleWidth = vp.candleWidth;
+        // TradingView parity: keep the same visible wall-clock span on the new TF.
+        let targetCandleWidth = vp.candleWidth;
+        if (Number.isFinite(vp.spanMs) && vp.spanMs > 0 && Number.isFinite(newBarMs) && newBarMs > 0) {
+            const barsInSpan = Math.max(2, vp.spanMs / newBarMs);
+            const targetSpacing = plotW / barsInSpan;
+            targetCandleWidth = this._candleWidthForSpacing(targetSpacing);
+        }
 
-        // Preserve the user's manual Y scale; otherwise let autoScale refit.
-        if (vp.autoScale === false) {
+        // Preserve manual Y scale (double-click locked or user zoomed); else refit.
+        if (vp.autoScale === false || vp.priceScaleLocked) {
             this.autoScale = false;
+            if (this.priceScale) this.priceScale.autoScale = false;
             if (Number.isFinite(vp.priceZoom)) this.priceZoom = vp.priceZoom;
             if (Number.isFinite(vp.priceOffset)) this.priceOffset = vp.priceOffset;
+            if (Number.isFinite(vp.manualCenterPrice)) this.manualCenterPrice = vp.manualCenterPrice;
+            if (Number.isFinite(vp.manualRange)) this.manualRange = vp.manualRange;
         } else {
             this.autoScale = true;
+            if (this.priceScale) this.priceScale.autoScale = true;
+        }
+
+        const replay = this.replaySystem;
+        if (replay && replay.isActive) {
+            if (vp.userHasPanned) {
+                replay.userHasPanned = true;
+                replay.autoScrollEnabled = false;
+            } else if (vp.autoScrollEnabled !== false) {
+                replay.autoScrollEnabled = true;
+                replay.userHasPanned = false;
+            }
         }
 
         if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
@@ -24579,7 +24609,25 @@ class Chart {
         } else {
             this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
         }
+        this._syncZoomLevelIndexFromCandleWidth();
         return true;
+    }
+
+    /** Snap zoomLevel.candleWidthIndex to the current candleWidth after TF restore. */
+    _syncZoomLevelIndexFromCandleWidth() {
+        const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+            ? this.zoomLevel.allowedWidths
+            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
+        let nearestIdx = 0;
+        let minDiff = Math.abs(this.candleWidth - widths[0]);
+        for (let i = 1; i < widths.length; i++) {
+            const diff = Math.abs(this.candleWidth - widths[i]);
+            if (diff < minDiff) {
+                minDiff = diff;
+                nearestIdx = i;
+            }
+        }
+        if (this.zoomLevel) this.zoomLevel.candleWidthIndex = nearestIdx;
     }
 
     /**
@@ -24700,17 +24748,22 @@ class Chart {
      * candle so the chart is never left on an empty/offscreen region.
      */
     _restoreOrJumpAfterTfSwitch() {
-        // User preference: refresh / TF switch / pair switch always reset to a clean
-        // TradingView-style view — auto price scale + latest candle right-anchored.
-        // No viewport preservation (the old _restoreTfSwitchViewport path is skipped).
-        this._tfSwitchViewport = null;
+        const restored = typeof this._restoreTfSwitchViewport === 'function'
+            && this._restoreTfSwitchViewport();
+        if (restored) {
+            if (typeof this.constrainOffset === 'function') {
+                try { this.constrainOffset(); } catch (_e) { /* ignore */ }
+            }
+            return;
+        }
+        // Snapshot missing or anchor outside fetched window — safe fallback.
         if (this.data && this.data.length > 0) {
-            // Must run synchronously before _endTimeframeSwitching() paints the new TF.
-            this._resetViewportToDefault({
-                centerPlayhead: false,
-                forceRecenter: true,
-                render: false,
-            });
+            if (typeof this.jumpToLatest === 'function') {
+                this.jumpToLatest();
+            } else {
+                this._chartViewRestored = false;
+                this.fitToView();
+            }
         } else {
             this._chartViewRestored = false;
             this.fitToView();
