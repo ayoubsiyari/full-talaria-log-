@@ -2674,10 +2674,26 @@ class ReplaySystem {
         this.userHasPanned = true;
     }
 
+    /** True while the user is dragging/zooming — playback must not fight the viewport. */
+    _isUserInteractingWithChart(chartInstance = this.chart) {
+        const chart = chartInstance;
+        if (!chart) return false;
+        if (typeof chart._isChartViewPanning === 'function' && chart._isChartViewPanning()) return true;
+        if (typeof chart._isWheelZoomBurst === 'function' && chart._isWheelZoomBurst()) return true;
+        if (typeof chart._isAxisZoomDragging === 'function' && chart._isAxisZoomDragging()) return true;
+        const drag = chart.drag;
+        if (drag && drag.active) {
+            const t = drag.type;
+            if (t === 'pan' || t === 'timeAxis' || t === 'priceAxis' || t === 'boxZoom') return true;
+        }
+        return false;
+    }
+
     /** Restore locked viewport after data updates / constrainOffset during manual playback. */
     _applyPlaybackViewportLock(chartInstance = this.chart) {
         const lock = this._viewportLockForPlayback;
         if (!lock || !this.isPlaying || !chartInstance) return;
+        if (this._isUserInteractingWithChart(chartInstance)) return;
         chartInstance.offsetX = lock.offsetX;
         if (Number.isFinite(lock.candleWidth)) chartInstance.candleWidth = lock.candleWidth;
         if (Number.isFinite(lock.priceZoom)) chartInstance.priceZoom = lock.priceZoom;
@@ -5197,10 +5213,12 @@ class ReplaySystem {
      */
     onUserPan() {
         if (!this.isActive) return;
-        
+
+        // Release frozen viewport so playback no longer snaps back after Play.
+        this._viewportLockForPlayback = null;
         this.autoScrollEnabled = false;
         this.userHasPanned = true;
-        
+
         // Show visual indicator that auto-scroll is disabled
         this.updateAutoScrollIndicator();
     }
@@ -6520,16 +6538,20 @@ class ReplaySystem {
     _realignMainChartWithReplaySlice(slicedRawData) {
         const mainChart = this.chart;
         if (!mainChart || !Array.isArray(slicedRawData) || slicedRawData.length === 0) return;
+        const preserveViewport = this._viewportLockForPlayback
+            || this._replayUserOwnsViewport(mainChart);
         try {
-            mainChart.priceZoom = 1;
-            mainChart.priceOffset = 0;
-            mainChart.autoScale = true;
-            if (mainChart.priceScale) {
-                mainChart.priceScale.autoScale = true;
-                mainChart.priceScale.locked = false;
+            if (!preserveViewport) {
+                mainChart.priceZoom = 1;
+                mainChart.priceOffset = 0;
+                mainChart.autoScale = true;
+                if (mainChart.priceScale) {
+                    mainChart.priceScale.autoScale = true;
+                    mainChart.priceScale.locked = false;
+                }
+                mainChart.manualCenterPrice = null;
+                mainChart.manualRange = null;
             }
-            mainChart.manualCenterPrice = null;
-            mainChart.manualRange = null;
             mainChart._pendingChartViewSanityCheck = true;
 
             mainChart.rawData = slicedRawData;
@@ -6555,6 +6577,7 @@ class ReplaySystem {
         if (typeof mainChart.constrainOffset === 'function') {
             try { mainChart.constrainOffset(); } catch (_e) { /* ignore */ }
         }
+        this._applyPlaybackViewportLock(mainChart);
         if (mainChart.orderManager && typeof mainChart.orderManager.updatePositions === 'function') {
             try { mainChart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
         }
