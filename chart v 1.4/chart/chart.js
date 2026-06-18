@@ -19528,13 +19528,9 @@ class Chart {
         this._cancelWheelBurstRender();
         this._wheelBurstSnapYDomain = null;
         this._wheelBurstSnapVolumeDomain = null;
-        if (this.drawingManager?.drawings?.length) {
-            const dm = this.drawingManager;
-            dm.drawings.forEach((drawing) => {
-                if (drawing && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
-                    dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
-                }
-            });
+        // Geometry stays aligned via panFast redraws during the burst; re-sync on settle caused snap.
+        if (this.drawingManager && typeof this.drawingManager.finalizeDrawingsAfterChartPan === 'function') {
+            this.drawingManager.finalizeDrawingsAfterChartPan();
         }
         this._syncOrderOverlaysDuringPan(false);
         this._wheelBurstFinalPass = true;
@@ -20685,14 +20681,15 @@ class Chart {
                 this.compareOverlay.updateInfoPositions();
             }
             this.drawCurrentPriceLabel(visible);
+            // Drawings must track candles during pan, wheel zoom, and axis zoom (including lite path).
+            const syncDrawingsNow = chartViewPanning || wheelBurstLight || axisZoomDragging || !interactionLite;
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            // Drawings must move with candles every pan frame (including lite/zoomed-out path).
-            if (chartViewPanning || !interactionLite) {
+            if (syncDrawingsNow) {
                 this.redrawDrawings();
             }
-            if (chartViewPanning || !interactionLite) {
+            if (syncDrawingsNow) {
                 this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight);
             }
             if (!interactionLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
@@ -27207,7 +27204,7 @@ class Chart {
                 this.drawingManager.redrawAll({ panFast: true });
                 return;
             }
-            if (wheelActive) {
+            if (wheelActive && !this._wheelBurstFinalPass) {
                 this.drawingManager.redrawAll({ panFast: true });
             } else {
                 this.drawingManager.redrawAll();
