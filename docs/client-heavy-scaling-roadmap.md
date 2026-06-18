@@ -169,10 +169,10 @@ chmod +x scripts/verify-tile-cdn.sh
 ### Steps
 
 - [ ] **3.1** Deploy build with `TileIdbCache` + updated `TileManager` in `chart.js`
-- [ ] **3.2** Enable (default on when IndexedDB available):
+- [ ] **3.2** Enable (opt-in when ready):
   ```js
-  localStorage.setItem('talaria_tile_idb', '1')  // default
-  localStorage.setItem('talaria_tile_idb', '0')  // disable for debug
+  localStorage.setItem('talaria_tile_idb', '1')  // enable IndexedDB tile cache
+  localStorage.removeItem('talaria_tile_idb')    // disable (default off)
   ```
 - [ ] **3.3** Build + sync homepage:
   ```bash

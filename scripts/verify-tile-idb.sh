@@ -47,11 +47,10 @@ cat <<'EOF'
   4. Network tab: few or zero /api/file/.../tile/... requests on 2nd load
   5. DevTools → Application → IndexedDB → talaria-tiles-v1 → tiles store has keys
 
-  Disable for debug:
-    localStorage.setItem('talaria_tile_idb', '0'); location.reload();
-
-  Re-enable:
+  Enable:
     localStorage.setItem('talaria_tile_idb', '1'); location.reload();
+
+  Default: off (no localStorage key needed)
 
   Clear cache:
     indexedDB.deleteDatabase('talaria-tiles-v1');

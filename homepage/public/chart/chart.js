@@ -1,7 +1,7 @@
 /**
  * IndexedDB persistence for immutable binary tiles (Phase 3 — client-heavy architecture).
  * Stores raw ArrayBuffer per tile; decode stays in TileManager.
- * Disable: localStorage.setItem('talaria_tile_idb', '0')
+ * Disable: default off. Enable: localStorage.setItem('talaria_tile_idb', '1')
  */
 class TileIdbCache {
     static DB_NAME = 'talaria-tiles-v1';
@@ -17,9 +17,8 @@ class TileIdbCache {
     static enabled() {
         try {
             if (typeof indexedDB === 'undefined') return false;
-            const flag = localStorage.getItem('talaria_tile_idb');
-            if (flag === '0') return false;
-            return true;
+            // Opt-in only — avoids surprises during backtest boot (enable: localStorage talaria_tile_idb=1)
+            return localStorage.getItem('talaria_tile_idb') === '1';
         } catch (_e) {
             return false;
         }
@@ -14334,7 +14333,8 @@ class Chart {
             this._chartViewRestored = false;
             const rs = this.replaySystem;
             if (this.isBacktestMode && rs) {
-                if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+                if (!rs.isActive && typeof rs.enterReplayMode === 'function'
+                    && this.rawData && this.rawData.length > 0) {
                     rs.enterReplayMode({ startAtBeginning: true });
                 }
                 if (rs.isActive && typeof this._ensureMultichartViewportVisible === 'function'
