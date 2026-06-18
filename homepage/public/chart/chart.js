@@ -20394,7 +20394,22 @@ class Chart {
         const nearLoadedLeft = this.offsetX > maxOffset - spacing * 10;
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
         const gapOnLeft = leftIdx < 6;
-        return nearLoadedLeft || gapOnLeft;
+        const vr = this._getViewportBarRange();
+        const spanNeedsHistory = Number.isFinite(vr.first) && vr.first < -1;
+        const zoomOutNeeds = this._replayZoomOutSpanNeedsHistory();
+        return nearLoadedLeft || gapOnLeft || spanNeedsHistory || zoomOutNeeds;
+    }
+
+    /**
+     * After zoom-out the visible window can exceed loaded bars (even before pan).
+     * Probe backward fetch when the plot needs more history than the current slice holds.
+     */
+    _replayZoomOutSpanNeedsHistory() {
+        const win = this._getVisibleFetchWindowFromPixels();
+        if (!win) return false;
+        if (win.visibleBarCount < 48) return false;
+        if (win.startIdx > 2) return false;
+        return win.loadedBarCount < win.visibleBarCount * 0.85;
     }
 
     /** Debounced backward fetch while dragging replay chart left (TradingView-style). */
@@ -20417,8 +20432,11 @@ class Chart {
         const maxOffset = cw - rightMargin;
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
         const gapOnLeft = leftIdx < 6;
+        const vr = this._getViewportBarRange();
+        const spanNeedsHistory = Number.isFinite(vr.first) && vr.first < -1;
+        const zoomOutNeeds = this._replayZoomOutSpanNeedsHistory();
         const nearLoadedLeft = spacing > 0 && this.offsetX > maxOffset - spacing * 10;
-        const forceProbe = gapOnLeft || nearLoadedLeft;
+        const forceProbe = gapOnLeft || nearLoadedLeft || spanNeedsHistory || zoomOutNeeds;
         if (!forceProbe && !this._needsReplayHistoryLoadLeft()) return;
         if (typeof this._tryExtendReplayMasterFromParent === 'function'
             && this._tryExtendReplayMasterFromParent()) {
@@ -20596,6 +20614,10 @@ class Chart {
         this.offsetX = newCenterOffset;
         
         this.constrainOffset();
+        if (this.replaySystem?.isActive && factor > 1.01
+            && typeof this._scheduleReplayPanLoadLeft === 'function') {
+            this._scheduleReplayPanLoadLeft();
+        }
         this.render();
     }
     
@@ -25387,7 +25409,14 @@ class Chart {
             clearTimeout(this._wheelPostBurstTimer);
             this._wheelPostBurstTimer = setTimeout(() => {
                 if (this.data && this.data.length > 0) {
-                    if (this._lastWheelZoomDirection === -1) {
+                    if (this.replaySystem?.isActive) {
+                        try { this.constrainOffset(); } catch (_e) {}
+                        if (this._lastWheelZoomDirection === -1
+                            || (typeof this._needsReplayHistoryLoadLeft === 'function'
+                                && this._needsReplayHistoryLoadLeft())) {
+                            this._scheduleReplayPanLoadLeft();
+                        }
+                    } else if (this._lastWheelZoomDirection === -1) {
                         this._scheduleZoomOutDataFill();
                     } else {
                         try { this.constrainOffset(); } catch (_e) {}
@@ -26256,6 +26285,10 @@ class Chart {
             ) {
                 if (dragType === 'timeAxis') {
                     try { this.constrainOffset(); } catch (_e) {}
+                    if (this.replaySystem?.isActive
+                        && typeof this._scheduleReplayPanLoadLeft === 'function') {
+                        this._scheduleReplayPanLoadLeft();
+                    }
                 }
                 this._finishAxisZoomInteraction();
                 if (dragType === 'timeAxis') {
