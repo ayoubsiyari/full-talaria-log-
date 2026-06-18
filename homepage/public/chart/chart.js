@@ -19532,6 +19532,7 @@ class Chart {
                 }
             });
         }
+        this._syncOrderOverlaysDuringPan(false);
         this._wheelBurstFinalPass = true;
         this.renderPending = false;
         this.render();
@@ -19743,13 +19744,21 @@ class Chart {
 
     /** Zoomed-out view — many sub-pixel bars; use ultra-light paint while dragging/zooming. */
     _isZoomedOutPaint(visibleCount) {
+        if (this._isZoomedOutPaintBySpacing()) return true;
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
         const count = visibleCount != null
             ? visibleCount
             : (Array.isArray(this.data) ? this.data.length : 0);
-        if (this._shouldUsePixelColumnCandleLod(count, plotPx)) return true;
-        const spacing = this.getCandleSpacing();
+        return this._shouldUsePixelColumnCandleLod(count, plotPx);
+    }
+
+    /** Spacing-only zoom-out check (safe before visible[] is built). */
+    _isZoomedOutPaintBySpacing() {
+        const m = this.margin || { l: 60, r: 60 };
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
+        if (spacing < TV_ZOOMED_OUT_SLOT_PX) return true;
         const estOnScreen = Math.ceil(plotPx / Math.max(spacing, 1e-6));
         return estOnScreen > plotPx * 0.85;
     }
@@ -20503,28 +20512,35 @@ class Chart {
         }
 
         // IMPORTANT: Calculate scales FIRST before drawing anything
+        const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
+        const zoomOutLiteEarly = this._isZoomedOutPaintBySpacing();
+        const skipHeavyChrome = wheelBurstLight && zoomOutLiteEarly;
+
         this.calculateScales();
-        // Keep plot margins stable before candles/indicators so X mapping matches axis + pan.
-        if (typeof this._syncAdaptivePriceAxisMargin === 'function') {
+        if (typeof this._syncAdaptivePriceAxisMargin === 'function' && !skipHeavyChrome) {
             this._syncAdaptivePriceAxisMargin();
         }
-        // Paint separate-panel backgrounds before candles so OHLC cannot bleed into indicator slots.
-        if (typeof this._paintSeparatePanelStackBackground === 'function') {
+        if (typeof this._paintSeparatePanelStackBackground === 'function' && !skipHeavyChrome) {
             this._paintSeparatePanelStackBackground();
         }
 
         // Build time-axis ticks — pan shifts cached ticks; wheel/time-axis zoom rebuilds every frame
         // so vertical grid lines stay aligned with candles (cached ticks looked "stuck" until release).
         const interactionLightPaint = this._isInteractionLightPaint();
-        const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
-        if (chartViewPanning) {
-            // Rebuild every pan frame so vertical grid + time labels stay aligned (cached shift left gaps).
-            this._timeTicks = this._buildTimeTicks();
+        if (skipHeavyChrome) {
+            this._timeTicks = this._buildTimeTicksFast();
+            this._cachedInteractionTimeTicks = this._timeTicks;
+        } else if (chartViewPanning) {
+            this._timeTicks = zoomOutLiteEarly
+                ? this._buildTimeTicksFast()
+                : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (wheelBurstLight || timeAxisZoomDragging) {
-            this._timeTicks = this._buildTimeTicks();
+            this._timeTicks = zoomOutLiteEarly
+                ? this._buildTimeTicksFast()
+                : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (interactionLightPaint && priceAxisZoomDragging) {
             this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
@@ -20626,15 +20642,21 @@ class Chart {
             if (!zoomOutLite && this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
                 this.compareOverlay.updateInfoPositions();
             }
-            this.drawCurrentPriceLabel(visible);
+            if (!zoomOutLite) {
+                this.drawCurrentPriceLabel(visible);
+            } else {
+                this.drawCurrentPriceLabel(visible);
+            }
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
             if (!zoomOutLite) {
                 this.redrawDrawings();
             }
-            this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
-            if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
+            if (!zoomOutLite) {
+                this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
+            }
+            if (!zoomOutLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                 this.syncOverlayIndicatorSelectionOverlay();
             }
             if (this.boxZoom && this.boxZoom.active) {
@@ -20969,6 +20991,33 @@ class Chart {
     }
     
     /**
+     * O(1) time ticks for zoomed-out wheel burst — avoids scanning 10k+ bars per frame.
+     */
+    _buildTimeTicksFast() {
+        if (!this.data || this.data.length === 0) return [];
+        const m = this.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, this.w - m.l - m.r);
+        const spacing = Math.max(1e-6, this.getCandleSpacing());
+        const minSpacingPx = 72;
+        const slotCount = Math.min(12, Math.max(4, Math.floor(plotW / minSpacingPx)));
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const ticks = [];
+        let lastX = -Infinity;
+        for (let ti = 0; ti <= slotCount; ti++) {
+            const x = m.l + (ti / slotCount) * plotW;
+            if (x - lastX < minSpacingPx * 0.65 && ti > 0) continue;
+            const idx = Math.max(0, Math.min(this.data.length - 1, Math.round((x - m.l - this.offsetX) / spacing)));
+            const candle = this.data[idx];
+            if (!candle || !Number.isFinite(candle.t)) continue;
+            const tzDate = this.convertToTimezone(candle.t);
+            const label = `${monthNames[tzDate.getUTCMonth()]} ${tzDate.getUTCDate()}`;
+            ticks.push({ idx, x, label, isBoundary: true });
+            lastX = x;
+        }
+        return ticks;
+    }
+
+    /**
      * Build time-axis tick list once per render frame.
      * Returns [{idx, x, label, isBoundary}] – used by both drawGrid() and drawAxes().
      */
@@ -20979,9 +21028,10 @@ class Chart {
         const cw = this.w - m.l - m.r;
         const firstVisibleIdx = -this.offsetX / candleSpacing;
         const lastVisibleIdx     = firstVisibleIdx + cw / candleSpacing;
-        // Use viewport span (not loaded-data span) so label density stays stable
-        // when replay grows candle count near the right edge.
         const visibleBarsCount   = Math.max(1, Math.ceil(Math.max(0, lastVisibleIdx - firstVisibleIdx)));
+        if (visibleBarsCount > 900 && !options.full) {
+            return this._buildTimeTicksFast();
+        }
 
         // Prefer the explicit chart timeframe (supports custom intervals like 13m)
         // and only fall back to data-detection when needed.
