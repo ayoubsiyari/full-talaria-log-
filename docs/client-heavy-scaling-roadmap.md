@@ -376,6 +376,48 @@ Phase 8  Optional (WASM, WebSocket, PgBouncer)
 
 ---
 
+## VPS deploy after `git pull`
+
+**Script:** `scripts/vps-deploy-after-pull.sh`
+
+```bash
+cd /opt/talaria
+chmod +x scripts/vps-deploy-after-pull.sh
+
+# Most frontend/chart.js fixes (fast, ~2–5 min):
+./scripts/vps-deploy-after-pull.sh homepage
+
+# Python API changes (api_server.py, bar cache, etc.):
+./scripts/vps-deploy-after-pull.sh api
+
+# Journal backend only:
+./scripts/vps-deploy-after-pull.sh journal
+
+# Big release / unsure what changed (~10–20 min):
+./scripts/vps-deploy-after-pull.sh full
+
+# Config/.env only — no image rebuild:
+./scripts/vps-deploy-after-pull.sh none
+docker compose up -d   # picks up .env changes
+```
+
+| You changed | Command |
+|-------------|---------|
+| `chart.js`, `replay-system.js`, `homepage/`, nginx | `homepage` |
+| `api_server.py`, Python chart code, `docker-compose.yml` env for API | `api` |
+| `journal-backend/` | `journal` |
+| Many areas / release | `full` |
+| Only `.env` | `none` then `docker compose up -d` |
+
+**Rules:**
+
+- Uses `TMPDIR=/opt/talaria/.tmp` (not RAM `/tmp`) — avoids “disk quota exceeded”
+- Do **not** put large files in `/tmp` (use `/opt/talaria/backups`)
+- After several builds: `./scripts/vps-cleanup-deploy-cache.sh`
+- **GHCR pull deploy** (no host build): `./scripts/vps-deploy-after-pull.sh pull`
+
+---
+
 ## Progress log
 
 | Date | Phase | Notes |

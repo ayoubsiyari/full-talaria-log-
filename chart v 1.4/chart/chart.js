@@ -1,157 +1,7 @@
 /**
- * IndexedDB persistence for immutable binary tiles (Phase 3 — client-heavy architecture).
- * Stores raw ArrayBuffer per tile; decode stays in TileManager.
- * Disable: default off. Enable: localStorage.setItem('talaria_tile_idb', '1')
- */
-class TileIdbCache {
-    static DB_NAME = 'talaria-tiles-v1';
-    static DB_VERSION = 1;
-    static STORE_TILES = 'tiles';
-    static STORE_META = 'meta';
-
-    constructor() {
-        this._db = null;
-        this._openPromise = null;
-    }
-
-    static enabled() {
-        try {
-            if (typeof indexedDB === 'undefined') return false;
-            // Opt-in only — avoids surprises during backtest boot (enable: localStorage talaria_tile_idb=1)
-            return localStorage.getItem('talaria_tile_idb') === '1';
-        } catch (_e) {
-            return false;
-        }
-    }
-
-    _open() {
-        if (!TileIdbCache.enabled()) return Promise.resolve(null);
-        if (this._db) return Promise.resolve(this._db);
-        if (this._openPromise) return this._openPromise;
-        this._openPromise = new Promise((resolve) => {
-            try {
-                const req = indexedDB.open(TileIdbCache.DB_NAME, TileIdbCache.DB_VERSION);
-                req.onupgradeneeded = () => {
-                    const db = req.result;
-                    if (!db.objectStoreNames.contains(TileIdbCache.STORE_TILES)) {
-                        db.createObjectStore(TileIdbCache.STORE_TILES);
-                    }
-                    if (!db.objectStoreNames.contains(TileIdbCache.STORE_META)) {
-                        db.createObjectStore(TileIdbCache.STORE_META);
-                    }
-                };
-                req.onsuccess = () => {
-                    this._db = req.result;
-                    resolve(this._db);
-                };
-                req.onerror = () => resolve(null);
-            } catch (_e) {
-                resolve(null);
-            }
-        });
-        return this._openPromise;
-    }
-
-    async getTileBuffer(fileId, tf, tileIdx) {
-        const db = await this._open();
-        if (!db) return null;
-        const key = `${fileId}/${tf}/${tileIdx}`;
-        return new Promise((resolve) => {
-            try {
-                const tx = db.transaction(TileIdbCache.STORE_TILES, 'readonly');
-                const req = tx.objectStore(TileIdbCache.STORE_TILES).get(key);
-                req.onsuccess = () => {
-                    const val = req.result;
-                    if (val instanceof ArrayBuffer && val.byteLength > 0) {
-                        if (typeof console !== 'undefined' && console.info) {
-                            console.info(`[tile-idb] hit ${key}`);
-                        }
-                        resolve(val);
-                    } else {
-                        resolve(null);
-                    }
-                };
-                req.onerror = () => resolve(null);
-            } catch (_e) {
-                resolve(null);
-            }
-        });
-    }
-
-    async putTileBuffer(fileId, tf, tileIdx, buffer) {
-        const db = await this._open();
-        if (!db || !(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) return;
-        const key = `${fileId}/${tf}/${tileIdx}`;
-        try {
-            const tx = db.transaction(TileIdbCache.STORE_TILES, 'readwrite');
-            tx.objectStore(TileIdbCache.STORE_TILES).put(buffer, key);
-        } catch (_e) { /* quota or private mode */ }
-    }
-
-    async getMeta(fileId, tf) {
-        const db = await this._open();
-        if (!db) return null;
-        const key = `${fileId}/${tf}`;
-        return new Promise((resolve) => {
-            try {
-                const tx = db.transaction(TileIdbCache.STORE_META, 'readonly');
-                const req = tx.objectStore(TileIdbCache.STORE_META).get(key);
-                req.onsuccess = () => {
-                    const val = req.result;
-                    resolve(val && typeof val === 'object' ? val : null);
-                };
-                req.onerror = () => resolve(null);
-            } catch (_e) {
-                resolve(null);
-            }
-        });
-    }
-
-    async putMeta(fileId, tf, meta) {
-        const db = await this._open();
-        if (!db || !meta || typeof meta !== 'object') return;
-        const key = `${fileId}/${tf}`;
-        try {
-            const tx = db.transaction(TileIdbCache.STORE_META, 'readwrite');
-            tx.objectStore(TileIdbCache.STORE_META).put(meta, key);
-        } catch (_e) { /* ignore */ }
-    }
-
-    async invalidateFile(fileId) {
-        const db = await this._open();
-        if (!db) return;
-        const prefix = `${fileId}/`;
-        const purgeStore = (storeName) => new Promise((resolve) => {
-            try {
-                const tx = db.transaction(storeName, 'readwrite');
-                const store = tx.objectStore(storeName);
-                const req = store.openCursor();
-                req.onsuccess = () => {
-                    const cursor = req.result;
-                    if (!cursor) {
-                        resolve();
-                        return;
-                    }
-                    if (String(cursor.key).startsWith(prefix)) {
-                        cursor.delete();
-                    }
-                    cursor.continue();
-                };
-                req.onerror = () => resolve();
-            } catch (_e) {
-                resolve();
-            }
-        });
-        await purgeStore(TileIdbCache.STORE_TILES);
-        await purgeStore(TileIdbCache.STORE_META);
-    }
-}
-
-/**
  * TileManager — LRU cache for binary tiles with prefetch support.
  * Each tile = 50,000 candles, 48 bytes each (6×float64 little-endian: t,o,h,l,c,v).
  * Tiles have Cache-Control: immutable so nginx/browser cache them automatically.
- * Phase 3: IndexedDB (TileIdbCache) — reload without re-fetching tiles from server.
  */
 class TileManager {
     constructor(apiBase, maxTiles = 100) {
@@ -162,23 +12,16 @@ class TileManager {
         this._order      = [];           // LRU order (oldest first)
         this._inflight   = new Map();   // key → Promise (dedup concurrent fetches)
         this._prefetchQ  = new Set();   // keys already scheduled for prefetch
-        this._idb = new TileIdbCache();
     }
 
     async getMeta(fileId, tf) {
         const key = `${fileId}/${tf}`;
         if (this._metaCache.has(key)) return this._metaCache.get(key);
-        const idbMeta = await this._idb.getMeta(fileId, tf);
-        if (idbMeta) {
-            this._metaCache.set(key, idbMeta);
-            return idbMeta;
-        }
         try {
             const r = await fetch(`${this.apiBase}/file/${fileId}/tile-meta/${tf}`);
             if (!r.ok) return null;
             const meta = await r.json();
             this._metaCache.set(key, meta);
-            this._idb.putMeta(fileId, tf, meta);
             return meta;
         } catch (e) {
             return null;
@@ -195,15 +38,9 @@ class TileManager {
 
         const promise = (async () => {
             try {
-                let buf = await this._idb.getTileBuffer(fileId, tf, tileIdx);
-                if (!buf) {
-                    const r = await fetch(`${this.apiBase}/file/${fileId}/tile/${tf}/${tileIdx}`);
-                    if (!r.ok) return [];
-                    buf = await r.arrayBuffer();
-                    if (buf && buf.byteLength > 0) {
-                        this._idb.putTileBuffer(fileId, tf, tileIdx, buf);
-                    }
-                }
+                const r = await fetch(`${this.apiBase}/file/${fileId}/tile/${tf}/${tileIdx}`);
+                if (!r.ok) return [];
+                const buf = await r.arrayBuffer();
                 const candles = this._decodeBinary(buf);
                 this._tileCache.set(key, candles);
                 this._order.push(key);
@@ -240,7 +77,6 @@ class TileManager {
             if (k.startsWith(prefix)) this._metaCache.delete(k);
         }
         this._order = this._order.filter(k => !k.startsWith(prefix));
-        this._idb.invalidateFile(fileId);
     }
 
     _decodeBinary(buf) {
@@ -14333,8 +14169,7 @@ class Chart {
             this._chartViewRestored = false;
             const rs = this.replaySystem;
             if (this.isBacktestMode && rs) {
-                if (!rs.isActive && typeof rs.enterReplayMode === 'function'
-                    && this.rawData && this.rawData.length > 0) {
+                if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
                     rs.enterReplayMode({ startAtBeginning: true });
                 }
                 if (rs.isActive && typeof this._ensureMultichartViewportVisible === 'function'

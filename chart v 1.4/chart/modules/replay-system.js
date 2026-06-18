@@ -1109,37 +1109,13 @@ class ReplaySystem {
             this.enterPickPointMode();
         }
     }
-
-    /** True while backtest/chart fetch is in flight — suppress premature replay alerts. */
-    _isChartDataStillLoading() {
-        const ch = this.chart;
-        if (!ch) return false;
-        if (ch.isLoading) return true;
-        if (ch.isBacktestMode && ch.backtestingStarted
-            && (!ch.rawData || ch.rawData.length === 0)) {
-            return true;
-        }
-        try {
-            const loader = document.getElementById('backtestingLoader');
-            if (loader && loader.classList.contains('active')) return true;
-        } catch (_e) { /* ignore */ }
-        return false;
-    }
-
-    _warnReplayNeedsData(context) {
-        if (this._isChartDataStillLoading()) {
-            console.warn(`[replay] ${context} deferred — chart data still loading`);
-            return;
-        }
-        alert('Please load data first');
-    }
     
     /**
      * Enter pick point mode - show cut line that follows cursor
      */
     enterPickPointMode() {
         if (!this.chart.rawData || this.chart.rawData.length === 0) {
-            this._warnReplayNeedsData('enterPickPointMode');
+            alert('Please load data first');
             return;
         }
         
@@ -2318,7 +2294,7 @@ class ReplaySystem {
         }
         
         if (!this.chart.rawData || this.chart.rawData.length === 0) {
-            this._warnReplayNeedsData('enterReplayMode');
+            alert('Please load data first');
             return;
         }
 
