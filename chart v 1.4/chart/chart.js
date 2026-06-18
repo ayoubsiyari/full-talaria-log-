@@ -13846,6 +13846,22 @@ class Chart {
         this.scheduleRender();
     }
 
+    /** TradingView-style time-axis double-click: reset bar width/zoom and jump to latest. */
+    _applyTimeAxisDoubleClickReset() {
+        this._isDoubleClicking = true;
+        if (this._timeAxisClickUnlockTimer) {
+            clearTimeout(this._timeAxisClickUnlockTimer);
+            this._timeAxisClickUnlockTimer = null;
+        }
+        setTimeout(() => { this._isDoubleClicking = false; }, 120);
+        if (this.drag?.active) {
+            this.drag.active = false;
+            this.drag.type = null;
+        }
+        this.jumpToLatest();
+        this.dispatchScrollSync();
+    }
+
     /** Pointer position → cursor mode (price/time axis, plot, etc.). Used by events + order overlay. */
     _detectCursorModeAt(mx, my) {
         const m = this.margin || { t: 5, r: 70, b: 30, l: 0 };
@@ -13899,6 +13915,8 @@ class Chart {
             timeZone.style.right = `${Number(m.r) || 70}px`;
             timeZone.style.bottom = '0';
             timeZone.style.height = `${Math.max(10, Number(m.b) || 30)}px`;
+            timeZone.style.pointerEvents = 'auto';
+            timeZone.style.zIndex = '12';
         }
     }
 
@@ -24710,21 +24728,26 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const detectCursorMode = (mx, my) => this._detectCursorModeAt(mx, my);
 
-        // Price-axis double-click: capture on wrapper + canvas BEFORE drawing-tools
-        // dblclick (horizontal lines span the margin and would open settings otherwise).
-        const handlePriceAxisDoubleClickCapture = (e) => {
+        // Axis double-click: capture on wrapper + canvas BEFORE drawing-tools
+        // (horizontal/vertical lines span margins and would open settings otherwise).
+        const handleAxisDoubleClickCapture = (e) => {
             if (e.button !== 0 && e.button !== undefined) return;
             const [mx, my] = this._eventCanvasLocalXY(e);
-            if (this._detectCursorModeAt(mx, my) !== 'priceAxis') return;
+            const axisMode = this._detectCursorModeAt(mx, my);
+            if (axisMode !== 'priceAxis' && axisMode !== 'timeAxis') return;
             e.preventDefault();
             if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
             if (typeof e.stopPropagation === 'function') e.stopPropagation();
-            this._applyPriceAxisDoubleClickLock();
+            if (axisMode === 'priceAxis') {
+                this._applyPriceAxisDoubleClickLock();
+            } else {
+                this._applyTimeAxisDoubleClickReset();
+            }
         };
-        this.canvas.addEventListener('dblclick', handlePriceAxisDoubleClickCapture, true);
+        this.canvas.addEventListener('dblclick', handleAxisDoubleClickCapture, true);
         const chartWrapper = this.canvas.parentElement;
         if (chartWrapper && chartWrapper !== this.canvas) {
-            chartWrapper.addEventListener('dblclick', handlePriceAxisDoubleClickCapture, true);
+            chartWrapper.addEventListener('dblclick', handleAxisDoubleClickCapture, true);
         }
         
         // ═══════════════════════════════════════════════════════════════════
@@ -25167,7 +25190,16 @@ class Chart {
                 }, 260);
                 e.preventDefault();
             } else if (mode === 'timeAxis' && this.timeScale.locked && !this._isDoubleClicking) {
-                this.timeScale.locked = false;
+                if (this._timeAxisClickUnlockTimer) {
+                    clearTimeout(this._timeAxisClickUnlockTimer);
+                }
+                this._timeAxisClickUnlockTimer = setTimeout(() => {
+                    this._timeAxisClickUnlockTimer = null;
+                    if (!this._isDoubleClicking && this.timeScale?.locked) {
+                        this.timeScale.locked = false;
+                        this.scheduleRender();
+                    }
+                }, 260);
                 e.preventDefault();
             } else if (mode === 'priceAxis' || mode === 'timeAxis' || mode === 'separatePanelAxis') {
                 // Prevent text selection when dragging axes
@@ -25996,11 +26028,9 @@ class Chart {
                     this._applyPriceAxisDoubleClickLock();
                 }
             } else if (mode === 'timeAxis') {
-                // TradingView-style: reset zoom/size and jump to latest (current) candle
-                this.jumpToLatest();
-
-
-                this.dispatchScrollSync();
+                if (typeof this._applyTimeAxisDoubleClickReset === 'function') {
+                    this._applyTimeAxisDoubleClickReset();
+                }
             }
         });
 
@@ -31168,6 +31198,12 @@ async function _talariaInitializeChart() {
             && typeof chartInstance._applyPriceAxisDoubleClickLock === 'function') {
             e.preventDefault();
             chartInstance._applyPriceAxisDoubleClickLock();
+            return;
+        }
+        if (zone === 'time' && e.type === 'dblclick'
+            && typeof chartInstance._applyTimeAxisDoubleClickReset === 'function') {
+            e.preventDefault();
+            chartInstance._applyTimeAxisDoubleClickReset();
             return;
         }
         

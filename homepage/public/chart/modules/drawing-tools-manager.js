@@ -2359,6 +2359,8 @@ class DrawingToolsManager {
                     if (axisMode === 'priceAxis' || axisMode === 'timeAxis' || axisMode === 'separatePanelAxis') {
                         if (axisMode === 'priceAxis' && typeof chart._applyPriceAxisDoubleClickLock === 'function') {
                             chart._applyPriceAxisDoubleClickLock();
+                        } else if (axisMode === 'timeAxis' && typeof chart._applyTimeAxisDoubleClickReset === 'function') {
+                            chart._applyTimeAxisDoubleClickReset();
                         }
                         event.preventDefault();
                         event.stopPropagation();
