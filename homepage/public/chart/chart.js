@@ -23846,6 +23846,7 @@ class Chart {
             vSum: volSum,
             midIdx: base + Math.floor((i0 + i1) / 2),
         };
+    }
 
     _normalizeCandleColorKey(color) {
         return String(color || '').trim().toLowerCase().replace(/\s+/g, '');
