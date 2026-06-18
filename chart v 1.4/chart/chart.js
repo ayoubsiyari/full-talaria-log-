@@ -22919,17 +22919,21 @@ class Chart {
             }
         }
         const tzDate = this.convertToTimezone(timestampMs);
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const month = months[tzDate.getUTCMonth()];
+        const dow = days[tzDate.getUTCDay()];
         const day = tzDate.getUTCDate();
-        const year = tzDate.getUTCFullYear();
+        const month = months[tzDate.getUTCMonth()];
+        const yearShort = String(tzDate.getUTCFullYear()).slice(-2);
+        const datePart = `${dow} ${day} ${month} '${yearShort}`;
         const rsCross = this.replaySystem;
         const isDailyOrHigher = tfMs >= 86400000;
         const hasIntradayClock = !!(tzDate.getUTCHours() || tzDate.getUTCMinutes() || tzDate.getUTCSeconds());
         if (isDailyOrHigher && !(rsCross && rsCross.isActive && hasIntradayClock)) {
-            return `${month} ${day}, ${year}`;
+            return datePart;
         }
-        return `${month} ${day}, ${year}, ${this._formatSessionClock(tzDate, true)}`;
+        const timePart = this._formatSessionClock(tzDate, false);
+        return `${datePart}\u2003\u2003${timePart}`;
     }
 
     mapV9TimezoneLabelToId(label) {
@@ -31074,11 +31078,12 @@ class Chart {
             timeLabel.style.bottom = `${timeLabelBottom}px`;
             timeLabel.style.transform = 'translateX(-50%)';
             timeLabel.style.position = 'absolute';
-            timeLabel.style.background = this.chartSettings?.cursorLabelBgColor || '#363a45';
-            timeLabel.style.color = this.chartSettings?.cursorLabelTextColor || '#d1d4dc';
-            timeLabel.style.padding = '2px 6px';
-            timeLabel.style.fontSize = '11px';
-            timeLabel.style.borderRadius = '2px';
+            timeLabel.style.background = this.chartSettings?.cursorLabelBgColor || '#131722';
+            timeLabel.style.color = this.chartSettings?.cursorLabelTextColor || '#ffffff';
+            timeLabel.style.padding = '3px 8px';
+            timeLabel.style.fontSize = '12px';
+            timeLabel.style.borderRadius = '0';
+            timeLabel.style.fontWeight = '500';
             timeLabel.style.whiteSpace = 'nowrap';
             timeLabel.style.zIndex = '101';
             timeLabel.style.display = 'block';
