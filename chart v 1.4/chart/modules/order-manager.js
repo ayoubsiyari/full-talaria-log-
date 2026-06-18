@@ -25454,8 +25454,6 @@ class OrderManager {
                 exitScreenshot: null, // Will be captured below
                 mfe: position.mfe || null,
                 mae: position.mae || null,
-                mfeTime: position.mfeTime || position.openTime || null,
-                maeTime: position.maeTime || position.openTime || null,
                 highestPrice: position.highestPrice || null,
                 lowestPrice: position.lowestPrice || null,
                 bar_close_r: Array.isArray(position.bar_close_r) ? position.bar_close_r.slice() : [],
@@ -25813,73 +25811,6 @@ class OrderManager {
     }
     
     /**
-     * Mirror live MFE/MAE fields onto journal, closed/open position rows, and pending journal drafts.
-     */
-    _syncMfeMaeSnapshot(position, opts = {}) {
-        if (!position || position.id == null) return;
-        const oid = position.id;
-        const patch = {
-            mfe: position.mfe,
-            mae: position.mae,
-            mfeTime: position.mfeTime,
-            maeTime: position.maeTime,
-            highestPrice: position.highestPrice,
-            lowestPrice: position.lowestPrice,
-        };
-        const closed = (this.closedPositions || []).find((p) => p.id === oid);
-        if (closed) Object.assign(closed, patch);
-        const open = (this.openPositions || []).find((p) => p.id === oid);
-        if (open) Object.assign(open, patch);
-        const ji = (this.tradeJournal || []).findIndex(
-            (t) => Number(t.tradeId ?? t.id) === Number(oid)
-        );
-        if (ji >= 0) {
-            Object.assign(this.tradeJournal[ji], patch);
-            if (Array.isArray(position.bar_high_r)) {
-                this.tradeJournal[ji].bar_high_r = position.bar_high_r.slice();
-            }
-            if (Array.isArray(position.bar_low_r)) {
-                this.tradeJournal[ji].bar_low_r = position.bar_low_r.slice();
-            }
-            if (Array.isArray(position.bar_close_r)) {
-                this.tradeJournal[ji].bar_close_r = position.bar_close_r.slice();
-            }
-            if (Array.isArray(position.post_exit_bar_high_r)) {
-                this.tradeJournal[ji].post_exit_bar_high_r = position.post_exit_bar_high_r.slice();
-            }
-            if (Array.isArray(position.post_exit_bar_low_r)) {
-                this.tradeJournal[ji].post_exit_bar_low_r = position.post_exit_bar_low_r.slice();
-            }
-            if (Array.isArray(position.post_exit_bar_close_r)) {
-                this.tradeJournal[ji].post_exit_bar_close_r = position.post_exit_bar_close_r.slice();
-            }
-        }
-        if (position.pendingJournalEntry) {
-            Object.assign(position.pendingJournalEntry, patch);
-        }
-        if (opts.persist) {
-            try {
-                this.persistJournal();
-            } catch (e) {
-                console.warn('MFE/MAE journal persist failed:', e);
-            }
-        }
-    }
-
-    _maybeRefreshMfeMaeMarkers(position, before = {}) {
-        if (this.mfeMaeTrackingEnabled === false) return;
-        if (!position || !this._rowHasMfeMaeForChartMarkers(position)) return;
-        const prevMfe = before.mfe;
-        const prevMae = before.mae;
-        if (prevMfe === position.mfe && prevMae === position.mae) return;
-        try {
-            this.drawMfeMaeMarkers(position);
-        } catch (e) {
-            console.warn('MFE/MAE marker refresh failed:', e);
-        }
-    }
-
-    /**
      * Update MFE/MAE tracking for closed positions
      */
     updateMfeMaeTracking(currentCandle, high, low) {
@@ -25889,7 +25820,6 @@ class OrderManager {
         const completedTracking = [];
         
         this.mfeMaeTrackingPositions.forEach(position => {
-            const before = { mfe: position.mfe, mae: position.mae };
             const mode = position.postExitTrackingMode || this.postExitTrackingMode || 'hours';
             if (mode === 'candles') {
                 const maxCandles = Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10);
@@ -25953,8 +25883,6 @@ class OrderManager {
                     position.maeTime = currentCandle.t; // Track when MAE occurred
                 }
             }
-            this._syncMfeMaeSnapshot(position);
-            this._maybeRefreshMfeMaeMarkers(position, before);
         });
         
         // Handle completed tracking
@@ -26566,8 +26494,7 @@ class OrderManager {
                 position._miLastMarkPrice = markPx;
                 
                 // Update MFE/MAE for BUY positions (only within tracking window)
-                if (this.mfeMaeTrackingEnabled !== false && currentCandle.t <= position.mfeMaeTrackingEndTime) {
-                    const before = { mfe: position.mfe, mae: position.mae };
+                if (currentCandle.t <= position.mfeMaeTrackingEndTime) {
                     if (high > position.highestPrice) {
                         position.highestPrice = high;
                         position.mfe = high; // MFE = highest price reached (best for BUY)
@@ -26578,7 +26505,6 @@ class OrderManager {
                         position.mae = low; // MAE = lowest price reached (worst for BUY)
                         position.maeTime = currentCandle.t; // Track when MAE occurred
                     }
-                    this._maybeRefreshMfeMaeMarkers(position, before);
                 }
                 
                 console.log(`   📊 BUY #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
@@ -26897,8 +26823,7 @@ class OrderManager {
                 position._miLastMarkPrice = markPx;
                 
                 // Update MFE/MAE for SELL positions (only within tracking window)
-                if (this.mfeMaeTrackingEnabled !== false && currentCandle.t <= position.mfeMaeTrackingEndTime) {
-                    const before = { mfe: position.mfe, mae: position.mae };
+                if (currentCandle.t <= position.mfeMaeTrackingEndTime) {
                     if (low < position.lowestPrice) {
                         position.lowestPrice = low;
                         position.mfe = low; // MFE = lowest price reached (best for SELL)
@@ -26909,7 +26834,6 @@ class OrderManager {
                         position.mae = high; // MAE = highest price reached (worst for SELL)
                         position.maeTime = currentCandle.t; // Track when MAE occurred
                     }
-                    this._maybeRefreshMfeMaeMarkers(position, before);
                 }
                 
                 console.log(`   📊 SELL #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
@@ -28486,11 +28410,9 @@ class OrderManager {
         // This ensures the N-candle window begins from when size was last reduced, not when SL finally hits.
         const _postExitAnchor = position.last_partial_exit_time ?? closeTime;
         const _reanchoredEndTime = _postExitAnchor + (this.mfeMaeTrackingHours * 60 * 60 * 1000);
-        const shouldTrackAfterClose = this.mfeMaeTrackingEnabled !== false && (
-            trackingMode === 'candles'
-                ? (Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10) > 0)
-                : (currentCandle && _postExitAnchor < position.mfeMaeTrackingEndTime)
-        );
+        const shouldTrackAfterClose = trackingMode === 'candles'
+            ? (Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10) > 0)
+            : (currentCandle && _postExitAnchor < position.mfeMaeTrackingEndTime);
         if (shouldTrackAfterClose) {
             // Continue tracking this position for MFE/MAE
             this.mfeMaeTrackingPositions.push({
@@ -28509,8 +28431,7 @@ class OrderManager {
             }
         }
 
-        this._syncMfeMaeSnapshot(position);
-        if (!shouldTrackAfterClose && this.mfeMaeTrackingEnabled !== false) {
+        if (this.mfeMaeTrackingEnabled !== false && position.mfe != null && position.mae != null) {
             try {
                 this.drawMfeMaeMarkers(position);
             } catch (err) {

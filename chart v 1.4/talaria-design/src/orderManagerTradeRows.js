@@ -1246,8 +1246,6 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
       dur: v9TradeDuration(tMs, null, rowNowMs),
       preTags: [],
       postTags: [],
-      mae: o.mae != null && Number.isFinite(Number.parseFloat(o.mae)) ? fmtPx(o.mae) : undefined,
-      mfe: o.mfe != null && Number.isFinite(Number.parseFloat(o.mfe)) ? fmtPx(o.mfe) : undefined,
     };
     attachJournalTagsToRow(om, row, o);
     rows.push(row);
