@@ -2627,14 +2627,35 @@ class ReplaySystem {
     }
 
     /**
+     * True when the user deliberately moved/zoomed the viewport away from replay follow.
+     * Uses flags plus offset comparison so wheel / time-axis zoom count even without drag-pan.
+     */
+    _replayUserOwnsViewport(chartInstance = this.chart) {
+        if (!this.isActive || !chartInstance) return false;
+        if (this.userHasPanned || !this.autoScrollEnabled) return true;
+
+        const st = typeof this.getReplayAutoScrollState === 'function'
+            ? this.getReplayAutoScrollState(chartInstance)
+            : null;
+        if (!st || !Number.isFinite(st.offsetX)) return false;
+
+        const spacing = chartInstance.getCandleSpacing
+            ? chartInstance.getCandleSpacing()
+            : (chartInstance.candleWidth + (chartInstance.candleGap || 2));
+        if (!(Number.isFinite(spacing) && spacing > 0)) return false;
+
+        return Math.abs((chartInstance.offsetX || 0) - st.offsetX) > spacing * 0.35;
+    }
+
+    /**
      * Align chart viewport to the replay playhead (right edge). Used after backtest TF refetch
      * and when starting playback so Y-axis auto-scale frames the playhead, not full 1D history.
      * Pass opts.centerPlayhead=true on timeframe switch to center the playhead (TradingView-style).
      */
     syncReplayViewportToPlayhead(chartInstance = this.chart, opts = {}) {
         if (!this.isActive || !chartInstance) return false;
-        // Manual pan disables follow — don't recenter on playhead unless explicitly forced.
-        if (this.userHasPanned && opts.forceRecenter !== true) {
+        // Manual viewport — don't recenter on playhead unless explicitly forced.
+        if (opts.forceRecenter !== true && this._replayUserOwnsViewport(chartInstance)) {
             return false;
         }
 
@@ -3146,13 +3167,11 @@ class ReplaySystem {
 
                     this.isPlaying = true;
 
-                    // Only re-enable follow when the user has not manually moved the viewport.
-                    const preserveManualViewport = this.userHasPanned || !this.autoScrollEnabled;
-                    if (!preserveManualViewport) {
-                        this.autoScrollEnabled = true;
-                        if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                            this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: true, render: false });
-                        }
+                    // Keep the current viewport when the user moved/zoomed away from follow.
+                    // Do not snap on Play (that felt like time-axis double-click); use Follow instead.
+                    if (this._replayUserOwnsViewport(this.chart)) {
+                        this.autoScrollEnabled = false;
+                        this.userHasPanned = true;
                     }
 
                     this.showTickProgress(false);
@@ -4131,7 +4150,7 @@ class ReplaySystem {
         }
         
         // Auto-scroll if enabled
-        if (this.autoScrollEnabled) {
+        if (this.autoScrollEnabled && !this._replayUserOwnsViewport(this.chart)) {
             const autoScrollState = this.getReplayAutoScrollState(this.chart);
             if (autoScrollState) {
                 this.chart.offsetX = autoScrollState.offsetX;
@@ -5190,6 +5209,7 @@ class ReplaySystem {
     scheduleReplayFollowOnceLayoutSettled() {
         if (!this.isActive) return;
         if (this.userHasPanned) return;
+        if (this._replayUserOwnsViewport(this.chart)) return;
         const chart = this.chart;
         if (chart && typeof chart._isMultichartViewportJustReset === 'function'
             && chart._isMultichartViewportJustReset()) {
@@ -5197,6 +5217,7 @@ class ReplaySystem {
         }
         const run = () => {
             if (this.userHasPanned) return;
+            if (this._replayUserOwnsViewport(chart)) return;
             if (chart && typeof chart._isMultichartViewportJustReset === 'function'
                 && chart._isMultichartViewportJustReset()) {
                 return;
@@ -5667,7 +5688,7 @@ class ReplaySystem {
             // autoScrollEnabled=false), never re-scroll/recenter the viewport.
             // Only force a recovery when the panel is genuinely empty (0 bars),
             // which is a broken render, not a deliberate pan.
-            const userOwnsViewport = (this.userHasPanned || !this.autoScrollEnabled)
+            const userOwnsViewport = this._replayUserOwnsViewport(chart)
                 && visibleBars > 0
                 && !passivePlay;
             if (userOwnsViewport
@@ -5785,7 +5806,7 @@ class ReplaySystem {
                 chart._trimLastDataBarToReplayPlayhead();
             }
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
-            if (this.autoScrollEnabled && !this.userHasPanned && tp > 0 && tp % 8 === 0 && chart.fitToView) {
+            if (this.autoScrollEnabled && !this._replayUserOwnsViewport(chart) && tp > 0 && tp % 8 === 0 && chart.fitToView) {
                 chart.fitToView();
             }
             const indepPathTarget = (indep.formingIdx >= 0 && frd[indep.formingIdx])
@@ -5854,7 +5875,7 @@ class ReplaySystem {
             }
 
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
-            if (this.autoScrollEnabled && !this.userHasPanned && tp > 0 && tp % 8 === 0) {
+            if (this.autoScrollEnabled && !this._replayUserOwnsViewport(chart) && tp > 0 && tp % 8 === 0) {
                 if (chart.fitToView) chart.fitToView();
             }
             const pathTarget = (Array.isArray(this.fullRawData) && targetIdx >= 0 && this.fullRawData[targetIdx])
@@ -6488,7 +6509,7 @@ class ReplaySystem {
         if (mainChart.drawingManager && typeof mainChart.drawingManager.redrawAll === 'function') {
             try { mainChart.drawingManager.redrawAll(); } catch (_e) { /* ignore */ }
         }
-        if (this.autoScrollEnabled) {
+        if (this.autoScrollEnabled && !this._replayUserOwnsViewport(mainChart)) {
             const st = this.getReplayAutoScrollState(mainChart);
             if (st) mainChart.offsetX = st.offsetX;
         }

@@ -14890,6 +14890,9 @@ class Chart {
         
         this.constrainOffset();
         this.boxZoom.active = false;
+        if (this.replaySystem?.isActive) {
+            this.replaySystem.onUserPan();
+        }
         this.scheduleRender();
         this.dispatchScrollSync();
         
@@ -25512,6 +25515,9 @@ class Chart {
                 this.zoomLevel.candleWidthIndex = nearestIdx;
 
                 this._lastWheelZoomDirection = zoomDirection;
+                if (this.replaySystem?.isActive) {
+                    this.replaySystem.onUserPan();
+                }
                 this.scheduleRender();
                 return;
             }
@@ -25780,6 +25786,9 @@ class Chart {
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
                 this._cachedInteractionTimeTicks = this._timeTicks;
+                if (this.replaySystem?.isActive) {
+                    this.replaySystem.onUserPan();
+                }
             } else if (mode === 'chart' || mode === 'separatePanelPlot') {
                 this.drag.type = 'pan';
                 this.drag.separatePanelSlot = mode === 'separatePanelPlot' ? this.cursor.separatePanelSlot : null;
