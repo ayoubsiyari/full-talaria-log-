@@ -18840,6 +18840,10 @@ class Chart {
         // Zoomed-out wheel: many bars per pixel even before sub-pixel spacing.
         const estOnScreen = Math.ceil(plotPx / Math.max(spacing, 1e-6));
         if (estOnScreen > plotPx * 0.85) return true;
+        if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass
+            && (this._lastWheelZoomDirection === -1 || this._isChartViewPanning())) {
+            return true;
+        }
         return false;
     }
 
@@ -19763,6 +19767,27 @@ class Chart {
         return estOnScreen > plotPx * 0.85;
     }
 
+    /**
+     * Ultra-light paint during zoom-out wheel, mid-zoom, or pan+wheel together.
+     * Fully zoomed-out pan alone is smooth; this covers the transition zone.
+     */
+    _shouldUseInteractionLitePaint(visibleCount) {
+        if (this._isZoomedOutPaint(visibleCount)) return true;
+        const wheelOut = this._isWheelZoomBurst()
+            && !this._wheelBurstFinalPass
+            && this._lastWheelZoomDirection === -1;
+        if (wheelOut) return true;
+        if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass && this._isChartViewPanning()) {
+            return true;
+        }
+        const m = this.margin || { l: 60, r: 60 };
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
+        const estOnScreen = Math.ceil(plotPx / Math.max(spacing, 1e-6));
+        if (this._isChartViewPanning() && estOnScreen > plotPx * 0.45) return true;
+        return false;
+    }
+
     _getCandleRenderMaxBuckets(visibleCount, plotPx, opts = {}) {
         if (!visibleCount) return 0;
         if (this._shouldUsePixelColumnCandleLod(visibleCount, plotPx)) {
@@ -20513,8 +20538,8 @@ class Chart {
 
         // IMPORTANT: Calculate scales FIRST before drawing anything
         const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
-        const zoomOutLiteEarly = this._isZoomedOutPaintBySpacing();
-        const skipHeavyChrome = wheelBurstLight && zoomOutLiteEarly;
+        const interactionLiteEarly = this._shouldUseInteractionLitePaint(null);
+        const skipHeavyChrome = interactionLiteEarly && (wheelBurstLight || chartViewPanning);
 
         this.calculateScales();
         if (typeof this._syncAdaptivePriceAxisMargin === 'function' && !skipHeavyChrome) {
@@ -20533,12 +20558,12 @@ class Chart {
             this._timeTicks = this._buildTimeTicksFast();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (chartViewPanning) {
-            this._timeTicks = zoomOutLiteEarly
+            this._timeTicks = interactionLiteEarly
                 ? this._buildTimeTicksFast()
                 : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (wheelBurstLight || timeAxisZoomDragging) {
-            this._timeTicks = zoomOutLiteEarly
+            this._timeTicks = interactionLiteEarly
                 ? this._buildTimeTicksFast()
                 : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
@@ -20605,19 +20630,19 @@ class Chart {
         // Fast path while panning, wheel-zooming, or axis-dragging: LOD candles + skip heavy overlays.
         if (interactionFast) {
             const panOpts = { panFast: true };
-            const zoomOutLite = this._isZoomedOutPaint(visible.length);
+            const interactionLite = this._shouldUseInteractionLitePaint(visible.length);
 
             if (axisZoomDragging && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
             }
 
             this.drawGrid();
-            if (!zoomOutLite) {
+            if (!interactionLite) {
                 this.drawVolume(visible, panOpts);
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (!zoomOutLite) {
+            if (!interactionLite) {
                 if (typeof this.drawIndicators === 'function') {
                     this.drawIndicators();
                 }
@@ -20626,37 +20651,33 @@ class Chart {
                 }
             }
             this.drawAxes();
-            if (!zoomOutLite && chartViewPanning) {
+            if (!interactionLite && chartViewPanning) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
-            if (!zoomOutLite && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
+            if (!interactionLite && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
             }
-            if (!zoomOutLite && this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
+            if (!interactionLite && this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
                 try {
                     this.compareOverlay.drawOverlays();
                 } catch (e) {
                     console.error('Error drawing overlays during pan:', e);
                 }
             }
-            if (!zoomOutLite && this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
+            if (!interactionLite && this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
                 this.compareOverlay.updateInfoPositions();
             }
-            if (!zoomOutLite) {
-                this.drawCurrentPriceLabel(visible);
-            } else {
-                this.drawCurrentPriceLabel(visible);
-            }
+            this.drawCurrentPriceLabel(visible);
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            if (!zoomOutLite) {
+            if (!interactionLite) {
                 this.redrawDrawings();
             }
-            if (!zoomOutLite) {
+            if (!interactionLite) {
                 this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
             }
-            if (!zoomOutLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
+            if (!interactionLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                 this.syncOverlayIndicatorSelectionOverlay();
             }
             if (this.boxZoom && this.boxZoom.active) {
@@ -25022,7 +25043,7 @@ class Chart {
             e.preventDefault();
             // 450ms so back-to-back wheel ticks stay inside a single burst (ZOOM-FIX-7).
             const burstWasActive = this._isWheelZoomBurst();
-            this._wheelBurstUntil = performance.now() + 450;
+            this._wheelBurstUntil = performance.now() + 550;
             this._markScalesDirty();
             this._clearPanTimeTickCache();
             this._cachedInteractionTimeTicks = null;
