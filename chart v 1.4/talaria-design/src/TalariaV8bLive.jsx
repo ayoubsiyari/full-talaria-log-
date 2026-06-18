@@ -11619,7 +11619,7 @@ const TalariaV8bLive = () => {
   const [newsCntSel, setNewsCntSel] = useState({US:1,EU:1,GB:1,JP:1,AU:1,CA:1,DE:1,FR:1,IT:1,CN:1,CH:1});
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [layoutPos, setLayoutPos] = useState({ x: 0, y: 0 });
-  const [layoutPanels, setLayoutPanels] = useState({n:4,li:0});
+  const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
   // Phase 7.2.2: which iframe in <MultichartGrid> currently has focus.
   // Single-chart layouts ignore this; multi-panel layouts highlight the
   // focused tile and (in Phase 7.2.4) route topbar/leftbar actions to it.
@@ -33741,7 +33741,7 @@ const TalariaV8bLive = () => {
             )}
             {rightPanel==="layout" && (
               <div style={{ padding: "10px 12px 16px" }}>
-                {[4].map((n) => {
+                {[1,2,3,4,5,6,7,8].map((n) => {
                   const variants = lyLines[n - 1];
                   return (
                     <div key={n} style={{ marginBottom: 6 }}>

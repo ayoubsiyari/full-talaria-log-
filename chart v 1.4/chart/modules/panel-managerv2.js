@@ -193,11 +193,38 @@ class PanelManager {
 
         dropdown.innerHTML = `
             <div class="pld-body">
-            <!-- Row 4 only -->
+            <!-- Row 1 -->
+            <div class="pld-row">
+                <span class="pld-num">1</span>
+                <div class="pld-icons">
+                    <button class="layout-option active" data-layout="1" title="Single">${S(R(1,1,26,18))}</button>
+                </div>
+            </div>
+            <!-- Row 2 -->
+            <div class="pld-row">
+                <span class="pld-num">2</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="2v" title="2 vertical">${S(R(1,1,12,18)+R(15,1,12,18))}</button>
+                    <button class="layout-option" data-layout="2h" title="2 horizontal">${S(R(1,1,26,8)+R(1,11,26,8))}</button>
+                </div>
+            </div>
+            <!-- Row 3 -->
+            <div class="pld-row">
+                <span class="pld-num">3</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="3v" title="3 vertical">${S(R(1,1,8,18)+R(10,1,8,18)+R(19,1,8,18))}</button>
+                    <button class="layout-option" data-layout="3h" title="3 horizontal">${S(R(1,1,26,5)+R(1,7.5,26,5)+R(1,14,26,5))}</button>
+                    <button class="layout-option" data-layout="3l" title="1 left + 2 right">${S(R(1,1,12,18)+R(15,1,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="3r" title="2 left + 1 right">${S(R(1,1,12,8)+R(1,11,12,8)+R(15,1,12,18))}</button>
+                    <button class="layout-option" data-layout="3t" title="1 top + 2 bottom">${S(R(1,1,26,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="3b" title="2 top + 1 bottom">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,26,8))}</button>
+                </div>
+            </div>
+            <!-- Row 4 -->
             <div class="pld-row">
                 <span class="pld-num">4</span>
                 <div class="pld-icons">
-                    <button class="layout-option active" data-layout="4" title="2×2 grid">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="4" title="2×2 grid">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
                     <button class="layout-option" data-layout="4h" title="4 horizontal">${S(R(1,1,26,3.5)+R(1,5.5,26,3.5)+R(1,10,26,3.5)+R(1,14.5,26,3.5))}</button>
                     <button class="layout-option" data-layout="4v" title="4 vertical">${S(R(1,1,5.5,18)+R(8,1,5.5,18)+R(15,1,5.5,18)+R(22,1,5.5,18))}</button>
                     <button class="layout-option" data-layout="4t" title="1 top + 3 bottom">${S(R(1,1,26,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
@@ -205,6 +232,45 @@ class PanelManager {
                     <button class="layout-option" data-layout="4r" title="3 left + 1 right">${S(R(1,1,12,5)+R(1,7.5,12,5)+R(1,14,12,5)+R(15,1,12,18))}</button>
                     <button class="layout-option" data-layout="4l" title="1 left + 3 right">${S(R(1,1,12,18)+R(15,1,12,5)+R(15,7.5,12,5)+R(15,14,12,5))}</button>
                     <button class="layout-option" data-layout="4tl" title="1 big + 3 small">${S(R(1,1,18,12)+R(21,1,6,12)+R(1,15,8,4)+R(10.5,15,8,4)+R(20,15,7,4))}</button>
+                </div>
+            </div>
+            <!-- Row 5 -->
+            <div class="pld-row">
+                <span class="pld-num">5</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="5a" title="2 top + 3 bottom">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
+                    <button class="layout-option" data-layout="5b" title="3 top + 2 bottom">${S(R(1,1,8,8)+R(10,1,8,8)+R(19,1,8,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="5c" title="2 left + 3 right">${S(R(1,1,12,8)+R(1,11,12,8)+R(15,1,12,5)+R(15,7.5,12,5)+R(15,14,12,5))}</button>
+                    <button class="layout-option" data-layout="5v" title="5 vertical">${S(R(1,1,4.4,18)+R(6.6,1,4.4,18)+R(12.2,1,4.4,18)+R(17.8,1,4.4,18)+R(23.4,1,4.4,18))}</button>
+                    <button class="layout-option" data-layout="5h" title="5 horizontal">${S(R(1,1,26,2.8)+R(1,4.8,26,2.8)+R(1,8.6,26,2.8)+R(1,12.4,26,2.8)+R(1,16.2,26,2.8))}</button>
+                </div>
+            </div>
+            <!-- Row 6 -->
+            <div class="pld-row">
+                <span class="pld-num">6</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="6" title="2×3 grid">${S(R(1,1,8,8)+R(10,1,8,8)+R(19,1,8,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
+                    <button class="layout-option" data-layout="6b" title="3×2 grid">${S(R(1,1,12,5)+R(15,1,12,5)+R(1,7.5,12,5)+R(15,7.5,12,5)+R(1,14,12,5)+R(15,14,12,5))}</button>
+                    <button class="layout-option" data-layout="6v" title="6 vertical">${S(R(1,1,3.5,18)+R(5.5,1,3.5,18)+R(10,1,3.5,18)+R(14.5,1,3.5,18)+R(19,1,3.5,18)+R(23.5,1,3.5,18))}</button>
+                    <button class="layout-option" data-layout="6h" title="6 horizontal">${S(R(1,1,26,2.2)+R(1,4.2,26,2.2)+R(1,7.4,26,2.2)+R(1,10.6,26,2.2)+R(1,13.8,26,2.2)+R(1,17,26,2.2))}</button>
+                </div>
+            </div>
+            <!-- Row 7 -->
+            <div class="pld-row">
+                <span class="pld-num">7</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="7a" title="3+3+1">${S(R(1,1,8,5)+R(10,1,8,5)+R(19,1,8,5)+R(1,7.5,8,5)+R(10,7.5,8,5)+R(19,7.5,8,5)+R(1,14,26,5))}</button>
+                    <button class="layout-option" data-layout="7v" title="7 vertical">${S(R(1,1,3,18)+R(4.8,1,3,18)+R(8.6,1,3,18)+R(12.4,1,3,18)+R(16.2,1,3,18)+R(20,1,3,18)+R(23.8,1,3.2,18))}</button>
+                </div>
+            </div>
+            <!-- Row 8 -->
+            <div class="pld-row">
+                <span class="pld-num">8</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="8" title="2×4 grid">${S(R(1,1,5.5,8)+R(8,1,5.5,8)+R(15,1,5.5,8)+R(22,1,5.5,8)+R(1,11,5.5,8)+R(8,11,5.5,8)+R(15,11,5.5,8)+R(22,11,5.5,8))}</button>
+                    <button class="layout-option" data-layout="8b" title="4×2 grid">${S(R(1,1,12,3.5)+R(15,1,12,3.5)+R(1,5.5,12,3.5)+R(15,5.5,12,3.5)+R(1,10,12,3.5)+R(15,10,12,3.5)+R(1,14.5,12,3.5)+R(15,14.5,12,3.5))}</button>
+                    <button class="layout-option" data-layout="8v" title="8 vertical">${S(R(1,1,2.5,18)+R(4.3,1,2.5,18)+R(7.6,1,2.5,18)+R(10.9,1,2.5,18)+R(14.2,1,2.5,18)+R(17.5,1,2.5,18)+R(20.8,1,2.5,18)+R(24.1,1,2.9,18))}</button>
+                    <button class="layout-option" data-layout="8h" title="8 horizontal">${S(R(1,1,26,1.5)+R(1,3.3,26,1.5)+R(1,5.6,26,1.5)+R(1,7.9,26,1.5)+R(1,10.2,26,1.5)+R(1,12.5,26,1.5)+R(1,14.8,26,1.5)+R(1,17.1,26,1.5))}</button>
                 </div>
             </div>
             </div>
