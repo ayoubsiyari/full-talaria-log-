@@ -19947,6 +19947,23 @@ class Chart {
         }
     }
 
+    /** Hard clamp after pan release — avoids 0.35 (drag) vs 0.3 (constrainOffset) rubber-band jump. */
+    _snapPanOffsetToHardBounds() {
+        if (!this.data || this.data.length === 0) return;
+        const m = this.margin;
+        const cw = this.w - m.l - m.r;
+        const candleSpacing = this.getCandleSpacing();
+        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
+            ? this.timeScale.rightOffsetCandles
+            : 15;
+        const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
+        const maxOffset = cw - rightMargin;
+        const lastCandleX = Math.max(0, (this.data.length - 1) * candleSpacing);
+        const minOffset = -lastCandleX;
+        if (this.offsetX > maxOffset) this.offsetX = maxOffset;
+        else if (this.offsetX < minOffset) this.offsetX = minOffset;
+    }
+
     _snapshotPanDrawingsLayer() {
         this._panScalesCalculated = false;
         if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
@@ -20671,11 +20688,12 @@ class Chart {
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            if (!interactionLite) {
+            // Drawings must move with candles every pan frame (including lite/zoomed-out path).
+            if (chartViewPanning || !interactionLite) {
                 this.redrawDrawings();
             }
-            if (!interactionLite) {
-                this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
+            if (chartViewPanning || !interactionLite) {
+                this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight);
             }
             if (!interactionLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                 this.syncOverlayIndicatorSelectionOverlay();
@@ -21050,7 +21068,7 @@ class Chart {
         const firstVisibleIdx = -this.offsetX / candleSpacing;
         const lastVisibleIdx     = firstVisibleIdx + cw / candleSpacing;
         const visibleBarsCount   = Math.max(1, Math.ceil(Math.max(0, lastVisibleIdx - firstVisibleIdx)));
-        if (visibleBarsCount > 900 && !options.full) {
+        if (visibleBarsCount > 400 && !options.full) {
             return this._buildTimeTicksFast();
         }
 
@@ -25828,12 +25846,14 @@ class Chart {
                 this._clearPanDrawingsLayerTransform();
                 if (!isChartClick) {
                     this.dispatchScrollSync(true);
+                    this._snapPanOffsetToHardBounds();
                     this.constrainOffset();
                     if (this.replaySystem?.isActive) {
                         this._scheduleReplayPanLoadLeft();
                     }
                     this._finishPanDrawingRedraw();
-                    this.scheduleRender();
+                    this.renderPending = false;
+                    this.render();
                 }
                 this.scheduleChartViewSave();
 
@@ -27165,14 +27185,8 @@ class Chart {
     _finishPanDrawingRedraw() {
         if (this.drawingManager && this.xScale && this.yScale) {
             const dm = this.drawingManager;
-            if (dm.drawings && dm.drawings.length > 0
-                && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
-                dm.drawings.forEach((drawing) => {
-                    if (drawing) {
-                        dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
-                    }
-                });
-            }
+            // Geometry was kept in sync via panFast redraws during drag; pan start already
+            // re-anchored timestamps. Re-sync here only caused a visible snap on release.
             if (typeof dm.finalizeDrawingsAfterChartPan === 'function') {
                 dm.finalizeDrawingsAfterChartPan();
             }
