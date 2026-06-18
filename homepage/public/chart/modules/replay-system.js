@@ -2644,7 +2644,47 @@ class ReplaySystem {
             : (chartInstance.candleWidth + (chartInstance.candleGap || 2));
         if (!(Number.isFinite(spacing) && spacing > 0)) return false;
 
-        return Math.abs((chartInstance.offsetX || 0) - st.offsetX) > spacing * 0.35;
+        return Math.abs((chartInstance.offsetX || 0) - st.offsetX) > spacing * 0.2;
+    }
+
+    /**
+     * Snapshot the current viewport when starting playback so Play never snaps back
+     * to follow mode after the user panned/zoomed away.
+     */
+    _capturePlaybackViewportLock() {
+        const chart = this.chart;
+        if (!this.isActive || !chart) {
+            this._viewportLockForPlayback = null;
+            return;
+        }
+        if (!this._replayUserOwnsViewport(chart)) {
+            this._viewportLockForPlayback = null;
+            return;
+        }
+        this._viewportLockForPlayback = {
+            offsetX: chart.offsetX,
+            candleWidth: chart.candleWidth,
+            priceZoom: chart.priceZoom,
+            priceOffset: chart.priceOffset,
+            autoScale: chart.autoScale,
+            manualCenterPrice: chart.manualCenterPrice,
+            manualRange: chart.manualRange,
+        };
+        this.autoScrollEnabled = false;
+        this.userHasPanned = true;
+    }
+
+    /** Restore locked viewport after data updates / constrainOffset during manual playback. */
+    _applyPlaybackViewportLock(chartInstance = this.chart) {
+        const lock = this._viewportLockForPlayback;
+        if (!lock || !this.isPlaying || !chartInstance) return;
+        chartInstance.offsetX = lock.offsetX;
+        if (Number.isFinite(lock.candleWidth)) chartInstance.candleWidth = lock.candleWidth;
+        if (Number.isFinite(lock.priceZoom)) chartInstance.priceZoom = lock.priceZoom;
+        if (Number.isFinite(lock.priceOffset)) chartInstance.priceOffset = lock.priceOffset;
+        chartInstance.autoScale = lock.autoScale;
+        chartInstance.manualCenterPrice = lock.manualCenterPrice;
+        chartInstance.manualRange = lock.manualRange;
     }
 
     /**
@@ -2813,7 +2853,7 @@ class ReplaySystem {
         }
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
-        if (autoScroll && this.autoScrollEnabled) {
+        if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback) {
             this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
         }
         
@@ -2828,6 +2868,7 @@ class ReplaySystem {
         if (typeof this.chart.constrainOffset === 'function') {
             this.chart.constrainOffset();
         }
+        this._applyPlaybackViewportLock(this.chart);
         
         this.chart.renderPending = true;
         this.chart.render();
@@ -3132,6 +3173,8 @@ class ReplaySystem {
             return;
         }
 
+        this._capturePlaybackViewportLock();
+
         // Multichart: after per-panel TF changes the host may sit on the last loaded 1m bar
         // while the session still has data — prefetch forward before starting the play loop.
         if (typeof window !== 'undefined' && window.__multichartGrid
@@ -3166,13 +3209,6 @@ class ReplaySystem {
                     }
 
                     this.isPlaying = true;
-
-                    // Keep the current viewport when the user moved/zoomed away from follow.
-                    // Do not snap on Play (that felt like time-axis double-click); use Follow instead.
-                    if (this._replayUserOwnsViewport(this.chart)) {
-                        this.autoScrollEnabled = false;
-                        this.userHasPanned = true;
-                    }
 
                     this.showTickProgress(false);
 
@@ -4150,7 +4186,7 @@ class ReplaySystem {
         }
         
         // Auto-scroll if enabled
-        if (this.autoScrollEnabled && !this._replayUserOwnsViewport(this.chart)) {
+        if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this._replayUserOwnsViewport(this.chart)) {
             const autoScrollState = this.getReplayAutoScrollState(this.chart);
             if (autoScrollState) {
                 this.chart.offsetX = autoScrollState.offsetX;
@@ -4166,6 +4202,7 @@ class ReplaySystem {
         if (typeof this.chart.constrainOffset === 'function') {
             this.chart.constrainOffset();
         }
+        this._applyPlaybackViewportLock(this.chart);
         this.chart.renderPending = true;
         this.chart.render();
 
@@ -4808,6 +4845,7 @@ class ReplaySystem {
      */
     pause() {
         this._cancelDeferredPlayStart();
+        this._viewportLockForPlayback = null;
 
         // Set state first
         this.isPlaying = false;
@@ -5173,6 +5211,7 @@ class ReplaySystem {
     enableAutoScroll() {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
+        this._viewportLockForPlayback = null;
 
         const chart = this.chart;
         if (chart && typeof chart._isMultichartViewportJustReset === 'function'

@@ -26163,6 +26163,7 @@ class Chart {
                     this._snapPanOffsetToHardBounds();
                     this.constrainOffset();
                     if (this.replaySystem?.isActive) {
+                        this.replaySystem.onUserPan();
                         this._scheduleReplayPanLoadLeft();
                     }
                     this._finishPanDrawingRedraw();
