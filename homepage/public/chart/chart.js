@@ -20673,18 +20673,12 @@ class Chart {
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
         if (skipHeavyChrome) {
-            // Pan: shift bar-aligned ticks 1:1 with offsetX. Empty viewport: project ticks from offset.
-            if (chartViewPanning && !wheelBurstLight) {
-                this._timeTicks = this._viewportHasLoadedBarsOnScreen()
-                    ? this._buildPanTimeTicks()
-                    : this._buildTimeTicksFast();
-            } else {
-                this._timeTicks = this._buildTimeTicksFast();
-            }
+            // Rebuild bar-grid ticks every frame so labels scroll with pan/zoom (not fixed screen slots).
+            this._timeTicks = this._buildTimeTicksFast();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (chartViewPanning) {
             this._timeTicks = interactionLiteEarly
-                ? (this._viewportHasLoadedBarsOnScreen() ? this._buildPanTimeTicks() : this._buildTimeTicksFast())
+                ? this._buildTimeTicksFast()
                 : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (wheelBurstLight || timeAxisZoomDragging) {
@@ -21138,33 +21132,132 @@ class Chart {
 
     }
     
+    /** Bar count between fast time ticks — mirrors _buildTimeTicks density heuristics. */
+    _getFastTimeLabelIntervalBars() {
+        const vp = this._getViewportBarRange();
+        const visibleBarsCount = Math.max(1, Math.ceil(Math.max(0, vp.last - vp.first)));
+        const spacing = vp.spacing;
+        const timeframe = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        let labelInterval;
+        if (timeframe === '1m') {
+            if (visibleBarsCount > 600) labelInterval = 180;
+            else if (visibleBarsCount > 400) labelInterval = 60;
+            else if (visibleBarsCount > 200) labelInterval = 30;
+            else if (visibleBarsCount > 100) labelInterval = 15;
+            else labelInterval = 5;
+        } else if (timeframe === '5m') {
+            if (visibleBarsCount > 300) labelInterval = 36;
+            else if (visibleBarsCount > 150) labelInterval = 12;
+            else if (visibleBarsCount > 75) labelInterval = 6;
+            else labelInterval = 3;
+        } else if (timeframe === '15m') {
+            if (visibleBarsCount > 200) labelInterval = 12;
+            else if (visibleBarsCount > 100) labelInterval = 4;
+            else labelInterval = 2;
+        } else if (timeframe === '30m') {
+            if (visibleBarsCount > 200) labelInterval = 12;
+            else if (visibleBarsCount > 100) labelInterval = 6;
+            else labelInterval = 2;
+        } else if (timeframe === '1h') {
+            if (visibleBarsCount > 400) labelInterval = 24;
+            else if (visibleBarsCount > 200) labelInterval = 12;
+            else if (visibleBarsCount > 100) labelInterval = 6;
+            else if (visibleBarsCount > 50) labelInterval = 3;
+            else labelInterval = 1;
+        } else if (timeframe === '4h') {
+            if (visibleBarsCount > 150) labelInterval = 6;
+            else if (visibleBarsCount > 75) labelInterval = 3;
+            else labelInterval = 1;
+        } else if (timeframe === '1d') {
+            if (visibleBarsCount > 150) labelInterval = 30;
+            else if (visibleBarsCount > 75) labelInterval = 7;
+            else labelInterval = 1;
+        } else if (timeframe === '1w') {
+            if (visibleBarsCount > 120) labelInterval = 4;
+            else if (visibleBarsCount > 60) labelInterval = 2;
+            else labelInterval = 1;
+        } else if (timeframe === '1mo') {
+            labelInterval = 1;
+        } else {
+            labelInterval = Math.max(1, Math.ceil(visibleBarsCount / 8));
+        }
+        const minSpacingPx = 72;
+        const minBarsPerTick = Math.max(1, Math.ceil(minSpacingPx / Math.max(1e-6, spacing)));
+        return Math.max(1, labelInterval, minBarsPerTick);
+    }
+
+    /** First tick index on the global bar/time grid at or after viewport left edge. */
+    _fastTimeTickAlignStart(firstIdx, step, timeframeMs) {
+        step = Math.max(1, Math.floor(step));
+        if (!this.data || this.data.length === 0 || !Number.isFinite(timeframeMs) || timeframeMs <= 0) {
+            let idx = Math.floor(firstIdx / step) * step;
+            while (idx < firstIdx) idx += step;
+            return idx;
+        }
+        const labelIntervalMs = step * timeframeMs;
+        let alignBase = this.data[0].t;
+        if (Number.isFinite(alignBase) && labelIntervalMs > 0 && 86400000 % labelIntervalMs === 0) {
+            const d0 = this.convertToTimezone(alignBase);
+            const msOfDay0 = (((d0.getUTCHours() * 60 + d0.getUTCMinutes()) * 60
+                + d0.getUTCSeconds()) * 1000) + d0.getUTCMilliseconds();
+            alignBase = alignBase - msOfDay0;
+        }
+        const searchFrom = Math.floor(firstIdx) - step * 6;
+        const searchTo = Math.ceil(firstIdx) + step * 2;
+        let best = Math.ceil(firstIdx / step) * step;
+        for (let i = searchFrom; i <= searchTo; i++) {
+            const ts = this._projectBarIndexTimestamp(i);
+            if (!Number.isFinite(ts)) continue;
+            const delta = ts - alignBase;
+            const rem = ((delta % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
+            if (rem < 0.5 || rem > labelIntervalMs - 0.5) {
+                best = i;
+                if (i >= firstIdx) break;
+            }
+        }
+        while (best < firstIdx) best += step;
+        return best;
+    }
+
     /**
-     * O(slotCount) time ticks for zoomed-out interaction — bar-aligned x via dataIndexToPixel
-     * so labels scroll with pan/zoom (fixed screen slots made the time axis look frozen).
+     * O(~12) time ticks for zoomed-out interaction — ticks anchored to absolute bar/time
+     * grid so labels scroll with pan/zoom (viewport-fraction slots stay fixed on screen).
      */
     _buildTimeTicksFast() {
         if (!this.data || this.data.length === 0) return [];
-        const m = this.margin || { l: 60, r: 60 };
-        const plotW = Math.max(1, this.w - m.l - m.r);
-        const spacing = Math.max(1e-6, this.getCandleSpacing());
+        const vp = this._getViewportBarRange();
+        const m = vp.m;
+        const plotW = vp.cw;
+        const firstVisibleIdx = vp.first;
+        const lastVisibleIdx = vp.last;
         const minSpacingPx = 72;
-        const firstVisibleIdx = -this.offsetX / spacing;
-        const lastVisibleIdx = firstVisibleIdx + plotW / spacing;
-        const slotCount = Math.min(12, Math.max(4, Math.floor(plotW / minSpacingPx)));
+        const labelInterval = this._getFastTimeLabelIntervalBars();
+        const timeframe = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        let timeframeMs = this.parseTimeframe(timeframe);
+        if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) {
+            if (this.data.length >= 2) {
+                const detectedMs = this.data[1].t - this.data[0].t;
+                timeframeMs = Number.isFinite(detectedMs) && detectedMs > 0 ? detectedMs : 60000;
+            } else {
+                timeframeMs = 60000;
+            }
+        }
+        let idx = this._fastTimeTickAlignStart(firstVisibleIdx, labelInterval, timeframeMs);
         const ticks = [];
         let lastX = -Infinity;
         const viewLeft = m.l - minSpacingPx;
         const viewRight = m.l + plotW + minSpacingPx;
-        for (let ti = 0; ti <= slotCount; ti++) {
-            const idxRaw = firstVisibleIdx + (ti / Math.max(1, slotCount)) * (lastVisibleIdx - firstVisibleIdx);
+        const maxTicks = 14;
+        for (let n = 0; n < maxTicks && idx <= lastVisibleIdx + labelInterval * 2; idx += labelInterval, n++) {
             const x = typeof this.dataIndexToPixel === 'function'
-                ? this.dataIndexToPixel(idxRaw)
-                : (m.l + this.offsetX + idxRaw * spacing);
-            if (x < viewLeft || x > viewRight) continue;
-            if (x - lastX < minSpacingPx * 0.65 && ti > 0) continue;
-            const label = this._formatTimeLabelForBarIndex(idxRaw);
+                ? this.dataIndexToPixel(idx)
+                : (m.l + this.offsetX + idx * vp.spacing);
+            if (x < viewLeft) continue;
+            if (x > viewRight) break;
+            if (x - lastX < minSpacingPx * 0.65 && ticks.length > 0) continue;
+            const label = this._formatTimeLabelForBarIndex(idx);
             if (!label) continue;
-            ticks.push({ idx: idxRaw, x, label, isBoundary: true });
+            ticks.push({ idx, x, label, isBoundary: false });
             lastX = x;
         }
         return ticks;
