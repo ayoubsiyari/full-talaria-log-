@@ -122,6 +122,23 @@ function tagListFromRow(row: Record<string, unknown>, key: string): unknown[] | 
   return null;
 }
 
+/** Globally unique dashboard trade id; falls back to session:local when SQL row id is absent. */
+export function resolveGlobalTradeId(
+  row: Record<string, unknown>,
+  sessionId: number | string,
+  index: number
+): { globalId: string; sessionLocalId: string; chartTradeId: string | number } {
+  const sessionLocalId = String(
+    row.client_trade_id ?? row.tradeId ?? row.trade_id ?? row.id ?? `t${index + 1}`
+  );
+  const chartTradeId = (row.tradeId ?? row.id ?? sessionLocalId) as string | number;
+  const jid = row.journal_trade_id;
+  if (jid != null && String(jid).trim() !== "") {
+    return { globalId: String(jid), sessionLocalId, chartTradeId };
+  }
+  return { globalId: `${sessionId}:${sessionLocalId}`, sessionLocalId, chartTradeId };
+}
+
 /** Map chart API journal row → trade shape expected by TalariaV16 dashboard math. */
 export function mapJournalRowToV16Trade(
   row: Record<string, unknown>,
@@ -151,7 +168,7 @@ export function mapJournalRowToV16Trade(
   const mae = Number(row.mae_r ?? row.mae ?? row.MAE ?? 0);
   const mfe = Number(row.mfe_r ?? row.mfe ?? row.MFE ?? 0);
   const markets = sessionAssetClasses(session);
-  const id = String(row.client_trade_id || row.id || row.trade_id || `${session.id}-t${index + 1}`);
+  const { globalId, sessionLocalId, chartTradeId } = resolveGlobalTradeId(row, session.id, index);
   const preTags =
     tagListFromRow(row, "preTags") ||
     tagListFromRow(row, "pre_tags") ||
@@ -163,9 +180,12 @@ export function mapJournalRowToV16Trade(
     [pnl >= 0 ? "Win" : "Loss"];
   return {
     ...row,
-    id,
-    trade_id: row.trade_id ?? row.client_trade_id ?? id,
-    client_trade_id: row.client_trade_id ?? id,
+    id: globalId,
+    trade_id: globalId,
+    tradeId: globalId,
+    journal_trade_id: row.journal_trade_id ?? null,
+    client_trade_id: sessionLocalId,
+    chart_trade_id: chartTradeId,
     n: Number(row.n) || index + 1,
     date: date || row.date,
     closeTime: ts

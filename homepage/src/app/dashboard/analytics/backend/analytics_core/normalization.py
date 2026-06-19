@@ -65,7 +65,13 @@ def normalize_trades(raw_trades: list[dict[str, Any]]) -> list[NormalizedTrade]:
 
         out.append(
             NormalizedTrade(
-                trade_id=str(t.get("tradeId", t.get("id", idx))),
+                trade_id=str(
+                    t.get("journal_trade_id")
+                    or t.get("trade_id")
+                    or t.get("tradeId")
+                    or t.get("id")
+                    or idx
+                ),
                 ticker=ticker,
                 side=side,
                 setup=setup,

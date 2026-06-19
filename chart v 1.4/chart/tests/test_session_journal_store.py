@@ -66,3 +66,15 @@ def test_upsert_trade_in_journal_replaces_by_id():
     appended = sjs.upsert_trade_in_journal(merged, {"id": "t3", "pnl": 1})
     assert len(appended) == 3
     assert appended[-1]["tradeId"] == "t3"
+
+
+def test_enrich_journal_trade_from_sql_row_adds_global_id():
+    class Row:
+        id = 42
+        client_trade_id = "1"
+
+    out = sjs.enrich_journal_trade_from_sql_row({"tradeId": "1", "pnl": 10}, Row(), 1003)
+    assert out["journal_trade_id"] == 42
+    assert out["trading_session_id"] == 1003
+    assert out["client_trade_id"] == "1"
+    assert out["tradeId"] == "1"

@@ -54,8 +54,21 @@ def load_journal_trades_from_sql(db: "Session", session_id: int, journal_trade_m
         except Exception:
             continue
         if isinstance(payload, dict):
-            out.append(payload)
+            out.append(enrich_journal_trade_from_sql_row(payload, row, session_id))
     return out
+
+
+def enrich_journal_trade_from_sql_row(payload: dict, row: Any, session_id: int) -> dict:
+    """Attach stable global ids for dashboard aggregation without mutating stored payload_json."""
+    enriched = dict(payload)
+    journal_trade_id = int(getattr(row, "id", 0) or 0)
+    client_id = str(getattr(row, "client_trade_id", "") or journal_trade_client_id(enriched)).strip()
+    if journal_trade_id > 0:
+        enriched["journal_trade_id"] = journal_trade_id
+    enriched["trading_session_id"] = int(session_id)
+    if client_id:
+        enriched["client_trade_id"] = client_id
+    return enriched
 
 
 def backfill_journal_sql_from_state(

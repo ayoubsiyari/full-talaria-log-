@@ -19363,7 +19363,7 @@ const TalariaV8b = () => {
                 },
                 sortValues:{
                   source:`${sourceKind}-${edited ? "edited" : "original"}`,
-                  tradeId:firstValue(t, ["trade_id","client_trade_id","id","n"], ""),
+                  tradeId:firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], ""),
                   sourceName:firstValue(t, sourceNameKeys, ""),
                   strategy:firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], ""),
                   symbol:firstValue(t, ["symbol","ticker"], ""),
@@ -19391,7 +19391,7 @@ const TalariaV8b = () => {
                 },
                 values:{
                   source:{node:null, raw:`${sourceKind} ${edited ? "edited" : "original"}`},
-                  tradeId:{text:String(firstValue(t, ["trade_id","client_trade_id","id","n"], "-")).replace(/^manual-/, "M-"), raw:firstValue(t, ["trade_id","client_trade_id","id","n"], "")},
+                  tradeId:{text:String(firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], "-")).replace(/^manual-/, "M-"), raw:firstValue(t, ["journal_trade_id","trade_id","client_trade_id","id","n"], "")},
                   sourceName:{text:String(firstValue(t, sourceNameKeys, "-")), raw:firstValue(t, sourceNameKeys, "")},
                   strategy:{text:String(firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], "-")), raw:firstValue(t, ["strategyName","strategy","strategyTitle","setup","strategy_label"], "")},
                   symbol:{text:String(firstValue(t, ["symbol","ticker"], "-")).toUpperCase(), raw:firstValue(t, ["symbol","ticker"], "")},
@@ -20227,7 +20227,7 @@ const TalariaV8b = () => {
                     style={{maxWidth:"100%",overflowX:"auto",overflowY:"visible",paddingBottom:8,overscrollBehaviorX:"contain"}}>
                     <div style={{width:minTableWidth}}>
                       {tradeRows.length ? tradeRows.map((trade, index) => {
-                        const tradeId = firstValue(trade, ["tradeId", "client_trade_id", "id"], trade.n ?? index + 1);
+                        const tradeId = firstValue(trade, ["journal_trade_id", "tradeId", "trade_id", "client_trade_id", "id"], trade.n ?? index + 1);
                         const isManualTrade = trade?.is_manual === true || trade?.manual === true || trade?.data_source === "manual";
                         const pnlRaw = firstValue(trade, ["netPnL", "pnl_dollars_net", "pnl", "realizedPnL"]);
                         const pnl = Number(pnlRaw) || 0;

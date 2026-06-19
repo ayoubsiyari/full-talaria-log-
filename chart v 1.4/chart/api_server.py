@@ -18279,6 +18279,7 @@ async def list_user_journal_trades(
                 payload = {}
             out.append(
                 {
+                    "journal_trade_id": r.id,
                     "session_id": r.session_id,
                     "session_name": session_names.get(int(r.session_id), ""),
                     "client_trade_id": r.client_trade_id,
@@ -18323,6 +18324,8 @@ async def list_trading_session_journal_trades(session_id: int, request: Request)
                 payload = {}
             out.append(
                 {
+                    "journal_trade_id": r.id,
+                    "session_id": session_id,
                     "client_trade_id": r.client_trade_id,
                     "payload": payload,
                     "updated_at": r.updated_at.isoformat() if r.updated_at else None,
@@ -18382,9 +18385,21 @@ async def upsert_trading_session_journal_trade(
         st.state_json = json.dumps(state, separators=(",", ":"))
         db.commit()
         client_trade_id = sjs.journal_trade_client_id(trade)
+        sql_row = (
+            db.query(TradingSessionJournalTrade)
+            .filter(
+                TradingSessionJournalTrade.session_id == session_id,
+                TradingSessionJournalTrade.client_trade_id == client_trade_id,
+            )
+            .first()
+        )
+        journal_trade_id = int(sql_row.id) if sql_row and sql_row.id is not None else None
+        if journal_trade_id is not None:
+            trade = sjs.enrich_journal_trade_from_sql_row(trade, sql_row, session_id)
         return {
             "session_id": session_id,
             "client_trade_id": client_trade_id,
+            "journal_trade_id": journal_trade_id,
             "trade": trade,
             "journal_len": len(merged),
             "upserted": True,

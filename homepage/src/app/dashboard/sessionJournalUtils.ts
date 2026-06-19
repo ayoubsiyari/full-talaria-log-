@@ -5,6 +5,7 @@ export function sessionJournalLocalKey(sessionId: number | string): string {
 }
 
 export type JournalApiTradeItem = {
+  journal_trade_id?: number;
   client_trade_id?: string;
   updated_at?: string | null;
   payload?: Record<string, unknown>;
@@ -19,6 +20,7 @@ export function flattenJournalApiTrade(item: JournalApiTradeItem): Record<string
       : {};
   return {
     ...p,
+    journal_trade_id: item.journal_trade_id ?? p.journal_trade_id,
     client_trade_id: item.client_trade_id ?? p.client_trade_id,
     updated_at: item.updated_at ?? p.updated_at,
     session_id: item.session_id ?? p.session_id,
