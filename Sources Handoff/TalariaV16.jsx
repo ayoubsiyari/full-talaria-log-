@@ -9998,8 +9998,38 @@ const TalariaV8b = () => {
   const priceAxisWidth = Math.max(50, Math.ceil(Math.max(...priceLabels.map(p=>p.length)) * 5.5 + 16));
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
-  const launchSession = () => {
-    if (isV16Embedded()) return;
+  const openEmbeddedChartSession = (sess) => {
+    if (!sess?.id) return;
+    try {
+      const cfg = sess.config && typeof sess.config === "object" ? sess.config : {};
+      const isProp = sess.tradingMode === "prop" || String(sess.sessionType || "").toLowerCase().includes("prop");
+      localStorage.setItem("backtestingSession", JSON.stringify({ ...cfg, type: isProp ? "propfirm" : "standard" }));
+      const uid = localStorage.getItem("_uid");
+      const sid = String(sess.id);
+      if (uid) localStorage.setItem(`u${uid}_active_trading_session_id`, sid);
+      localStorage.setItem("active_trading_session_id", sid);
+    } catch {}
+    const mode = sess.tradingMode === "prop" || String(sess.sessionType || "").toLowerCase().includes("prop") ? "propfirm" : "backtest";
+    window.location.href = `/chart/index.html?mode=${mode}&sessionId=${encodeURIComponent(String(sess.id))}`;
+  };
+  const openEmbeddedSessionDashboard = (session) => {
+    if (!session?.id) return;
+    const applied = { kind: "session", id: session.id, sessionId: session.id, label: session.name, rollbackAllowed: !!session.rollbackAllowed };
+    setDashStrategyId(null);
+    setDashSessId(session.id);
+    setDashSymbolFilter("all");
+    setDashTagFilter("all");
+    setDashOutcomeFilter("all");
+    setDashLibraryAppliedSelection(applied);
+    dashLibraryAppliedSelectionRef.current = applied;
+    setSessView("dashboard");
+    syncV16SessionUrl(session.id);
+  };
+  const launchSession = (sess) => {
+    if (isV16Embedded()) {
+      if (sess) openEmbeddedChartSession(sess);
+      return;
+    }
     setLoadQuote(LOAD_QUOTES[Math.floor(Math.random() * LOAD_QUOTES.length)]);
     setTypedQuote("");
     setSessPageFading(true);
@@ -10827,13 +10857,13 @@ const TalariaV8b = () => {
                         {/* Row 1: Resume + Dashboard buttons | session name + created | ⋯ */}
                         <div style={{display:"flex",alignItems:"center",gap:0,padding:"10px 10px 0",borderBottom:`1px solid ${c.brH}`,paddingBottom:8}}>
                           {/* Resume */}
-                          <div onClick={e=>{e.stopPropagation();launchSession();}}
+                          <div onClick={e=>{e.stopPropagation();launchSession(sess);}}
                             onMouseEnter={()=>setHov("rs_"+sess.id)} onMouseLeave={()=>setHov(null)}
                             style={{width:26,height:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
                             <svg width={9} height={9} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)"/></svg>
                           </div>
                           {/* Dashboard */}
-                          <div onClick={e=>{e.stopPropagation();setDashStrategyId(null);setDashSessId(sess.id);setSessView("dashboard");}}
+                          <div onClick={e=>{e.stopPropagation();openEmbeddedSessionDashboard(sess);}}
                             onMouseEnter={()=>setHov("db_"+sess.id)} onMouseLeave={()=>setHov(null)}
                             style={{width:26,height:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:hov==="db_"+sess.id?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.07)",border:`1px solid ${hov==="db_"+sess.id?c.brH:c.br}`,cursor:"default",transition:"background 0.12s,border-color 0.12s",marginLeft:5}}>
                             <svg width={11} height={11} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="11" y="1" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="1" y="11" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="11" y="11" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/></svg>
@@ -11003,12 +11033,12 @@ const TalariaV8b = () => {
 
                         {/* Resume | Dashboard — icon-only squares side by side */}
                         <div style={{width:96,flexShrink:0,display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6,padding:"0 10px",borderRight:"none"}}>
-                          <div onClick={e=>{e.stopPropagation();launchSession();}}
+                          <div onClick={e=>{e.stopPropagation();launchSession(sess);}}
                             onMouseEnter={()=>setHov("rs_"+sess.id)} onMouseLeave={()=>setHov(null)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",flexShrink:0}}>
                             <svg width={10} height={10} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)"/></svg>
                           </div>
-                          <div onClick={e=>{e.stopPropagation();setDashStrategyId(null);setDashSessId(sess.id);setSessView("dashboard");}}
+                          <div onClick={e=>{e.stopPropagation();openEmbeddedSessionDashboard(sess);}}
                             onMouseEnter={()=>setHov("db_"+sess.id)} onMouseLeave={()=>setHov(null)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:hov==="db_"+sess.id?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.07)",border:`1px solid ${hov==="db_"+sess.id?c.brH:c.br}`,cursor:"default",transition:"background 0.12s,border-color 0.12s",flexShrink:0}}>
                             <svg width={12} height={12} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="11" y="1" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="1" y="11" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="11" y="11" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/></svg>
@@ -11150,9 +11180,9 @@ const TalariaV8b = () => {
                 <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:sessActMenu.y+6,left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   {[
-                    {label:ms.progress===0?"Start":"Resume", handler:()=>{launchSession();setSessActMenu(null);}, col:c.acL, disabled:false, danger:false,
+                    {label:ms.progress===0?"Start":"Resume", handler:()=>{launchSession(ms);setSessActMenu(null);}, col:c.acL, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
-                    {label:"Dashboard", handler:()=>{setDashStrategyId(null);setDashSessId(ms.id);setSessView("dashboard");setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
+                    {label:"Dashboard", handler:()=>{openEmbeddedSessionDashboard(ms);setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
                     {label:"divider"},
                     {label:"Edit",      handler:e=>{openEditSession(e,ms);setSessActMenu(null);}, col:hasStarted?"rgba(255,255,255,0.3)":c.ts, disabled:hasStarted, sub:hasStarted?"started":null, danger:false,

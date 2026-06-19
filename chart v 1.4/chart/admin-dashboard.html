@@ -4255,6 +4255,9 @@ select { cursor:default; }
                   <label class="support-filter-chip">
                     <input type="checkbox" id="supportFilterNeedsReply" onchange="loadSupportThreads()" /> Needs reply
                   </label>
+                  <label class="support-filter-chip">
+                    <input type="checkbox" id="supportFilterArchived" onchange="loadSupportThreads()" /> Show archived
+                  </label>
                 </div>
                 <div class="support-filter-actions">
                   <select id="supportFilterSort" onchange="loadSupportThreads()" title="Sort order">
@@ -4262,6 +4265,7 @@ select { cursor:default; }
                     <option value="sla">Sort: SLA due</option>
                     <option value="oldest">Sort: oldest</option>
                   </select>
+                  <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()" title="Hide finished tickets from inbox, stats, and user support">Archive closed</button>
                   <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
                 </div>
               </div>
@@ -5265,6 +5269,7 @@ function supportBuildThreadQuery() {
   const sla = $('supportFilterSla') && $('supportFilterSla').checked;
   const mine = $('supportFilterMine') && $('supportFilterMine').checked;
   const needs = $('supportFilterNeedsReply') && $('supportFilterNeedsReply').checked;
+  const archived = $('supportFilterArchived') && $('supportFilterArchived').checked;
   const sort = ($('supportFilterSort') && $('supportFilterSort').value) || 'activity';
   if (q) params.set('q', q);
   if (st) params.set('status', st);
@@ -5274,6 +5279,7 @@ function supportBuildThreadQuery() {
   if (req !== '') params.set('user_id', req);
   if (mine) params.set('assigned_to_me', 'true');
   if (needs) params.set('needs_reply', 'true');
+  if (archived) params.set('include_archived', 'true');
   if (sla) params.set('sla_overdue', 'true');
   if (sort) params.set('sort', sort);
   params.set('exclude_status', 'user_replied');
@@ -5292,6 +5298,7 @@ function supportRenderThreadRow(t) {
     t.needs_staff_reply ? '<span class="support-thread-pill reply">Reply</span>' : '',
     t.admin_yes_no === 'yes' ? '<span class="support-thread-pill verdict-yes">Yes</span>' : '',
     t.admin_yes_no === 'no' ? '<span class="support-thread-pill verdict-no">No</span>' : '',
+    t.archived_at ? '<span class="support-thread-pill status-closed">Archived</span>' : '',
     supportCategoryBadgeHtml(t.category),
     t.sla_overdue ? '<span class="support-thread-pill sla">SLA</span>' : ''
   ].filter(Boolean).join('');
@@ -5332,6 +5339,45 @@ function supportExportCsv(ev) {
   if (st) params.set('status', st);
   window.location.href = '/api/admin/support/export?' + params.toString();
   return false;
+}
+
+async function supportArchiveClosedTickets() {
+  const ok = confirm(
+    'Archive all closed and resolved tickets?\n\n' +
+    'They will be hidden from the inbox and ticket metrics (fresh percentages), ' +
+    'and removed from the user support page. This cannot be undone from the UI.'
+  );
+  if (!ok) return;
+  try {
+    const preview = await api('/api/admin/support/archive-closed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: true, include_resolved: true })
+    });
+    const n = preview.archived_count || 0;
+    if (!n) {
+      toast('No closed or resolved tickets to archive', 'ok');
+      return;
+    }
+    const confirmAgain = confirm('Archive ' + n + ' ticket' + (n === 1 ? '' : 's') + ' now?');
+    if (!confirmAgain) return;
+    const data = await api('/api/admin/support/archive-closed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dry_run: false, include_resolved: true })
+    });
+    if (selectedSupportId && !(supportThreads || []).some(function (t) { return t.id === selectedSupportId; })) {
+      selectedSupportId = null;
+      supportMessages = [];
+      $('supportThreadTitle').textContent = 'Select a ticket';
+      $('supportMessages').innerHTML = '';
+      $('supportTicketControls').style.display = 'none';
+    }
+    toast('Archived ' + (data.archived_count || 0) + ' ticket(s)', 'ok');
+    await loadSupportThreads();
+  } catch (e) {
+    toast(e.message || 'Archive failed', 'err');
+  }
 }
 
 async function loadSupportUserReplyThreads() {

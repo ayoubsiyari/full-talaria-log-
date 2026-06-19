@@ -230,6 +230,8 @@ export function mapApiSessionToV16(
     replaySpeed: Number(cfg?.replay_speed ?? cfg?.replaySpeed ?? 30) || 30,
     compositeTrades: loaded ? tradesArr : undefined,
     compositeTradesLoaded: loaded,
+    sessionType: sess.session_type || "standard",
+    config: cfg && typeof cfg === "object" ? { ...cfg } : {},
   };
 }
 

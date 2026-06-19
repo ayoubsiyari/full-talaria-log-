@@ -791,6 +791,7 @@ class SupportThread(Base):
     csat_comment = Column(Text, nullable=True)
     csat_at = Column(DateTime, nullable=True)
     admin_yes_no = Column(String(8), nullable=True)  # admin verdict: 'yes' | 'no'
+    archived_at = Column(DateTime, nullable=True, index=True)
 
 
 class SupportMessage(Base):
@@ -1023,6 +1024,7 @@ try:
             "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS csat_comment TEXT",
             "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS csat_at TIMESTAMP",
             "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS admin_yes_no VARCHAR(8)",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP",
         ):
             _conn.execute(text(_stmt))
         _conn.commit()
@@ -1512,9 +1514,15 @@ def _enforce_backtest_user_rate(user: User, scope: str) -> None:
 
 
 def _support_user_can_access_thread(user: User, thread: SupportThread) -> bool:
+    if getattr(thread, "archived_at", None) is not None and user.role != "admin":
+        return False
     if user.role == "admin":
         return True
     return int(thread.user_id) == int(user.id)
+
+
+def _support_exclude_archived(query):
+    return query.filter(SupportThread.archived_at.is_(None))
 
 
 class SupportConnectionManager:
@@ -10740,6 +10748,11 @@ class SupportAdminPatchThreadIn(BaseModel):
     admin_yes_no: str | None = None
 
 
+class AdminArchiveClosedSupportIn(BaseModel):
+    dry_run: bool = False
+    include_resolved: bool = True
+
+
 class SupportCannedReplyIn(BaseModel):
     title: str = Field(..., max_length=200)
     body: str = Field(..., max_length=SUPPORT_BODY_MAX)
@@ -11044,6 +11057,7 @@ def _support_thread_dict(
         "first_responded_at": t.first_responded_at.isoformat() if t.first_responded_at else None,
         "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
         "closed_at": t.closed_at.isoformat() if t.closed_at else None,
+        "archived_at": t.archived_at.isoformat() if getattr(t, "archived_at", None) else None,
         "sla_overdue": _support_thread_sla_overdue(t, now),
         "sla_label": _support_sla_status_label(t, now),
         "sla_business_hours": SUPPORT_SLA_BUSINESS_HOURS,
@@ -11416,7 +11430,7 @@ async def support_list_threads(
     try:
         query = db.query(SupportThread)
         if user.role != "admin":
-            query = query.filter(SupportThread.user_id == user.id)
+            query = _support_exclude_archived(query.filter(SupportThread.user_id == user.id))
         else:
             if status and status in SUPPORT_STATUSES:
                 query = query.filter(SupportThread.status == status)
@@ -11632,8 +11646,11 @@ def _admin_support_query_threads(
     sort: str,
     limit: int,
     offset: int,
+    include_archived: bool = False,
 ):
     query = db.query(SupportThread)
+    if not include_archived:
+        query = _support_exclude_archived(query)
     if status:
         query = query.filter(SupportThread.status == _support_validate_status(status))
     if exclude_status:
@@ -11723,7 +11740,7 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         def base_q():
-            q = db.query(SupportThread)
+            q = _support_exclude_archived(db.query(SupportThread))
             if user_id is not None:
                 q = q.filter(SupportThread.user_id == int(user_id))
             return q
@@ -11850,6 +11867,67 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
         db.close()
 
 
+@app.post("/api/admin/support/archive-closed")
+async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, request: Request):
+    """Archive finished tickets so they disappear from inbox/stats and user support UI."""
+    admin = _require_admin(request)
+    db = SessionLocal()
+    try:
+        statuses = ("closed",)
+        if payload.include_resolved:
+            statuses = ("closed", "resolved")
+        now = datetime.utcnow()
+        q = (
+            _support_exclude_archived(db.query(SupportThread))
+            .filter(SupportThread.status.in_(statuses))
+        )
+        rows = q.order_by(SupportThread.id.asc()).all()
+        preview = [
+            {
+                "id": t.id,
+                "ticket_ref": _support_ticket_ref(t.id),
+                "status": t.status,
+                "subject": (t.subject or "")[:120],
+            }
+            for t in rows[:100]
+        ]
+        if payload.dry_run:
+            return {
+                "success": True,
+                "dry_run": True,
+                "archived_count": len(rows),
+                "statuses": list(statuses),
+                "preview": preview,
+            }
+        archived_ids: list[int] = []
+        for t in rows:
+            t.archived_at = now
+            t.updated_at = now
+            archived_ids.append(int(t.id))
+        db.commit()
+        _record_admin_action(
+            request,
+            action="support.tickets.archive_closed",
+            target_type="support_thread",
+            target_id=None,
+            params={
+                "statuses": list(statuses),
+                "include_resolved": payload.include_resolved,
+                "archived_count": len(archived_ids),
+            },
+            result={"archived_thread_ids": archived_ids[:100]},
+        )
+        return {
+            "success": True,
+            "dry_run": False,
+            "archived_count": len(archived_ids),
+            "statuses": list(statuses),
+            "preview": preview,
+        }
+    finally:
+        db.close()
+
+
 @app.get("/api/admin/support/export")
 async def admin_support_export(
     request: Request,
@@ -11860,7 +11938,7 @@ async def admin_support_export(
     _require_admin(request)
     db = SessionLocal()
     try:
-        query = db.query(SupportThread)
+        query = _support_exclude_archived(db.query(SupportThread))
         if category:
             query = query.filter(SupportThread.category == _support_validate_category(category))
         if status:
@@ -11945,6 +12023,7 @@ async def admin_support_requesters(request: Request):
                 func.count(SupportThread.id).label("ticket_count"),
             )
             .join(SupportThread, SupportThread.user_id == User.id)
+            .filter(SupportThread.archived_at.is_(None))
             .group_by(User.id, User.name, User.email)
             .order_by(func.count(SupportThread.id).desc(), User.name.asc(), User.email.asc())
             .limit(500)
@@ -11979,6 +12058,7 @@ async def admin_support_list_threads(
     sort: str = "activity",
     q: str | None = None,
     sla_overdue: bool = False,
+    include_archived: bool = False,
     limit: int = Query(500, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -12002,6 +12082,7 @@ async def admin_support_list_threads(
             sort=sort,
             limit=limit,
             offset=offset,
+            include_archived=include_archived,
         )
         out = []
         for t in rows:
