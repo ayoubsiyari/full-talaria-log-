@@ -12,6 +12,7 @@ import {
   fetchJournalApiData,
 } from "./v16JournalMappers";
 import {
+  enrichV16SessionFromStrategyBank,
   fetchAndMapTradesForSession,
   mapApiSessionToV16,
   type SessionKpis,
@@ -117,7 +118,11 @@ export function useV16LiveBootstrap(): BootState {
           tradesBySessionId[String(openSess.id)] = openTrades;
         }
 
-        const v16Sessions = apiSessions.map((sess) => {
+        const strategyBank = (journalPayload.strategies || []).map((s) =>
+          apiStrategyToBankRow(s as ApiStrategyRecord)
+        );
+
+        const v16SessionsRaw = apiSessions.map((sess) => {
           const isOpen = openSess && String(sess.id) === String(openSess.id);
           const kpis = kpisMap[String(sess.id)];
           return mapApiSessionToV16(
@@ -127,6 +132,9 @@ export function useV16LiveBootstrap(): BootState {
             { tradesLoaded: !!isOpen }
           );
         });
+        const v16Sessions = v16SessionsRaw.map((sess) =>
+          enrichV16SessionFromStrategyBank(sess, strategyBank)
+        );
 
         const journal = buildJournalBootFromApi(
           journalPayload.entries,
@@ -138,10 +146,6 @@ export function useV16LiveBootstrap(): BootState {
           journalPayload.strategies,
           v16Sessions,
           journal.accounts
-        );
-
-        const strategyBank = (journalPayload.strategies || []).map((s) =>
-          apiStrategyToBankRow(s as ApiStrategyRecord)
         );
 
         const openV16Session = v16Sessions.find((s) => String(s.id) === String(openSessionId));

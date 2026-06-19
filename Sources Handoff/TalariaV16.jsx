@@ -23697,18 +23697,69 @@ const TalariaV8b = () => {
             if (sid) return dashboardSessionPool.find(session => String(session.id) === String(sid)) || null;
             return ds || null;
           };
-          const parseDashAddTradeSessionStrategyId = (session) => {
-            if (!session) return null;
-            const cfg = session?.config && typeof session.config === "object" ? session.config : {};
-            const raw = session.strategyId ?? cfg.strategy_id ?? cfg.strategyId ?? cfg.playbook_id ?? cfg.playbookId;
-            const n = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
-            if (Number.isFinite(n) && n > 0) return n;
-            const pb = cfg.playbook;
-            if (typeof pb === "string" && pb.startsWith("strategy:")) {
-              const parsed = Number.parseInt(pb.split(":")[1] || "", 10);
+          const parseDashAddTradeStrategyRefId = (value) => {
+            if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+            const raw = value != null ? String(value).trim() : "";
+            if (!raw) return null;
+            if (raw.startsWith("strategy:")) {
+              const parsed = Number.parseInt(raw.split(":")[1] || "", 10);
+              if (Number.isFinite(parsed) && parsed > 0) return parsed;
+            }
+            if (/^\d+$/.test(raw)) {
+              const parsed = Number.parseInt(raw, 10);
               if (Number.isFinite(parsed) && parsed > 0) return parsed;
             }
             return null;
+          };
+          const dashAddTradeVariablesHaveDefs = (items) => {
+            if (!Array.isArray(items) || !items.length) return false;
+            return items.some(item => item?.type === "variable" || (
+              item && item.type !== "divider" && String(item.name || item.label || "").trim() && Array.isArray(item.options)
+            ));
+          };
+          const parseDashAddTradeSessionStrategyId = (session) => {
+            if (!session) return null;
+            const cfg = session?.config && typeof session.config === "object" ? session.config : {};
+            const hints = [
+              session.strategyId,
+              cfg.strategy_id,
+              cfg.strategyId,
+              cfg.playbook_id,
+              cfg.playbookId,
+              cfg.playbook,
+              cfg.strategy_name,
+              session.strategyName,
+            ];
+            for (const hint of hints) {
+              const id = parseDashAddTradeStrategyRefId(hint);
+              if (id != null) return id;
+            }
+            return null;
+          };
+          const findDashAddTradeStrategyBankRow = (source, session=null) => {
+            const resolvedSession = session || resolveDashAddTradePrimarySession(source);
+            const cfg = resolvedSession?.config && typeof resolvedSession.config === "object" ? resolvedSession.config : {};
+            const bank = getV16StrategyBank() || myStrategies || [];
+            const strategyId = source?.strategyId ?? parseDashAddTradeSessionStrategyId(resolvedSession);
+            if (strategyId != null) {
+              const byId = bank.find(row => String(row.id) === String(strategyId));
+              if (byId) return byId;
+            }
+            const nameCandidates = [
+              source?.strategyName,
+              source?.strategy,
+              resolvedSession?.strategyName,
+              cfg.playbook_display,
+              cfg.strategy_name,
+              cfg.playbook,
+            ]
+              .map(value => String(value || "").trim().toLowerCase())
+              .filter(name => name && !name.startsWith("strategy:"));
+            if (!nameCandidates.length) return null;
+            return bank.find(row => {
+              const rowName = String(row.name || "").trim().toLowerCase();
+              return rowName && nameCandidates.includes(rowName);
+            }) || null;
           };
           const getDashAddTradeSessionDateRange = (source) => {
             const session = resolveDashAddTradePrimarySession(source);
@@ -23737,25 +23788,33 @@ const TalariaV8b = () => {
           const resolveDashAddTradeStrategyVariables = (source) => {
             const session = resolveDashAddTradePrimarySession(source);
             const cfg = session?.config && typeof session.config === "object" ? session.config : {};
-            const fromSource = [source?.variables, source?.strategyVariables].find(items => Array.isArray(items) && items.length);
+            const fromSource = [source?.variables, source?.strategyVariables].find(items => dashAddTradeVariablesHaveDefs(items));
             if (fromSource) return fromSource;
-            const fromSession = [session?.strategy_variables, cfg.strategy_variables, cfg.strategyVariables].find(items => Array.isArray(items) && items.length);
+            const fromSession = [session?.strategy_variables, cfg.strategy_variables, cfg.strategyVariables].find(items => dashAddTradeVariablesHaveDefs(items));
             if (fromSession) return fromSession;
             const def = cfg.strategy_definition ?? cfg.strategyDefinition;
             if (def && typeof def === "object") {
               const defVars = def.variables ?? def?.talaria_v9?.variables ?? def?.talaria_v9_panel?.variables;
-              if (Array.isArray(defVars) && defVars.length) return defVars;
+              if (dashAddTradeVariablesHaveDefs(defVars)) return defVars;
             }
             const panelVars = cfg.talaria_v9?.variables ?? cfg.talaria_v9_panel?.variables;
-            if (Array.isArray(panelVars) && panelVars.length) return panelVars;
+            if (dashAddTradeVariablesHaveDefs(panelVars)) return panelVars;
+            const match = findDashAddTradeStrategyBankRow(source, session);
+            return Array.isArray(match?.variables) && dashAddTradeVariablesHaveDefs(match.variables) ? match.variables : [];
+          };
+          const enrichDashAddTradeSource = (source) => {
+            if (!source) return source;
+            const session = resolveDashAddTradePrimarySession(source);
             const strategyId = source?.strategyId ?? parseDashAddTradeSessionStrategyId(session);
-            const bank = getV16StrategyBank() || myStrategies || [];
-            const match = bank.find(row => strategyId != null && String(row.id) === String(strategyId))
-              || bank.find(row => {
-                const strategyName = String(source?.strategyName || source?.strategy || session?.strategyName || cfg.strategy_name || cfg.playbook_display || "").trim().toLowerCase();
-                return strategyName && String(row.name || "").trim().toLowerCase() === strategyName;
-              });
-            return Array.isArray(match?.variables) ? match.variables : [];
+            const bankRow = findDashAddTradeStrategyBankRow({ ...source, strategyId }, session);
+            const variables = resolveDashAddTradeStrategyVariables({ ...source, strategyId });
+            return {
+              ...source,
+              strategyId,
+              strategyName: source?.strategyName || bankRow?.name || session?.strategyName || source?.strategy || "",
+              variables,
+              strategyVariables: variables,
+            };
           };
           const addTradeBaseSourceItems = (() => {
             const rows = dashboardSourceFilterItems.length
@@ -24268,12 +24327,13 @@ const TalariaV8b = () => {
           };
           const openSelectedAddTradeSource = (source) => {
             if (!source) return;
+            const enriched = enrichDashAddTradeSource(source);
             setDashAddTradePickerOpen(false);
             setDashAddTradeWarningOpen(false);
             setDashPendingAddTradeSource(null);
             setDashAddTradeEditMeta(null);
-            setDashAddTradeEditorSource(source);
-            setDashAddTradeDraft(buildDashAddTradeDraft(source));
+            setDashAddTradeEditorSource(enriched);
+            setDashAddTradeDraft(buildDashAddTradeDraft(enriched));
             setDashAddTradeEditorPage("trade");
             setDashAddTradeValidationError("");
             setDashAddTradePreTags({});
@@ -25127,7 +25187,12 @@ const TalariaV8b = () => {
             const label = String(item.name || item.label || item.title || item.id || `${slot === "pre" ? "Pre" : "Post"} Tag ${index + 1}`).trim();
             if (!label) return null;
             const options = (Array.isArray(item.options) ? item.options : Array.isArray(item.values) ? item.values : [])
-              .map(value => String(value || "").trim())
+              .map(value => {
+                if (value == null) return "";
+                if (typeof value === "string" || typeof value === "number") return String(value).trim();
+                if (typeof value === "object") return String(value.label || value.name || value.value || value.text || "").trim();
+                return "";
+              })
               .filter(Boolean)
               .slice(0, 10);
             return {
@@ -25156,6 +25221,8 @@ const TalariaV8b = () => {
           };
           const resolveDashAddTradeStrategyRecord = (source, draft=null) => {
             const session = resolveDashAddTradePrimarySession(source);
+            const bankRow = findDashAddTradeStrategyBankRow(source, session);
+            if (bankRow) return bankRow;
             const cfg = session?.config && typeof session.config === "object" ? session.config : {};
             const strategyId = source?.strategyId ?? parseDashAddTradeSessionStrategyId(session) ?? cfg.strategy_id ?? cfg.strategyId;
             if (strategyId != null) {
@@ -25169,6 +25236,8 @@ const TalariaV8b = () => {
               source?.strategyName,
               source?.strategy,
               session?.strategyName,
+              cfg.playbook_display,
+              cfg.strategy_name,
               draft?.setup_tag,
               draft?.setup,
               source?.label,

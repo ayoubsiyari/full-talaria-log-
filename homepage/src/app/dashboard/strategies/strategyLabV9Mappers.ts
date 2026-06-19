@@ -115,6 +115,24 @@ export function apiStrategyToBankRow(s: ApiStrategyRecord): Record<string, unkno
     ? (v9.markets as string[])
     : ((draft.market_categories as string[]) || []);
 
+  const v9Variables = Array.isArray(v9.variables) ? (v9.variables as unknown[]) : [];
+  const draftVariables = Array.isArray(draft.variables) ? (draft.variables as unknown[]) : [];
+  const hasVariableItems = (items: unknown[]) =>
+    items.some((item) => {
+      const rec = item as Record<string, unknown> | null;
+      if (!rec || rec.type === "divider") return false;
+      return rec.type === "variable" || (String(rec.name || rec.label || "").trim() && Array.isArray(rec.options));
+    });
+  const variables = hasVariableItems(v9Variables)
+    ? v9Variables
+    : hasVariableItems(draftVariables)
+      ? draftVariables
+      : v9Variables.length
+        ? v9Variables
+        : draftVariables.length
+          ? draftVariables
+          : [{ type: "divider", id: "div0" }];
+
   return {
     id: s.id,
     name: s.name,
@@ -128,7 +146,7 @@ export function apiStrategyToBankRow(s: ApiStrategyRecord): Record<string, unkno
     direction: String(draft.direction || "both"),
     markets,
     conditions: Array.isArray(v9.conditions) ? v9.conditions : (draft.conditions as unknown[]) || [],
-    variables: Array.isArray(v9.variables) ? v9.variables : (draft.variables as unknown[]) || [{ type: "divider", id: "div0" }],
+    variables: variables,
     images: bankGalleryImages(v9.images, def.cover_image),
     supportInst: Array.isArray(v9.supportInst) ? v9.supportInst : [],
     tree: v9.tree,

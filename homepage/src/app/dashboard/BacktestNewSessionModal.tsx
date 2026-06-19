@@ -9,6 +9,7 @@ import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
 import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso } from "./backtestModal/dateRangeUtils";
 import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
 import { JOURNAL_API_BASE, journalAuthHeaders } from "@/lib/journalApi";
+import { apiStrategyToBankRow } from "./strategies/strategyLabV9Mappers";
 
 const F = "'Exo 2', sans-serif";
 
@@ -244,7 +245,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
 
   const [sessionApiFiles, setSessionApiFiles] = useState<Record<string, unknown>[]>([]);
   const [sessionFilesLoading, setSessionFilesLoading] = useState(false);
-  const [stratRows, setStratRows] = useState<{ id?: number; name?: string }[]>([]);
+  const [stratRows, setStratRows] = useState<any[]>([]);
 
   function normSessionSym(t: string) {
     return String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
@@ -452,7 +453,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
         ? window.__TALARIA_V16_BOOT__!.strategyBank!
         : null;
     if (fromBoot?.length) {
-      setStratRows(fromBoot.map((s: any) => ({ id: s.id, name: s.name })));
+      setStratRows(fromBoot);
       return;
     }
     let cancelled = false;
@@ -465,7 +466,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (!cancelled) {
-          setStratRows((data?.strategies || []).map((s: any) => ({ id: s.id, name: s.name })));
+          setStratRows((data?.strategies || []).map((s: any) => apiStrategyToBankRow(s)));
         }
       } catch {
         if (!cancelled) setStratRows([]);
@@ -640,12 +641,40 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       })
     );
 
+    const resolvedStrategyId = (() => {
+      const pb = newSessPlaybook || "";
+      if (pb.startsWith("strategy:")) {
+        const id = Number(pb.slice("strategy:".length));
+        return Number.isFinite(id) && id > 0 ? id : null;
+      }
+      return null;
+    })();
+    const linkedStrategy =
+      resolvedStrategyId != null
+        ? stratRows.find((s) => Number(s.id) === resolvedStrategyId)
+        : null;
+    const strategyDisplayName =
+      linkedStrategy?.name ||
+      (newSessPlaybook && !newSessPlaybook.startsWith("strategy:") ? newSessPlaybook : "") ||
+      playbookDisplay ||
+      "";
+    const strategyVariables = Array.isArray(linkedStrategy?.variables)
+      ? linkedStrategy.variables.filter(
+          (item: { type?: string; name?: string; label?: string }) =>
+            item?.type === "variable" ||
+            (item?.type !== "divider" && String(item?.name || item?.label || "").trim())
+        )
+      : [];
+
     return {
       type: modeType,
       sessionName,
       description: newSessDescription,
       playbook: newSessPlaybook || "",
-      strategy_name: newSessPlaybook || "",
+      playbook_display: strategyDisplayName,
+      strategy_name: strategyDisplayName,
+      strategy_id: resolvedStrategyId,
+      ...(strategyVariables.length ? { strategy_variables: strategyVariables } : {}),
       tickers: newSessTickers,
       supporting_tickers: newSessSupportTickers,
       asset_class: newSessAssetClass,

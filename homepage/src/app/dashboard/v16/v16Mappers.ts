@@ -224,15 +224,46 @@ export function mapJournalRowToV16Trade(
   };
 }
 
+function parseStrategyRefId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  const raw = value != null ? String(value).trim() : "";
+  if (!raw) return null;
+  if (raw.startsWith("strategy:")) {
+    const parsed = Number.parseInt(raw.split(":")[1] || "", 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  if (/^\d+$/.test(raw)) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+function hasStrategyVariableItems(items: unknown[]): boolean {
+  return items.some((item) => {
+    const rec = item as Record<string, unknown> | null;
+    if (!rec || rec.type === "divider") return false;
+    if (rec.type === "variable") return true;
+    return (
+      String(rec.name || rec.label || "").trim().length > 0 &&
+      Array.isArray(rec.options)
+    );
+  });
+}
+
 function sessionStrategyIdFromConfig(cfg: Record<string, unknown> | undefined): number | null {
   if (!cfg || typeof cfg !== "object") return null;
-  const raw = cfg.strategy_id ?? cfg.strategyId ?? cfg.playbook_id ?? cfg.playbookId;
-  const n = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
-  if (Number.isFinite(n) && n > 0) return n;
-  const pb = cfg.playbook;
-  if (typeof pb === "string" && pb.startsWith("strategy:")) {
-    const parsed = Number.parseInt(pb.split(":")[1] || "", 10);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  const hints = [
+    cfg.strategy_id,
+    cfg.strategyId,
+    cfg.playbook_id,
+    cfg.playbookId,
+    cfg.playbook,
+    cfg.strategy_name,
+  ];
+  for (const hint of hints) {
+    const id = parseStrategyRefId(hint);
+    if (id != null) return id;
   }
   return null;
 }
@@ -240,19 +271,23 @@ function sessionStrategyIdFromConfig(cfg: Record<string, unknown> | undefined): 
 function sessionStrategyVariables(cfg: Record<string, unknown> | undefined): unknown[] {
   if (!cfg || typeof cfg !== "object") return [];
   const direct = cfg.strategy_variables ?? cfg.strategyVariables;
-  if (Array.isArray(direct) && direct.length) return direct;
+  if (Array.isArray(direct) && hasStrategyVariableItems(direct)) return direct;
   const def = cfg.strategy_definition ?? cfg.strategyDefinition;
   if (def && typeof def === "object") {
     const defRec = def as Record<string, unknown>;
-    if (Array.isArray(defRec.variables) && defRec.variables.length) return defRec.variables;
+    if (Array.isArray(defRec.variables) && hasStrategyVariableItems(defRec.variables)) {
+      return defRec.variables;
+    }
     const v9 = defRec.talaria_v9 ?? defRec.talaria_v9_panel;
-    if (v9 && typeof v9 === "object" && Array.isArray((v9 as Record<string, unknown>).variables)) {
-      return (v9 as Record<string, unknown>).variables as unknown[];
+    if (v9 && typeof v9 === "object") {
+      const v9Vars = (v9 as Record<string, unknown>).variables;
+      if (Array.isArray(v9Vars) && hasStrategyVariableItems(v9Vars)) return v9Vars;
     }
   }
   const panel = cfg.talaria_v9 ?? cfg.talaria_v9_panel;
-  if (panel && typeof panel === "object" && Array.isArray((panel as Record<string, unknown>).variables)) {
-    return (panel as Record<string, unknown>).variables as unknown[];
+  if (panel && typeof panel === "object") {
+    const panelVars = (panel as Record<string, unknown>).variables;
+    if (Array.isArray(panelVars) && hasStrategyVariableItems(panelVars)) return panelVars;
   }
   return [];
 }
@@ -290,10 +325,15 @@ export function mapApiSessionToV16(
   return {
     id: sess.id,
     name: sess.name,
-    strategyName:
-      cfgString(cfg, "strategy_name", "strategyName", "playbook_display", "playbook") ||
-      sessionConfigStrategyName(sess) ||
-      sess.name,
+    strategyName: (() => {
+      const display =
+        cfgString(cfg, "playbook_display", "strategyName") ||
+        sessionConfigStrategyName(sess);
+      if (display && !display.startsWith("strategy:")) return display;
+      const rawName = cfgString(cfg, "strategy_name", "strategyName");
+      if (rawName && !rawName.startsWith("strategy:")) return rawName;
+      return display || rawName || sess.name;
+    })(),
     strategyDesc:
       cfgString(cfg, "description", "session_description", "sessionDescription", "strategy_desc") ||
       "Backtest session",
@@ -323,6 +363,37 @@ export function mapApiSessionToV16(
     config: cfg && typeof cfg === "object" ? { ...cfg } : {},
     strategyId: sessionStrategyIdFromConfig(cfg),
     strategy_variables: sessionStrategyVariables(cfg),
+  };
+}
+
+/** Attach strategy pre/post variables from the live bank when session config lacks a snapshot. */
+export function enrichV16SessionFromStrategyBank(
+  session: Record<string, unknown>,
+  strategyBank: Record<string, unknown>[]
+): Record<string, unknown> {
+  const cfg = (session.config as Record<string, unknown> | undefined) || {};
+  const existing = sessionStrategyVariables(cfg);
+  if (hasStrategyVariableItems(existing)) return session;
+
+  const strategyId =
+    sessionStrategyIdFromConfig(cfg) ??
+    (typeof session.strategyId === "number" ? session.strategyId : null);
+  const bankRow =
+    strategyId != null
+      ? strategyBank.find((row) => String(row.id) === String(strategyId))
+      : null;
+  const bankVars = Array.isArray(bankRow?.variables) ? (bankRow.variables as unknown[]) : [];
+  if (!hasStrategyVariableItems(bankVars)) return session;
+
+  return {
+    ...session,
+    strategyId: strategyId ?? session.strategyId,
+    strategy_variables: bankVars,
+    config: {
+      ...cfg,
+      ...(strategyId != null ? { strategy_id: strategyId } : {}),
+      strategy_variables: bankVars,
+    },
   };
 }
 
