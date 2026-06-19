@@ -38,7 +38,10 @@ export function useV16LiveBootstrap(): BootState {
 
   useLayoutEffect(() => {
     let cancelled = false;
-    primeV16EmbeddedShell();
+    if (!window.__TALARIA_V16_BOOT__?.sessions?.length) {
+      primeV16EmbeddedShell();
+    }
+    window.__TALARIA_V16_BOOT_LOADING__ = true;
 
     const fetchTradesForSession = async (sess: Session): Promise<Record<string, unknown>[]> => {
       return fetchAndMapTradesForSession(sess as never);
@@ -71,7 +74,11 @@ export function useV16LiveBootstrap(): BootState {
     };
 
     (async () => {
-      setState({ status: "loading" });
+      setState((prev) =>
+        prev.status === "ready" && window.__TALARIA_V16_BOOT__?.sessions?.length
+          ? prev
+          : { status: "loading" }
+      );
       try {
         const [sessionsPayload, kpisPayload, journalPayload] = await Promise.all([
           fetchJson<{ sessions: Session[] }>("/api/sessions"),
@@ -155,10 +162,13 @@ export function useV16LiveBootstrap(): BootState {
 
         window.__TALARIA_V16_BOOT__ = boot;
         window.__TALARIA_V16_TRADES__ = tradesBySessionId;
+        window.__TALARIA_V16_BOOT_LOADING__ = false;
+        window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
 
         setState({ status: "ready", boot });
       } catch (e) {
         if (cancelled) return;
+        window.__TALARIA_V16_BOOT_LOADING__ = false;
         setState({
           status: "error",
           message: e instanceof Error ? e.message : String(e),
@@ -168,6 +178,7 @@ export function useV16LiveBootstrap(): BootState {
 
     return () => {
       cancelled = true;
+      window.__TALARIA_V16_BOOT_LOADING__ = false;
       delete window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
       delete window.__TALARIA_V16_SAVE_MANUAL_TRADE__;
     };

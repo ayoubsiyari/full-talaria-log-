@@ -7905,6 +7905,39 @@ const TalariaV8b = () => {
   const dashLibraryAppliedMultipleSourcesRef = useRef(false);
   const dashLibrarySelectionItemsRef = useRef({});
   const dashLibraryMultipleSourcesRef = useRef(false);
+  const [dashBootLoading, setDashBootLoading] = useState(
+    () => isV16Embedded() && !!window.__TALARIA_V16_BOOT_LOADING__
+  );
+  const [dashTradesLoading, setDashTradesLoading] = useState(false);
+  useEffect(() => {
+    if (!isV16Embedded()) return;
+    const syncBoot = () => {
+      setDashBootLoading(!!window.__TALARIA_V16_BOOT_LOADING__);
+      if (!isV16LiveBoot()) return;
+      const boot = window.__TALARIA_V16_BOOT__;
+      if (!boot) return;
+      const nextSessions = boot.sessions || [];
+      if (nextSessions.length) {
+        setSessions((prev) => {
+          if (!prev.length) return nextSessions;
+          const prevById = new Map(prev.map((s) => [String(s.id), s]));
+          return nextSessions.map((s) => {
+            const old = prevById.get(String(s.id));
+            if (old?.compositeTradesLoaded && Array.isArray(old.compositeTrades)) {
+              return { ...s, compositeTrades: old.compositeTrades, compositeTradesLoaded: true };
+            }
+            return s;
+          });
+        });
+      }
+      if (boot.openSessionId != null) setDashSessId(boot.openSessionId);
+      const applied = boot.appliedSource;
+      if (applied) setDashLibraryAppliedSelection(applied);
+    };
+    syncBoot();
+    window.addEventListener("talaria-v16-boot-updated", syncBoot);
+    return () => window.removeEventListener("talaria-v16-boot-updated", syncBoot);
+  }, []);
   useEffect(() => {
     if (!isV16Embedded() || !isV16LiveBoot()) return;
     const fetcher = window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
@@ -7929,8 +7962,12 @@ const TalariaV8b = () => {
         if (strategyKey(s.strategyName) === dashStrategyId) sessionIds.add(String(s.id));
       });
     }
-    if (!sessionIds.size) return;
+    if (!sessionIds.size) {
+      setDashTradesLoading(false);
+      return;
+    }
     let cancelled = false;
+    setDashTradesLoading(true);
     Promise.all([...sessionIds].map(async (sid) => {
       const sess = sessionsRef.current.find((s) => String(s.id) === sid);
       const expectedTrades = Number(sess?.trades) || 0;
@@ -7946,16 +7983,21 @@ const TalariaV8b = () => {
     })).then((results) => {
       if (cancelled) return;
       const updates = results.filter(Boolean);
-      if (!updates.length) return;
-      setSessions((prev) =>
-        prev.map((s) => {
-          const hit = updates.find((u) => u.sid === String(s.id));
-          return hit ? { ...s, compositeTrades: hit.trades, compositeTradesLoaded: true } : s;
-        })
-      );
+      if (updates.length) {
+        setSessions((prev) =>
+          prev.map((s) => {
+            const hit = updates.find((u) => u.sid === String(s.id));
+            return hit ? { ...s, compositeTrades: hit.trades, compositeTradesLoaded: true } : s;
+          })
+        );
+      }
+      setDashTradesLoading(false);
+    }).catch(() => {
+      if (!cancelled) setDashTradesLoading(false);
     });
     return () => {
       cancelled = true;
+      setDashTradesLoading(false);
     };
   }, [dashSessId, dashLibraryAppliedMultipleSources, dashLibraryAppliedMultiSelection, dashStrategyId, sessView]);
   const [dashLibraryConnectionOpen, setDashLibraryConnectionOpen] = useState(false);
@@ -13240,7 +13282,36 @@ const TalariaV8b = () => {
           }
           const ds = dashboardMultiSource || dashStrategySource || dashboardSessionPool.find(s=>String(s.id)===String(dashSessId)) || dashboardSessionPool[0];
           const dashboardSourceKind = dashStrategySource ? "strategy" : "session";
+          const liveDashBooting = isV16Embedded() && (
+            dashBootLoading
+            || dashTradesLoading
+            || !!window.__TALARIA_V16_BOOT_LOADING__
+            || (isV16LiveBoot() && !dashboardSessionPool.length && !(sessions||[]).length)
+          );
           if (!ds) {
+            if (liveDashBooting) {
+              return (
+                <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}}>
+                  <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2}}>
+                    <div style={{width:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><img src="/LOGO-07.png" style={{width:52,height:52,objectFit:"contain"}} alt=""/></div>
+                    <div style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 12px 0 0"}}>
+                      <div style={{fontSize:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:14}}>Talaria-Log</div>
+                      <div style={{width:1.5,height:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:14}}/>
+                      <div style={{fontSize:13,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F,position:"relative",top:2}}>Dashboard</div>
+                    </div>
+                  </div>
+                  <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+                    {navPanel}
+                    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
+                        <div style={{width:48,height:48,borderRadius:"50%",border:"2px solid rgba(140,160,255,0.20)",borderTopColor:c.acL,borderRightColor:"rgba(0,212,161,0.75)",boxShadow:`0 0 18px ${c.acL}22`,animation:"tlrLoadRotate 0.82s linear infinite"}}/>
+                        <div style={{fontSize:11,fontWeight:700,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Loading data","جاري تحميل البيانات")}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
             return (
               <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}}>
                 <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2}}>

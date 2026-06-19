@@ -37,6 +37,8 @@ declare global {
       strategyId?: number;
       strategyName?: string;
     }) => void;
+    /** True while embedded bootstrap is fetching sessions/trades (show loading UI). */
+    __TALARIA_V16_BOOT_LOADING__?: boolean;
   }
 }
 
