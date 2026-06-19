@@ -12738,11 +12738,16 @@ const TalariaV8b = () => {
           const dashStrategyKey = (name) => String(name||dashTxt("Untitled Strategy","استراتيجية بدون اسم")).toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g,"-").replace(/^-|-$/g,"") || "untitled";
           const dashboardSessionPool = (() => {
             const seen = new Set();
+            const demoSessions = isV16LiveBoot()
+              ? []
+              : [
+                  ...TREND_PULLBACK_DEMO_SESSIONS,
+                  ...VWAP_RECLAIM_DEMO_SESSIONS,
+                  ...TRADE_HUB_STRATEGY_EXAMPLE_SESSIONS,
+                ];
             return [
               ...(sessions||[]),
-              ...TREND_PULLBACK_DEMO_SESSIONS,
-              ...VWAP_RECLAIM_DEMO_SESSIONS,
-              ...TRADE_HUB_STRATEGY_EXAMPLE_SESSIONS,
+              ...demoSessions,
             ].filter(session => {
               const key = `${session.strategyName || ""}|${session.name || ""}`.toLowerCase();
               if (seen.has(key)) return false;
