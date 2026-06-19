@@ -35,7 +35,8 @@ export function BacktestNewSessionProvider({
     const id = opts?.strategyId;
     const playbook =
       typeof id === "number" && Number.isFinite(id) && id > 0 ? `strategy:${id}` : "";
-    const name = (opts?.strategyName || "").trim();
+    const stratName = (opts?.strategyName || "").trim();
+    const name = stratName ? `${stratName} Backtest` : "";
     setInitialState({
       playbook,
       sessionName: name,
@@ -47,6 +48,15 @@ export function BacktestNewSessionProvider({
     register(() => openNewSession());
     return () => register(null);
   }, [register, openNewSession]);
+
+  React.useEffect(() => {
+    window.__TALARIA_OPEN_NEW_SESSION__ = (opts?: BacktestNewSessionOpenOptions) => {
+      openNewSession(opts);
+    };
+    return () => {
+      delete window.__TALARIA_OPEN_NEW_SESSION__;
+    };
+  }, [openNewSession]);
 
   const registerOnSaved = React.useCallback((fn: () => void) => {
     onSavedListenersRef.current.add(fn);

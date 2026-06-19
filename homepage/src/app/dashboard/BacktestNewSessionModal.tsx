@@ -6,8 +6,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
-import { computeOverlapRange, isoToDisplay, spanFromApiFile } from "./backtestModal/dateRangeUtils";
+import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso } from "./backtestModal/dateRangeUtils";
 import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
+import { JOURNAL_API_BASE, journalAuthHeaders } from "@/lib/journalApi";
 
 const F = "'Exo 2', sans-serif";
 
@@ -222,6 +223,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
 
   const [sessionApiFiles, setSessionApiFiles] = useState<Record<string, unknown>[]>([]);
   const [sessionFilesLoading, setSessionFilesLoading] = useState(false);
+  const [stratRows, setStratRows] = useState<{ id?: number; name?: string }[]>([]);
 
   function normSessionSym(t: string) {
     return String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
@@ -360,6 +362,47 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     setNewSessTickers((prev) => prev.filter((t) => avail.has(t)));
     setNewSessSupportTickers((prev) => prev.filter((t) => avail.has(t)));
   }, [open, sessionFilesLoading, sessionDatasetSymbols]);
+
+  useEffect(() => {
+    if (!open) return;
+    const fromBoot =
+      typeof window !== "undefined" && Array.isArray(window.__TALARIA_V16_BOOT__?.strategyBank)
+        ? window.__TALARIA_V16_BOOT__!.strategyBank!
+        : null;
+    if (fromBoot?.length) {
+      setStratRows(fromBoot.map((s: any) => ({ id: s.id, name: s.name })));
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${JOURNAL_API_BASE}/strategies`, {
+          credentials: "include",
+          headers: journalAuthHeaders(),
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setStratRows((data?.strategies || []).map((s: any) => ({ id: s.id, name: s.name })));
+        }
+      } catch {
+        if (!cancelled) setStratRows([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const playbookDisplay = useMemo(() => {
+    const pb = newSessPlaybook || "";
+    if (pb.startsWith("strategy:")) {
+      const id = Number(pb.slice("strategy:".length));
+      const row = stratRows.find((s) => Number(s.id) === id);
+      return row?.name || pb;
+    }
+    return pb;
+  }, [newSessPlaybook, stratRows]);
 
   async function loadSessionApiFiles() {
     if (sessionApiFiles.length) return sessionApiFiles;
@@ -673,6 +716,19 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
 
   const calMaxIso = useMemo(() => (sessDateOverlap.hasOverlap ? sessDateOverlap.end : todayIso), [sessDateOverlap, todayIso]);
 
+  useEffect(() => {
+    if (!sessDateOverlap.hasOverlap) return;
+    const { start, end } = sessDateOverlap;
+    if (newSessStart && (newSessStart < start || newSessStart > end)) {
+      setNewSessStart("");
+      setNewSessStartInput("");
+    }
+    if (newSessEnd && (newSessEnd < start || newSessEnd > end || (newSessStart && newSessEnd < newSessStart))) {
+      setNewSessEnd("");
+      setNewSessEndInput("");
+    }
+  }, [sessDateOverlap.start, sessDateOverlap.end, sessDateOverlap.hasOverlap, newSessStart, newSessEnd]);
+
   const handleSessCalSelect = useCallback((iso: string) => {
     const label = isoToDisplay(iso, MON_D);
     if (newSessCalTarget === "start") {
@@ -729,7 +785,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     <>
             {/* ── NEW SESSION MODAL overlay ── */}
             {open && (
-              <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",visibility:"visible"}} onClick={closeNewSess}>
+              <div style={{position:"fixed",inset:0,zIndex:500000,display:"flex",alignItems:"center",justifyContent:"center",visibility:"visible"}} onClick={closeNewSess}>
                 {/* Backdrop */}
                 <div style={{position:"absolute",inset:0,background:"rgba(4,5,10,0.72)",backdropFilter:"blur(3px)"}}/>
                 {/* Panel */}
@@ -758,9 +814,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                       <div style={{border:`1px solid ${c.brH}`,padding:"12px 14px"}}>
                       {secH("Session Info")}
                       {(()=>{
-                        const myStrats=["EMA Crossover","London Breakout","VWAP Scalp","Golden Cross Trend","Volume Breakout"];
-                        const commStrats=["Momentum Surge","ICT Model A","SMC Liquidity Grab"];
-                        const allGroups=[["My Strategies",myStrats],["Saved Strategies",commStrats]];
+                        const stratItems = stratRows.filter(s => s?.name);
                         return(<>
                           {/* Session name + strategy: left 50% column, New Strategy button beside it */}
                           <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
@@ -776,8 +830,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                 {lbl("Strategy")}
                                 <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessStratDropOpen(true);setDropdown(null);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessStratDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
-                                  <span style={{flex:1,color:newSessPlaybook?c.tx:c.tm,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                    {newSessPlaybook||"— None —"}
+                                  <span style={{flex:1,color:playbookDisplay?c.tx:c.tm,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    {playbookDisplay||"— None —"}
                                   </span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${newSessStratDropOpen?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 </div>
@@ -791,18 +845,20 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                         <span style={{fontSize:11,fontWeight:isAct?700:400,color:isAct?c.acL:isH?c.tx:c.tm,fontFamily:F,fontStyle:"italic"}}>— None —</span>
                                       </div>
                                     );})()}
-                                    {allGroups.map(([groupLabel,items])=>(
-                                      <div key={groupLabel}>
-                                        <div style={{padding:"5px 10px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",borderTop:"1px solid rgba(140,160,255,0.08)"}}>{groupLabel}</div>
-                                        {items.map(s=>{const isAct=newSessPlaybook===s;const isH=newSessStratHov===s;return(
-                                          <div key={s} onClick={()=>{setNewSessPlaybook(s);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(s)} onMouseLeave={()=>setNewSessStratHov(null)}
+                                    {stratItems.length ? (
+                                      <div>
+                                        <div style={{padding:"5px 10px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",borderTop:"1px solid rgba(140,160,255,0.08)"}}>My Strategies</div>
+                                        {stratItems.map(s=>{const pbVal=s.id!=null?`strategy:${s.id}`:String(s.name||"");const isAct=newSessPlaybook===pbVal;const isH=newSessStratHov===pbVal;return(
+                                          <div key={String(s.id ?? s.name)} onClick={()=>{setNewSessPlaybook(pbVal);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(pbVal)} onMouseLeave={()=>setNewSessStratHov(null)}
                                             style={{display:"flex",alignItems:"center",padding:"5px 10px 5px 14px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
                                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s}</span>
+                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s.name}</span>
                                           </div>
                                         );})}
                                       </div>
-                                    ))}
+                                    ) : (
+                                      <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No strategies yet — create one in Strategy Lab.</div>
+                                    )}
                                   </div></>
                                 )}
                               </div>
@@ -851,27 +907,27 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                         const fmtD=iso=>{if(!iso)return "";const d=new Date(iso.split("T")[0]+"T00:00:00");return `${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;};
                         const applyD=(raw,setter)=>{
                           const s=raw.trim();
-                          const todayIso=new Date().toISOString().slice(0,10);
-                          const minIso="1990-01-01";
-                          const clamp=iso=>iso<minIso?minIso:iso>todayIso?todayIso:iso;
+                          const minIso=sessDateOverlap.hasOverlap?sessDateOverlap.start:"1990-01-01";
+                          const maxIso=sessDateOverlap.hasOverlap?sessDateOverlap.end:todayIso;
+                          const clamp=(iso:string)=>clampIso(iso,minIso,maxIso);
                           // DD-Mon-YYYY
                           const m1=s.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
-                          if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                          if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                           // YYYY-MM-DD
                           const m2=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-                          if(m2){const y=parseInt(m2[1]),mo=parseInt(m2[2])-1,dy=Math.min(parseInt(m2[3]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                          if(m2){const y=parseInt(m2[1]),mo=parseInt(m2[2])-1,dy=Math.min(parseInt(m2[3]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                           // MM/DD/YYYY
                           const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-                          if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
-                        };;
-                        const openCal=(e,target,currentIso)=>{const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):new Date(2020,0,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
+                          if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                        };
+                        const openCal=(e,target,currentIso)=>{e.stopPropagation();const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):(sessDateOverlap.hasOverlap?new Date(sessDateOverlap.start+"T00:00:00"):new Date(2020,0,1));setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
                         const inpSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                         const chvSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",color:c.ts,borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                         const ChevD=({open})=>(<svg width={8} height={8} viewBox="0 0 8 8" fill="none"><path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>);
-                        const applyPreset=(months,years)=>{const end=new Date(),start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
+                        const applyPreset=(months,years)=>{const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;let end,start;if(sessDateOverlap.hasOverlap){end=new Date(sessDateOverlap.end+"T00:00:00");start=new Date(end);if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const ovStart=new Date(sessDateOverlap.start+"T00:00:00");if(start<ovStart)start=ovStart;}else{end=new Date();start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);}const sIso=clampIso(fi(start),sessDateOverlap.hasOverlap?sessDateOverlap.start:"1990-01-01",sessDateOverlap.hasOverlap?sessDateOverlap.end:todayIso);const eIso=clampIso(fi(end),sIso,sessDateOverlap.hasOverlap?sessDateOverlap.end:todayIso);setNewSessStart(sIso);setNewSessStartInput(fd(new Date(sIso+"T00:00:00")));setNewSessEnd(eIso);setNewSessEndInput(fd(new Date(eIso+"T00:00:00")));};
                         const presets=[{l:"1M",months:1},{l:"3M",months:3},{l:"6M",months:6},{l:"1Y",years:1},{l:"2Y",years:2},{l:"3Y",years:3},{l:"5Y",years:5},{l:"10Y",years:10}];
                         const unitMax={D:3650,M:120,Y:10};
-                        const randomRange=()=>{const today=new Date();today.setHours(0,0,0,0);let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=new Date(today);earliest.setFullYear(earliest.getFullYear()-20);const latest=new Date(today.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
+                        const randomRange=()=>{const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);if(sessDateOverlap.hasOverlap){const earliest=new Date(sessDateOverlap.start+"T00:00:00");const latest=new Date(sessDateOverlap.end+"T00:00:00");const maxSpan=Math.max(1,Math.round((latest-earliest)/86400000));if(lenDays>maxSpan)lenDays=maxSpan;const rangeMs=Math.max(0,latest-earliest-lenDays*86400000);const s=rangeMs>0?new Date(earliest.getTime()+Math.random()*rangeMs):new Date(earliest);let e2=new Date(s.getTime()+lenDays*86400000);if(e2>latest)e2=new Date(latest);const sIso=clampIso(fi(s),sessDateOverlap.start,sessDateOverlap.end);const eIso=clampIso(fi(e2),sIso,sessDateOverlap.end);setNewSessStart(sIso);setNewSessStartInput(fd(new Date(sIso+"T00:00:00")));setNewSessEnd(eIso);setNewSessEndInput(fd(new Date(eIso+"T00:00:00")));setNewSessActivePreset(null);return;}const today=new Date();today.setHours(0,0,0,0);const earliest=new Date(today);earliest.setFullYear(earliest.getFullYear()-20);const latest=new Date(today.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
                         return(<>
                           {/* ─── Market + Random row ─── */}
                           <div style={{marginBottom:8,display:"flex",alignItems:"flex-end",gap:8}}>
@@ -1154,8 +1210,17 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               </div>
                             </div>
                             {/* ── Date Range row ── */}
-                            <div>
+                            <div onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}>
                               {lbl("Date Range *")}
+                              {sessionFilesLoading&&newSessTickers.length>0&&(
+                                <div style={{fontSize:9,color:c.tm,fontFamily:F,marginBottom:4}}>Loading ticker date ranges…</div>
+                              )}
+                              {!sessionFilesLoading&&sessDateOverlap.hasOverlap&&(
+                                <div style={{fontSize:9,color:c.acL,fontFamily:F,marginBottom:4}}>Available data: {sessDateOverlap.start} → {sessDateOverlap.end}</div>
+                              )}
+                              {!sessionFilesLoading&&sessDateOverlap.conflict&&(
+                                <div style={{fontSize:9,color:c.rd,fontFamily:F,marginBottom:4}}>Selected tickers have no overlapping date range.</div>
+                              )}
                               <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
                                 {/* Date inputs — 50% width matches market dropdown above */}
                                 <div style={{width:"50%",flexShrink:0,display:"flex",gap:6}}>
@@ -1175,7 +1240,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                     <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>End</div>
                                     <div style={{display:"flex",alignItems:"center",background:c.well,border:`1px solid ${newSessCalOpen&&newSessCalTarget==="end"?c.acL:(newSessEnd&&newSessStart&&newSessEnd<newSessStart?c.rd:c.brH)}`,transition:"border-color 0.12s"}}>
                                       <input value={newSessEndInput} placeholder="DD-Mon-YYYY" onClick={e=>e.stopPropagation()}
-                                        onChange={e=>{setNewSessEndInput(e.target.value);applyD(e.target.value,v=>{if(!newSessStart||v>=newSessStart)setNewSessEnd(v);});setNewSessActivePreset(null);}}
+                                        onChange={e=>{setNewSessEndInput(e.target.value);applyD(e.target.value,v=>{const minIso=newSessStart&&(sessDateOverlap.hasOverlap?newSessStart>sessDateOverlap.start:newSessStart>"1990-01-01")?newSessStart:(sessDateOverlap.hasOverlap?sessDateOverlap.start:"1990-01-01");const maxIso=sessDateOverlap.hasOverlap?sessDateOverlap.end:todayIso;const clamped=clampIso(v,minIso,maxIso);if(!newSessStart||clamped>=newSessStart)setNewSessEnd(clamped);});setNewSessActivePreset(null);}}
                                         onBlur={()=>{if(newSessEnd&&newSessStart&&newSessEnd<newSessStart){setNewSessEnd("");setNewSessEndInput("");}else if(newSessEnd){setNewSessEndInput(fmtD(newSessEnd));}}}
                                         style={inpSx}/>
                                       <div onClick={e=>{e.stopPropagation();if(newSessCalOpen&&newSessCalTarget==="end"){setNewSessCalOpen(false);}else{openCal(e,"end",newSessEnd);}}} style={chvSx}>

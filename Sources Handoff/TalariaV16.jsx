@@ -18,6 +18,14 @@ const syncV16SessionUrl = (sessionId) => {
   const fn = typeof window !== "undefined" ? window.__TALARIA_V16_SYNC_SESSION_URL__ : null;
   if (typeof fn === "function") fn(sessionId);
 };
+/** Embedded V16 uses the dashboard BacktestNewSessionModal (API + chart redirect), not the in-file sessions form. */
+const openDashboardNewSession = (opts = {}) => {
+  if (!isV16Embedded()) return false;
+  const fn = typeof window !== "undefined" ? window.__TALARIA_OPEN_NEW_SESSION__ : null;
+  if (typeof fn !== "function") return false;
+  fn(opts);
+  return true;
+};
 
 const sessNormSym = (t) => String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
 const sessIsoDayFromEpochMs = (ms) => {
@@ -10515,7 +10523,10 @@ const TalariaV8b = () => {
         const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
         const lockedBox = {opacity:0.35, pointerEvents:"none", userSelect:"none"};
         const activeBox = {};
-        const goNew = () => { setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessStartInput(""); setNewSessEndInput(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessPlaybookId(null); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true); };
+        const goNew = (opts = {}) => {
+          if (openDashboardNewSession(opts)) return;
+          setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessStartInput(""); setNewSessEndInput(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessPlaybookId(null); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true);
+        };
         const openBlankStrategyBuilder = () => {
           setStratEditId(null);
           setStratBName("");
@@ -13247,7 +13258,7 @@ const TalariaV8b = () => {
                       <div style={{fontSize:30,color:c.acL,marginBottom:10}}>▦</div>
                       <div style={{fontSize:18,fontWeight:900,color:c.tx,marginBottom:7}}>No backtests yet</div>
                       <div style={{fontSize:12,color:c.tm,lineHeight:1.6,marginBottom:18}}>Start your first backtest session and the dashboard will populate with analytics, charts, and prop-firm rule tracking.</div>
-                      <div onClick={()=>setSessView("sessions")} style={{height:36,padding:"0 20px",display:"inline-flex",alignItems:"center",gap:8,background:c.acL,color:"#fff",fontSize:12,fontWeight:900,letterSpacing:"0.05em",cursor:"default"}}>Run New Backtest</div>
+                      <div onClick={()=>{ if(!openDashboardNewSession()) setSessView("sessions"); }} style={{height:36,padding:"0 20px",display:"inline-flex",alignItems:"center",gap:8,background:c.acL,color:"#fff",fontSize:12,fontWeight:900,letterSpacing:"0.05em",cursor:"default"}}>Run New Backtest</div>
                     </div>
                   </div>
                 </div>
@@ -17624,7 +17635,7 @@ const TalariaV8b = () => {
                   label:dashTxt("Create Session","إنشاء جلسة"),
                   color:c.acL,
                   shadow:c.acG,
-                  onClick:()=>{ setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); setSessView("sessions"); goNew(); }
+                  onClick:()=>{ setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); if(!openDashboardNewSession()){ setSessView("sessions"); goNew(); } }
                 };
           const compareHeaderAction = dashCompareTab === "journals"
             ? {
@@ -17644,7 +17655,7 @@ const TalariaV8b = () => {
                   label:dashTxt("Create Session","إنشاء جلسة"),
                   color:c.acL,
                   shadow:c.acG,
-                  onClick:()=>{ setDashCompareOpen(false); setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); setSessView("sessions"); goNew(); }
+                  onClick:()=>{ setDashCompareOpen(false); setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); if(!openDashboardNewSession()){ setSessView("sessions"); goNew(); } }
                 };
           const toggleLibraryStrategyBox = (id) => setDashLibraryStrategyExpanded(prev => prev[id] ? {} : {[id]: true});
           const toggleLibraryTree = (id) => setDashLibraryTreeOpen(prev => ({...prev,[id]:!prev[id]}));
@@ -30901,6 +30912,7 @@ const TalariaV8b = () => {
                 const closeMenu=()=>setStratActMenu(null);
                 const run=fn=>e=>{e.stopPropagation();fn&&fn();closeMenu();};
                 const startStrategy=()=>{
+                  if(openDashboardNewSession({ strategyId: ms.id, strategyName: ms.name })) return;
                   goNew();
                   setNewSessName(`${ms.name} Backtest`);
                   setNewSessPlaybook(ms.name);

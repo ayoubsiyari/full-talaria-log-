@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 
 const MON_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -127,10 +128,10 @@ export function SessionDateCalendar({
     onMode("days");
   };
 
-  return (
+  const layer = (
     <>
       <div
-        style={{ position: "fixed", inset: 0, zIndex: 100001 }}
+        style={{ position: "fixed", inset: 0, zIndex: 600000 }}
         onClick={e => {
           e.stopPropagation();
           onClose();
@@ -143,7 +144,7 @@ export function SessionDateCalendar({
           position: "fixed",
           top: pos.top,
           left: pos.left,
-          zIndex: 100002,
+          zIndex: 600001,
           width: pos.width || 224,
           background: c.sf,
           border: `1px solid ${c.brH}`,
@@ -333,4 +334,7 @@ export function SessionDateCalendar({
       </div>
     </>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(layer, document.body);
 }

@@ -32,6 +32,11 @@ declare global {
     ) => Promise<Record<string, unknown>>;
     /** Update ?sessionId= when user applies a backtest source in the library. */
     __TALARIA_V16_SYNC_SESSION_URL__?: (sessionId: string | number) => void;
+    /** Open dashboard BacktestNewSessionModal from embedded V16 chrome. */
+    __TALARIA_OPEN_NEW_SESSION__?: (opts?: {
+      strategyId?: number;
+      strategyName?: string;
+    }) => void;
   }
 }
 
