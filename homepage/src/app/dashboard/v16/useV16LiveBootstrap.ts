@@ -16,6 +16,7 @@ import {
   mapApiSessionToV16,
   type SessionKpis,
 } from "./v16Mappers";
+import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 
 type BootState =
   | { status: "loading" }
@@ -34,6 +35,7 @@ export function useV16LiveBootstrap(): BootState {
 
   useLayoutEffect(() => {
     let cancelled = false;
+    primeV16EmbeddedShell();
 
     const fetchTradesForSession = async (sess: Session): Promise<Record<string, unknown>[]> => {
       return fetchAndMapTradesForSession(sess as never);
@@ -134,8 +136,6 @@ export function useV16LiveBootstrap(): BootState {
           appliedSource,
         };
 
-        window.__TALARIA_V16_LIVE__ = true;
-        window.__TALARIA_V16_EMBEDDED__ = true;
         window.__TALARIA_V16_BOOT__ = boot;
         window.__TALARIA_V16_TRADES__ = tradesBySessionId;
 

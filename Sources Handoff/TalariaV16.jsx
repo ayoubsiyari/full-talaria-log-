@@ -7714,10 +7714,7 @@ const TalariaV8b = () => {
   const [sessHov, setSessHov] = useState(null);
   const [stratPopup, setStratPopup] = useState(null);
   const [symPopup, setSymPopup] = useState(null);
-  const [sessView, setSessView] = useState(() => {
-    if (isV16Embedded() && (isV16LiveBoot() || window.__TALARIA_V16_BOOT__?.openSessionId != null)) return "dashboard";
-    return "sessions";
-  });
+  const [sessView, setSessView] = useState(() => (isV16Embedded() ? "dashboard" : "sessions"));
   const [resourcesLang, setResourcesLang] = useState("en");
   const [resourcesTutorialMode, setResourcesTutorialMode] = useState(false);
   const [resourcesSearchOpen, setResourcesSearchOpen] = useState(false);

@@ -2,26 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import React, { useEffect } from "react";
+import React, { useEffect, useLayoutEffect } from "react";
+import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 import { useV16LiveBootstrap } from "./useV16LiveBootstrap";
 
 const TalariaV16 = dynamic(() => import("talaria-handoff/TalariaV16.jsx"), {
   ssr: false,
-  loading: () => (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "rgba(255,255,255,0.55)",
-        fontFamily: "'Exo 2', sans-serif",
-        fontSize: 13,
-      }}
-    >
-      Loading dashboard…
-    </div>
-  ),
+  loading: () => null,
 });
 
 export default function TalariaV16Dashboard() {
@@ -29,6 +16,10 @@ export default function TalariaV16Dashboard() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  useLayoutEffect(() => {
+    primeV16EmbeddedShell();
+  }, []);
 
   useEffect(() => {
     window.__TALARIA_V16_SYNC_SESSION_URL__ = (sessionId) => {
@@ -42,45 +33,10 @@ export default function TalariaV16Dashboard() {
     };
   }, [pathname, router, searchParams]);
 
-  if (boot.status === "loading") {
-    return (
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "rgba(255,255,255,0.55)",
-          fontFamily: "'Exo 2', sans-serif",
-          fontSize: 13,
-        }}
-      >
-        Loading sessions and trades…
-      </div>
-    );
-  }
-
-  if (boot.status === "error") {
-    return (
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-          color: "#ff8a9a",
-          fontFamily: "'Exo 2', sans-serif",
-          fontSize: 13,
-          textAlign: "center",
-        }}
-      >
-        Could not load dashboard data: {boot.message}
-      </div>
-    );
-  }
+  const v16Key =
+    boot.status === "ready"
+      ? `ready-${String(boot.boot.openSessionId ?? "none")}`
+      : "booting";
 
   return (
     <div
@@ -94,7 +50,27 @@ export default function TalariaV16Dashboard() {
         overflow: "hidden",
       }}
     >
-      <TalariaV16 key={String(boot.boot.openSessionId ?? "default")} />
+      {boot.status === "error" ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 20,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+            background: "rgba(7,8,14,0.92)",
+            color: "#ff8a9a",
+            fontFamily: "'Exo 2', sans-serif",
+            fontSize: 13,
+            textAlign: "center",
+          }}
+        >
+          Could not load dashboard data: {boot.message}
+        </div>
+      ) : null}
+      <TalariaV16 key={v16Key} />
     </div>
   );
 }
