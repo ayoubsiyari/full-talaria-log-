@@ -6,6 +6,8 @@
     "build:chart-v9": "npm run build:live --prefix \"chart v 1.4/talaria-design\"",
     "sync:chart-v9": "node \"chart v 1.4/talaria-design/scripts/sync-v9-to-homepage.mjs\"",
     "dev:chart-v9": "npm run dev:live --prefix \"chart v 1.4/talaria-design\"",
+    "dev:handoff-v16": "npm run dev --prefix \"Sources Handoff/prototype_reference_v16\"",
+    "build:handoff-v16": "npm run build --prefix \"Sources Handoff/prototype_reference_v16\"",
     "build:homepage": "npm run build --prefix homepage",
     "build:web": "npm run build:chart-v9 && npm run build:homepage",
     "docker:build-chart": "docker compose build trading-chart",

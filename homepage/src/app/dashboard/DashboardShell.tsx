@@ -673,25 +673,9 @@ export default function DashboardShell({
             </button>
           ) : null}
           {isAdminUser ? (
-            onAdminRoute ? (
+            <>
               <a
-                href="/dashboard/backtest/"
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: DASH_C.acL,
-                  textDecoration: "none",
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  border: "1px solid rgba(74,106,255,0.35)",
-                  fontFamily: F,
-                }}
-              >
-                {isArabic ? "التطبيق" : "Trading app"}
-              </a>
-            ) : (
-              <a
-                href="/dashboard/admin/"
+                href="/dashboard/design/handoff/"
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
@@ -702,10 +686,44 @@ export default function DashboardShell({
                   border: "1px solid rgba(140,160,255,0.12)",
                   fontFamily: F,
                 }}
+                title="Preview Sources Handoff/TalariaV16.jsx dashboard mock"
               >
-                Admin
+                V16 Handoff
               </a>
-            )
+              {onAdminRoute ? (
+                <a
+                  href="/dashboard/backtest/"
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: DASH_C.acL,
+                    textDecoration: "none",
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(74,106,255,0.35)",
+                    fontFamily: F,
+                  }}
+                >
+                  {isArabic ? "التطبيق" : "Trading app"}
+                </a>
+              ) : (
+                <a
+                  href="/dashboard/admin/"
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: DASH_C.ts,
+                    textDecoration: "none",
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(140,160,255,0.12)",
+                    fontFamily: F,
+                  }}
+                >
+                  Admin
+                </a>
+              )}
+            </>
           ) : null}
         </div>
       </header>
