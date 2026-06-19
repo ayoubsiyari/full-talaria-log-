@@ -37,6 +37,13 @@ const reloadEmbeddedV16Boot = () => {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
 };
+const openDashboardStrategyBuilder = () => {
+  if (!isV16Embedded()) return false;
+  const fn = typeof window !== "undefined" ? window.__TALARIA_OPEN_STRATEGY_BUILDER__ : null;
+  if (typeof fn !== "function") return false;
+  fn();
+  return true;
+};
 
 const sessNormSym = (t) => String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
 const sessIsoDayFromEpochMs = (ms) => {
@@ -11635,7 +11642,10 @@ const TalariaV8b = () => {
                               </div>
                             </div>
                             {/* New Strategy button – bottom-aligned beside the 50% block */}
-                            <div style={{flexShrink:0,height:38,width:160,justifyContent:"center",display:"flex",alignItems:"center",gap:9,background:"#3F54F7",cursor:"default",fontSize:14,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.02em",boxShadow:"0 2px 12px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s, transform 0.08s"}}
+                            <div role="button" tabIndex={0} aria-label="Create new strategy"
+                              onClick={(e) => { e.stopPropagation(); setNewSessStratDropOpen(false); setNewSessOpen(false); openDashboardStrategyBuilder(); }}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setNewSessStratDropOpen(false); setNewSessOpen(false); openDashboardStrategyBuilder(); } }}
+                              style={{flexShrink:0,height:38,width:160,justifyContent:"center",display:"flex",alignItems:"center",gap:9,background:"#3F54F7",cursor:"default",fontSize:14,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.02em",boxShadow:"0 2px 12px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s, transform 0.08s"}}
                               onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                               onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
                               onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}

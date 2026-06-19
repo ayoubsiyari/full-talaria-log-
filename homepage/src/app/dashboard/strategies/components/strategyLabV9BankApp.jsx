@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   buildNodesFromTemplate,
   buildInitialSections,
@@ -135,6 +135,7 @@ function LabNavPanel({ pathname, hov, setHov }) {
 export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   const router = useRouter();
   const pathname = usePathname() || "";
+  const searchParams = useSearchParams();
   const backtestNewSession = useOptionalBacktestNewSession();
   const [hov, setHov] = useState(null);
 
@@ -835,6 +836,18 @@ export default function StrategyLabV9BankApp({ registerDashboardOpenBuilder }) {
   };
 
   stratOpenBuilderLatestRef.current = openBuilder;
+
+  useEffect(() => {
+    if (searchParams.get("create") !== "1") return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("create");
+    const qs = params.toString();
+    router.replace(`/dashboard/strategies/${qs ? `?${qs}` : ""}`, { scroll: false });
+    const timer = window.setTimeout(() => {
+      stratOpenBuilderLatestRef.current();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, router]);
 
   const applyTemplateToBuilder = async (tpl) => {
     if (!tpl) return;

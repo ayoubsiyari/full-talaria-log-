@@ -3,6 +3,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
@@ -68,6 +69,7 @@ export type BacktestNewSessionModalProps = {
 };
 
 export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }: BacktestNewSessionModalProps) {
+  const router = useRouter();
   const c = {
     ac: "#2643F7", acL: "#4A6AFF", acD: "rgba(38,67,247,0.08)", acB: "rgba(38,67,247,0.22)", acG: "rgba(74,106,255,0.35)",
     gold: "#C9A84C",
@@ -575,6 +577,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     onClose();
   };
 
+  const openNewStrategyLab = () => {
+    closeNewSess();
+    router.push("/dashboard/strategies/?create=1");
+  };
+
   const sessInfoDone = !!newSessName.trim();
   const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
   const lockedBox = { opacity: 0.35, pointerEvents: "none" as const, userSelect: "none" as const };
@@ -988,7 +995,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                               </div>
                             </div>
                             {/* New Strategy button – bottom-aligned beside the 50% block */}
-                            <div style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
+                            <div role="button" tabIndex={0} aria-label="Create new strategy"
+                              onClick={(e) => { e.stopPropagation(); openNewStrategyLab(); }}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); openNewStrategyLab(); } }}
+                              style={{flexShrink:0,height:27,width:110,justifyContent:"center",display:"flex",alignItems:"center",gap:5,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.96)",letterSpacing:"0.05em",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",fontFamily:F,whiteSpace:"nowrap",transition:"filter 0.12s"}}
                               onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                               onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                               <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>

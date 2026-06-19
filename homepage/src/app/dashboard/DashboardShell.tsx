@@ -359,6 +359,15 @@ export default function DashboardShell({
   }, []);
 
   React.useEffect(() => {
+    window.__TALARIA_OPEN_STRATEGY_BUILDER__ = () => {
+      router.push("/dashboard/strategies/?create=1");
+    };
+    return () => {
+      delete window.__TALARIA_OPEN_STRATEGY_BUILDER__;
+    };
+  }, [router]);
+
+  React.useEffect(() => {
     fetchMe()
       .then((u) => {
         setUser(u);
