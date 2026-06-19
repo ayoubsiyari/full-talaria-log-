@@ -81,6 +81,26 @@ export function useV16LiveBootstrap(): BootState {
       return saved;
     };
 
+    window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ = async () => {
+      const journalPayload = await fetchJournalApiData().catch(() => ({
+        entries: [],
+        connections: [],
+        strategies: [],
+        activeProfile: null,
+      }));
+      const strategyBank = (journalPayload.strategies || []).map((s) =>
+        apiStrategyToBankRow(s as ApiStrategyRecord)
+      );
+      if (window.__TALARIA_V16_BOOT__) {
+        window.__TALARIA_V16_BOOT__.strategyBank = strategyBank;
+        window.__TALARIA_V16_BOOT__.sessions = (window.__TALARIA_V16_BOOT__.sessions || []).map(
+          (sess) => enrichV16SessionFromStrategyBank(sess, strategyBank)
+        );
+        window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
+      }
+      return strategyBank;
+    };
+
     (async () => {
       setState((prev) =>
         prev.status === "ready" && window.__TALARIA_V16_BOOT__?.sessions?.length
@@ -192,6 +212,7 @@ export function useV16LiveBootstrap(): BootState {
       window.__TALARIA_V16_BOOT_LOADING__ = false;
       delete window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
       delete window.__TALARIA_V16_SAVE_MANUAL_TRADE__;
+      delete window.__TALARIA_V16_REFRESH_STRATEGY_BANK__;
     };
   }, [reloadKey, urlSessionId]);
 

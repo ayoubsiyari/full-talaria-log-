@@ -41,6 +41,8 @@ declare global {
     __TALARIA_OPEN_EDIT_SESSION__?: (sess: Record<string, unknown>) => void;
     /** True while embedded bootstrap is fetching sessions/trades (show loading UI). */
     __TALARIA_V16_BOOT_LOADING__?: boolean;
+    /** Reload journal strategies and refresh boot.strategyBank (Add Trade tags). */
+    __TALARIA_V16_REFRESH_STRATEGY_BANK__?: () => Promise<Record<string, unknown>[]>;
   }
 }
 

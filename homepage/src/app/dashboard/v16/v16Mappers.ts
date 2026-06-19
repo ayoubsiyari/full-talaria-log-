@@ -7,6 +7,10 @@ import {
   type JournalApiTradeItem,
 } from "../sessionJournalUtils";
 import { sessionConfigStrategyName } from "../analytics/sessionSelection";
+import {
+  extractStrategyVariablesFromDefinition,
+  strategyVariablesHaveItems,
+} from "../strategies/strategyLabV9Mappers";
 
 type ApiSession = {
   id: number;
@@ -240,15 +244,7 @@ function parseStrategyRefId(value: unknown): number | null {
 }
 
 function hasStrategyVariableItems(items: unknown[]): boolean {
-  return items.some((item) => {
-    const rec = item as Record<string, unknown> | null;
-    if (!rec || rec.type === "divider") return false;
-    if (rec.type === "variable") return true;
-    return (
-      String(rec.name || rec.label || "").trim().length > 0 &&
-      Array.isArray(rec.options)
-    );
-  });
+  return strategyVariablesHaveItems(items);
 }
 
 function sessionStrategyIdFromConfig(cfg: Record<string, unknown> | undefined): number | null {
@@ -382,7 +378,15 @@ export function enrichV16SessionFromStrategyBank(
     strategyId != null
       ? strategyBank.find((row) => String(row.id) === String(strategyId))
       : null;
-  const bankVars = Array.isArray(bankRow?.variables) ? (bankRow.variables as unknown[]) : [];
+  const bankVars = bankRow
+    ? (() => {
+        const fromDef = extractStrategyVariablesFromDefinition(
+          bankRow.strategy_definition as Record<string, unknown> | undefined
+        );
+        if (hasStrategyVariableItems(fromDef)) return fromDef;
+        return Array.isArray(bankRow.variables) ? (bankRow.variables as unknown[]) : [];
+      })()
+    : [];
   if (!hasStrategyVariableItems(bankVars)) return session;
 
   return {

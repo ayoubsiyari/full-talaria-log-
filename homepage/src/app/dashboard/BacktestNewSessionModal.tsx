@@ -9,7 +9,7 @@ import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
 import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso } from "./backtestModal/dateRangeUtils";
 import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
 import { JOURNAL_API_BASE, journalAuthHeaders } from "@/lib/journalApi";
-import { apiStrategyToBankRow } from "./strategies/strategyLabV9Mappers";
+import { apiStrategyToBankRow, extractStrategyVariablesFromDefinition } from "./strategies/strategyLabV9Mappers";
 
 const F = "'Exo 2', sans-serif";
 
@@ -658,8 +658,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       (newSessPlaybook && !newSessPlaybook.startsWith("strategy:") ? newSessPlaybook : "") ||
       playbookDisplay ||
       "";
-    const strategyVariables = Array.isArray(linkedStrategy?.variables)
-      ? linkedStrategy.variables.filter(
+    const strategyVariables = linkedStrategy
+      ? extractStrategyVariablesFromDefinition(
+          (linkedStrategy.strategy_definition as Record<string, unknown> | undefined) || undefined
+        ).filter(
           (item: { type?: string; name?: string; label?: string }) =>
             item?.type === "variable" ||
             (item?.type !== "divider" && String(item?.name || item?.label || "").trim())

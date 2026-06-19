@@ -66,6 +66,37 @@ export type ApiStrategyRecord = {
   updated_at?: string | null;
 };
 
+/** True when array contains Strategy Lab variable rows (not just a divider). */
+export function strategyVariablesHaveItems(items: unknown[] | null | undefined): boolean {
+  if (!Array.isArray(items) || !items.length) return false;
+  return items.some((item) => {
+    const rec = item as Record<string, unknown> | null;
+    if (!rec || rec.type === "divider") return false;
+    if (rec.type === "variable") return true;
+    return (
+      String(rec.name || rec.label || "").trim().length > 0 &&
+      Array.isArray(rec.options)
+    );
+  });
+}
+
+/** Same resolution order as chart backtesting session create (`strategy_definition.variables`). */
+export function extractStrategyVariablesFromDefinition(
+  def: Record<string, unknown> | null | undefined
+): unknown[] {
+  if (!def || typeof def !== "object") return [];
+  const root = Array.isArray(def.variables) ? (def.variables as unknown[]) : [];
+  const v9raw = def[TALARIA_V9_PANEL_KEY] ?? def.talaria_v9_panel;
+  const v9 =
+    v9raw && typeof v9raw === "object" ? (v9raw as Record<string, unknown>) : null;
+  const v9Vars = v9 && Array.isArray(v9.variables) ? (v9.variables as unknown[]) : [];
+  if (strategyVariablesHaveItems(root)) return root;
+  if (strategyVariablesHaveItems(v9Vars)) return v9Vars;
+  if (root.length) return root;
+  if (v9Vars.length) return v9Vars;
+  return [];
+}
+
 type KpisLite = {
   trades?: number;
   win_rate?: number | null;
@@ -115,27 +146,17 @@ export function apiStrategyToBankRow(s: ApiStrategyRecord): Record<string, unkno
     ? (v9.markets as string[])
     : ((draft.market_categories as string[]) || []);
 
-  const v9Variables = Array.isArray(v9.variables) ? (v9.variables as unknown[]) : [];
-  const draftVariables = Array.isArray(draft.variables) ? (draft.variables as unknown[]) : [];
-  const hasVariableItems = (items: unknown[]) =>
-    items.some((item) => {
-      const rec = item as Record<string, unknown> | null;
-      if (!rec || rec.type === "divider") return false;
-      return rec.type === "variable" || (String(rec.name || rec.label || "").trim() && Array.isArray(rec.options));
-    });
-  const variables = hasVariableItems(v9Variables)
-    ? v9Variables
-    : hasVariableItems(draftVariables)
-      ? draftVariables
-      : v9Variables.length
-        ? v9Variables
-        : draftVariables.length
-          ? draftVariables
-          : [{ type: "divider", id: "div0" }];
+  const variables = extractStrategyVariablesFromDefinition(def);
+  const normalizedVariables = strategyVariablesHaveItems(variables)
+    ? variables
+    : variables.length
+      ? variables
+      : [{ type: "divider", id: "div0" }];
 
   return {
     id: s.id,
     name: s.name,
+    strategy_definition: def,
     desc: (typeof v9.desc === "string" && v9.desc) || String(draft.description || ""),
     icon: typeof v9.icon === "string" ? v9.icon : "",
     style: String(draft.style || "Trend Following"),
@@ -146,7 +167,7 @@ export function apiStrategyToBankRow(s: ApiStrategyRecord): Record<string, unkno
     direction: String(draft.direction || "both"),
     markets,
     conditions: Array.isArray(v9.conditions) ? v9.conditions : (draft.conditions as unknown[]) || [],
-    variables: variables,
+    variables: normalizedVariables,
     images: bankGalleryImages(v9.images, def.cover_image),
     supportInst: Array.isArray(v9.supportInst) ? v9.supportInst : [],
     tree: v9.tree,

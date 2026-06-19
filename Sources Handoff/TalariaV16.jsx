@@ -8334,11 +8334,14 @@ const TalariaV8b = () => {
       return true;
     };
     if (syncBank()) return;
+    const onBoot = () => syncBank();
+    window.addEventListener("talaria-v16-boot-updated", onBoot);
     const timer = window.setInterval(() => {
       if (syncBank()) window.clearInterval(timer);
     }, 500);
     return () => {
       cancelled = true;
+      window.removeEventListener("talaria-v16-boot-updated", onBoot);
       window.clearInterval(timer);
     };
   }, []);
@@ -23717,6 +23720,21 @@ const TalariaV8b = () => {
               item && item.type !== "divider" && String(item.name || item.label || "").trim() && Array.isArray(item.options)
             ));
           };
+          const extractDashAddTradeVariablesFromDef = (def) => {
+            if (!def || typeof def !== "object") return [];
+            const root = Array.isArray(def.variables) ? def.variables : [];
+            const v9 = def.talaria_v9 || def.talaria_v9_panel;
+            const v9Vars = v9 && Array.isArray(v9.variables) ? v9.variables : [];
+            if (dashAddTradeVariablesHaveDefs(root)) return root;
+            if (dashAddTradeVariablesHaveDefs(v9Vars)) return v9Vars;
+            return root.length ? root : v9Vars;
+          };
+          const extractDashAddTradeVariablesFromBankRow = (row) => {
+            if (!row) return [];
+            const defVars = extractDashAddTradeVariablesFromDef(row.strategy_definition);
+            if (dashAddTradeVariablesHaveDefs(defVars)) return defVars;
+            return Array.isArray(row.variables) && dashAddTradeVariablesHaveDefs(row.variables) ? row.variables : [];
+          };
           const parseDashAddTradeSessionStrategyId = (session) => {
             if (!session) return null;
             const cfg = session?.config && typeof session.config === "object" ? session.config : {};
@@ -23800,7 +23818,7 @@ const TalariaV8b = () => {
             const panelVars = cfg.talaria_v9?.variables ?? cfg.talaria_v9_panel?.variables;
             if (dashAddTradeVariablesHaveDefs(panelVars)) return panelVars;
             const match = findDashAddTradeStrategyBankRow(source, session);
-            return Array.isArray(match?.variables) && dashAddTradeVariablesHaveDefs(match.variables) ? match.variables : [];
+            return extractDashAddTradeVariablesFromBankRow(match);
           };
           const enrichDashAddTradeSource = (source) => {
             if (!source) return source;
@@ -23814,7 +23832,44 @@ const TalariaV8b = () => {
               strategyName: source?.strategyName || bankRow?.name || session?.strategyName || source?.strategy || "",
               variables,
               strategyVariables: variables,
+              strategyRecord: bankRow || source?.strategyRecord || null,
             };
+          };
+          const ensureDashAddTradeStrategyVariables = (source, onResolved) => {
+            const enriched = enrichDashAddTradeSource(source);
+            const finish = (next) => {
+              if (typeof onResolved === "function") onResolved(next || enriched);
+            };
+            if (dashAddTradeVariablesHaveDefs(enriched.variables)) {
+              finish(enriched);
+              return;
+            }
+            const strategyId = enriched.strategyId ?? parseDashAddTradeSessionStrategyId(resolveDashAddTradePrimarySession(enriched));
+            if (strategyId == null || !isV16LiveBoot()) {
+              finish(enriched);
+              return;
+            }
+            const applyBank = (bank) => {
+              const rows = Array.isArray(bank) && bank.length ? bank : (getV16StrategyBank() || myStrategies || []);
+              const row = rows.find(item => String(item.id) === String(strategyId));
+              const vars = extractDashAddTradeVariablesFromBankRow(row);
+              if (dashAddTradeVariablesHaveDefs(vars)) {
+                finish({
+                  ...enriched,
+                  variables: vars,
+                  strategyVariables: vars,
+                  strategyRecord: row || enriched.strategyRecord || null,
+                });
+                return;
+              }
+              finish(enriched);
+            };
+            const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
+            if (typeof refresh === "function") {
+              refresh().then(applyBank).catch(() => applyBank(null));
+              return;
+            }
+            applyBank(null);
           };
           const addTradeBaseSourceItems = (() => {
             const rows = dashboardSourceFilterItems.length
@@ -24327,13 +24382,10 @@ const TalariaV8b = () => {
           };
           const openSelectedAddTradeSource = (source) => {
             if (!source) return;
-            const enriched = enrichDashAddTradeSource(source);
             setDashAddTradePickerOpen(false);
             setDashAddTradeWarningOpen(false);
             setDashPendingAddTradeSource(null);
             setDashAddTradeEditMeta(null);
-            setDashAddTradeEditorSource(enriched);
-            setDashAddTradeDraft(buildDashAddTradeDraft(enriched));
             setDashAddTradeEditorPage("trade");
             setDashAddTradeValidationError("");
             setDashAddTradePreTags({});
@@ -24341,7 +24393,11 @@ const TalariaV8b = () => {
             setDashAddTradeScreenshots({pre:[], post:[]});
             setDashAddTradeScreenshotSlot("pre");
             setDashAddTradeExcursionOpen(false);
-            setDashAddTradeEditorOpen(true);
+            ensureDashAddTradeStrategyVariables(source, (enriched) => {
+              setDashAddTradeEditorSource(enriched);
+              setDashAddTradeDraft(buildDashAddTradeDraft(enriched));
+              setDashAddTradeEditorOpen(true);
+            });
           };
           const openDashTradeEditorFromTrade = (trade, rowKey=null) => {
             if (!trade) return;
@@ -24492,7 +24548,7 @@ const TalariaV8b = () => {
             setDashAddTradePickerOpen(false);
             setDashAddTradeWarningOpen(false);
             setDashPendingAddTradeSource(null);
-            setDashAddTradeEditorSource(source);
+            setDashAddTradeEditorSource(enrichDashAddTradeSource(source));
             setDashAddTradeDraft(draftWithSnapshot);
             setDashAddTradeEditorPage("trade");
             setDashAddTradeValidationError("");
@@ -25205,6 +25261,13 @@ const TalariaV8b = () => {
           };
           const splitDashAddTradeVariableDefs = (variables, slot) => {
             const vars = Array.isArray(variables) ? variables : [];
+            const slotTiming = slot === "pre" ? "pre" : "post";
+            const timed = vars.filter(item => item?.type === "variable" && item.timing === slotTiming);
+            if (timed.length) {
+              return timed
+                .map((item, index) => normalizeDashAddTradeTagDef(item, index, slot))
+                .filter(Boolean);
+            }
             const dividerIndex = vars.findIndex(item => item?.type === "divider");
             const isVariableItem = (item) => item?.type === "variable" || (
               item && item.type !== "divider" && String(item.name || item.label || "").trim() && Array.isArray(item.options)
@@ -25271,6 +25334,8 @@ const TalariaV8b = () => {
               sessionCfg.strategyDefinition?.variables,
               sessionCfg.strategy_definition?.talaria_v9?.variables,
               sessionCfg.strategy_definition?.talaria_v9_panel?.variables,
+              strategyRecord?.strategy_definition?.variables,
+              strategyRecord?.strategy_definition?.talaria_v9?.variables,
               sessionCfg.talaria_v9?.variables,
               sessionCfg.talaria_v9_panel?.variables,
               source?.strategy?.variables,
@@ -25293,9 +25358,9 @@ const TalariaV8b = () => {
               {id:"emotion", label:dashTxt("Emotion","الشعور"), type:"multi", single:true, options:["Calm","FOMO","Fearful","Greedy"]},
               {id:"exitRsn", label:dashTxt("Exit Reason","سبب الخروج"), type:"multi", single:true, options:["TP Hit","Manual","SL Hit","Trailing"]},
             ];
-            const fallback = slot === "pre" ? defaultPreDefs : defaultPostDefs;
+            const fallback = isV16LiveBoot() ? [] : (slot === "pre" ? defaultPreDefs : defaultPostDefs);
             const resolved = (fromDirect.length ? fromDirect : fromVariables.length ? fromVariables : fallback).map(def => ({...def}));
-            if (slot === "post" && !resolved.some(def => def.id === "planReview" || normalizeDashAddTradeTagKey(def.label) === "plan review")) {
+            if (!isV16LiveBoot() && slot === "post" && !resolved.some(def => def.id === "planReview" || normalizeDashAddTradeTagKey(def.label) === "plan review")) {
               resolved.unshift({id:"planReview", label:dashTxt("Plan Review","مراجعة الخطة"), type:"multi", single:true, options:["According to Plan","Out of Plan","Missed Trade"]});
             }
             return resolved.slice(0, 10);
