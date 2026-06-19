@@ -11,6 +11,11 @@
  * treating this file as part of a broken `next`/`@types/node` graph when `node_modules`
  * is missing from the IDE snapshot.
  */
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const CHART_BACKEND =
   process.env.CHART_BACKEND?.replace(/\/$/, "") ||
   process.env.NEXT_PUBLIC_CHART_BACKEND?.replace(/\/$/, "") ||
@@ -87,6 +92,22 @@ const nextConfig = {
       );
     }
     return { afterFiles };
+  },
+  webpack: (config) => {
+    const handoffRoot = path.join(__dirname, "..", "Sources Handoff");
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "talaria-handoff": handoffRoot,
+      reactflow: path.join(__dirname, "node_modules", "reactflow"),
+      "reactflow/dist/style.css": path.join(
+        __dirname,
+        "node_modules",
+        "reactflow",
+        "dist",
+        "style.css"
+      ),
+    };
+    return config;
   },
 };
 

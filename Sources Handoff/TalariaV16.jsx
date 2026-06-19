@@ -4,6 +4,13 @@ import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Handle, Position,
 import 'reactflow/dist/style.css';
 import { SCORE_CONFIG, DIM_KEYS, computeTalariaScore, computeTrend } from "./scoreEngine.js";
 
+const isV16Embedded = () => typeof window !== "undefined" && !!window.__TALARIA_V16_EMBEDDED__;
+const isV16LiveBoot = () =>
+  typeof window !== "undefined" &&
+  !!window.__TALARIA_V16_LIVE__ &&
+  Array.isArray(window.__TALARIA_V16_BOOT__?.sessions) &&
+  window.__TALARIA_V16_BOOT__.sessions.length > 0;
+
 /* @refresh reset */
 
 // ── Color utilities ──────────────────────────────────────────────────────────
@@ -6336,6 +6343,7 @@ const btDashTradesCache = new Map();
 function btDashBuildTrades(session) {
   const manualTrades = Array.isArray(session?.manualTrades) ? session.manualTrades : [];
   if (Array.isArray(session?.compositeTrades)) return manualTrades.length ? [...session.compositeTrades, ...manualTrades] : session.compositeTrades;
+  if (isV16LiveBoot()) return manualTrades.length ? manualTrades : [];
   const count = Math.max(0, Math.min(5000, Number(session?.trades) || 0));
   if (!count) return [];
   const cacheKey = [
@@ -7640,6 +7648,7 @@ const TalariaV8b = () => {
   const [sessionPage, setSessionPage] = useState(true);
   const [sessPageFading, setSessPageFading] = useState(false);
   const [sessions, setSessions] = useState(() => {
+    if (isV16LiveBoot()) return window.__TALARIA_V16_BOOT__.sessions;
     try {
       const saved = JSON.parse(localStorage.getItem("talaria_sessions") || "[]");
       // only restore if sessions have strategyDesc (schema v3+)
@@ -7697,7 +7706,10 @@ const TalariaV8b = () => {
   const [sessHov, setSessHov] = useState(null);
   const [stratPopup, setStratPopup] = useState(null);
   const [symPopup, setSymPopup] = useState(null);
-  const [sessView, setSessView] = useState("sessions");
+  const [sessView, setSessView] = useState(() => {
+    if (isV16Embedded() && (isV16LiveBoot() || window.__TALARIA_V16_BOOT__?.openSessionId != null)) return "dashboard";
+    return "sessions";
+  });
   const [resourcesLang, setResourcesLang] = useState("en");
   const [resourcesTutorialMode, setResourcesTutorialMode] = useState(false);
   const [resourcesSearchOpen, setResourcesSearchOpen] = useState(false);
@@ -7705,7 +7717,29 @@ const TalariaV8b = () => {
   const [resourcesSectionId, setResourcesSectionId] = useState("landing");
   const [resourcesArticleId, setResourcesArticleId] = useState(null);
   const [resourcesGlossaryPeek, setResourcesGlossaryPeek] = useState(null);
-  const [dashSessId, setDashSessId] = useState(null);
+  const [dashSessId, setDashSessId] = useState(() => {
+    if (isV16LiveBoot() && window.__TALARIA_V16_BOOT__?.openSessionId != null) {
+      return window.__TALARIA_V16_BOOT__.openSessionId;
+    }
+    return null;
+  });
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  useEffect(() => {
+    if (!isV16Embedded() || !isV16LiveBoot()) return;
+    if (dashSessId == null) return;
+    const sid = String(dashSessId);
+    const sess = sessionsRef.current.find(s => String(s.id) === sid);
+    if (sess?.compositeTradesLoaded) return;
+    const fetcher = window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
+    if (typeof fetcher !== "function") return;
+    let cancelled = false;
+    fetcher(dashSessId).then(trades => {
+      if (cancelled) return;
+      setSessions(prev => prev.map(s => String(s.id) === sid ? { ...s, compositeTrades: trades, compositeTradesLoaded: true } : s));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [dashSessId]);
   const [dashStrategyId, setDashStrategyId] = useState(null);
   const [dashHov, setDashHov] = useState(null);
   const [dashMode, setDashMode] = useState(() => {
@@ -9956,6 +9990,7 @@ const TalariaV8b = () => {
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   const launchSession = () => {
+    if (isV16Embedded()) return;
     setLoadQuote(LOAD_QUOTES[Math.floor(Math.random() * LOAD_QUOTES.length)]);
     setTypedQuote("");
     setSessPageFading(true);
@@ -10168,8 +10203,10 @@ const TalariaV8b = () => {
 
   const ddItems = getDdItems();
 
+  const v16EmbeddedRoot = isV16Embedded();
+
   return (
-    <div style={{ width: "100%", height: "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: 1.05, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div style={{ width: "100%", height: v16EmbeddedRoot ? "100%" : "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: v16EmbeddedRoot ? 1 : 1.05, animation: isFullscreen && !v16EmbeddedRoot ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onClick={closeAll}>
       <style>{`
         @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
@@ -24804,8 +24841,10 @@ const TalariaV8b = () => {
             </div>
           );
 
+          const v16Embedded = isV16Embedded();
+
           return (
-            <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}}>
+            <div style={{position:v16Embedded?"absolute":"fixed",inset:0,...(v16Embedded?{flex:1,minHeight:0,width:"100%",height:"100%"}:{}),zIndex:v16Embedded?1:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}}>
               {dashHoverInfo?.scope === "add-trade" && (
                 <div ref={dashHoverInfoBoxRef} className="tlr-dashboard-info-box" style={{position:"fixed",left:Math.round(dashHoverInfo.left),top:Math.round(dashHoverInfo.top),width:dashHoverInfo.width,maxWidth:220,zIndex:100060,pointerEvents:"none",background:"rgba(5,7,13,0.98)",border:`1px solid ${c.br}`,boxShadow:`0 4px 16px rgba(0,0,0,0.62), -3px 0 12px -8px ${dashHoverInfo.accent || c.acL}`,padding:"7px 10px 7px 12px",boxSizing:"border-box",fontFamily:F,color:c.tx,fontSize:10,fontWeight:500,lineHeight:1.38,animation:"none",willChange:"left, top, opacity",transform:"none",transition:"opacity 45ms linear",overflow:"hidden"}}>
                   <div aria-hidden="true" style={{position:"absolute",left:0,top:0,bottom:0,width:1,background:dashHoverInfo.accent || c.acL,boxShadow:`0 0 10px ${dashHoverInfo.accent || c.acL}`,opacity:.95}}/>
@@ -24815,15 +24854,19 @@ const TalariaV8b = () => {
                 </div>
               )}
               {/* Header */}
-              <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:120}}>
+              <div style={{height:v16Embedded?52:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:120}}>
+                {!v16Embedded && (
                 <div style={{width:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <img src="/LOGO-07.png" style={{width:52,height:52,objectFit:"contain"}} alt=""/>
                 </div>
+                )}
+                {!v16Embedded && (
                 <div style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 12px 0 0"}}>
                   <div style={{fontSize:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:14}}>Talaria-Log</div>
                   <div style={{width:1.5,height:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:14,flexShrink:0}}/>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,maxWidth:dashboardCompareBarActive?1220:880,flex:"0 1 auto",marginLeft:14}}>
+                )}
+                <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,maxWidth:dashboardCompareBarActive?1220:880,flex:"0 1 auto",marginLeft:v16Embedded?12:14}}>
                   <div className={`tlr-dashboard-source-switch tlr-dashboard-source-switch-redesign${dashLibraryOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-label={`${dashboardLibraryType.label}: ${dashboardLibraryLabel}`}
                     onPointerDown={e=>{e.preventDefault();toggleDashLibrary();}}
                     onClick={e=>e.preventDefault()}
@@ -24928,7 +24971,7 @@ const TalariaV8b = () => {
 
               {/* Body */}
               <div style={{flex:1,display:"flex",overflow:"hidden",flexDirection:isDashRTL?"row-reverse":"row"}}>
-              {navPanel}
+              {!v16Embedded && navPanel}
               {/* Content */}
               <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
                 {renderDashboardFiltersWindow()}
@@ -31173,6 +31216,8 @@ const TalariaV8b = () => {
         })();
       })()}
 
+      {!v16EmbeddedRoot && (
+      <>
       {/* ── Loading Screen ── */}
       {loading && (
         <div style={{
@@ -42360,6 +42405,8 @@ const TalariaV8b = () => {
             <I n="x" s={14} cl={hov==="ss-lb-x"?c.rd:c.ts}/>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

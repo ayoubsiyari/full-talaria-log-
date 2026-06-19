@@ -347,6 +347,7 @@ export default function DashboardShell({
   const [profileNavHov, setProfileNavHov] = React.useState(false);
   const profileWrapRef = React.useRef<HTMLDivElement>(null);
   const pathname = usePathname() || "";
+  const isV16DashboardPage = pathname === "/dashboard" || pathname === "/dashboard/";
   const router = useRouter();
   const openBacktestNewSessionRef = React.useRef<(() => void) | null>(null);
   const registerBacktestOpenNewSession = React.useCallback((fn: (() => void) | null) => {
@@ -985,13 +986,17 @@ export default function DashboardShell({
         </nav>
 
         {/* Main content area */}
-        <main style={{ flex: 1, overflow: "hidden", background: DASH_C.bg, position: "relative" }}>
+        <main style={{ flex: 1, minHeight: 0, overflow: "hidden", background: DASH_C.bg, position: "relative", display: "flex", flexDirection: "column" }}>
 
           <BacktestNewSessionProvider register={registerBacktestOpenNewSession}>
             <StrategyLabV9BuilderProvider register={registerStrategyLabV9OpenBuilder}>
             {/* Internal Next.js pages (dashboard, journal, backtest, strategies, cot, support, …) */}
             <div style={{
-              position: "absolute", inset: 0, overflowY: "auto",
+              position: "absolute", inset: 0,
+              overflowY: isV16DashboardPage ? "hidden" : "auto",
+              display: isV16DashboardPage ? "flex" : undefined,
+              flexDirection: isV16DashboardPage ? "column" : undefined,
+              minHeight: isV16DashboardPage ? 0 : undefined,
               visibility: !EXTERNAL_VIEWS[activeView] ? "visible" : "hidden",
               pointerEvents: !EXTERNAL_VIEWS[activeView] ? "auto" : "none",
             }}>

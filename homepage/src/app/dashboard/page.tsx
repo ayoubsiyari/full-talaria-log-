@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import BacktestAnalyticsPage from "./analytics/BacktestAnalyticsPage";
+import TalariaV16Dashboard from "./v16/TalariaV16Dashboard";
 
 export default function DashboardPage() {
   return (
@@ -13,7 +13,7 @@ export default function DashboardPage() {
         </div>
       }
     >
-      <BacktestAnalyticsPage />
+      <TalariaV16Dashboard />
     </Suspense>
   );
 }
