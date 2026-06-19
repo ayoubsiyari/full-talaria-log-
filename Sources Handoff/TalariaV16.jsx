@@ -7707,7 +7707,7 @@ const TalariaV8b = () => {
   const [stratPopup, setStratPopup] = useState(null);
   const [symPopup, setSymPopup] = useState(null);
   const [sessView, setSessView] = useState(() => {
-    if (isV16Embedded() && window.__TALARIA_V16_BOOT__?.openSessionId != null) return "dashboard";
+    if (isV16Embedded() && (isV16LiveBoot() || window.__TALARIA_V16_BOOT__?.openSessionId != null)) return "dashboard";
     return "sessions";
   });
   const [resourcesLang, setResourcesLang] = useState("en");
@@ -9973,6 +9973,7 @@ const TalariaV8b = () => {
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   const launchSession = () => {
+    if (isV16Embedded()) return;
     setLoadQuote(LOAD_QUOTES[Math.floor(Math.random() * LOAD_QUOTES.length)]);
     setTypedQuote("");
     setSessPageFading(true);
@@ -10185,8 +10186,10 @@ const TalariaV8b = () => {
 
   const ddItems = getDdItems();
 
+  const v16EmbeddedRoot = isV16Embedded();
+
   return (
-    <div style={{ width: "100%", height: "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: 1.05, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div style={{ width: "100%", height: v16EmbeddedRoot ? "100%" : "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: v16EmbeddedRoot ? 1 : 1.05, animation: isFullscreen && !v16EmbeddedRoot ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onClick={closeAll}>
       <style>{`
         @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
@@ -24824,7 +24827,7 @@ const TalariaV8b = () => {
           const v16Embedded = isV16Embedded();
 
           return (
-            <div style={{position:v16Embedded?"relative":"fixed",inset:v16Embedded?undefined:0,...(v16Embedded?{flex:1,minHeight:0,width:"100%",height:"100%"}:{}),zIndex:v16Embedded?1:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}}>
+            <div style={{position:v16Embedded?"absolute":"fixed",inset:0,...(v16Embedded?{flex:1,minHeight:0,width:"100%",height:"100%"}:{}),zIndex:v16Embedded?1:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column"}}>
               {dashHoverInfo?.scope === "add-trade" && (
                 <div ref={dashHoverInfoBoxRef} className="tlr-dashboard-info-box" style={{position:"fixed",left:Math.round(dashHoverInfo.left),top:Math.round(dashHoverInfo.top),width:dashHoverInfo.width,maxWidth:220,zIndex:100060,pointerEvents:"none",background:"rgba(5,7,13,0.98)",border:`1px solid ${c.br}`,boxShadow:`0 4px 16px rgba(0,0,0,0.62), -3px 0 12px -8px ${dashHoverInfo.accent || c.acL}`,padding:"7px 10px 7px 12px",boxSizing:"border-box",fontFamily:F,color:c.tx,fontSize:10,fontWeight:500,lineHeight:1.38,animation:"none",willChange:"left, top, opacity",transform:"none",transition:"opacity 45ms linear",overflow:"hidden"}}>
                   <div aria-hidden="true" style={{position:"absolute",left:0,top:0,bottom:0,width:1,background:dashHoverInfo.accent || c.acL,boxShadow:`0 0 10px ${dashHoverInfo.accent || c.acL}`,opacity:.95}}/>
@@ -31196,6 +31199,8 @@ const TalariaV8b = () => {
         })();
       })()}
 
+      {!v16EmbeddedRoot && (
+      <>
       {/* ── Loading Screen ── */}
       {loading && (
         <div style={{
@@ -42383,6 +42388,8 @@ const TalariaV8b = () => {
             <I n="x" s={14} cl={hov==="ss-lb-x"?c.rd:c.ts}/>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );
