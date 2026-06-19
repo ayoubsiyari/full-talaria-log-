@@ -1,7 +1,16 @@
+import type {
+  V16AppliedSource,
+  V16JournalBoot,
+  V16StrategyGroup,
+} from "./v16SourceTypes";
+
 export type V16LiveBoot = {
   sessions: Record<string, unknown>[];
   tradesBySessionId: Record<string, Record<string, unknown>[]>;
   openSessionId: string | number | null;
+  journal: V16JournalBoot;
+  strategies: V16StrategyGroup[];
+  appliedSource: V16AppliedSource | null;
 };
 
 declare global {
@@ -14,6 +23,8 @@ declare global {
     __TALARIA_V16_FETCH_TRADES_FOR_SESSION__?: (
       sessionId: string | number
     ) => Promise<Record<string, unknown>[]>;
+    /** Update ?sessionId= when user applies a backtest source in the library. */
+    __TALARIA_V16_SYNC_SESSION_URL__?: (sessionId: string | number) => void;
   }
 }
 

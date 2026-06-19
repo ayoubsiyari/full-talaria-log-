@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import React from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import React, { useEffect } from "react";
 import { useV16LiveBootstrap } from "./useV16LiveBootstrap";
 
 const TalariaV16 = dynamic(() => import("talaria-handoff/TalariaV16.jsx"), {
@@ -25,6 +26,21 @@ const TalariaV16 = dynamic(() => import("talaria-handoff/TalariaV16.jsx"), {
 
 export default function TalariaV16Dashboard() {
   const boot = useV16LiveBootstrap();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    window.__TALARIA_V16_SYNC_SESSION_URL__ = (sessionId) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("sessionId", String(sessionId));
+      const base = pathname.endsWith("/") ? pathname : `${pathname}/`;
+      router.replace(`${base}?${params.toString()}`, { scroll: false });
+    };
+    return () => {
+      delete window.__TALARIA_V16_SYNC_SESSION_URL__;
+    };
+  }, [pathname, router, searchParams]);
 
   if (boot.status === "loading") {
     return (

@@ -8,8 +8,15 @@ const isV16Embedded = () => typeof window !== "undefined" && !!window.__TALARIA_
 const isV16LiveBoot = () =>
   typeof window !== "undefined" &&
   !!window.__TALARIA_V16_LIVE__ &&
-  Array.isArray(window.__TALARIA_V16_BOOT__?.sessions) &&
-  window.__TALARIA_V16_BOOT__.sessions.length > 0;
+  !!window.__TALARIA_V16_BOOT__;
+const getV16JournalBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.journal : null);
+const getV16StrategyBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategies : null);
+const getV16AppliedSourceBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.appliedSource : null);
+const syncV16SessionUrl = (sessionId) => {
+  if (sessionId == null) return;
+  const fn = typeof window !== "undefined" ? window.__TALARIA_V16_SYNC_SESSION_URL__ : null;
+  if (typeof fn === "function") fn(sessionId);
+};
 
 /* @refresh reset */
 
@@ -7648,7 +7655,7 @@ const TalariaV8b = () => {
   const [sessionPage, setSessionPage] = useState(true);
   const [sessPageFading, setSessPageFading] = useState(false);
   const [sessions, setSessions] = useState(() => {
-    if (isV16LiveBoot()) return window.__TALARIA_V16_BOOT__.sessions;
+    if (isV16LiveBoot()) return window.__TALARIA_V16_BOOT__.sessions || [];
     try {
       const saved = JSON.parse(localStorage.getItem("talaria_sessions") || "[]");
       // only restore if sessions have strategyDesc (schema v3+)
@@ -7688,6 +7695,7 @@ const TalariaV8b = () => {
     ];
   });
   const strategyReviewSessions = useMemo(() => {
+    if (isV16LiveBoot()) return sessions || [];
     const norm = value => String(value||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
     const existingTrend = (sessions||[]).some(sess=>norm(sess.strategyName)==='trend pullback');
     const existingVwap = (sessions||[]).some(sess=>norm(sess.strategyName)==='vwap reclaim');
@@ -7805,7 +7813,11 @@ const TalariaV8b = () => {
   const [dashLibrarySelection, setDashLibrarySelection] = useState(null);
   const [dashLibraryMultiSelection, setDashLibraryMultiSelection] = useState([]);
   const [dashLibraryStrategyChildSelection, setDashLibraryStrategyChildSelection] = useState({});
-  const [dashLibraryAppliedSelection, setDashLibraryAppliedSelection] = useState(null);
+  const [dashLibraryAppliedSelection, setDashLibraryAppliedSelection] = useState(() => {
+    const applied = getV16AppliedSourceBoot();
+    if (applied) return applied;
+    return null;
+  });
   const [dashLibraryAppliedMultiSelection, setDashLibraryAppliedMultiSelection] = useState([]);
   const [dashLibraryAppliedStrategyChildSelection, setDashLibraryAppliedStrategyChildSelection] = useState({});
   const [dashLibraryMultipleSources, setDashLibraryMultipleSources] = useState(false);
@@ -12780,7 +12792,8 @@ const TalariaV8b = () => {
             label:dashStrategySource.strategyName || dashStrategySource.name,
           } : null);
           const dashboardAppliedSourceKeysRaw = [...new Set((Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : []).map(String).filter(Boolean))];
-          const dashSourceJournalConnectionNames = ["MetaTrader 5","TradingView","cTrader","Interactive Brokers"];
+          const dashV16JournalBoot = getV16JournalBoot();
+          const dashSourceJournalConnectionNames = dashV16JournalBoot?.connectionOptions?.length ? dashV16JournalBoot.connectionOptions : ["MetaTrader 5","TradingView","cTrader","Interactive Brokers"];
           const dashSourceJournalConnectionId = (name) => String(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
           const dashSourceJournalAccountNumbersByConnection = {
             "metatrader-5":["78542391","78542408","91057342","91057388"],
@@ -12788,8 +12801,21 @@ const TalariaV8b = () => {
             "ctrader":["CT-682914","CT-683102","CT-683284","CT-683519"],
             "interactive-brokers":["U7429183","U7429264","U8110357","U8110412"],
           };
-          const dashSourceJournalConnectionFor = (trade) => dashSourceJournalConnectionNames[btDashHash(`${trade?.id||""}:connection`) % dashSourceJournalConnectionNames.length];
+          const dashSourceJournalConnectionFor = (trade) => {
+            if (dashV16JournalBoot) {
+              const tid = String(trade?.tradeId ?? trade?.id ?? "").replace(/^live-/, "");
+              const key = dashV16JournalBoot.tradeToAccountKey[tid] || dashV16JournalBoot.tradeToAccountKey[`live-${tid}`];
+              const account = key ? dashV16JournalBoot.accountByKey[key] : dashV16JournalBoot.defaultAccount;
+              return account?.connection || dashTxt("Manual Journal","يومية يدوية");
+            }
+            return dashSourceJournalConnectionNames[btDashHash(`${trade?.id||""}:connection`) % dashSourceJournalConnectionNames.length];
+          };
           const dashSourceJournalAccountForTrade = (trade) => {
+            if (dashV16JournalBoot) {
+              const tid = String(trade?.tradeId ?? trade?.id ?? "").replace(/^live-/, "");
+              const key = dashV16JournalBoot.tradeToAccountKey[tid] || dashV16JournalBoot.tradeToAccountKey[`live-${tid}`] || dashV16JournalBoot.defaultAccount.key;
+              return dashV16JournalBoot.accountByKey[key] || dashV16JournalBoot.defaultAccount;
+            }
             const connection = dashSourceJournalConnectionFor(trade);
             const connectionId = dashSourceJournalConnectionId(connection);
             const accountNumbers = dashSourceJournalAccountNumbersByConnection[connectionId] || ["10124873","10124906","10124941","10124989"];
@@ -12834,6 +12860,20 @@ const TalariaV8b = () => {
               return {key,kind,label,typeLabel:dashTxt("Strategy","استراتيجية"),color:c.acL,trades,sessions:linkedSessions};
             }
             if (kind === "journalEntry") {
+              if (dashV16JournalBoot) {
+                const found = dashV16JournalBoot.libraryTrades.find(trade => String(trade.id) === id || String(trade.tradeId) === id.replace(/^live-/, ""));
+                if (!found) return null;
+                const label = `${found.side || dashTxt("Journal","يومية")} / ${found.reason || found.tag || dashTxt("Entry","إدخال")}`;
+                const trades = [{
+                  ...found,
+                  id:`${key}-${found.id}`,
+                  sourceFilterKey:key,
+                  sourceFilterLabel:label,
+                  sourceDashboardKind:"journal",
+                  sourceType:"live-journal",
+                }];
+                return {key,kind,label,typeLabel:dashTxt("Journal","يومية"),color:c.gn,trades,sessions:[]};
+              }
               let found = null;
               dashboardSessionPool.some(session => btDashBuildTrades(session).some(trade => {
                 if (`journal-${session.id}-${trade.id}` !== id) return false;
@@ -12846,6 +12886,26 @@ const TalariaV8b = () => {
               return {key,kind,label,typeLabel:dashTxt("Journal","يومية"),color:c.gn,trades,sessions:[found.session]};
             }
             if (kind === "journalAccount" || kind === "strategyJournal") {
+              if (dashV16JournalBoot) {
+                const accountId = kind === "strategyJournal" && id.includes("::") ? id.split("::").slice(-1).join("::") : id;
+                const account = dashV16JournalBoot.accounts.find(item => String(item.id) === String(accountId) || String(item.id) === String(id));
+                const label = account?.name || `${dashTxt("Account","حساب")} ${String(accountId).split("-").slice(-1)[0] || accountId}`;
+                const trades = dashV16JournalBoot.libraryTrades
+                  .filter(trade => {
+                    const tid = String(trade.tradeId ?? trade.id ?? "").replace(/^live-/, "");
+                    const tradeKey = dashV16JournalBoot.tradeToAccountKey[tid] || dashV16JournalBoot.tradeToAccountKey[`live-${tid}`];
+                    return tradeKey === (account?.id || accountId) || String(trade.journalAccountKey) === String(accountId);
+                  })
+                  .map(trade => ({
+                    ...trade,
+                    id:`${key}-${trade.id}`,
+                    sourceFilterKey:key,
+                    sourceFilterLabel:label,
+                    sourceDashboardKind:"journal",
+                    sourceType:"live-journal",
+                  }));
+                return {key,kind,label,typeLabel:dashTxt("Journal","يومية"),color:c.gn,trades,sessions:[]};
+              }
               const [strategyScope, rawAccountId] = kind === "strategyJournal" && id.includes("::") ? id.split("::") : [null, id];
               const accountId = rawAccountId || id;
               const scopedSessions = strategyScope && strategyScope !== "all"
@@ -15819,32 +15879,16 @@ const TalariaV8b = () => {
             return markets.slice(0,2).join(", ") || dashTxt("No market","لا سوق");
           };
           const libraryStrategyId = (name) => String(name||dashTxt("Untitled Strategy","استراتيجية بدون اسم")).toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g,"-").replace(/^-|-$/g,"") || "untitled";
-          const journalConnectionNames = ["MetaTrader 5","TradingView","cTrader","Interactive Brokers"];
-          const journalConnectionId = (name) => String(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
-          const libraryConnectionOptions = ["MetaTrader 5","TradingView","cTrader","Interactive Brokers","DXtrade","TradeLocker","Match-Trader"];
-          const libraryConnectionTypes = ["Live","Challenge","Funded"];
-          const libraryConnectionMarkets = ["Forex","Futures"];
-          const journalConnectionFor = (trade) => journalConnectionNames[btDashHash(`${trade?.id||""}:connection`) % journalConnectionNames.length];
-          const journalAccountNumbersByConnection = {
-            "metatrader-5":["78542391","78542408","91057342","91057388"],
-            "tradingview":["TV-204817","TV-204931","TV-205044","TV-205318"],
-            "ctrader":["CT-682914","CT-683102","CT-683284","CT-683519"],
-            "interactive-brokers":["U7429183","U7429264","U8110357","U8110412"],
-          };
-          const journalAccountNumbersForConnection = (connectionId) => journalAccountNumbersByConnection[connectionId] || ["10124873","10124906","10124941","10124989"];
-          const journalAccountTypeKeyForIndex = (idx) => idx===1 ? "prop" : "personal";
+          const v16JournalBoot = getV16JournalBoot();
           const journalAccountTypeKeyForValue = (value) => {
             const text = String(value || "").toLowerCase();
-            return text.includes("prop") || text.includes("challenge") || text.includes("funded") || text.includes("تمويل") || text.includes("تحدي") || text.includes("ممول") ? "prop" : "personal";
+            return text.includes("prop") || text.includes("challenge") || text.includes("funded") || text.includes("demo") || text.includes("تمويل") || text.includes("تحدي") || text.includes("ممول") ? "prop" : "personal";
           };
           const libraryJournalAccountGroupLabel = (key) => key === "prop" ? dashTxt("Prop","تمويل") : dashTxt("Personal","شخصي");
-          const journalAccountStatusLabel = (accountTypeKey, seed="") => accountTypeKey === "prop"
-            ? (btDashHash(`${seed}:status`) % 2 ? dashTxt("Funded","ممول") : dashTxt("Challenge","تحدي"))
-            : dashTxt("Live","حقيقي");
-          const journalAccountTypeForIndex = (idx, seed="") => journalAccountStatusLabel(journalAccountTypeKeyForIndex(idx), seed || idx);
           const libraryConnectionTypeLabel = (value) => {
             if (value === "Challenge" || value === "Prop") return dashTxt("Challenge","تحدي");
             if (value === "Funded") return dashTxt("Funded","ممول");
+            if (value === "Demo") return dashTxt("Demo","تجريبي");
             return dashTxt("Live","حقيقي");
           };
           const libraryConnectionMarketLabel = (value) => {
@@ -15854,14 +15898,50 @@ const TalariaV8b = () => {
               Stocks:dashTxt("Stocks","أسهم"),
               Crypto:dashTxt("Crypto","كريبتو"),
               Indices:dashTxt("Indices","مؤشرات"),
+              Mixed:dashTxt("Mixed","متعدد"),
             };
             return labels[value] || value || dashTxt("No market","لا سوق");
           };
+          const journalConnectionNames = v16JournalBoot?.connectionOptions?.length ? v16JournalBoot.connectionOptions : ["MetaTrader 5","TradingView","cTrader","Interactive Brokers"];
+          const journalConnectionId = (name) => String(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+          const libraryConnectionOptions = v16JournalBoot?.connectionOptions?.length ? [...v16JournalBoot.connectionOptions, "DXtrade", "TradeLocker", "Match-Trader"] : ["MetaTrader 5","TradingView","cTrader","Interactive Brokers","DXtrade","TradeLocker","Match-Trader"];
+          const libraryConnectionTypes = ["Live","Challenge","Funded","Demo"];
+          const libraryConnectionMarkets = ["Forex","Futures","Stocks","Crypto","Indices"];
+          const journalConnectionFor = (trade) => {
+            if (v16JournalBoot) {
+              const tid = String(trade?.tradeId ?? trade?.id ?? "").replace(/^live-/, "");
+              const key = v16JournalBoot.tradeToAccountKey[tid] || v16JournalBoot.tradeToAccountKey[`live-${tid}`];
+              const account = key ? v16JournalBoot.accountByKey[key] : v16JournalBoot.defaultAccount;
+              return account?.connection || dashTxt("Manual Journal","يومية يدوية");
+            }
+            return journalConnectionNames[btDashHash(`${trade?.id||""}:connection`) % journalConnectionNames.length];
+          };
+          const journalAccountNumbersByConnection = {
+            "metatrader-5":["78542391","78542408","91057342","91057388"],
+            "tradingview":["TV-204817","TV-204931","TV-205044","TV-205318"],
+            "ctrader":["CT-682914","CT-683102","CT-683284","CT-683519"],
+            "interactive-brokers":["U7429183","U7429264","U8110357","U8110412"],
+          };
+          const journalAccountNumbersForConnection = (connectionId) => journalAccountNumbersByConnection[connectionId] || ["10124873","10124906","10124941","10124989"];
+          const journalAccountTypeKeyForIndex = (idx) => idx===1 ? "prop" : "personal";
+          const journalAccountStatusLabel = (accountTypeKey, seed="") => accountTypeKey === "prop"
+            ? (btDashHash(`${seed}:status`) % 2 ? dashTxt("Funded","ممول") : dashTxt("Challenge","تحدي"))
+            : dashTxt("Live","حقيقي");
+          const journalAccountTypeForIndex = (idx, seed="") => journalAccountStatusLabel(journalAccountTypeKeyForIndex(idx), seed || idx);
           const journalAccountMarketFor = (connectionId, accountNumber, accountIndex=0) => {
+            if (v16JournalBoot) {
+              const match = Object.values(v16JournalBoot.accountByKey).find(a => a.connectionId === connectionId && String(a.accountNumber) === String(accountNumber));
+              if (match?.market) return libraryConnectionMarketLabel(match.market);
+            }
             const market = btDashHash(`${connectionId || "journal"}:${accountNumber || accountIndex}:market`) % 2 ? "Futures" : "Forex";
             return libraryConnectionMarketLabel(market);
           };
           const journalAccountForTrade = (trade) => {
+            if (v16JournalBoot) {
+              const tid = String(trade?.tradeId ?? trade?.id ?? "").replace(/^live-/, "");
+              const key = v16JournalBoot.tradeToAccountKey[tid] || v16JournalBoot.tradeToAccountKey[`live-${tid}`] || v16JournalBoot.defaultAccount.key;
+              return v16JournalBoot.accountByKey[key] || v16JournalBoot.defaultAccount;
+            }
             const connection = journalConnectionFor(trade);
             const connectionId = journalConnectionId(connection);
             const accountNumbers = journalAccountNumbersForConnection(connectionId);
@@ -15897,6 +15977,11 @@ const TalariaV8b = () => {
             );
           };
           const libraryJournalAccountTradeTotals = (() => {
+            if (v16JournalBoot) {
+              const totals = new Map();
+              v16JournalBoot.accounts.forEach(account => totals.set(account.id, account.trades || 0));
+              return totals;
+            }
             const totals = new Map();
             dashboardSessionPool.forEach(session => {
               btDashBuildTrades(session).forEach(trade => {
@@ -15907,6 +15992,15 @@ const TalariaV8b = () => {
             return totals;
           })();
           const libraryJournalRowsForSessions = (strategySessions) => {
+            if (v16JournalBoot) {
+              const strategyNames = new Set((strategySessions || []).map(s => String(s?.strategyName || s?.name || "").trim()).filter(Boolean));
+              const strategyIds = new Set((strategySessions || []).map(s => libraryStrategyId(s?.strategyName || s?.name)).filter(Boolean));
+              return v16JournalBoot.accounts.filter(account => {
+                if (!strategyNames.size && !strategyIds.size) return true;
+                if (account.strategyNames?.some(name => strategyNames.has(name))) return true;
+                return false;
+              });
+            }
             const map = new Map();
             (strategySessions||[]).forEach(session => {
               const trades = btDashBuildTrades(session);
@@ -15950,7 +16044,17 @@ const TalariaV8b = () => {
             })).sort((a,b)=>b.trades-a.trades || a.name.localeCompare(b.name));
           };
           const libraryStrategySessions = (strategyId) => strategyId === "all" ? dashboardSessionPool : dashboardSessionPool.filter(s=>libraryStrategyId(s.strategyName)===strategyId);
-          const libraryStrategyCats = [...new Map(dashboardSessionPool.map(s => [libraryStrategyId(s.strategyName), s.strategyName || dashTxt("Untitled Strategy","استراتيجية بدون اسم")]))]
+          const v16StrategyBoot = getV16StrategyBoot();
+          const libraryStrategyCats = v16StrategyBoot?.length
+            ? v16StrategyBoot.map(s => ({
+                id: s.id,
+                label: s.label,
+                color: s.color || c.acL,
+                count: s.count,
+                sessionCount: s.sessionCount,
+                journalCount: s.journalCount,
+              }))
+            : [...new Map(dashboardSessionPool.map(s => [libraryStrategyId(s.strategyName), s.strategyName || dashTxt("Untitled Strategy","استراتيجية بدون اسم")]))]
             .map(([id,label])=>{
               const linkedSessions = libraryStrategySessions(id);
               const journalCount = libraryJournalRowsForSessions(linkedSessions).length;
@@ -16012,7 +16116,12 @@ const TalariaV8b = () => {
             ...(dashLibraryStrategyViewCat==="journals" ? [] : sourceStrategySessionRows.map(session=>({kind:"session",id:`strategy-session-${session.id}`,session}))),
             ...(dashLibraryStrategyViewCat==="sessions" ? [] : sourceStrategyJournalRows.map(journal=>({kind:"journal",id:`strategy-journal-${journal.id}`,journal,session:journal.primarySession}))),
           ].slice(0,120);
-          const libraryJournalTrades = dashboardSessionPool.flatMap(session =>
+          const libraryJournalTrades = v16JournalBoot
+            ? v16JournalBoot.libraryTrades.map(trade => ({
+                ...trade,
+                hasEditedTrade: libraryTradeHasEdits(trade),
+              }))
+            : dashboardSessionPool.flatMap(session =>
             btDashBuildTrades(session).slice(-Math.min(12, Number(session.trades)||0)).reverse().map(trade => {
               const journalId = libraryJournalTradeKey(session, trade);
               return {
@@ -16026,9 +16135,25 @@ const TalariaV8b = () => {
               };
             })
           );
-          const libraryAllJournalAccountRows = libraryJournalRowsForSessions(dashboardSessionPool);
+          const libraryAllJournalAccountRows = v16JournalBoot
+            ? v16JournalBoot.accounts
+            : libraryJournalRowsForSessions(dashboardSessionPool);
           const journalAccountCountForRows = (rows) => rows.length ? Math.min(4, Math.max(1, Math.ceil(rows.length / 24))) : 0;
-          const libraryJournalConnections = [
+          const libraryJournalConnections = v16JournalBoot?.connections?.length
+            ? [
+                ...v16JournalBoot.connections,
+                ...dashLibraryConnections.map(connection => ({
+                  id:connection.id,
+                  label:connection.name || connection.platform,
+                  color:c.gn,
+                  count:1,
+                  entryCount:0,
+                  custom:true,
+                  connection,
+                  match:()=>false,
+                })),
+              ]
+            : [
             ...journalConnectionNames.map((name,i) => {
             const id = journalConnectionId(name);
             const rows = libraryJournalTrades.filter(t=>journalConnectionFor(t)===name);
@@ -16315,6 +16440,7 @@ const TalariaV8b = () => {
             setDashTagFilter("all");
             setDashOutcomeFilter("all");
             setDashLibraryOpen(false);
+            syncV16SessionUrl(session.id);
           };
           const openLibraryJournal = (id) => {
             setDashLibraryOpen(false);
@@ -22945,7 +23071,25 @@ const TalariaV8b = () => {
             }
 
             if (pageKey === "strategy-sources") {
-              const sourceItems = (dashboardAppliedSourceItems?.length ? dashboardAppliedSourceItems : [{label:ds.name || "Standard BT",typeLabel:"Backtest",tradeCount:trades.length,pnl:metrics.totalPnl},{label:"Prop Eval",typeLabel:"Prop",tradeCount:Math.round(trades.length*.62),pnl:metrics.totalPnl*.7},{label:"Live",typeLabel:"Live",tradeCount:Math.round(trades.length*.38),pnl:metrics.totalPnl*.42}]);
+              const liveJournalBoot = getV16JournalBoot();
+              const sourceItems = dashboardAppliedSourceItems?.length
+                ? dashboardAppliedSourceItems
+                : liveJournalBoot
+                  ? [
+                      {
+                        label: ds.name || dashTxt("Backtest","اختبار"),
+                        typeLabel: dashTxt("Backtest","اختبار"),
+                        tradeCount: trades.length,
+                        pnl: metrics.totalPnl,
+                      },
+                      ...liveJournalBoot.accounts.map(account => ({
+                        label: account.name,
+                        typeLabel: dashTxt("Journal","يومية"),
+                        tradeCount: account.trades,
+                        pnl: account.pnl,
+                      })),
+                    ].filter(item => Number(item.tradeCount) > 0)
+                  : [{label:ds.name || dashTxt("Current Source","المصدر الحالي"),typeLabel:dashTxt("Backtest","اختبار"),tradeCount:trades.length,pnl:metrics.totalPnl}];
               const total = Math.max(1,sourceItems.reduce((sum,item)=>sum+Math.abs(Number(item.pnl)||0),0));
               const sourceConflicts = [
                 ["Tag vocabulary","FVG / Fair Value Gap","Map to FVG","Keeps tag analytics consistent across sessions and journals."],

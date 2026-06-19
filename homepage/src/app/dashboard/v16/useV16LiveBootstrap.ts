@@ -6,6 +6,12 @@ import { fetchJson } from "../analytics/SessionAnalyticsPanel";
 import { resolveSessionIdForUser, type Session } from "../analytics/sessionSelection";
 import type { V16LiveBoot } from "./v16LiveGlobals";
 import {
+  buildAppliedSourceForSession,
+  buildJournalBootFromApi,
+  buildStrategyGroups,
+  fetchJournalApiData,
+} from "./v16JournalMappers";
+import {
   fetchAndMapTradesForSession,
   mapApiSessionToV16,
   type SessionKpis,
@@ -53,11 +59,17 @@ export function useV16LiveBootstrap(): BootState {
     (async () => {
       setState({ status: "loading" });
       try {
-        const [sessionsPayload, kpisPayload] = await Promise.all([
+        const [sessionsPayload, kpisPayload, journalPayload] = await Promise.all([
           fetchJson<{ sessions: Session[] }>("/api/sessions"),
           fetchJson<{ kpis_by_session_id?: Record<string, SessionKpis> }>("/api/sessions/kpis").catch(
             () => ({ kpis_by_session_id: {} })
           ),
+          fetchJournalApiData().catch(() => ({
+            entries: [],
+            connections: [],
+            strategies: [],
+            activeProfile: null,
+          })),
         ]);
 
         const apiSessions = sessionsPayload.sessions ?? [];
@@ -88,12 +100,38 @@ export function useV16LiveBootstrap(): BootState {
           );
         });
 
+        const journal = buildJournalBootFromApi(
+          journalPayload.entries,
+          journalPayload.connections,
+          journalPayload.activeProfile
+        );
+
+        const strategies = buildStrategyGroups(
+          journalPayload.strategies,
+          v16Sessions,
+          journal.accounts
+        );
+
+        const openV16Session = v16Sessions.find((s) => String(s.id) === String(openSessionId));
+        const appliedSource =
+          buildAppliedSourceForSession(openV16Session) ||
+          (journal.accounts[0]
+            ? {
+                kind: "journalAccount" as const,
+                id: journal.accounts[0].id,
+                label: journal.accounts[0].name,
+              }
+            : null);
+
         if (cancelled) return;
 
         const boot: V16LiveBoot = {
           sessions: v16Sessions,
           tradesBySessionId,
           openSessionId: openSessionId || ((v16Sessions[0] as { id?: number })?.id ?? null),
+          journal,
+          strategies,
+          appliedSource,
         };
 
         window.__TALARIA_V16_LIVE__ = true;
