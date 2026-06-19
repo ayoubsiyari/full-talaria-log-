@@ -732,9 +732,10 @@ export default function DashboardShell({
       ) : null}
 
       {/* ── Body ── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", paddingTop: isV16DashboardPage ? 64 : 0 }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-        {/* Left Sidebar */}
+        {/* Left Sidebar — V16 dashboard uses its own nav rail */}
+        {!isV16DashboardPage ? (
         <nav style={{ width: 64, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0 6px", background: DASH_C.el, gap: 1, boxShadow: "4px 0 20px rgba(0,0,0,0.45)", zIndex: 1 }}>
           {NAV_ITEMS.map(({ id, label, icon }) => {
             const active = activeView === id;
@@ -986,6 +987,7 @@ export default function DashboardShell({
             ) : null}
           </div>
         </nav>
+        ) : null}
 
         {/* Main content area */}
         <main style={{ flex: 1, minHeight: 0, overflow: "hidden", background: DASH_C.bg, position: "relative", display: "flex", flexDirection: "column" }}>
