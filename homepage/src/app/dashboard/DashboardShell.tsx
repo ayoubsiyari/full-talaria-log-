@@ -985,7 +985,7 @@ export default function DashboardShell({
         </nav>
 
         {/* Main content area */}
-        <main style={{ flex: 1, minHeight: 0, overflow: "hidden", background: DASH_C.bg, position: "relative", display: "flex", flexDirection: "column" }}>
+        <main style={{ flex: 1, overflow: "hidden", background: DASH_C.bg, position: "relative" }}>
 
           <BacktestNewSessionProvider register={registerBacktestOpenNewSession}>
             <StrategyLabV9BuilderProvider register={registerStrategyLabV9OpenBuilder}>

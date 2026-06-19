@@ -32,10 +32,18 @@ chart v 1.4/talaria-design/dist
 chart v 1.4/chart/db
 chart v 1.4/chart/*.log
 
-# V16 dashboard handoff (homepage Docker image; webpack alias ../Sources Handoff)
-Sources Handoff/**
-!Sources Handoff/TalariaV16.jsx
-!Sources Handoff/scoreEngine.js
+# Homepage: only analytics backend is COPY'd into the chart image
+homepage/**
+!homepage/src
+homepage/src/**
+!homepage/src/app
+homepage/src/app/**
+!homepage/src/app/dashboard
+homepage/src/app/dashboard/**
+!homepage/src/app/dashboard/analytics
+homepage/src/app/dashboard/analytics/**
+!homepage/src/app/dashboard/analytics/backend
+!homepage/src/app/dashboard/analytics/backend/**
 
 # Journal backend image builds from its own context
 journal-backend/**

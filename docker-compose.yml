@@ -299,8 +299,7 @@ services:
   homepage:
     image: ${HOMEPAGE_IMAGE:-talaria-homepage:latest}
     build:
-      context: .
-      dockerfile: homepage/Dockerfile
+      context: ./homepage
       args:
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         NEXT_PUBLIC_SITE_URL: ${FRONTEND_URL:-http://localhost:3000}

@@ -15,8 +15,6 @@ on:
     paths:
       - "chart v 1.4/**"
       - "homepage/**"
-      - "Sources Handoff/TalariaV16.jsx"
-      - "Sources Handoff/scoreEngine.js"
       - "journal-backend/**"
       - "docker-compose.yml"
       - ".github/workflows/build-images.yml"
@@ -43,8 +41,8 @@ jobs:
             dockerfile: chart v 1.4/chart/Dockerfile.local
           - name: homepage
             image: talaria-homepage
-            context: .
-            dockerfile: homepage/Dockerfile
+            context: ./homepage
+            dockerfile: ./homepage/Dockerfile
           - name: journal-backend
             image: talaria-journal-backend
             context: ./journal-backend
