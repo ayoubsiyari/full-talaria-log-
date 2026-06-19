@@ -1,7 +1,9 @@
 # Homepage - Next.js Static Build
+# Build context = repository root (see docker-compose.yml) so TalariaV16.jsx is available
+# at ../Sources Handoff relative to this folder (webpack alias in next.config.mjs).
 FROM node:18-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/homepage
 
 # Skip Next.js telemetry — avoids build-time network calls (a source of TLS-retry
 # stalls on the VPS) and shaves time off `next build`.
@@ -9,13 +11,17 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV CI=1
 
 # Copy package files
-COPY package*.json ./
+COPY homepage/package*.json ./
 
 # Install dependencies
 RUN npm ci
 
-# Copy source code
-COPY . .
+# Homepage app sources
+COPY homepage/ ./
+
+# V16 dashboard monolith + score engine (imported by TalariaV16.jsx)
+COPY ["Sources Handoff/TalariaV16.jsx", "/app/Sources Handoff/TalariaV16.jsx"]
+COPY ["Sources Handoff/scoreEngine.js", "/app/Sources Handoff/scoreEngine.js"]
 
 # Google Sign-In (same OAuth Web client ID as trading-chart GOOGLE_CLIENT_ID)
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=
@@ -32,10 +38,10 @@ RUN npm run build
 FROM nginx:alpine
 
 # Copy built static files
-COPY --from=builder /app/out /usr/share/nginx/html
+COPY --from=builder /app/homepage/out /usr/share/nginx/html
 
 # Copy nginx config (static /chart/ + tile cache — see nginx.local.conf)
-COPY nginx.local.conf /etc/nginx/conf.d/default.conf
+COPY homepage/nginx.local.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
