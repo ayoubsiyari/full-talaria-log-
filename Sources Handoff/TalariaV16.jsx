@@ -7730,45 +7730,6 @@ const TalariaV8b = () => {
   });
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
-  useEffect(() => {
-    if (!isV16Embedded() || !isV16LiveBoot()) return;
-    const fetcher = window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
-    if (typeof fetcher !== "function") return;
-    const sessionIds = new Set();
-    if (dashLibraryAppliedMultipleSources && Array.isArray(dashLibraryAppliedMultiSelection) && dashLibraryAppliedMultiSelection.length) {
-      dashLibraryAppliedMultiSelection.forEach((key) => {
-        const match = String(key || "").match(/^session:(.+)$/);
-        if (match?.[1]) sessionIds.add(match[1]);
-      });
-    } else if (dashSessId != null) {
-      sessionIds.add(String(dashSessId));
-    }
-    if (!sessionIds.size) return;
-    let cancelled = false;
-    Promise.all([...sessionIds].map(async (sid) => {
-      const sess = sessionsRef.current.find((s) => String(s.id) === sid);
-      if (sess?.compositeTradesLoaded) return null;
-      try {
-        const trades = await fetcher(sid);
-        return { sid, trades };
-      } catch {
-        return null;
-      }
-    })).then((results) => {
-      if (cancelled) return;
-      const updates = results.filter(Boolean);
-      if (!updates.length) return;
-      setSessions((prev) =>
-        prev.map((s) => {
-          const hit = updates.find((u) => u.sid === String(s.id));
-          return hit ? { ...s, compositeTrades: hit.trades, compositeTradesLoaded: true } : s;
-        })
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [dashSessId, dashLibraryAppliedMultipleSources, dashLibraryAppliedMultiSelection]);
   const [dashStrategyId, setDashStrategyId] = useState(null);
   const [dashHov, setDashHov] = useState(null);
   const [dashMode, setDashMode] = useState(() => {
@@ -7854,6 +7815,45 @@ const TalariaV8b = () => {
   const dashLibraryAppliedMultipleSourcesRef = useRef(false);
   const dashLibrarySelectionItemsRef = useRef({});
   const dashLibraryMultipleSourcesRef = useRef(false);
+  useEffect(() => {
+    if (!isV16Embedded() || !isV16LiveBoot()) return;
+    const fetcher = window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
+    if (typeof fetcher !== "function") return;
+    const sessionIds = new Set();
+    if (dashLibraryAppliedMultipleSources && Array.isArray(dashLibraryAppliedMultiSelection) && dashLibraryAppliedMultiSelection.length) {
+      dashLibraryAppliedMultiSelection.forEach((key) => {
+        const match = String(key || "").match(/^session:(.+)$/);
+        if (match?.[1]) sessionIds.add(match[1]);
+      });
+    } else if (dashSessId != null) {
+      sessionIds.add(String(dashSessId));
+    }
+    if (!sessionIds.size) return;
+    let cancelled = false;
+    Promise.all([...sessionIds].map(async (sid) => {
+      const sess = sessionsRef.current.find((s) => String(s.id) === sid);
+      if (sess?.compositeTradesLoaded) return null;
+      try {
+        const trades = await fetcher(sid);
+        return { sid, trades };
+      } catch {
+        return null;
+      }
+    })).then((results) => {
+      if (cancelled) return;
+      const updates = results.filter(Boolean);
+      if (!updates.length) return;
+      setSessions((prev) =>
+        prev.map((s) => {
+          const hit = updates.find((u) => u.sid === String(s.id));
+          return hit ? { ...s, compositeTrades: hit.trades, compositeTradesLoaded: true } : s;
+        })
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dashSessId, dashLibraryAppliedMultipleSources, dashLibraryAppliedMultiSelection]);
   const [dashLibraryConnectionOpen, setDashLibraryConnectionOpen] = useState(false);
   const [dashLibraryConnections, setDashLibraryConnections] = useState([]);
   const [dashConnectionDraft, setDashConnectionDraft] = useState({name:"",platform:"MetaTrader 5",accountType:"Live",market:"Forex",account:""});
