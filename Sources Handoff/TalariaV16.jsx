@@ -8200,7 +8200,13 @@ const TalariaV8b = () => {
   const [stratEditId, setStratEditId] = useState(null);
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
   const [savedCommunityStrats, setSavedCommunityStrats] = useState([]);
-  const [myStrategies, setMyStrategies] = useState([]);
+  const [myStrategies, setMyStrategies] = useState(() => {
+    if (isV16LiveBoot()) {
+      const bank = getV16StrategyBank();
+      return Array.isArray(bank) ? bank : [];
+    }
+    return [];
+  });
   useEffect(() => {
     if (!isV16LiveBoot()) return;
     let cancelled = false;
@@ -29963,9 +29969,13 @@ const TalariaV8b = () => {
             });
 
           /* ─── Filter + sort my strategies ─── */
-          const minePreviewMode = myStrategies.length === 0;
-          const userStrategySource = myStrategies.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyName(s.name))}));
-          const mineSource = [...userStrategySource, ...templatePreviewStrategies];
+          const stratLiveMode = isV16LiveBoot();
+          const stratBankRows = stratLiveMode ? (getV16StrategyBank() || myStrategies || []) : myStrategies;
+          const minePreviewMode = !stratLiveMode && stratBankRows.length === 0;
+          const userStrategySource = stratBankRows.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyName(s.name))}));
+          const mineSource = stratLiveMode
+            ? userStrategySource
+            : [...userStrategySource, ...templatePreviewStrategies];
           const filteredMine = mineSource
             .filter(s=>{
               const q=stratSearch.toLowerCase();
