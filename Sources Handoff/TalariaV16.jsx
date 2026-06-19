@@ -10362,8 +10362,12 @@ const TalariaV8b = () => {
         method: "DELETE",
         credentials: "include",
       })
-        .then((res) => {
-          if (!res.ok) throw new Error(String(res.status));
+        .then(async (res) => {
+          if (!res.ok) {
+            const body = await res.json().catch(() => null);
+            const detail = body?.detail ? String(body.detail) : `HTTP ${res.status}`;
+            throw new Error(detail);
+          }
           setSessions((prev) => prev.filter((s) => String(s.id) !== String(id)));
           if (String(dashSessId) === String(id)) setDashSessId(null);
           reloadEmbeddedV16Boot();

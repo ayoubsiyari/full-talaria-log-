@@ -745,7 +745,7 @@ class TradingSession(Base):
 class TradingSessionState(Base):
     __tablename__ = "trading_session_states"
 
-    session_id = Column(Integer, ForeignKey("trading_sessions.id"), primary_key=True)
+    session_id = Column(Integer, ForeignKey("trading_sessions.id", ondelete="CASCADE"), primary_key=True)
     user_id = Column(Integer, index=True, nullable=False)  # no FK — users table is managed by journal-backend
     state_json = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -759,7 +759,7 @@ class TradingSessionJournalTrade(Base):
     __table_args__ = (UniqueConstraint("session_id", "client_trade_id", name="uq_tsjt_session_client_trade"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(Integer, ForeignKey("trading_sessions.id"), index=True, nullable=False)
+    session_id = Column(Integer, ForeignKey("trading_sessions.id", ondelete="CASCADE"), index=True, nullable=False)
     user_id = Column(Integer, index=True, nullable=False)
     client_trade_id = Column(String(128), nullable=False, index=True)
     payload_json = Column(Text, nullable=False)
@@ -962,6 +962,12 @@ _CHART_TABLES = [
     AdminAuditLog.__table__,
 ]
 Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
+
+# Ensure journal-trade mirror table exists (deployments that predated TradingSessionJournalTrade).
+try:
+    TradingSessionJournalTrade.__table__.create(bind=engine, checkfirst=True)
+except Exception:
+    pass
 
 # Safe migration: add access_expires_at to users table if missing.
 try:
@@ -18572,6 +18578,49 @@ async def update_trading_session(session_id: int, payload: TradingSessionUpdateI
     finally:
         db.close()
 
+def _purge_trading_session_rows(db, session_id: int) -> bool:
+    """Delete SQL rows for a backtest session (state, journal trades, session). Returns False if session missing."""
+    sid = int(session_id)
+
+    try:
+        db.query(TradingSessionJournalTrade).filter(
+            TradingSessionJournalTrade.session_id == sid
+        ).delete(synchronize_session=False)
+    except Exception:
+        db.rollback()
+        try:
+            db.execute(
+                text("DELETE FROM trading_session_journal_trades WHERE session_id = :sid"),
+                {"sid": sid},
+            )
+        except Exception:
+            db.rollback()
+
+    db.query(TradingSessionState).filter(
+        TradingSessionState.session_id == sid
+    ).delete(synchronize_session=False)
+
+    deleted = (
+        db.query(TradingSession)
+        .filter(TradingSession.id == sid)
+        .delete(synchronize_session=False)
+    )
+    if not deleted:
+        db.rollback()
+        return False
+
+    db.commit()
+
+    for tbl in ("chart_drawings", "chart_settings"):
+        try:
+            db.execute(text(f"DELETE FROM {tbl} WHERE session_id = :sid"), {"sid": str(sid)})
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    return True
+
+
 @app.delete("/api/sessions/{session_id}")
 async def delete_trading_session(session_id: int, request: Request):
     user = _require_paid_journal_user(request)
@@ -18582,15 +18631,17 @@ async def delete_trading_session(session_id: int, request: Request):
             raise HTTPException(status_code=404, detail="Session not found")
         if not _can_access_trading_session(user, s):
             raise HTTPException(status_code=403, detail="Forbidden")
-        state = db.query(TradingSessionState).filter(TradingSessionState.session_id == session_id).first()
-        if state:
-            db.delete(state)
-        db.query(TradingSessionJournalTrade).filter(
-            TradingSessionJournalTrade.session_id == session_id
-        ).delete(synchronize_session=False)
-        db.delete(s)
-        db.commit()
+        if not _purge_trading_session_rows(db, session_id):
+            raise HTTPException(status_code=404, detail="Session not found")
         return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        import logging as _logging
+
+        _logging.exception("delete_trading_session failed session_id=%s", session_id)
+        raise HTTPException(status_code=500, detail=f"Failed to delete session: {exc}") from exc
     finally:
         db.close()
 
