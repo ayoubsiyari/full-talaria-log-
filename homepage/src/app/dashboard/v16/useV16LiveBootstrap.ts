@@ -47,10 +47,9 @@ export function useV16LiveBootstrap(): BootState {
       if (cached) return cached;
 
       const bootSessions = window.__TALARIA_V16_BOOT__?.sessions ?? [];
-      const match = bootSessions.find((s) => String((s as { id?: unknown }).id) === sid) as
-        | Session
-        | undefined;
-      if (!match) return [];
+      const match =
+        (bootSessions.find((s) => String((s as { id?: unknown }).id) === sid) as Session | undefined) ||
+        ({ id: Number(sid) || sid } as Session);
 
       const trades = await fetchTradesForSession(match);
       if (!window.__TALARIA_V16_TRADES__) window.__TALARIA_V16_TRADES__ = {};

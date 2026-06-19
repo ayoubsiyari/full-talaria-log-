@@ -111,13 +111,25 @@ function sideLabel(side: "long" | "short" | ""): string {
   return "Long";
 }
 
+function tagListFromRow(row: Record<string, unknown>, key: string): unknown[] | null {
+  const raw = row[key];
+  if (Array.isArray(raw) && raw.length) return raw;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return Object.values(raw as Record<string, unknown>).flatMap((v) =>
+      Array.isArray(v) ? v : v != null && v !== "" ? [v] : []
+    );
+  }
+  return null;
+}
+
 /** Map chart API journal row → trade shape expected by TalariaV16 dashboard math. */
 export function mapJournalRowToV16Trade(
   row: Record<string, unknown>,
   session: ApiSession,
   index: number
 ): Record<string, unknown> {
-  const pnl = tradeRowPnl(row) ?? 0;
+  const resolvedPnl = tradeRowPnl(row);
+  const pnl = resolvedPnl ?? 0;
   const side = sideLabel(tradeRowSide(row));
   const symbol = tradeRowSymbol(row) || session.symbol || "—";
   const ts = tradeRowTimestamp(row);
@@ -139,32 +151,56 @@ export function mapJournalRowToV16Trade(
   const mae = Number(row.mae_r ?? row.mae ?? row.MAE ?? 0);
   const mfe = Number(row.mfe_r ?? row.mfe ?? row.MFE ?? 0);
   const markets = sessionAssetClasses(session);
+  const id = String(row.client_trade_id || row.id || row.trade_id || `${session.id}-t${index + 1}`);
+  const preTags =
+    tagListFromRow(row, "preTags") ||
+    tagListFromRow(row, "pre_tags") ||
+    tagListFromRow(row, "strategyTags") ||
+    [tag];
+  const postTags =
+    tagListFromRow(row, "postTags") ||
+    tagListFromRow(row, "post_tags") ||
+    [pnl >= 0 ? "Win" : "Loss"];
   return {
-    id: String(row.client_trade_id || row.id || row.trade_id || `${session.id}-t${index + 1}`),
-    n: index + 1,
-    date,
-    closeTime: ts ? new Date(ts).toISOString() : String(row.time || row.close_time || ""),
+    ...row,
+    id,
+    trade_id: row.trade_id ?? row.client_trade_id ?? id,
+    client_trade_id: row.client_trade_id ?? id,
+    n: Number(row.n) || index + 1,
+    date: date || row.date,
+    closeTime: ts
+      ? new Date(ts).toISOString()
+      : String(row.closeTime || row.time || row.close_time || ""),
     symbol,
-    market: markets[0] || "",
-    side,
-    session: "Session",
-    tag,
-    rMultiple: r,
-    duration: parseDurationMinutes(row.duration ?? row.hold_minutes),
-    pnl: Math.round(pnl),
-    mae: Number.isFinite(mae) ? mae : -Math.abs(r) * 0.5,
-    mfe: Number.isFinite(mfe) ? mfe : Math.abs(r) * 0.8,
+    market: String(row.market || markets[0] || ""),
+    side: row.side || side,
+    direction: row.direction ?? row.side ?? side,
+    session: row.session || "Session",
+    tag: row.tag || tag,
+    rMultiple: Number.isFinite(r) ? r : Number(row.rMultiple) || 0,
+    duration:
+      parseDurationMinutes(row.duration ?? row.hold_minutes ?? row.durationMinutes) ??
+      row.duration,
+    pnl: resolvedPnl != null ? resolvedPnl : Number(row.pnl) || 0,
+    mae:
+      row.mae ??
+      row.mae_r ??
+      (Number.isFinite(mae) && mae !== 0 ? mae : -Math.abs(r) * 0.5),
+    mfe:
+      row.mfe ??
+      row.mfe_r ??
+      (Number.isFinite(mfe) && mfe !== 0 ? mfe : Math.abs(r) * 0.8),
     plannedRR: Number(row.plannedRR ?? row.planned_rr ?? row.tp ?? 2) || 2,
-    actualRR: Math.abs(r),
-    rulesFollowed: true,
-    preTags: [tag],
-    postTags: [pnl >= 0 ? "Win" : "Loss"],
-    sourceKey: `session:${session.id}`,
-    sourceFilterKey: `session:${session.id}`,
+    actualRR: row.actualRR ?? Math.abs(r),
+    rulesFollowed: row.rulesFollowed ?? true,
+    preTags,
+    postTags,
+    sourceKey: row.sourceKey || `session:${session.id}`,
+    sourceFilterKey: row.sourceFilterKey || `session:${session.id}`,
     sourceSessionId: session.id,
     sourceSessionName: session.name,
     sourceLabel: session.name,
-    sourceType: "backtest",
+    sourceType: row.sourceType || "backtest",
   };
 }
 

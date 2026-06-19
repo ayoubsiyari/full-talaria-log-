@@ -7820,21 +7820,35 @@ const TalariaV8b = () => {
     const fetcher = window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
     if (typeof fetcher !== "function") return;
     const sessionIds = new Set();
-    if (dashLibraryAppliedMultipleSources && Array.isArray(dashLibraryAppliedMultiSelection) && dashLibraryAppliedMultiSelection.length) {
-      dashLibraryAppliedMultiSelection.forEach((key) => {
+    const multiActive = !!(dashLibraryAppliedMultipleSources || dashLibraryAppliedMultipleSourcesRef.current);
+    const appliedMulti = Array.isArray(dashLibraryAppliedMultiSelection) && dashLibraryAppliedMultiSelection.length
+      ? dashLibraryAppliedMultiSelection
+      : Array.isArray(dashLibraryAppliedMultiSelectionRef.current) && dashLibraryAppliedMultiSelectionRef.current.length
+        ? dashLibraryAppliedMultiSelectionRef.current
+        : [];
+    if (multiActive && appliedMulti.length) {
+      appliedMulti.forEach((key) => {
         const match = String(key || "").match(/^session:(.+)$/);
         if (match?.[1]) sessionIds.add(match[1]);
       });
-    } else if (dashSessId != null) {
-      sessionIds.add(String(dashSessId));
+    }
+    if (dashSessId != null) sessionIds.add(String(dashSessId));
+    if (dashStrategyId) {
+      const strategyKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, "-").replace(/^-|-$/g, "") || "untitled";
+      (sessionsRef.current || []).forEach((s) => {
+        if (strategyKey(s.strategyName) === dashStrategyId) sessionIds.add(String(s.id));
+      });
     }
     if (!sessionIds.size) return;
     let cancelled = false;
     Promise.all([...sessionIds].map(async (sid) => {
       const sess = sessionsRef.current.find((s) => String(s.id) === sid);
-      if (sess?.compositeTradesLoaded) return null;
+      const expectedTrades = Number(sess?.trades) || 0;
+      const loadedCount = Array.isArray(sess?.compositeTrades) ? sess.compositeTrades.length : 0;
+      if (sess?.compositeTradesLoaded && (loadedCount > 0 || expectedTrades === 0)) return null;
       try {
         const trades = await fetcher(sid);
+        if (window.__TALARIA_V16_TRADES__) window.__TALARIA_V16_TRADES__[sid] = trades;
         return { sid, trades };
       } catch {
         return null;
@@ -7853,7 +7867,7 @@ const TalariaV8b = () => {
     return () => {
       cancelled = true;
     };
-  }, [dashSessId, dashLibraryAppliedMultipleSources, dashLibraryAppliedMultiSelection]);
+  }, [dashSessId, dashLibraryAppliedMultipleSources, dashLibraryAppliedMultiSelection, dashStrategyId, sessView]);
   const [dashLibraryConnectionOpen, setDashLibraryConnectionOpen] = useState(false);
   const [dashLibraryConnections, setDashLibraryConnections] = useState([]);
   const [dashConnectionDraft, setDashConnectionDraft] = useState({name:"",platform:"MetaTrader 5",accountType:"Live",market:"Forex",account:""});
