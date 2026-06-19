@@ -8798,6 +8798,12 @@ class TradingSessionStateUpdateIn(BaseModel):
     indicators: list | None = None
     propfirm_challenge: dict | None = None
 
+
+class JournalTradeUpsertIn(BaseModel):
+    """Dashboard manual add/edit — full trade payload stored like chart journal rows."""
+
+    trade: dict
+
 class AdminDatasetSettingsIn(BaseModel):
     display_name: str | None = None
     csv_delimiter: str | None = None
@@ -18323,6 +18329,66 @@ async def list_trading_session_journal_trades(session_id: int, request: Request)
                 }
             )
         return {"session_id": session_id, "trades": out, "count": len(out)}
+    finally:
+        db.close()
+
+
+@app.post("/api/sessions/{session_id}/journal-trades")
+async def upsert_trading_session_journal_trade(
+    session_id: int,
+    payload: JournalTradeUpsertIn,
+    request: Request,
+):
+    """Upsert one manual/dashboard trade into the session journal (same SQL rows as chart trades)."""
+    user = _require_paid_journal_user(request, module="backtest")
+    _enforce_backtest_user_rate(user, "journal_trade_upsert")
+    if not isinstance(payload.trade, dict):
+        raise HTTPException(status_code=400, detail="trade must be an object")
+    try:
+        trade = sjs.normalize_manual_trade_payload(payload.trade)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    db = SessionLocal()
+    try:
+        s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not _can_access_trading_session(user, s):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+        state = _parse_json_dict(st.state_json)
+        existing = sjs.resolve_session_journal(
+            db,
+            s.id,
+            s.user_id,
+            state,
+            journal_trade_model=TradingSessionJournalTrade,
+            sync_fn=_sync_trading_session_journal_trades,
+        )
+        merged = sjs.upsert_trade_in_journal(existing, trade)
+        try:
+            sjs.enforce_journal_trade_limit(merged)
+        except sjs.JournalTradeLimitExceeded as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+        _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=merged)
+        if sjs.strip_journal_from_state_json_enabled():
+            sjs.strip_journal_from_persisted_state(state)
+        else:
+            state["journal"] = merged
+
+        st.state_json = json.dumps(state, separators=(",", ":"))
+        db.commit()
+        client_trade_id = sjs.journal_trade_client_id(trade)
+        return {
+            "session_id": session_id,
+            "client_trade_id": client_trade_id,
+            "trade": trade,
+            "journal_len": len(merged),
+            "upserted": True,
+        }
     finally:
         db.close()
 

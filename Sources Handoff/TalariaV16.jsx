@@ -7730,6 +7730,34 @@ const TalariaV8b = () => {
   });
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
+  const persistLiveManualTradeToSession = (sessionId, trade) => {
+    if (!isV16LiveBoot() || sessionId == null) return Promise.resolve(false);
+    const saver = typeof window !== "undefined" ? window.__TALARIA_V16_SAVE_MANUAL_TRADE__ : null;
+    if (typeof saver !== "function") return Promise.resolve(false);
+    const sid = String(sessionId);
+    const tradeId = String(trade?.trade_id || trade?.id || "");
+    return saver(sessionId, trade)
+      .then(() => {
+        const trades = window.__TALARIA_V16_TRADES__?.[sid];
+        if (Array.isArray(trades)) {
+          setSessions((prev) =>
+            prev.map((s) =>
+              String(s.id) === sid ? { ...s, compositeTrades: trades, compositeTradesLoaded: true } : s
+            )
+          );
+        }
+        if (tradeId) {
+          setDashManualTrades((prev) =>
+            prev.filter((row) => String(row?.trade_id || row?.id || "") !== tradeId)
+          );
+        }
+        return true;
+      })
+      .catch((err) => {
+        console.error("[V16] manual trade save failed", err);
+        return false;
+      });
+  };
   const [dashStrategyId, setDashStrategyId] = useState(null);
   const [dashHov, setDashHov] = useState(null);
   const [dashMode, setDashMode] = useState(() => {
@@ -24995,6 +25023,19 @@ const TalariaV8b = () => {
               createdAt:nowIso,
             };
             manualTrade.demons = btDashTradeDemons(manualTrade, {session:dashAddTradeEditorSource});
+            const canPersistToBacktestSession = isV16LiveBoot() && sourceSessionId && !isJournalManualTrade;
+            const applyLocalManualTrade = (tradeRow) => {
+              setDashManualTrades((prev) => [tradeRow, ...prev]);
+            };
+            const persistOrLocalManualTrade = (tradeRow, onLocal) => {
+              if (!canPersistToBacktestSession) {
+                onLocal();
+                return;
+              }
+              persistLiveManualTradeToSession(sourceSessionId, tradeRow).then((ok) => {
+                if (!ok) onLocal();
+              });
+            };
             if (dashAddTradeEditMeta) {
               const sourceKind = dashAddTradeEditMeta.sourceKind || (isDashManualSourceTrade(dashAddTradeEditMeta.trade) ? "manual" : "auto");
               const originalTrade = dashAddTradeEditMeta.trade || {};
@@ -25018,24 +25059,26 @@ const TalariaV8b = () => {
                 createdAt:originalTrade.createdAt || manualTrade.createdAt,
               };
               if (sourceKind === "manual") {
-                setDashManualTrades(prev => {
-                  let replaced = false;
-                  const next = prev.map((trade, index) => {
-                    const tradeKey = getDashTradeRowKey(trade, index);
-                    const sameTradeId = String(trade?.trade_id || trade?.id || "") === String(originalTrade?.trade_id || originalTrade?.id || "");
-                    if (tradeKey === dashAddTradeEditMeta.rowKey || sameTradeId) {
-                      replaced = true;
-                      return editedTrade;
-                    }
-                    return trade;
+                persistOrLocalManualTrade(editedTrade, () => {
+                  setDashManualTrades(prev => {
+                    let replaced = false;
+                    const next = prev.map((trade, index) => {
+                      const tradeKey = getDashTradeRowKey(trade, index);
+                      const sameTradeId = String(trade?.trade_id || trade?.id || "") === String(originalTrade?.trade_id || originalTrade?.id || "");
+                      if (tradeKey === dashAddTradeEditMeta.rowKey || sameTradeId) {
+                        replaced = true;
+                        return editedTrade;
+                      }
+                      return trade;
+                    });
+                    return replaced ? next : [editedTrade, ...next];
                   });
-                  return replaced ? next : [editedTrade, ...next];
                 });
               } else {
                 setDashTradesEditedOverrides(prev => ({...prev, [dashAddTradeEditMeta.rowKey]:editedTrade}));
               }
             } else {
-              setDashManualTrades(prev => [manualTrade, ...prev]);
+              persistOrLocalManualTrade(manualTrade, () => applyLocalManualTrade(manualTrade));
             }
             setDashAddTradeEditorOpen(false);
             setDashAddTradeEditorPage("trade");

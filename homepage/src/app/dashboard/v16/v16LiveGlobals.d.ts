@@ -23,6 +23,11 @@ declare global {
     __TALARIA_V16_FETCH_TRADES_FOR_SESSION__?: (
       sessionId: string | number
     ) => Promise<Record<string, unknown>[]>;
+    /** Persist manual dashboard trade to session journal SQL (embedded live only). */
+    __TALARIA_V16_SAVE_MANUAL_TRADE__?: (
+      sessionId: string | number,
+      trade: Record<string, unknown>
+    ) => Promise<Record<string, unknown>>;
     /** Update ?sessionId= when user applies a backtest source in the library. */
     __TALARIA_V16_SYNC_SESSION_URL__?: (sessionId: string | number) => void;
   }

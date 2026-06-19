@@ -16,6 +16,7 @@ import {
   mapApiSessionToV16,
   type SessionKpis,
 } from "./v16Mappers";
+import { refreshV16SessionTrades, saveManualTradeToSession } from "./v16ManualTradeApi";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 
 type BootState =
@@ -55,6 +56,16 @@ export function useV16LiveBootstrap(): BootState {
       if (!window.__TALARIA_V16_TRADES__) window.__TALARIA_V16_TRADES__ = {};
       window.__TALARIA_V16_TRADES__[sid] = trades;
       return trades;
+    };
+
+    window.__TALARIA_V16_SAVE_MANUAL_TRADE__ = async (sessionId, trade) => {
+      const saved = await saveManualTradeToSession(sessionId, trade);
+      const sid = String(sessionId);
+      if (window.__TALARIA_V16_TRADES__) delete window.__TALARIA_V16_TRADES__[sid];
+      const trades = await refreshV16SessionTrades(sessionId);
+      if (!window.__TALARIA_V16_TRADES__) window.__TALARIA_V16_TRADES__ = {};
+      window.__TALARIA_V16_TRADES__[sid] = trades;
+      return saved;
     };
 
     (async () => {
@@ -151,6 +162,7 @@ export function useV16LiveBootstrap(): BootState {
     return () => {
       cancelled = true;
       delete window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
+      delete window.__TALARIA_V16_SAVE_MANUAL_TRADE__;
     };
   }, [reloadKey, urlSessionId]);
 
