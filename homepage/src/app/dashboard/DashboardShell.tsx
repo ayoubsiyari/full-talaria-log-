@@ -573,7 +573,8 @@ export default function DashboardShell({
       style={{ position: "fixed", inset: 0, background: DASH_C.bg, fontFamily: F, color: DASH_C.tx, display: "flex", flexDirection: "column", overflow: "hidden" }}
     >
 
-      {/* ── Top Header (parity with Design `SessionsView.jsx`) ── */}
+      {/* V16 dashboard owns the full top chrome (logo + source/filters bar). */}
+      {!isV16DashboardPage ? (
       <header style={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", gap: 0, background: DASH_C.el, boxShadow: "0 2px 18px rgba(0,0,0,0.5)", zIndex: 2 }}>
         <div style={{ width: 64, flexShrink: 0, height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <img src="/LOGO-07.png" style={{ width: 52, height: 52, objectFit: "contain" }} alt="" />
@@ -728,9 +729,10 @@ export default function DashboardShell({
           ) : null}
         </div>
       </header>
+      ) : null}
 
       {/* ── Body ── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", paddingTop: isV16DashboardPage ? 64 : 0 }}>
 
         {/* Left Sidebar */}
         <nav style={{ width: 64, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0 6px", background: DASH_C.el, gap: 1, boxShadow: "4px 0 20px rgba(0,0,0,0.45)", zIndex: 1 }}>

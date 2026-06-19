@@ -25003,19 +25003,15 @@ const TalariaV8b = () => {
                 </div>
               )}
               {/* Header */}
-              <div style={{height:v16Embedded?52:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:120}}>
-                {!v16Embedded && (
+              <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:120,...(v16Embedded?{position:"fixed",top:0,left:0,right:0}:null)}}>
                 <div style={{width:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <img src="/LOGO-07.png" style={{width:52,height:52,objectFit:"contain"}} alt=""/>
                 </div>
-                )}
-                {!v16Embedded && (
                 <div style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 12px 0 0"}}>
                   <div style={{fontSize:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:14}}>Talaria-Log</div>
                   <div style={{width:1.5,height:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:14,flexShrink:0}}/>
                 </div>
-                )}
-                <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,maxWidth:dashboardCompareBarActive?1220:880,flex:"0 1 auto",marginLeft:v16Embedded?12:14}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,maxWidth:dashboardCompareBarActive?1220:880,flex:"0 1 auto",marginLeft:14}}>
                   <div className={`tlr-dashboard-source-switch tlr-dashboard-source-switch-redesign${dashLibraryOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-label={`${dashboardLibraryType.label}: ${dashboardLibraryLabel}`}
                     onPointerDown={e=>{e.preventDefault();toggleDashLibrary();}}
                     onClick={e=>e.preventDefault()}
