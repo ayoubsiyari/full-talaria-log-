@@ -204,6 +204,39 @@ export function mapJournalRowToV16Trade(
   };
 }
 
+function sessionStrategyIdFromConfig(cfg: Record<string, unknown> | undefined): number | null {
+  if (!cfg || typeof cfg !== "object") return null;
+  const raw = cfg.strategy_id ?? cfg.strategyId ?? cfg.playbook_id ?? cfg.playbookId;
+  const n = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  const pb = cfg.playbook;
+  if (typeof pb === "string" && pb.startsWith("strategy:")) {
+    const parsed = Number.parseInt(pb.split(":")[1] || "", 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+function sessionStrategyVariables(cfg: Record<string, unknown> | undefined): unknown[] {
+  if (!cfg || typeof cfg !== "object") return [];
+  const direct = cfg.strategy_variables ?? cfg.strategyVariables;
+  if (Array.isArray(direct) && direct.length) return direct;
+  const def = cfg.strategy_definition ?? cfg.strategyDefinition;
+  if (def && typeof def === "object") {
+    const defRec = def as Record<string, unknown>;
+    if (Array.isArray(defRec.variables) && defRec.variables.length) return defRec.variables;
+    const v9 = defRec.talaria_v9 ?? defRec.talaria_v9_panel;
+    if (v9 && typeof v9 === "object" && Array.isArray((v9 as Record<string, unknown>).variables)) {
+      return (v9 as Record<string, unknown>).variables as unknown[];
+    }
+  }
+  const panel = cfg.talaria_v9 ?? cfg.talaria_v9_panel;
+  if (panel && typeof panel === "object" && Array.isArray((panel as Record<string, unknown>).variables)) {
+    return (panel as Record<string, unknown>).variables as unknown[];
+  }
+  return [];
+}
+
 export function mapApiSessionToV16(
   sess: ApiSession,
   kpis: SessionKpis | undefined,
@@ -268,6 +301,8 @@ export function mapApiSessionToV16(
     compositeTradesLoaded: loaded,
     sessionType: sess.session_type || "standard",
     config: cfg && typeof cfg === "object" ? { ...cfg } : {},
+    strategyId: sessionStrategyIdFromConfig(cfg),
+    strategy_variables: sessionStrategyVariables(cfg),
   };
 }
 

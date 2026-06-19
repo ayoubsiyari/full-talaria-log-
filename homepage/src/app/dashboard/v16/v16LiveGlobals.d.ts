@@ -10,6 +10,8 @@ export type V16LiveBoot = {
   openSessionId: string | number | null;
   journal: V16JournalBoot;
   strategies: V16StrategyGroup[];
+  /** Full strategy lab rows (includes `variables` for Add Trade tag defs). */
+  strategyBank?: Record<string, unknown>[];
   appliedSource: V16AppliedSource | null;
 };
 

@@ -17,6 +17,8 @@ import {
   type SessionKpis,
 } from "./v16Mappers";
 import { refreshV16SessionTrades, saveManualTradeToSession } from "./v16ManualTradeApi";
+import { apiStrategyToBankRow } from "../strategies/strategyLabV9Mappers";
+import type { ApiStrategyRecord } from "../strategies/strategyLabV9Mappers";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 
 type BootState =
@@ -124,6 +126,10 @@ export function useV16LiveBootstrap(): BootState {
           journal.accounts
         );
 
+        const strategyBank = (journalPayload.strategies || []).map((s) =>
+          apiStrategyToBankRow(s as ApiStrategyRecord)
+        );
+
         const openV16Session = v16Sessions.find((s) => String(s.id) === String(openSessionId));
         const appliedSource =
           buildAppliedSourceForSession(openV16Session) ||
@@ -143,6 +149,7 @@ export function useV16LiveBootstrap(): BootState {
           openSessionId: openSessionId || ((v16Sessions[0] as { id?: number })?.id ?? null),
           journal,
           strategies,
+          strategyBank,
           appliedSource,
         };
 

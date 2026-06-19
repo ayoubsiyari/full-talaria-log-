@@ -340,7 +340,7 @@ export function buildJournalBootFromApi(
 }
 
 export function buildStrategyGroups(
-  apiStrategies: { id: number; name: string }[],
+  apiStrategies: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[],
   sessions: Record<string, unknown>[],
   journalAccounts: V16JournalAccountRow[]
 ): V16StrategyGroup[] {
@@ -428,7 +428,7 @@ export function buildAppliedSourceForSession(
 export async function fetchJournalApiData(): Promise<{
   entries: ApiJournalEntry[];
   connections: ApiBrokerConnection[];
-  strategies: { id: number; name: string }[];
+  strategies: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[];
   activeProfile: ApiJournalProfile | null;
 }> {
   await syncJournalTokenFromSession();
@@ -453,12 +453,21 @@ export async function fetchJournalApiData(): Promise<{
     connections = Array.isArray(data) ? data : [];
   }
 
-  let strategies: { id: number; name: string }[] = [];
+  let strategies: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[] = [];
   if (strategiesRes?.ok) {
-    const data = (await strategiesRes.json()) as { strategies?: { id: number; name: string }[] };
+    const data = (await strategiesRes.json()) as {
+      strategies?: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[];
+    };
     strategies = (data.strategies || [])
       .filter((s) => typeof s.id === "number" && s.name)
-      .map((s) => ({ id: s.id, name: String(s.name).trim() }));
+      .map((s) => ({
+        id: s.id,
+        name: String(s.name).trim(),
+        strategy_definition:
+          s.strategy_definition && typeof s.strategy_definition === "object"
+            ? s.strategy_definition
+            : null,
+      }));
   }
 
   let activeProfile: ApiJournalProfile | null = null;

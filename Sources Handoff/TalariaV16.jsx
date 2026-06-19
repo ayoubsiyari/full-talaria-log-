@@ -11,6 +11,7 @@ const isV16LiveBoot = () =>
   !!window.__TALARIA_V16_BOOT__;
 const getV16JournalBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.journal : null);
 const getV16StrategyBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategies : null);
+const getV16StrategyBank = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategyBank : null);
 const getV16AppliedSourceBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.appliedSource : null);
 const syncV16SessionUrl = (sessionId) => {
   if (sessionId == null) return;
@@ -8200,6 +8201,25 @@ const TalariaV8b = () => {
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
   const [savedCommunityStrats, setSavedCommunityStrats] = useState([]);
   const [myStrategies, setMyStrategies] = useState([]);
+  useEffect(() => {
+    if (!isV16LiveBoot()) return;
+    let cancelled = false;
+    const syncBank = () => {
+      if (cancelled) return;
+      const bank = getV16StrategyBank();
+      if (!Array.isArray(bank) || !bank.length) return false;
+      setMyStrategies(bank);
+      return true;
+    };
+    if (syncBank()) return;
+    const timer = window.setInterval(() => {
+      if (syncBank()) window.clearInterval(timer);
+    }, 500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
   const [hiddenTemplateIds, setHiddenTemplateIds] = useState(new Set());
   const [stratBName, setStratBName] = useState("");
   const [stratBStyle, setStratBStyle] = useState("Trend Following");
@@ -23382,6 +23402,77 @@ const TalariaV8b = () => {
             setDashCompareAppliedStrategyChildSelection({});
             setDashCompareStrategyChildSelection({});
           };
+          const dashAddTradeIsoDay = value => {
+            const iso = String(value || "").slice(0, 10);
+            return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : "";
+          };
+          const resolveDashAddTradePrimarySession = (source) => {
+            const sourceSessions = Array.isArray(source?.sessions) ? source.sessions.filter(Boolean) : [];
+            if (sourceSessions[0]) return sourceSessions[0];
+            const sid = source?.sourceSessionId || String(source?.key || "").replace(/^(session|strategySession):/, "");
+            if (sid) return dashboardSessionPool.find(session => String(session.id) === String(sid)) || null;
+            return ds || null;
+          };
+          const parseDashAddTradeSessionStrategyId = (session) => {
+            if (!session) return null;
+            const cfg = session?.config && typeof session.config === "object" ? session.config : {};
+            const raw = session.strategyId ?? cfg.strategy_id ?? cfg.strategyId ?? cfg.playbook_id ?? cfg.playbookId;
+            const n = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? ""), 10);
+            if (Number.isFinite(n) && n > 0) return n;
+            const pb = cfg.playbook;
+            if (typeof pb === "string" && pb.startsWith("strategy:")) {
+              const parsed = Number.parseInt(pb.split(":")[1] || "", 10);
+              if (Number.isFinite(parsed) && parsed > 0) return parsed;
+            }
+            return null;
+          };
+          const getDashAddTradeSessionDateRange = (source) => {
+            const session = resolveDashAddTradePrimarySession(source);
+            const minDate = dashAddTradeIsoDay(session?.startDate);
+            const maxDate = dashAddTradeIsoDay(session?.endDate) || minDate;
+            return {minDate, maxDate, session};
+          };
+          const clampDashAddTradeIsoDate = (iso, range) => {
+            if (!iso) return iso;
+            let next = dashAddTradeIsoDay(iso);
+            if (!next) return iso;
+            if (range?.minDate && next < range.minDate) next = range.minDate;
+            if (range?.maxDate && next > range.maxDate) next = range.maxDate;
+            return next;
+          };
+          const defaultDashAddTradeEntryDate = (source) => {
+            const {minDate, maxDate} = getDashAddTradeSessionDateRange(source);
+            const today = new Date().toISOString().slice(0, 10);
+            if (minDate && maxDate) {
+              if (today >= minDate && today <= maxDate) return today;
+              return maxDate;
+            }
+            if (minDate) return minDate;
+            return today;
+          };
+          const resolveDashAddTradeStrategyVariables = (source) => {
+            const session = resolveDashAddTradePrimarySession(source);
+            const cfg = session?.config && typeof session.config === "object" ? session.config : {};
+            const fromSource = [source?.variables, source?.strategyVariables].find(items => Array.isArray(items) && items.length);
+            if (fromSource) return fromSource;
+            const fromSession = [session?.strategy_variables, cfg.strategy_variables, cfg.strategyVariables].find(items => Array.isArray(items) && items.length);
+            if (fromSession) return fromSession;
+            const def = cfg.strategy_definition ?? cfg.strategyDefinition;
+            if (def && typeof def === "object") {
+              const defVars = def.variables ?? def?.talaria_v9?.variables ?? def?.talaria_v9_panel?.variables;
+              if (Array.isArray(defVars) && defVars.length) return defVars;
+            }
+            const panelVars = cfg.talaria_v9?.variables ?? cfg.talaria_v9_panel?.variables;
+            if (Array.isArray(panelVars) && panelVars.length) return panelVars;
+            const strategyId = source?.strategyId ?? parseDashAddTradeSessionStrategyId(session);
+            const bank = getV16StrategyBank() || myStrategies || [];
+            const match = bank.find(row => strategyId != null && String(row.id) === String(strategyId))
+              || bank.find(row => {
+                const strategyName = String(source?.strategyName || source?.strategy || session?.strategyName || cfg.strategy_name || cfg.playbook_display || "").trim().toLowerCase();
+                return strategyName && String(row.name || "").trim().toLowerCase() === strategyName;
+              });
+            return Array.isArray(match?.variables) ? match.variables : [];
+          };
           const addTradeBaseSourceItems = (() => {
             const rows = dashboardSourceFilterItems.length
               ? dashboardSourceFilterItems
@@ -23427,12 +23518,24 @@ const TalariaV8b = () => {
             const pnl = sourceTrades.reduce((sum, trade)=>sum+(Number(trade.pnl)||0),0);
             const markets = [...new Set(sourceSessions.flatMap(session=>session?.assetClasses||[]).filter(Boolean))];
             const strategy = primarySession?.strategyName || item.strategyName || ds.strategyName || "";
+            const strategyVariables = resolveDashAddTradeStrategyVariables({
+              ...item,
+              strategyName: strategy,
+              strategyId: parseDashAddTradeSessionStrategyId(primarySession) ?? item.strategyId ?? null,
+              sessions: sourceSessions.length ? sourceSessions : (primarySession ? [primarySession] : []),
+            });
             return [key, {
               ...item,
               key,
               label:item.label || primarySession?.name || dashTxt("Source","مصدر"),
               typeLabel:item.typeLabel || (isJournalSource ? dashTxt("Journal","يومية") : dashTxt("Backtest","اختبار")),
               sourceSessionId:primarySession?.id || item.sourceSessionId || null,
+              strategyName:strategy,
+              strategyId:parseDashAddTradeSessionStrategyId(primarySession) ?? item.strategyId ?? null,
+              startDate:primarySession?.startDate || item.startDate || null,
+              endDate:primarySession?.endDate || item.endDate || null,
+              variables:strategyVariables,
+              strategyVariables:strategyVariables,
               isStrategyDirectTarget:String(item.kind || "").toLowerCase() === "strategy",
               statusKind,
               statusSource,
@@ -23760,9 +23863,8 @@ const TalariaV8b = () => {
           const buildDashAddTradeDraft = (source) => {
             const sourceTrades = Array.isArray(source?.trades) ? source.trades : [];
             const lastTrade = sourceTrades[sourceTrades.length - 1] || {};
-            const now = new Date();
-            const isoDay = now.toISOString().slice(0, 10);
-            const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+            const isoDay = defaultDashAddTradeEntryDate(source);
+            const hhmm = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
             const side = String(lastTrade.side || "Long");
             const sourceInstruments = getDashSourceInstruments(source);
             const lastSymbol = lastTrade.symbol ? String(lastTrade.symbol).toUpperCase() : "";
@@ -24150,6 +24252,10 @@ const TalariaV8b = () => {
                 return {...base, spread:instrumentSpec.costField === "spread" ? prev.spread : "", slippage:instrumentSpec.costField === "slippage" ? prev.slippage : ""};
               }
               if (field === "setup_tag") return {...prev, setup_tag:value, setup:value};
+              if (field === "date" || field === "exitDate") {
+                const range = getDashAddTradeSessionDateRange(dashAddTradeEditorSource);
+                value = clampDashAddTradeIsoDate(value, range);
+              }
               const next = {...prev, [field]:value};
               return ["date", "time", "exitDate", "exitTime"].includes(field) ? ensureDashAddTradeExitAfterEntry(next) : next;
             });
@@ -24480,10 +24586,18 @@ const TalariaV8b = () => {
               .map(row => parseDashTradeNumber(row.price))
               .filter(price => price > 0);
             const needsStrategy = isDashJournalAddTradeSource(source);
+            const sessionRange = getDashAddTradeSessionDateRange(source);
+            const hasSessionRange = !!(sessionRange.minDate || sessionRange.maxDate);
             if (instruments.length && !instruments.includes(String(draft?.symbol || "").toUpperCase())) return {ok:false, error:dashTxt("Choose an instrument that belongs to this source.","اختر أداة تابعة لهذا المصدر.")};
             if (needsStrategy && !String(draft?.setup_tag || draft?.setup || "").trim()) return {ok:false, error:dashTxt("Choose the strategy used for this journal trade.","اختر الاستراتيجية المستخدمة لهذه الصفقة في اليومية.")};
             if (!Number.isFinite(startMs)) return {ok:false, error:dashTxt("Entry date and time are required.","تاريخ ووقت الدخول مطلوبان.")};
-            if (startMs > nowMs) return {ok:false, error:dashTxt("Entry date and time cannot be in the future.","لا يمكن أن يكون وقت الدخول في المستقبل.")};
+            if (hasSessionRange) {
+              const entryIso = dashAddTradeIsoDay(draft?.date);
+              if (sessionRange.minDate && entryIso && entryIso < sessionRange.minDate) return {ok:false, error:dashTxt("Entry date must be within the backtest session range.","يجب أن يكون تاريخ الدخول ضمن نطاق جلسة الاختبار.")};
+              if (sessionRange.maxDate && entryIso && entryIso > sessionRange.maxDate) return {ok:false, error:dashTxt("Entry date must be within the backtest session range.","يجب أن يكون تاريخ الدخول ضمن نطاق جلسة الاختبار.")};
+            } else if (startMs > nowMs) {
+              return {ok:false, error:dashTxt("Entry date and time cannot be in the future.","لا يمكن أن يكون وقت الدخول في المستقبل.")};
+            }
             if (!entryRows.length || firstBadEntry) return {ok:false, error:dashTxt("Each entry row needs a price and size greater than zero.","كل صف دخول يحتاج سعرا وحجما أكبر من صفر.")};
             if (calculated.avgEntry == null) return {ok:false, error:dashTxt("At least one valid entry price is required.","يلزم إدخال سعر دخول صالح واحد على الأقل.")};
             if (!(stop > 0)) return {ok:false, error:dashTxt("Initial stop loss is required and must be greater than zero.","وقف الخسارة الأولي مطلوب ويجب أن يكون أكبر من صفر.")};
@@ -24498,6 +24612,11 @@ const TalariaV8b = () => {
             if (hasExitTiming) {
               if (!Number.isFinite(endMs)) return {ok:false, error:dashTxt("Exit date and time are required when exit timing is enabled.","تاريخ ووقت الخروج مطلوبان عند تفعيل وقت الخروج.")};
               if (endMs < startMs) return {ok:false, error:dashTxt("Exit date and time must be after entry.","يجب أن يكون وقت الخروج بعد الدخول.")};
+              if (hasSessionRange) {
+                const exitIso = dashAddTradeIsoDay(draft?.exitDate);
+                if (sessionRange.minDate && exitIso && exitIso < sessionRange.minDate) return {ok:false, error:dashTxt("Exit date must be within the backtest session range.","يجب أن يكون تاريخ الخروج ضمن نطاق جلسة الاختبار.")};
+                if (sessionRange.maxDate && exitIso && exitIso > sessionRange.maxDate) return {ok:false, error:dashTxt("Exit date must be within the backtest session range.","يجب أن يكون تاريخ الخروج ضمن نطاق جلسة الاختبار.")};
+              }
               if (!hasActualExitRows || !(calculated.exitedSize > 0)) return {ok:false, error:dashTxt("Add at least one actual exit, or turn off exit time to keep the trade open.","أضف خروجا فعليا واحدا على الأقل أو أوقف وقت الخروج لإبقاء الصفقة مفتوحة.")};
             }
             const nonNegativeFields = [
@@ -24738,9 +24857,12 @@ const TalariaV8b = () => {
           const splitDashAddTradeVariableDefs = (variables, slot) => {
             const vars = Array.isArray(variables) ? variables : [];
             const dividerIndex = vars.findIndex(item => item?.type === "divider");
+            const isVariableItem = (item) => item?.type === "variable" || (
+              item && item.type !== "divider" && String(item.name || item.label || "").trim() && Array.isArray(item.options)
+            );
             return vars
               .map((item, index) => ({item, index}))
-              .filter(({item, index}) => item?.type === "variable" && (
+              .filter(({item, index}) => isVariableItem(item) && (
                 slot === "pre"
                   ? (item.timing === "pre" || (!item.timing && (dividerIndex < 0 || index < dividerIndex)))
                   : (item.timing === "post" || (!item.timing && dividerIndex >= 0 && index > dividerIndex))
@@ -24749,22 +24871,33 @@ const TalariaV8b = () => {
               .filter(Boolean);
           };
           const resolveDashAddTradeStrategyRecord = (source, draft=null) => {
+            const session = resolveDashAddTradePrimarySession(source);
+            const cfg = session?.config && typeof session.config === "object" ? session.config : {};
+            const strategyId = source?.strategyId ?? parseDashAddTradeSessionStrategyId(session) ?? cfg.strategy_id ?? cfg.strategyId;
+            if (strategyId != null) {
+              const bank = getV16StrategyBank() || myStrategies || [];
+              const byId = bank.find(row => String(row.id) === String(strategyId));
+              if (byId) return byId;
+            }
             const candidates = [
               source?.strategyId,
               source?.strategy_id,
               source?.strategyName,
               source?.strategy,
+              session?.strategyName,
               draft?.setup_tag,
               draft?.setup,
               source?.label,
             ].map(normalizeDashAddTradeTagKey).filter(Boolean);
-            return (myStrategies || []).find(strategy => {
+            return (getV16StrategyBank() || myStrategies || []).find(strategy => {
               const strategyKeys = [strategy?.id, strategy?.name, strategy?.title, strategy?.label].map(normalizeDashAddTradeTagKey).filter(Boolean);
               return strategyKeys.some(key => candidates.some(candidate => key === candidate || key.includes(candidate) || candidate.includes(key)));
             }) || null;
           };
           const resolveDashAddTradeTagDefs = (source, slot, draft=null) => {
             const strategyRecord = resolveDashAddTradeStrategyRecord(source, draft);
+            const session = resolveDashAddTradePrimarySession(source);
+            const sessionCfg = session?.config && typeof session.config === "object" ? session.config : {};
             const directDefs = [
               source?.[slot === "pre" ? "preTradeTags" : "postTradeTags"],
               source?.[slot === "pre" ? "preTagsDefinition" : "postTagsDefinition"],
@@ -24778,10 +24911,20 @@ const TalariaV8b = () => {
             const variableSources = [
               source?.variables,
               source?.strategyVariables,
+              session?.strategy_variables,
+              sessionCfg.strategy_variables,
+              sessionCfg.strategyVariables,
+              sessionCfg.strategy_definition?.variables,
+              sessionCfg.strategyDefinition?.variables,
+              sessionCfg.strategy_definition?.talaria_v9?.variables,
+              sessionCfg.strategy_definition?.talaria_v9_panel?.variables,
+              sessionCfg.talaria_v9?.variables,
+              sessionCfg.talaria_v9_panel?.variables,
               source?.strategy?.variables,
               source?.strategy?.strategyVariables,
               strategyRecord?.variables,
               strategyRecord?.strategyVariables,
+              resolveDashAddTradeStrategyVariables(source),
             ];
             const fromDirect = (Array.isArray(direct) ? direct : []).map((item, index) => normalizeDashAddTradeTagDef(item, index, slot)).filter(Boolean);
             const fromVariables = variableSources.map(vars => splitDashAddTradeVariableDefs(vars, slot)).find(items => items.length) || [];
@@ -27512,7 +27655,10 @@ const TalariaV8b = () => {
                   const raw = dashAddTradeDateInputDraft?.[field];
                   if (raw == null) return;
                   const parsed = parseAddTradeDateInput(raw);
-                  if (parsed) updateDashAddTradeDraft(field, parsed);
+                  if (parsed) {
+                    const range = getDashAddTradeSessionDateRange(dashAddTradeEditorSource);
+                    updateDashAddTradeDraft(field, clampDashAddTradeIsoDate(parsed, range));
+                  }
                   setDashAddTradeDateInputDraft(prev => {
                     const next = {...prev};
                     delete next[field];
@@ -27560,7 +27706,9 @@ const TalariaV8b = () => {
                   });
                 };
                 const openAddTradeCalendar = (field, anchorNode=null) => {
-                  const value = dashAddTradeDraft?.[field] || dashAddTradeDraft?.date || new Date().toISOString().slice(0, 10);
+                  const range = getDashAddTradeSessionDateRange(dashAddTradeEditorSource);
+                  const rawValue = dashAddTradeDraft?.[field] || defaultDashAddTradeEntryDate(dashAddTradeEditorSource);
+                  const value = clampDashAddTradeIsoDate(rawValue, range);
                   setDashAddTradeTimeMenu(null);
                   setDashAddTradeMarketOpen(false);
                   setDashAddTradeSymbolOpen(false);
@@ -27753,6 +27901,9 @@ const TalariaV8b = () => {
                   const entryDatePartsForExit = entryDateForExit.match(/^(\d{4})-(\d{2})-(\d{2})$/);
                   const entryYearForExit = entryDatePartsForExit ? Number(entryDatePartsForExit[1]) : null;
                   const entryMonthForExit = entryDatePartsForExit ? Number(entryDatePartsForExit[2]) - 1 : null;
+                  const sessionRange = getDashAddTradeSessionDateRange(dashAddTradeEditorSource);
+                  const minSessionDate = sessionRange.minDate;
+                  const maxSessionDate = sessionRange.maxDate;
                   const yearBase = Math.floor(model.year / 12) * 12;
                   const todayRaw = new Date();
                   const todayIso = `${todayRaw.getFullYear()}-${String(todayRaw.getMonth() + 1).padStart(2, "0")}-${String(todayRaw.getDate()).padStart(2, "0")}`;
@@ -27786,21 +27937,23 @@ const TalariaV8b = () => {
                     });
                   };
                   const selectDayIso = iso => {
-                    setDateTimeParts(iso);
-                    setDashAddTradeCalendar(prev => ({...(prev || {}), field, monthKey:String(iso).slice(0, 7), mode:"days"}));
+                    const clamped = clampDashAddTradeIsoDate(iso, sessionRange);
+                    setDateTimeParts(clamped);
+                    setDashAddTradeCalendar(prev => ({...(prev || {}), field, monthKey:String(clamped).slice(0, 7), mode:"days"}));
                     if (!props.keepOpen && !timeField) setDashAddTradeCalendar(null);
                   };
                   const shiftMonth = delta => shiftAddTradeMonth(delta, field);
                   const setNow = () => {
                     const now = new Date();
-                    const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                    const iso = clampDashAddTradeIsoDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`, sessionRange);
                     const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
                     setDateTimeParts(iso, time);
                     setDashAddTradeCalendar(prev => ({...(prev || {}), field, monthKey:iso.slice(0, 7), mode:"days"}));
                   };
                   const setToday = () => {
-                    setDateTimeParts(todayIso);
-                    setDashAddTradeCalendar(prev => ({...(prev || {}), field, monthKey:todayIso.slice(0, 7), mode:"days"}));
+                    const iso = clampDashAddTradeIsoDate(todayIso, sessionRange);
+                    setDateTimeParts(iso);
+                    setDashAddTradeCalendar(prev => ({...(prev || {}), field, monthKey:iso.slice(0, 7), mode:"days"}));
                   };
                   const setMarketOpen = () => {
                     if (!timeField) return;
@@ -27841,7 +27994,9 @@ const TalariaV8b = () => {
                       const iso = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
                       const isOutside = date.getUTCMonth() !== model.month;
                       const isSelected = selectedYear === date.getUTCFullYear() && selectedMonth === date.getUTCMonth() && selectedDay === date.getUTCDate();
-                      const isDisabled = field === "exitDate" && entryDateForExit && iso < entryDateForExit;
+                      const isDisabled = (field === "exitDate" && entryDateForExit && iso < entryDateForExit)
+                        || (minSessionDate && iso < minSessionDate)
+                        || (maxSessionDate && iso > maxSessionDate);
                       const isToday = iso === todayIso;
                       const isWeekend = date.getUTCDay() === 0 || date.getUTCDay() === 6;
                       return (
@@ -27890,7 +28045,9 @@ const TalariaV8b = () => {
                         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4,paddingTop:4}}>
                           {addTradeCalendarMonths.map((month, index) => {
                             const isSelected = selectedYear === model.year && selectedMonth === index;
-                            const isDisabled = field === "exitDate" && entryYearForExit != null && (model.year < entryYearForExit || (model.year === entryYearForExit && index < entryMonthForExit));
+                            const isDisabled = (field === "exitDate" && entryYearForExit != null && (model.year < entryYearForExit || (model.year === entryYearForExit && index < entryMonthForExit)))
+                              || (minSessionDate && `${model.year}-${String(index + 1).padStart(2, "0")}-01` > maxSessionDate)
+                              || (maxSessionDate && `${model.year}-${String(index + 1).padStart(2, "0")}-28` < minSessionDate);
                             return (
                               <div key={`add-trade-month-${model.year}-${month}`} className={isDisabled ? "" : "tlr-library-action tlr-add-trade-soft-action"} role={isDisabled ? "presentation" : "button"} tabIndex={isDisabled ? -1 : 0} onPointerDown={isDisabled ? undefined : libraryPointerActivate(()=>selectAddTradeCalendarMonth(index))} onKeyDown={isDisabled ? undefined : libraryKeyActivate(()=>selectAddTradeCalendarMonth(index))}
                                 style={{...cellSx({isSelected,isDisabled}),height:28,fontSize:10.6,"--tlr-add-hover-bg":isSelected?c.acL:"rgba(255,255,255,0.045)","--tlr-add-hover-color":isSelected?"#fff":c.tx}}>
@@ -27904,7 +28061,10 @@ const TalariaV8b = () => {
                         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4,paddingTop:4}}>
                           {Array.from({length:12},(_,index)=>yearBase + index).map(year => {
                             const isSelected = selectedYear === year;
-                            const isDisabled = !addTradeYearIsRealistic(year) || (field === "exitDate" && entryYearForExit != null && year < entryYearForExit);
+                            const isDisabled = !addTradeYearIsRealistic(year)
+                              || (field === "exitDate" && entryYearForExit != null && year < entryYearForExit)
+                              || (minSessionDate && year < Number(minSessionDate.slice(0, 4)))
+                              || (maxSessionDate && year > Number(maxSessionDate.slice(0, 4)));
                             return (
                               <div key={`add-trade-year-${year}`} className={isDisabled ? "" : "tlr-library-action tlr-add-trade-soft-action"} role={isDisabled ? "presentation" : "button"} tabIndex={isDisabled ? -1 : 0} onPointerDown={isDisabled ? undefined : libraryPointerActivate(()=>selectAddTradeCalendarYear(year))} onKeyDown={isDisabled ? undefined : libraryKeyActivate(()=>selectAddTradeCalendarYear(year))}
                                 style={{...cellSx({isSelected,isDisabled}),height:28,fontSize:10.6,"--tlr-add-hover-bg":isSelected?c.acL:"rgba(255,255,255,0.045)","--tlr-add-hover-color":isSelected?"#fff":c.tx}}>
