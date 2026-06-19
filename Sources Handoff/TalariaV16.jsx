@@ -26,6 +26,17 @@ const openDashboardNewSession = (opts = {}) => {
   fn(opts);
   return true;
 };
+const openDashboardEditSession = (sess) => {
+  if (!isV16Embedded()) return false;
+  const fn = typeof window !== "undefined" ? window.__TALARIA_OPEN_EDIT_SESSION__ : null;
+  if (typeof fn !== "function") return false;
+  fn(sess);
+  return true;
+};
+const reloadEmbeddedV16Boot = () => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
+};
 
 const sessNormSym = (t) => String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
 const sessIsoDayFromEpochMs = (ms) => {
@@ -10344,20 +10355,63 @@ const TalariaV8b = () => {
     }
   };
   const deleteSession = (e, id) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
+    if (isV16LiveBoot()) {
+      if (!globalThis.confirm("Delete this session? This cannot be undone.")) return;
+      fetch(`/api/sessions/${encodeURIComponent(String(id))}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(String(res.status));
+          setSessions((prev) => prev.filter((s) => String(s.id) !== String(id)));
+          if (String(dashSessId) === String(id)) setDashSessId(null);
+          reloadEmbeddedV16Boot();
+        })
+        .catch((err) => {
+          window.alert(`Failed to delete session: ${err?.message || err}`);
+        });
+      return;
+    }
     const updated = sessions.filter(s => s.id !== id);
     setSessions(updated);
     try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
   };
   const duplicateSession = (e, sess) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
+    if (isV16LiveBoot()) {
+      const cfg = sess?.config && typeof sess.config === "object" ? { ...sess.config } : {};
+      const session_type =
+        sess.tradingMode === "prop" || String(sess.sessionType || "").toLowerCase().includes("prop")
+          ? "propfirm"
+          : "personal";
+      fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: `Copy of ${sess.name || "Session"}`,
+          session_type,
+          config: cfg,
+        }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(String(res.status));
+          reloadEmbeddedV16Boot();
+        })
+        .catch((err) => {
+          window.alert(`Failed to duplicate session: ${err?.message || err}`);
+        });
+      return;
+    }
     const copy = { ...sess, id: Date.now(), name: `Copy of ${sess.name}`, progress: 0, trades: 0, pnl: null, winRate: null, avgRR: null, createdAt: new Date().toISOString() };
     const updated = [copy, ...sessions];
     setSessions(updated);
     try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
   };
   const openEditSession = (e, sess) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
+    if (openDashboardEditSession(sess)) return;
     setEditSessId(sess.id);
     setNewSessName(sess.name || "");
     setNewSessTf(sess.timeframe || "1H");

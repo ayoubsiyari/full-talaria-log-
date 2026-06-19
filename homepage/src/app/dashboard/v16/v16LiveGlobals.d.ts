@@ -37,6 +37,8 @@ declare global {
       strategyId?: number;
       strategyName?: string;
     }) => void;
+    /** Open dashboard session editor for an existing backtest (embedded V16). */
+    __TALARIA_OPEN_EDIT_SESSION__?: (sess: Record<string, unknown>) => void;
     /** True while embedded bootstrap is fetching sessions/trades (show loading UI). */
     __TALARIA_V16_BOOT_LOADING__?: boolean;
   }

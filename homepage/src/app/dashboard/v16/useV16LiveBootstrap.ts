@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { fetchJson } from "../analytics/SessionAnalyticsPanel";
 import { resolveSessionIdForUser, type Session } from "../analytics/sessionSelection";
@@ -30,10 +30,17 @@ export function useV16LiveBootstrap(): BootState {
   const searchParams = useSearchParams();
   const urlSessionId = searchParams.get("sessionId");
   const [state, setState] = useState<BootState>({ status: "loading" });
+  const [bootNonce, setBootNonce] = useState(0);
+
+  useEffect(() => {
+    const onReload = () => setBootNonce((n) => n + 1);
+    window.addEventListener("talaria-v16-reload-boot", onReload);
+    return () => window.removeEventListener("talaria-v16-reload-boot", onReload);
+  }, []);
 
   const reloadKey = useMemo(
-    () => `${urlSessionId ?? ""}:${searchParams.get("strategy") ?? ""}`,
-    [searchParams, urlSessionId]
+    () => `${urlSessionId ?? ""}:${searchParams.get("strategy") ?? ""}:${bootNonce}`,
+    [searchParams, urlSessionId, bootNonce]
   );
 
   useLayoutEffect(() => {

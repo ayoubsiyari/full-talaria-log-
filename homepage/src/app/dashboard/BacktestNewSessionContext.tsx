@@ -13,8 +13,11 @@ export type BacktestNewSessionOpenOptions = {
   strategyName?: string;
 };
 
+export type BacktestEditSessionPayload = BacktestNewSessionInitialState["editSession"];
+
 type BacktestNewSessionContextValue = {
   openNewSession: (opts?: BacktestNewSessionOpenOptions) => void;
+  openEditSession: (sess: NonNullable<BacktestEditSessionPayload>) => void;
   registerOnSaved: (fn: () => void) => () => void;
 };
 
@@ -44,6 +47,12 @@ export function BacktestNewSessionProvider({
     setOpen(true);
   }, []);
 
+  const openEditSession = React.useCallback((sess: NonNullable<BacktestEditSessionPayload>) => {
+    if (!sess?.id) return;
+    setInitialState({ editSession: sess });
+    setOpen(true);
+  }, []);
+
   React.useEffect(() => {
     register(() => openNewSession());
     return () => register(null);
@@ -53,10 +62,14 @@ export function BacktestNewSessionProvider({
     window.__TALARIA_OPEN_NEW_SESSION__ = (opts?: BacktestNewSessionOpenOptions) => {
       openNewSession(opts);
     };
+    window.__TALARIA_OPEN_EDIT_SESSION__ = (sess: Record<string, unknown>) => {
+      openEditSession(sess as NonNullable<BacktestEditSessionPayload>);
+    };
     return () => {
       delete window.__TALARIA_OPEN_NEW_SESSION__;
+      delete window.__TALARIA_OPEN_EDIT_SESSION__;
     };
-  }, [openNewSession]);
+  }, [openNewSession, openEditSession]);
 
   const registerOnSaved = React.useCallback((fn: () => void) => {
     onSavedListenersRef.current.add(fn);
@@ -81,8 +94,8 @@ export function BacktestNewSessionProvider({
   }, []);
 
   const value = React.useMemo(
-    () => ({ openNewSession, registerOnSaved }),
-    [openNewSession, registerOnSaved],
+    () => ({ openNewSession, openEditSession, registerOnSaved }),
+    [openNewSession, openEditSession, registerOnSaved],
   );
 
   return (

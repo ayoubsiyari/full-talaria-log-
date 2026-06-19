@@ -37,6 +37,26 @@ function IconI({ n, s = 18, cl = "currentColor" }: { n: string; s?: number; cl?:
 export type BacktestNewSessionInitialState = {
   playbook?: string;
   sessionName?: string;
+  editSession?: {
+    id: number | string;
+    name?: string;
+    session_type?: string;
+    config?: Record<string, unknown>;
+    startDate?: string;
+    endDate?: string;
+    capital?: number;
+    tradingMode?: string;
+    tickers?: string[];
+    timeframe?: string;
+    strategyName?: string;
+    strategyDesc?: string;
+    leverage?: string;
+    riskVal?: string;
+    riskMode?: string;
+    replayMode?: string;
+    replaySpeed?: number;
+    rollbackAllowed?: boolean;
+  };
 };
 
 export type BacktestNewSessionModalProps = {
@@ -119,6 +139,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const [newSessNavEnabled, setNewSessNavEnabled] = useState(true);
   const [newSessFilePickerOpen, setNewSessFilePickerOpen] = useState(false);
   const [editSessId, setEditSessId] = useState<any>(null);
+  const [savingSession, setSavingSession] = useState(false);
   const [newSessTickers, setNewSessTickers] = useState<string[]>([]);
   const [newSessTickerInput, setNewSessTickerInput] = useState("");
   const [newSessTickerFocus, setNewSessTickerFocus] = useState(false);
@@ -320,14 +341,75 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   }, []);
 
   const prevOpen = useRef(false);
+
+  const applySessionToForm = useCallback((sess: NonNullable<BacktestNewSessionInitialState["editSession"]>) => {
+    const cfg = sess.config && typeof sess.config === "object" ? sess.config : {};
+    const tickers = Array.isArray(sess.tickers) && sess.tickers.length
+      ? sess.tickers
+      : Array.isArray(cfg.tickers)
+        ? (cfg.tickers as string[])
+        : cfg.symbol
+          ? [String(cfg.symbol)]
+          : [];
+    const startDate = String(
+      sess.startDate || cfg.startDate || cfg.start_date || ""
+    ).slice(0, 10);
+    const endDate = String(sess.endDate || cfg.endDate || cfg.end_date || "").slice(0, 10);
+    const capital = String(
+      sess.capital ?? cfg.startBalance ?? cfg.start_balance ?? cfg.capital ?? "10000"
+    );
+    const tradingModeRaw = String(
+      sess.tradingMode || cfg.trading_mode || cfg.tradingMode || "standard"
+    ).toLowerCase();
+    const isProp = tradingModeRaw.includes("prop");
+    const playbook = String(cfg.playbook || cfg.strategy_name || sess.strategyName || "");
+    const tf = String(sess.timeframe || cfg.timeframe || cfg.tf || "1H");
+
+    setEditSessId(sess.id);
+    setNewSessName(sess.name || String(cfg.sessionName || cfg.session_name || "Backtest Session"));
+    setNewSessPlaybook(playbook);
+    setNewSessDescription(String(cfg.description || sess.strategyDesc || ""));
+    setNewSessTickers(tickers.filter(Boolean));
+    setNewSessSymbol(tickers[0] || "NQ");
+    setNewSessTf(tf);
+    setNewSessStart(startDate);
+    setNewSessEnd(endDate);
+    setNewSessStartInput(startDate);
+    setNewSessEndInput(endDate);
+    setNewSessCapital(capital);
+    setNewSessCurrency(String(cfg.account_currency || cfg.currency || "USD"));
+    setNewSessAssetClass(String(cfg.asset_class || cfg.assetClass || "Forex"));
+    setSessTradingMode(isProp ? "prop" : "standard");
+    setSessLeverage(String(sess.leverage || cfg.leverage || "1:100"));
+    setSessRiskVal(String(sess.riskVal || cfg.defaultRisk || cfg.risk_val || "1"));
+    setSessRiskMode(String(sess.riskMode || cfg.defaultRiskType || cfg.risk_mode || "pct"));
+    setSessReplayMode(String(sess.replayMode || cfg.replayMode || cfg.replay_mode || "candle").toLowerCase());
+    setSessReplaySpeed(Number(sess.replaySpeed ?? cfg.replaySpeed ?? cfg.replay_speed ?? 30) || 30);
+    setNewSessRollback(!!(sess.rollbackAllowed ?? cfg.allowBackNavigation ?? cfg.rollback_allowed));
+    setNewSessTradingCostsEnabled(
+      !!(cfg.trading_costs_enabled ?? (cfg.commission && cfg.commission !== "None"))
+    );
+    setNewSessTimezone(String(cfg.timezone || "America/New_York"));
+    setNewSessDST(cfg.dst !== false);
+    setNewSessProtect(String(cfg.protectionPreset || cfg.protection_preset || "none"));
+    if (Array.isArray(cfg.supporting_tickers)) {
+      setNewSessSupportTickers(cfg.supporting_tickers as string[]);
+      setNewSessSupportEnabled((cfg.supporting_tickers as string[]).length > 0);
+    }
+  }, []);
+
   useEffect(() => {
     if (open && !prevOpen.current) {
       resetFormToDefaults();
-      if (initialState?.sessionName) setNewSessName(initialState.sessionName);
-      if (initialState?.playbook) setNewSessPlaybook(initialState.playbook);
+      if (initialState?.editSession) {
+        applySessionToForm(initialState.editSession);
+      } else {
+        if (initialState?.sessionName) setNewSessName(initialState.sessionName);
+        if (initialState?.playbook) setNewSessPlaybook(initialState.playbook);
+      }
     }
     prevOpen.current = open;
-  }, [open, resetFormToDefaults, initialState]);
+  }, [open, resetFormToDefaults, initialState, applySessionToForm]);
 
   useEffect(() => {
     if (!open) return;
@@ -645,10 +727,23 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     };
   }
 
-  async function persistSession(): Promise<number | null> {
+  async function persistSessionWithConfig(config: Record<string, unknown>): Promise<number | null> {
     const sessionName = newSessName.trim() || "Backtest Session";
     const session_type = sessTradingMode === "prop" ? "propfirm" : "personal";
-    const config = await buildChartConfig();    const res = await fetch("/api/sessions", {
+    if (editSessId != null) {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(String(editSessId))}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: sessionName, config }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail ? String(body.detail) : `HTTP ${res.status}`);
+      }
+      return Number(editSessId);
+    }
+    const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -663,14 +758,22 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     return id != null ? Number(id) : null;
   }
 
+  async function persistSession(): Promise<number | null> {
+    const config = await buildChartConfig();
+    return persistSessionWithConfig(config);
+  }
+
   const saveNewSession = async () => {
-    if (!isValid2) return;
+    if (!isValid2 || savingSession) return;
+    setSavingSession(true);
     try {
       await persistSession();
       await onSaved?.();
       closeNewSess();
     } catch (e: any) {
       window.alert(`Failed to save session: ${e?.message || e}`);
+    } finally {
+      setSavingSession(false);
     }
   };
 
@@ -746,23 +849,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   }, [newSessCalTarget, newSessStart, newSessEnd]);
 
   const startNewSession = async () => {
-    if (!isValid2) return;
+    if (!isValid2 || savingSession) return;
+    setSavingSession(true);
     try {
       const cfg = await buildChartConfig();
-      const sessionName = newSessName.trim() || "Backtest Session";
-      const session_type = sessTradingMode === "prop" ? "propfirm" : "personal";
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name: sessionName, session_type, config: cfg }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ? String(body.detail) : `HTTP ${res.status}`);
-      }
-      const payload = await res.json();
-      const id = payload?.session?.id != null ? Number(payload.session.id) : null;
+      const id = await persistSessionWithConfig(cfg);
       try {
         localStorage.setItem("backtestingSession", JSON.stringify(cfg));
         if (id != null) {
@@ -778,6 +869,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       window.location.href = `/chart/index.html${q}`;
     } catch (e: any) {
       window.alert(`Failed to start session: ${e?.message || e}`);
+    } finally {
+      setSavingSession(false);
     }
   };
 
@@ -2057,17 +2150,17 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                         style={{height:27,padding:"0 14px",display:"flex",alignItems:"center",border:`1px solid ${hov==="sessCancel"?c.brH:c.br}`,background:"transparent",cursor:"default",fontSize:10,fontWeight:600,color:hov==="sessCancel"?c.tx:c.ts,letterSpacing:"0.04em",fontFamily:F,transition:"all 0.12s"}}>
                         Cancel
                       </div>
-                      <div onClick={isValid2?saveNewSession:undefined}
+                      <div onClick={isValid2 && !savingSession ? saveNewSession : undefined}
                         onMouseEnter={()=>setHov("sessSave")} onMouseLeave={()=>setHov(null)}
-                        style={{height:27,padding:"0 14px",display:"flex",alignItems:"center",gap:5,border:`1px solid ${isValid2?(hov==="sessSave"?c.brH:c.br):"rgba(255,255,255,0.06)"}`,background:"transparent",cursor:isValid2?"default":"not-allowed",fontSize:10,fontWeight:600,color:isValid2?(hov==="sessSave"?c.tx:c.ts):"rgba(255,255,255,0.2)",letterSpacing:"0.04em",fontFamily:F,transition:"all 0.12s"}}>
+                        style={{height:27,padding:"0 14px",display:"flex",alignItems:"center",gap:5,border:`1px solid ${isValid2?(hov==="sessSave"?c.brH:c.br):"rgba(255,255,255,0.06)"}`,background:"transparent",cursor:isValid2 && !savingSession?"default":"not-allowed",fontSize:10,fontWeight:600,color:isValid2?(hov==="sessSave"?c.tx:c.ts):"rgba(255,255,255,0.2)",letterSpacing:"0.04em",fontFamily:F,transition:"all 0.12s",opacity:savingSession?0.6:1}}>
                         <svg width={10} height={10} viewBox="0 0 20 20" fill="none"><path d="M4 2h9l3 3v13H4V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><rect x="7" y="2" width="6" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.3"/><rect x="6" y="12" width="8" height="6" rx="0.5" stroke="currentColor" strokeWidth="1.3"/></svg>
-                        Save
+                        {savingSession ? "Saving…" : "Save"}
                       </div>
-                      <div onClick={isValid2?()=>{void startNewSession();}:undefined}
+                      <div onClick={isValid2 && !savingSession ? ()=>{void startNewSession();}:undefined}
                         onMouseEnter={()=>setHov("sessStart")} onMouseLeave={()=>setHov(null)}
-                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:6,background:isValid2?`linear-gradient(135deg,${c.ac},${c.acL})`:"rgba(38,67,247,0.15)",cursor:isValid2?"default":"not-allowed",fontSize:10,fontWeight:700,color:isValid2?"#fff":"rgba(255,255,255,0.25)",letterSpacing:"0.05em",boxShadow:isValid2?"0 2px 10px rgba(38,67,247,0.35)":"none",filter:hov==="sessStart"&&isValid2?"brightness(1.12)":"brightness(1)",transition:"all 0.12s",flexShrink:0,fontFamily:F}}>
+                        style={{height:27,padding:"0 16px",display:"flex",alignItems:"center",gap:6,background:isValid2?`linear-gradient(135deg,${c.ac},${c.acL})`:"rgba(38,67,247,0.15)",cursor:isValid2 && !savingSession?"default":"not-allowed",fontSize:10,fontWeight:700,color:isValid2?"#fff":"rgba(255,255,255,0.25)",letterSpacing:"0.05em",boxShadow:isValid2?"0 2px 10px rgba(38,67,247,0.35)":"none",filter:hov==="sessStart"&&isValid2?"brightness(1.12)":"brightness(1)",transition:"all 0.12s",flexShrink:0,fontFamily:F,opacity:savingSession?0.6:1}}>
                         <svg width={8} height={8} viewBox="0 0 12 12" fill="none"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>
-                        Start Session
+                        {savingSession ? "Starting…" : editSessId ? "Save & Start" : "Start Session"}
                       </div>
                     </div>
                   </div>

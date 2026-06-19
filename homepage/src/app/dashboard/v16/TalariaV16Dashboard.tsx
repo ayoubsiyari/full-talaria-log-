@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useLayoutEffect, useState } from "react";
+import { useBacktestNewSession } from "../BacktestNewSessionContext";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 import { useV16LiveBootstrap } from "./useV16LiveBootstrap";
 
@@ -54,6 +55,7 @@ function V16DashLoadingSpinner() {
 
 export default function TalariaV16Dashboard() {
   const boot = useV16LiveBootstrap();
+  const { registerOnSaved } = useBacktestNewSession();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -64,6 +66,12 @@ export default function TalariaV16Dashboard() {
   useLayoutEffect(() => {
     primeV16EmbeddedShell();
   }, []);
+
+  useEffect(() => {
+    return registerOnSaved(() => {
+      window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
+    });
+  }, [registerOnSaved]);
 
   useEffect(() => {
     const sync = () => setBootOverlay(!!window.__TALARIA_V16_BOOT_LOADING__);
