@@ -19,6 +19,59 @@ const syncV16SessionUrl = (sessionId) => {
   if (typeof fn === "function") fn(sessionId);
 };
 
+const sessNormSym = (t) => String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
+const sessIsoDayFromEpochMs = (ms) => {
+  if (ms == null || ms === "") return "";
+  const n = typeof ms === "string" ? Number(ms) : ms;
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const d = new Date(n);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+};
+const sessIsoDayFromApiText = (s) => {
+  if (!s) return "";
+  const m = String(s).match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : "";
+};
+const sessSpanFromApiFile = (f) => {
+  if (!f || typeof f !== "object") return null;
+  const fromMs = sessIsoDayFromEpochMs(f.start_ts_ms);
+  const toMs = sessIsoDayFromEpochMs(f.end_ts_ms);
+  if (fromMs && toMs) return { from: fromMs, to: toMs };
+  if (f.start_ts != null && f.end_ts != null) {
+    const from = sessIsoDayFromEpochMs(f.start_ts);
+    const to = sessIsoDayFromEpochMs(f.end_ts);
+    if (from && to) return { from, to };
+  }
+  const fromIso = sessIsoDayFromApiText(String(f.start_iso || ""));
+  const toIso = sessIsoDayFromApiText(String(f.end_iso || ""));
+  if (fromIso && toIso) return { from: fromIso, to: toIso };
+  return null;
+};
+const sessFindApiFileForSymbol = (sym, apiFiles) => {
+  const key = sessNormSym(sym);
+  return (Array.isArray(apiFiles) ? apiFiles : []).find((f) => {
+    const ft = sessNormSym(f.ticker || "");
+    const fromName = sessNormSym(String(f.original_name || f.name || "").replace(/\.csv$/i, ""));
+    return ft === key || fromName === key || fromName.startsWith(key) || key.startsWith(ft);
+  }) || null;
+};
+const sessComputeOverlapRange = (files) => {
+  const withRange = (Array.isArray(files) ? files : []).filter((f) => f?.from && f?.to);
+  if (!withRange.length) return { start: "", end: "", hasOverlap: false, conflict: false };
+  const start = withRange.map((f) => f.from).sort().slice(-1)[0] || "";
+  const end = withRange.map((f) => f.to).sort()[0] || "";
+  if (!start || !end || start > end) return { start: "", end: "", hasOverlap: false, conflict: true };
+  return { start, end, hasOverlap: true, conflict: false };
+};
+const sessClampIsoDate = (iso, minIso, maxIso) => {
+  if (!iso) return iso;
+  let next = String(iso).slice(0, 10);
+  if (minIso && next < minIso) next = minIso;
+  if (maxIso && next > maxIso) next = maxIso;
+  return next;
+};
+
 /* @refresh reset */
 
 // ── Color utilities ──────────────────────────────────────────────────────────
@@ -8185,8 +8238,10 @@ const TalariaV8b = () => {
   });
   const [newSessSymbolSpreads, setNewSessSymbolSpreads] = useState({});
   const [newSessFuturesData, setNewSessFuturesData] = useState({});
+  const [newSessApiFiles, setNewSessApiFiles] = useState([]);
+  const [newSessApiFilesLoading, setNewSessApiFilesLoading] = useState(false);
+  const [newSessPlaybookId, setNewSessPlaybookId] = useState(null);
 
-  /* ── Strategies page state ── */
   const [stratTab, setStratTab] = useState("mine");
   const [stratSearch, setStratSearch] = useState("");
   const [stratSearchFocus, setStratSearchFocus] = useState(false);
@@ -8226,6 +8281,69 @@ const TalariaV8b = () => {
       window.clearInterval(timer);
     };
   }, []);
+  useEffect(() => {
+    if (!newSessOpen) return;
+    let cancelled = false;
+    setNewSessApiFilesLoading(true);
+    fetch("/api/files?session_ready=1", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { files: [] }))
+      .then((payload) => {
+        if (!cancelled) setNewSessApiFiles(Array.isArray(payload?.files) ? payload.files : []);
+      })
+      .catch(() => {
+        if (!cancelled) setNewSessApiFiles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setNewSessApiFilesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [newSessOpen]);
+  const newSessTodayIso = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+  const newSessDateOverlap = useMemo(() => {
+    const tickers = newSessTickers.length ? newSessTickers : [];
+    if (!tickers.length) return { start: "", end: "", hasOverlap: false, conflict: false };
+    const files = tickers.map((t, i) => {
+      const span = sessSpanFromApiFile(sessFindApiFileForSymbol(t, newSessApiFiles));
+      if (!span) return null;
+      return { id: String(i), ticker: t, from: span.from, to: span.to };
+    }).filter(Boolean);
+    if (!files.length) return { start: "", end: "", hasOverlap: false, conflict: false };
+    if (tickers.length > 1 && files.length !== tickers.length) {
+      return { start: "", end: "", hasOverlap: false, conflict: true };
+    }
+    return sessComputeOverlapRange(files);
+  }, [newSessTickers, newSessApiFiles]);
+  const newSessCalMinIso = useMemo(() => {
+    const base = newSessDateOverlap.hasOverlap ? newSessDateOverlap.start : "1990-01-01";
+    if (newSessCalTarget === "end" && newSessStart && newSessStart > base) return newSessStart;
+    return base;
+  }, [newSessDateOverlap, newSessCalTarget, newSessStart]);
+  const newSessCalMaxIso = useMemo(() => (
+    newSessDateOverlap.hasOverlap ? newSessDateOverlap.end : newSessTodayIso
+  ), [newSessDateOverlap, newSessTodayIso]);
+  useEffect(() => {
+    if (!newSessDateOverlap.hasOverlap) return;
+    const { start, end } = newSessDateOverlap;
+    const MON_D = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const fmtD = (iso) => {
+      if (!iso) return "";
+      const d = new Date(`${iso}T00:00:00`);
+      return `${String(d.getDate()).padStart(2, "0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;
+    };
+    if (newSessStart && (newSessStart < start || newSessStart > end)) {
+      setNewSessStart("");
+      setNewSessStartInput("");
+    }
+    if (newSessEnd && (newSessEnd < start || newSessEnd > end || (newSessStart && newSessEnd < newSessStart))) {
+      setNewSessEnd("");
+      setNewSessEndInput("");
+    } else if (newSessEnd) {
+      setNewSessEndInput(fmtD(newSessEnd));
+    }
+  }, [newSessDateOverlap.start, newSessDateOverlap.end, newSessDateOverlap.hasOverlap]);
   const [hiddenTemplateIds, setHiddenTemplateIds] = useState(new Set());
   const [stratBName, setStratBName] = useState("");
   const [stratBStyle, setStratBStyle] = useState("Trend Following");
@@ -10397,7 +10515,7 @@ const TalariaV8b = () => {
         const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
         const lockedBox = {opacity:0.35, pointerEvents:"none", userSelect:"none"};
         const activeBox = {};
-        const goNew = () => { setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true); };
+        const goNew = () => { setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessStartInput(""); setNewSessEndInput(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessPlaybookId(null); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true); };
         const openBlankStrategyBuilder = () => {
           setStratEditId(null);
           setStratBName("");
@@ -10492,7 +10610,9 @@ const TalariaV8b = () => {
         );
 
         /* ── VIEW: SAVED SESSIONS ── */
-        if (sessView === "sessions") return (
+        if (sessView === "sessions") {
+        const uiZ = v16EmbeddedRoot ? 1 : Z;
+        return (
           <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none"}}>
             {/* Header */}
             <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:2}}>
@@ -11343,9 +11463,17 @@ const TalariaV8b = () => {
                       <div style={{border:`1px solid ${c.brH}`,padding:"12px 14px"}}>
                       {secH("Session Info")}
                       {(()=>{
-                        const myStrats=["EMA Crossover","London Breakout","VWAP Scalp","Golden Cross Trend","Volume Breakout"];
-                        const commStrats=["Momentum Surge","ICT Model A","SMC Liquidity Grab"];
-                        const allGroups=[["My Strategies",myStrats],["Saved Strategies",commStrats]];
+                        const stratLive = isV16LiveBoot();
+                        const stratRows = stratLive ? (getV16StrategyBank() || myStrategies || []) : [];
+                        const mockMy = ["EMA Crossover","London Breakout","VWAP Scalp","Golden Cross Trend","Volume Breakout"];
+                        const mockSaved = ["Momentum Surge","ICT Model A","SMC Liquidity Grab"];
+                        const normStrat = (s) => (typeof s === "string" ? { id: s, name: s } : { id: s?.id ?? s?.name, name: String(s?.name || s?.title || "") });
+                        const allGroups = stratLive
+                          ? [["My Strategies", stratRows.map(normStrat).filter(s => s.name)]]
+                          : [
+                              ["My Strategies", mockMy.map(normStrat)],
+                              ["Saved Strategies", mockSaved.map(normStrat)],
+                            ];
                         return(<>
                           {/* Session name + strategy: left 50% column, New Strategy button beside it */}
                           <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:10}}>
@@ -11359,7 +11487,7 @@ const TalariaV8b = () => {
                               {/* Row 2: strategy dropdown – same full width */}
                               <div style={{position:"relative"}}>
                                 {lbl("Strategy")}
-                                <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessStratDropOpen(true);setDropdown(null);}}}
+                                <div onClick={(e)=>{e.stopPropagation();if(newSessStratDropOpen){setNewSessStratDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/uiZ+3,left:r.left/uiZ,width:r.width/uiZ});setNewSessStratDropOpen(true);setDropdown(null);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessStratDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
                                   <span style={{flex:1,color:newSessPlaybook?c.tx:c.tm,fontSize:11,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                                     {newSessPlaybook||"— None —"}
@@ -11370,7 +11498,7 @@ const TalariaV8b = () => {
                                   <><div style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>{setNewSessStratDropOpen(false);setDdAnchor(null);}}/><div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:ddAnchor.top,left:ddAnchor.left,width:ddAnchor.width,background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 8px 28px rgba(0,0,0,0.7)",zIndex:200}}>
                                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                                     {(()=>{const isAct=newSessPlaybook==="";const isH=newSessStratHov==="__none";return(
-                                      <div onClick={()=>{setNewSessPlaybook("");setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov("__none")} onMouseLeave={()=>setNewSessStratHov(null)}
+                                      <div onClick={()=>{setNewSessPlaybook("");setNewSessPlaybookId(null);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov("__none")} onMouseLeave={()=>setNewSessStratHov(null)}
                                         style={{display:"flex",alignItems:"center",padding:"5px 10px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
                                         {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                                         <span style={{fontSize:11,fontWeight:isAct?700:400,color:isAct?c.acL:isH?c.tx:c.tm,fontFamily:F,fontStyle:"italic"}}>— None —</span>
@@ -11379,11 +11507,11 @@ const TalariaV8b = () => {
                                     {allGroups.map(([groupLabel,items])=>(
                                       <div key={groupLabel}>
                                         <div style={{padding:"5px 10px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",borderTop:"1px solid rgba(140,160,255,0.08)"}}>{groupLabel}</div>
-                                        {items.map(s=>{const isAct=newSessPlaybook===s;const isH=newSessStratHov===s;return(
-                                          <div key={s} onClick={()=>{setNewSessPlaybook(s);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(s)} onMouseLeave={()=>setNewSessStratHov(null)}
+                                        {items.map(s=>{const strat=normStrat(s);const isAct=newSessPlaybook===strat.name;const isH=newSessStratHov===strat.name;return(
+                                          <div key={String(strat.id ?? strat.name)} onClick={()=>{setNewSessPlaybook(strat.name);setNewSessPlaybookId(stratLive && strat.id != null ? strat.id : null);setNewSessStratDropOpen(false);}} onMouseEnter={()=>setNewSessStratHov(strat.name)} onMouseLeave={()=>setNewSessStratHov(null)}
                                             style={{display:"flex",alignItems:"center",padding:"5px 10px 5px 14px",cursor:"default",position:"relative",background:isAct?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
                                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{s}</span>
+                                            <span style={{fontSize:11,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F}}>{strat.name}</span>
                                           </div>
                                         );})}
                                       </div>
@@ -11447,27 +11575,27 @@ const TalariaV8b = () => {
                         const fmtD=iso=>{if(!iso)return "";const d=new Date(iso.split("T")[0]+"T00:00:00");return `${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;};
                         const applyD=(raw,setter)=>{
                           const s=raw.trim();
-                          const todayIso=new Date().toISOString().slice(0,10);
-                          const minIso="1990-01-01";
-                          const clamp=iso=>iso<minIso?minIso:iso>todayIso?todayIso:iso;
+                          const minIso=newSessDateOverlap.hasOverlap?newSessDateOverlap.start:"1990-01-01";
+                          const maxIso=newSessDateOverlap.hasOverlap?newSessDateOverlap.end:newSessTodayIso;
+                          const clamp=iso=>sessClampIsoDate(iso,minIso,maxIso);
                           // DD-Mon-YYYY
                           const m1=s.match(/^(\d{1,2})-([a-zA-Z]{3})-(\d{1,4})$/);
-                          if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                          if(m1){const moIdx=MONS_D.indexOf(m1[2].toLowerCase());if(moIdx<0)return;const y=parseInt(m1[3]),dy=Math.min(parseInt(m1[1]),new Date(y,moIdx+1,0).getDate());if(y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(moIdx+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                           // YYYY-MM-DD
                           const m2=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-                          if(m2){const y=parseInt(m2[1]),mo=parseInt(m2[2])-1,dy=Math.min(parseInt(m2[3]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                          if(m2){const y=parseInt(m2[1]),mo=parseInt(m2[2])-1,dy=Math.min(parseInt(m2[3]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
                           // MM/DD/YYYY
                           const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-                          if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear())return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
-                        };;
-                        const openCal=(e,target,currentIso)=>{const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/Z,calH=260;const rawL=r.left/Z,rawB=r.bottom/Z,rawTop=r.top/Z;const spaceBelow=window.innerHeight/Z-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/Z-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):new Date(2020,0,1);setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
+                          if(m3){const y=parseInt(m3[3]),mo=parseInt(m3[1])-1,dy=Math.min(parseInt(m3[2]),new Date(y,mo+1,0).getDate());if(mo<0||mo>11||y<1990||y>new Date().getFullYear()+1)return;setter(clamp(`${y}-${String(mo+1).padStart(2,"0")}-${String(dy).padStart(2,"0")}`));return;}
+                        };
+                        const openCal=(e,target,currentIso)=>{const r=e.currentTarget.parentElement.getBoundingClientRect();const w=r.width/uiZ,calH=260;const rawL=r.left/uiZ,rawB=r.bottom/uiZ,rawTop=r.top/uiZ;const spaceBelow=window.innerHeight/uiZ-rawB-calH-8;const top=spaceBelow>=0?rawB+4:Math.max(8,rawTop-calH-4);setNewSessCalPos({top,left:Math.max(8,Math.min(rawL,window.innerWidth/uiZ-w-8)),width:w});setNewSessCalTarget(target);const d=currentIso?new Date(currentIso.split("T")[0]+"T00:00:00"):(newSessDateOverlap.hasOverlap?new Date(newSessDateOverlap.start+"T00:00:00"):new Date(2020,0,1));setNewSessCalViewY(d.getFullYear());setNewSessCalViewM(d.getMonth());setNewSessCalMode("days");setNewSessCalOpen(true);};
                         const inpSx={flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:12,fontWeight:600,padding:"5px 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",cursor:"text",minWidth:0};
                         const chvSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",color:c.ts,borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                         const ChevD=({open})=>(<svg width={8} height={8} viewBox="0 0 8 8" fill="none"><path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>);
-                        const applyPreset=(months,years)=>{const end=new Date(),start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(start));setNewSessStartInput(fd(start));setNewSessEnd(fi(end));setNewSessEndInput(fd(end));};
+                        const applyPreset=(months,years)=>{const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;let end,start;if(newSessDateOverlap.hasOverlap){end=new Date(newSessDateOverlap.end+"T00:00:00");start=new Date(end);if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const ovStart=new Date(newSessDateOverlap.start+"T00:00:00");if(start<ovStart)start=ovStart;}else{end=new Date();start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);}const sIso=sessClampIsoDate(fi(start),newSessDateOverlap.hasOverlap?newSessDateOverlap.start:"1990-01-01",newSessDateOverlap.hasOverlap?newSessDateOverlap.end:newSessTodayIso);const eIso=sessClampIsoDate(fi(end),sIso,newSessDateOverlap.hasOverlap?newSessDateOverlap.end:newSessTodayIso);setNewSessStart(sIso);setNewSessStartInput(fd(new Date(sIso+"T00:00:00")));setNewSessEnd(eIso);setNewSessEndInput(fd(new Date(eIso+"T00:00:00")));};
                         const presets=[{l:"1M",months:1},{l:"3M",months:3},{l:"6M",months:6},{l:"1Y",years:1},{l:"2Y",years:2},{l:"3Y",years:3},{l:"5Y",years:5},{l:"10Y",years:10}];
                         const unitMax={D:3650,M:120,Y:10};
-                        const randomRange=()=>{const today=new Date();today.setHours(0,0,0,0);let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);const earliest=new Date(today);earliest.setFullYear(earliest.getFullYear()-20);const latest=new Date(today.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
+                        const randomRange=()=>{const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);if(newSessDateOverlap.hasOverlap){const earliest=new Date(newSessDateOverlap.start+"T00:00:00");const latest=new Date(newSessDateOverlap.end+"T00:00:00");const maxSpan=Math.max(1,Math.round((latest-earliest)/86400000));if(lenDays>maxSpan)lenDays=maxSpan;const rangeMs=Math.max(0,latest-earliest-lenDays*86400000);const s=rangeMs>0?new Date(earliest.getTime()+Math.random()*rangeMs):new Date(earliest);let e2=new Date(s.getTime()+lenDays*86400000);if(e2>latest)e2=new Date(latest);const sIso=sessClampIsoDate(fi(s),newSessDateOverlap.start,newSessDateOverlap.end);const eIso=sessClampIsoDate(fi(e2),sIso,newSessDateOverlap.end);setNewSessStart(sIso);setNewSessStartInput(fd(new Date(sIso+"T00:00:00")));setNewSessEnd(eIso);setNewSessEndInput(fd(new Date(eIso+"T00:00:00")));setNewSessActivePreset(null);return;}const today=new Date();today.setHours(0,0,0,0);const earliest=new Date(today);earliest.setFullYear(earliest.getFullYear()-20);const latest=new Date(today.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
                         return(<>
                           {/* ─── Market + Random row ─── */}
                           <div style={{marginBottom:8,display:"flex",alignItems:"flex-end",gap:8}}>
@@ -11475,7 +11603,7 @@ const TalariaV8b = () => {
                             <div style={{width:"50%",flexShrink:0}}>
                               {lbl("Markets & Instruments *")}
                               <div style={{position:"relative"}}>
-                                <div onClick={e=>{e.stopPropagation();if(newSessAssetDropOpen){setNewSessAssetDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+3,left:r.left/Z,width:r.width/Z});setNewSessAssetDropOpen(true);setDropdown(null);setNewSessStratDropOpen(false);}}}
+                                <div onClick={e=>{e.stopPropagation();if(newSessAssetDropOpen){setNewSessAssetDropOpen(false);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/uiZ+3,left:r.left/uiZ,width:r.width/uiZ});setNewSessAssetDropOpen(true);setDropdown(null);setNewSessStratDropOpen(false);}}}
                                   style={{...inp({padding:"0 24px 0 8px",cursor:"default"}),display:"flex",alignItems:"center",border:`1px solid ${newSessAssetDropOpen?c.acB:c.brH}`,position:"relative",userSelect:"none"}}>
                                   <span style={{flex:1,fontSize:11,fontWeight:600,color:c.tx,fontFamily:F}}>{newSessAssetClass}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${newSessAssetDropOpen?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -11580,7 +11708,7 @@ const TalariaV8b = () => {
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start"}}>
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
+                                  <div onClick={e=>{e.stopPropagation();if(newSessSymPickerOpen){setNewSessSymPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSymPickerPos({top:r.bottom/uiZ+2,left:r.left/uiZ});setNewSessSymPickerSearch("");setNewSessSymPickerOpen(true);}}}
                                     onMouseEnter={e=>{e.stopPropagation();setHov("symPickBtn");}} onMouseLeave={()=>setHov(null)}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(38,67,247,0.35)",filter:hov==="symPickBtn"?"brightness(1.12)":"brightness(1)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -11674,7 +11802,7 @@ const TalariaV8b = () => {
                               <div style={{padding:"4px 8px 6px",display:"flex",gap:5,alignItems:"flex-start",opacity:newSessSupportEnabled?1:0.35,pointerEvents:newSessSupportEnabled?"auto":"none",transition:"opacity 0.15s"}}>
                                 {/* Plus button — tall (2 tag rows) */}
                                 <div style={{position:"relative",flexShrink:0}}>
-                                  <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/Z+2,left:r.left/Z});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
+                                  <div onClick={e=>{e.stopPropagation();if(newSessSupPickerOpen){setNewSessSupPickerOpen(false);}else{const r=e.currentTarget.getBoundingClientRect();setNewSessSupPickerPos({top:r.bottom/uiZ+2,left:r.left/uiZ});setNewSessSupPickerSearch("");setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(true);}}}
                                     onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.filter="brightness(1.12)";}} onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";}}
                                     style={{width:26,height:40,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#a07000,#e8c252)",cursor:"default",transition:"filter 0.12s",flexShrink:0,boxShadow:"0 2px 8px rgba(200,150,0,0.35)"}}>
                                     <svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -11747,6 +11875,15 @@ const TalariaV8b = () => {
                             {/* ── Date Range row ── */}
                             <div>
                               {lbl("Date Range *")}
+                              {newSessApiFilesLoading&&newSessTickers.length>0&&(
+                                <div style={{fontSize:9,color:c.tm,fontFamily:F,marginBottom:4}}>Loading ticker date ranges…</div>
+                              )}
+                              {!newSessApiFilesLoading&&newSessDateOverlap.hasOverlap&&(
+                                <div style={{fontSize:9,color:c.acL,fontFamily:F,marginBottom:4}}>Available data: {newSessDateOverlap.start} → {newSessDateOverlap.end}</div>
+                              )}
+                              {!newSessApiFilesLoading&&newSessDateOverlap.conflict&&(
+                                <div style={{fontSize:9,color:c.rd,fontFamily:F,marginBottom:4}}>Selected tickers have no overlapping date range.</div>
+                              )}
                               <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
                                 {/* Date inputs — 50% width matches market dropdown above */}
                                 <div style={{width:"50%",flexShrink:0,display:"flex",gap:6}}>
@@ -11766,7 +11903,7 @@ const TalariaV8b = () => {
                                     <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4,fontFamily:F}}>End</div>
                                     <div style={{display:"flex",alignItems:"center",background:c.well,border:`1px solid ${newSessCalOpen&&newSessCalTarget==="end"?c.acL:(newSessEnd&&newSessStart&&newSessEnd<newSessStart?c.rd:c.brH)}`,transition:"border-color 0.12s"}}>
                                       <input value={newSessEndInput} placeholder="DD-Mon-YYYY" onClick={e=>e.stopPropagation()}
-                                        onChange={e=>{setNewSessEndInput(e.target.value);applyD(e.target.value,v=>{if(!newSessStart||v>=newSessStart)setNewSessEnd(v);});setNewSessActivePreset(null);}}
+                                        onChange={e=>{setNewSessEndInput(e.target.value);applyD(e.target.value,v=>{const minIso=newSessStart&&(newSessDateOverlap.hasOverlap?newSessStart>newSessDateOverlap.start:newSessStart>"1990-01-01")?newSessStart:(newSessDateOverlap.hasOverlap?newSessDateOverlap.start:"1990-01-01");const maxIso=newSessDateOverlap.hasOverlap?newSessDateOverlap.end:newSessTodayIso;const clamped=sessClampIsoDate(v,minIso,maxIso);if(!newSessStart||clamped>=newSessStart)setNewSessEnd(clamped);});setNewSessActivePreset(null);}}
                                         onBlur={()=>{if(newSessEnd&&newSessStart&&newSessEnd<newSessStart){setNewSessEnd("");setNewSessEndInput("");}else if(newSessEnd){setNewSessEndInput(fmtD(newSessEnd));}}}
                                         style={inpSx}/>
                                       <div onClick={e=>{e.stopPropagation();if(newSessCalOpen&&newSessCalTarget==="end"){setNewSessCalOpen(false);}else{openCal(e,"end",newSessEnd);}}} style={chvSx}>
@@ -11814,7 +11951,7 @@ const TalariaV8b = () => {
                                     const ddKey="randUnitDrop";
                                     return(
                                       <div style={{position:"relative",width:88,flexShrink:0}}>
-                                        <div onClick={e=>{e.stopPropagation();if(dropdown===ddKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown(ddKey);}}}
+                                        <div onClick={e=>{e.stopPropagation();if(dropdown===ddKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/uiZ+2,left:r.left/uiZ,width:r.width/uiZ});setDropdown(ddKey);}}}
                                           style={{height:27,display:"flex",alignItems:"center",padding:"0 22px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===ddKey?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                           <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{curLabel}</span>
                                           <svg style={{position:"absolute",right:6,top:"50%",transform:`translateY(-50%) rotate(${dropdown===ddKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -12174,7 +12311,7 @@ const TalariaV8b = () => {
                                 <div style={{height:27,display:"flex",alignItems:"center",gap:10}}>
                                   <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Time Zone</span>
                                   <div style={{position:"relative",width:170}}>
-                                    <div onClick={e=>{e.stopPropagation();if(dropdown===tzDdKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:Math.max(r.width/Z,200)});setDropdown(tzDdKey);}}}
+                                    <div onClick={e=>{e.stopPropagation();if(dropdown===tzDdKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/uiZ+2,left:r.left/uiZ,width:Math.max(r.width/uiZ,200)});setDropdown(tzDdKey);}}}
                                       style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===tzDdKey?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                       <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tzLabel}</span>
                                       <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown===tzDdKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -12329,7 +12466,7 @@ const TalariaV8b = () => {
                                           {!meta.perSymComm&&(<><span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap"}}>{meta.commLabel}:</span>{numCell(row.commission,e=>setComm(e.target.value),meta.commStep,58)}<span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap",marginLeft:-4}}>{meta.commUnit}</span></>)}
                                           {!meta.hideLev&&(<><span style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap"}}>Leverage:</span>
                                             <div style={{position:"relative",width:62,height:22,flexShrink:0}}>
-                                              <div onClick={e=>{e.stopPropagation();if(dropdown==="lev_"+asset){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,minWidth:r.width/Z});setDropdown("lev_"+asset);setNewSessStratDropOpen(false);}}}
+                                              <div onClick={e=>{e.stopPropagation();if(dropdown==="lev_"+asset){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/uiZ+2,left:r.left/uiZ,minWidth:r.width/uiZ});setDropdown("lev_"+asset);setNewSessStratDropOpen(false);}}}
                                                 style={{height:22,display:"flex",alignItems:"center",padding:"0 18px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="lev_"+asset?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                                 <span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F}}>{row.leverage||meta.defLev}</span>
                                                 <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="lev_"+asset?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -12468,7 +12605,7 @@ const TalariaV8b = () => {
                         <div style={{height:27,display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                           <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Challenge Type</span>
                           <div style={{position:"relative",width:130,flexShrink:0}}>
-                            <div onClick={e=>{e.stopPropagation();if(dropdown==="challTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("challTypeDrop");}}}
+                            <div onClick={e=>{e.stopPropagation();if(dropdown==="challTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/uiZ+2,left:r.left/uiZ,width:r.width/uiZ});setDropdown("challTypeDrop");}}}
                               style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="challTypeDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                               <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{sessNumPhases===1?"1 Phase":"2 Phase"}</span>
                               <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="challTypeDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -12652,7 +12789,7 @@ const TalariaV8b = () => {
                             <div style={{height:27,display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Drawdown Type</span>
                               <div style={{position:"relative",width:130,flexShrink:0}}>
-                                <div onClick={e=>{e.stopPropagation();if(dropdown==="ddTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("ddTypeDrop");}}}
+                                <div onClick={e=>{e.stopPropagation();if(dropdown==="ddTypeDrop"){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/uiZ+2,left:r.left/uiZ,width:r.width/uiZ});setDropdown("ddTypeDrop");}}}
                                   style={{height:27,display:"flex",alignItems:"center",padding:"0 24px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown==="ddTypeDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
                                   <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{sessTrailingDrawdown?"Trailing":"EOD"}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="ddTypeDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -12743,7 +12880,7 @@ const TalariaV8b = () => {
                             <div style={{height:27,display:"flex",alignItems:"center",gap:10}}>
                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",flexShrink:0,width:130}}>Leverage</span>
                               <div style={{position:"relative",width:130,flexShrink:0}}>
-                                <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();if(dropdown==="sessLevDrop"){setDropdown(null);setDdAnchor(null);}else{setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown("sessLevDrop");}}}
+                                <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();if(dropdown==="sessLevDrop"){setDropdown(null);setDdAnchor(null);}else{setDdAnchor({top:r.bottom/uiZ+2,left:r.left/uiZ,width:r.width/uiZ});setDropdown("sessLevDrop");}}}
                                   style={{...inp({padding:"0 24px 0 8px"}),display:"flex",alignItems:"center",border:`1px solid ${dropdown==="sessLevDrop"?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",position:"relative",transition:"border-color 0.12s",boxSizing:"border-box"}}>
                                   <span style={{fontSize:11,fontWeight:700,color:c.tx,fontFamily:F}}>{sessLeverage}</span>
                                   <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown==="sessLevDrop"?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -12783,7 +12920,7 @@ const TalariaV8b = () => {
                                 const MPU_OPTS=[["lots","Lots"],["%","%"]];
                                 return(
                                   <div style={{position:"relative",width:72,flexShrink:0}}>
-                                    <div onClick={e=>{e.stopPropagation();if(dropdown===mpuKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,width:r.width/Z});setDropdown(mpuKey);}}}
+                                    <div onClick={e=>{e.stopPropagation();if(dropdown===mpuKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/uiZ+2,left:r.left/uiZ,width:r.width/uiZ});setDropdown(mpuKey);}}}
                                       style={{height:27,display:"flex",alignItems:"center",padding:"0 22px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===mpuKey?"rgba(232,194,82,0.5)":c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s",opacity:sessMaxPosEnabled?1:0.4}}>
                                       <span style={{fontSize:10,fontWeight:600,color:c.tx,fontFamily:F}}>{MPU_OPTS.find(([u])=>u===sessMaxPosUnit)?.[1]||"Lots"}</span>
                                       <svg style={{position:"absolute",right:6,top:"50%",transform:`translateY(-50%) rotate(${dropdown===mpuKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -12849,6 +12986,7 @@ const TalariaV8b = () => {
             )}
           </div>
         );
+        }
 
         /* ── VIEW: DASHBOARD ── */
         if (sessView === "dashboard" || sessView === "trades") {
@@ -30766,6 +30904,7 @@ const TalariaV8b = () => {
                   goNew();
                   setNewSessName(`${ms.name} Backtest`);
                   setNewSessPlaybook(ms.name);
+                  setNewSessPlaybookId(ms.id ?? null);
                   setNewSessDescription(ms.desc||ms.description||"");
                   const firstMarket=(ms.markets||[])[0];
                   if(firstMarket){
@@ -42086,8 +42225,12 @@ const TalariaV8b = () => {
         const today=new Date();today.setHours(0,0,0,0);
         const boundStart=newSessStart?new Date(newSessStart+"T00:00:00"):null;
         const boundEnd=newSessEnd?new Date(newSessEnd+"T00:00:00"):null;
+        const minBound=newSessCalMinIso?new Date(newSessCalMinIso+"T00:00:00"):null;
+        const maxBound=newSessCalMaxIso?new Date(newSessCalMaxIso+"T00:00:00"):null;
         const isDis=(yr,mo,day)=>{
           const d=new Date(yr,mo,day);
+          if(minBound&&d<minBound)return true;
+          if(maxBound&&d>maxBound)return true;
           if(newSessCalTarget==="start"){if(boundEnd&&d>boundEnd)return true;}
           else{if(boundStart&&d<boundStart)return true;}
           return false;
