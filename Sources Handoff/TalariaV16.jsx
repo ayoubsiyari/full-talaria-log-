@@ -7732,19 +7732,43 @@ const TalariaV8b = () => {
   sessionsRef.current = sessions;
   useEffect(() => {
     if (!isV16Embedded() || !isV16LiveBoot()) return;
-    if (dashSessId == null) return;
-    const sid = String(dashSessId);
-    const sess = sessionsRef.current.find(s => String(s.id) === sid);
-    if (sess?.compositeTradesLoaded) return;
     const fetcher = window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
     if (typeof fetcher !== "function") return;
+    const sessionIds = new Set();
+    if (dashLibraryAppliedMultipleSources && Array.isArray(dashLibraryAppliedMultiSelection) && dashLibraryAppliedMultiSelection.length) {
+      dashLibraryAppliedMultiSelection.forEach((key) => {
+        const match = String(key || "").match(/^session:(.+)$/);
+        if (match?.[1]) sessionIds.add(match[1]);
+      });
+    } else if (dashSessId != null) {
+      sessionIds.add(String(dashSessId));
+    }
+    if (!sessionIds.size) return;
     let cancelled = false;
-    fetcher(dashSessId).then(trades => {
+    Promise.all([...sessionIds].map(async (sid) => {
+      const sess = sessionsRef.current.find((s) => String(s.id) === sid);
+      if (sess?.compositeTradesLoaded) return null;
+      try {
+        const trades = await fetcher(sid);
+        return { sid, trades };
+      } catch {
+        return null;
+      }
+    })).then((results) => {
       if (cancelled) return;
-      setSessions(prev => prev.map(s => String(s.id) === sid ? { ...s, compositeTrades: trades, compositeTradesLoaded: true } : s));
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [dashSessId]);
+      const updates = results.filter(Boolean);
+      if (!updates.length) return;
+      setSessions((prev) =>
+        prev.map((s) => {
+          const hit = updates.find((u) => u.sid === String(s.id));
+          return hit ? { ...s, compositeTrades: hit.trades, compositeTradesLoaded: true } : s;
+        })
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dashSessId, dashLibraryAppliedMultipleSources, dashLibraryAppliedMultiSelection]);
   const [dashStrategyId, setDashStrategyId] = useState(null);
   const [dashHov, setDashHov] = useState(null);
   const [dashMode, setDashMode] = useState(() => {
@@ -12823,7 +12847,12 @@ const TalariaV8b = () => {
             id:dashStrategyId || dashStrategyKey(dashStrategySource.strategyName || dashStrategySource.name),
             label:dashStrategySource.strategyName || dashStrategySource.name,
           } : null);
-          const dashboardAppliedSourceKeysRaw = [...new Set((Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : []).map(String).filter(Boolean))];
+          const dashboardAppliedSourceKeysRaw = [...new Set((() => {
+            const fromState = Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : [];
+            const fromRef = Array.isArray(dashLibraryAppliedMultiSelectionRef.current) ? dashLibraryAppliedMultiSelectionRef.current : [];
+            const rows = fromState.length ? fromState : fromRef;
+            return rows.map(String).filter(Boolean);
+          })())];
           const dashV16JournalBoot = getV16JournalBoot();
           const dashSourceJournalConnectionNames = dashV16JournalBoot?.connectionOptions?.length ? dashV16JournalBoot.connectionOptions : ["MetaTrader 5","TradingView","cTrader","Interactive Brokers"];
           const dashSourceJournalConnectionId = (name) => String(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
@@ -12949,7 +12978,8 @@ const TalariaV8b = () => {
             }
             return null;
           };
-          const dashboardAppliedSourceItems = dashboardAppliedSourceKeysRaw.map(resolveDashboardAppliedSource).filter(item=>item && item.trades.length);
+          const dashboardAppliedSourceItems = dashboardAppliedSourceKeysRaw.map(resolveDashboardAppliedSource).filter(Boolean);
+          const dashboardAppliedMultipleSourcesActive = !!(dashLibraryAppliedMultipleSources || dashLibraryAppliedMultipleSourcesRef.current);
           const dashboardStrategyChildSourceItems = dashStrategySource
             ? dashSelectedStrategySessions.map(session => {
                 const key = `strategySession:${session.id}`;
@@ -12959,7 +12989,7 @@ const TalariaV8b = () => {
               }).filter(item=>item.trades.length)
             : [];
           const dashboardAppliedStrategyChildMode = dashboardAppliedLibrarySeed?.kind === "strategy" && dashboardAppliedSourceItems.length > 0;
-          const dashboardHasMultipleAppliedSources = dashboardAppliedSourceItems.length > 1 || dashboardAppliedStrategyChildMode;
+          const dashboardHasMultipleAppliedSources = dashboardAppliedMultipleSourcesActive && (dashboardAppliedSourceItems.length > 1 || dashboardAppliedStrategyChildMode);
           const dashboardSourceFilterItems = dashboardHasMultipleAppliedSources ? dashboardAppliedSourceItems : dashboardStrategyChildSourceItems;
           const dashboardHasSourceFilter = dashboardSourceFilterItems.length > 1 || (!!dashStrategySource && dashboardSourceFilterItems.length > 0);
           const dashboardAppliedSourceKeySet = new Set(dashboardSourceFilterItems.map(item=>item.key));
@@ -16862,7 +16892,18 @@ const TalariaV8b = () => {
             const sel = dashLibrarySelectionRef.current || effectiveLibrarySelection;
             if (!sel) return;
             commitLibrarySelection(sel);
+            const appliedRows = Array.isArray(dashLibraryAppliedMultiSelectionRef.current) ? dashLibraryAppliedMultiSelectionRef.current : [];
+            const appliedSessionCount = appliedRows.filter((key) => String(key).startsWith("session:")).length;
+            const isMultiSessionApply = !!dashLibraryAppliedMultipleSourcesRef.current && appliedSessionCount > 1;
             if (sel.kind === "session") {
+              if (isMultiSessionApply) {
+                setDashStrategyId(null);
+                setDashSymbolFilter("all");
+                setDashTagFilter("all");
+                setDashOutcomeFilter("all");
+                setDashLibraryOpen(false);
+                return;
+              }
               const session = dashboardSessionPool.find(s=>String(s.id)===String(sel.sessionId || sel.id));
               if (session) openLibrarySession(session);
               return;

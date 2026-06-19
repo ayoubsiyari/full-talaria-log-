@@ -4265,7 +4265,7 @@ select { cursor:default; }
                     <option value="sla">Sort: SLA due</option>
                     <option value="oldest">Sort: oldest</option>
                   </select>
-                  <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()" title="Hide finished tickets from inbox, stats, and user support">Archive closed</button>
+                  <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()" title="Hide all tickets from inbox, stats, and user support">Archive all tickets</button>
                   <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
                 </div>
               </div>
@@ -5343,28 +5343,29 @@ function supportExportCsv(ev) {
 
 async function supportArchiveClosedTickets() {
   const ok = confirm(
-    'Archive all closed and resolved tickets?\n\n' +
-    'They will be hidden from the inbox and ticket metrics (fresh percentages), ' +
-    'and removed from the user support page. This cannot be undone from the UI.'
+    'Archive ALL support tickets?\n\n' +
+    'They will be removed from the admin inbox and metrics (fresh percentages), ' +
+    'and completely hidden from users — support page, notifications, and old links. ' +
+    'This cannot be undone from the UI.'
   );
   if (!ok) return;
   try {
     const preview = await api('/api/admin/support/archive-closed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dry_run: true, include_resolved: true })
+      body: JSON.stringify({ dry_run: true, all_tickets: true })
     });
     const n = preview.archived_count || 0;
     if (!n) {
-      toast('No closed or resolved tickets to archive', 'ok');
+      toast('No tickets to archive', 'ok');
       return;
     }
-    const confirmAgain = confirm('Archive ' + n + ' ticket' + (n === 1 ? '' : 's') + ' now?');
+    const confirmAgain = confirm('Archive ' + n + ' ticket' + (n === 1 ? '' : 's') + ' now? Users will no longer see any of them.');
     if (!confirmAgain) return;
     const data = await api('/api/admin/support/archive-closed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dry_run: false, include_resolved: true })
+      body: JSON.stringify({ dry_run: false, all_tickets: true })
     });
     if (selectedSupportId && !(supportThreads || []).some(function (t) { return t.id === selectedSupportId; })) {
       selectedSupportId = null;

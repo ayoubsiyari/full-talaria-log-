@@ -33,10 +33,7 @@ export default function TalariaV16Dashboard() {
     };
   }, [pathname, router, searchParams]);
 
-  const v16Key =
-    boot.status === "ready"
-      ? `ready-${String(boot.boot.openSessionId ?? "none")}`
-      : "booting";
+  const v16Key = boot.status === "ready" ? "ready" : "booting";
 
   return (
     <div

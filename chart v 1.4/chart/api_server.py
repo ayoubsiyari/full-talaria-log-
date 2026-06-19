@@ -1513,12 +1513,23 @@ def _enforce_backtest_user_rate(user: User, scope: str) -> None:
     )
 
 
+def _support_thread_archived(t: SupportThread | None) -> bool:
+    return t is not None and getattr(t, "archived_at", None) is not None
+
+
 def _support_user_can_access_thread(user: User, thread: SupportThread) -> bool:
-    if getattr(thread, "archived_at", None) is not None and user.role != "admin":
+    if _support_thread_archived(thread) and user.role != "admin":
         return False
     if user.role == "admin":
         return True
     return int(thread.user_id) == int(user.id)
+
+
+def _support_require_thread_access(user: User, t: SupportThread | None) -> SupportThread:
+    """Return thread or raise 404 (hidden/archived tickets look deleted to users)."""
+    if not t or not _support_user_can_access_thread(user, t):
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return t
 
 
 def _support_exclude_archived(query):
@@ -10751,6 +10762,7 @@ class SupportAdminPatchThreadIn(BaseModel):
 class AdminArchiveClosedSupportIn(BaseModel):
     dry_run: bool = False
     include_resolved: bool = True
+    all_tickets: bool = False
 
 
 class SupportCannedReplyIn(BaseModel):
@@ -11338,8 +11350,7 @@ async def support_submit_csat(thread_id: int, payload: SupportCsatIn, request: R
     db = SessionLocal()
     try:
         t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
-        if not t:
-            raise HTTPException(status_code=404, detail="Thread not found")
+        t = _support_require_thread_access(user, t)
         if int(t.user_id) != int(user.id):
             raise HTTPException(status_code=403, detail="Forbidden")
         if t.status not in ("resolved", "closed"):
@@ -11365,10 +11376,7 @@ async def support_get_thread(thread_id: int, request: Request):
     db = SessionLocal()
     try:
         t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
-        if not t:
-            raise HTTPException(status_code=404, detail="Thread not found")
-        if not _support_user_can_access_thread(user, t):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        t = _support_require_thread_access(user, t)
         req_upto, stf_upto = _support_read_watermarks(db, t)
         requester = db.query(User).filter(User.id == t.user_id).first()
         requester_detail = None
@@ -11402,8 +11410,7 @@ async def support_download_attachment(attachment_id: int, request: Request):
         if not msg:
             raise HTTPException(status_code=404, detail="Not found")
         t = db.query(SupportThread).filter(SupportThread.id == msg.thread_id).first()
-        if not t or not _support_user_can_access_thread(user, t):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        t = _support_require_thread_access(user, t)
         path = SUPPORT_UPLOAD_DIR / att.stored_name
         if not path.is_file():
             raise HTTPException(status_code=404, detail="File missing")
@@ -11468,10 +11475,7 @@ async def support_list_messages(
     db = SessionLocal()
     try:
         t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
-        if not t:
-            raise HTTPException(status_code=404, detail="Thread not found")
-        if not _support_user_can_access_thread(user, t):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        t = _support_require_thread_access(user, t)
         msg_q = db.query(SupportMessage).filter(SupportMessage.thread_id == thread_id)
         if user.role != "admin":
             msg_q = msg_q.filter(SupportMessage.is_internal == False)
@@ -11524,10 +11528,7 @@ async def support_post_message(thread_id: int, request: Request):
     db = SessionLocal()
     try:
         t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
-        if not t:
-            raise HTTPException(status_code=404, detail="Thread not found")
-        if not _support_user_can_access_thread(user, t):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        t = _support_require_thread_access(user, t)
         if not _support_rate_exempt(user) and not _support_category_rate_unlimited(t.category):
             if not _support_rate_allow_message(int(user.id)):
                 raise HTTPException(
@@ -11574,10 +11575,7 @@ async def support_mark_thread_read(
     db = SessionLocal()
     try:
         t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
-        if not t:
-            raise HTTPException(status_code=404, detail="Thread not found")
-        if not _support_user_can_access_thread(user, t):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        t = _support_require_thread_access(user, t)
         last_msg = (
             db.query(SupportMessage)
             .filter(SupportMessage.thread_id == thread_id)
@@ -11869,18 +11867,19 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
 
 @app.post("/api/admin/support/archive-closed")
 async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, request: Request):
-    """Archive finished tickets so they disappear from inbox/stats and user support UI."""
-    admin = _require_admin(request)
+    """Archive tickets so they disappear from admin inbox/stats and user support UI."""
+    _require_admin(request)
     db = SessionLocal()
     try:
         statuses = ("closed",)
         if payload.include_resolved:
             statuses = ("closed", "resolved")
         now = datetime.utcnow()
-        q = (
-            _support_exclude_archived(db.query(SupportThread))
-            .filter(SupportThread.status.in_(statuses))
-        )
+        q = _support_exclude_archived(db.query(SupportThread))
+        if payload.all_tickets:
+            statuses = tuple(SUPPORT_STATUSES)
+        else:
+            q = q.filter(SupportThread.status.in_(statuses))
         rows = q.order_by(SupportThread.id.asc()).all()
         preview = [
             {
@@ -11913,6 +11912,7 @@ async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, req
             params={
                 "statuses": list(statuses),
                 "include_resolved": payload.include_resolved,
+                "all_tickets": payload.all_tickets,
                 "archived_count": len(archived_ids),
             },
             result={"archived_thread_ids": archived_ids[:100]},
@@ -12397,11 +12397,26 @@ async def notifications_list(
         if unread_only:
             q = q.filter(Notification.read_at.is_(None))
         rows = q.order_by(Notification.id.desc()).limit(limit).all()
-        unread = (
-            db.query(Notification)
-            .filter(Notification.user_id == user.id, Notification.read_at.is_(None))
-            .count()
+        archived_thread_ids: set[int] = set()
+        if user.role != "admin":
+            archived_thread_ids = {
+                int(r[0])
+                for r in db.query(SupportThread.id)
+                .filter(SupportThread.archived_at.isnot(None))
+                .all()
+            }
+            rows = [n for n in rows if not (n.thread_id and int(n.thread_id) in archived_thread_ids)]
+        unread_q = db.query(Notification).filter(
+            Notification.user_id == user.id, Notification.read_at.is_(None)
         )
+        if archived_thread_ids:
+            unread_q = unread_q.filter(
+                or_(
+                    Notification.thread_id.is_(None),
+                    ~Notification.thread_id.in_(archived_thread_ids),
+                )
+            )
+        unread = unread_q.count()
         return {
             "notifications": [
                 {

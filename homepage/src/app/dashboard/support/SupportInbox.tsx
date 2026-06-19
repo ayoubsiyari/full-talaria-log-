@@ -192,10 +192,20 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
   }, []);
 
   const loadMessages = useCallback(async (threadId: number) => {
-    const data = await api<{ messages: Msg[] }>(
-      `/api/support/threads/${threadId}/messages?limit=200`
-    );
-    setMessages(data.messages || []);
+    try {
+      const data = await api<{ messages: Msg[] }>(
+        `/api/support/threads/${threadId}/messages?limit=200`
+      );
+      setMessages(data.messages || []);
+    } catch {
+      setMessages([]);
+      setSelectedId(null);
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("thread");
+        window.history.replaceState({}, "", url.pathname + url.search);
+      }
+    }
   }, []);
 
   const markThreadRead = useCallback(async (threadId: number) => {
@@ -223,9 +233,12 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
         if (tid) {
           const id = parseInt(tid, 10);
           if (!Number.isNaN(id)) {
-            setSelectedId(id);
-            await loadMessages(id);
-            await markThreadRead(id);
+            const visible = (await api<{ threads: Thread[] }>("/api/support/threads")).threads || [];
+            if (visible.some((t) => t.id === id)) {
+              setSelectedId(id);
+              await loadMessages(id);
+              await markThreadRead(id);
+            }
           }
         }
       } catch {
