@@ -12,6 +12,8 @@ import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
 import { JOURNAL_API_BASE, journalAuthHeaders } from "@/lib/journalApi";
 import { apiStrategyToBankRow, extractStrategyVariablesFromDefinition } from "./strategies/strategyLabV9Mappers";
 
+import { type SessionLimitGateData } from "./sessionLimitGate";
+
 const F = "'Exo 2', sans-serif";
 
 function IconI({ n, s = 18, cl = "currentColor" }: { n: string; s?: number; cl?: string }) {
@@ -66,9 +68,10 @@ export type BacktestNewSessionModalProps = {
   onClose: () => void;
   onSaved?: () => void | Promise<void>;
   initialState?: BacktestNewSessionInitialState | null;
+  onSessionLimitReached?: (data: SessionLimitGateData) => void;
 };
 
-export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }: BacktestNewSessionModalProps) {
+export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, onSessionLimitReached }: BacktestNewSessionModalProps) {
   const router = useRouter();
   const c = {
     ac: "#2643F7", acL: "#4A6AFF", acD: "rgba(38,67,247,0.08)", acB: "rgba(38,67,247,0.22)", acG: "rgba(74,106,255,0.35)",
@@ -193,6 +196,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     maxSupporting: 5,
     tradingSessionsCount: 0,
     isAdmin: false,
+    planName: null as string | null,
+    planId: null as number | null,
+    subscriptionStatus: null as string | null,
+    isManualPlan: false,
+    hasActiveSubscription: false,
   });
   const [newSessTradingCostsEnabled, setNewSessTradingCostsEnabled] = useState(false);
   const [newSessCosts, setNewSessCosts] = useState({
@@ -216,6 +224,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
         if (!res.ok || cancelled) return;
         const data = await res.json();
         const u = data?.user || {};
+        const sub = u.subscription || {};
+        const status = String(sub.status || "").toLowerCase();
         if (cancelled) return;
         setUserLimits({
           maxTradingSessions: u.max_trading_sessions ?? 5,
@@ -223,6 +233,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
           maxSupporting: u.max_supporting_tickers_per_session ?? 5,
           tradingSessionsCount: u.trading_sessions_count ?? 0,
           isAdmin: u.role === "admin",
+          planName: sub.plan_name?.trim() || null,
+          planId: typeof sub.id === "number" ? sub.id : null,
+          subscriptionStatus: sub.status || null,
+          isManualPlan: Boolean(sub.is_manual),
+          hasActiveSubscription: Boolean(sub && ["active", "trialing"].includes(status)),
         });
       } catch {
         /* keep defaults */
@@ -843,9 +858,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const saveNewSession = async () => {
     if (!isValid2 || savingSession) return;
     if (atSessionCap) {
-      window.alert(
-        `Backtest session limit reached (${userLimits.tradingSessionsCount}/${userLimits.maxTradingSessions}). Delete an existing session or contact your administrator.`,
-      );
+      onSessionLimitReached?.({
+        count: userLimits.tradingSessionsCount,
+        cap: userLimits.maxTradingSessions,
+        planName: userLimits.planName,
+        planId: userLimits.planId,
+        subscriptionStatus: userLimits.subscriptionStatus,
+        isManualPlan: userLimits.isManualPlan,
+        hasActiveSubscription: userLimits.hasActiveSubscription,
+      });
       return;
     }
     setSavingSession(true);
@@ -854,7 +875,20 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
       await onSaved?.();
       closeNewSess();
     } catch (e: any) {
-      window.alert(`Failed to save session: ${e?.message || e}`);
+      const msg = String(e?.message || e || "");
+      if (/session limit reached/i.test(msg) && onSessionLimitReached) {
+        onSessionLimitReached({
+          count: userLimits.tradingSessionsCount,
+          cap: userLimits.maxTradingSessions,
+          planName: userLimits.planName,
+          planId: userLimits.planId,
+          subscriptionStatus: userLimits.subscriptionStatus,
+          isManualPlan: userLimits.isManualPlan,
+          hasActiveSubscription: userLimits.hasActiveSubscription,
+        });
+        return;
+      }
+      window.alert(`Failed to save session: ${msg}`);
     } finally {
       setSavingSession(false);
     }
@@ -982,8 +1016,39 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                     </div>
                   </div>
                   {atSessionCap && (
-                    <div style={{flexShrink:0,padding:"8px 16px",background:"rgba(255,80,104,0.08)",borderBottom:`1px solid rgba(255,80,104,0.2)`,fontSize:11,color:c.rd,fontFamily:F}}>
-                      Backtest session limit reached ({userLimits.tradingSessionsCount}/{userLimits.maxTradingSessions}). Delete an existing session or contact your administrator.
+                    <div style={{flexShrink:0,padding:"8px 16px",background:"rgba(255,80,104,0.08)",borderBottom:`1px solid rgba(255,80,104,0.2)`,fontSize:11,color:c.rd,fontFamily:F,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                      <span>
+                        Backtest session limit reached ({userLimits.tradingSessionsCount}/{userLimits.maxTradingSessions}).
+                        {userLimits.planName ? ` Plan: ${userLimits.planName}.` : ""}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onSessionLimitReached?.({
+                          count: userLimits.tradingSessionsCount,
+                          cap: userLimits.maxTradingSessions,
+                          planName: userLimits.planName,
+                          planId: userLimits.planId,
+                          subscriptionStatus: userLimits.subscriptionStatus,
+                          isManualPlan: userLimits.isManualPlan,
+                          hasActiveSubscription: userLimits.hasActiveSubscription,
+                        })}
+                        style={{
+                          flexShrink: 0,
+                          padding: "4px 10px",
+                          borderRadius: 6,
+                          border: "1px solid rgba(255,80,104,0.35)",
+                          background: "rgba(255,80,104,0.12)",
+                          color: c.rd,
+                          fontFamily: F,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Upgrade
+                      </button>
                     </div>
                   )}
 

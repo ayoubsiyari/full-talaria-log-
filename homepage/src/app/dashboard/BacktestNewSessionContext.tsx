@@ -5,6 +5,8 @@ import {
   BacktestNewSessionModal,
   type BacktestNewSessionInitialState,
 } from "./BacktestNewSessionModal";
+import { SessionLimitModal } from "./SessionLimitModal";
+import { sessionLimitFromMeUser, type SessionLimitGateData } from "./sessionLimitGate";
 
 export type BacktestNewSessionRegisterFn = (fn: (() => void) | null) => void;
 
@@ -32,7 +34,12 @@ export function BacktestNewSessionProvider({
 }) {
   const [open, setOpen] = React.useState(false);
   const [initialState, setInitialState] = React.useState<BacktestNewSessionInitialState | null>(null);
+  const [sessionLimitGate, setSessionLimitGate] = React.useState<SessionLimitGateData | null>(null);
   const onSavedListenersRef = React.useRef(new Set<() => void>());
+
+  const showSessionLimitGate = React.useCallback((data: SessionLimitGateData) => {
+    setSessionLimitGate(data);
+  }, []);
 
   const openNewSession = React.useCallback(async (opts?: BacktestNewSessionOpenOptions) => {
     try {
@@ -40,15 +47,10 @@ export function BacktestNewSessionProvider({
       if (res.ok) {
         const data = await res.json();
         const u = data?.user;
-        if (u && u.role !== "admin") {
-          const count = u.trading_sessions_count ?? 0;
-          const cap = u.max_trading_sessions ?? 5;
-          if (cap > 0 && count >= cap) {
-            window.alert(
-              `Backtest session limit reached (${count}/${cap}). Delete an existing session or contact your administrator.`,
-            );
-            return;
-          }
+        const limit = sessionLimitFromMeUser(u);
+        if (limit) {
+          showSessionLimitGate(limit);
+          return;
         }
       }
     } catch {
@@ -64,7 +66,7 @@ export function BacktestNewSessionProvider({
       sessionName: name,
     });
     setOpen(true);
-  }, []);
+  }, [showSessionLimitGate]);
 
   const openEditSession = React.useCallback((sess: NonNullable<BacktestEditSessionPayload>) => {
     if (!sess?.id) return;
@@ -125,6 +127,12 @@ export function BacktestNewSessionProvider({
         onClose={handleClose}
         onSaved={handleSaved}
         initialState={initialState}
+        onSessionLimitReached={showSessionLimitGate}
+      />
+      <SessionLimitModal
+        open={!!sessionLimitGate}
+        data={sessionLimitGate}
+        onClose={() => setSessionLimitGate(null)}
       />
     </BacktestNewSessionContext.Provider>
   );

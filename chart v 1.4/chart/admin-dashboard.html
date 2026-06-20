@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="tickets-layout-20260619a">
+<meta name="x-admin-build" content="tickets-layout-20260619b">
 <title>Talaria — Admin Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -249,7 +249,7 @@ body {
   color: var(--text);
 }
 
-.content { flex: 1; overflow-y: auto; padding: 28px 32px 40px; }
+.content { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 32px 40px; }
 
 /* ── Sections ───────────────────────────────────── */
 .section { display: none; animation: fadeIn .32s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -323,9 +323,15 @@ body {
   border-bottom: 0;
 }
 .support-stats-shell.is-collapsed .support-collapse-icon { transform: rotate(-90deg); }
+#sec-support.active > .support-layout {
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
 @media (min-width: 1101px) {
   .content.support-workspace .support-layout {
-    min-height: calc(100vh - var(--header-h) - 44px);
+    min-height: 0;
     height: 100%;
   }
 }
@@ -1570,8 +1576,20 @@ select { cursor:default; }
   min-height: 0;
 }
 .support-tools-card {
-  margin-bottom: 8px;
+  margin-bottom: 0;
   flex-shrink: 0;
+}
+.support-tools-card.is-collapsed .card-body { display: none; }
+.support-tools-card .card-hdr .support-collapse-icon {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform .2s ease;
+  flex-shrink: 0;
+}
+.support-tools-card.is-collapsed .card-hdr .support-collapse-icon { transform: rotate(-90deg); }
+.support-tools-card:not(.is-collapsed) .card-body {
+  max-height: min(320px, 34vh);
+  overflow-y: auto;
 }
 .support-tools-card .card-body {
   padding: 10px 12px !important;
@@ -2089,13 +2107,18 @@ select { cursor:default; }
   min-width: 180px;
 }
 .card.support-main > .support-messages-wrap {
-  flex: 1 1 0;
-  min-height: 140px;
+  flex: 1 1 auto;
+  min-height: 0;
   background: rgba(0, 0, 0, 0.15);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+}
+.card.support-main > .support-composer {
+  flex-shrink: 0;
+  z-index: 2;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
 }
 .support-messages {
   flex: none;
@@ -4376,10 +4399,12 @@ select { cursor:default; }
           </button>
           <div id="supportTicketStats"></div>
         </div>
-        <div class="card support-tools-card">
-          <div class="card-hdr">
+        <div class="card support-tools-card is-collapsed" id="supportToolsCard">
+          <div class="card-hdr support-panel-toggle" onclick="supportToggleToolsCard(event)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
             <div class="card-title">Bulk manage</div>
+            <span style="font-size:12px;color:var(--text-muted);margin-left:auto;margin-right:8px">Archive · delete · import</span>
+            <span class="support-collapse-icon">▾</span>
           </div>
           <div class="card-body">
             <div class="support-tools-label">Pick status + <strong>ticket type</strong> + age, then run a bulk action. Delete only works when a type is selected.</div>
@@ -5110,6 +5135,15 @@ function supportToggleTicketToolbar(e) {
   }
   const bar = $('supportTicketControls');
   if (bar) bar.classList.toggle('is-collapsed');
+}
+
+function supportToggleToolsCard(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const card = $('supportToolsCard');
+  if (card) card.classList.toggle('is-collapsed');
 }
 
 function supportToggleTicketStats(e) {
