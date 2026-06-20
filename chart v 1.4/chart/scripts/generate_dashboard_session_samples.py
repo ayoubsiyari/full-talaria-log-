@@ -58,6 +58,7 @@ COLUMNS: list[str] = [
     "would_have_won", "year",
     # Live-dashboard extras (not in export header but useful for QA)
     "accountType", "planAdherence", "demons", "originSource", "session_mode",
+    "category_sheet",
 ]
 
 INSTRUMENTS: dict[str, dict] = {
@@ -85,6 +86,14 @@ MONTHS = [
 ]
 
 LIVE_DEMONS = ["revenge", "fomo", "overtrade", "early_exit", "late_entry", "size_up"]
+
+# One workbook tab per dashboard source family.
+CATEGORY_SHEETS: dict[str, str] = {
+    "standard_backtest": "Standard Backtest",
+    "prop_backtest": "Prop",
+    "live_prop": "Prop",
+    "live_journal": "Journal",
+}
 
 
 def _default_out() -> Path:
@@ -140,7 +149,7 @@ def _session_specs() -> list[dict]:
 
     for i, name in enumerate(std_names, start=1):
         specs.append({
-            "sheet": f"{i:02d} BT Std {name[:18]}",
+            "category_sheet": CATEGORY_SHEETS["standard_backtest"],
             "session_id": 1000 + i,
             "name": name,
             "sourceType": "backtest",
@@ -155,7 +164,7 @@ def _session_specs() -> list[dict]:
 
     for i, name in enumerate(prop_bt_names, start=1):
         specs.append({
-            "sheet": f"{10 + i:02d} BT Prop {name[:16]}",
+            "category_sheet": CATEGORY_SHEETS["prop_backtest"],
             "session_id": 2000 + i,
             "name": name,
             "sourceType": "backtest",
@@ -172,7 +181,7 @@ def _session_specs() -> list[dict]:
 
     for i, name in enumerate(live_jrn_names, start=1):
         specs.append({
-            "sheet": f"{20 + i:02d} Live Jrn {name[:15]}",
+            "category_sheet": CATEGORY_SHEETS["live_journal"],
             "session_id": 3000 + i,
             "name": name,
             "sourceType": "journal",
@@ -187,7 +196,7 @@ def _session_specs() -> list[dict]:
 
     for i, name in enumerate(live_prop_names, start=1):
         specs.append({
-            "sheet": f"{30 + i:02d} Live Prop {name[:14]}",
+            "category_sheet": CATEGORY_SHEETS["live_prop"],
             "session_id": 4000 + i,
             "name": name,
             "sourceType": "journal",
@@ -516,6 +525,7 @@ def _build_trade(
         "demons": json.dumps(demons),
         "originSource": spec["session_mode"],
         "session_mode": spec["session_mode"],
+        "category_sheet": spec["category_sheet"],
     })
 
     next_dt = exit_dt + timedelta(minutes=rng.randint(10, 360))
@@ -546,15 +556,15 @@ def generate_session_trades(spec: dict, seed: int) -> list[dict]:
     return rows
 
 
-def _write_index_sheet(ws, specs: list[dict], trade_counts: dict[str, int]) -> None:
+def _write_index_sheet(ws, specs: list[dict], trade_counts: dict[int, int]) -> None:
     headers = [
-        "Sheet", "Session ID", "Session Name", "Mode", "Source Type",
+        "Category Sheet", "Session ID", "Session Name", "Mode", "Source Type",
         "Session Type", "Account Type", "Start Balance", "Trade Count", "Instruments",
     ]
     ws.append(headers)
     for spec in specs:
         ws.append([
-            spec["sheet"][:31],
+            spec["category_sheet"],
             spec["session_id"],
             spec["name"],
             spec["session_mode"],
@@ -562,9 +572,21 @@ def _write_index_sheet(ws, specs: list[dict], trade_counts: dict[str, int]) -> N
             spec["session_type"],
             spec["accountType"],
             spec["start_balance"],
-            trade_counts[spec["sheet"]],
+            trade_counts[spec["session_id"]],
             ", ".join(spec["instruments"]),
         ])
+
+
+def _sort_trades(rows: list[dict]) -> list[dict]:
+    rows.sort(
+        key=lambda r: (
+            str(r["sourceSessionName"]),
+            int(r["sourceSessionId"]),
+            int(r["entryTime"]),
+            int(r["tradeId"]),
+        )
+    )
+    return rows
 
 
 def _autosize_columns(ws, max_width: int = 28) -> None:
@@ -579,13 +601,26 @@ def build_workbook(out_path: Path, seed: int = 20260620) -> None:
     wb = Workbook()
     index_ws = wb.active
     index_ws.title = "Index"
-    trade_counts: dict[str, int] = {}
+    trade_counts: dict[int, int] = {}
+    by_category: dict[str, list[dict]] = {
+        CATEGORY_SHEETS["standard_backtest"]: [],
+        CATEGORY_SHEETS["prop_backtest"]: [],
+        CATEGORY_SHEETS["live_journal"]: [],
+    }
 
     for spec in specs:
-        sheet_name = spec["sheet"][:31]
         trades = generate_session_trades(spec, seed=seed + spec["session_id"])
-        trade_counts[sheet_name] = len(trades)
-        ws = wb.create_sheet(title=sheet_name)
+        trade_counts[spec["session_id"]] = len(trades)
+        by_category[spec["category_sheet"]].extend(trades)
+
+    sheet_order = [
+        CATEGORY_SHEETS["standard_backtest"],
+        CATEGORY_SHEETS["prop_backtest"],
+        CATEGORY_SHEETS["live_journal"],
+    ]
+    for sheet_name in sheet_order:
+        trades = _sort_trades(by_category[sheet_name])
+        ws = wb.create_sheet(title=sheet_name[:31])
         ws.append(COLUMNS)
         for trade in trades:
             ws.append([trade.get(c, "") for c in COLUMNS])
@@ -596,29 +631,58 @@ def build_workbook(out_path: Path, seed: int = 20260620) -> None:
     wb.save(out_path)
 
 
-def export_reference_csv(out_path: Path, seed: int = 20260620) -> None:
-    """Optional: one merged CSV mirroring the example export format."""
+def export_reference_csv(out_dir: Path, seed: int = 20260620) -> None:
+    """Write one CSV per category sheet plus a merged file."""
     random.seed(seed)
     specs = _session_specs()
-    all_rows: list[dict] = []
+    by_category: dict[str, list[dict]] = {
+        CATEGORY_SHEETS["standard_backtest"]: [],
+        CATEGORY_SHEETS["prop_backtest"]: [],
+        CATEGORY_SHEETS["live_journal"]: [],
+    }
     for spec in specs:
-        all_rows.extend(generate_session_trades(spec, seed=seed + spec["session_id"]))
-    all_rows.sort(key=lambda r: (r["sourceSessionName"], int(r["entryTime"])))
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", newline="", encoding="utf-8") as f:
+        by_category[spec["category_sheet"]].extend(
+            generate_session_trades(spec, seed=seed + spec["session_id"])
+        )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    merged: list[dict] = []
+    slug_map = {
+        CATEGORY_SHEETS["standard_backtest"]: "standard-backtest",
+        CATEGORY_SHEETS["prop_backtest"]: "prop",
+        CATEGORY_SHEETS["live_journal"]: "journal",
+    }
+    for sheet_name, rows in by_category.items():
+        sorted_rows = _sort_trades(rows)
+        merged.extend(sorted_rows)
+        slug = slug_map[sheet_name]
+        out_path = out_dir / f"dashboard-session-samples-{slug}-2026-06-20.csv"
+        with out_path.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=COLUMNS, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(sorted_rows)
+
+    merged_path = out_dir / "dashboard-session-samples-2026-06-20.csv"
+    merged.sort(
+        key=lambda r: (
+            str(r.get("category_sheet") or r["session_mode"]),
+            str(r["sourceSessionName"]),
+            int(r["entryTime"]),
+        )
+    )
+    with merged_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=COLUMNS, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(all_rows)
+        writer.writerows(merged)
 
 
 def main(argv: list[str]) -> None:
     out = Path(argv[1]).expanduser() if len(argv) > 1 else _default_out()
     build_workbook(out)
-    csv_out = out.with_suffix(".csv")
-    export_reference_csv(csv_out)
+    export_reference_csv(out.parent)
     print(f"Wrote workbook: {out}")
-    print(f"Wrote merged CSV: {csv_out}")
-    print("Sheets: 40 sessions + Index")
+    print("Sheets: Index + Standard Backtest + Prop + Journal")
+    print("CSVs: standard-backtest, prop, journal, and merged (docs/)")
 
 
 if __name__ == "__main__":

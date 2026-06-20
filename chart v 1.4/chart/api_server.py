@@ -11710,16 +11710,17 @@ async def support_list_threads(
         _support_heal_archived_active_tickets(db)
         query = db.query(SupportThread)
         if user.role != "admin":
-            query = _support_inbox_visible_filter(query.filter(SupportThread.user_id == user.id))
+            query = _support_exclude_archived(query.filter(SupportThread.user_id == user.id))
         else:
             if status and status in SUPPORT_STATUSES:
                 query = query.filter(SupportThread.status == status)
             if q and q.strip():
                 like = f"%{q.strip()}%"
                 query = query.filter(SupportThread.subject.ilike(like))
+        total = query.count()
         rows = (
             query.order_by(nulls_last(SupportThread.last_message_at.desc()), SupportThread.id.desc())
-            .limit(2000)
+            .limit(5000)
             .all()
         )
         out = []
@@ -11732,7 +11733,7 @@ async def support_list_threads(
             )
             preview = (last.body[:160] + "…") if last and len(last.body or "") > 160 else (last.body if last else None)
             out.append(_support_thread_dict(db, t, last_preview=preview, viewer=user))
-        return {"threads": out}
+        return {"threads": out, "total": total}
     finally:
         db.close()
 
@@ -11921,7 +11922,7 @@ def _admin_support_query_threads(
 ):
     query = db.query(SupportThread)
     if not include_archived:
-        query = _support_inbox_visible_filter(query)
+        query = _support_exclude_archived(query)
     if status:
         query = query.filter(SupportThread.status == _support_validate_status(status))
     if exclude_status:
@@ -12406,10 +12407,9 @@ async def admin_support_requesters(request: Request):
                 func.count(SupportThread.id).label("ticket_count"),
             )
             .join(SupportThread, SupportThread.user_id == User.id)
-            .filter(SupportThread.archived_at.is_(None))
             .group_by(User.id, User.name, User.email)
             .order_by(func.count(SupportThread.id).desc(), User.name.asc(), User.email.asc())
-            .limit(500)
+            .limit(1000)
             .all()
         )
         return {
@@ -12441,7 +12441,7 @@ async def admin_support_list_threads(
     sort: str = "activity",
     q: str | None = None,
     sla_overdue: bool = False,
-    include_archived: bool = False,
+    include_archived: bool = True,
     limit: int = Query(2000, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ):
