@@ -16814,12 +16814,6 @@ const TalariaV8b = () => {
           const isLibrarySelectionVisible = (sel) => {
             if (!sel) return false;
             if (dashLibraryTab === "backtests") return sel.kind === "session" && sourceBacktestRows.some(session=>String(session.id)===String(sel.sessionId || sel.id));
-            if (dashLibraryTab === "strategies") {
-              if (sel.kind === "strategy") return libraryStrategyGroups.some(strategy=>String(strategy.id)===String(sel.id));
-              if (sel.kind === "session") return activeStrategySessions.some(session=>String(session.id)===String(sel.sessionId || sel.id));
-              if (sel.kind === "strategyJournal") return sourceStrategyJournalRows.some(journal=>String(journal.id)===String(sel.journalId || String(sel.id).split("::").pop()));
-              return false;
-            }
             if (dashLibraryTab === "journals") {
               if (activeLibraryJournal.id !== "all") return sel.kind === "journalAccount" && sourceJournalAccounts.some(account=>String(account.id)===String(sel.id));
               return sel.kind === "journalAccount" && libraryJournalAccountGroups.some(group=>group.accounts.some(account=>String(account.id)===String(sel.id)));
@@ -16827,11 +16821,9 @@ const TalariaV8b = () => {
             return false;
           };
           const defaultLibrarySelection = makeLibrarySessionSelection(sourceBacktestRows[0] || dashboardSessionPool[0])
-            || makeLibraryStrategySelection(libraryStrategyGroups[0])
             || makeLibraryJournalAccountSelection(sourceJournalAccounts[0])
             || makeLibraryJournalAccountSelection(libraryJournalAccountGroups.find(group=>group.accounts.length)?.accounts?.[0])
-            || makeLibraryJournalEntrySelection(sourceJournalRows[0])
-            || makeLibraryStrategyJournalSelection(sourceStrategyJournalRows[0]);
+            || makeLibraryJournalEntrySelection(sourceJournalRows[0]);
           const effectiveLibrarySelection = dashLibrarySelection || defaultLibrarySelection;
           if (!dashLibrarySelectionRef.current && effectiveLibrarySelection) dashLibrarySelectionRef.current = effectiveLibrarySelection;
           dashLibraryStrategyChildSelectionRef.current = dashLibraryStrategyChildSelection || {};
@@ -17391,8 +17383,6 @@ const TalariaV8b = () => {
               } else if (dashLibraryTab === "journals") {
                 setDashCompareJournalCat(dashLibraryJournalCat);
                 setDashCompareTreeOpen(prev=>({...prev,journals:true}));
-              } else if (dashLibraryTab === "strategies") {
-                setDashCompareStrategyCat(dashLibraryStrategyCat);
               }
             }
             resetCompareDraftToApplied();
@@ -17437,7 +17427,10 @@ const TalariaV8b = () => {
             const next = !dashLibraryOpen;
             if (next) setDashLibraryVisibleNow(true);
             flushSync(()=>{
-              if (next) resetLibraryPendingToApplied();
+              if (next) {
+                resetLibraryPendingToApplied();
+                if (dashLibraryTab === "strategies") setDashLibraryTab("backtests");
+              }
               setDashLibraryOpen(next);
               setDashFiltersOpen(false);
               setDashFilterMenu(null);
@@ -17527,19 +17520,12 @@ const TalariaV8b = () => {
                 shadow:"rgba(0,212,161,0.28)",
                 onClick:openLibraryConnectionWindow
               }
-            : dashLibraryTab === "strategies"
-              ? {
-                  label:dashTxt("Create Strategy","إنشاء استراتيجية"),
-                  color:c.acL,
-                  shadow:c.acG,
-                  onClick:()=>{ setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); openBlankStrategyBuilder(); }
-                }
-              : {
-                  label:dashTxt("Create Session","إنشاء جلسة"),
-                  color:c.acL,
-                  shadow:c.acG,
-                  onClick:()=>{ setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); if(!openDashboardNewSession()){ setSessView("sessions"); goNew(); } }
-                };
+            : {
+                label:dashTxt("Create Session","إنشاء جلسة"),
+                color:c.acL,
+                shadow:c.acG,
+                onClick:()=>{ setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); if(!openDashboardNewSession()){ setSessView("sessions"); goNew(); } }
+              };
           const compareHeaderAction = dashCompareTab === "journals"
             ? {
                 label:dashTxt("Add Connection","إضافة اتصال"),
@@ -25950,152 +25936,9 @@ const TalariaV8b = () => {
                             </React.Fragment>
                           ))}
                         </>}
-                        {renderLibraryTreeRow({id:"strategies",label:dashTxt("Strategies","الاستراتيجيات"),count:libraryStrategyCats.length,color:c.acL,depth:0,onClick:()=>{setDashLibraryTab("strategies");setDashLibraryStrategyCat("all");},active:dashLibraryTab==="strategies"})}
                       </div>
                       <div style={{order:isDashRTL?1:0,minHeight:0,padding:18,display:"flex",flexDirection:"column"}}>
-                        {dashLibraryTab === "backtests" ? (
-                          <>
-                            {libraryPaneTitle(dashTxt("Backtest Sessions","جلسات الاختبار"), c.acL)}
-                            <div style={{flexShrink:0,borderBottom:`1px solid ${c.br}`,paddingBottom:0,marginBottom:10}}>
-                              <div role="tablist" aria-label={dashTxt("Backtest status","حالة الاختبار")} style={{height:32,display:"flex",alignItems:"flex-end",justifyContent:"center",gap:0}}>
-                                {libraryStatusCats.map(status=>{
-                                  const active = dashLibraryStatusCat===status.id;
-                                  const color = activeLibraryMode.color;
-                                  const count = libraryModeCount(activeLibraryMode.id,status.id);
-                                  return (
-                                    <div key={status.id} className={`tlr-library-status-tab${active ? " tlr-library-status-tab-active" : ""}`} role="tab" tabIndex={0} aria-selected={active} onPointerDown={librarySelectPointerActivate(()=>setDashLibraryStatusCat(status.id))} onKeyDown={libraryKeyActivate(()=>setDashLibraryStatusCat(status.id))} style={{height:26,display:"flex",alignItems:"center",gap:6,padding:"0 11px",color:active?color:c.ts,background:active?(color===c.gold?"rgba(201,168,76,0.10)":c.acD):"transparent",fontSize:10.5,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"default",position:"relative",boxSizing:"border-box","--tlr-status-hover-bg":"rgba(255,255,255,0.06)","--tlr-lib-color":color}}>
-                                      {status.label}
-                                      <span className="tlr-library-status-count" style={{fontSize:8.5,fontWeight:800,color:active?color:c.tm,background:active?(color===c.gold?"rgba(201,168,76,0.18)":"rgba(74,106,255,0.2)"):"rgba(255,255,255,0.07)",padding:"1px 5px",fontVariantNumeric:"tabular-nums"}}>{count}</span>
-                                      <span style={{position:"absolute",left:0,right:0,bottom:-1,height:1,background:active?`linear-gradient(90deg,transparent,${color},transparent)`:"transparent",boxShadow:active?`0 0 7px ${color}`:"none"}}/>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                            <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",display:"grid",alignContent:"start",gap:0}}>
-                              {sourceBacktestRows.length ? sourceBacktestRows.map(session=>{
-                                const sessionItem = makeLibrarySessionSelection(session);
-                                const isSel = selectedLibraryKey===librarySelectionKey("session", session.id);
-                                const pnl = session.pnl;
-                                const pnlColor = pnl==null ? c.tm : pnl>=0 ? c.gn : c.rd;
-                                const pnlPct = pnl==null || !Number(session.capital) ? null : (Number(pnl) / Number(session.capital)) * 100;
-                                const sessionProgress = librarySessionProgress(session);
-                                const progressColor = activeLibraryMode.color;
-                                const sessionMarkets = (session.assetClasses||[]).length ? (session.assetClasses||[]).slice(0,2).join(", ") : dashTxt("No market","لا سوق");
-                                const sessionMeta = `${session.strategyName || dashTxt("Strategy","استراتيجية")} / ${sessionMarkets}`;
-                                return (
-                                  <div key={session.id} className={`tlr-library-content-row${isSel ? " tlr-library-content-row-active" : ""}`} role="button" tabIndex={0} aria-label={`${dashTxt("Select backtest session","حدد جلسة الاختبار")}: ${session.name}`} aria-pressed={isSel} data-tlr-library-key={librarySelectionKey("session", session.id)} data-tlr-library-label={session.name} data-tlr-library-type={dashTxt("Backtest","اختبار")} data-tlr-library-color={activeLibraryMode.color} onPointerDown={librarySelectPointerActivate(()=>selectLibraryItem(sessionItem))} onKeyDown={libraryKeyActivate(()=>selectLibraryItem(sessionItem))} style={libraryRowStyle(isSel, activeLibraryMode.color, 68, "1fr 108px")}>
-                                    <div style={{minWidth:0}}>
-                                      <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
-                                        <div className="tlr-library-content-title" style={{fontSize:12,fontWeight:900,color:isSel?activeLibraryMode.color:c.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{session.name}</div>
-                                        {librarySourceStatusMark("backtest", session, 16)}
-                                      </div>
-                                      {libraryMetaProgressLine(sessionMeta, sessionProgress, progressColor, {metaSize:10, metaWeight:800})}
-                                    </div>
-                                    {libraryPnlCell(pnlPct, pnlColor, session.trades)}
-                                  </div>
-                                );
-                              }) : <div style={{height:90,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.br}`,background:c.sf,fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No sessions in this category.","لا توجد جلسات في هذه الفئة.")}</div>}
-                            </div>
-                          </>
-                        ) : dashLibraryTab === "strategies" ? (
-                          <>
-                            {libraryPaneTitle(dashTxt("Strategies","الاستراتيجيات"), c.acL)}
-                            <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",flexDirection:"column",gap:0,paddingTop:1}}>
-                              {libraryStrategyGroups.length ? libraryStrategyGroups.map(strategy=>{
-                                const linkedSessions = Array.isArray(strategy.sessions) ? strategy.sessions : libraryStrategySessions(strategy.id);
-                                const open = dashLibraryStrategyCat !== "all" || !!dashLibraryStrategyExpanded[strategy.id];
-                                const pnl = Number(strategy.pnl)||0;
-                                const capital = Number(strategy.capital)||linkedSessions.reduce((sum,s)=>sum+(Number(s.capital)||0),0);
-                                const pnlPct = strategy.pnlPct == null ? (capital ? pnl / capital * 100 : null) : strategy.pnlPct;
-                                const sessionCount = Number(strategy.sessionCount)||linkedSessions.length;
-                                const journalCount = Number(strategy.journalCount)||linkedSessions.filter(s=>(Number(s.trades)||0)>0).length;
-                                const progress = Number.isFinite(Number(strategy.progress)) ? Number(strategy.progress) : (linkedSessions.length ? Math.round(linkedSessions.reduce((sum,s)=>sum+librarySessionProgress(s),0)/linkedSessions.length) : 0);
-                                const tone = !linkedSessions.length ? c.tm : pnl>=0 ? c.gn : c.rd;
-                                const chevronRotation = open ? "rotate(90deg)" : isDashRTL ? "rotate(180deg)" : "rotate(0deg)";
-                                const strategyMarkets = [...new Set(linkedSessions.flatMap(s=>s.assetClasses||[]))].slice(0,2).join(", ") || dashTxt("No market","لا سوق");
-                                const linkedJournalRows = Array.isArray(strategy.journalRows) ? strategy.journalRows : libraryJournalRowsForSessions(linkedSessions);
-                                const strategyItem = makeLibraryStrategySelection(strategy);
-                                const strategyKey = librarySelectionKey("strategy", strategy.id);
-                                const isSel = selectedLibraryKey===strategyKey;
-                                const strategyChildSelectedSet = new Set(isSel ? validLibraryStrategyChildKeys(strategy.id) : []);
-                                const selectWholeStrategy = () => selectLibraryItem(strategyItem);
-                                const openWholeStrategy = () => openLibraryStrategyOnDashboard({...strategy,sessions:linkedSessions});
-                                return (
-                                  <div key={strategy.id} style={{flexShrink:0,background:c.sf,overflow:"hidden",position:"relative"}}>
-                                    <div className={`tlr-library-strategy-row${isSel ? " tlr-library-strategy-row-active" : ""}`} role="button" tabIndex={0} aria-pressed={isSel} aria-label={`${dashTxt("Select strategy","حدد الاستراتيجية")}: ${strategy.label}`} data-tlr-library-key={librarySelectionKey("strategy", strategy.id)} data-tlr-library-label={strategy.label} data-tlr-library-type={dashTxt("Strategy","استراتيجية")} data-tlr-library-color={c.acL} data-tlr-library-base-bg="rgba(8,10,20,0.96)" data-tlr-library-base-border="rgba(255,255,255,0.055)" data-tlr-library-base-shadow="inset 0 1px 0 rgba(255,255,255,0.018)" onPointerDown={librarySelectPointerActivate(selectWholeStrategy)} onKeyDown={libraryKeyActivate(selectWholeStrategy)} style={{minHeight:78,display:"grid",gridTemplateColumns:"24px minmax(0,1fr) 132px",gap:10,alignItems:"center",padding:"0 14px 0 12px",cursor:"default",position:"relative",background:isSel?c.acD:"rgba(8,10,20,0.96)",border:`1px solid ${isSel?`${c.acL}66`:"rgba(255,255,255,0.055)"}`,boxShadow:isSel?`0 0 0 1px ${c.acG}`:"inset 0 1px 0 rgba(255,255,255,0.018)",boxSizing:"border-box","--tlr-lib-color":c.acL,"--tlr-lib-color-border":`${c.acL}66`,"--tlr-lib-color-soft":c.acG,"--tlr-lib-base-bg":"rgba(8,10,20,0.96)","--tlr-lib-hover-bg":"rgba(255,255,255,0.045)","--tlr-lib-hover-border":"rgba(255,255,255,0.12)"}}>
-                                      <div className="tlr-library-strategy-toggle tlr-library-strategy-chevron" role="button" tabIndex={0} aria-expanded={open} aria-label={open ? dashTxt("Collapse strategy","طي الاستراتيجية") : dashTxt("Expand strategy","توسيع الاستراتيجية")} onPointerDown={e=>{e.stopPropagation();if (typeof e.button === "number" && e.button !== 0) return;toggleLibraryStrategyBox(strategy.id);}} onKeyDown={libraryKeyActivate(e=>{e.stopPropagation();toggleLibraryStrategyBox(strategy.id);})} style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",color:open?c.acL:isSel?c.tx:c.tm,"--tlr-lib-color":c.acL}}>
-                                        <svg width={11} height={11} viewBox="0 0 12 12" style={{display:"block",transform:chevronRotation,transition:"transform 0.12s ease"}}><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"/></svg>
-                                      </div>
-                                      <div style={{minWidth:0}}>
-                                        <div className="tlr-library-strategy-title" style={{fontSize:13,fontWeight:950,color:isSel?c.acL:c.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{strategy.label}</div>
-                                        {libraryMetaProgressLine(strategyMarkets, progress, c.acL, {metaSize:9.5, metaWeight:900, marginTop:6})}
-                                      </div>
-                                      {libraryStrategyCell(pnlPct, tone, sessionCount, journalCount)}
-                                    </div>
-                                    {open && (
-                                      <div style={{borderTop:`1px solid ${c.br}`,background:c.well,animation:"tlrLoadFadeIn 0.12s ease"}}>
-                                        {linkedSessions.length || linkedJournalRows.length ? <>
-                                        {linkedSessions.map(session=>{
-                                          const childKey = librarySelectionKey("session", session.id);
-                                          const childActive = strategyChildSelectedSet.has(childKey);
-                                          const sessionPnl = Number(session.pnl);
-                                          const pnlColor = !Number.isFinite(sessionPnl) ? c.tm : sessionPnl>=0 ? c.gn : c.rd;
-                                          const sessionPnlPct = !Number.isFinite(sessionPnl) || !Number(session.capital) ? null : (sessionPnl / Number(session.capital)) * 100;
-                                          const sessionProgress = librarySessionProgress(session);
-                                          const progressColor = session.tradingMode==="prop" ? c.gold : c.acL;
-                                          const sessionMarkets = (session.assetClasses||[]).length ? (session.assetClasses||[]).slice(0,2).join(", ") : dashTxt("No market","لا سوق");
-                                          const sessionMeta = `${session.strategyName || dashTxt("Strategy","استراتيجية")} / ${sessionMarkets}`;
-                                          return (
-                                            <div key={session.id} className="tlr-library-content-row tlr-library-child-source-row tlr-library-child-source-selectable" role="checkbox" tabIndex={0} aria-checked={childActive} aria-label={`${dashTxt(childActive ? "Exclude linked backtest" : "Include linked backtest", childActive ? "استبعاد الاختبار المرتبط" : "تضمين الاختبار المرتبط")}: ${session.name}`} onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();e.stopPropagation();toggleLibraryStrategyChildSource(strategyItem, childKey);}} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();toggleLibraryStrategyChildSource(strategyItem, childKey);}}} style={{...libraryRowStyle(false, progressColor, 58, "minmax(0,1fr) 104px", "rgba(7,9,18,0.92)"),width:"calc(100% - 34px)",marginLeft:isDashRTL?0:34,marginRight:isDashRTL?34:0,gap:9,padding:`0 26px 0 ${isDashRTL ? 10 : 18}px`,borderTop:`1px solid ${c.br}`,borderRight:"1px solid rgba(255,255,255,0.045)",borderBottom:"1px solid rgba(255,255,255,0.045)",borderLeft:"1px solid rgba(255,255,255,0.045)",opacity:childActive?0.98:0.46,cursor:"default","--tlr-lib-hover-bg":"rgba(255,255,255,0.026)","--tlr-lib-hover-border":"rgba(255,255,255,0.08)"}}>
-                                              <span className="tlr-library-child-check" aria-hidden="true" style={{position:"absolute",right:6,top:6,width:14,height:14,display:"grid",placeItems:"center",color:childActive?progressColor:c.tm}}>
-                                                {libraryCornerCheckbox(childActive, progressColor)}
-                                              </span>
-                                              <div style={{minWidth:0}}>
-                                                <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
-                                                  {librarySourcePill(dashTxt("Backtest","اختبار"), progressColor)}
-                                                  <span className="tlr-library-content-title" style={{fontSize:11.5,fontWeight:900,color:childActive?c.tx:c.tm,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{session.name}</span>
-                                                  {librarySourceStatusMark("backtest", session, 16)}
-                                                </div>
-                                                {libraryMetaProgressLine(sessionMeta, sessionProgress, progressColor, {metaSize:9.5, metaWeight:800})}
-                                              </div>
-                                              {libraryPnlCell(sessionPnlPct, pnlColor, session.trades)}
-                                            </div>
-                                          );
-                                        })}
-                                        {linkedJournalRows.map(journal=>{
-                                          const childKey = librarySelectionKey("strategyJournal", `${strategy.id}::${journal.id}`);
-                                          const childActive = strategyChildSelectedSet.has(childKey);
-                                          const journalTone = (Number(journal.pnl)||0)>=0 ? c.gn : c.rd;
-                                          const journalMeta = `${journal.type} / ${journal.market || libraryMarketLabel(journal.sessions)} / ${dashTxt("Created","تم الإنشاء")} ${journal.created}`;
-                                          return (
-                                            <div key={`journal-${journal.id}`} className="tlr-library-content-row tlr-library-child-source-row tlr-library-child-source-selectable" role="checkbox" tabIndex={0} aria-checked={childActive} aria-label={`${dashTxt(childActive ? "Exclude linked journal" : "Include linked journal", childActive ? "استبعاد اليومية المرتبطة" : "تضمين اليومية المرتبطة")}: ${journal.name}`} onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();e.stopPropagation();toggleLibraryStrategyChildSource(strategyItem, childKey);}} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();toggleLibraryStrategyChildSource(strategyItem, childKey);}}} style={{...libraryRowStyle(false, c.gn, 58, "minmax(0,1fr) 104px", "rgba(7,9,18,0.92)"),width:"calc(100% - 34px)",marginLeft:isDashRTL?0:34,marginRight:isDashRTL?34:0,gap:9,padding:`0 26px 0 ${isDashRTL ? 10 : 18}px`,borderTop:`1px solid ${c.br}`,borderRight:"1px solid rgba(255,255,255,0.045)",borderBottom:"1px solid rgba(255,255,255,0.045)",borderLeft:"1px solid rgba(255,255,255,0.045)",opacity:childActive?0.98:0.46,cursor:"default","--tlr-lib-hover-bg":"rgba(255,255,255,0.026)","--tlr-lib-hover-border":"rgba(255,255,255,0.08)"}}>
-                                              <span className="tlr-library-child-check" aria-hidden="true" style={{position:"absolute",right:6,top:6,width:14,height:14,display:"grid",placeItems:"center",color:childActive?c.gn:c.tm}}>
-                                                {libraryCornerCheckbox(childActive, c.gn)}
-                                              </span>
-                                              <div style={{minWidth:0}}>
-                                                <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
-                                                  {librarySourcePill(dashTxt("Live Journal","يومية حية"), c.gn)}
-                                                  <span className="tlr-library-content-title" style={{fontSize:12,fontWeight:900,color:childActive?c.tx:c.tm,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{journal.name}</span>
-                                                  {librarySourceStatusMark("journal", journal, 16)}
-                                                </div>
-                                                <div style={{display:"flex",alignItems:"center",minWidth:0,marginTop:5}}>
-                                                  <div style={{fontSize:9.5,fontWeight:800,color:c.tm,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{journalMeta}</div>
-                                                </div>
-                                              </div>
-                                              {libraryPercentPnlCell(journal.pnlPct, journalTone, `${journal.trades}/${journal.totalTrades || journal.trades} ${dashTxt("trades","صفقات")}`)}
-                                            </div>
-                                          );
-                                        })}
-                                        </> : <div style={{height:58,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No linked activity yet.","لا يوجد نشاط مرتبط بعد.")}</div>}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              }) : <div style={{height:90,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.br}`,background:c.sf,fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No strategy usage found.","لا يوجد استخدام لهذه الاستراتيجية.")}</div>}
-                            </div>
-                          </>
-                        ) : (
+                        {dashLibraryTab === "journals" ? (
                           <>
                             {libraryPaneTitle(activeLibraryJournal.id === "all" ? dashTxt("Live Journals","اليوميات الحية") : activeLibraryJournal.label, activeLibraryJournal.color)}
                             <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",display:"grid",alignContent:"start",gap:0}}>
@@ -26142,6 +25985,51 @@ const TalariaV8b = () => {
                                   })}
                                 </div>
                               )) : <div style={{height:90,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.br}`,background:c.sf,fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No connected accounts.","لا توجد حسابات متصلة.")}</div>}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {libraryPaneTitle(dashTxt("Backtest Sessions","جلسات الاختبار"), c.acL)}
+                            <div style={{flexShrink:0,borderBottom:`1px solid ${c.br}`,paddingBottom:0,marginBottom:10}}>
+                              <div role="tablist" aria-label={dashTxt("Backtest status","حالة الاختبار")} style={{height:32,display:"flex",alignItems:"flex-end",justifyContent:"center",gap:0}}>
+                                {libraryStatusCats.map(status=>{
+                                  const active = dashLibraryStatusCat===status.id;
+                                  const color = activeLibraryMode.color;
+                                  const count = libraryModeCount(activeLibraryMode.id,status.id);
+                                  return (
+                                    <div key={status.id} className={`tlr-library-status-tab${active ? " tlr-library-status-tab-active" : ""}`} role="tab" tabIndex={0} aria-selected={active} onPointerDown={librarySelectPointerActivate(()=>setDashLibraryStatusCat(status.id))} onKeyDown={libraryKeyActivate(()=>setDashLibraryStatusCat(status.id))} style={{height:26,display:"flex",alignItems:"center",gap:6,padding:"0 11px",color:active?color:c.ts,background:active?(color===c.gold?"rgba(201,168,76,0.10)":c.acD):"transparent",fontSize:10.5,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"default",position:"relative",boxSizing:"border-box","--tlr-status-hover-bg":"rgba(255,255,255,0.06)","--tlr-lib-color":color}}>
+                                      {status.label}
+                                      <span className="tlr-library-status-count" style={{fontSize:8.5,fontWeight:800,color:active?color:c.tm,background:active?(color===c.gold?"rgba(201,168,76,0.18)":"rgba(74,106,255,0.2)"):"rgba(255,255,255,0.07)",padding:"1px 5px",fontVariantNumeric:"tabular-nums"}}>{count}</span>
+                                      <span style={{position:"absolute",left:0,right:0,bottom:-1,height:1,background:active?`linear-gradient(90deg,transparent,${color},transparent)`:"transparent",boxShadow:active?`0 0 7px ${color}`:"none"}}/>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",display:"grid",alignContent:"start",gap:0}}>
+                              {sourceBacktestRows.length ? sourceBacktestRows.map(session=>{
+                                const sessionItem = makeLibrarySessionSelection(session);
+                                const isSel = selectedLibraryKey===librarySelectionKey("session", session.id);
+                                const pnl = session.pnl;
+                                const pnlColor = pnl==null ? c.tm : pnl>=0 ? c.gn : c.rd;
+                                const pnlPct = pnl==null || !Number(session.capital) ? null : (Number(pnl) / Number(session.capital)) * 100;
+                                const sessionProgress = librarySessionProgress(session);
+                                const progressColor = activeLibraryMode.color;
+                                const sessionMarkets = (session.assetClasses||[]).length ? (session.assetClasses||[]).slice(0,2).join(", ") : dashTxt("No market","لا سوق");
+                                const sessionMeta = `${session.strategyName || dashTxt("Strategy","استراتيجية")} / ${sessionMarkets}`;
+                                return (
+                                  <div key={session.id} className={`tlr-library-content-row${isSel ? " tlr-library-content-row-active" : ""}`} role="button" tabIndex={0} aria-label={`${dashTxt("Select backtest session","حدد جلسة الاختبار")}: ${session.name}`} aria-pressed={isSel} data-tlr-library-key={librarySelectionKey("session", session.id)} data-tlr-library-label={session.name} data-tlr-library-type={dashTxt("Backtest","اختبار")} data-tlr-library-color={activeLibraryMode.color} onPointerDown={librarySelectPointerActivate(()=>selectLibraryItem(sessionItem))} onKeyDown={libraryKeyActivate(()=>selectLibraryItem(sessionItem))} style={libraryRowStyle(isSel, activeLibraryMode.color, 68, "1fr 108px")}>
+                                    <div style={{minWidth:0}}>
+                                      <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+                                        <div className="tlr-library-content-title" style={{fontSize:12,fontWeight:900,color:isSel?activeLibraryMode.color:c.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{session.name}</div>
+                                        {librarySourceStatusMark("backtest", session, 16)}
+                                      </div>
+                                      {libraryMetaProgressLine(sessionMeta, sessionProgress, progressColor, {metaSize:10, metaWeight:800})}
+                                    </div>
+                                    {libraryPnlCell(pnlPct, pnlColor, session.trades)}
+                                  </div>
+                                );
+                              }) : <div style={{height:90,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.br}`,background:c.sf,fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No sessions in this category.","لا توجد جلسات في هذه الفئة.")}</div>}
                             </div>
                           </>
                         )}
