@@ -6,7 +6,7 @@ export function getToken(): string | null {
 }
 
 export function loginUrlWithNext(): string {
-  return `/login/?next=${encodeURIComponent("/dashboard/strategies/")}`;
+  return `/login/?next=${encodeURIComponent("/dashboard/?view=stratbank")}`;
 }
 
 export function authHeaders(): Record<string, string> {

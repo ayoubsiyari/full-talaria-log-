@@ -31,7 +31,6 @@ import { applyJournalTokenFromAuthResponse } from "@/lib/journalApi";
 import { isAnonymousPlaceholderUser } from "@/lib/authUser";
 import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
 import DashboardAccessSkeleton from "./DashboardAccessSkeleton";
-import { StrategyLabV9BuilderProvider } from "./strategies/StrategyLabV9BuilderContext";
 
 type User = {
   id: number;
@@ -355,10 +354,6 @@ export default function DashboardShell({
   const registerBacktestOpenNewSession = React.useCallback((fn: (() => void) | null) => {
     openBacktestNewSessionRef.current = fn;
   }, []);
-  const openStrategyLabV9BuilderRef = React.useRef<(() => void) | null>(null);
-  const registerStrategyLabV9OpenBuilder = React.useCallback((fn: (() => void) | null) => {
-    openStrategyLabV9BuilderRef.current = fn;
-  }, []);
 
   React.useEffect(() => {
     window.__TALARIA_OPEN_STRATEGY_BUILDER__ = () => {
@@ -461,9 +456,9 @@ export default function DashboardShell({
     ) {
       setActiveView("journal");
     } else if (pathname.startsWith("/dashboard/trades")) setActiveView("trades");
+    else if (pathname.startsWith("/dashboard/backtest/design")) setActiveView("backtest");
     else if (pathname.startsWith("/dashboard/backtest")) setActiveView("backtest");
-    else if (pathname.startsWith("/dashboard/strategies"))
-      setActiveView("strategies");
+    else if (pathname.startsWith("/dashboard/strategies")) setActiveView("strategies");
     else if (
       pathname.startsWith("/dashboard/cot") &&
       userCanAccessAdminOnlyWipPath(user, pathname)
@@ -624,82 +619,6 @@ export default function DashboardShell({
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, paddingInlineEnd: 16 }}>
-          {activeView === "backtest" ? (
-            <button
-              type="button"
-              onClick={() => openBacktestNewSessionRef.current?.()}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                height: 36,
-                padding: "0 20px",
-                background: "linear-gradient(135deg,#1e38e8,#4A6AFF)",
-                border: "none",
-                cursor:"default",
-                fontFamily: F,
-                fontSize: 13,
-                fontWeight: 800,
-                color: "rgba(255,255,255,0.96)",
-                letterSpacing: "0.08em",
-                boxShadow: "0 2px 10px rgba(38,67,247,0.35)",
-                flexShrink: 0,
-                transition: "filter 0.12s",
-                marginInlineEnd: 20,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.filter = "brightness(1.12)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.filter = "brightness(1)";
-              }}
-              aria-label={isArabic ? "جلسة جديدة" : "New session"}
-            >
-              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" aria-hidden>
-                <line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-              {isArabic ? "جلسة جديدة" : "New Session"}
-            </button>
-          ) : null}
-          {activeView === "strategies" ? (
-            <button
-              type="button"
-              onClick={() => openStrategyLabV9BuilderRef.current?.()}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                height: 36,
-                padding: "0 20px",
-                background: "linear-gradient(135deg,#1e38e8,#4A6AFF)",
-                border: "none",
-                cursor: "default",
-                fontFamily: F,
-                fontSize: 13,
-                fontWeight: 800,
-                color: "rgba(255,255,255,0.96)",
-                letterSpacing: "0.08em",
-                boxShadow: "0 2px 10px rgba(38,67,247,0.35)",
-                flexShrink: 0,
-                transition: "filter 0.12s",
-                marginInlineEnd: 20,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.filter = "brightness(1.12)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.filter = "brightness(1)";
-              }}
-              aria-label={isArabic ? "استراتيجية جديدة" : "New strategy"}
-            >
-              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" aria-hidden>
-                <line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-              {isArabic ? "استراتيجية جديدة" : "New Strategy"}
-            </button>
-          ) : null}
           {isAdminUser ? (
             <>
               <a
@@ -1019,8 +938,7 @@ export default function DashboardShell({
         <main style={{ flex: 1, minHeight: 0, overflow: "hidden", background: DASH_C.bg, position: "relative", display: "flex", flexDirection: "column" }}>
 
           <BacktestNewSessionProvider register={registerBacktestOpenNewSession}>
-            <StrategyLabV9BuilderProvider register={registerStrategyLabV9OpenBuilder}>
-            {/* Internal Next.js pages (dashboard, journal, backtest, strategies, cot, support, …) */}
+            {/* Internal Next.js pages (dashboard, journal, cot, support, …) */}
             <div style={{
               position: "absolute", inset: 0,
               overflowY: isV16DashboardPage ? "hidden" : "auto",
@@ -1071,7 +989,6 @@ export default function DashboardShell({
                 }}
               />
             ))}
-          </StrategyLabV9BuilderProvider>
           </BacktestNewSessionProvider>
         </main>
       </div>

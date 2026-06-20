@@ -8,7 +8,7 @@ function LegacyBacktestIndexRedirectInner() {
 
   useEffect(() => {
     const q = searchParams?.toString() ?? "";
-    window.location.replace(q ? `/dashboard/backtest/?${q}` : "/dashboard/backtest/");
+    window.location.replace(q ? `/dashboard/?view=sessions&${q}` : "/dashboard/?view=sessions");
   }, [searchParams]);
 
   return (

@@ -80,10 +80,10 @@ export function getPostAuthRedirectUrl(opts: {
   const isAdmin = userIsDashboardAdmin({ role: opts.user.role });
   if (isAdmin) {
     if (safeNext) return safeNext;
-    return "/dashboard/backtest/";
+    return "/dashboard/?view=sessions";
   }
   if (safeNext && isPathAdminOnlyWip(safeNext)) {
-    return "/dashboard/backtest/";
+    return "/dashboard/?view=sessions";
   }
   const hasAccess = !!opts.user.has_journal_access;
   if (!hasAccess) {
@@ -95,7 +95,7 @@ export function getPostAuthRedirectUrl(opts: {
   if (safeNext) {
     return safeNext;
   }
-  return "/dashboard/backtest/";
+  return "/dashboard/?view=sessions";
 }
 
 type AuthSuccessBody = {

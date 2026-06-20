@@ -1476,7 +1476,7 @@ export function SessionAnalyticsPanel({
       <div className={`bt-os-toolbar${variant === "compact" ? " bt-os-toolbar--compact" : ""}`}>
         <div className="bt-os-toolbar-inner">
         {variant === "full" ? (
-          <a href="/dashboard/backtest/" className="bt-os-back-link">
+          <a href="/dashboard/?view=sessions" className="bt-os-back-link">
             <ArrowLeft className="w-3 h-3" />
             Sessions
           </a>

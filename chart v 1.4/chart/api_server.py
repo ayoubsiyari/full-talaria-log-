@@ -11039,6 +11039,7 @@ class AdminSupportBulkFilterIn(BaseModel):
     dry_run: bool = False
     include_resolved: bool = True
     all_tickets: bool = False
+    category: str | None = None
     older_than_days: int | None = Field(None, ge=1, le=3650)
     before_date: str | None = Field(None, max_length=32)
 
@@ -11098,6 +11099,8 @@ def _admin_support_bulk_filter_query(db, payload: AdminSupportBulkFilterIn, *, a
         q = q.filter(SupportThread.archived_at.isnot(None))
     if not payload.all_tickets:
         q = q.filter(SupportThread.status.in_(statuses))
+    if payload.category:
+        q = q.filter(SupportThread.category == _support_validate_category(payload.category))
     ref_dt = _support_thread_archive_reference_dt()
     now = datetime.utcnow()
     if payload.older_than_days is not None:
@@ -11114,6 +11117,7 @@ def _admin_support_bulk_filter_summary(payload: AdminSupportBulkFilterIn, status
         "statuses": statuses,
         "include_resolved": payload.include_resolved,
         "all_tickets": payload.all_tickets,
+        "category": payload.category,
         "older_than_days": payload.older_than_days,
         "before_date": payload.before_date,
     }
@@ -11125,6 +11129,7 @@ def _admin_support_bulk_preview(rows: list) -> list[dict]:
             "id": t.id,
             "ticket_ref": _support_ticket_ref(t.id),
             "status": t.status,
+            "category": t.category,
             "subject": (t.subject or "")[:120],
             "archived_at": t.archived_at.isoformat() if getattr(t, "archived_at", None) else None,
         }

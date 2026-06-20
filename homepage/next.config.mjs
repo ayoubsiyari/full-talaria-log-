@@ -35,12 +35,21 @@ const nextConfig = {
   },
   async redirects() {
     return [
-      { source: "/strategies-lab", destination: "/dashboard/strategies/", permanent: true },
-      { source: "/strategies-lab/", destination: "/dashboard/strategies/", permanent: true },
-      { source: "/strategy-v8-lab-preview", destination: "/dashboard/strategies/", permanent: true },
-      { source: "/strategy-v8-lab-preview/", destination: "/dashboard/strategies/", permanent: true },
-      { source: "/dashboard/strategylab-v9", destination: "/dashboard/strategies/", permanent: true },
-      { source: "/dashboard/strategylab-v9/", destination: "/dashboard/strategies/", permanent: true },
+      /* V16 single root — legacy duplicate dashboard pages */
+      { source: "/dashboard/trades", destination: "/dashboard/?view=trades", permanent: true },
+      { source: "/dashboard/trades/", destination: "/dashboard/?view=trades", permanent: true },
+      { source: "/dashboard/backtest", destination: "/dashboard/?view=sessions", permanent: true },
+      { source: "/dashboard/backtest/", destination: "/dashboard/?view=sessions", permanent: true },
+      { source: "/dashboard/backtest/analytics", destination: "/dashboard/", permanent: true },
+      { source: "/dashboard/backtest/analytics/", destination: "/dashboard/", permanent: true },
+      { source: "/dashboard/strategies", destination: "/dashboard/?view=stratbank", permanent: true },
+      { source: "/dashboard/strategies/", destination: "/dashboard/?view=stratbank", permanent: true },
+      { source: "/strategies-lab", destination: "/dashboard/?view=stratbank", permanent: true },
+      { source: "/strategies-lab/", destination: "/dashboard/?view=stratbank", permanent: true },
+      { source: "/strategy-v8-lab-preview", destination: "/dashboard/?view=stratbank", permanent: true },
+      { source: "/strategy-v8-lab-preview/", destination: "/dashboard/?view=stratbank", permanent: true },
+      { source: "/dashboard/strategylab-v9", destination: "/dashboard/?view=stratbank", permanent: true },
+      { source: "/dashboard/strategylab-v9/", destination: "/dashboard/?view=stratbank", permanent: true },
       /* Legacy journal SPA (removed) → Next dashboard journal */
       { source: "/journal", destination: "/dashboard/journal/", permanent: true },
       { source: "/journal/login", destination: "/login/?next=/dashboard/journal/", permanent: true },
