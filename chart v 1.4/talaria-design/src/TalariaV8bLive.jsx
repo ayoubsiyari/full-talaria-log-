@@ -32700,6 +32700,22 @@ const TalariaV8bLive = () => {
                     </div>
                   );
                 })}
+                <div style={{marginLeft:"auto",display:"flex",alignItems:"center",paddingRight:10}}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e)=>{e.stopPropagation();exportBtmTrades();}}
+                    onKeyDown={(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();exportBtmTrades();}}}
+                    onMouseEnter={()=>setHov("btm-export")}
+                    onMouseLeave={()=>setHov(null)}
+                    style={{height:24,padding:"0 10px",display:"flex",alignItems:"center",gap:5,background:hov==="btm-export"?c.hv:"transparent",border:`1px solid ${hov==="btm-export"?c.brH:c.br}`,cursor:"default",fontSize:10,fontWeight:700,color:c.ts,letterSpacing:"0.06em",fontFamily:F,userSelect:"none",transition:"background 0.12s, border-color 0.12s"}}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M5 21h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                    Export
+                  </div>
+                </div>
                 {btmIndPos&&<div style={{position:"absolute",bottom:0,height:2,pointerEvents:"none",left:btmIndPos.left+btmIndPos.width*0.15,width:btmIndPos.width*0.7,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,transition:"left 0.25s cubic-bezier(0.4,0,0.2,1), width 0.25s cubic-bezier(0.4,0,0.2,1)"}}/>}
               </div>
             );})()}

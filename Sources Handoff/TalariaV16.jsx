@@ -8084,6 +8084,8 @@ const TalariaV8b = () => {
   const [dashTradesCustomName, setDashTradesCustomName] = useState("");
   const [dashTradesSort, setDashTradesSort] = useState({key:null, dir:null});
   const [dashTradesExpandedRows, setDashTradesExpandedRows] = useState(() => new Set());
+  const [dashTradesImportBusy, setDashTradesImportBusy] = useState(false);
+  const dashTradesCsvImportRef = useRef(null);
   const [dashTradesSourceFilter, setDashTradesSourceFilter] = useState("all");
   const [dashTradesDrawer, setDashTradesDrawer] = useState(null);
   const [dashTradesEditedOverrides, setDashTradesEditedOverrides] = useState({});
@@ -18951,6 +18953,33 @@ const TalariaV8b = () => {
             a.remove();
             URL.revokeObjectURL(url);
           };
+          const importDashboardTradesCsv = async (file) => {
+            if (!file || dashTradesImportBusy || !ds?.id) return;
+            setDashTradesImportBusy(true);
+            try {
+              const q = new URLSearchParams();
+              q.set("mode", "append");
+              const url = `/api/sessions/${encodeURIComponent(String(ds.id))}/journal/import-csv?${q.toString()}`;
+              const fd = new FormData();
+              fd.append("file", file);
+              const res = await fetch(url, { method: "POST", credentials: "include", body: fd });
+              const text = await res.text();
+              let body = null;
+              try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+              if (!res.ok) {
+                const d = body?.detail;
+                const msg = typeof d === "string" ? d
+                  : d && typeof d === "object" && Array.isArray(d.errors) ? d.errors.join("; ")
+                  : text.slice(0, 240);
+                throw new Error(msg || `HTTP ${res.status}`);
+              }
+              reloadEmbeddedV16Boot();
+            } catch (err) {
+              window.alert(err?.message || dashTxt("Import failed","فشل الاستيراد"));
+            } finally {
+              setDashTradesImportBusy(false);
+            }
+          };
           const renderDashboardTradesLedgerV2 = () => {
             const rawRows = Array.isArray(metrics?.trades) ? metrics.trades : [];
             const firstValue = (trade, keys, fallback=null) => {
@@ -19771,6 +19800,18 @@ const TalariaV8b = () => {
                       </h1>
                     </div>
                     <div style={{flex:"0 0 auto",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,marginBottom:0}}>
+                      <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                        onPointerDown={libraryPointerActivate(() => !dashTradesImportBusy && dashTradesCsvImportRef.current?.click())}
+                        onKeyDown={libraryKeyActivate(() => !dashTradesImportBusy && dashTradesCsvImportRef.current?.click())}
+                        aria-label={dashTxt("Import trades from CSV","استيراد الصفقات من CSV")}
+                        aria-disabled={dashTradesImportBusy}
+                        style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(15,19,34,0.96)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:8.8,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"default",boxSizing:"border-box",opacity:dashTradesImportBusy?0.55:1,pointerEvents:dashTradesImportBusy?"none":"auto",transition:dashControlTransition}}>
+                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M12 21V9M8 13l4-4 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M5 3h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                        </svg>
+                        {dashTradesImportBusy ? dashTxt("Importing…","جارٍ الاستيراد…") : dashTxt("Import CSV","استيراد CSV")}
+                      </div>
                       <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
                         onPointerDown={libraryPointerActivate(exportDashboardTradesCsv)}
                         onKeyDown={libraryKeyActivate(exportDashboardTradesCsv)}
@@ -25653,6 +25694,30 @@ const TalariaV8b = () => {
                 <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,padding:"0 20px 0 10px",marginLeft:"auto"}}>
                   {sessView !== "trades" && <DashboardPagesButton/>}
                   {sessView === "trades" && (
+                    <>
+                    <input
+                      ref={dashTradesCsvImportRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      style={{display:"none"}}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) void importDashboardTradesCsv(f);
+                      }}
+                    />
+                    <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                      onPointerDown={libraryPointerActivate(() => !dashTradesImportBusy && dashTradesCsvImportRef.current?.click())}
+                      onKeyDown={libraryKeyActivate(() => !dashTradesImportBusy && dashTradesCsvImportRef.current?.click())}
+                      aria-label={dashTxt("Import trades from CSV","استيراد الصفقات من CSV")}
+                      aria-disabled={dashTradesImportBusy}
+                      style={{height:36,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"rgba(15,19,34,0.92)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:12,fontWeight:800,letterSpacing:"0.07em",fontFamily:F,whiteSpace:"nowrap",cursor:"default",boxSizing:"border-box",flexShrink:0,opacity:dashTradesImportBusy?0.55:1,pointerEvents:dashTradesImportBusy?"none":"auto",transition:dashControlTransition}}>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 21V9M8 13l4-4 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M5 3h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      </svg>
+                      {dashTradesImportBusy ? dashTxt("Importing…","جارٍ الاستيراد…") : dashTxt("Import","استيراد")}
+                    </div>
                     <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
                       onPointerDown={libraryPointerActivate(exportDashboardTradesCsv)}
                       onKeyDown={libraryKeyActivate(exportDashboardTradesCsv)}
@@ -25664,6 +25729,7 @@ const TalariaV8b = () => {
                       </svg>
                       {dashTxt("Export","تصدير")}
                     </div>
+                    </>
                   )}
                   <div className="tlr-dashboard-add-trade" role="button" tabIndex={0}
                     onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();openAddTradeSourcePicker();}}
