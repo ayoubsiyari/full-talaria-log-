@@ -18,17 +18,34 @@ _TERMINAL_SUB_STATUSES = frozenset(
 )
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+def _entitlements_json_candidates() -> tuple[Path, ...]:
+    """Resolve shared/entitlements.json without assuming repo depth (Docker uses /app)."""
+    here = Path(__file__).resolve().parent
+    out: list[Path] = []
+    seen: set[str] = set()
+    env_path = (os.getenv("ENTITLEMENTS_CONFIG_PATH") or "").strip()
+    if env_path:
+        out.append(Path(env_path))
+    for root in (here, *here.parents):
+        candidate = root / "shared" / "entitlements.json"
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(candidate)
+    return tuple(out)
 
 
 def _load_entitlements_config() -> dict:
-    path = _repo_root() / "shared" / "entitlements.json"
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    for path in _entitlements_json_candidates():
+        try:
+            if path.is_file():
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except Exception:
+            continue
+    return {}
 
 
 def free_tier_caps() -> dict:

@@ -10653,7 +10653,7 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
     except Exception as exc:
         db.rollback()
         try:
-            print(f"[auth] login failed for {email}: {exc}", flush=True)
+            print(f"[auth] login failed for {email}: {type(exc).__name__}: {exc}", flush=True)
         except Exception:
             pass
         raise HTTPException(status_code=500, detail="Login failed due to a server error. Please try again.") from exc

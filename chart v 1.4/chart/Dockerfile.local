@@ -45,6 +45,7 @@ COPY ["chart v 1.4/chart/package.json", "chart v 1.4/chart/package-lock.json", "
 RUN npm ci
 
 COPY ["chart v 1.4/chart", "./"]
+COPY ["shared/entitlements.json", "./shared/entitlements.json"]
 # Colocated with api_server.py so imports work even if only /app is on PYTHONPATH.
 COPY ["homepage/src/app/dashboard/analytics/backend", "./analytics_backend"]
 

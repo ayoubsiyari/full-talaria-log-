@@ -61,6 +61,7 @@ def test_effective_limits_admin_unlimited():
 
 def test_entitlements_resolver_flag_default_off(monkeypatch):
     monkeypatch.delenv("ENTITLEMENTS_RESOLVER_V2", raising=False)
+    monkeypatch.setattr(pe, "_load_entitlements_config", lambda: {})
     assert pe.entitlements_resolver_v2_enabled() is False
 
 
@@ -83,3 +84,17 @@ def test_effective_limits_extension():
     caps = pe.effective_backtest_limits(user)
     assert caps["entitlements_source"] == "extension"
     assert caps["max_trading_sessions"] == 11
+
+
+def test_free_tier_caps_never_raises_from_shallow_path(monkeypatch, tmp_path):
+    """Docker layout: module at /app/plan_entitlements.py must not IndexError on parents[3]."""
+    cfg_dir = tmp_path / "shared"
+    cfg_dir.mkdir()
+    (cfg_dir / "entitlements.json").write_text(
+        '{"free_tier":{"max_trading_sessions":2,"max_tickers_per_session":1,'
+        '"max_supporting_tickers_per_session":1},"defaults":{}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ENTITLEMENTS_CONFIG_PATH", str(cfg_dir / "entitlements.json"))
+    caps = pe.free_tier_caps()
+    assert caps["max_trading_sessions"] == 2
