@@ -584,6 +584,7 @@ class SubscriptionPlan(db.Model):
     stripe_product_id = db.Column(db.String(100), nullable=True)
     features = db.Column(db.Text, nullable=True)  # JSON string
     trial_days = db.Column(db.Integer, default=0)
+    max_trading_sessions = db.Column(db.Integer, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

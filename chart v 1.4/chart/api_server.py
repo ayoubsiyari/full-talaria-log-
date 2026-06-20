@@ -744,6 +744,7 @@ class SubscriptionPlan(Base):
     stripe_product_id = Column(String, nullable=True)
     features = Column(Text, nullable=True)
     trial_days = Column(Integer, default=0)
+    max_trading_sessions = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1048,6 +1049,7 @@ try:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS public_id VARCHAR(20)"))
+        _conn.execute(text("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_trading_sessions INTEGER"))
         try:
             _conn.execute(
                 text(
@@ -10101,6 +10103,7 @@ def _user_public_dict(user: User, db=None):
                 period_end = active_sub.current_period_end or active_sub.ends_at
                 sub_info = {
                     "id": active_sub.id,
+                    "plan_id": active_sub.plan_id,
                     "plan_name": plan.name if plan else ("Manual" if active_sub.is_manual else "—"),
                     "status": active_sub.status,
                     "is_manual": bool(active_sub.is_manual),
@@ -15997,6 +16000,7 @@ def _plan_public_dict(p):
         "stripe_product_id": p.stripe_product_id,
         "features": feats,
         "trial_days": p.trial_days or 0,
+        "max_trading_sessions": getattr(p, "max_trading_sessions", None),
         "is_active": bool(p.is_active),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
@@ -16030,6 +16034,7 @@ class _CreatePlanIn(BaseModel):
     stripe_product_id: str | None = None
     features: list | None = None
     trial_days: int = 0
+    max_trading_sessions: int | None = None
     is_active: bool = True
 
 @app.post("/api/admin/subscriptions/plans")
@@ -16049,6 +16054,7 @@ async def admin_create_plan(payload: _CreatePlanIn, request: Request):
             stripe_product_id=payload.stripe_product_id,
             features=json.dumps(payload.features or []),
             trial_days=payload.trial_days,
+            max_trading_sessions=payload.max_trading_sessions,
             is_active=payload.is_active,
         )
         db.add(plan)
@@ -16072,6 +16078,7 @@ class _UpdatePlanIn(BaseModel):
     stripe_product_id: str | None = None
     features: list | None = None
     trial_days: int | None = None
+    max_trading_sessions: int | None = None
     is_active: bool | None = None
 
 @app.put("/api/admin/subscriptions/plans/{plan_id}")
@@ -16094,6 +16101,8 @@ async def admin_update_plan(plan_id: int, payload: _UpdatePlanIn, request: Reque
         if payload.stripe_product_id is not None: plan.stripe_product_id = payload.stripe_product_id
         if payload.features is not None: plan.features = json.dumps(payload.features)
         if payload.trial_days is not None: plan.trial_days = payload.trial_days
+        if payload.max_trading_sessions is not None:
+            plan.max_trading_sessions = max(0, int(payload.max_trading_sessions))
         if payload.is_active is not None: plan.is_active = payload.is_active
         db.commit()
         return {"plan": _plan_public_dict(plan)}
@@ -16272,6 +16281,14 @@ async def admin_assign_subscription(user_id: int, payload: _ManualSubIn, request
         )
         db.add(sub)
         db.flush()
+
+        if payload.plan_id:
+            plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == payload.plan_id).first()
+            if plan:
+                cap = getattr(plan, "max_trading_sessions", None)
+                if cap is not None and int(cap) > 0:
+                    user.max_trading_sessions = int(cap)
+                user.has_journal_access = True
 
         if ends:
             user.access_expires_at = ends

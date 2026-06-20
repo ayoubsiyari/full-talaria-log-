@@ -10,6 +10,7 @@ import {
   type SessionLimitGateData,
   type SessionLimitUpgradeAction,
 } from "./sessionLimitGate";
+import { openBillingPortal, startPlanCheckout } from "./sessionLimitCheckout";
 
 const F = "'Exo 2', sans-serif";
 
@@ -23,10 +24,14 @@ export function SessionLimitModal({ open, data, onClose }: Props) {
   const { isArabic } = useLanguage();
   const router = useRouter();
   const [upgrade, setUpgrade] = React.useState<SessionLimitUpgradeAction | null>(null);
+  const [upgradeBusy, setUpgradeBusy] = React.useState(false);
+  const [upgradeErr, setUpgradeErr] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open || !data) {
       setUpgrade(null);
+      setUpgradeErr(null);
+      setUpgradeBusy(false);
       return;
     }
     let cancelled = false;
@@ -64,10 +69,53 @@ export function SessionLimitModal({ open, data, onClose }: Props) {
   const closeLabel = isArabic ? "إغلاق" : "Close";
   const usageLabel = isArabic ? "الاستخدام" : "Usage";
   const planHeading = isArabic ? "خطتك الحالية" : "Current plan";
+  const nextPlanLabel =
+    upgrade?.planName && upgrade.nextSessionCap
+      ? isArabic
+        ? `الترقية المقترحة: ${upgrade.planName} (${upgrade.nextSessionCap} جلسة)`
+        : `Suggested upgrade: ${upgrade.planName} (${upgrade.nextSessionCap} sessions)`
+      : null;
 
-  const goUpgrade = () => {
-    onClose();
-    router.push(upgrade?.href || "/pricing/?browse=1");
+  const goUpgrade = async () => {
+    setUpgradeErr(null);
+    if (!upgrade) {
+      router.push("/pricing/?browse=1");
+      onClose();
+      return;
+    }
+    if (upgrade.mode === "pricing") {
+      onClose();
+      router.push(upgrade.href || "/pricing/?browse=1");
+      return;
+    }
+    setUpgradeBusy(true);
+    try {
+      if (upgrade.mode === "checkout" && upgrade.planId) {
+        const result = await startPlanCheckout(upgrade.planId);
+        if (!result.ok) setUpgradeErr(result.error);
+        else onClose();
+        return;
+      }
+      if (upgrade.mode === "portal") {
+        const result = await openBillingPortal();
+        if (!result.ok) {
+          if (upgrade.planId) {
+            const fallback = await startPlanCheckout(upgrade.planId);
+            if (!fallback.ok) setUpgradeErr(fallback.error);
+            else onClose();
+          } else {
+            setUpgradeErr(result.error);
+          }
+        } else {
+          onClose();
+        }
+        return;
+      }
+      onClose();
+      router.push("/pricing/?browse=1");
+    } finally {
+      setUpgradeBusy(false);
+    }
   };
 
   const goSupport = () => {
@@ -196,21 +244,32 @@ export function SessionLimitModal({ open, data, onClose }: Props) {
               {planLabel}
             </span>
           </div>
+          {nextPlanLabel ? (
+            <p style={{ margin: "10px 0 0", fontSize: 11, lineHeight: 1.45, color: "rgba(255,255,255,0.42)" }}>
+              {nextPlanLabel}
+            </p>
+          ) : null}
         </div>
 
         <p style={{ margin: "0 0 18px", fontSize: 12, lineHeight: 1.5, color: "rgba(255,255,255,0.42)" }}>
           {upgradeHint}
         </p>
 
+        {upgradeErr ? (
+          <p style={{ margin: "0 0 12px", fontSize: 12, color: "#ff8a9a" }}>{upgradeErr}</p>
+        ) : null}
+
         <button
           type="button"
-          onClick={goUpgrade}
+          disabled={upgradeBusy}
+          onClick={() => void goUpgrade()}
           style={{
             width: "100%",
             padding: "14px 18px",
             borderRadius: 12,
             border: "none",
-            cursor: "pointer",
+            cursor: upgradeBusy ? "wait" : "pointer",
+            opacity: upgradeBusy ? 0.75 : 1,
             fontFamily: F,
             fontSize: 14,
             fontWeight: 800,
@@ -221,7 +280,7 @@ export function SessionLimitModal({ open, data, onClose }: Props) {
             boxShadow: "0 4px 20px rgba(38,67,247,0.35)",
           }}
         >
-          {upgradeLabel}
+          {upgradeBusy ? (isArabic ? "جاري التوجيه…" : "Redirecting…") : upgradeLabel}
         </button>
 
         <button

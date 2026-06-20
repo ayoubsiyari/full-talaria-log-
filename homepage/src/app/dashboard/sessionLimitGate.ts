@@ -8,31 +8,41 @@ export type SessionLimitGateData = {
   subscriptionStatus: string | null;
   isManualPlan: boolean;
   hasActiveSubscription: boolean;
+  hasStripeCustomer?: boolean;
 };
 
+export type SessionLimitUpgradeMode = "checkout" | "portal" | "pricing";
+
 export type SessionLimitUpgradeAction = {
+  mode: SessionLimitUpgradeMode;
   label: string;
-  href: string;
   hint: string;
+  planId?: number;
+  planName?: string;
+  nextSessionCap?: number | null;
+  href?: string;
+};
+
+export type PublicPlan = {
+  id?: number;
+  name?: string;
+  price?: number;
+  price_monthly?: number;
+  max_trading_sessions?: number | null;
 };
 
 type MeUserLike = {
   role?: string;
   trading_sessions_count?: number;
   max_trading_sessions?: number;
+  stripe_customer_id?: string | null;
   subscription?: {
     id?: number;
+    plan_id?: number;
     plan_name?: string;
     status?: string;
     is_manual?: boolean;
   } | null;
-};
-
-type PublicPlan = {
-  id?: number;
-  name?: string;
-  price?: number;
-  price_monthly?: number;
 };
 
 export function sessionLimitFromMeUser(u: MeUserLike | null | undefined): SessionLimitGateData | null {
@@ -47,53 +57,123 @@ export function sessionLimitFromMeUser(u: MeUserLike | null | undefined): Sessio
     count,
     cap,
     planName: sub?.plan_name?.trim() || null,
-    planId: typeof sub?.id === "number" ? sub.id : null,
+    planId: typeof sub?.plan_id === "number" ? sub.plan_id : null,
     subscriptionStatus: sub?.status || null,
     isManualPlan: Boolean(sub?.is_manual),
     hasActiveSubscription,
+    hasStripeCustomer: Boolean((u.stripe_customer_id || "").trim()),
   };
+}
+
+function planPrice(p: PublicPlan): number {
+  return p.price_monthly ?? p.price ?? 0;
+}
+
+function planSessionCap(p: PublicPlan): number {
+  const raw = p.max_trading_sessions;
+  return raw == null ? 0 : Math.max(0, Number(raw) || 0);
+}
+
+/** Cheapest active plan that allows more backtest sessions than the user's current cap. */
+export function findNextUpgradePlan(
+  plans: PublicPlan[],
+  currentCap: number,
+  currentPlanId: number | null,
+  currentPlanName: string | null,
+): PublicPlan | null {
+  const active = plans.filter((p) => p.id != null);
+  const withCaps = active.filter((p) => planSessionCap(p) > currentCap);
+  if (withCaps.length) {
+    return [...withCaps].sort((a, b) => planSessionCap(a) - planSessionCap(b) || planPrice(a) - planPrice(b))[0];
+  }
+
+  const sorted = [...active].sort((a, b) => planPrice(a) - planPrice(b));
+  if (currentPlanId != null) {
+    const idx = sorted.findIndex((p) => p.id === currentPlanId);
+    if (idx >= 0 && idx < sorted.length - 1) return sorted[idx + 1];
+  }
+  if (currentPlanName) {
+    const idx = sorted.findIndex(
+      (p) => (p.name || "").toLowerCase() === currentPlanName.toLowerCase(),
+    );
+    if (idx >= 0 && idx < sorted.length - 1) return sorted[idx + 1];
+  }
+  return null;
 }
 
 export function resolveSessionLimitUpgrade(
   data: SessionLimitGateData,
   plans: PublicPlan[],
 ): SessionLimitUpgradeAction {
-  const priced = plans
-    .filter((p) => p.id != null)
-    .map((p) => ({
-      id: p.id as number,
-      name: p.name || "",
-      price: p.price_monthly ?? p.price ?? 0,
-    }))
-    .sort((a, b) => a.price - b.price);
+  const next = findNextUpgradePlan(plans, data.cap, data.planId, data.planName);
+  const nextCap = next ? planSessionCap(next) : null;
+  const capHint =
+    nextCap && nextCap > data.cap
+      ? `Unlock up to ${nextCap} backtest sessions.`
+      : "Higher tiers include more backtest sessions.";
 
-  const highest = priced[priced.length - 1];
-  const currentByName =
-    data.planName &&
-    priced.find((p) => p.name.toLowerCase() === data.planName!.toLowerCase());
-  const onHighest =
-    !!currentByName && !!highest && currentByName.id === highest.id;
-
-  if (!data.hasActiveSubscription || !data.planName) {
+  if (data.isManualPlan) {
     return {
-      label: "Upgrade plan",
+      mode: "pricing",
+      label: "View plans",
+      hint: "Your access is manually assigned. Compare plans or contact support for a higher session limit.",
       href: "/pricing/?browse=1",
-      hint: "Subscribe to unlock more backtest sessions and pro tools.",
+      planId: next?.id,
+      planName: next?.name,
+      nextSessionCap: nextCap,
     };
   }
 
-  if (data.isManualPlan || onHighest) {
+  if (!data.hasActiveSubscription) {
+    if (next?.id) {
+      return {
+        mode: "checkout",
+        label: next.name ? `Subscribe to ${next.name}` : "Subscribe now",
+        hint: capHint,
+        planId: next.id,
+        planName: next.name,
+        nextSessionCap: nextCap,
+      };
+    }
     return {
-      label: "View plans",
+      mode: "pricing",
+      label: "View plans & pricing",
+      hint: "Choose a plan to unlock more backtest sessions.",
       href: "/pricing/?browse=1",
-      hint: "Need more sessions? Compare plans or contact support for a higher limit.",
+    };
+  }
+
+  if (next?.id && data.hasStripeCustomer && !data.isManualPlan) {
+    return {
+      mode: "portal",
+      label: next.name ? `Upgrade to ${next.name}` : "Manage subscription",
+      hint:
+        nextCap && nextCap > data.cap
+          ? `You're on ${data.planName || "your current plan"}. ${capHint} Change plan in Stripe billing.`
+          : `You're on ${data.planName || "your current plan"}. Open billing to change or upgrade your plan.`,
+      planId: next.id,
+      planName: next.name,
+      nextSessionCap: nextCap,
+    };
+  }
+
+  if (next?.id) {
+    return {
+      mode: "checkout",
+      label: next.name ? `Upgrade to ${next.name}` : "Upgrade plan",
+      hint: capHint,
+      planId: next.id,
+      planName: next.name,
+      nextSessionCap: nextCap,
     };
   }
 
   return {
-    label: "Upgrade plan",
+    mode: "pricing",
+    label: "View plans",
+    hint: "You're on the highest listed plan. Contact support if you need a custom session limit.",
     href: "/pricing/?browse=1",
-    hint: `You're on ${data.planName}. Upgrade for more backtest sessions.`,
+    planName: data.planName || undefined,
   };
 }
 

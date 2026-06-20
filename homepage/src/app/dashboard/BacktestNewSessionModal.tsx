@@ -201,6 +201,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     subscriptionStatus: null as string | null,
     isManualPlan: false,
     hasActiveSubscription: false,
+    hasStripeCustomer: false,
   });
   const [newSessTradingCostsEnabled, setNewSessTradingCostsEnabled] = useState(false);
   const [newSessCosts, setNewSessCosts] = useState({
@@ -234,10 +235,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
           tradingSessionsCount: u.trading_sessions_count ?? 0,
           isAdmin: u.role === "admin",
           planName: sub.plan_name?.trim() || null,
-          planId: typeof sub.id === "number" ? sub.id : null,
+          planId: typeof sub.plan_id === "number" ? sub.plan_id : null,
           subscriptionStatus: sub.status || null,
           isManualPlan: Boolean(sub.is_manual),
           hasActiveSubscription: Boolean(sub && ["active", "trialing"].includes(status)),
+          hasStripeCustomer: Boolean(String(u.stripe_customer_id || "").trim()),
         });
       } catch {
         /* keep defaults */
@@ -866,6 +868,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
         subscriptionStatus: userLimits.subscriptionStatus,
         isManualPlan: userLimits.isManualPlan,
         hasActiveSubscription: userLimits.hasActiveSubscription,
+        hasStripeCustomer: userLimits.hasStripeCustomer,
       });
       return;
     }
@@ -885,6 +888,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
           subscriptionStatus: userLimits.subscriptionStatus,
           isManualPlan: userLimits.isManualPlan,
           hasActiveSubscription: userLimits.hasActiveSubscription,
+          hasStripeCustomer: userLimits.hasStripeCustomer,
         });
         return;
       }
@@ -1031,6 +1035,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                           subscriptionStatus: userLimits.subscriptionStatus,
                           isManualPlan: userLimits.isManualPlan,
                           hasActiveSubscription: userLimits.hasActiveSubscription,
+                          hasStripeCustomer: userLimits.hasStripeCustomer,
                         })}
                         style={{
                           flexShrink: 0,

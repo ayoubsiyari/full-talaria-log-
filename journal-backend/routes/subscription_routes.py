@@ -26,6 +26,39 @@ except ImportError:
 subscription_bp = Blueprint('subscriptions', __name__)
 
 
+def _plan_backtest_session_cap(plan):
+    if not plan:
+        return None
+    raw = getattr(plan, 'max_trading_sessions', None)
+    if raw is None:
+        return None
+    return max(0, int(raw or 0))
+
+
+def _apply_plan_entitlements_to_user(user, plan):
+    """Sync journal access and backtest session cap from a subscription plan."""
+    if not user:
+        return
+    user.has_journal_access = True
+    cap = _plan_backtest_session_cap(plan)
+    if cap is not None and cap > 0:
+        user.max_trading_sessions = cap
+
+
+def _resolve_plan_for_stripe_subscription(sub_data):
+    price_id = sub_data.get('items', {}).get('data', [{}])[0].get('price', {}).get('id')
+    plan = SubscriptionPlan.query.filter_by(stripe_price_id=price_id).first() if price_id else None
+    if plan:
+        return plan
+    meta_plan_id = (sub_data.get('metadata') or {}).get('plan_id')
+    if meta_plan_id:
+        try:
+            return SubscriptionPlan.query.get(int(meta_plan_id))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  RATE LIMITING & BRUTE-FORCE PROTECTION
 # ═══════════════════════════════════════════════════════════════════
@@ -974,8 +1007,7 @@ def handle_subscription_created(sub_data):
             return
         
         # Find plan by Stripe price ID
-        price_id = sub_data.get('items', {}).get('data', [{}])[0].get('price', {}).get('id')
-        plan = SubscriptionPlan.query.filter_by(stripe_price_id=price_id).first()
+        plan = _resolve_plan_for_stripe_subscription(sub_data)
         
         period_start = datetime.fromtimestamp(sub_data.get('current_period_start', 0))
         period_end = datetime.fromtimestamp(sub_data.get('current_period_end', 0))
@@ -993,8 +1025,7 @@ def handle_subscription_created(sub_data):
         )
         db.session.add(subscription)
         
-        # Grant journal access
-        user.has_journal_access = True
+        _apply_plan_entitlements_to_user(user, plan)
         
     except Exception as e:
         current_app.logger.error(f"Error handling subscription created: {e}")
@@ -1017,6 +1048,13 @@ def handle_subscription_updated(sub_data):
             subscription.current_period_start = period_start
             subscription.current_period_end = period_end
             subscription.cancel_at_period_end = sub_data.get('cancel_at_period_end', False)
+
+            plan = _resolve_plan_for_stripe_subscription(sub_data)
+            if plan:
+                subscription.plan_id = plan.id
+                user = User.query.get(subscription.user_id)
+                if user:
+                    _apply_plan_entitlements_to_user(user, plan)
 
     except Exception as e:
         current_app.logger.error(f"Error handling subscription updated: {e}")
@@ -1188,8 +1226,7 @@ def verify_checkout_session():
         )
         db.session.add(subscription)
         
-        # Grant journal access
-        user.has_journal_access = True
+        _apply_plan_entitlements_to_user(user, plan)
         
         # Record the payment so it shows in admin Payments tab
         try:
@@ -1256,8 +1293,8 @@ def assign_subscription(user_id):
         )
         db.session.add(subscription)
         
-        # Grant journal access
-        user.has_journal_access = True
+        plan = SubscriptionPlan.query.get(plan_id) if plan_id else None
+        _apply_plan_entitlements_to_user(user, plan)
         
         db.session.commit()
         
@@ -1323,6 +1360,7 @@ def get_public_plans():
                 'interval': plan.interval,
                 'features': _parse_features(plan.features),
                 'trial_days': plan.trial_days,
+                'max_trading_sessions': getattr(plan, 'max_trading_sessions', None),
                 'is_popular': plan.name.lower() == 'pro' or 'pro' in plan.name.lower()
             } for plan in plans]
         }), 200

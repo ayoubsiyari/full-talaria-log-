@@ -2758,6 +2758,7 @@ select { cursor:default; }
       <div class="field fg-full"><label>Description</label><textarea id="planDescription" rows="2" placeholder="What this plan includes..."></textarea></div>
       <div class="field"><label>Yearly Price ($)</label><input type="number" id="planPriceYearly" step="0.01" min="0" value="0"></div>
       <div class="field"><label>Trial Days</label><input type="number" id="planTrialDays" min="0" value="0"></div>
+      <div class="field"><label>Backtest session cap</label><input type="number" id="planMaxTradingSessions" min="0" step="1" placeholder="e.g. 5, 15, 50" title="Applied to users when they subscribe to this plan"></div>
       <div class="field"><label>Stripe Price ID (Monthly)</label><input type="text" id="planStripePriceId" placeholder="price_..."></div>
       <div class="field"><label>Stripe Price ID (Yearly)</label><input type="text" id="planStripePriceIdYearly" placeholder="price_..."></div>
       <div class="field"><label>Stripe Product ID</label><input type="text" id="planStripeProductId" placeholder="prod_..."></div>
@@ -4161,7 +4162,7 @@ select { cursor:default; }
           </div>
           <div class="card-body" style="padding:0">
             <table>
-              <thead><tr><th>Plan</th><th>Monthly</th><th>Yearly</th><th>Trial</th><th>Subscribers</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Plan</th><th>Monthly</th><th>Yearly</th><th>Sessions</th><th>Trial</th><th>Subscribers</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="plansBody"></tbody>
             </table>
             <div class="empty-state" id="emptyPlans" style="display:none">
@@ -11744,6 +11745,7 @@ function renderPlans() {
       <td><div style="font-weight:600">${esc(p.name)}</div><div style="font-size:11px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description || '')}</div></td>
       <td style="font-weight:600">$${(p.price_monthly || 0).toFixed(2)}</td>
       <td style="font-size:12px;color:var(--text-secondary)">$${(p.price_yearly || 0).toFixed(2)}</td>
+      <td style="text-align:center;font-weight:600">${p.max_trading_sessions != null ? p.max_trading_sessions : '—'}</td>
       <td style="font-size:12px">${p.trial_days || 0}d</td>
       <td style="text-align:center;font-weight:600">${p.subscriber_count || 0}</td>
       <td><span class="badge ${statusCls}">${statusTxt}</span></td>
@@ -11830,6 +11832,7 @@ function openCreatePlanModal() {
   $('planPriceMonthly').value = '0';
   $('planPriceYearly').value = '0';
   $('planTrialDays').value = '0';
+  $('planMaxTradingSessions').value = '';
   $('planStripePriceId').value = '';
   $('planStripePriceIdYearly').value = '';
   $('planStripeProductId').value = '';
@@ -11848,6 +11851,7 @@ function openEditPlanModal(planId) {
   $('planPriceMonthly').value = plan.price_monthly || 0;
   $('planPriceYearly').value = plan.price_yearly || 0;
   $('planTrialDays').value = plan.trial_days || 0;
+  $('planMaxTradingSessions').value = plan.max_trading_sessions != null ? plan.max_trading_sessions : '';
   $('planStripePriceId').value = plan.stripe_price_id || '';
   $('planStripePriceIdYearly').value = plan.stripe_price_id_yearly || '';
   $('planStripeProductId').value = plan.stripe_product_id || '';
@@ -11868,6 +11872,12 @@ async function savePlan() {
     price_monthly: parseFloat($('planPriceMonthly').value) || 0,
     price_yearly: parseFloat($('planPriceYearly').value) || 0,
     trial_days: parseInt($('planTrialDays').value) || 0,
+    max_trading_sessions: (() => {
+      const raw = $('planMaxTradingSessions').value.trim();
+      if (!raw) return null;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? Math.max(0, n) : null;
+    })(),
     stripe_price_id: $('planStripePriceId').value.trim() || null,
     stripe_price_id_yearly: $('planStripePriceIdYearly').value.trim() || null,
     stripe_product_id: $('planStripeProductId').value.trim() || null,

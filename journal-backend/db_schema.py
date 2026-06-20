@@ -143,6 +143,15 @@ def ensure_users_schema(app) -> None:
                                 "max_supporting_tickers_per_session INTEGER NOT NULL DEFAULT 5"
                             )
                         )
+                    if "subscription_plans" in insp.get_table_names():
+                        plan_cols = {c["name"] for c in insp.get_columns("subscription_plans")}
+                        if "max_trading_sessions" not in plan_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE subscription_plans ADD COLUMN "
+                                    "max_trading_sessions INTEGER"
+                                )
+                            )
                     if "strategy_templates" in insp.get_table_names():
                         st_cols = {c["name"] for c in insp.get_columns("strategy_templates")}
                         if "publish_settings" not in st_cols:
