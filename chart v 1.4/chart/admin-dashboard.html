@@ -4313,6 +4313,7 @@ select { cursor:default; }
               <div class="support-thread-list" id="supportThreadList">
                 <div class="support-thread-empty">Loading…</div>
               </div>
+              <button type="button" class="btn sm" id="supportInboxLoadMore" style="display:none;margin:8px;width:calc(100% - 16px)" onclick="supportLoadMoreThreads()">Load more tickets</button>
             </div>
           </div>
           <div class="card support-user-replies-card">
@@ -5315,9 +5316,14 @@ function supportInsertCanned(sel) {
   sel.value = '';
 }
 
-function supportBuildThreadQuery() {
+let supportThreadsTotal = 0;
+let supportThreadsOffset = 0;
+const SUPPORT_INBOX_PAGE = 2000;
+
+function supportBuildThreadQuery(append) {
   const params = new URLSearchParams();
-  params.set('limit', '500');
+  params.set('limit', String(SUPPORT_INBOX_PAGE));
+  params.set('offset', String(append ? supportThreadsOffset : 0));
   const q = ($('supportFilterQ') && $('supportFilterQ').value || '').trim();
   const st = ($('supportFilterStatus') && $('supportFilterStatus').value) || '';
   const pr = ($('supportFilterPriority') && $('supportFilterPriority').value) || '';
@@ -5593,7 +5599,7 @@ async function loadSupportUserReplyThreads() {
   if (!box) return;
   try {
     const params = new URLSearchParams();
-    params.set('limit', '200');
+    params.set('limit', '2000');
     params.set('status', 'user_replied');
     params.set('sort', 'activity');
     const data = await api('/api/admin/support/threads?' + params.toString());
@@ -5611,17 +5617,34 @@ async function loadSupportUserReplyThreads() {
   }
 }
 
-async function loadSupportThreads() {
+async function loadSupportThreads(append) {
   const box = $('supportThreadList');
   const countEl = $('supportInboxCount');
+  const loadMoreBtn = $('supportInboxLoadMore');
+  if (!append) supportThreadsOffset = 0;
   try {
     const [data] = await Promise.all([
-      api('/api/admin/support/threads?' + supportBuildThreadQuery()),
-      loadSupportTicketStats(),
-      loadSupportUserReplyThreads()
+      api('/api/admin/support/threads?' + supportBuildThreadQuery(append)),
+      append ? Promise.resolve(null) : loadSupportTicketStats(),
+      append ? Promise.resolve(null) : loadSupportUserReplyThreads()
     ]);
-    supportThreads = data.threads || [];
-    if (countEl) countEl.textContent = String(supportThreads.length);
+    const batch = data.threads || [];
+    supportThreadsTotal = data.total != null ? data.total : batch.length;
+    if (append) {
+      const seen = new Set(supportThreads.map(function (t) { return t.id; }));
+      batch.forEach(function (t) { if (!seen.has(t.id)) supportThreads.push(t); });
+    } else {
+      supportThreads = batch;
+    }
+    supportThreadsOffset = supportThreads.length;
+    if (countEl) {
+      countEl.textContent = supportThreads.length < supportThreadsTotal
+        ? (supportThreads.length + ' of ' + supportThreadsTotal)
+        : String(supportThreads.length);
+    }
+    if (loadMoreBtn) {
+      loadMoreBtn.style.display = supportThreads.length < supportThreadsTotal ? '' : 'none';
+    }
     if (!supportThreads.length) {
       box.innerHTML = '<div class="support-thread-empty">No tickets match filters</div>';
     } else {
@@ -5629,9 +5652,17 @@ async function loadSupportThreads() {
       supportBindThreadRows(box);
     }
   } catch (e) {
-    if (countEl) countEl.textContent = '0';
-    box.innerHTML = '<div class="support-thread-empty">' + esc(e.message || 'Failed to load') + '</div>';
+    if (!append) {
+      if (countEl) countEl.textContent = '0';
+      box.innerHTML = '<div class="support-thread-empty">' + esc(e.message || 'Failed to load') + '</div>';
+    } else {
+      toast(e.message || 'Failed to load more', 'err');
+    }
   }
+}
+
+function supportLoadMoreThreads() {
+  loadSupportThreads(true);
 }
 
 function renderSupportMessages() {

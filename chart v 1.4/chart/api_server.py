@@ -1532,8 +1532,9 @@ def _support_thread_archived(t: SupportThread | None) -> bool:
 
 
 def _support_user_can_access_thread(user: User, thread: SupportThread) -> bool:
-    if _support_thread_archived(thread) and user.role != "admin":
-        return False
+    if user.role != "admin":
+        if _support_thread_archived(thread) and (thread.status or "") not in SUPPORT_ACTIVE_STATUSES:
+            return False
     if user.role == "admin":
         return True
     return int(thread.user_id) == int(user.id)
@@ -1548,6 +1549,43 @@ def _support_require_thread_access(user: User, t: SupportThread | None) -> Suppo
 
 def _support_exclude_archived(query):
     return query.filter(SupportThread.archived_at.is_(None))
+
+
+def _support_inbox_visible_filter(query):
+    """Show non-archived tickets, plus active queue tickets even if mistakenly archived."""
+    return query.filter(
+        or_(
+            SupportThread.archived_at.is_(None),
+            SupportThread.status.in_(tuple(SUPPORT_ACTIVE_STATUSES)),
+        )
+    )
+
+
+def _support_heal_archived_active_tickets(db) -> int:
+    """Clear archived_at on open/pending/user_replied tickets (legacy bulk-archive mistakes)."""
+    now = datetime.utcnow()
+    n = (
+        db.query(SupportThread)
+        .filter(
+            SupportThread.archived_at.isnot(None),
+            SupportThread.status.in_(tuple(SUPPORT_ACTIVE_STATUSES)),
+        )
+        .update({SupportThread.archived_at: None, SupportThread.updated_at: now}, synchronize_session=False)
+    )
+    if n:
+        db.commit()
+    return int(n or 0)
+
+
+def _support_heal_thread_if_active(db, t: SupportThread | None) -> None:
+    if not t or not _support_thread_archived(t):
+        return
+    if (t.status or "") not in SUPPORT_ACTIVE_STATUSES:
+        return
+    t.archived_at = None
+    t.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(t)
 
 
 class SupportConnectionManager:
@@ -11669,9 +11707,10 @@ async def support_list_threads(
     user = _require_user(request)
     db = SessionLocal()
     try:
+        _support_heal_archived_active_tickets(db)
         query = db.query(SupportThread)
         if user.role != "admin":
-            query = _support_exclude_archived(query.filter(SupportThread.user_id == user.id))
+            query = _support_inbox_visible_filter(query.filter(SupportThread.user_id == user.id))
         else:
             if status and status in SUPPORT_STATUSES:
                 query = query.filter(SupportThread.status == status)
@@ -11680,7 +11719,7 @@ async def support_list_threads(
                 query = query.filter(SupportThread.subject.ilike(like))
         rows = (
             query.order_by(nulls_last(SupportThread.last_message_at.desc()), SupportThread.id.desc())
-            .limit(500)
+            .limit(2000)
             .all()
         )
         out = []
@@ -11882,7 +11921,7 @@ def _admin_support_query_threads(
 ):
     query = db.query(SupportThread)
     if not include_archived:
-        query = _support_exclude_archived(query)
+        query = _support_inbox_visible_filter(query)
     if status:
         query = query.filter(SupportThread.status == _support_validate_status(status))
     if exclude_status:
@@ -12403,12 +12442,13 @@ async def admin_support_list_threads(
     q: str | None = None,
     sla_overdue: bool = False,
     include_archived: bool = False,
-    limit: int = Query(500, ge=1, le=500),
+    limit: int = Query(2000, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ):
     admin = _require_admin(request)
     db = SessionLocal()
     try:
+        _support_heal_archived_active_tickets(db)
         assignee_filter = assigned_to
         if assigned_to_me:
             assignee_filter = int(admin.id)
