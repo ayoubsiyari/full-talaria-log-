@@ -1080,6 +1080,59 @@ def _backfill_plan_tier_ranks(conn) -> None:
         pass
 
 
+def _migration_add_column(engine, table: str, column: str, col_ddl: str) -> None:
+    """Add one column in its own transaction so a later failure cannot roll back earlier alters."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_ddl}"))
+            conn.commit()
+    except Exception as exc:
+        try:
+            print(f"[migration] skip {table}.{column}: {exc}", flush=True)
+        except Exception:
+            pass
+
+
+def _apply_entitlements_schema_migrations(engine) -> None:
+    """Ensure entitlement columns exist (each ALTER commits independently)."""
+    from sqlalchemy import inspect as sa_inspect
+
+    try:
+        insp = sa_inspect(engine)
+        tables = set(insp.get_table_names())
+    except Exception:
+        tables = set()
+
+    bool_default = "INTEGER NOT NULL DEFAULT 0" if DATABASE_URL.startswith("sqlite") else "BOOLEAN NOT NULL DEFAULT FALSE"
+
+    if "users" in tables:
+        for col, ddl in (
+            ("entitlements_override", bool_default),
+        ):
+            user_cols = {c["name"] for c in insp.get_columns("users")}
+            if col not in user_cols:
+                _migration_add_column(engine, "users", col, ddl)
+
+    if "subscription_plans" in tables:
+        plan_cols = {c["name"] for c in insp.get_columns("subscription_plans")}
+        plan_migrations = (
+            ("max_trading_sessions", "INTEGER"),
+            ("max_tickers_per_session", "INTEGER"),
+            ("max_supporting_tickers_per_session", "INTEGER"),
+            ("tier_rank", "INTEGER NOT NULL DEFAULT 0"),
+            ("entitlements_json", "TEXT"),
+        )
+        for col, ddl in plan_migrations:
+            if col not in plan_cols:
+                _migration_add_column(engine, "subscription_plans", col, ddl)
+        try:
+            with engine.connect() as conn:
+                _backfill_plan_tier_ranks(conn)
+                conn.commit()
+        except Exception:
+            pass
+
+
 try:
     with engine.connect() as _conn:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMP"))
@@ -1094,16 +1147,6 @@ try:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS public_id VARCHAR(20)"))
-        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS entitlements_override BOOLEAN NOT NULL DEFAULT FALSE"))
-        _conn.execute(text("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_trading_sessions INTEGER"))
-        _conn.execute(text("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_tickers_per_session INTEGER"))
-        _conn.execute(text("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS max_supporting_tickers_per_session INTEGER"))
-        _conn.execute(text("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS tier_rank INTEGER NOT NULL DEFAULT 0"))
-        _conn.execute(text("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS entitlements_json TEXT"))
-        try:
-            _backfill_plan_tier_ranks(_conn)
-        except Exception:
-            pass
         try:
             _conn.execute(
                 text(
@@ -1116,6 +1159,8 @@ try:
         _conn.commit()
 except Exception:
     pass
+
+_apply_entitlements_schema_migrations(engine)
 
 try:
     PlanEntitlementAuditLog.__table__.create(bind=engine, checkfirst=True)
@@ -10054,9 +10099,12 @@ def _ensure_user_public_id_chart(db, user: User) -> str | None:
 def _user_backtest_limits(user: User, db=None) -> dict:
     """Per-user caps for backtest sessions and tickers."""
     if db is not None:
-        return pe.resolve_effective_limits_from_db(
-            db, user, UserModel=User, SubscriptionModel=Subscription, SubscriptionPlanModel=SubscriptionPlan
-        )
+        try:
+            return pe.resolve_effective_limits_from_db(
+                db, user, UserModel=User, SubscriptionModel=Subscription, SubscriptionPlanModel=SubscriptionPlan
+            )
+        except Exception:
+            return pe.legacy_user_column_limits(user)
     return pe.legacy_user_column_limits(user)
 
 
@@ -13465,7 +13513,15 @@ async def admin_list_users(request: Request):
     _require_admin(request)
     db = SessionLocal()
     try:
-        users = db.query(User).order_by(User.created_at.desc()).all()
+        try:
+            users = db.query(User).order_by(User.created_at.desc()).all()
+        except Exception as exc:
+            _apply_entitlements_schema_migrations(engine)
+            db.rollback()
+            try:
+                users = db.query(User).order_by(User.created_at.desc()).all()
+            except Exception as exc2:
+                raise HTTPException(status_code=500, detail=f"Failed to load users: {exc2}") from exc2
         sessions = db.query(
             UserSession.user_id,
             func.count(UserSession.id).label("cnt"),
