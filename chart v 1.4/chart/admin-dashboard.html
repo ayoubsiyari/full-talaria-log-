@@ -5035,6 +5035,11 @@ async function loadSupportTicketStats() {
     const suggestionsResolvePct = s.suggestions_resolve_pct != null ? s.suggestions_resolve_pct : 0;
     const combinedResolved = s.combined_resolve_resolved || 0;
     const combinedTotal = s.combined_resolve_total || 0;
+    const bugErrorActive = s.bug_error_active || 0;
+    const modificationsActive = s.modifications_active || 0;
+    const featureActive = s.feature_active || 0;
+    const suggestionsActive = s.suggestions_active || 0;
+    const combinedActive = s.combined_resolve_active || 0;
     const combinedResolvePct = s.combined_resolve_pct != null ? s.combined_resolve_pct : 0;
     const byCat = s.by_category || {};
     const byCatPct = s.by_category_pct || {};
@@ -5051,17 +5056,30 @@ async function loadSupportTicketStats() {
       return '<div class="support-stats-bar ' + kind + '"><span style="width:' + width + '%"></span></div>';
     }
 
-    function supportResolveFocusCard(title, tone, pct, resolved, total, requesterScoped) {
-      const meta = total
-        ? (requesterScoped
-          ? resolved + ' of ' + total + ' closed for this user'
-          : resolved + ' of ' + total + ' closed')
-        : 'No tickets yet';
+    function supportFormatPct(pct) {
+      const n = Number(pct);
+      if (!Number.isFinite(n)) return '0';
+      if (n >= 100) return '100';
+      if (n <= 0) return '0';
+      return (Math.round(n * 10) / 10).toString().replace(/\.0$/, '');
+    }
+
+    function supportResolveFocusCard(title, tone, pct, resolved, total, active, requesterScoped) {
+      const pctLabel = supportFormatPct(pct);
+      const activeN = active || 0;
+      let meta;
+      if (!total) {
+        meta = 'No tickets yet';
+      } else if (requesterScoped) {
+        meta = resolved + ' finished · ' + activeN + ' active · ' + total + ' total';
+      } else {
+        meta = resolved + ' finished · ' + activeN + ' still open';
+      }
       return [
         '<div class="support-stats-focus-card ' + tone + '">',
         '  <div class="support-stats-focus-top">',
         '    <div><div class="focus-title">' + esc(title) + '</div><div class="focus-meta">' + meta + '</div></div>',
-        '    <div class="focus-value">' + (pct || 0) + '%</div>',
+        '    <div class="focus-value">' + pctLabel + '%</div>',
         '  </div>',
         supportStatsBar(tone === 'resolve' ? 'resolve' : tone, pct),
         '</div>'
@@ -5103,8 +5121,8 @@ async function loadSupportTicketStats() {
     const quickSummary = $('supportStatsQuickSummary');
     if (quickSummary) {
       const parts = [
-        '<span style="color:var(--text-secondary)">Total resolve ' + combinedResolvePct + '%</span>',
-        '<span style="color:var(--ok)">Bug/Error ' + resolvePct + '%</span>'
+        '<span style="color:var(--text-secondary)">Total resolve ' + supportFormatPct(combinedResolvePct) + '%</span>',
+        '<span style="color:var(--ok)">Bug/Error ' + supportFormatPct(resolvePct) + '%</span>'
       ];
       if (ratedCount) {
         parts.push('<span class="verdict-yes">Yes ' + yesPct + '%</span>');
@@ -5114,11 +5132,11 @@ async function loadSupportTicketStats() {
     }
 
     const resolveMetricsCards = [
-      supportResolveFocusCard('Bug / Error resolve', 'resolve', resolvePct, bugErrorResolved, bugErrorTotal, !!requesterScope),
-      supportResolveFocusCard('Modifications resolve', 'modifications', modificationsResolvePct, modificationsResolved, modificationsTotal, !!requesterScope),
-      supportResolveFocusCard('Feature request resolve', 'feature', featureResolvePct, featureResolved, featureTotal, !!requesterScope),
-      supportResolveFocusCard('Suggestions resolve', 'suggestions', suggestionsResolvePct, suggestionsResolved, suggestionsTotal, !!requesterScope),
-      supportResolveFocusCard('Total resolve (all 4)', 'total-resolve', combinedResolvePct, combinedResolved, combinedTotal, !!requesterScope)
+      supportResolveFocusCard('Bug / Error resolve', 'resolve', resolvePct, bugErrorResolved, bugErrorTotal, bugErrorActive, !!requesterScope),
+      supportResolveFocusCard('Modifications resolve', 'modifications', modificationsResolvePct, modificationsResolved, modificationsTotal, modificationsActive, !!requesterScope),
+      supportResolveFocusCard('Feature request resolve', 'feature', featureResolvePct, featureResolved, featureTotal, featureActive, !!requesterScope),
+      supportResolveFocusCard('Suggestions resolve', 'suggestions', suggestionsResolvePct, suggestionsResolved, suggestionsTotal, suggestionsActive, !!requesterScope),
+      supportResolveFocusCard('Total resolve (all 4)', 'total-resolve', combinedResolvePct, combinedResolved, combinedTotal, combinedActive, !!requesterScope)
     ].join('');
 
     const topMetricsCards = [
@@ -5144,14 +5162,14 @@ async function loadSupportTicketStats() {
       '</div>',
       '<div class="support-stats-focus-card bug">',
       '  <div class="support-stats-focus-top">',
-      '    <div><div class="focus-title">' + supportCategoryBadgeHtml('bug') + '</div><div class="focus-meta">Active queue share</div></div>',
+      '    <div><div class="focus-title">' + supportCategoryBadgeHtml('bug') + '</div><div class="focus-meta">Active queue (open + follow-ups)</div></div>',
       '    <div><div class="focus-value">' + bugCount + '</div><div class="focus-meta" style="text-align:right">' + bugPct + '%</div></div>',
       '  </div>',
       supportStatsBar('bug', bugPct),
       '</div>',
       '<div class="support-stats-focus-card error">',
       '  <div class="support-stats-focus-top">',
-      '    <div><div class="focus-title">' + supportCategoryBadgeHtml('error') + '</div><div class="focus-meta">Active queue share</div></div>',
+      '    <div><div class="focus-title">' + supportCategoryBadgeHtml('error') + '</div><div class="focus-meta">Active queue (open + follow-ups)</div></div>',
       '    <div><div class="focus-value">' + errorCount + '</div><div class="focus-meta" style="text-align:right">' + errorPct + '%</div></div>',
       '  </div>',
       supportStatsBar('error', errorPct),

@@ -11903,24 +11903,46 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
             .count()
         )
         user_replied_n = base_q().filter(SupportThread.status == "user_replied").count()
-        total_active = open_n + pending_n
-        resolved_statuses = ("resolved", "closed", "user_replied")
+        total_active = open_n + pending_n + user_replied_n
+        # Finished = staff closed or marked resolved — NOT user follow-ups (user_replied).
+        finished_statuses = ("resolved", "closed")
+        active_statuses = ("open", "pending", "user_replied")
         bug_error_cats = ("bug", "error")
         product_resolve_cats = bug_error_cats + ("modifications", "feature", "suggestions")
+
+        def _resolve_pct(resolved: int, total: int) -> float:
+            if not total:
+                return 0.0
+            if resolved >= total:
+                return 100.0
+            return round(resolved / total * 1000) / 10
 
         def category_resolve_stats(*categories: str) -> dict:
             cats = tuple(categories)
             total = base_q().filter(SupportThread.category.in_(cats)).count()
-            resolved = (
+            finished = (
                 base_q()
                 .filter(
                     SupportThread.category.in_(cats),
-                    SupportThread.status.in_(resolved_statuses),
+                    SupportThread.status.in_(finished_statuses),
                 )
                 .count()
             )
-            pct = round(resolved / total * 100) if total else 0
-            return {"total": total, "resolved": resolved, "pct": pct}
+            active = (
+                base_q()
+                .filter(
+                    SupportThread.category.in_(cats),
+                    SupportThread.status.in_(active_statuses),
+                )
+                .count()
+            )
+            pct = _resolve_pct(finished, total)
+            return {
+                "total": total,
+                "resolved": finished,
+                "active": active,
+                "pct": pct,
+            }
 
         bug_error_stats = category_resolve_stats(*bug_error_cats)
         modifications_stats = category_resolve_stats("modifications")
@@ -11946,7 +11968,7 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
                 base_q()
                 .filter(
                     SupportThread.category == cat,
-                    SupportThread.status.in_(("open", "pending")),
+                    SupportThread.status.in_(active_statuses),
                 )
                 .count()
             )
@@ -11967,18 +11989,23 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
             "total_active": total_active,
             "bug_error_total": bug_error_total,
             "bug_error_resolved": bug_error_resolved,
+            "bug_error_active": bug_error_stats["active"],
             "resolve_pct": resolve_pct,
             "modifications_total": modifications_stats["total"],
             "modifications_resolved": modifications_stats["resolved"],
+            "modifications_active": modifications_stats["active"],
             "modifications_resolve_pct": modifications_stats["pct"],
             "feature_total": feature_stats["total"],
             "feature_resolved": feature_stats["resolved"],
+            "feature_active": feature_stats["active"],
             "feature_resolve_pct": feature_stats["pct"],
             "suggestions_total": suggestions_stats["total"],
             "suggestions_resolved": suggestions_stats["resolved"],
+            "suggestions_active": suggestions_stats["active"],
             "suggestions_resolve_pct": suggestions_stats["pct"],
             "combined_resolve_total": combined_stats["total"],
             "combined_resolve_resolved": combined_stats["resolved"],
+            "combined_resolve_active": combined_stats["active"],
             "combined_resolve_pct": combined_stats["pct"],
             "category_resolve": {
                 "bug_error": bug_error_stats,
