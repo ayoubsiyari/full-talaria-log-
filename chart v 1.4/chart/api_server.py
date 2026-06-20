@@ -19,6 +19,7 @@ from sqlalchemy import (
     UniqueConstraint,
     or_,
     and_,
+    case,
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, aliased
 from datetime import datetime, timedelta
@@ -135,6 +136,11 @@ from analytics_engine import (
     compute_session_dashboard_extras,
 )
 from analytics_core.csv_journal import parse_trades_csv_bytes
+from analytics_core.session_seed_trades import (
+    extract_session_contract,
+    generate_session_seed_trades,
+    load_bars_for_contract,
+)
 from dashboard_access import (
     effective_dashboard_modules,
     modules_catalog,
@@ -1586,6 +1592,54 @@ def _support_heal_thread_if_active(db, t: SupportThread | None) -> None:
     t.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(t)
+
+
+def _support_import_candidates_query(db, user_id: int | None = None):
+    """Archived tickets users may still need, or that had activity after bulk archive."""
+    q = db.query(SupportThread).filter(SupportThread.archived_at.isnot(None))
+    if user_id is not None:
+        q = q.filter(SupportThread.user_id == int(user_id))
+    activity_after_archive = and_(
+        SupportThread.last_message_at.isnot(None),
+        SupportThread.archived_at.isnot(None),
+        SupportThread.last_message_at > SupportThread.archived_at,
+    )
+    created_after_archive = and_(
+        SupportThread.archived_at.isnot(None),
+        SupportThread.created_at > SupportThread.archived_at,
+    )
+    return q.filter(
+        or_(
+            SupportThread.status.in_(tuple(SUPPORT_ACTIVE_STATUSES)),
+            activity_after_archive,
+            created_after_archive,
+        )
+    )
+
+
+def _support_import_preview_row(db, t: SupportThread) -> dict:
+    u = db.query(User).filter(User.id == t.user_id).first()
+    return {
+        "id": t.id,
+        "ticket_ref": _support_ticket_ref(t.id),
+        "user_id": t.user_id,
+        "user_email": u.email if u else None,
+        "user_name": u.name if u else None,
+        "subject": (t.subject or "")[:160],
+        "status": t.status,
+        "archived_at": t.archived_at.isoformat() if t.archived_at else None,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "last_message_at": t.last_message_at.isoformat() if t.last_message_at else None,
+        "reason": (
+            "active_status"
+            if (t.status or "") in SUPPORT_ACTIVE_STATUSES
+            else (
+                "created_after_archive"
+                if t.archived_at and t.created_at and t.created_at > t.archived_at
+                else "activity_after_archive"
+            )
+        ),
+    }
 
 
 class SupportConnectionManager:
@@ -10924,6 +10978,11 @@ class AdminSupportUnarchiveIn(AdminSupportBulkFilterIn):
     all_archived: bool = False
 
 
+class AdminSupportImportUserTicketsIn(BaseModel):
+    dry_run: bool = False
+    user_id: int | None = None
+
+
 class AdminSupportDeleteBulkIn(AdminSupportBulkFilterIn):
     pass
 
@@ -11815,6 +11874,9 @@ async def support_post_message(thread_id: int, request: Request):
         if t.status == "resolved" and user.role != "admin":
             t.status = "user_replied"
             t.updated_at = now
+        if user.role != "admin" and _support_thread_archived(t):
+            t.archived_at = None
+            t.updated_at = now
         m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body, is_internal=False)
         db.add(m)
         t.last_message_at = now
@@ -12308,6 +12370,105 @@ async def admin_support_delete_bulk(payload: AdminSupportDeleteBulkIn, request: 
             "deleted_count": deleted_count,
             "statuses": statuses,
             "filters": filter_summary,
+            "preview": preview,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/support/user-ticket-audit")
+async def admin_support_user_ticket_audit(request: Request, user_id: int | None = None):
+    """Compare user-visible tickets vs archived; list tickets that need import (unarchive)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        healed = _support_heal_archived_active_tickets(db)
+        user_visible_q = _support_exclude_archived(db.query(SupportThread))
+        archived_q = db.query(SupportThread).filter(SupportThread.archived_at.isnot(None))
+        import_q = _support_import_candidates_query(db, user_id)
+        if user_id is not None:
+            user_visible_q = user_visible_q.filter(SupportThread.user_id == int(user_id))
+            archived_q = archived_q.filter(SupportThread.user_id == int(user_id))
+        user_visible_total = user_visible_q.count()
+        archived_total = archived_q.count()
+        import_rows = import_q.order_by(SupportThread.last_message_at.desc().nullslast(), SupportThread.id.desc()).limit(500).all()
+        import_count = import_q.count()
+        by_user_rows = (
+            db.query(
+                User.id,
+                User.name,
+                User.email,
+                func.sum(case((SupportThread.archived_at.is_(None), 1), else_=0)).label("visible_count"),
+                func.sum(case((SupportThread.archived_at.isnot(None), 1), else_=0)).label("archived_count"),
+            )
+            .join(SupportThread, SupportThread.user_id == User.id)
+            .group_by(User.id, User.name, User.email)
+            .order_by(func.sum(case((SupportThread.archived_at.is_(None), 1), else_=0)).desc())
+        )
+        if user_id is not None:
+            by_user_rows = by_user_rows.filter(User.id == int(user_id))
+        by_user = []
+        for r in by_user_rows.limit(200).all():
+            uid = int(r.id)
+            need_import = _support_import_candidates_query(db, uid).count()
+            by_user.append(
+                {
+                    "user_id": uid,
+                    "name": r.name,
+                    "email": r.email,
+                    "visible_count": int(r.visible_count or 0),
+                    "archived_count": int(r.archived_count or 0),
+                    "import_needed": need_import,
+                }
+            )
+        return {
+            "success": True,
+            "healed_active_on_load": healed,
+            "user_visible_total": user_visible_total,
+            "archived_total": archived_total,
+            "import_needed_count": import_count,
+            "import_candidates": [_support_import_preview_row(db, t) for t in import_rows],
+            "by_user": by_user,
+            "user_id_filter": user_id,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/support/import-user-tickets")
+async def admin_support_import_user_tickets(payload: AdminSupportImportUserTicketsIn, request: Request):
+    """Restore archived tickets back to admin + user inbox (clear archived_at)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        rows = _support_import_candidates_query(db, payload.user_id).order_by(SupportThread.id.asc()).all()
+        preview = [_support_import_preview_row(db, t) for t in rows[:100]]
+        if payload.dry_run:
+            return {
+                "success": True,
+                "dry_run": True,
+                "imported_count": len(rows),
+                "preview": preview,
+            }
+        restored_ids: list[int] = []
+        for t in rows:
+            t.archived_at = None
+            t.updated_at = now
+            restored_ids.append(int(t.id))
+        db.commit()
+        _record_admin_action(
+            request,
+            action="support.tickets.import_user_visible",
+            target_type="support_thread",
+            target_id=None,
+            params={"user_id": payload.user_id, "imported_count": len(restored_ids)},
+            result={"restored_thread_ids": restored_ids[:100]},
+        )
+        return {
+            "success": True,
+            "dry_run": False,
+            "imported_count": len(restored_ids),
             "preview": preview,
         }
     finally:
@@ -18625,6 +18786,121 @@ async def import_trading_session_journal_csv(
             "journal_len": journal_len,
             "warnings": list(parsed.get("warnings") or []),
             "warning": warning,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/sessions/{session_id}/seed-demo-trades")
+async def seed_trading_session_demo_trades(
+    session_id: int,
+    request: Request,
+    count: int = Query(200, ge=1, le=2000),
+    mode: str = Query("replace", description="replace or append seeded trades"),
+):
+    """QA helper: generate trades aligned to session tickers, date range, risk, and market bars."""
+    user = _require_paid_journal_user(request)
+    mode_clean = (mode or "replace").strip().lower()
+    if mode_clean not in {"replace", "append"}:
+        raise HTTPException(status_code=400, detail="mode must be replace or append")
+
+    db = SessionLocal()
+    try:
+        s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not _can_access_trading_session(user, s):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        session_public = _session_public_dict(s)
+        contract = extract_session_contract(session_public)
+        if not contract.get("tickers"):
+            raise HTTPException(status_code=400, detail="Session has no tickers configured")
+
+        file_cache: dict[int, CSVFile] = {}
+
+        def _bars_loader(file_id: int, from_ms: int, to_ms: int, resolution: str) -> list:
+            db_file = file_cache.get(file_id)
+            if db_file is None:
+                db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
+                if db_file:
+                    file_cache[file_id] = db_file
+            if not db_file:
+                return []
+            payload = _build_bars_payload(
+                file_id,
+                db_file,
+                from_ms=from_ms,
+                to_ms=to_ms,
+                resolution=resolution,
+                limit=2500,
+            )
+            return payload.get("bars") or []
+
+        bars_by_ticker = load_bars_for_contract(contract, _bars_loader, limit=2500)
+        generated = generate_session_seed_trades(
+            session_public,
+            count=count,
+            seed=int(session_id) * 1000 + count,
+            bars_by_ticker=bars_by_ticker,
+        )
+        errs = generated.get("errors") or []
+        if errs:
+            raise HTTPException(status_code=400, detail={"message": "Seed failed", "errors": errs[:20]})
+        new_trades = generated.get("trades") or []
+        if not new_trades:
+            raise HTTPException(status_code=400, detail="No trades generated")
+
+        st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+        state = _parse_json_dict(st.state_json)
+        existing = sjs.resolve_session_journal(
+            db,
+            s.id,
+            s.user_id,
+            state,
+            journal_trade_model=TradingSessionJournalTrade,
+            sync_fn=_sync_trading_session_journal_trades,
+        )
+        merged = list(existing) + list(new_trades) if mode_clean == "append" else list(new_trades)
+        try:
+            sjs.enforce_journal_trade_limit(merged)
+        except sjs.JournalTradeLimitExceeded as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=merged)
+        if sjs.strip_journal_from_state_json_enabled():
+            sjs.strip_journal_from_persisted_state(state)
+        else:
+            state["journal"] = merged
+
+        new_state_json = json.dumps(state, separators=(",", ":"))
+        new_size = len(new_state_json.encode("utf-8"))
+        prev_size = len((st.state_json or "").encode("utf-8"))
+        if new_size > SESSION_STATE_HARD_LIMIT_BYTES and new_size > prev_size:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Session state too large after seed "
+                    f"({new_size / 1_048_576:.1f} MB; hard limit "
+                    f"{SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB)."
+                ),
+            )
+
+        st.state_json = new_state_json
+        db.commit()
+        db.refresh(st)
+        warning = None
+        if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
+            warning = (
+                f"Session state is {new_size / 1_048_576:.1f} MB (soft limit "
+                f"{SESSION_STATE_SOFT_LIMIT_BYTES / 1_048_576:.0f} MB)."
+            )
+        return {
+            "seeded": len(new_trades),
+            "mode": mode_clean,
+            "journal_len": len(merged),
+            "warnings": list(generated.get("warnings") or []),
+            "warning": warning,
+            "contract": generated.get("contract") or {},
         }
     finally:
         db.close()

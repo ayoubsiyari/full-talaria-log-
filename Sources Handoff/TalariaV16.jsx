@@ -8088,6 +8088,7 @@ const TalariaV8b = () => {
   const [dashTradesImportProgress, setDashTradesImportProgress] = useState(null);
   const dashTradesImportDismissRef = useRef(null);
   const dashTradesCsvImportRef = useRef(null);
+  const [sessSeedBusy, setSessSeedBusy] = useState(null);
   useEffect(() => () => {
     if (dashTradesImportDismissRef.current) clearTimeout(dashTradesImportDismissRef.current);
   }, []);
@@ -10351,6 +10352,41 @@ const TalariaV8b = () => {
       closeNewSess();
     }
   };
+  const seedSessionDemoTrades = (sess) => {
+    if (!isV16LiveBoot() || !sess?.id || sessSeedBusy) return;
+    const name = String(sess.name || "Session");
+    if (!globalThis.confirm(`Generate 200 demo trades aligned to "${name}" settings?\n\nThis replaces any existing trades in that session.`)) return;
+    setSessSeedBusy(sess.id);
+    fetch(`/api/sessions/${encodeURIComponent(String(sess.id))}/seed-demo-trades?count=200&mode=replace`, {
+      method: "POST",
+      credentials: "include",
+    })
+      .then(async (res) => {
+        const text = await res.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+        if (!res.ok) {
+          const d = body?.detail;
+          const msg = typeof d === "string" ? d
+            : d && typeof d === "object" && Array.isArray(d.errors) ? d.errors.join("; ")
+            : text.slice(0, 240);
+          throw new Error(msg || `HTTP ${res.status}`);
+        }
+        const warnings = [...(Array.isArray(body?.warnings) ? body.warnings : []), body?.warning].filter(Boolean);
+        const seeded = Number(body?.seeded) || 0;
+        const tickers = Array.isArray(body?.contract?.tickers) ? body.contract.tickers.join(", ") : "";
+        window.alert([
+          `Seeded ${seeded} trades for "${name}".`,
+          tickers ? `Tickers: ${tickers}` : "",
+          warnings.length ? `Notes: ${warnings.join(" ")}` : "",
+        ].filter(Boolean).join("\n"));
+        reloadEmbeddedV16Boot();
+      })
+      .catch((err) => {
+        window.alert(`Seed failed: ${err?.message || err}`);
+      })
+      .finally(() => setSessSeedBusy(null));
+  };
   const deleteSession = (e, id) => {
     e?.stopPropagation?.();
     if (isV16LiveBoot()) {
@@ -11509,6 +11545,8 @@ const TalariaV8b = () => {
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     {label:"Duplicate", handler:e=>{duplicateSession(e,ms);setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+                    ...(isV16LiveBoot() ? [{label:"Seed 200 trades", handler:()=>{seedSessionDemoTrades(ms);setSessActMenu(null);}, col:c.gold, disabled:!!sessSeedBusy, sub:sessSeedBusy===ms.id?"…":"QA", danger:false,
+                      icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M12 3v4M12 17v4M3 12h4M17 12h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.7"/></svg>}] : []),
                     {label:"Delete",    handler:e=>{deleteSession(e,ms.id);setSessActMenu(null);}, col:c.rd, disabled:false, danger:true,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ].map(({label,handler,col,disabled,sub,danger,icon})=>{

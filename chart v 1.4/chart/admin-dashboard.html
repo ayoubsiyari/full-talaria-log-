@@ -1757,6 +1757,43 @@ select { cursor:default; }
 .support-bulk-panel .support-filter-actions {
   margin-top: 6px;
 }
+.support-sync-panel {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+.support-sync-panel .support-filter-actions {
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.support-sync-results {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 220px;
+  overflow-y: auto;
+  display: none;
+}
+.support-sync-results.visible { display: block; }
+.support-sync-results .sync-stat { margin-bottom: 6px; }
+.support-sync-results .sync-user-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.support-sync-results .sync-user-row:last-child { border-bottom: none; }
+.support-sync-results .sync-import-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--warn, #fbbf24);
+}
 .support-inbox-count {
   margin-left: auto;
   font-size: 10px;
@@ -4361,6 +4398,19 @@ select { cursor:default; }
                     <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
                   </div>
                 </div>
+                <div class="support-filter-section support-sync-panel">
+                  <div class="support-filter-section-label">User ticket sync</div>
+                  <div class="support-filter-hint" style="font-size:11px;color:var(--text-muted);padding:0 2px 6px">
+                    Compare what users see vs admin inbox. If tickets exist for users but are hidden here (e.g. after bulk archive), check and import them.
+                  </div>
+                  <div class="support-filter-actions">
+                    <button type="button" class="btn sm" onclick="supportAuditUserTickets(false)">Check all users</button>
+                    <button type="button" class="btn sm" onclick="supportAuditUserTickets(true)">Check selected user</button>
+                    <button type="button" class="btn sm warn" onclick="supportImportUserTickets(false)">Import missing</button>
+                    <button type="button" class="btn sm" onclick="supportViewUserVisibleInbox()">View user-visible inbox</button>
+                  </div>
+                  <div class="support-sync-results" id="supportSyncResults"></div>
+                </div>
               </div>
               <div class="support-thread-list" id="supportThreadList">
                 <div class="support-thread-empty">Loading…</div>
@@ -5684,6 +5734,139 @@ async function supportDeleteTickets() {
   } catch (e) {
     toast(e.message || 'Delete failed', 'err');
   }
+}
+
+function supportSelectedRequesterId() {
+  const raw = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function supportRenderSyncAudit(data) {
+  const box = $('supportSyncResults');
+  if (!box) return;
+  const importN = data.import_needed_count || 0;
+  const healed = data.healed_active_on_load || 0;
+  let html = '';
+  html += '<div class="sync-stat"><strong>User-visible tickets:</strong> ' + (data.user_visible_total || 0) + '</div>';
+  html += '<div class="sync-stat"><strong>Archived (hidden from users):</strong> ' + (data.archived_total || 0) + '</div>';
+  html += '<div class="sync-stat"><strong>Need import (restore to inbox):</strong> ' + importN + '</div>';
+  if (healed) {
+    html += '<div class="sync-stat">Auto-healed ' + healed + ' active ticket(s) that were wrongly archived.</div>';
+  }
+  if ((data.import_candidates || []).length) {
+    html += '<div class="sync-stat" style="margin-top:8px"><strong>Sample tickets to import:</strong></div>';
+    data.import_candidates.slice(0, 12).forEach(function (t) {
+      html += '<div style="padding:2px 0;font-size:11px;color:var(--text-muted)">' +
+        (t.ticket_ref || ('#' + t.id)) + ' · ' + (t.user_email || t.user_name || 'user ' + t.user_id) +
+        ' · ' + (t.status || '') + ' · ' + (t.reason || '') + '</div>';
+    });
+    if (importN > 12) {
+      html += '<div style="font-size:11px;color:var(--text-muted)">…and ' + (importN - 12) + ' more</div>';
+    }
+  }
+  if ((data.by_user || []).length) {
+    html += '<div class="sync-stat" style="margin-top:10px"><strong>By user:</strong></div>';
+    data.by_user.slice(0, 25).forEach(function (u) {
+      const need = u.import_needed || 0;
+      html += '<div class="sync-user-row">' +
+        '<span>' + (u.email || u.name || ('User ' + u.user_id)) + '</span>' +
+        '<span style="color:var(--text-muted)">' + (u.visible_count || 0) + ' visible · ' + (u.archived_count || 0) + ' archived</span>' +
+        (need ? '<span class="sync-import-badge">' + need + ' to import</span>' : '') +
+        '</div>';
+    });
+  }
+  if (importN) {
+    html += '<div class="sync-stat" style="margin-top:8px;color:var(--warn,#fbbf24)">Use <strong>Import missing</strong> to restore these to the admin inbox.</div>';
+  } else {
+    html += '<div class="sync-stat" style="margin-top:8px;color:var(--text-muted)">No import needed — user tickets match admin visibility.</div>';
+  }
+  box.innerHTML = html;
+  box.classList.add('visible');
+}
+
+async function supportAuditUserTickets(selectedUserOnly) {
+  const box = $('supportSyncResults');
+  if (box) {
+    box.classList.add('visible');
+    box.innerHTML = '<div class="sync-stat">Checking user tickets…</div>';
+  }
+  try {
+    const params = new URLSearchParams();
+    const uid = supportSelectedRequesterId();
+    if (selectedUserOnly) {
+      if (!uid) {
+        toast('Pick a requester first', 'err');
+        if (box) box.classList.remove('visible');
+        return;
+      }
+      params.set('user_id', String(uid));
+    }
+    const data = await api('/api/admin/support/user-ticket-audit?' + params.toString());
+    supportRenderSyncAudit(data);
+    const n = data.import_needed_count || 0;
+    toast(
+      n
+        ? 'Found ' + n + ' ticket(s) users have that need import'
+        : 'User tickets are in sync with admin inbox',
+      n ? 'warn' : 'ok'
+    );
+  } catch (e) {
+    if (box) {
+      box.innerHTML = '<div class="sync-stat" style="color:var(--danger,#f87171)">' + (e.message || 'Audit failed') + '</div>';
+    }
+    toast(e.message || 'Audit failed', 'err');
+  }
+}
+
+async function supportImportUserTickets(selectedUserOnly) {
+  const uid = supportSelectedRequesterId();
+  if (selectedUserOnly && !uid) {
+    toast('Pick a requester first', 'err');
+    return;
+  }
+  try {
+    const body = { dry_run: true };
+    if (selectedUserOnly && uid) body.user_id = uid;
+    const preview = await api('/api/admin/support/import-user-tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const n = preview.imported_count || 0;
+    if (!n) {
+      toast('No tickets need import', 'ok');
+      await supportAuditUserTickets(!!uid);
+      return;
+    }
+    const scope = uid ? 'for selected user' : 'across all users';
+    const confirmAgain = confirm(
+      'Import (restore) ' + n + ' ticket' + (n === 1 ? '' : 's') + ' ' + scope + '?\n\n' +
+      'They will reappear in the admin inbox and stay visible to users.'
+    );
+    if (!confirmAgain) return;
+    body.dry_run = false;
+    const data = await api('/api/admin/support/import-user-tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    toast('Imported ' + (data.imported_count || 0) + ' ticket(s)', 'ok');
+    await loadSupportThreads();
+    await supportAuditUserTickets(!!uid);
+  } catch (e) {
+    toast(e.message || 'Import failed', 'err');
+  }
+}
+
+function supportViewUserVisibleInbox() {
+  const hideArchived = $('supportFilterHideArchived');
+  if (hideArchived) hideArchived.checked = true;
+  const status = $('supportFilterStatus');
+  if (status) status.value = '';
+  loadSupportThreads();
+  toast('Showing user-visible tickets (archived hidden)', 'ok');
 }
 
 async function loadSupportUserReplyThreads() {
