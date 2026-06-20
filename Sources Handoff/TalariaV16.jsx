@@ -7901,7 +7901,6 @@ const TalariaV8b = () => {
   const [dashLibraryStrategyExpanded, setDashLibraryStrategyExpanded] = useState({});
   const [dashLibraryTreeOpen, setDashLibraryTreeOpen] = useState({backtests:true,standard:true,prop:false,strategies:true,journals:true,journalPersonal:true,journalProp:true});
   const [dashLibrarySelection, setDashLibrarySelection] = useState(null);
-  const [dashLibraryMultiSelection, setDashLibraryMultiSelection] = useState([]);
   const [dashLibraryStrategyChildSelection, setDashLibraryStrategyChildSelection] = useState({});
   const [dashLibraryAppliedSelection, setDashLibraryAppliedSelection] = useState(() => {
     const applied = getV16AppliedSourceBoot();
@@ -7910,19 +7909,14 @@ const TalariaV8b = () => {
   });
   const [dashLibraryAppliedMultiSelection, setDashLibraryAppliedMultiSelection] = useState([]);
   const [dashLibraryAppliedStrategyChildSelection, setDashLibraryAppliedStrategyChildSelection] = useState({});
-  const [dashLibraryMultipleSources, setDashLibraryMultipleSources] = useState(false);
-  const [dashLibraryAppliedMultipleSources, setDashLibraryAppliedMultipleSources] = useState(false);
   const dashLibraryShellRef = useRef(null);
   const dashFiltersShellRef = useRef(null);
   const dashLibrarySelectionRef = useRef(null);
-  const dashLibraryMultiSelectionRef = useRef([]);
   const dashLibraryStrategyChildSelectionRef = useRef({});
   const dashLibraryAppliedSelectionRef = useRef(null);
   const dashLibraryAppliedMultiSelectionRef = useRef([]);
   const dashLibraryAppliedStrategyChildSelectionRef = useRef({});
-  const dashLibraryAppliedMultipleSourcesRef = useRef(false);
   const dashLibrarySelectionItemsRef = useRef({});
-  const dashLibraryMultipleSourcesRef = useRef(false);
   const [dashBootLoading, setDashBootLoading] = useState(
     () => isV16Embedded() && !!window.__TALARIA_V16_BOOT_LOADING__
   );
@@ -7961,18 +7955,6 @@ const TalariaV8b = () => {
     const fetcher = window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
     if (typeof fetcher !== "function") return;
     const sessionIds = new Set();
-    const multiActive = !!(dashLibraryAppliedMultipleSources || dashLibraryAppliedMultipleSourcesRef.current);
-    const appliedMulti = Array.isArray(dashLibraryAppliedMultiSelection) && dashLibraryAppliedMultiSelection.length
-      ? dashLibraryAppliedMultiSelection
-      : Array.isArray(dashLibraryAppliedMultiSelectionRef.current) && dashLibraryAppliedMultiSelectionRef.current.length
-        ? dashLibraryAppliedMultiSelectionRef.current
-        : [];
-    if (multiActive && appliedMulti.length) {
-      appliedMulti.forEach((key) => {
-        const match = String(key || "").match(/^session:(.+)$/);
-        if (match?.[1]) sessionIds.add(match[1]);
-      });
-    }
     if (dashSessId != null) sessionIds.add(String(dashSessId));
     if (dashStrategyId) {
       const strategyKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, "-").replace(/^-|-$/g, "") || "untitled";
@@ -8017,7 +7999,7 @@ const TalariaV8b = () => {
       cancelled = true;
       setDashTradesLoading(false);
     };
-  }, [dashSessId, dashLibraryAppliedMultipleSources, dashLibraryAppliedMultiSelection, dashStrategyId, sessView]);
+  }, [dashSessId, dashStrategyId, sessView]);
   const [dashLibraryConnectionOpen, setDashLibraryConnectionOpen] = useState(false);
   const [dashLibraryConnections, setDashLibraryConnections] = useState([]);
   const [dashConnectionDraft, setDashConnectionDraft] = useState({name:"",platform:"MetaTrader 5",accountType:"Live",market:"Forex",account:""});
@@ -9342,9 +9324,7 @@ const TalariaV8b = () => {
       });
     };
     const libraryKeys = new Set(
-      dashLibraryMultipleSources
-        ? (Array.isArray(dashLibraryMultiSelection) ? dashLibraryMultiSelection : [])
-        : [dashLibrarySelection ? `${dashLibrarySelection.kind}:${dashLibrarySelection.id}` : ""]
+      [dashLibrarySelection ? `${dashLibrarySelection.kind}:${dashLibrarySelection.id}` : ""]
     );
     const compareKeys = new Set(
       dashCompareMultiple
@@ -9353,7 +9333,7 @@ const TalariaV8b = () => {
     );
     reconcileRows(dashLibraryShellRef.current, libraryKeys);
     reconcileRows(dashCompareShellRef.current, compareKeys);
-  }, [c.br, dashLibraryOpen, dashLibraryTab, dashLibrarySelection, dashLibraryMultiSelection, dashLibraryMultipleSources, dashCompareOpen, dashCompareTab, dashCompareDraftKey, dashCompareDraftKeys, dashCompareMultiple]);
+  }, [c.br, dashLibraryOpen, dashLibraryTab, dashLibrarySelection, dashCompareOpen, dashCompareTab, dashCompareDraftKey, dashCompareDraftKeys, dashCompareMultiple]);
 
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = allSymbols.find(s => s.id === symbol) || { id:symbol, type:"forex", base:symbol.split("/")[0], quote:symbol.split("/")[1] };
@@ -13309,7 +13289,6 @@ const TalariaV8b = () => {
             return null;
           };
           const dashboardAppliedSourceItems = dashboardAppliedSourceKeysRaw.map(resolveDashboardAppliedSource).filter(Boolean);
-          const dashboardAppliedMultipleSourcesActive = !!(dashLibraryAppliedMultipleSources || dashLibraryAppliedMultipleSourcesRef.current);
           const dashboardStrategyChildSourceItems = dashStrategySource
             ? dashSelectedStrategySessions.map(session => {
                 const key = `strategySession:${session.id}`;
@@ -13318,40 +13297,13 @@ const TalariaV8b = () => {
                 return {key,kind:"strategySession",label,typeLabel:dashTxt("Backtest","اختبار"),color:session.tradingMode==="prop"?c.gold:c.acL,trades,sessions:[session]};
               }).filter(item=>item.trades.length)
             : [];
-          const dashboardAppliedStrategyChildMode = dashboardAppliedLibrarySeed?.kind === "strategy" && dashboardAppliedSourceItems.length > 0;
-          const dashboardHasMultipleAppliedSources = dashboardAppliedMultipleSourcesActive && (dashboardAppliedSourceItems.length > 1 || dashboardAppliedStrategyChildMode);
-          const dashboardSourceFilterItems = dashboardHasMultipleAppliedSources ? dashboardAppliedSourceItems : dashboardStrategyChildSourceItems;
+          const dashboardSourceFilterItems = dashboardStrategyChildSourceItems;
           const dashboardHasSourceFilter = dashboardSourceFilterItems.length > 1 || (!!dashStrategySource && dashboardSourceFilterItems.length > 0);
           const dashboardAppliedSourceKeySet = new Set(dashboardSourceFilterItems.map(item=>item.key));
           const dashboardValidSourceFilterKeys = dashboardHasSourceFilter
             ? [...new Set((Array.isArray(dashSourceFilterKeys) ? dashSourceFilterKeys : []).map(String).filter(key=>dashboardAppliedSourceKeySet.has(key)))]
             : [];
-          const dashboardMultiSource = dashboardHasMultipleAppliedSources ? {
-            id:`multi:${dashboardAppliedSourceItems.map(item=>item.key).join("|")}`,
-            name:dashboardAppliedStrategyChildMode ? (dashboardAppliedLibrarySeed?.label || dashTxt("Strategy","استراتيجية")) : dashTxt(`${dashboardAppliedSourceItems.length} sources selected`,`${dashboardAppliedSourceItems.length} مصادر محددة`),
-            strategyName:dashboardAppliedStrategyChildMode ? (dashboardAppliedLibrarySeed?.label || dashTxt("Strategy","استراتيجية")) : dashTxt("Multiple Sources","مصادر متعددة"),
-            strategyDesc:dashboardAppliedStrategyChildMode ? dashTxt("Dashboard for the selected child sources in this strategy.","لوحة للمصادر الفرعية المحددة داخل هذه الاستراتيجية.") : dashTxt("Aggregated dashboard for the selected Library sources.","لوحة مجمعة لمصادر المكتبة المحددة."),
-            tickers:[...new Set(dashboardAppliedSourceItems.flatMap(item=>item.trades.map(trade=>trade.symbol).filter(Boolean)))],
-            timeframe:[...new Set(dashboardAppliedSourceItems.flatMap(item=>item.sessions.map(session=>session?.timeframe).filter(Boolean)))].join(", "),
-            startDate:dashboardAppliedSourceItems.flatMap(item=>item.trades.map(trade=>trade.date).filter(Boolean)).sort()[0],
-            endDate:dashboardAppliedSourceItems.flatMap(item=>item.trades.map(trade=>trade.date).filter(Boolean)).sort().slice(-1)[0],
-            capital:dashboardAppliedSourceItems.reduce((sum,item)=>sum+item.sessions.reduce((sessionSum,session)=>sessionSum+(Number(session?.capital)||0),0),0) || 10000,
-            trades:dashboardAppliedSourceItems.reduce((sum,item)=>sum+item.trades.length,0),
-            pnl:dashboardAppliedSourceItems.reduce((sum,item)=>sum+item.trades.reduce((tradeSum,trade)=>tradeSum+(Number(trade.pnl)||0),0),0),
-            winRate:0,
-            avgRR:0,
-            tradingMode:"standard",
-            progress:Math.round(dashboardAppliedSourceItems.reduce((sum,item)=>sum+item.sessions.reduce((sessionSum,session)=>sessionSum+(Number(session?.progress)||0),0),0) / Math.max(1, dashboardAppliedSourceItems.reduce((sum,item)=>sum+item.sessions.length,0))),
-            assetClasses:[...new Set(dashboardAppliedSourceItems.flatMap(item=>item.trades.map(trade=>trade.market).filter(Boolean)))],
-            compositeTrades:dashboardAppliedSourceItems.flatMap(item=>item.trades),
-            isMultiSourceDashboard:true,
-            linkedSources:dashboardAppliedSourceItems,
-          } : null;
-          if (dashboardMultiSource && dashboardMultiSource.trades) {
-            dashboardMultiSource.winRate = dashboardMultiSource.compositeTrades.filter(trade=>trade.pnl>0).length / Math.max(1, dashboardMultiSource.trades) * 100;
-            dashboardMultiSource.avgRR = dashboardMultiSource.compositeTrades.reduce((sum,trade)=>sum+(Number(trade.rMultiple)||0),0) / Math.max(1, dashboardMultiSource.trades);
-          }
-          const ds = dashboardMultiSource || dashStrategySource || dashboardSessionPool.find(s=>String(s.id)===String(dashSessId)) || dashboardSessionPool[0];
+          const ds = dashStrategySource || dashboardSessionPool.find(s=>String(s.id)===String(dashSessId)) || dashboardSessionPool[0];
           const dashboardSourceKind = dashStrategySource ? "strategy" : "session";
           const liveDashBooting = isV16Embedded() && (
             dashBootLoading
@@ -15567,7 +15519,7 @@ const TalariaV8b = () => {
               );
             };
             const renderSourceFilterStrategyParent = () => {
-              if (!dashStrategySource || dashboardHasMultipleAppliedSources || !dashboardSourceFilterItems.length) return null;
+              if (!dashStrategySource || !dashboardSourceFilterItems.length) return null;
               const allActive = sourceEffectiveKeys.length >= dashboardSourceFilterItems.length;
               const progress = Number(dashStrategySource.progress)||0;
               const pnlPct = Number(dashStrategySource.capital) ? (Number(dashStrategySource.pnl)||0) / Number(dashStrategySource.capital) * 100 : null;
@@ -15629,7 +15581,7 @@ const TalariaV8b = () => {
                 </div>
                 <div style={{padding:"7px 0 3px"}}>
                   <div style={{minWidth:0,display:"flex",flexDirection:"column",gap:0}}>
-                    {dashStrategySource && !dashboardHasMultipleAppliedSources ? (
+                    {dashStrategySource ? (
                       <>
                         {renderSourceFilterStrategyParent()}
                         <div style={{display:"flex",flexDirection:"column",gap:0,background:c.well,borderTop:`1px solid ${c.br}`}}>
@@ -16747,46 +16699,19 @@ const TalariaV8b = () => {
               el.style.borderColor = `${color}66`;
               el.style.boxShadow = `0 0 0 1px ${color}22`;
             };
-            if (node.classList.contains("tlr-library-multiple-toggle")) {
-              const next = node.getAttribute("aria-checked") !== "true";
-              node.classList.toggle("tlr-library-toggle-preview-on", next);
-              node.classList.toggle("tlr-library-toggle-preview-off", !next);
-              if (root?.classList) {
-                root.classList.toggle("tlr-library-multiple-preview-on", next);
-                root.classList.toggle("tlr-library-multiple-preview-off", !next);
-              }
-              return;
-            }
+            if (node.classList.contains("tlr-library-multiple-toggle")) return;
             const isRow = node.classList.contains("tlr-library-content-row") || node.classList.contains("tlr-library-strategy-row");
             const isTree = node.classList.contains("tlr-library-tree-row");
             const isStatus = node.classList.contains("tlr-library-status-tab");
             if (!isRow && !isTree && !isStatus) return;
-            const multiOn = !!dashLibraryMultipleSourcesRef.current;
-            const keepExistingRows = multiOn && isRow;
-            if (!keepExistingRows) {
-              root.querySelectorAll(".tlr-library-immediate-active,.tlr-library-immediate-checked,.tlr-library-immediate-unchecked,.tlr-library-content-row-active,.tlr-library-strategy-row-active").forEach(el => {
-                if (el !== node) {
-                  el.classList.remove("tlr-library-immediate-active","tlr-library-immediate-checked","tlr-library-immediate-unchecked","tlr-library-content-row-active","tlr-library-strategy-row-active");
-                  if (el.classList.contains("tlr-library-content-row") || el.classList.contains("tlr-library-strategy-row")) resetLibraryRowVisual(el);
-                  if (el.getAttribute("aria-pressed") != null) el.setAttribute("aria-pressed","false");
-                }
-              });
-            }
-            if (keepExistingRows) {
-              const wasChecked = node.getAttribute("aria-pressed") === "true";
-              const selectedRows = Array.isArray(dashLibraryMultiSelectionRef.current) ? dashLibraryMultiSelectionRef.current : [];
-              const nextChecked = wasChecked && selectedRows.length <= 1 ? true : !wasChecked;
-              node.setAttribute("aria-pressed", nextChecked ? "true" : "false");
-              node.classList.toggle("tlr-library-immediate-checked", nextChecked);
-              node.classList.toggle("tlr-library-immediate-unchecked", !nextChecked);
-              if (nextChecked) {
-                node.classList.add("tlr-library-immediate-active");
-                markLibraryRowVisual(node);
-              } else {
-                node.classList.remove("tlr-library-immediate-active","tlr-library-content-row-active","tlr-library-strategy-row-active");
-                resetLibraryRowVisual(node);
+            root.querySelectorAll(".tlr-library-immediate-active,.tlr-library-immediate-checked,.tlr-library-immediate-unchecked,.tlr-library-content-row-active,.tlr-library-strategy-row-active").forEach(el => {
+              if (el !== node) {
+                el.classList.remove("tlr-library-immediate-active","tlr-library-immediate-checked","tlr-library-immediate-unchecked","tlr-library-content-row-active","tlr-library-strategy-row-active");
+                if (el.classList.contains("tlr-library-content-row") || el.classList.contains("tlr-library-strategy-row")) resetLibraryRowVisual(el);
+                if (el.getAttribute("aria-pressed") != null) el.setAttribute("aria-pressed","false");
               }
-            } else if (isRow) {
+            });
+            if (isRow) {
               node.classList.add("tlr-library-immediate-active");
               markLibraryRowVisual(node);
               node.setAttribute("aria-pressed","true");
@@ -16821,12 +16746,9 @@ const TalariaV8b = () => {
           const libraryCapturePrime = (e) => {
             if (typeof e.button === "number" && e.button !== 0) return;
             const target = e.target;
-            const node = target?.closest?.(".tlr-library-content-row,.tlr-library-strategy-row,.tlr-library-tree-row,.tlr-library-status-tab,.tlr-library-multiple-toggle");
+            const node = target?.closest?.(".tlr-library-content-row,.tlr-library-strategy-row,.tlr-library-tree-row,.tlr-library-status-tab");
             if (!node || !dashLibraryShellRef.current?.contains(node)) return;
             if (node.classList.contains("tlr-library-child-source-row")) return;
-            const isRow = node.classList.contains("tlr-library-content-row") || node.classList.contains("tlr-library-strategy-row");
-            const isCheckboxClick = !!target?.closest?.(".tlr-library-multi-check");
-            if (dashLibraryMultipleSourcesRef.current && isRow) return;
             libraryPrimeInstantSelection(node);
           };
           const libraryPaneTitle = (label, color, right=null) => (
@@ -16913,7 +16835,6 @@ const TalariaV8b = () => {
           const effectiveLibrarySelection = dashLibrarySelection || defaultLibrarySelection;
           if (!dashLibrarySelectionRef.current && effectiveLibrarySelection) dashLibrarySelectionRef.current = effectiveLibrarySelection;
           dashLibraryStrategyChildSelectionRef.current = dashLibraryStrategyChildSelection || {};
-          dashLibraryMultipleSourcesRef.current = dashLibraryMultipleSources;
           const currentDashboardLibrarySelection = dashboardSourceKind === "strategy"
             ? {kind:"strategy",id:dashStrategyId || dashStrategyKey(ds.strategyName),label:ds.strategyName || ds.name}
             : {kind:"session",id:ds.id,sessionId:ds.id,label:ds.name,rollbackAllowed:!!ds.rollbackAllowed};
@@ -16921,10 +16842,7 @@ const TalariaV8b = () => {
           if (!dashLibraryAppliedSelectionRef.current && appliedLibrarySelection) dashLibraryAppliedSelectionRef.current = appliedLibrarySelection;
           dashLibraryAppliedMultiSelectionRef.current = Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : [];
           dashLibraryAppliedStrategyChildSelectionRef.current = dashLibraryAppliedStrategyChildSelection || {};
-          dashLibraryAppliedMultipleSourcesRef.current = !!dashLibraryAppliedMultipleSources;
           const visibleLibrarySelection = isLibrarySelectionVisible(effectiveLibrarySelection) ? effectiveLibrarySelection : null;
-          const libraryMultiSelectedKeys = new Set(Array.isArray(dashLibraryMultiSelection) ? dashLibraryMultiSelection : []);
-          const isLibraryMultiSelected = (item) => !!item && libraryMultiSelectedKeys.has(librarySelectionKey(item.kind,item.id));
           const libraryTradeCountForSession = (session) => {
             if (!session) return 0;
             const builtTrades = btDashBuildTrades(session);
@@ -17019,167 +16937,45 @@ const TalariaV8b = () => {
               );
             }
           };
+          const selectedLibraryKey = visibleLibrarySelection ? librarySelectionKey(visibleLibrarySelection.kind, visibleLibrarySelection.id) : "";
           const selectLibraryItem = (item) => {
             if (!item) return;
             const key = librarySelectionKey(item.kind,item.id);
-            const multiOn = !!dashLibraryMultipleSourcesRef.current;
-            if (item.kind === "strategy" && (!multiOn || !Array.isArray(dashLibraryStrategyChildSelectionRef.current?.[item.id]))) {
+            if (item.kind === "strategy" && !Array.isArray(dashLibraryStrategyChildSelectionRef.current?.[item.id])) {
               const childKeys = libraryStrategyChildKeysFor(item.id);
               setLibraryStrategyChildKeys(item.id, childKeys);
             }
             dashLibrarySelectionItemsRef.current[key] = item;
-            const rows = Array.isArray(dashLibraryMultiSelectionRef.current) ? dashLibraryMultiSelectionRef.current : [];
-            const wasSelected = rows.includes(key);
-            const nextRows = multiOn
-              ? (wasSelected ? (rows.length <= 1 ? rows : rows.filter(x=>x!==key)) : [...rows,key])
-              : [key];
-            const nextSelectionKey = multiOn && wasSelected && !nextRows.includes(key)
-              ? (nextRows[0] || key)
-              : key;
-            const nextSelectionItem = dashLibrarySelectionItemsRef.current[nextSelectionKey] || item;
-            dashLibrarySelectionRef.current = nextSelectionItem;
-            dashLibraryMultiSelectionRef.current = nextRows;
-            setDashLibrarySelection(nextSelectionItem);
-            setDashLibraryMultiSelection(nextRows);
-            const nextSourceCount = nextRows.reduce((sum,rowKey)=>{
-              const [kind, ...rest] = String(rowKey || "").split(":");
-              const id = rest.join(":");
-              return sum + (kind === "strategy" && id ? validLibraryStrategyChildKeys(id).length : 1);
-            },0);
-            if (multiOn && nextSourceCount > 1) {
-              const nextTradeCount = nextRows.reduce((sum,rowKey)=>{
-                const [kind, ...rest] = String(rowKey || "").split(":");
-                const id = rest.join(":");
-                if (kind === "strategy" && id) {
-                  return sum + validLibraryStrategyChildKeys(id).reduce((childSum,key)=>childSum+libraryTradeCountForKey(key),0);
-                }
-                return sum + libraryTradeCountForKey(rowKey);
-              },0);
-              updateLibrarySelectedFooter(dashTxt(`${nextSourceCount} sources selected`,`${nextSourceCount} مصادر محددة`), dashTxt("Multiple","متعدد"), c.acL, libraryTradeCountLabel(nextTradeCount));
-            } else {
-              updateLibrarySelectedFooter(nextSelectionItem.label, null, null, libraryTradeCountLabel(libraryTradeCountForSelection(nextSelectionItem)));
-            }
+            dashLibrarySelectionRef.current = item;
+            setDashLibrarySelection(item);
+            updateLibrarySelectedFooter(item.label, null, null, libraryTradeCountLabel(libraryTradeCountForSelection(item)));
           };
           const toggleLibraryStrategyChildSource = (strategyItem, childKey) => {
             if (!strategyItem?.id || !childKey) return;
             const strategyKey = librarySelectionKey("strategy", strategyItem.id);
             const allKeys = libraryStrategyChildKeysFor(strategyItem.id);
             if (!allKeys.includes(childKey)) return;
-            const multiOn = !!dashLibraryMultipleSourcesRef.current;
-            const parentWasSelected = multiOn
-              ? (Array.isArray(dashLibraryMultiSelectionRef.current) ? dashLibraryMultiSelectionRef.current : []).includes(strategyKey)
-              : String(selectedLibraryKey) === String(strategyKey);
+            const parentWasSelected = String(selectedLibraryKey) === String(strategyKey);
             const currentKeys = parentWasSelected
               ? validLibraryStrategyChildKeys(strategyItem.id)
               : allKeys;
             const exists = currentKeys.includes(childKey);
-            const nextKeys = multiOn
-              ? (parentWasSelected ? (exists ? currentKeys.filter(key=>key!==childKey) : [...currentKeys, childKey]) : [childKey])
-              : (parentWasSelected ? (exists ? currentKeys.filter(key=>key!==childKey) : [...currentKeys, childKey]) : allKeys);
+            const nextKeys = parentWasSelected
+              ? (exists ? currentKeys.filter(key=>key!==childKey) : [...currentKeys, childKey])
+              : allKeys;
             const safeKeys = nextKeys.length ? nextKeys : [childKey];
             setLibraryStrategyChildKeys(strategyItem.id, safeKeys);
             dashLibrarySelectionRef.current = strategyItem;
             dashLibrarySelectionItemsRef.current[strategyKey] = strategyItem;
             setDashLibrarySelection(strategyItem);
-            const rows = Array.isArray(dashLibraryMultiSelectionRef.current) ? dashLibraryMultiSelectionRef.current : [];
-            const nextRows = multiOn
-              ? (rows.includes(strategyKey) ? rows : [...rows, strategyKey])
-              : [strategyKey];
-            dashLibraryMultiSelectionRef.current = nextRows;
-            setDashLibraryMultiSelection(nextRows);
-            const selectedSourceCount = nextRows.reduce((sum,rowKey)=>{
-              const [kind, ...rest] = String(rowKey || "").split(":");
-              const id = rest.join(":");
-              return sum + (kind === "strategy" && id ? validLibraryStrategyChildKeys(id).length : 1);
-            },0);
-            if (multiOn && selectedSourceCount > 1) {
-              const totalTrades = nextRows.reduce((sum,rowKey)=>{
-                const [kind, ...rest] = String(rowKey || "").split(":");
-                const id = rest.join(":");
-                if (kind === "strategy" && id) {
-                  return sum + validLibraryStrategyChildKeys(id).reduce((childSum,key)=>childSum+libraryTradeCountForKey(key),0);
-                }
-                return sum + libraryTradeCountForKey(rowKey);
-              },0);
-              updateLibrarySelectedFooter(dashTxt(`${selectedSourceCount} sources selected`,`${selectedSourceCount} مصادر محددة`), dashTxt("Multiple","متعدد"), c.acL, libraryTradeCountLabel(totalTrades));
-            } else {
-              updateLibrarySelectedFooter(
-                strategyItem.label,
-                dashTxt("Strategy","استراتيجية"),
-                c.acL,
-                libraryTradeCountLabel(safeKeys.reduce((sum,key)=>sum+libraryTradeCountForKey(key),0))
-              );
-            }
+            updateLibrarySelectedFooter(
+              strategyItem.label,
+              dashTxt("Strategy","استراتيجية"),
+              c.acL,
+              libraryTradeCountLabel(safeKeys.reduce((sum,key)=>sum+libraryTradeCountForKey(key),0))
+            );
           };
-          const selectedLibraryKey = visibleLibrarySelection ? librarySelectionKey(visibleLibrarySelection.kind, visibleLibrarySelection.id) : "";
-          const toggleLibraryMultipleSources = () => {
-            const next = !dashLibraryMultipleSourcesRef.current;
-            dashLibraryMultipleSourcesRef.current = next;
-            if (dashLibraryShellRef.current?.classList) {
-              dashLibraryShellRef.current.classList.toggle("tlr-library-multiple-on", next);
-              dashLibraryShellRef.current.classList.toggle("tlr-library-multiple-preview-on", next);
-              dashLibraryShellRef.current.classList.toggle("tlr-library-multiple-preview-off", !next);
-            }
-            setDashLibraryMultipleSources(next);
-            const refItem = dashLibrarySelectionRef.current || visibleLibrarySelection || effectiveLibrarySelection;
-            const refKey = refItem ? librarySelectionKey(refItem.kind,refItem.id) : selectedLibraryKey;
-            if (next) {
-              if (refItem && refKey) {
-                dashLibrarySelectionRef.current = refItem;
-                dashLibrarySelectionItemsRef.current[refKey] = refItem;
-                setDashLibrarySelection(refItem);
-              }
-              dashLibraryMultiSelectionRef.current = refKey ? [refKey] : [];
-              setDashLibraryMultiSelection(dashLibraryMultiSelectionRef.current);
-              applySingleLibrarySourceVisual(refKey);
-              if (refItem) updateLibrarySelectedFooter(refItem.label, null, null, libraryTradeCountLabel(libraryTradeCountForSelection(refItem)));
-            } else {
-              const currentRows = Array.isArray(dashLibraryMultiSelectionRef.current) ? dashLibraryMultiSelectionRef.current : [];
-              const keepKey = currentRows.includes(refKey) ? refKey : (currentRows[0] || refKey);
-              const keepItem = dashLibrarySelectionItemsRef.current[keepKey] || resolveAppliedLibraryItem(keepKey) || (keepKey === refKey ? dashLibrarySelectionRef.current : null);
-              if (keepItem) {
-                dashLibrarySelectionRef.current = keepItem;
-                dashLibrarySelectionItemsRef.current[keepKey] = keepItem;
-                setDashLibrarySelection(keepItem);
-              }
-              if (keepItem?.kind === "strategy") {
-                const allChildKeys = libraryStrategyChildKeysFor(keepItem.id);
-                const currentChildKeys = Array.isArray(dashLibraryStrategyChildSelectionRef.current?.[keepItem.id])
-                  ? dashLibraryStrategyChildSelectionRef.current[keepItem.id].map(String).filter(key=>allChildKeys.includes(key))
-                  : allChildKeys;
-                const keepChildKeys = currentChildKeys.length ? currentChildKeys : allChildKeys;
-                if (keepChildKeys.length) setLibraryStrategyChildKeys(keepItem.id, keepChildKeys);
-              }
-              dashLibraryMultiSelectionRef.current = keepKey ? [keepKey] : [];
-              setDashLibraryMultiSelection(dashLibraryMultiSelectionRef.current);
-              applySingleLibrarySourceVisual(keepKey);
-              if (keepItem) {
-                updateLibrarySelectedFooter(
-                  keepItem.label,
-                  null,
-                  null,
-                  libraryTradeCountLabel(libraryTradeCountForSelection(keepItem))
-                );
-              }
-            }
-          };
-          const toggleLibraryMultipleSourcesImmediate = (e) => {
-            if (typeof e.button === "number" && e.button !== 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-            libraryPrimeInstantSelection(e.currentTarget);
-            toggleLibraryMultipleSources();
-          };
-          const libraryMultiSelectedRows = [...libraryMultiSelectedKeys];
-          const libraryMultiSelectedCount = libraryMultiSelectedRows.reduce((sum,rowKey)=>{
-            const [kind, ...rest] = String(rowKey || "").split(":");
-            const id = rest.join(":");
-            return sum + (kind === "strategy" && id ? validLibraryStrategyChildKeys(id).length : 1);
-          },0);
-          const libraryHasMultipleSources = dashLibraryMultipleSources && libraryMultiSelectedCount > 1;
-          const selectedLibraryTradeCount = libraryHasMultipleSources
-            ? libraryMultiSelectedRows.reduce((sum,key)=>sum+libraryTradeCountForKey(key),0)
-            : libraryTradeCountForSelection(effectiveLibrarySelection);
+          const selectedLibraryTradeCount = libraryTradeCountForSelection(effectiveLibrarySelection);
           const selectedLibraryTradeCountLabel = effectiveLibrarySelection ? libraryTradeCountLabel(selectedLibraryTradeCount) : "";
           const expandLibraryAppliedRows = (rows=[], sourceMap=dashLibraryStrategyChildSelectionRef.current) => {
             const expanded = [];
@@ -17232,37 +17028,21 @@ const TalariaV8b = () => {
             if (!sel) return;
             const key = librarySelectionKey(sel.kind,sel.id);
             dashLibrarySelectionItemsRef.current[key] = sel;
-            const baseAppliedRows = dashLibraryMultipleSourcesRef.current
-              ? (Array.isArray(dashLibraryMultiSelectionRef.current) ? [...dashLibraryMultiSelectionRef.current] : [])
-              : [key];
-            const restoredApplied = restoreLibraryStrategyRowsFromChildren(baseAppliedRows, dashLibraryStrategyChildSelectionRef.current);
+            const restoredApplied = restoreLibraryStrategyRowsFromChildren([key], dashLibraryStrategyChildSelectionRef.current);
             const appliedRows = expandLibraryAppliedRows(restoredApplied.rows, restoredApplied.childMap);
             dashLibraryAppliedSelectionRef.current = sel;
             dashLibraryAppliedMultiSelectionRef.current = appliedRows.length ? appliedRows : [key];
             dashLibraryAppliedStrategyChildSelectionRef.current = restoredApplied.childMap;
-            dashLibraryAppliedMultipleSourcesRef.current = !!dashLibraryMultipleSourcesRef.current;
             setDashLibraryAppliedStrategyChildSelection(restoredApplied.childMap);
             setDashLibraryAppliedSelection(sel);
             setDashLibraryAppliedMultiSelection(dashLibraryAppliedMultiSelectionRef.current);
-            setDashLibraryAppliedMultipleSources(dashLibraryAppliedMultipleSourcesRef.current);
             setDashSourceFilterKeys([]);
           };
           const runLibrarySelection = () => {
             const sel = dashLibrarySelectionRef.current || effectiveLibrarySelection;
             if (!sel) return;
             commitLibrarySelection(sel);
-            const appliedRows = Array.isArray(dashLibraryAppliedMultiSelectionRef.current) ? dashLibraryAppliedMultiSelectionRef.current : [];
-            const appliedSessionCount = appliedRows.filter((key) => String(key).startsWith("session:")).length;
-            const isMultiSessionApply = !!dashLibraryAppliedMultipleSourcesRef.current && appliedSessionCount > 1;
             if (sel.kind === "session") {
-              if (isMultiSessionApply) {
-                setDashStrategyId(null);
-                setDashSymbolFilter("all");
-                setDashTagFilter("all");
-                setDashOutcomeFilter("all");
-                setDashLibraryOpen(false);
-                return;
-              }
               const session = dashboardSessionPool.find(s=>String(s.id)===String(sel.sessionId || sel.id));
               if (session) openLibrarySession(session);
               return;
@@ -17297,25 +17077,14 @@ const TalariaV8b = () => {
               restoredStrategyChildren[sel.id] = strategyRows;
               restoredRows.unshift(key);
             }
-            const appliedRows = [...new Set(restoredRows.length ? restoredRows : rawAppliedRows)];
             dashLibraryStrategyChildSelectionRef.current = restoredStrategyChildren;
             setDashLibraryStrategyChildSelection(restoredStrategyChildren);
-            const shouldUseMultipleMode = !!dashLibraryAppliedMultipleSourcesRef.current;
-            if (dashLibraryMultipleSourcesRef.current !== shouldUseMultipleMode) {
-              dashLibraryMultipleSourcesRef.current = shouldUseMultipleMode;
-              setDashLibraryMultipleSources(shouldUseMultipleMode);
-            }
             if (sel && key) dashLibrarySelectionItemsRef.current[key] = sel;
             dashLibrarySelectionRef.current = sel || null;
-            dashLibraryMultiSelectionRef.current = appliedRows;
             setDashLibrarySelection(sel || null);
-            setDashLibraryMultiSelection(appliedRows);
           };
-          const selectedLibraryLabel = libraryHasMultipleSources
-            ? dashTxt(`${libraryMultiSelectedCount} sources selected`,`${libraryMultiSelectedCount} مصادر محددة`)
-            : (effectiveLibrarySelection?.label || dashTxt("No selectable item","لا يوجد عنصر قابل للاختيار"));
+          const selectedLibraryLabel = effectiveLibrarySelection?.label || dashTxt("No selectable item","لا يوجد عنصر قابل للاختيار");
           const librarySelectionType = (() => {
-            if (libraryHasMultipleSources) return {label:dashTxt("Multiple","متعدد"), color:c.acL};
             const kind = effectiveLibrarySelection?.kind;
             if (kind === "session") return {label:dashTxt("Backtest","اختبار"), color:c.acL};
             if (kind === "strategy") return {label:dashTxt("Strategy","استراتيجية"), color:c.acL};
@@ -17339,26 +17108,18 @@ const TalariaV8b = () => {
             && appliedLibraryStrategyChildTotal > 0
             && appliedLibraryStrategyChildCount > 0
             && appliedLibraryStrategyChildCount < appliedLibraryStrategyChildTotal;
-          const appliedLibraryShowsSourceCount = dashLibraryAppliedMultipleSources && (appliedLibraryMultiCount > 1 || appliedLibraryStrategyChildMode);
-          const appliedLibraryHasMultipleSources = appliedLibraryShowsSourceCount;
-          const appliedLibraryUseExpandedRows = appliedLibraryMultiCount > 1 || appliedLibraryStrategyChildMode;
+          const appliedLibraryHasMultipleSources = appliedLibraryStrategyChildPartial;
+          const appliedLibraryUseExpandedRows = appliedLibraryStrategyChildMode;
           const appliedLibraryTradeCount = appliedLibraryUseExpandedRows
             ? appliedLibraryMultiRows.reduce((sum,key)=>sum+libraryTradeCountForKey(key),0)
             : libraryTradeCountForSelection(appliedLibrarySelection);
-          const dashboardLibrarySourceCountLabel = (count) => dashTxt(
-            `${count} ${count === 1 ? "source" : "sources"} selected`,
-            `${count} مصادر محددة`
-          );
           const dashboardLibraryStrategyPartialLabel = appliedLibraryStrategyChildPartial
             ? `${appliedLibrarySelection?.label || currentDashboardLibrarySelection.label || dashTxt("Strategy","استراتيجية")} · ${appliedLibraryStrategyChildCount}/${appliedLibraryStrategyChildTotal} ${dashTxt("sources","مصادر")}`
             : "";
-          const dashboardLibraryLabel = appliedLibraryShowsSourceCount
-            ? dashboardLibrarySourceCountLabel(appliedLibraryMultiCount)
-            : appliedLibraryStrategyChildPartial
-              ? dashboardLibraryStrategyPartialLabel
+          const dashboardLibraryLabel = appliedLibraryStrategyChildPartial
+            ? dashboardLibraryStrategyPartialLabel
             : (appliedLibrarySelection?.label || currentDashboardLibrarySelection.label || dashTxt("No source","لا يوجد مصدر"));
           const dashboardLibraryType = (() => {
-            if (appliedLibraryShowsSourceCount) return {label:dashTxt("Multiple","متعدد"), color:c.acL};
             const kind = appliedLibrarySelection?.kind;
             if (kind === "strategy") return {label:dashTxt("Strategy","استراتيجية"), color:c.acL};
             if (kind === "journalAccount" || kind === "journalEntry" || kind === "strategyJournal") return {label:dashTxt("Journal","يومية"), color:c.gn};
@@ -17901,27 +17662,6 @@ const TalariaV8b = () => {
               </svg>
             );
           };
-          const libraryMultiCheck = (selected, color, item=null) => (
-            <div className={`tlr-library-multi-check${selected ? " tlr-library-multi-check-on" : ""}`} aria-hidden="true"
-              onPointerDown={item ? (e)=>{
-                if (typeof e.button === "number" && e.button !== 0) return;
-                e.preventDefault();
-                e.stopPropagation();
-                const row = e.currentTarget?.closest?.(".tlr-library-content-row,.tlr-library-strategy-row");
-                if (row) libraryPrimeInstantSelection(row);
-                flushSync(()=>selectLibraryItem(item));
-              } : undefined}
-              style={{position:"absolute",top:1,right:3,zIndex:3,pointerEvents:"auto",opacity:1,transition:"none",padding:2}}>
-              {libraryCornerCheckbox(selected, color)}
-            </div>
-          );
-          const libraryMultipleSourcesControl = () => (
-            <div className="tlr-library-multiple-toggle" role="checkbox" tabIndex={0} aria-checked={dashLibraryMultipleSources} onPointerDown={toggleLibraryMultipleSourcesImmediate} onKeyDown={libraryKeyActivate(toggleLibraryMultipleSources)}
-              style={{height:24,display:"inline-flex",alignItems:"center",justifyContent:"center",gap:7,color:dashLibraryMultipleSources?c.acL:c.ts,fontSize:8.5,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",minWidth:0,padding:"0 2px",boxSizing:"border-box"}}>
-              {libraryCornerCheckbox(dashLibraryMultipleSources, c.acL)}
-              <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{dashTxt("Multiple","متعدد")}</span>
-            </div>
-          );
           const libraryBoolFrom = (...values) => {
             for (const value of values) {
               if (typeof value === "boolean") return value;
@@ -26157,7 +25897,7 @@ const TalariaV8b = () => {
                 </div>
               </div>
               </div>{/* end body */}
-              <div ref={dashLibraryShellRef} className={`tlr-library-shell${dashLibraryMultipleSources ? " tlr-library-multiple-on" : ""}`} aria-hidden={!dashLibraryOpen} onPointerDownCapture={libraryCapturePrime} style={{position:"fixed",inset:0,zIndex:100002,background:"rgba(0,0,0,0.58)",display:"flex",alignItems:"center",justifyContent:"center",padding:24,opacity:dashLibraryOpen?1:0,visibility:dashLibraryOpen?"visible":"hidden",pointerEvents:dashLibraryOpen?"auto":"none",transition:"none"}}>
+              <div ref={dashLibraryShellRef} className="tlr-library-shell" aria-hidden={!dashLibraryOpen} onPointerDownCapture={libraryCapturePrime} style={{position:"fixed",inset:0,zIndex:100002,background:"rgba(0,0,0,0.58)",display:"flex",alignItems:"center",justifyContent:"center",padding:24,opacity:dashLibraryOpen?1:0,visibility:dashLibraryOpen?"visible":"hidden",pointerEvents:dashLibraryOpen?"auto":"none",transition:"none"}}>
                   <div className="tlr-library-card" onMouseDown={e=>e.stopPropagation()} style={{width:780,maxWidth:"calc(100vw - 48px)",height:564,maxHeight:"calc(100vh - 96px)",background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 26px 80px rgba(0,0,0,0.86)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
                     <div style={{height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 10px ${c.acG}`,flexShrink:0}}/>
                     <div style={{height:46,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:`1px solid ${c.br}`,background:c.sf}}>
@@ -26215,7 +25955,7 @@ const TalariaV8b = () => {
                       <div style={{order:isDashRTL?1:0,minHeight:0,padding:18,display:"flex",flexDirection:"column"}}>
                         {dashLibraryTab === "backtests" ? (
                           <>
-                            {libraryPaneTitle(dashTxt("Backtest Sessions","جلسات الاختبار"), c.acL, {node:libraryMultipleSourcesControl()})}
+                            {libraryPaneTitle(dashTxt("Backtest Sessions","جلسات الاختبار"), c.acL)}
                             <div style={{flexShrink:0,borderBottom:`1px solid ${c.br}`,paddingBottom:0,marginBottom:10}}>
                               <div role="tablist" aria-label={dashTxt("Backtest status","حالة الاختبار")} style={{height:32,display:"flex",alignItems:"flex-end",justifyContent:"center",gap:0}}>
                                 {libraryStatusCats.map(status=>{
@@ -26235,8 +25975,7 @@ const TalariaV8b = () => {
                             <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",display:"grid",alignContent:"start",gap:0}}>
                               {sourceBacktestRows.length ? sourceBacktestRows.map(session=>{
                                 const sessionItem = makeLibrarySessionSelection(session);
-                                const isMultiSel = isLibraryMultiSelected(sessionItem);
-                                const isSel = dashLibraryMultipleSources ? isMultiSel : selectedLibraryKey===librarySelectionKey("session", session.id);
+                                const isSel = selectedLibraryKey===librarySelectionKey("session", session.id);
                                 const pnl = session.pnl;
                                 const pnlColor = pnl==null ? c.tm : pnl>=0 ? c.gn : c.rd;
                                 const pnlPct = pnl==null || !Number(session.capital) ? null : (Number(pnl) / Number(session.capital)) * 100;
@@ -26246,7 +25985,6 @@ const TalariaV8b = () => {
                                 const sessionMeta = `${session.strategyName || dashTxt("Strategy","استراتيجية")} / ${sessionMarkets}`;
                                 return (
                                   <div key={session.id} className={`tlr-library-content-row${isSel ? " tlr-library-content-row-active" : ""}`} role="button" tabIndex={0} aria-label={`${dashTxt("Select backtest session","حدد جلسة الاختبار")}: ${session.name}`} aria-pressed={isSel} data-tlr-library-key={librarySelectionKey("session", session.id)} data-tlr-library-label={session.name} data-tlr-library-type={dashTxt("Backtest","اختبار")} data-tlr-library-color={activeLibraryMode.color} onPointerDown={librarySelectPointerActivate(()=>selectLibraryItem(sessionItem))} onKeyDown={libraryKeyActivate(()=>selectLibraryItem(sessionItem))} style={libraryRowStyle(isSel, activeLibraryMode.color, 68, "1fr 108px")}>
-                                    {libraryMultiCheck(isMultiSel, activeLibraryMode.color, sessionItem)}
                                     <div style={{minWidth:0}}>
                                       <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
                                         <div className="tlr-library-content-title" style={{fontSize:12,fontWeight:900,color:isSel?activeLibraryMode.color:c.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{session.name}</div>
@@ -26262,7 +26000,7 @@ const TalariaV8b = () => {
                           </>
                         ) : dashLibraryTab === "strategies" ? (
                           <>
-                            {libraryPaneTitle(dashTxt("Strategies","الاستراتيجيات"), c.acL, {node:libraryMultipleSourcesControl()})}
+                            {libraryPaneTitle(dashTxt("Strategies","الاستراتيجيات"), c.acL)}
                             <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",flexDirection:"column",gap:0,paddingTop:1}}>
                               {libraryStrategyGroups.length ? libraryStrategyGroups.map(strategy=>{
                                 const linkedSessions = Array.isArray(strategy.sessions) ? strategy.sessions : libraryStrategySessions(strategy.id);
@@ -26279,15 +26017,13 @@ const TalariaV8b = () => {
                                 const linkedJournalRows = Array.isArray(strategy.journalRows) ? strategy.journalRows : libraryJournalRowsForSessions(linkedSessions);
                                 const strategyItem = makeLibraryStrategySelection(strategy);
                                 const strategyKey = librarySelectionKey("strategy", strategy.id);
-                                const isMultiSel = isLibraryMultiSelected(strategyItem);
-                                const isSel = dashLibraryMultipleSources ? isMultiSel : selectedLibraryKey===strategyKey;
+                                const isSel = selectedLibraryKey===strategyKey;
                                 const strategyChildSelectedSet = new Set(isSel ? validLibraryStrategyChildKeys(strategy.id) : []);
                                 const selectWholeStrategy = () => selectLibraryItem(strategyItem);
                                 const openWholeStrategy = () => openLibraryStrategyOnDashboard({...strategy,sessions:linkedSessions});
                                 return (
                                   <div key={strategy.id} style={{flexShrink:0,background:c.sf,overflow:"hidden",position:"relative"}}>
                                     <div className={`tlr-library-strategy-row${isSel ? " tlr-library-strategy-row-active" : ""}`} role="button" tabIndex={0} aria-pressed={isSel} aria-label={`${dashTxt("Select strategy","حدد الاستراتيجية")}: ${strategy.label}`} data-tlr-library-key={librarySelectionKey("strategy", strategy.id)} data-tlr-library-label={strategy.label} data-tlr-library-type={dashTxt("Strategy","استراتيجية")} data-tlr-library-color={c.acL} data-tlr-library-base-bg="rgba(8,10,20,0.96)" data-tlr-library-base-border="rgba(255,255,255,0.055)" data-tlr-library-base-shadow="inset 0 1px 0 rgba(255,255,255,0.018)" onPointerDown={librarySelectPointerActivate(selectWholeStrategy)} onKeyDown={libraryKeyActivate(selectWholeStrategy)} style={{minHeight:78,display:"grid",gridTemplateColumns:"24px minmax(0,1fr) 132px",gap:10,alignItems:"center",padding:"0 14px 0 12px",cursor:"default",position:"relative",background:isSel?c.acD:"rgba(8,10,20,0.96)",border:`1px solid ${isSel?`${c.acL}66`:"rgba(255,255,255,0.055)"}`,boxShadow:isSel?`0 0 0 1px ${c.acG}`:"inset 0 1px 0 rgba(255,255,255,0.018)",boxSizing:"border-box","--tlr-lib-color":c.acL,"--tlr-lib-color-border":`${c.acL}66`,"--tlr-lib-color-soft":c.acG,"--tlr-lib-base-bg":"rgba(8,10,20,0.96)","--tlr-lib-hover-bg":"rgba(255,255,255,0.045)","--tlr-lib-hover-border":"rgba(255,255,255,0.12)"}}>
-                                      {libraryMultiCheck(isMultiSel, c.acL, strategyItem)}
                                       <div className="tlr-library-strategy-toggle tlr-library-strategy-chevron" role="button" tabIndex={0} aria-expanded={open} aria-label={open ? dashTxt("Collapse strategy","طي الاستراتيجية") : dashTxt("Expand strategy","توسيع الاستراتيجية")} onPointerDown={e=>{e.stopPropagation();if (typeof e.button === "number" && e.button !== 0) return;toggleLibraryStrategyBox(strategy.id);}} onKeyDown={libraryKeyActivate(e=>{e.stopPropagation();toggleLibraryStrategyBox(strategy.id);})} style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",color:open?c.acL:isSel?c.tx:c.tm,"--tlr-lib-color":c.acL}}>
                                         <svg width={11} height={11} viewBox="0 0 12 12" style={{display:"block",transform:chevronRotation,transition:"transform 0.12s ease"}}><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"/></svg>
                                       </div>
@@ -26361,17 +26097,15 @@ const TalariaV8b = () => {
                           </>
                         ) : (
                           <>
-                            {libraryPaneTitle(activeLibraryJournal.id === "all" ? dashTxt("Live Journals","اليوميات الحية") : activeLibraryJournal.label, activeLibraryJournal.color, {node:libraryMultipleSourcesControl()})}
+                            {libraryPaneTitle(activeLibraryJournal.id === "all" ? dashTxt("Live Journals","اليوميات الحية") : activeLibraryJournal.label, activeLibraryJournal.color)}
                             <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",display:"grid",alignContent:"start",gap:0}}>
                               {activeLibraryJournal.id !== "all" ? (
                                 sourceJournalAccounts.length ? sourceJournalAccounts.map(account=>{
                                   const accountItem = makeLibraryJournalAccountSelection(account);
-                                  const isMultiSel = isLibraryMultiSelected(accountItem);
-                                  const isSel = dashLibraryMultipleSources ? isMultiSel : selectedLibraryKey===librarySelectionKey("journalAccount", account.id);
+                                  const isSel = selectedLibraryKey===librarySelectionKey("journalAccount", account.id);
                                   const tone = account.pnl>=0 ? c.gn : c.rd;
                                   return (
                                     <div key={account.id} className={`tlr-library-content-row${isSel ? " tlr-library-content-row-active" : ""}`} role="button" tabIndex={0} aria-pressed={isSel} aria-label={`${dashTxt("Select account","حدد الحساب")}: ${account.name}`} data-tlr-library-key={librarySelectionKey("journalAccount", account.id)} data-tlr-library-label={account.name} data-tlr-library-type={dashTxt("Journal","يومية")} data-tlr-library-color={activeLibraryJournal.color} onPointerDown={librarySelectPointerActivate(()=>selectLibraryItem(accountItem))} onKeyDown={libraryKeyActivate(()=>selectLibraryItem(accountItem))} style={libraryRowStyle(isSel, activeLibraryJournal.color, 68, "1fr 114px")}>
-                                      {libraryMultiCheck(isMultiSel, activeLibraryJournal.color, accountItem)}
                                       <div style={{minWidth:0}}>
                                         <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
                                           <div className="tlr-library-content-title" style={{fontSize:12,fontWeight:900,color:isSel?activeLibraryJournal.color:c.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{account.name}</div>
@@ -26391,12 +26125,10 @@ const TalariaV8b = () => {
                                   </div>
                                   {group.accounts.map(account=>{
                                     const accountItem = makeLibraryJournalAccountSelection(account);
-                                    const isMultiSel = isLibraryMultiSelected(accountItem);
-                                    const isSel = dashLibraryMultipleSources ? isMultiSel : selectedLibraryKey===librarySelectionKey("journalAccount", account.id);
+                                    const isSel = selectedLibraryKey===librarySelectionKey("journalAccount", account.id);
                                     const tone = account.pnl>=0 ? c.gn : c.rd;
                                     return (
                                       <div key={account.id} className={`tlr-library-content-row${isSel ? " tlr-library-content-row-active" : ""}`} role="button" tabIndex={0} aria-pressed={isSel} aria-label={`${dashTxt("Select account","حدد الحساب")}: ${account.name}`} data-tlr-library-key={librarySelectionKey("journalAccount", account.id)} data-tlr-library-label={account.name} data-tlr-library-type={group.label} data-tlr-library-color={group.color} onPointerDown={librarySelectPointerActivate(()=>selectLibraryItem(accountItem))} onKeyDown={libraryKeyActivate(()=>selectLibraryItem(accountItem))} style={libraryRowStyle(isSel, group.color, 68, "1fr 114px")}>
-                                        {libraryMultiCheck(isMultiSel, group.color, accountItem)}
                                         <div style={{minWidth:0}}>
                                           <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
                                             <div className="tlr-library-content-title" style={{fontSize:12,fontWeight:900,color:isSel?group.color:c.tx,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{account.name}</div>
