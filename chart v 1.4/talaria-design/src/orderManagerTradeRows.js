@@ -1292,3 +1292,98 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
   return rows;
 }
 
+function csvEscapeCell(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  if (text.includes('"') || text.includes(",") || text.includes("\n")) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+/** Filter bottom-panel trade rows to match the active tab (all / pending / open / history). */
+export function filterTradePanelRowsByTab(rows, btmTab) {
+  if (btmTab === "all") return rows;
+  if (btmTab === "analytics") return [];
+  return rows.filter((r) =>
+    btmTab === "pending"
+      ? r.status === "pending"
+      : btmTab === "open"
+        ? r.status === "open"
+        : btmTab === "history"
+          ? r.status === "closed"
+          : false
+  );
+}
+
+/** Download visible trade-table rows as UTF-8 CSV (matches bottom-panel columns). */
+export function exportTradePanelRowsToCsv(rows, btmTab = "all") {
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  const headers = [
+    "ID",
+    "Time",
+    "Symbol",
+    "Side",
+    "Status",
+    "Size",
+    "Type",
+    "Entry",
+    "Exit",
+    "P&L",
+    "Duration",
+    "Take Profit",
+    "Stop Loss",
+    "Pre Tags",
+    "Post Tags",
+    "MAE",
+    "MFE",
+  ];
+  const lines = [headers.map(csvEscapeCell).join(",")];
+  rows.forEach((r) => {
+    lines.push(
+      [
+        r.id,
+        r.time,
+        r.sym,
+        r.side,
+        r.status,
+        r.sz,
+        r.type,
+        r.entry,
+        r.exit,
+        r.pnl,
+        r.dur,
+        r.tp ?? "",
+        r.sl ?? "",
+        (r.preTags || []).join("; "),
+        (r.postTags || []).join("; "),
+        r.mae ?? "",
+        r.mfe ?? "",
+      ]
+        .map(csvEscapeCell)
+        .join(",")
+    );
+  });
+  const stamp = new Date().toISOString().slice(0, 10);
+  const tabSlug =
+    btmTab === "all"
+      ? "all-trades"
+      : btmTab === "pending"
+        ? "pending"
+        : btmTab === "open"
+          ? "open-positions"
+          : btmTab === "history"
+            ? "history"
+            : "trades";
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `talaria-${tabSlug}-${stamp}.csv`;
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  return true;
+}
+
