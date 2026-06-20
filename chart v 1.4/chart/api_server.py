@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response, HTMLResponse
 from sqlalchemy import (
     create_engine,
     Column,
@@ -249,6 +249,59 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _client_wants_html_error_page(request: Request) -> bool:
+    """Browser page navigations get the ghost oops UI; API clients keep JSON."""
+    path = (request.url.path or "").lower()
+    if path.startswith("/api/") or path.startswith("/journal/api/"):
+        return False
+    accept = (request.headers.get("accept") or "").lower()
+    if accept.startswith("application/json") and "text/html" not in accept:
+        return False
+    if "text/html" in accept:
+        return True
+    if path.endswith(".html"):
+        return True
+    if path.startswith("/dashboard") or path.startswith("/chart/") or path.startswith("/login"):
+        return True
+    if path in ("/", "/forbidden", "/forbidden/"):
+        return True
+    return False
+
+
+def _oops_static_candidates(status_code: int) -> list[Path]:
+    out = Path("homepage/out")
+    fallback = Path(__file__).resolve().parent / "static" / "oops.html"
+    if status_code == 403:
+        return [out / "forbidden" / "index.html", fallback]
+    return [out / "404.html", out / "not-found.html", fallback]
+
+
+def _serve_oops_page(status_code: int):
+    for candidate in _oops_static_candidates(status_code):
+        if not candidate.is_file():
+            continue
+        if candidate.name == "oops.html":
+            q = "403" if status_code == 403 else "404"
+            return RedirectResponse(url=f"/chart/static/oops.html?status={q}", status_code=302)
+        return FileResponse(str(candidate), status_code=status_code)
+    title = "Access denied" if status_code == 403 else "Page not found"
+    message = (
+        "You don't have permission to open this page."
+        if status_code == 403
+        else "This page must be a ghost — it's not here."
+    )
+    right = "3" if status_code == 403 else "4"
+    html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Talaria — {title}</title><style>body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#07080e;color:#e8ecff;font-family:system-ui,sans-serif;padding:24px}}.w{{text-align:center;max-width:520px}}h1{{font-size:2rem;margin:0 0 12px}}p{{color:#b4bedc;line-height:1.55}}a{{display:inline-block;margin-top:20px;padding:12px 28px;border-radius:999px;background:linear-gradient(135deg,#1e38e8,#4a6aff);color:#fff;text-decoration:none;font-weight:700}}</style></head><body><div class="w"><div style="font-size:88px;font-weight:800;opacity:.75;margin-bottom:16px">4<span style="opacity:.35">·</span>{right}</div><h1>{title}</h1><p>{message}</p><a href="/">Back home</a></div></body></html>"""
+    return HTMLResponse(content=html, status_code=status_code)
+
+
+@app.exception_handler(HTTPException)
+async def _html_friendly_http_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code in (401, 403, 404) and _client_wants_html_error_page(request):
+        return _serve_oops_page(exc.status_code)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -20888,6 +20941,12 @@ async def push_candle_update(file_id: int, request: Request):
     
     return {"pushed": True, "timeframe": timeframe}
 
+@app.get("/forbidden")
+@app.get("/forbidden/")
+async def forbidden_oops_page():
+    return _serve_oops_page(403)
+
+
 # Serve homepage (Next.js static export)
 @app.get("/")
 async def root():
@@ -21105,6 +21164,10 @@ _INDICATORS_DIR_PATH = _CHART_ROOT_PATH / "indicators"
 _INDICATORS_DIR_PATH.mkdir(exist_ok=True)
 app.mount("/chart/indicators", StaticFiles(directory=str(_INDICATORS_DIR_PATH)), name="chart_indicators")
 app.mount("/chart/image", StaticFiles(directory=str(_CHART_ROOT_PATH / "image")), name="chart_image")
+
+_STATIC_OOPS_DIR = _CHART_ROOT_PATH / "static"
+if _STATIC_OOPS_DIR.is_dir():
+    app.mount("/chart/static", StaticFiles(directory=str(_STATIC_OOPS_DIR)), name="chart_static_oops")
 
 # Multichart sandbox (multi_chart_rebuild_roadmap.md verification rig).
 # Static files only — sandbox HTML/JS/CSS that load `chart.js` in iframes

@@ -113,7 +113,32 @@ const ghostVariants = {
   },
 };
 
-export function GhostNotFound() {
+export type GhostErrorVariant = "404" | "403";
+
+const ERROR_COPY: Record<
+  GhostErrorVariant,
+  { left: string; right: string; title: string; message: string; wikiHref: string; wikiLabel: string }
+> = {
+  "404": {
+    left: "4",
+    right: "4",
+    title: "Boo! Page missing!",
+    message: "This page must be a ghost — it's not here.",
+    wikiHref: "https://en.wikipedia.org/wiki/HTTP_404",
+    wikiLabel: "What does 404 mean?",
+  },
+  "403": {
+    left: "4",
+    right: "3",
+    title: "Boo! Access denied!",
+    message: "You don't have permission to open this page.",
+    wikiHref: "https://en.wikipedia.org/wiki/HTTP_403",
+    wikiLabel: "What does 403 mean?",
+  },
+};
+
+export function GhostErrorPage({ variant = "404" }: { variant?: GhostErrorVariant }) {
+  const copy = ERROR_COPY[variant];
   return (
     <div
       dir="ltr"
@@ -133,30 +158,7 @@ export function GhostNotFound() {
               variants={numberVariants}
               custom={-1}
             >
-              4
-            </motion.span>
-            <motion.div
-              variants={ghostVariants}
-              whileHover="hover"
-              animate={["visible", "floating"]}
-              className="relative flex items-center justify-center"
-            >
-              <Image
-                src="/logo-04.png"
-                alt="Talaria"
-                width={120}
-                height={120}
-                className="w-[80px] h-[80px] md:w-[120px] md:h-[120px] object-contain select-none drop-shadow-md"
-                draggable={false}
-                priority
-              />
-            </motion.div>
-            <motion.span
-              className={`${signika.className} text-[80px] md:text-[120px] font-bold text-foreground/80 select-none`}
-              variants={numberVariants}
-              custom={1}
-            >
-              4
+              {copy.left}
             </motion.span>
           </div>
 
@@ -164,14 +166,14 @@ export function GhostNotFound() {
             className={`${dmSans.className} text-3xl md:text-5xl font-bold text-foreground mb-4 md:mb-6 select-none`}
             variants={itemVariants}
           >
-            Boo! Page missing!
+            {copy.title}
           </motion.h1>
 
           <motion.p
             className={`${dmSans.className} text-lg md:text-xl text-muted-foreground mb-8 md:mb-12 select-none`}
             variants={itemVariants}
           >
-            This page must be a ghost — it&apos;s not here.
+            {copy.message}
           </motion.p>
 
           <motion.div
@@ -194,16 +196,20 @@ export function GhostNotFound() {
 
           <motion.div className="mt-12" variants={itemVariants}>
             <a
-              href="https://en.wikipedia.org/wiki/HTTP_404"
+              href={copy.wikiHref}
               target="_blank"
               rel="noopener noreferrer"
               className={`${dmSans.className} text-muted-foreground underline transition-opacity hover:opacity-80 select-none`}
             >
-              What does 404 mean?
+              {copy.wikiLabel}
             </a>
           </motion.div>
         </motion.div>
       </AnimatePresence>
     </div>
   );
+}
+
+export function GhostNotFound() {
+  return <GhostErrorPage variant="404" />;
 }
