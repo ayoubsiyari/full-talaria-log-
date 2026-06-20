@@ -194,3 +194,12 @@ export async function fetchPublicPlans(): Promise<PublicPlan[]> {
 export function sessionLimitSupportHref(): string {
   return "/dashboard/?view=profile&tab=support&topic=session-limit";
 }
+
+export const SESSION_LIMIT_SUPPORT_EMAIL = "support-center@talaria-log.com";
+
+export function sessionLimitMailtoHref(): string {
+  const subject = "Backtest session limit — upgrade request";
+  const body =
+    "Hi Talaria support,\n\nI reached my backtest session limit and would like help increasing it or upgrading my plan.\n\nThank you.";
+  return `mailto:${SESSION_LIMIT_SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
