@@ -8085,7 +8085,12 @@ const TalariaV8b = () => {
   const [dashTradesSort, setDashTradesSort] = useState({key:null, dir:null});
   const [dashTradesExpandedRows, setDashTradesExpandedRows] = useState(() => new Set());
   const [dashTradesImportBusy, setDashTradesImportBusy] = useState(false);
+  const [dashTradesImportProgress, setDashTradesImportProgress] = useState(null);
+  const dashTradesImportDismissRef = useRef(null);
   const dashTradesCsvImportRef = useRef(null);
+  useEffect(() => () => {
+    if (dashTradesImportDismissRef.current) clearTimeout(dashTradesImportDismissRef.current);
+  }, []);
   const [dashTradesSourceFilter, setDashTradesSourceFilter] = useState("all");
   const [dashTradesDrawer, setDashTradesDrawer] = useState(null);
   const [dashTradesEditedOverrides, setDashTradesEditedOverrides] = useState({});
@@ -18953,32 +18958,248 @@ const TalariaV8b = () => {
             a.remove();
             URL.revokeObjectURL(url);
           };
+          const clearDashTradesImportProgress = (delayMs = 0) => {
+            if (dashTradesImportDismissRef.current) {
+              clearTimeout(dashTradesImportDismissRef.current);
+              dashTradesImportDismissRef.current = null;
+            }
+            if (delayMs > 0) {
+              dashTradesImportDismissRef.current = setTimeout(() => {
+                setDashTradesImportProgress(null);
+                dashTradesImportDismissRef.current = null;
+              }, delayMs);
+              return;
+            }
+            setDashTradesImportProgress(null);
+          };
+          const estimateCsvTradeRows = (text) => {
+            if (!text) return 0;
+            const lines = String(text).split(/\r?\n/).filter((line) => line.trim());
+            if (!lines.length) return 0;
+            const header = lines[0].toLowerCase();
+            const hasHeader = /tradeid|symbol|direction|entrytime|journal_trade_id|sourceSessionName/.test(header);
+            return Math.max(0, lines.length - (hasHeader ? 1 : 0));
+          };
+          const formatImportFileSize = (bytes) => {
+            const n = Number(bytes);
+            if (!Number.isFinite(n) || n <= 0) return "";
+            if (n < 1024) return `${n} B`;
+            if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+            return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+          };
+          const parseImportCsvError = (body, text, status) => {
+            const d = body?.detail;
+            if (typeof d === "string" && d.trim()) return d;
+            if (d && typeof d === "object") {
+              if (Array.isArray(d.errors) && d.errors.length) return d.errors.slice(0, 12).join("; ");
+              if (typeof d.message === "string" && d.message.trim()) return d.message;
+            }
+            if (typeof body?.message === "string" && body.message.trim()) return body.message;
+            if (text && text.trim()) return text.slice(0, 280);
+            return `HTTP ${status || "error"}`;
+          };
+          const postSessionCsvImport = (url, file, onUploadProgress) => new Promise((resolve, reject) => {
+            const fd = new FormData();
+            fd.append("file", file);
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", url);
+            xhr.withCredentials = true;
+            xhr.upload.addEventListener("progress", (event) => {
+              if (!event.lengthComputable || typeof onUploadProgress !== "function") return;
+              onUploadProgress(event.loaded, event.total);
+            });
+            xhr.addEventListener("load", () => {
+              resolve({ status: xhr.status, text: xhr.responseText || "" });
+            });
+            xhr.addEventListener("error", () => reject(new Error(dashTxt("Network error while uploading CSV", "خطأ شبكة أثناء رفع CSV"))));
+            xhr.addEventListener("abort", () => reject(new Error(dashTxt("CSV upload cancelled", "تم إلغاء رفع CSV"))));
+            xhr.send(fd);
+          });
           const importDashboardTradesCsv = async (file) => {
             if (!file || dashTradesImportBusy || !ds?.id) return;
+            clearDashTradesImportProgress();
             setDashTradesImportBusy(true);
+            const baseProgress = {
+              fileName: file.name || "trades.csv",
+              fileSize: file.size || 0,
+              estimatedRows: null,
+              imported: null,
+              journalLen: null,
+              mode: "append",
+              details: [],
+            };
+            setDashTradesImportProgress({
+              ...baseProgress,
+              phase: "reading",
+              percent: 8,
+              message: dashTxt("Reading CSV file…", "جارٍ قراءة ملف CSV…"),
+            });
             try {
+              let estimatedRows = null;
+              try {
+                if (file.size <= 3 * 1024 * 1024) {
+                  estimatedRows = estimateCsvTradeRows(await file.text());
+                } else {
+                  const preview = await file.slice(0, Math.min(file.size, 512000)).text();
+                  estimatedRows = estimateCsvTradeRows(preview);
+                }
+              } catch {
+                estimatedRows = null;
+              }
+              setDashTradesImportProgress((prev) => ({
+                ...(prev || baseProgress),
+                phase: "uploading",
+                percent: 14,
+                estimatedRows,
+                message: estimatedRows != null
+                  ? dashTxt(`Uploading ~${estimatedRows.toLocaleString()} trades…`, `جارٍ رفع ~${estimatedRows.toLocaleString()} صفقة…`)
+                  : dashTxt("Uploading CSV…", "جارٍ رفع CSV…"),
+              }));
               const q = new URLSearchParams();
               q.set("mode", "append");
               const url = `/api/sessions/${encodeURIComponent(String(ds.id))}/journal/import-csv?${q.toString()}`;
-              const fd = new FormData();
-              fd.append("file", file);
-              const res = await fetch(url, { method: "POST", credentials: "include", body: fd });
-              const text = await res.text();
+              const { status, text } = await postSessionCsvImport(url, file, (loaded, total) => {
+                const ratio = total > 0 ? loaded / total : 0;
+                const pct = Math.min(72, Math.round(ratio * 58) + 14);
+                setDashTradesImportProgress((prev) => prev ? ({
+                  ...prev,
+                  phase: ratio >= 1 ? "processing" : "uploading",
+                  percent: pct,
+                  message: ratio >= 1
+                    ? dashTxt("Parsing and saving trades…", "جارٍ تحليل وحفظ الصفقات…")
+                    : dashTxt(`Uploading… ${Math.round(ratio * 100)}%`, `جارٍ الرفع… ${Math.round(ratio * 100)}%`),
+                }) : prev);
+              });
+              setDashTradesImportProgress((prev) => prev ? ({
+                ...prev,
+                phase: "processing",
+                percent: Math.max(prev.percent || 0, 78),
+                message: dashTxt("Parsing and saving trades…", "جارٍ تحليل وحفظ الصفقات…"),
+              }) : prev);
               let body = null;
               try { body = text ? JSON.parse(text) : null; } catch { body = null; }
-              if (!res.ok) {
-                const d = body?.detail;
-                const msg = typeof d === "string" ? d
-                  : d && typeof d === "object" && Array.isArray(d.errors) ? d.errors.join("; ")
-                  : text.slice(0, 240);
-                throw new Error(msg || `HTTP ${res.status}`);
+              if (status < 200 || status >= 300) {
+                throw new Error(parseImportCsvError(body, text, status));
               }
+              const warnings = [...(Array.isArray(body?.warnings) ? body.warnings : []), body?.warning].filter(Boolean);
+              setDashTradesImportProgress((prev) => prev ? ({
+                ...prev,
+                phase: "refreshing",
+                percent: 90,
+                imported: Number(body?.imported) || 0,
+                journalLen: Number(body?.journal_len) || null,
+                mode: body?.mode || "append",
+                details: warnings,
+                message: dashTxt("Refreshing dashboard…", "جارٍ تحديث لوحة التحكم…"),
+              }) : prev);
               reloadEmbeddedV16Boot();
+              const imported = Number(body?.imported) || 0;
+              const journalLen = Number(body?.journal_len);
+              const successDetails = [
+                ...warnings,
+                Number.isFinite(journalLen)
+                  ? dashTxt(`Session total: ${journalLen.toLocaleString()} trades`, `إجمالي الجلسة: ${journalLen.toLocaleString()} صفقة`)
+                  : null,
+              ].filter(Boolean);
+              setDashTradesImportProgress({
+                ...baseProgress,
+                phase: "success",
+                percent: 100,
+                imported,
+                journalLen: Number.isFinite(journalLen) ? journalLen : null,
+                mode: body?.mode || "append",
+                estimatedRows,
+                details: successDetails,
+                message: dashTxt(
+                  `Import complete — ${imported.toLocaleString()} trade${imported === 1 ? "" : "s"} added`,
+                  `اكتمل الاستيراد — تمت إضافة ${imported.toLocaleString()} صفقة`
+                ),
+              });
+              clearDashTradesImportProgress(14000);
             } catch (err) {
-              window.alert(err?.message || dashTxt("Import failed","فشل الاستيراد"));
+              const msg = err?.message || dashTxt("Import failed", "فشل الاستيراد");
+              setDashTradesImportProgress((prev) => ({
+                ...(prev || baseProgress),
+                phase: "error",
+                percent: 100,
+                message: msg,
+                details: String(msg).includes(";") ? String(msg).split(";").map((part) => part.trim()).filter(Boolean).slice(0, 8) : [],
+              }));
             } finally {
               setDashTradesImportBusy(false);
             }
+          };
+          const renderDashTradesImportBanner = () => {
+            if (!dashTradesImportProgress) return null;
+            const p = dashTradesImportProgress;
+            const isError = p.phase === "error";
+            const isSuccess = p.phase === "success";
+            const isActive = !isError && !isSuccess;
+            const accent = isError ? c.rd : isSuccess ? c.gn : c.acL;
+            const steps = [
+              { id: "reading", label: dashTxt("Read file", "قراءة الملف") },
+              { id: "uploading", label: dashTxt("Upload", "رفع") },
+              { id: "processing", label: dashTxt("Parse & save", "تحليل وحفظ") },
+              { id: "refreshing", label: dashTxt("Refresh", "تحديث") },
+            ];
+            const stepOrder = ["reading", "uploading", "processing", "refreshing", "success"];
+            const activeIdx = Math.max(0, stepOrder.indexOf(p.phase));
+            return (
+              <div style={{flexShrink:0,padding:"0 0 12px",background:c.bg,boxSizing:"border-box"}}>
+                <div style={{width:"100%",maxWidth:1534,margin:"0 auto",padding:"12px 14px",border:`1px solid ${isError ? "rgba(255,80,104,0.35)" : isSuccess ? "rgba(0,212,161,0.28)" : "rgba(74,106,255,0.28)"}`,background:isError ? "rgba(255,80,104,0.08)" : isSuccess ? "rgba(0,212,161,0.07)" : "rgba(74,106,255,0.08)",boxShadow:`inset 0 1px 0 rgba(255,255,255,0.03)`}}>
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10}}>
+                    <div style={{minWidth:0,flex:"1 1 auto"}}>
+                      <div style={{fontSize:8.5,fontWeight:950,color:accent,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F}}>
+                        {isError ? dashTxt("Import failed", "فشل الاستيراد") : isSuccess ? dashTxt("Import successful", "نجح الاستيراد") : dashTxt("Import in progress", "الاستيراد قيد التنفيذ")}
+                      </div>
+                      <div style={{marginTop:5,fontSize:12.5,fontWeight:850,color:c.tx,fontFamily:F,lineHeight:1.35}}>{p.message}</div>
+                      <div style={{marginTop:4,fontSize:9.5,fontWeight:700,color:c.tm,fontFamily:F,lineHeight:1.4}}>
+                        {p.fileName}{p.fileSize ? ` · ${formatImportFileSize(p.fileSize)}` : ""}
+                        {p.estimatedRows != null ? ` · ~${Number(p.estimatedRows).toLocaleString()} ${dashTxt("rows detected", "صف محددة")}` : ""}
+                        {p.imported != null && isSuccess ? ` · +${Number(p.imported).toLocaleString()} ${dashTxt("imported", "مستوردة")}` : ""}
+                      </div>
+                    </div>
+                    {(isError || isSuccess) && (
+                      <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                        onPointerDown={libraryPointerActivate(() => clearDashTradesImportProgress())}
+                        onKeyDown={libraryKeyActivate(() => clearDashTradesImportProgress())}
+                        aria-label={dashTxt("Dismiss import status", "إغلاق حالة الاستيراد")}
+                        style={{height:24,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,19,34,0.92)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:8.5,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,flexShrink:0,cursor:"default"}}>
+                        {dashTxt("Dismiss", "إغلاق")}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{height:4,borderRadius:999,background:"rgba(255,255,255,0.06)",overflow:"hidden",marginBottom:isActive ? 10 : 8}}>
+                    <div style={{height:"100%",width:`${Math.max(0, Math.min(100, Number(p.percent) || 0))}%`,background:isError ? c.rd : isSuccess ? c.gn : `linear-gradient(90deg, ${c.acL}, #7ea0ff)`,transition:"width 220ms ease",boxShadow:`0 0 10px ${accent}55`}}/>
+                  </div>
+                  {isActive && (
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8,marginBottom:p.details?.length ? 8 : 0}}>
+                      {steps.map((step, idx) => {
+                        const done = activeIdx > idx || p.phase === "success";
+                        const active = step.id === p.phase;
+                        const color = done ? c.gn : active ? c.acL : c.tm;
+                        return (
+                          <div key={step.id} style={{minWidth:0,padding:"6px 8px",border:`1px solid ${active ? "rgba(74,106,255,0.35)" : done ? "rgba(0,212,161,0.22)" : c.brH}`,background:active ? "rgba(74,106,255,0.12)" : "rgba(15,19,34,0.55)"}}>
+                            <div style={{fontSize:8,fontWeight:950,color,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                              {done ? "✓ " : active ? "… " : ""}{step.label}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {Array.isArray(p.details) && p.details.length > 0 && (
+                    <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:2}}>
+                      {p.details.map((line, idx) => (
+                        <div key={`${line}-${idx}`} style={{fontSize:9.5,fontWeight:700,color:isError ? "#ffb4c0" : c.ts,fontFamily:F,lineHeight:1.35}}>
+                          {isError ? "• " : "⚠ "}{line}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
           };
           const renderDashboardTradesLedgerV2 = () => {
             const rawRows = Array.isArray(metrics?.trades) ? metrics.trades : [];
@@ -19827,6 +20048,7 @@ const TalariaV8b = () => {
                     </div>
                   </div>
                 </div>
+                {renderDashTradesImportBanner()}
                 <div style={{display:"none",flexShrink:0,padding:"12px 0 10px",borderBottom:`1px solid ${c.br}`,background:c.bg}}>
                   <div style={{width:tradesContentWidth,maxWidth:tradesContentMaxWidth,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
