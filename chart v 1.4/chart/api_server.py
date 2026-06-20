@@ -11997,6 +11997,8 @@ def _admin_support_query_threads(
         )
     elif sort_key == "oldest":
         order = (SupportThread.created_at.asc(), SupportThread.id.asc())
+    elif sort_key == "newest":
+        order = (SupportThread.created_at.desc(), SupportThread.id.desc())
     else:
         order = (nulls_last(SupportThread.last_message_at.desc()), SupportThread.id.desc())
     rows = query.order_by(*order).offset(offset).limit(limit).all()

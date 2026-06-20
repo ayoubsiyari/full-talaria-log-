@@ -1637,12 +1637,12 @@ select { cursor:default; }
   overflow: hidden;
 }
 .support-inbox-filters {
-  padding: 8px 10px 6px;
+  padding: 10px 12px 8px;
   border-bottom: 1px solid var(--border-subtle);
   background: rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 12px;
   flex-shrink: 0;
 }
 @media (min-width: 1101px) {
@@ -1722,6 +1722,40 @@ select { cursor:default; }
   flex: 0 0 auto;
   min-width: 130px;
   display: none;
+}
+.support-filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.support-filter-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.support-filter-row.primary select,
+.support-filter-row.primary input {
+  width: 100%;
+}
+.support-requester-banner {
+  display: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-subtle);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+}
+.support-bulk-panel {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+.support-bulk-panel .support-filter-actions {
+  margin-top: 6px;
 }
 .support-inbox-count {
   margin-left: auto;
@@ -4229,88 +4263,103 @@ select { cursor:default; }
             </div>
             <div class="card-body support-inbox-body">
               <div class="support-inbox-filters">
-                <div class="support-filter-row">
-                  <input type="search" class="support-filter-search" id="supportFilterQ" placeholder="Search subject or email…" onkeydown="if(event.key==='Enter')loadSupportThreads()" />
+                <div class="support-filter-section">
+                  <div class="support-filter-section-label">Find user tickets</div>
+                  <div class="support-filter-row primary">
+                    <select id="supportFilterRequester" onchange="supportOnRequesterChange()" title="Filter by requester — required to see one user&apos;s full ticket list">
+                      <option value="">All requesters (global queue)</option>
+                    </select>
+                  </div>
+                  <div id="supportRequesterBanner" class="support-requester-banner"></div>
                 </div>
-                <div class="support-filter-row grid-row">
-                  <select id="supportFilterStatus" onchange="loadSupportThreads()">
-                    <option value="">All status</option>
-                    <option value="open">Open</option>
-                    <option value="pending">Pending</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="closed">Closed</option>
-                  </select>
-                  <select id="supportFilterPriority" onchange="loadSupportThreads()">
-                    <option value="">All priority</option>
-                    <option value="urgent">Urgent</option>
-                    <option value="high">High</option>
-                    <option value="normal">Normal</option>
-                    <option value="low">Low</option>
-                  </select>
-                  <select id="supportFilterCategory" onchange="loadSupportThreads()">
-                    <option value="">All categories</option>
-                    <option value="billing">Billing</option>
-                    <option value="account">Account</option>
-                    <option value="access">Access</option>
-                    <option value="bug">Bug</option>
-                    <option value="error">Error</option>
-                    <option value="feature">Feature request</option>
-                    <option value="modifications">Modifications</option>
-                    <option value="suggestions">Suggestions / Features</option>
-                    <option value="other">Other</option>
-                  </select>
-                  <select id="supportFilterAssignee" onchange="loadSupportThreads()">
-                    <option value="">All assignees</option>
-                    <option value="0">Unassigned</option>
-                  </select>
+                <div class="support-filter-section">
+                  <div class="support-filter-section-label">Search &amp; sort</div>
+                  <div class="support-filter-row">
+                    <input type="search" class="support-filter-search" id="supportFilterQ" placeholder="Search subject, email, or message…" onkeydown="if(event.key==='Enter')loadSupportThreads()" />
+                    <select id="supportFilterSort" onchange="loadSupportThreads()" title="Sort order" style="flex:0 0 auto;min-width:140px">
+                      <option value="activity">Newest activity</option>
+                      <option value="newest">Newest created</option>
+                      <option value="oldest">Oldest first</option>
+                      <option value="sla">SLA due</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="support-filter-row">
-                  <select id="supportFilterRequester" onchange="loadSupportThreads()">
-                    <option value="">All requesters</option>
-                  </select>
+                <div class="support-filter-section">
+                  <div class="support-filter-section-label">Filters</div>
+                  <div class="support-filter-row grid-row">
+                    <select id="supportFilterStatus" onchange="loadSupportThreads()">
+                      <option value="">All status</option>
+                      <option value="open">Open</option>
+                      <option value="pending">Pending</option>
+                      <option value="user_replied">User replied</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                    <select id="supportFilterPriority" onchange="loadSupportThreads()">
+                      <option value="">All priority</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="normal">Normal</option>
+                      <option value="low">Low</option>
+                    </select>
+                    <select id="supportFilterCategory" onchange="loadSupportThreads()">
+                      <option value="">All categories</option>
+                      <option value="billing">Billing</option>
+                      <option value="account">Account</option>
+                      <option value="access">Access</option>
+                      <option value="bug">Bug</option>
+                      <option value="error">Error</option>
+                      <option value="feature">Feature request</option>
+                      <option value="modifications">Modifications</option>
+                      <option value="suggestions">Suggestions / Features</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <select id="supportFilterAssignee" onchange="loadSupportThreads()">
+                      <option value="">All assignees</option>
+                      <option value="0">Unassigned</option>
+                    </select>
+                  </div>
+                  <div class="support-filter-toggles">
+                    <label class="support-filter-chip">
+                      <input type="checkbox" id="supportFilterSla" onchange="loadSupportThreads()" /> SLA overdue
+                    </label>
+                    <label class="support-filter-chip">
+                      <input type="checkbox" id="supportFilterMine" onchange="loadSupportThreads()" /> My tickets
+                    </label>
+                    <label class="support-filter-chip">
+                      <input type="checkbox" id="supportFilterNeedsReply" onchange="loadSupportThreads()" /> Needs reply
+                    </label>
+                    <label class="support-filter-chip">
+                      <input type="checkbox" id="supportFilterHideArchived" onchange="loadSupportThreads()" /> Hide archived
+                    </label>
+                  </div>
+                  <div class="support-filter-hint" style="font-size:11px;color:var(--text-muted);padding:0 2px">
+                    Pick a <strong>requester</strong> to see that user&apos;s tickets (same as their support page). Global queue shows latest activity across all users.
+                  </div>
                 </div>
-                <div class="support-filter-toggles">
-                  <label class="support-filter-chip">
-                    <input type="checkbox" id="supportFilterSla" onchange="loadSupportThreads()" /> SLA overdue
-                  </label>
-                  <label class="support-filter-chip">
-                    <input type="checkbox" id="supportFilterMine" onchange="loadSupportThreads()" /> My tickets
-                  </label>
-                  <label class="support-filter-chip">
-                    <input type="checkbox" id="supportFilterNeedsReply" onchange="loadSupportThreads()" /> Needs reply
-                  </label>
-                  <label class="support-filter-chip">
-                    <input type="checkbox" id="supportFilterHideArchived" onchange="loadSupportThreads()" /> Hide archived
-                  </label>
-                </div>
-                <div class="support-filter-hint" style="font-size:11px;color:var(--text-muted);padding:0 2px 4px">
-                  Admin shows all tickets by default (including archived). Pick a requester or search by email to find a user&apos;s tickets.
-                </div>
-                <div class="support-filter-actions">
-                  <select id="supportFilterSort" onchange="loadSupportThreads()" title="Sort order">
-                    <option value="activity">Sort: activity</option>
-                    <option value="sla">Sort: SLA due</option>
-                    <option value="oldest">Sort: oldest</option>
-                  </select>
-                  <select id="supportBulkStatus" title="Status scope for bulk actions">
-                    <option value="closed_resolved" selected>Bulk: closed + resolved</option>
-                    <option value="closed">Bulk: closed only</option>
-                    <option value="all">Bulk: all statuses</option>
-                  </select>
-                  <select id="supportBulkAge" onchange="supportToggleBulkDate()" title="Time filter">
-                    <option value="">Any age</option>
-                    <option value="7">Older than 7 days</option>
-                    <option value="30">Older than 30 days</option>
-                    <option value="90">Older than 90 days</option>
-                    <option value="180">Older than 180 days</option>
-                    <option value="custom">Before date…</option>
-                  </select>
-                  <input type="date" class="support-archive-before" id="supportBulkBefore" title="Last active on or before this date" />
-                  <button type="button" class="btn sm" onclick="supportUnarchiveAll()" title="Restore every archived ticket">Unarchive all</button>
-                  <button type="button" class="btn sm" onclick="supportUnarchiveMatching()" title="Restore archived tickets matching filters">Unarchive</button>
-                  <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()" title="Hide matching tickets from inbox and user support">Archive</button>
-                  <button type="button" class="btn sm danger" onclick="supportDeleteTickets()" title="Permanently delete matching tickets">Delete</button>
-                  <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
+                <div class="support-filter-section support-bulk-panel">
+                  <div class="support-filter-section-label">Bulk actions</div>
+                  <div class="support-filter-actions">
+                    <select id="supportBulkStatus" title="Status scope for bulk actions">
+                      <option value="closed_resolved" selected>Closed + resolved</option>
+                      <option value="closed">Closed only</option>
+                      <option value="all">All statuses</option>
+                    </select>
+                    <select id="supportBulkAge" onchange="supportToggleBulkDate()" title="Time filter">
+                      <option value="">Any age</option>
+                      <option value="7">Older than 7 days</option>
+                      <option value="30">Older than 30 days</option>
+                      <option value="90">Older than 90 days</option>
+                      <option value="180">Older than 180 days</option>
+                      <option value="custom">Before date…</option>
+                    </select>
+                    <input type="date" class="support-archive-before" id="supportBulkBefore" title="Last active on or before this date" />
+                    <button type="button" class="btn sm" onclick="supportUnarchiveAll()" title="Restore every archived ticket">Unarchive all</button>
+                    <button type="button" class="btn sm" onclick="supportUnarchiveMatching()">Unarchive</button>
+                    <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()">Archive</button>
+                    <button type="button" class="btn sm danger" onclick="supportDeleteTickets()">Delete</button>
+                    <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
+                  </div>
                 </div>
               </div>
               <div class="support-thread-list" id="supportThreadList">
@@ -5264,11 +5313,15 @@ async function loadSupportAgents() {
 async function loadSupportRequesters() {
   try {
     const data = await api('/api/admin/support/requesters');
-    supportRequesters = data.requesters || [];
+    supportRequesters = (data.requesters || []).slice().sort(function (a, b) {
+      const ae = (a.email || a.name || '').toLowerCase();
+      const be = (b.email || b.name || '').toLowerCase();
+      return ae.localeCompare(be);
+    });
     const sel = $('supportFilterRequester');
     if (!sel) return;
     const prev = sel.value;
-    const opts = '<option value="">All requesters</option>' +
+    const opts = '<option value="">All requesters (global queue)</option>' +
       supportRequesters.map(function (u) {
         const label = (u.name || u.email || ('User #' + u.id)).trim();
         const emailPart = u.email && u.email.toLowerCase() !== String(label).toLowerCase() ? ' · ' + u.email : '';
@@ -5279,7 +5332,42 @@ async function loadSupportRequesters() {
     if (prev && supportRequesters.some(function (u) { return String(u.id) === prev; })) {
       sel.value = prev;
     }
+    supportUpdateRequesterBanner();
   } catch (e) { /* ignore */ }
+}
+
+function supportUpdateRequesterBanner() {
+  const banner = $('supportRequesterBanner');
+  const sel = $('supportFilterRequester');
+  if (!banner || !sel) return;
+  const req = sel.value || '';
+  if (!req) {
+    banner.style.display = 'none';
+    banner.textContent = '';
+    return;
+  }
+  const u = supportRequesters.find(function (x) { return String(x.id) === req; });
+  const label = u ? (u.email || u.name || ('User #' + u.id)) : ('User #' + req);
+  const count = u && u.ticket_count ? u.ticket_count : '?';
+  banner.textContent = 'Showing tickets for ' + label + ' (' + count + ' total) — same list as their support page';
+  banner.style.display = '';
+}
+
+function supportUpdateReplyPanelVisibility() {
+  const card = document.querySelector('.support-user-replies-card');
+  const req = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
+  if (card) card.style.display = req ? 'none' : '';
+}
+
+function supportOnRequesterChange() {
+  supportUpdateRequesterBanner();
+  supportUpdateReplyPanelVisibility();
+  const sel = $('supportFilterSort');
+  const req = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
+  if (req && sel && sel.value === 'activity') {
+    sel.value = 'newest';
+  }
+  loadSupportThreads();
 }
 
 async function loadSupportCannedReplies() {
@@ -5321,18 +5409,18 @@ function supportInsertCanned(sel) {
 
 let supportThreadsTotal = 0;
 let supportThreadsOffset = 0;
-const SUPPORT_INBOX_PAGE = 2000;
+const SUPPORT_INBOX_PAGE = 5000;
 
 function supportBuildThreadQuery(append) {
   const params = new URLSearchParams();
+  const req = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
+  const st = ($('supportFilterStatus') && $('supportFilterStatus').value) || '';
   params.set('limit', String(SUPPORT_INBOX_PAGE));
   params.set('offset', String(append ? supportThreadsOffset : 0));
   const q = ($('supportFilterQ') && $('supportFilterQ').value || '').trim();
-  const st = ($('supportFilterStatus') && $('supportFilterStatus').value) || '';
   const pr = ($('supportFilterPriority') && $('supportFilterPriority').value) || '';
   const cat = ($('supportFilterCategory') && $('supportFilterCategory').value) || '';
   const asg = ($('supportFilterAssignee') && $('supportFilterAssignee').value) || '';
-  const req = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
   const sla = $('supportFilterSla') && $('supportFilterSla').checked;
   const mine = $('supportFilterMine') && $('supportFilterMine').checked;
   const needs = $('supportFilterNeedsReply') && $('supportFilterNeedsReply').checked;
@@ -5344,6 +5432,7 @@ function supportBuildThreadQuery(append) {
   if (cat) params.set('category', cat);
   if (asg !== '' && !mine) params.set('assigned_to', asg);
   if (req !== '') params.set('user_id', req);
+  else if (!st) params.set('exclude_status', 'user_replied');
   if (mine) params.set('assigned_to_me', 'true');
   if (needs) params.set('needs_reply', 'true');
   if (hideArchived) params.set('include_archived', 'false');
@@ -5601,11 +5690,18 @@ async function loadSupportUserReplyThreads() {
   const box = $('supportUserRepliesList');
   const countEl = $('supportUserRepliesCount');
   if (!box) return;
+  const req = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
+  if (req) {
+    if (countEl) countEl.textContent = '0';
+    box.innerHTML = '<div class="support-thread-empty">User replies shown in main inbox when a requester is selected</div>';
+    return;
+  }
   try {
     const params = new URLSearchParams();
-    params.set('limit', '2000');
+    params.set('limit', '5000');
     params.set('status', 'user_replied');
     params.set('sort', 'activity');
+    params.set('include_archived', 'true');
     const data = await api('/api/admin/support/threads?' + params.toString());
     supportUserReplyThreads = data.threads || [];
     if (countEl) countEl.textContent = String(supportUserReplyThreads.length);
@@ -5627,12 +5723,17 @@ async function loadSupportThreads(append) {
   const loadMoreBtn = $('supportInboxLoadMore');
   if (!append) supportThreadsOffset = 0;
   try {
-    const [data] = await Promise.all([
-      api('/api/admin/support/threads?' + supportBuildThreadQuery(append)),
-      append ? Promise.resolve(null) : loadSupportTicketStats(),
-      append ? Promise.resolve(null) : loadSupportUserReplyThreads()
-    ]);
-    const batch = data.threads || [];
+    if (!append) {
+      await Promise.all([
+        loadSupportTicketStats(),
+        loadSupportUserReplyThreads()
+      ]);
+    }
+    async function fetchBatch(isAppend) {
+      return api('/api/admin/support/threads?' + supportBuildThreadQuery(isAppend));
+    }
+    let data = await fetchBatch(append);
+    let batch = data.threads || [];
     supportThreadsTotal = data.total != null ? data.total : batch.length;
     if (append) {
       const seen = new Set(supportThreads.map(function (t) { return t.id; }));
@@ -5641,6 +5742,16 @@ async function loadSupportThreads(append) {
       supportThreads = batch;
     }
     supportThreadsOffset = supportThreads.length;
+    const req = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
+    while (supportThreads.length < supportThreadsTotal && supportThreadsOffset < supportThreadsTotal) {
+      data = await fetchBatch(true);
+      batch = data.threads || [];
+      if (!batch.length) break;
+      const seen = new Set(supportThreads.map(function (t) { return t.id; }));
+      batch.forEach(function (t) { if (!seen.has(t.id)) supportThreads.push(t); });
+      supportThreadsOffset = supportThreads.length;
+      if (!req && supportThreads.length >= SUPPORT_INBOX_PAGE) break;
+    }
     if (countEl) {
       countEl.textContent = supportThreads.length < supportThreadsTotal
         ? (supportThreads.length + ' of ' + supportThreadsTotal)
@@ -5940,6 +6051,7 @@ function bindSupportComposerHandlers() {
 async function loadSupport() {
   ensureLiveSupportSocket();
   bindSupportComposerHandlers();
+  supportUpdateReplyPanelVisibility();
   await Promise.all([
     loadSupportAgents(),
     loadSupportRequesters(),
