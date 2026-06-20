@@ -1792,11 +1792,16 @@ select { cursor:default; }
 .card.support-main > .support-messages-wrap { grid-area: messages; }
 .card.support-main > .support-composer { grid-area: composer; }
 .support-chat-column {
-  display: block;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
+}
+.support-chat-column > .card.support-main {
+  flex: 1;
+  min-height: 0;
 }
 .support-inbox-toolbar select,
 .support-inbox-toolbar .support-filter-search {
@@ -1979,10 +1984,6 @@ select { cursor:default; }
 .card.support-main > .support-composer {
   flex-shrink: 0;
 }
-.card.support-main > .support-messages-wrap {
-  min-height: 0;
-  overflow: hidden;
-}
 .support-user-card { flex-shrink: 0; }
 .support-user-card.is-collapsed .support-collapsible-body { display: none; }
 .support-user-card .support-collapse-icon {
@@ -2098,26 +2099,33 @@ select { cursor:default; }
   color: var(--text);
   min-width: 180px;
 }
+.card.support-main > .support-messages-wrap {
+  grid-area: messages;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .support-messages-wrap {
   min-height: 0;
-  height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
   background: rgba(0,0,0,.15);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .support-messages {
-  flex: 1 1 auto;
+  flex: none;
   min-height: 0;
-  height: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  height: auto;
+  overflow: visible;
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  scroll-behavior: smooth;
 }
 .support-composer {
   display: flex;
@@ -6234,7 +6242,9 @@ function renderSupportMessages() {
     return `<div class="support-msg ${cls}${intCls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}${attHtml}${readLine}</div>`;
   }).join('');
   requestAnimationFrame(function () {
-    box.scrollTop = box.scrollHeight;
+    const wrap = box && box.closest ? box.closest('.support-messages-wrap') : null;
+    if (wrap) wrap.scrollTop = wrap.scrollHeight;
+    else if (box) box.scrollTop = box.scrollHeight;
   });
 }
 

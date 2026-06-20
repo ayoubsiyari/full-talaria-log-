@@ -46,9 +46,23 @@ export default function TalariaV16Dashboard() {
       const qs = params.toString();
       router.replace(qs ? `${base}?${qs}` : base, { scroll: false });
     };
+    window.__TALARIA_V16_OPEN_PROFILE__ = (tab) => {
+      const tabMap: Record<string, string> = {
+        account: "profile",
+        billing: "subscription",
+        security: "security",
+        support: "support",
+      };
+      const raw = tab ? tabMap[tab] || tab : "profile";
+      const valid = new Set(["profile", "security", "subscription", "support"]);
+      const resolved = valid.has(raw) ? raw : "profile";
+      if (resolved === "profile") router.push("/dashboard/profile/");
+      else router.push(`/dashboard/profile/?tab=${encodeURIComponent(resolved)}`);
+    };
     return () => {
       delete window.__TALARIA_V16_SYNC_SESSION_URL__;
       delete window.__TALARIA_V16_SYNC_VIEW_URL__;
+      delete window.__TALARIA_V16_OPEN_PROFILE__;
     };
   }, [pathname, router, searchParams]);
 

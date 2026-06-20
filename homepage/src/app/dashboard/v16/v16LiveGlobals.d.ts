@@ -47,6 +47,8 @@ declare global {
     __TALARIA_V16_REFRESH_STRATEGY_BANK__?: () => Promise<Record<string, unknown>[]>;
     /** Navigate to Strategy Lab and open the new-strategy builder. */
     __TALARIA_OPEN_STRATEGY_BUILDER__?: () => void;
+    /** Open dashboard profile/settings from embedded V16 chrome. */
+    __TALARIA_V16_OPEN_PROFILE__?: (tab?: string) => void;
   }
 }
 

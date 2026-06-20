@@ -66,6 +66,22 @@ const openDashboardStrategyBuilder = () => {
   fn();
   return true;
 };
+/** Embedded V16 opens the dashboard profile page (real account/billing), not the in-file demo modal. */
+const openV16Profile = (tab) => {
+  if (!isV16Embedded()) return false;
+  const fn = typeof window !== "undefined" ? window.__TALARIA_V16_OPEN_PROFILE__ : null;
+  if (typeof fn === "function") {
+    fn(tab);
+    return true;
+  }
+  const tabMap = { account: "profile", billing: "subscription", security: "security", support: "support" };
+  const mapped = tab && tabMap[tab] ? tabMap[tab] : tab;
+  const known = new Set(["profile", "security", "subscription", "support"]);
+  const resolved = mapped && known.has(mapped) ? mapped : "profile";
+  const qs = resolved === "profile" ? "" : `?tab=${encodeURIComponent(resolved)}`;
+  window.location.assign(qs ? `/dashboard/profile/${qs}` : "/dashboard/profile/");
+  return true;
+};
 
 const sessNormSym = (t) => String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
 const sessIsoDayFromEpochMs = (ms) => {
@@ -10818,9 +10834,9 @@ const TalariaV8b = () => {
             <div style={{flex:1}}/>
             {(()=>(
               <div className="tlr-session-nav-item" role="button" tabIndex={0}
-                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();flushSync(()=>setProfileOpen(true));}}
+                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();if(!openV16Profile())flushSync(()=>setProfileOpen(true));}}
                 onClick={e=>e.preventDefault()}
-                onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();flushSync(()=>setProfileOpen(true));}}}
+                onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();if(!openV16Profile())flushSync(()=>setProfileOpen(true));}}}
                 style={{width:"100%",height:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",background:"transparent",color:c.ts}}>
                 <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 <span style={{fontSize:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>Profile</span>
@@ -39179,7 +39195,7 @@ const TalariaV8b = () => {
             <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MENU</div>
             {[
               {icon:"settings",label:"Settings",hk:"lm-settings",col:c.acL,alwaysCol:false,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(true);}},
-              {icon:"user",label:"Profile",hk:"lm-profile",col:c.acL,alwaysCol:false,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(false);setProfileOpen(true);}},
+              {icon:"user",label:"Profile",hk:"lm-profile",col:c.acL,alwaysCol:false,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(false);if(!openV16Profile())setProfileOpen(true);}},
               {icon:"help",label:"Help & Support",hk:"lm-faq",col:"#F0A030",alwaysCol:true,action:()=>{setLogoMenu(false);closeWindows();setSettingsOpen(false);setFaqOpen(true);}},
             ].map((item)=>{
               const isH = swHov===item.hk;
