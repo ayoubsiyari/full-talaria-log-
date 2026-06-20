@@ -4271,21 +4271,24 @@ select { cursor:default; }
                     <option value="sla">Sort: SLA due</option>
                     <option value="oldest">Sort: oldest</option>
                   </select>
-                  <select id="supportArchiveStatus" title="Which tickets to archive">
-                    <option value="closed_resolved" selected>Archive: closed + resolved</option>
-                    <option value="closed">Archive: closed only</option>
-                    <option value="all">Archive: all statuses</option>
+                  <select id="supportBulkStatus" title="Status scope for bulk actions">
+                    <option value="closed_resolved" selected>Bulk: closed + resolved</option>
+                    <option value="closed">Bulk: closed only</option>
+                    <option value="all">Bulk: all statuses</option>
                   </select>
-                  <select id="supportArchiveAge" onchange="supportToggleArchiveDate()" title="Time filter">
+                  <select id="supportBulkAge" onchange="supportToggleBulkDate()" title="Time filter">
                     <option value="">Any age</option>
                     <option value="7">Older than 7 days</option>
-                    <option value="30" selected>Older than 30 days</option>
+                    <option value="30">Older than 30 days</option>
                     <option value="90">Older than 90 days</option>
                     <option value="180">Older than 180 days</option>
                     <option value="custom">Before date…</option>
                   </select>
-                  <input type="date" class="support-archive-before" id="supportArchiveBefore" title="Archive tickets last active on or before this date" />
-                  <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()" title="Hide matching tickets from inbox, stats, and user support">Archive</button>
+                  <input type="date" class="support-archive-before" id="supportBulkBefore" title="Last active on or before this date" />
+                  <button type="button" class="btn sm" onclick="supportUnarchiveAll()" title="Restore every archived ticket">Unarchive all</button>
+                  <button type="button" class="btn sm" onclick="supportUnarchiveMatching()" title="Restore archived tickets matching filters">Unarchive</button>
+                  <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()" title="Hide matching tickets from inbox and user support">Archive</button>
+                  <button type="button" class="btn sm danger" onclick="supportDeleteTickets()" title="Permanently delete matching tickets">Delete</button>
                   <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
                 </div>
               </div>
@@ -4840,9 +4843,8 @@ function ensureLiveSupportSocket() {
       const d = JSON.parse(ev.data);
       if (d.type === 'notification_ping') {
         loadNotifications();
-        if (document.getElementById('sec-support') && document.getElementById('sec-support').classList.contains('active')) {
-          loadSupportThreads();
-        }
+        loadSupportThreads();
+        loadSupportUserReplyThreads();
         return;
       }
       if (d.type === 'read_receipt' && d.thread_id === selectedSupportId) {
@@ -5302,7 +5304,6 @@ function supportBuildThreadQuery() {
   if (archived) params.set('include_archived', 'true');
   if (sla) params.set('sla_overdue', 'true');
   if (sort) params.set('sort', sort);
-  params.set('exclude_status', 'user_replied');
   return params.toString();
 }
 
@@ -5361,17 +5362,17 @@ function supportExportCsv(ev) {
   return false;
 }
 
-function supportToggleArchiveDate() {
-  const age = ($('supportArchiveAge') && $('supportArchiveAge').value) || '';
-  const dateEl = $('supportArchiveBefore');
+function supportToggleBulkDate() {
+  const age = ($('supportBulkAge') && $('supportBulkAge').value) || '';
+  const dateEl = $('supportBulkBefore');
   if (!dateEl) return;
   dateEl.style.display = age === 'custom' ? '' : 'none';
 }
 
-function supportArchivePayload() {
-  const status = ($('supportArchiveStatus') && $('supportArchiveStatus').value) || 'closed_resolved';
-  const age = ($('supportArchiveAge') && $('supportArchiveAge').value) || '';
-  const before = ($('supportArchiveBefore') && $('supportArchiveBefore').value) || '';
+function supportBulkPayload() {
+  const status = ($('supportBulkStatus') && $('supportBulkStatus').value) || 'closed_resolved';
+  const age = ($('supportBulkAge') && $('supportBulkAge').value) || '';
+  const before = ($('supportBulkBefore') && $('supportBulkBefore').value) || '';
   const body = {
     dry_run: true,
     include_resolved: status === 'closed_resolved',
@@ -5388,7 +5389,7 @@ function supportArchivePayload() {
   return body;
 }
 
-function supportArchiveFilterLabel(body) {
+function supportBulkFilterLabel(body) {
   const status =
     body.all_tickets ? 'all statuses' :
     body.include_resolved ? 'closed + resolved' : 'closed only';
@@ -5398,52 +5399,155 @@ function supportArchiveFilterLabel(body) {
   return status + ', ' + time;
 }
 
-async function supportArchiveClosedTickets() {
-  let body;
-  try {
-    body = supportArchivePayload();
-  } catch (e) {
-    toast(e.message || 'Invalid archive filters', 'err');
-    return;
+function supportClearSelectedIfMissing() {
+  if (selectedSupportId && !(supportThreads || []).some(function (t) { return t.id === selectedSupportId; })) {
+    selectedSupportId = null;
+    supportMessages = [];
+    $('supportThreadTitle').textContent = 'Select a ticket';
+    $('supportMessages').innerHTML = '';
+    $('supportTicketControls').style.display = 'none';
   }
-  const label = supportArchiveFilterLabel(body);
+}
+
+async function supportRunBulkAction(endpoint, body, opts) {
+  opts = opts || {};
+  const countKey = opts.countKey || 'archived_count';
+  const emptyMsg = opts.emptyMsg || 'No tickets match those filters';
+  const preview = await api(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const n = preview[countKey] || preview.archived_count || preview.deleted_count || preview.unarchived_count || 0;
+  if (!n) {
+    toast(emptyMsg, 'ok');
+    return null;
+  }
+  const label = opts.label || supportBulkFilterLabel(body);
+  const confirmAgain = confirm(
+    (opts.confirmPrefix || 'Proceed with') + ' ' + n + ' ticket' + (n === 1 ? '' : 's') + '?\n\n' + label
+  );
+  if (!confirmAgain) return null;
+  body.dry_run = false;
+  const data = await api(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  supportClearSelectedIfMissing();
+  toast((opts.donePrefix || 'Done:') + ' ' + (data[countKey] || n) + ' ticket(s)', 'ok');
+  await loadSupportThreads();
+  return data;
+}
+
+async function supportUnarchiveAll() {
   const ok = confirm(
-    'Archive tickets matching:\n\n' +
-    label + '\n\n' +
-    'They will be hidden from admin metrics and removed from the user support page. ' +
-    'Open tickets are only included if you chose “all statuses”.'
+    'Unarchive ALL archived tickets?\n\n' +
+    'They will reappear in the admin inbox, stats, and user support pages.'
   );
   if (!ok) return;
   try {
-    const preview = await api('/api/admin/support/archive-closed', {
+    const preview = await api('/api/admin/support/unarchive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ dry_run: true, all_archived: true })
     });
-    const n = preview.archived_count || 0;
+    const n = preview.unarchived_count || 0;
     if (!n) {
-      toast('No tickets match those filters', 'ok');
+      toast('No archived tickets to restore', 'ok');
       return;
     }
-    const confirmAgain = confirm('Archive ' + n + ' ticket' + (n === 1 ? '' : 's') + ' now?\n\n' + label);
+    const confirmAgain = confirm('Restore ' + n + ' archived ticket' + (n === 1 ? '' : 's') + ' now?');
     if (!confirmAgain) return;
-    body.dry_run = false;
-    const data = await api('/api/admin/support/archive-closed', {
+    const data = await api('/api/admin/support/unarchive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ dry_run: false, all_archived: true })
     });
-    if (selectedSupportId && !(supportThreads || []).some(function (t) { return t.id === selectedSupportId; })) {
-      selectedSupportId = null;
-      supportMessages = [];
-      $('supportThreadTitle').textContent = 'Select a ticket';
-      $('supportMessages').innerHTML = '';
-      $('supportTicketControls').style.display = 'none';
-    }
-    toast('Archived ' + (data.archived_count || 0) + ' ticket(s)', 'ok');
+    toast('Restored ' + (data.unarchived_count || 0) + ' ticket(s)', 'ok');
     await loadSupportThreads();
   } catch (e) {
+    toast(e.message || 'Unarchive failed', 'err');
+  }
+}
+
+async function supportUnarchiveMatching() {
+  let body;
+  try {
+    body = supportBulkPayload();
+  } catch (e) {
+    toast(e.message || 'Invalid filters', 'err');
+    return;
+  }
+  const label = supportBulkFilterLabel(body);
+  const ok = confirm('Unarchive archived tickets matching:\n\n' + label);
+  if (!ok) return;
+  try {
+    await supportRunBulkAction('/api/admin/support/unarchive', body, {
+      countKey: 'unarchived_count',
+      emptyMsg: 'No archived tickets match those filters',
+      confirmPrefix: 'Unarchive',
+      donePrefix: 'Restored'
+    });
+  } catch (e) {
+    toast(e.message || 'Unarchive failed', 'err');
+  }
+}
+
+async function supportArchiveClosedTickets() {
+  let body;
+  try {
+    body = supportBulkPayload();
+  } catch (e) {
+    toast(e.message || 'Invalid filters', 'err');
+    return;
+  }
+  if (body.all_tickets) {
+    toast('Archive cannot include open tickets — use Delete for that', 'err');
+    return;
+  }
+  body.all_tickets = false;
+  const label = supportBulkFilterLabel(body);
+  const ok = confirm(
+    'Archive finished tickets matching:\n\n' +
+    label + '\n\n' +
+    'Open and pending tickets are never archived and will stay visible on this page.'
+  );
+  if (!ok) return;
+  try {
+    await supportRunBulkAction('/api/admin/support/archive-closed', body, {
+      countKey: 'archived_count',
+      confirmPrefix: 'Archive',
+      donePrefix: 'Archived'
+    });
+  } catch (e) {
     toast(e.message || 'Archive failed', 'err');
+  }
+}
+
+async function supportDeleteTickets() {
+  let body;
+  try {
+    body = supportBulkPayload();
+  } catch (e) {
+    toast(e.message || 'Invalid filters', 'err');
+    return;
+  }
+  const label = supportBulkFilterLabel(body);
+  const ok = confirm(
+    'PERMANENTLY DELETE tickets matching:\n\n' +
+    label + '\n\n' +
+    'Messages and attachments will be removed. This cannot be undone.'
+  );
+  if (!ok) return;
+  try {
+    await supportRunBulkAction('/api/admin/support/delete-bulk', body, {
+      countKey: 'deleted_count',
+      confirmPrefix: 'Permanently delete',
+      donePrefix: 'Deleted'
+    });
+  } catch (e) {
+    toast(e.message || 'Delete failed', 'err');
   }
 }
 
@@ -5843,6 +5947,25 @@ function auditLogPrevPage() {
   loadAuditLog(false);
 }
 
+let supportPollTimer = null;
+
+function supportStartPoll() {
+  if (supportPollTimer) return;
+  supportPollTimer = setInterval(function () {
+    const sec = document.getElementById('sec-support');
+    if (sec && sec.classList.contains('active')) {
+      try { loadSupportThreads(); } catch (e) {}
+    }
+  }, 45000);
+}
+
+function supportStopPoll() {
+  if (supportPollTimer) {
+    clearInterval(supportPollTimer);
+    supportPollTimer = null;
+  }
+}
+
 function navigate(section) {
   let dsTabOverride = null;
   if (section === 'dataset-registry') {
@@ -5863,6 +5986,7 @@ function navigate(section) {
     clearDsHubRegistryPanel();
   }
   if (section !== 'support') {
+    supportStopPoll();
     if (supportWs && supportWs.readyState === 1 && selectedSupportId) {
       try { supportWs.send(JSON.stringify({ type: 'unsubscribe', thread_id: selectedSupportId })); } catch (e) {}
       supportSubscribedThreadId = null;
@@ -5880,7 +6004,11 @@ function navigate(section) {
   if (section === 'affiliates') loadAffiliates();
   if (section === 'bulk-email') { loadUsers().then(() => renderBulkEmailPanel()); }
   if (section === 'settings') updateSettingsPage();
-  if (section === 'support') loadSupport();
+  if (section === 'support') {
+    loadSupport();
+    supportStartPoll();
+    ensureLiveSupportSocket();
+  }
   if (section === 'audit-log') loadAuditLog(true);
 }
 

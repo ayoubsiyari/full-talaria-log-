@@ -14086,10 +14086,10 @@ const TalariaV8b = () => {
           };
           const tradeActiveItems = [
             formatTradeSelectionLabel(tradeMarketOptions, filters.market),
-            formatTradeSelectionLabel(tradeSymbolOptions, filters.symbol),
             formatTradeSelectionLabel(tradeDirectionOptions, filters.direction),
             formatTradeSelectionLabel(tradeOutcomeOptions, filters.outcome),
           ].filter(Boolean);
+          const symbolFilterValue = dashSymbolFilters.length ? dashSymbolFilters.join(",") : "all";
           const tagActiveItems = [
             tagSelectedCount ? `${tagSelectedCount} ${dashTxt("Tag Values","قيم وسوم")}` : null,
           ].filter(Boolean);
@@ -14100,7 +14100,7 @@ const TalariaV8b = () => {
             filters.duration,
             filters.duration === "custom" ? dashDurationRangeRows.map(range=>`${normalizeDashDurationValue(range.min)}-${normalizeDashDurationValue(range.max)}-${range.unit}`).join(",") : "",
           ].join("|");
-          const tradeFilterValue = [filters.market, filters.symbol, filters.direction, filters.outcome].map(value=>Array.isArray(value)?value.join(","):value).join("|");
+          const tradeFilterValue = [filters.market, filters.direction, filters.outcome].map(value=>Array.isArray(value)?value.join(","):value).join("|");
           const tagFilterValue = `${tagSelectionValue(tagPreGroups, "pre")}||${tagSelectionValue(tagPostGroups, "post")}`;
           const noDashboardFiltersLabel = dashTxt("No Filters","لا توجد فلاتر");
           const timingFilterLabel = timingActiveItems.length === 0
@@ -14113,6 +14113,8 @@ const TalariaV8b = () => {
             : tradeActiveItems.length === 1
               ? tradeActiveItems[0]
               : `${tradeActiveItems.length} ${dashTxt("Trade Filters","فلاتر صفقات")}`;
+          const symbolFilterLabel = formatTradeSelectionLabel(tradeSymbolOptions, filters.symbol) || noDashboardFiltersLabel;
+          const symbolWindowActive = dashTradeEnabled.symbol && dashSymbolFilters.length > 0;
           const tagFilterLabel = tagActiveItems.length === 0
             ? noDashboardFiltersLabel
             : tagActiveItems.length === 1
@@ -14129,13 +14131,15 @@ const TalariaV8b = () => {
             date:"full",
             strategy:"all",
             timing:"all|all||all|",
-            trade:"all|all|all|all",
+            symbol:"all",
+            trade:"all|all|all",
             tags:"||",
           };
           const dashFilterValues = {
             date:filters.timeRange,
             strategy:dashboardJournalStrategyFilterValue,
             timing:timingFilterValue,
+            symbol:symbolFilterValue,
             trade:tradeFilterValue,
             tags:tagFilterValue,
           };
@@ -14226,6 +14230,15 @@ const TalariaV8b = () => {
               options:[],
             },
             {
+              id:"symbol",
+              label:dashTxt("Symbol","الرمز"),
+              value:symbolFilterValue,
+              valueLabel:symbolFilterLabel,
+              width:132,
+              menuWidth:340,
+              options:[],
+            },
+            {
               id:"trade",
               label:dashTxt("Trade Scope","نطاق الصفقة"),
               value:tradeFilterValue,
@@ -14248,14 +14261,15 @@ const TalariaV8b = () => {
             const selected = (cfg.options || []).find(option=>String(option.value)===String(cfg.value)) || (cfg.options || [])[0];
             const active = String(cfg.value) !== String(dashFilterDefaults[cfg.id]);
             const baseMenuWidth = Math.max(cfg.menuWidth || cfg.width || 120, cfg.width || 120);
-            const menuWidth = (cfg.id === "source" || cfg.id === "strategy" || cfg.id === "timing" || cfg.id === "trade" || cfg.id === "tags") ? baseMenuWidth : ((dashFilterMenu?.id === cfg.id && dashFilterMenu?.width) ? dashFilterMenu.width : baseMenuWidth);
+            const menuWidth = (cfg.id === "source" || cfg.id === "strategy" || cfg.id === "timing" || cfg.id === "symbol" || cfg.id === "trade" || cfg.id === "tags") ? baseMenuWidth : ((dashFilterMenu?.id === cfg.id && dashFilterMenu?.width) ? dashFilterMenu.width : baseMenuWidth);
             const isDateMenu = cfg.id === "date";
             const isSourceMenu = cfg.id === "source";
             const isStrategyMenu = cfg.id === "strategy";
             const isTimingMenu = cfg.id === "timing";
+            const isSymbolMenu = cfg.id === "symbol";
             const isTradeMenu = cfg.id === "trade";
             const isTagsMenu = cfg.id === "tags";
-            const isStructuredFilterMenu = isSourceMenu || isStrategyMenu || isTimingMenu || isTradeMenu || isTagsMenu;
+            const isStructuredFilterMenu = isSourceMenu || isStrategyMenu || isTimingMenu || isSymbolMenu || isTradeMenu || isTagsMenu;
             const dateSummaryMonths = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
             const formatSummaryDate = (value) => {
               if (!value) return "";
@@ -14360,6 +14374,7 @@ const TalariaV8b = () => {
               if (isSourceMenu) return cfg.valueLabel || dashTxt("All Sources","كل المصادر");
               if (isStrategyMenu) return cfg.valueLabel || noDashboardFiltersLabel;
               if (isTimingMenu) return cfg.valueLabel || noDashboardFiltersLabel;
+              if (isSymbolMenu) return cfg.valueLabel || noDashboardFiltersLabel;
               if (isTradeMenu) return cfg.valueLabel || noDashboardFiltersLabel;
               if (isTagsMenu) return cfg.valueLabel || noDashboardFiltersLabel;
               if (cfg.id !== "date" || cfg.value !== "custom") return selected?.label || dashTxt("All","الكل");
@@ -14386,7 +14401,7 @@ const TalariaV8b = () => {
             const open = (dashFilterMenu?.id || dashFilterMenu) === cfg.id;
             const menuAnchorLeft = dashFilterMenu?.anchorLeft ?? dashFilterMenu?.left ?? 8;
             const centeredMenuLeft = menuAnchorLeft + ((dashFilterMenu?.anchorWidth ?? cfg.width ?? 120) / 2) - (menuWidth / 2);
-            const menuLeft = Math.max(8, Math.min((isSourceMenu || isStrategyMenu || isTimingMenu || isTradeMenu || isTagsMenu) ? centeredMenuLeft : (dashFilterMenu?.left ?? menuAnchorLeft), window.innerWidth - menuWidth - 8));
+            const menuLeft = Math.max(8, Math.min((isSourceMenu || isStrategyMenu || isTimingMenu || isSymbolMenu || isTradeMenu || isTagsMenu) ? centeredMenuLeft : (dashFilterMenu?.left ?? menuAnchorLeft), window.innerWidth - menuWidth - 8));
             const menuTop = Math.min(dashFilterMenu?.top ?? 124, window.innerHeight - 120);
             const menuMaxHeight = Math.max(isDateMenu ? 290 : isStructuredFilterMenu ? 310 : 150, Math.min(isDateMenu ? 360 : isStructuredFilterMenu ? 376 : 248, window.innerHeight - menuTop - 12));
             const formatRangeDate = (value) => {
@@ -14964,10 +14979,20 @@ const TalariaV8b = () => {
             ];
             const tradeGroups = [
               {id:"market",label:dashTxt("Market","السوق"),value:filters.market,set:makeTradeMultiSetter("market", setDashMarketFilters, tradeMarketOptions.filter(option=>String(option.value)!=="all")),options:tradeMarketOptions.filter(option=>String(option.value)!=="all"),multi:true,selectedValues:dashMarketFilters,enabled:dashTradeEnabled.market,setEnabled:(enabled)=>setDashTradeSection("market", enabled),stacked:true,emptyDisables:true},
-              {id:"symbol",label:dashTxt("Symbol","الرمز"),value:filters.symbol,set:makeTradeMultiSetter("symbol", setDashSymbolFilters, tradeSymbolOptions.filter(option=>String(option.value)!=="all")),options:tradeSymbolOptions.filter(option=>String(option.value)!=="all"),multi:true,selectedValues:dashSymbolFilters,enabled:dashTradeEnabled.symbol,setEnabled:(enabled)=>setDashTradeSection("symbol", enabled),stacked:true,emptyDisables:true},
               {id:"direction",label:dashTxt("Direction","الاتجاه"),value:filters.direction,set:makeTradeMultiSetter("direction", setDashDirectionFilters, tradeDirectionOptions.filter(option=>String(option.value)!=="all")),options:tradeDirectionOptions.filter(option=>String(option.value)!=="all"),multi:true,selectedValues:dashDirectionFilters,enabled:dashTradeEnabled.direction,setEnabled:(enabled)=>setDashTradeSection("direction", enabled),stacked:true,emptyDisables:true},
               {id:"outcome",label:dashTxt("Outcome","النتيجة"),value:filters.outcome,set:makeTradeMultiSetter("outcome", setDashOutcomeFilters, tradeOutcomeOptions.filter(option=>String(option.value)!=="all")),options:tradeOutcomeOptions.filter(option=>String(option.value)!=="all"),multi:true,selectedValues:dashOutcomeFilters,enabled:dashTradeEnabled.outcome,setEnabled:(enabled)=>setDashTradeSection("outcome", enabled),stacked:true,emptyDisables:true},
             ];
+            const symbolFilterOptions = tradeSymbolOptions.filter(option=>String(option.value)!=="all");
+            const symbolGroups = [{
+              id:"symbol",
+              label:dashTxt("Symbols","الرموز"),
+              value:filters.symbol,
+              set:makeTradeMultiSetter("symbol", setDashSymbolFilters, symbolFilterOptions),
+              options:symbolFilterOptions,
+              multi:true,
+              selectedValues:dashSymbolFilters,
+              stacked:true,
+            }];
             const timingWindowActive = timingGroups.some(group=>String(group.value)!=="all");
             const tradeWindowActive = tradeGroups.some(group=>group.enabled && (group.selectedValues || []).length);
             const tagsWindowActive = tagSelectedCount > 0;
@@ -15630,12 +15655,20 @@ const TalariaV8b = () => {
                 clear:()=>{setDashDayFilter(dashAllDayValues);setDashTimeOfDayFilter("all");setDashTimeStartFilter("12:32");setDashTimeEndFilter("17:30");setDashTimeRangesFilter([{id:"time-1", start:"12:32", end:"17:30"}]);setDashDurationFilter("all");setDashDurationMinFilter("");setDashDurationMaxFilter("");setDashDurationRangesFilter([{id:"duration-1", min:"1", max:"60", unit:"minutes"}]);setDashTimingSectionEnabled({day:false, time:false, duration:false});},
                 embedded:true,
               });
+              if (isSymbolMenu) return renderStructuredFilterWindow({
+                title:dashTxt("Symbol Filter","فلتر الرمز"),
+                summary:null,
+                activeNow:symbolWindowActive,
+                groups:symbolGroups,
+                clear:()=>{setDashSymbolFilter("all");setDashSymbolFilters([]);setDashTradeSectionEnabled(prev=>({...prev, symbol:false}));},
+                embedded:true,
+              });
               if (isTradeMenu) return renderStructuredFilterWindow({
                 title:dashTxt("Trade Scope","نطاق الصفقة"),
                 summary:null,
                 activeNow:tradeWindowActive,
                 groups:tradeGroups,
-                clear:()=>{setDashMarketFilter("all");setDashMarketFilters([]);setDashSymbolFilter("all");setDashSymbolFilters([]);setDashDirectionFilter("all");setDashDirectionFilters([]);setDashOutcomeFilter("all");setDashOutcomeFilters([]);setDashTradeSectionEnabled({market:false, symbol:false, direction:false, outcome:false});},
+                clear:()=>{setDashMarketFilter("all");setDashMarketFilters([]);setDashDirectionFilter("all");setDashDirectionFilters([]);setDashOutcomeFilter("all");setDashOutcomeFilters([]);setDashTradeSectionEnabled({market:false, symbol:false, direction:false, outcome:false});},
                 embedded:true,
               });
               if (isTagsMenu) return renderTagFilterWindow(true);
@@ -15697,7 +15730,7 @@ const TalariaV8b = () => {
                   </svg>
                 </div>
                 {open && (
-                  <div role="listbox" aria-label={cfg.label} style={{position:"fixed",top:menuTop,left:menuLeft,width:menuWidth,zIndex:73,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 14px 34px rgba(0,0,0,0.78)",padding:isDateMenu?10:isStructuredFilterMenu?8:"6px 0 4px",boxSizing:"border-box",maxHeight:isDateMenu||isSourceMenu||isStrategyMenu||isTimingMenu||isTradeMenu||isTagsMenu?"none":menuMaxHeight,overflowY:isDateMenu||isSourceMenu||isStrategyMenu||isTimingMenu||isTradeMenu||isTagsMenu?"visible":"auto",overflowX:"hidden"}} className={isDateMenu||isSourceMenu||isStrategyMenu||isTimingMenu||isTradeMenu||isTagsMenu ? "" : "tlr-scroll"}>
+                  <div role="listbox" aria-label={cfg.label} style={{position:"fixed",top:menuTop,left:menuLeft,width:menuWidth,zIndex:73,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 14px 34px rgba(0,0,0,0.78)",padding:isDateMenu?10:isStructuredFilterMenu?8:"6px 0 4px",boxSizing:"border-box",maxHeight:isDateMenu||isSourceMenu||isStrategyMenu||isTimingMenu||isSymbolMenu||isTradeMenu||isTagsMenu?"none":menuMaxHeight,overflowY:isDateMenu||isSourceMenu||isStrategyMenu||isTimingMenu||isSymbolMenu||isTradeMenu||isTagsMenu?"visible":"auto",overflowX:"hidden"}} className={isDateMenu||isSourceMenu||isStrategyMenu||isTimingMenu||isSymbolMenu||isTradeMenu||isTagsMenu ? "" : "tlr-scroll"}>
                     <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,boxShadow:`0 0 8px ${c.acG}`,pointerEvents:"none"}}/>
                     {isDateMenu ? (
                       <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -15737,13 +15770,21 @@ const TalariaV8b = () => {
                         groups:timingGroups,
                         clear:()=>{setDashDayFilter(dashAllDayValues);setDashTimeOfDayFilter("all");setDashTimeStartFilter("12:32");setDashTimeEndFilter("17:30");setDashTimeRangesFilter([{id:"time-1", start:"12:32", end:"17:30"}]);setDashDurationFilter("all");setDashDurationMinFilter("");setDashDurationMaxFilter("");setDashDurationRangesFilter([{id:"duration-1", min:"1", max:"60", unit:"minutes"}]);setDashTimingSectionEnabled({day:false, time:false, duration:false});},
                       })
+                    ) : isSymbolMenu ? (
+                      renderStructuredFilterWindow({
+                        title:dashTxt("Symbol Filter","فلتر الرمز"),
+                        summary:null,
+                        activeNow:symbolWindowActive,
+                        groups:symbolGroups,
+                        clear:()=>{setDashSymbolFilter("all");setDashSymbolFilters([]);setDashTradeSectionEnabled(prev=>({...prev, symbol:false}));},
+                      })
                     ) : isTradeMenu ? (
                       renderStructuredFilterWindow({
                         title:dashTxt("Trade Scope","نطاق الصفقة"),
                         summary:null,
                         activeNow:tradeWindowActive,
                         groups:tradeGroups,
-                        clear:()=>{setDashMarketFilter("all");setDashMarketFilters([]);setDashSymbolFilter("all");setDashSymbolFilters([]);setDashDirectionFilter("all");setDashDirectionFilters([]);setDashOutcomeFilter("all");setDashOutcomeFilters([]);setDashTradeSectionEnabled({market:false, symbol:false, direction:false, outcome:false});},
+                        clear:()=>{setDashMarketFilter("all");setDashMarketFilters([]);setDashDirectionFilter("all");setDashDirectionFilters([]);setDashOutcomeFilter("all");setDashOutcomeFilters([]);setDashTradeSectionEnabled({market:false, direction:false, outcome:false});},
                       })
                     ) : isTagsMenu ? (
                       renderTagFilterWindow()

@@ -1333,6 +1333,8 @@ SUPPORT_CATEGORIES = frozenset(
     }
 )
 SUPPORT_STATUSES = frozenset({"open", "pending", "resolved", "user_replied", "closed"})
+SUPPORT_ACTIVE_STATUSES = frozenset({"open", "pending", "user_replied"})
+SUPPORT_ARCHIVABLE_STATUSES = frozenset({"closed", "resolved"})
 SUPPORT_PRIORITIES = frozenset({"low", "normal", "high", "urgent"})
 _support_msg_times: dict[int, deque] = {}
 _support_thread_times: dict[int, deque] = {}
@@ -10771,12 +10773,24 @@ class SupportAdminPatchThreadIn(BaseModel):
     admin_yes_no: str | None = None
 
 
-class AdminArchiveClosedSupportIn(BaseModel):
+class AdminSupportBulkFilterIn(BaseModel):
     dry_run: bool = False
     include_resolved: bool = True
     all_tickets: bool = False
     older_than_days: int | None = Field(None, ge=1, le=3650)
     before_date: str | None = Field(None, max_length=32)
+
+
+class AdminArchiveClosedSupportIn(AdminSupportBulkFilterIn):
+    pass
+
+
+class AdminSupportUnarchiveIn(AdminSupportBulkFilterIn):
+    all_archived: bool = False
+
+
+class AdminSupportDeleteBulkIn(AdminSupportBulkFilterIn):
+    pass
 
 
 def _support_thread_archive_reference_dt():
@@ -10798,13 +10812,18 @@ def _parse_support_archive_before_date(raw: str) -> datetime:
     return d.replace(hour=23, minute=59, second=59, microsecond=999999)
 
 
-def _admin_support_archive_query(db, payload: AdminArchiveClosedSupportIn):
+def _admin_support_bulk_filter_query(db, payload: AdminSupportBulkFilterIn, *, archived_mode: str = "exclude"):
+    """archived_mode: exclude | only | any"""
     statuses = ("closed",)
     if payload.include_resolved:
         statuses = ("closed", "resolved")
     if payload.all_tickets:
         statuses = tuple(SUPPORT_STATUSES)
-    q = _support_exclude_archived(db.query(SupportThread))
+    q = db.query(SupportThread)
+    if archived_mode == "exclude":
+        q = _support_exclude_archived(q)
+    elif archived_mode == "only":
+        q = q.filter(SupportThread.archived_at.isnot(None))
     if not payload.all_tickets:
         q = q.filter(SupportThread.status.in_(statuses))
     ref_dt = _support_thread_archive_reference_dt()
@@ -10816,6 +10835,71 @@ def _admin_support_archive_query(db, payload: AdminArchiveClosedSupportIn):
         before = _parse_support_archive_before_date(payload.before_date)
         q = q.filter(ref_dt <= before)
     return q, list(statuses)
+
+
+def _admin_support_bulk_filter_summary(payload: AdminSupportBulkFilterIn, statuses: list[str]) -> dict:
+    return {
+        "statuses": statuses,
+        "include_resolved": payload.include_resolved,
+        "all_tickets": payload.all_tickets,
+        "older_than_days": payload.older_than_days,
+        "before_date": payload.before_date,
+    }
+
+
+def _admin_support_bulk_preview(rows: list) -> list[dict]:
+    return [
+        {
+            "id": t.id,
+            "ticket_ref": _support_ticket_ref(t.id),
+            "status": t.status,
+            "subject": (t.subject or "")[:120],
+            "archived_at": t.archived_at.isoformat() if getattr(t, "archived_at", None) else None,
+        }
+        for t in rows[:100]
+    ]
+
+
+def _admin_support_delete_threads(db, threads: list) -> int:
+    thread_ids = [int(t.id) for t in threads]
+    if not thread_ids:
+        return 0
+    msg_ids = [
+        int(r[0])
+        for r in db.query(SupportMessage.id).filter(SupportMessage.thread_id.in_(thread_ids)).all()
+    ]
+    if msg_ids:
+        atts = db.query(SupportAttachment).filter(SupportAttachment.message_id.in_(msg_ids)).all()
+        for att in atts:
+            path = SUPPORT_UPLOAD_DIR / att.stored_name
+            try:
+                if path.is_file():
+                    path.unlink()
+            except OSError:
+                pass
+        db.query(SupportAttachment).filter(SupportAttachment.message_id.in_(msg_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(SupportMessage).filter(SupportMessage.thread_id.in_(thread_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(SupportThreadRead).filter(SupportThreadRead.thread_id.in_(thread_ids)).delete(
+        synchronize_session=False
+    )
+    db.query(Notification).filter(Notification.thread_id.in_(thread_ids)).delete(synchronize_session=False)
+    db.query(SupportThread).filter(SupportThread.related_thread_id.in_(thread_ids)).update(
+        {SupportThread.related_thread_id: None}, synchronize_session=False
+    )
+    return db.query(SupportThread).filter(SupportThread.id.in_(thread_ids)).delete(synchronize_session=False)
+
+
+def _admin_support_archive_query(db, payload: AdminArchiveClosedSupportIn):
+    """Archive only finished tickets — never open/pending/user_replied."""
+    arch_statuses = ("closed", "resolved") if payload.include_resolved else ("closed",)
+    narrow = payload.model_copy(update={"all_tickets": False, "include_resolved": True})
+    q, _ = _admin_support_bulk_filter_query(db, narrow, archived_mode="exclude")
+    q = q.filter(SupportThread.status.in_(arch_statuses))
+    return q, list(arch_statuses)
 
 
 class SupportCannedReplyIn(BaseModel):
@@ -11920,29 +12004,20 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
 
 @app.post("/api/admin/support/archive-closed")
 async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, request: Request):
-    """Archive tickets so they disappear from admin inbox/stats and user support UI."""
+    """Archive finished tickets only — active (open/pending) tickets always stay visible."""
     _require_admin(request)
+    if payload.all_tickets:
+        raise HTTPException(
+            status_code=400,
+            detail="Archive cannot include open or pending tickets. Use Delete for permanent removal.",
+        )
     db = SessionLocal()
     try:
         now = datetime.utcnow()
         q, statuses = _admin_support_archive_query(db, payload)
         rows = q.order_by(SupportThread.id.asc()).all()
-        preview = [
-            {
-                "id": t.id,
-                "ticket_ref": _support_ticket_ref(t.id),
-                "status": t.status,
-                "subject": (t.subject or "")[:120],
-            }
-            for t in rows[:100]
-        ]
-        filter_summary = {
-            "statuses": statuses,
-            "include_resolved": payload.include_resolved,
-            "all_tickets": payload.all_tickets,
-            "older_than_days": payload.older_than_days,
-            "before_date": payload.before_date,
-        }
+        preview = _admin_support_bulk_preview(rows)
+        filter_summary = _admin_support_bulk_filter_summary(payload, statuses)
         if payload.dry_run:
             return {
                 "success": True,
@@ -11973,6 +12048,98 @@ async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, req
             "success": True,
             "dry_run": False,
             "archived_count": len(archived_ids),
+            "statuses": statuses,
+            "filters": filter_summary,
+            "preview": preview,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/support/unarchive")
+async def admin_support_unarchive(payload: AdminSupportUnarchiveIn, request: Request):
+    """Restore archived tickets to the active inbox (users can see them again)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        if payload.all_archived:
+            q = db.query(SupportThread).filter(SupportThread.archived_at.isnot(None))
+            statuses = list(SUPPORT_STATUSES)
+        else:
+            q, statuses = _admin_support_bulk_filter_query(db, payload, archived_mode="only")
+        rows = q.order_by(SupportThread.id.asc()).all()
+        preview = _admin_support_bulk_preview(rows)
+        filter_summary = _admin_support_bulk_filter_summary(payload, statuses)
+        filter_summary["all_archived"] = payload.all_archived
+        if payload.dry_run:
+            return {
+                "success": True,
+                "dry_run": True,
+                "unarchived_count": len(rows),
+                "statuses": statuses,
+                "filters": filter_summary,
+                "preview": preview,
+            }
+        restored_ids: list[int] = []
+        for t in rows:
+            t.archived_at = None
+            t.updated_at = now
+            restored_ids.append(int(t.id))
+        db.commit()
+        _record_admin_action(
+            request,
+            action="support.tickets.unarchive",
+            target_type="support_thread",
+            target_id=None,
+            params={**filter_summary, "unarchived_count": len(restored_ids)},
+            result={"restored_thread_ids": restored_ids[:100]},
+        )
+        return {
+            "success": True,
+            "dry_run": False,
+            "unarchived_count": len(restored_ids),
+            "statuses": statuses,
+            "filters": filter_summary,
+            "preview": preview,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/support/delete-bulk")
+async def admin_support_delete_bulk(payload: AdminSupportDeleteBulkIn, request: Request):
+    """Permanently delete support tickets matching filters (messages + attachments removed)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        q, statuses = _admin_support_bulk_filter_query(db, payload, archived_mode="any")
+        rows = q.order_by(SupportThread.id.asc()).all()
+        preview = _admin_support_bulk_preview(rows)
+        filter_summary = _admin_support_bulk_filter_summary(payload, statuses)
+        if payload.dry_run:
+            return {
+                "success": True,
+                "dry_run": True,
+                "deleted_count": len(rows),
+                "statuses": statuses,
+                "filters": filter_summary,
+                "preview": preview,
+            }
+        deleted_count = _admin_support_delete_threads(db, rows)
+        db.commit()
+        _record_admin_action(
+            request,
+            action="support.tickets.delete_bulk",
+            target_type="support_thread",
+            target_id=None,
+            params={**filter_summary, "deleted_count": deleted_count},
+            result={"deleted_thread_ids": [t.id for t in rows[:100]]},
+        )
+        return {
+            "success": True,
+            "dry_run": False,
+            "deleted_count": deleted_count,
             "statuses": statuses,
             "filters": filter_summary,
             "preview": preview,
