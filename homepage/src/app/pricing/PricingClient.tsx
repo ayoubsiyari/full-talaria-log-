@@ -57,7 +57,25 @@ type PlanRow = {
   trial_days?: number;
   is_popular?: boolean;
   features?: unknown;
+  max_trading_sessions?: number | null;
+  max_tickers_per_session?: number | null;
+  max_supporting_tickers_per_session?: number | null;
+  tier_rank?: number;
 };
+
+function planEntitlementLines(plan: PlanRow): string[] {
+  const lines: string[] = [];
+  if (plan.max_trading_sessions != null && plan.max_trading_sessions > 0) {
+    lines.push(`${plan.max_trading_sessions} backtest session${plan.max_trading_sessions === 1 ? "" : "s"}`);
+  }
+  if (plan.max_tickers_per_session != null && plan.max_tickers_per_session > 0) {
+    lines.push(`${plan.max_tickers_per_session} trading ticker${plan.max_tickers_per_session === 1 ? "" : "s"} per session`);
+  }
+  if (plan.max_supporting_tickers_per_session != null && plan.max_supporting_tickers_per_session > 0) {
+    lines.push(`${plan.max_supporting_tickers_per_session} supporting ticker${plan.max_supporting_tickers_per_session === 1 ? "" : "s"} per session`);
+  }
+  return lines;
+}
 
 type SubscriptionPayload = {
   has_subscription?: boolean;
@@ -261,6 +279,7 @@ export default function PricingClient() {
       const cancelQs = browseMode ? "?browse=1" : "";
       const body: Record<string, unknown> = {
         plan_id: planId,
+        billing_interval: billingCycle === "yearly" ? "year" : "month",
         success_url: `${origin}/pricing/success/`,
         cancel_url: `${origin}/pricing/${cancelQs}`,
       };
@@ -573,7 +592,10 @@ export default function PricingClient() {
                 const isPro = plan.is_popular || plan.name?.toLowerCase().includes("pro");
                 const price = getPrice(plan);
                 const savings = getSavings(plan);
-                const features = Array.isArray(plan.features) ? (plan.features as string[]) : [];
+                const features = [
+                  ...planEntitlementLines(plan),
+                  ...(Array.isArray(plan.features) ? (plan.features as string[]) : []),
+                ];
 
                 const isSingle = plans.length === 1;
                 return (

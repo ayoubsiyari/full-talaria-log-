@@ -29,6 +29,7 @@ export type PublicPlan = {
   price?: number;
   price_monthly?: number;
   max_trading_sessions?: number | null;
+  tier_rank?: number | null;
 };
 
 type MeUserLike = {
@@ -74,7 +75,12 @@ function planSessionCap(p: PublicPlan): number {
   return raw == null ? 0 : Math.max(0, Number(raw) || 0);
 }
 
-/** Cheapest active plan that allows more backtest sessions than the user's current cap. */
+function planTierRank(p: PublicPlan): number {
+  const raw = p.tier_rank;
+  return raw == null ? 0 : Math.max(0, Number(raw) || 0);
+}
+
+/** Next upgrade plan: prefer tier_rank, then session cap, then price. */
 export function findNextUpgradePlan(
   plans: PublicPlan[],
   currentCap: number,
@@ -82,6 +88,18 @@ export function findNextUpgradePlan(
   currentPlanName: string | null,
 ): PublicPlan | null {
   const active = plans.filter((p) => p.id != null);
+  const currentRank =
+    currentPlanId != null
+      ? planTierRank(active.find((p) => p.id === currentPlanId) || {})
+      : 0;
+
+  const byTier = active.filter((p) => planTierRank(p) > currentRank);
+  if (byTier.length) {
+    return [...byTier].sort(
+      (a, b) => planTierRank(a) - planTierRank(b) || planSessionCap(a) - planSessionCap(b) || planPrice(a) - planPrice(b),
+    )[0];
+  }
+
   const withCaps = active.filter((p) => planSessionCap(p) > currentCap);
   if (withCaps.length) {
     return [...withCaps].sort((a, b) => planSessionCap(a) - planSessionCap(b) || planPrice(a) - planPrice(b))[0];

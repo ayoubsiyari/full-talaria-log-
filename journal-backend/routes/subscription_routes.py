@@ -15,6 +15,12 @@ import re
 
 from security_redirects import append_checkout_session_placeholder, is_allowed_stripe_redirect_url
 from subscription_access import admin_extension_entitles, user_entitles_journal
+from plan_entitlements import (
+    apply_plan_entitlements,
+    revoke_to_free_tier,
+    subscription_status_requires_revoke,
+    user_should_revoke_entitlements,
+)
 
 try:
     import stripe
@@ -26,30 +32,28 @@ except ImportError:
 subscription_bp = Blueprint('subscriptions', __name__)
 
 
-def _plan_backtest_session_cap(plan):
-    if not plan:
-        return None
-    raw = getattr(plan, 'max_trading_sessions', None)
-    if raw is None:
-        return None
-    return max(0, int(raw or 0))
-
-
 def _apply_plan_entitlements_to_user(user, plan):
-    """Sync journal access and backtest session cap from a subscription plan."""
+    """Apply plan caps to user cache (does not set has_journal_access — Stripe sub handles access)."""
+    apply_plan_entitlements(user, plan)
+
+
+def _maybe_revoke_user_entitlements(user):
+    """Immediate cancel policy when no active subscription remains."""
     if not user:
         return
-    user.has_journal_access = True
-    cap = _plan_backtest_session_cap(plan)
-    if cap is not None and cap > 0:
-        user.max_trading_sessions = cap
+    if user_should_revoke_entitlements(user, Subscription, db.session):
+        revoke_to_free_tier(user)
 
 
 def _resolve_plan_for_stripe_subscription(sub_data):
     price_id = sub_data.get('items', {}).get('data', [{}])[0].get('price', {}).get('id')
-    plan = SubscriptionPlan.query.filter_by(stripe_price_id=price_id).first() if price_id else None
-    if plan:
-        return plan
+    if price_id:
+        plan = SubscriptionPlan.query.filter_by(stripe_price_id=price_id).first()
+        if plan:
+            return plan
+        plan = SubscriptionPlan.query.filter_by(stripe_price_id_yearly=price_id).first()
+        if plan:
+            return plan
     meta_plan_id = (sub_data.get('metadata') or {}).get('plan_id')
     if meta_plan_id:
         try:
@@ -213,111 +217,22 @@ def get_plans():
 @jwt_required()
 @admin_required
 def create_plan():
-    """Create a new subscription plan"""
-    try:
-        data = request.get_json() or {}
-        
-        name = data.get('name', '').strip()
-        description = data.get('description', '').strip()
-        price = data.get('price', 0)
-        interval = data.get('interval', 'month')
-        features = data.get('features', [])
-        trial_days = data.get('trial_days', 0)
-        
-        if not name:
-            return jsonify({'error': 'Plan name is required'}), 400
-        
-        # Create Stripe product and price if API key is configured
-        stripe_price_id = None
-        stripe_product_id = None
-        
-        if STRIPE_AVAILABLE and stripe.api_key:
-            try:
-                # Create product in Stripe
-                product = stripe.Product.create(
-                    name=name,
-                    description=description or name,
-                )
-                stripe_product_id = product.id
-                
-                # Create price in Stripe
-                stripe_price = stripe.Price.create(
-                    product=product.id,
-                    unit_amount=int(price * 100),  # Stripe uses cents
-                    currency='usd',
-                    recurring={'interval': interval},
-                )
-                stripe_price_id = stripe_price.id
-                
-            except stripe.error.StripeError as e:
-                current_app.logger.error(f"Stripe error creating plan: {e}")
-                # Continue without Stripe integration
-        
-        # Create plan in database
-        new_plan = SubscriptionPlan(
-            name=name,
-            description=description,
-            price=price,
-            interval=interval,
-            stripe_price_id=stripe_price_id,
-            stripe_product_id=stripe_product_id,
-            features=json.dumps(features) if features else '[]',
-            trial_days=trial_days,
-            is_active=True
-        )
-        
-        db.session.add(new_plan)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Plan created successfully',
-            'plan': {
-                'id': new_plan.id,
-                'name': new_plan.name,
-                'stripe_price_id': new_plan.stripe_price_id
-            }
-        }), 201
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error creating plan: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+    """Deprecated — use chart admin dashboard /api/admin/subscriptions/plans."""
+    return jsonify({
+        'error': 'This endpoint is deprecated. Use the chart admin dashboard to manage plans.',
+        'admin_url': '/admin-dashboard.html#subscriptions',
+    }), 410
 
 
 @subscription_bp.route('/plans/<int:plan_id>', methods=['PUT'])
 @jwt_required()
 @admin_required
 def update_plan(plan_id):
-    """Update a subscription plan"""
-    try:
-        plan = SubscriptionPlan.query.get_or_404(plan_id)
-        data = request.get_json() or {}
-        
-        if 'name' in data:
-            plan.name = data['name'].strip()
-        if 'description' in data:
-            plan.description = data['description'].strip()
-        if 'price' in data:
-            plan.price = data['price']
-        if 'features' in data:
-            plan.features = json.dumps(data['features'])
-        if 'trial_days' in data:
-            plan.trial_days = data['trial_days']
-        if 'is_active' in data:
-            plan.is_active = data['is_active']
-        
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Plan updated successfully'
-        }), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error updating plan: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+    """Deprecated — use chart admin dashboard /api/admin/subscriptions/plans/{id}."""
+    return jsonify({
+        'error': 'This endpoint is deprecated. Use the chart admin dashboard to manage plans.',
+        'admin_url': '/admin-dashboard.html#subscriptions',
+    }), 410
 
 
 # ─── SUBSCRIPTIONS ──────────────────────────────────────────────────────────
@@ -1041,20 +956,26 @@ def handle_subscription_updated(sub_data):
         if subscription:
             period_start = datetime.fromtimestamp(sub_data.get('current_period_start', 0))
             period_end = datetime.fromtimestamp(sub_data.get('current_period_end', 0))
+            new_status = sub_data.get('status')
             
-            subscription.status = sub_data.get('status')
+            subscription.status = new_status
             subscription.started_at = period_start
             subscription.ends_at = period_end
             subscription.current_period_start = period_start
             subscription.current_period_end = period_end
             subscription.cancel_at_period_end = sub_data.get('cancel_at_period_end', False)
 
+            user = User.query.get(subscription.user_id)
             plan = _resolve_plan_for_stripe_subscription(sub_data)
             if plan:
                 subscription.plan_id = plan.id
-                user = User.query.get(subscription.user_id)
-                if user:
+
+            if user:
+                st = (new_status or '').lower()
+                if st in ('active', 'trialing') and plan:
                     _apply_plan_entitlements_to_user(user, plan)
+                elif subscription_status_requires_revoke(new_status):
+                    _maybe_revoke_user_entitlements(user)
 
     except Exception as e:
         current_app.logger.error(f"Error handling subscription updated: {e}")
@@ -1070,6 +991,9 @@ def handle_subscription_deleted(sub_data):
         if subscription:
             subscription.status = 'cancelled'
             subscription.cancelled_at = datetime.utcnow()
+            user = User.query.get(subscription.user_id)
+            if user:
+                _maybe_revoke_user_entitlements(user)
             
     except Exception as e:
         current_app.logger.error(f"Error handling subscription deleted: {e}")
@@ -1326,6 +1250,9 @@ def cancel_subscription(sub_id):
         
         subscription.status = 'cancelled'
         subscription.cancelled_at = datetime.utcnow()
+        user = User.query.get(subscription.user_id)
+        if user:
+            _maybe_revoke_user_entitlements(user)
         
         db.session.commit()
         
@@ -1361,6 +1288,9 @@ def get_public_plans():
                 'features': _parse_features(plan.features),
                 'trial_days': plan.trial_days,
                 'max_trading_sessions': getattr(plan, 'max_trading_sessions', None),
+                'max_tickers_per_session': getattr(plan, 'max_tickers_per_session', None),
+                'max_supporting_tickers_per_session': getattr(plan, 'max_supporting_tickers_per_session', None),
+                'tier_rank': int(getattr(plan, 'tier_rank', 0) or 0),
                 'is_popular': plan.name.lower() == 'pro' or 'pro' in plan.name.lower()
             } for plan in plans]
         }), 200
@@ -1406,6 +1336,15 @@ def _reconcile_user_stripe_subscriptions_from_stripe(user_id, user):
             sub.current_period_start = period_start
             sub.current_period_end = period_end
             sub.cancel_at_period_end = bool(catpe)
+            if (status or '').lower() in ('active', 'trialing') and sub.plan_id:
+                user = User.query.get(user_id)
+                plan = SubscriptionPlan.query.get(sub.plan_id)
+                if user and plan:
+                    _apply_plan_entitlements_to_user(user, plan)
+            elif subscription_status_requires_revoke(status):
+                user = User.query.get(user_id)
+                if user:
+                    _maybe_revoke_user_entitlements(user)
         except Exception as e:
             current_app.logger.warning(
                 'Stripe reconcile failed for subscription %s: %s',
@@ -1617,12 +1556,25 @@ def create_checkout_session():
         if not plan_id:
             return jsonify({'error': 'Plan ID is required'}), 400
 
+        billing_interval = (data.get('billing_interval') or data.get('interval') or 'month').strip().lower()
+        if billing_interval not in ('month', 'year', 'monthly', 'yearly'):
+            return jsonify({'error': 'Invalid billing_interval'}), 400
+        if billing_interval in ('monthly',):
+            billing_interval = 'month'
+        if billing_interval in ('yearly',):
+            billing_interval = 'year'
+
         plan = SubscriptionPlan.query.get(plan_id)
         if not plan or not plan.is_active:
             return jsonify({'error': 'Invalid plan'}), 400
 
         # Auto-create Stripe product/price if not yet linked
-        if not plan.stripe_price_id:
+        stripe_price_id = plan.stripe_price_id
+        if billing_interval == 'year':
+            stripe_price_id = plan.stripe_price_id_yearly
+            if not stripe_price_id:
+                return jsonify({'error': 'Yearly billing is not configured for this plan'}), 400
+        elif not stripe_price_id:
             try:
                 product = stripe.Product.create(
                     name=plan.name,
@@ -1638,6 +1590,7 @@ def create_checkout_session():
                 plan.stripe_product_id = product.id
                 db.session.commit()
                 current_app.logger.info(f"Auto-created Stripe product/price for plan {plan.id}: {stripe_price.id}")
+                stripe_price_id = plan.stripe_price_id
             except stripe.error.StripeError as e:
                 current_app.logger.error(f"Failed to auto-create Stripe price for plan {plan.id}: {e}")
                 return jsonify({'error': 'Failed to configure plan for payments'}), 500
@@ -1657,7 +1610,7 @@ def create_checkout_session():
             'customer': user.stripe_customer_id,
             'payment_method_types': ['card'],
             'line_items': [{
-                'price': plan.stripe_price_id,
+                'price': stripe_price_id,
                 'quantity': 1,
             }],
             'mode': 'subscription',

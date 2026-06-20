@@ -2759,6 +2759,12 @@ select { cursor:default; }
       <div class="field"><label>Yearly Price ($)</label><input type="number" id="planPriceYearly" step="0.01" min="0" value="0"></div>
       <div class="field"><label>Trial Days</label><input type="number" id="planTrialDays" min="0" value="0"></div>
       <div class="field"><label>Backtest session cap</label><input type="number" id="planMaxTradingSessions" min="0" step="1" placeholder="e.g. 5, 15, 50" title="Applied to users when they subscribe to this plan"></div>
+      <div class="field"><label>Ticker cap / session</label><input type="number" id="planMaxTickersPerSession" min="0" step="1" placeholder="e.g. 5"></div>
+      <div class="field"><label>Supporting ticker cap</label><input type="number" id="planMaxSupportingTickers" min="0" step="1" placeholder="e.g. 5"></div>
+      <div class="field"><label>Tier rank</label><input type="number" id="planTierRank" min="0" step="1" placeholder="10, 20, 30" title="Higher = premium tier for upgrade ordering"></div>
+      <div class="field fg-full" style="padding:8px 12px;background:var(--warn-subtle, rgba(245,158,11,0.08));border-radius:8px;font-size:12px;color:var(--text-secondary)">
+        Limit changes apply to new signups only until you click <strong>Sync to subscribers</strong> on the plan row. Create new Stripe Price IDs for price changes — do not edit existing price IDs in Stripe.
+      </div>
       <div class="field"><label>Stripe Price ID (Monthly)</label><input type="text" id="planStripePriceId" placeholder="price_..."></div>
       <div class="field"><label>Stripe Price ID (Yearly)</label><input type="text" id="planStripePriceIdYearly" placeholder="price_..."></div>
       <div class="field"><label>Stripe Product ID</label><input type="text" id="planStripeProductId" placeholder="prod_..."></div>
@@ -4162,7 +4168,7 @@ select { cursor:default; }
           </div>
           <div class="card-body" style="padding:0">
             <table>
-              <thead><tr><th>Plan</th><th>Monthly</th><th>Yearly</th><th>Sessions</th><th>Trial</th><th>Subscribers</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Plan</th><th>Monthly</th><th>Yearly</th><th>Sessions</th><th>Tickers</th><th>Trial</th><th>Subscribers</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="plansBody"></tbody>
             </table>
             <div class="empty-state" id="emptyPlans" style="display:none">
@@ -7064,7 +7070,8 @@ function renderUserMonitorContent(data, userId) {
   parts.push(umKpi('Status', u.is_active === false ? 'Inactive' : 'Active'));
   parts.push(umKpi('Journal access', u.has_journal_access ? 'Yes' : 'No'));
   parts.push(umKpi('Max devices', umFmtNum(u.max_sessions, 0)));
-  parts.push(umKpi('Backtest session cap', umFmtNum(u.max_trading_sessions, 0)));
+  parts.push(umKpi('Backtest session cap', umFmtNum(u.max_trading_sessions, 0) + (u.entitlements_override ? ' <span class="badge badge-admin" style="margin-left:6px">Custom limits</span>' : '')));
+  if (u.entitlements_source) parts.push(umKpi('Limits source', esc(u.entitlements_source)));
   parts.push(umKpi('Trading tickers / session', umFmtNum(u.max_tickers_per_session, 0)));
   parts.push(umKpi('Supporting tickers / session', umFmtNum(u.max_supporting_tickers_per_session, 0)));
   parts.push(umKpi('Created', u.created_at ? esc(new Date(u.created_at).toLocaleString()) : '—'));
@@ -11746,11 +11753,13 @@ function renderPlans() {
       <td style="font-weight:600">$${(p.price_monthly || 0).toFixed(2)}</td>
       <td style="font-size:12px;color:var(--text-secondary)">$${(p.price_yearly || 0).toFixed(2)}</td>
       <td style="text-align:center;font-weight:600">${p.max_trading_sessions != null ? p.max_trading_sessions : '—'}</td>
+      <td style="font-size:12px;text-align:center">${p.max_tickers_per_session != null ? p.max_tickers_per_session : '—'}</td>
       <td style="font-size:12px">${p.trial_days || 0}d</td>
       <td style="text-align:center;font-weight:600">${p.subscriber_count || 0}</td>
       <td><span class="badge ${statusCls}">${statusTxt}</span></td>
-      <td><div style="display:flex;gap:4px">
+      <td><div style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn sm" onclick="openEditPlanModal(${p.id})">Edit</button>
+        <button class="btn sm" onclick="syncPlanEntitlements(${p.id},'${esc(p.name)}',${p.subscriber_count || 0})" title="Push current plan limits to active subscribers">Sync</button>
         <button class="btn sm danger" onclick="deletePlan(${p.id},'${esc(p.name)}')">Del</button>
       </div></td>
     </tr>`;
@@ -11833,6 +11842,9 @@ function openCreatePlanModal() {
   $('planPriceYearly').value = '0';
   $('planTrialDays').value = '0';
   $('planMaxTradingSessions').value = '';
+  $('planMaxTickersPerSession').value = '';
+  $('planMaxSupportingTickers').value = '';
+  $('planTierRank').value = '';
   $('planStripePriceId').value = '';
   $('planStripePriceIdYearly').value = '';
   $('planStripeProductId').value = '';
@@ -11852,6 +11864,9 @@ function openEditPlanModal(planId) {
   $('planPriceYearly').value = plan.price_yearly || 0;
   $('planTrialDays').value = plan.trial_days || 0;
   $('planMaxTradingSessions').value = plan.max_trading_sessions != null ? plan.max_trading_sessions : '';
+  $('planMaxTickersPerSession').value = plan.max_tickers_per_session != null ? plan.max_tickers_per_session : '';
+  $('planMaxSupportingTickers').value = plan.max_supporting_tickers_per_session != null ? plan.max_supporting_tickers_per_session : '';
+  $('planTierRank').value = plan.tier_rank != null ? plan.tier_rank : '';
   $('planStripePriceId').value = plan.stripe_price_id || '';
   $('planStripePriceIdYearly').value = plan.stripe_price_id_yearly || '';
   $('planStripeProductId').value = plan.stripe_product_id || '';
@@ -11878,6 +11893,24 @@ async function savePlan() {
       const n = parseInt(raw, 10);
       return Number.isFinite(n) ? Math.max(0, n) : null;
     })(),
+    max_tickers_per_session: (() => {
+      const raw = $('planMaxTickersPerSession').value.trim();
+      if (!raw) return null;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? Math.max(0, n) : null;
+    })(),
+    max_supporting_tickers_per_session: (() => {
+      const raw = $('planMaxSupportingTickers').value.trim();
+      if (!raw) return null;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? Math.max(0, n) : null;
+    })(),
+    tier_rank: (() => {
+      const raw = $('planTierRank').value.trim();
+      if (!raw) return 0;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? Math.max(0, n) : 0;
+    })(),
     stripe_price_id: $('planStripePriceId').value.trim() || null,
     stripe_price_id_yearly: $('planStripePriceIdYearly').value.trim() || null,
     stripe_product_id: $('planStripeProductId').value.trim() || null,
@@ -11889,8 +11922,21 @@ async function savePlan() {
   const method = id ? 'PUT' : 'POST';
   try {
     await api(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    toast(id ? 'Plan updated' : 'Plan created', 'ok');
+    toast(id ? 'Plan updated — sync subscribers if limits changed' : 'Plan created', 'ok');
     closePlanModal();
+    await loadPlans();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function syncPlanEntitlements(planId, planName, subscriberCount) {
+  const n = subscriberCount || 0;
+  const msg = n > 0
+    ? `Sync "${planName}" limits to ${n} active subscriber(s)? Users with custom admin overrides will be skipped.`
+    : `Sync "${planName}" limits? No active subscribers on this plan.`;
+  if (!confirm(msg)) return;
+  try {
+    const data = await api(`/api/admin/subscriptions/plans/${planId}/sync-entitlements`, { method: 'POST' });
+    toast(`Synced ${data.synced || 0} user(s)${data.skipped_override ? ` (${data.skipped_override} skipped — custom limits)` : ''}`, 'ok');
     await loadPlans();
   } catch (e) { toast(e.message, 'err'); }
 }

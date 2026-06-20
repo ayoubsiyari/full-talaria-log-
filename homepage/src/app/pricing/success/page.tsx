@@ -35,9 +35,17 @@ function SubscriptionSuccessInner() {
         const data = await res.json().catch(() => ({}));
         if (data.success) {
           try {
-            const stored = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
-            stored.has_journal_access = true;
-            localStorage.setItem("talaria_current_user", JSON.stringify(stored));
+            const meRes = await fetch("/api/auth/me", { credentials: "include" });
+            if (meRes.ok) {
+              const me = await meRes.json();
+              if (me?.user) {
+                localStorage.setItem("talaria_current_user", JSON.stringify(me.user));
+              }
+            } else {
+              const stored = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
+              stored.has_journal_access = true;
+              localStorage.setItem("talaria_current_user", JSON.stringify(stored));
+            }
           } catch {
             /* ignore */
           }

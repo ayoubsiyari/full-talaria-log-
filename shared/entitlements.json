@@ -1,0 +1,16 @@
+{
+  "free_tier": {
+    "max_trading_sessions": 1,
+    "max_tickers_per_session": 2,
+    "max_supporting_tickers_per_session": 2,
+    "has_journal_access": false
+  },
+  "defaults": {
+    "max_trading_sessions": 5,
+    "max_tickers_per_session": 5,
+    "max_supporting_tickers_per_session": 5
+  },
+  "feature_flags": {
+    "ENTITLEMENTS_RESOLVER_V2": true
+  }
+}

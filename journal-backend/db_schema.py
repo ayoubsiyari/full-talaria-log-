@@ -143,6 +143,13 @@ def ensure_users_schema(app) -> None:
                                 "max_supporting_tickers_per_session INTEGER NOT NULL DEFAULT 5"
                             )
                         )
+                    if "entitlements_override" not in cols:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN "
+                                "entitlements_override BOOLEAN NOT NULL DEFAULT FALSE"
+                            )
+                        )
                     if "subscription_plans" in insp.get_table_names():
                         plan_cols = {c["name"] for c in insp.get_columns("subscription_plans")}
                         if "max_trading_sessions" not in plan_cols:
@@ -150,6 +157,34 @@ def ensure_users_schema(app) -> None:
                                 text(
                                     "ALTER TABLE subscription_plans ADD COLUMN "
                                     "max_trading_sessions INTEGER"
+                                )
+                            )
+                        if "max_tickers_per_session" not in plan_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE subscription_plans ADD COLUMN "
+                                    "max_tickers_per_session INTEGER"
+                                )
+                            )
+                        if "max_supporting_tickers_per_session" not in plan_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE subscription_plans ADD COLUMN "
+                                    "max_supporting_tickers_per_session INTEGER"
+                                )
+                            )
+                        if "tier_rank" not in plan_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE subscription_plans ADD COLUMN "
+                                    "tier_rank INTEGER NOT NULL DEFAULT 0"
+                                )
+                            )
+                        if "entitlements_json" not in plan_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE subscription_plans ADD COLUMN "
+                                    "entitlements_json TEXT"
                                 )
                             )
                     if "strategy_templates" in insp.get_table_names():

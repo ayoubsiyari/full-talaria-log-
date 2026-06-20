@@ -22,6 +22,7 @@ export async function startPlanCheckout(
       headers: await authHeaders(),
       body: JSON.stringify({
         plan_id: planId,
+        billing_interval: "month",
         success_url: `${origin}/pricing/success/`,
         cancel_url: returnUrl,
       }),
