@@ -448,6 +448,7 @@ if sqlite_target_path is not None:
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
+_DATABASE_USES_ROW_LOCK = not DATABASE_URL.startswith("sqlite")
 
 # Single Base so FK references between models resolve correctly.
 # The users table is owned by journal-backend — we declare it here for FK resolution
@@ -10044,27 +10045,66 @@ def _count_user_trading_sessions(db, user_id: int) -> int:
         return 0
 
 
+def _session_limit_reached_error(current: int, cap: int) -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail=(
+            f"Backtest session limit reached ({current}/{cap}). "
+            "Delete an existing session or contact your administrator."
+        ),
+    )
+
+
+def _lock_user_for_session_quota(db, user_id: int) -> User | None:
+    """Serialize concurrent session creates per user (PostgreSQL row lock)."""
+    q = db.query(User).filter(User.id == user_id)
+    if _DATABASE_USES_ROW_LOCK:
+        q = q.with_for_update()
+    return q.first()
+
+
+def _check_session_create_quota(db, user: User) -> User:
+    """Ensure the user may create one more session; returns fresh locked user row."""
+    if _user_bypasses_backtest_limits(user):
+        return user
+    locked = _lock_user_for_session_quota(db, user.id)
+    if not locked:
+        raise HTTPException(status_code=404, detail="User not found")
+    limits = _user_backtest_limits(locked)
+    cap = limits["max_trading_sessions"]
+    if cap > 0:
+        current = _count_user_trading_sessions(db, locked.id)
+        if current >= cap:
+            raise _session_limit_reached_error(current, cap)
+    return locked
+
+
+def _verify_session_count_after_flush(db, user: User) -> None:
+    """Post-insert guard for races (especially SQLite without FOR UPDATE)."""
+    if _user_bypasses_backtest_limits(user):
+        return
+    limits = _user_backtest_limits(user)
+    cap = limits["max_trading_sessions"]
+    if cap <= 0:
+        return
+    current = _count_user_trading_sessions(db, user.id)
+    if current > cap:
+        raise _session_limit_reached_error(current, cap)
+
+
 def _enforce_backtest_limits(
     db,
     user: User,
     config: dict | None,
     *,
     is_create: bool = False,
-) -> None:
-    if _user_bypasses_backtest_limits(user):
-        return
-    limits = _user_backtest_limits(user)
+) -> User:
+    """Validate ticker caps; on create also enforce session count under user row lock."""
     if is_create:
-        current = _count_user_trading_sessions(db, user.id)
-        cap = limits["max_trading_sessions"]
-        if cap > 0 and current >= cap:
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    f"Backtest session limit reached ({current}/{cap}). "
-                    "Delete an existing session or contact your administrator."
-                ),
-            )
+        user = _check_session_create_quota(db, user)
+    if _user_bypasses_backtest_limits(user):
+        return user
+    limits = _user_backtest_limits(user)
     ticker_count, supporting_count = _session_config_ticker_counts(config)
     max_tickers = limits["max_tickers_per_session"]
     if max_tickers > 0 and ticker_count > max_tickers:
@@ -10078,6 +10118,7 @@ def _enforce_backtest_limits(
             status_code=400,
             detail=f"Too many supporting tickers ({supporting_count}). Maximum allowed: {max_supporting}.",
         )
+    return user
 
 
 def _user_public_dict(user: User, db=None):
@@ -18904,12 +18945,20 @@ async def create_trading_session(payload: TradingSessionCreateIn, request: Reque
 
     db = SessionLocal()
     try:
-        _enforce_backtest_limits(db, user, payload.config or {}, is_create=True)
+        effective_user = _enforce_backtest_limits(db, user, payload.config or {}, is_create=True)
         s = TradingSession(user_id=user.id, name=name, session_type=session_type, config_json=cfg_json)
         db.add(s)
+        db.flush()
+        _verify_session_count_after_flush(db, effective_user)
         db.commit()
         db.refresh(s)
         return {"session": _session_public_dict(s)}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
