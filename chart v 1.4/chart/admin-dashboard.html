@@ -1643,7 +1643,48 @@ select { cursor:default; }
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 0 1 auto;
+  max-height: min(42vh, 380px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.support-inbox-body > .support-thread-list {
+  flex: 1 1 240px;
+  min-height: 220px;
+}
+.support-inbox-body > #supportInboxLoadMore {
   flex-shrink: 0;
+}
+.support-filter-details {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 8px;
+}
+.support-filter-details > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.support-filter-details > summary::-webkit-details-marker { display: none; }
+.support-filter-details > summary::before {
+  content: '▸';
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform .15s ease;
+}
+.support-filter-details[open] > summary::before { transform: rotate(90deg); }
+.support-filter-details > summary:hover { color: var(--text-secondary); }
+.support-filter-details .support-filter-actions,
+.support-filter-details .support-filter-hint {
+  margin-top: 8px;
 }
 @media (min-width: 1101px) {
   .support-inbox-filters .support-filter-row.grid-row {
@@ -4374,8 +4415,8 @@ select { cursor:default; }
                     Pick a <strong>requester</strong> to see that user&apos;s tickets (same as their support page). Global queue shows latest activity across all users.
                   </div>
                 </div>
-                <div class="support-filter-section support-bulk-panel">
-                  <div class="support-filter-section-label">Bulk actions</div>
+                <details class="support-filter-details support-bulk-panel">
+                  <summary>Bulk actions</summary>
                   <div class="support-filter-actions">
                     <select id="supportBulkStatus" title="Status scope for bulk actions">
                       <option value="closed_resolved" selected>Closed + resolved</option>
@@ -4397,9 +4438,9 @@ select { cursor:default; }
                     <button type="button" class="btn sm danger" onclick="supportDeleteTickets()">Delete</button>
                     <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
                   </div>
-                </div>
-                <div class="support-filter-section support-sync-panel">
-                  <div class="support-filter-section-label">User ticket sync</div>
+                </details>
+                <details class="support-filter-details support-sync-panel">
+                  <summary>User ticket sync</summary>
                   <div class="support-filter-hint" style="font-size:11px;color:var(--text-muted);padding:0 2px 6px">
                     Compare what users see vs admin inbox. If tickets exist for users but are hidden here (e.g. after bulk archive), check and import them.
                   </div>
@@ -4410,7 +4451,7 @@ select { cursor:default; }
                     <button type="button" class="btn sm" onclick="supportViewUserVisibleInbox()">View user-visible inbox</button>
                   </div>
                   <div class="support-sync-results" id="supportSyncResults"></div>
-                </div>
+                </details>
               </div>
               <div class="support-thread-list" id="supportThreadList">
                 <div class="support-thread-empty">Loading…</div>
@@ -5784,6 +5825,8 @@ function supportRenderSyncAudit(data) {
   }
   box.innerHTML = html;
   box.classList.add('visible');
+  const syncPanel = document.querySelector('.support-sync-panel');
+  if (syncPanel && !syncPanel.open) syncPanel.open = true;
 }
 
 async function supportAuditUserTickets(selectedUserOnly) {
