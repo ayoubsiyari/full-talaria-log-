@@ -1717,6 +1717,12 @@ select { cursor:default; }
   flex: 1;
   min-width: 110px;
 }
+.support-archive-before {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 130px;
+  display: none;
+}
 .support-inbox-count {
   margin-left: auto;
   font-size: 10px;
@@ -4265,7 +4271,21 @@ select { cursor:default; }
                     <option value="sla">Sort: SLA due</option>
                     <option value="oldest">Sort: oldest</option>
                   </select>
-                  <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()" title="Hide all tickets from inbox, stats, and user support">Archive all tickets</button>
+                  <select id="supportArchiveStatus" title="Which tickets to archive">
+                    <option value="closed_resolved" selected>Archive: closed + resolved</option>
+                    <option value="closed">Archive: closed only</option>
+                    <option value="all">Archive: all statuses</option>
+                  </select>
+                  <select id="supportArchiveAge" onchange="supportToggleArchiveDate()" title="Time filter">
+                    <option value="">Any age</option>
+                    <option value="7">Older than 7 days</option>
+                    <option value="30" selected>Older than 30 days</option>
+                    <option value="90">Older than 90 days</option>
+                    <option value="180">Older than 180 days</option>
+                    <option value="custom">Before date…</option>
+                  </select>
+                  <input type="date" class="support-archive-before" id="supportArchiveBefore" title="Archive tickets last active on or before this date" />
+                  <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()" title="Hide matching tickets from inbox, stats, and user support">Archive</button>
                   <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
                 </div>
               </div>
@@ -5341,31 +5361,77 @@ function supportExportCsv(ev) {
   return false;
 }
 
+function supportToggleArchiveDate() {
+  const age = ($('supportArchiveAge') && $('supportArchiveAge').value) || '';
+  const dateEl = $('supportArchiveBefore');
+  if (!dateEl) return;
+  dateEl.style.display = age === 'custom' ? '' : 'none';
+}
+
+function supportArchivePayload() {
+  const status = ($('supportArchiveStatus') && $('supportArchiveStatus').value) || 'closed_resolved';
+  const age = ($('supportArchiveAge') && $('supportArchiveAge').value) || '';
+  const before = ($('supportArchiveBefore') && $('supportArchiveBefore').value) || '';
+  const body = {
+    dry_run: true,
+    include_resolved: status === 'closed_resolved',
+    all_tickets: status === 'all',
+  };
+  if (age === 'custom') {
+    if (!before) {
+      throw new Error('Pick a date for “Before date…”');
+    }
+    body.before_date = before;
+  } else if (age) {
+    body.older_than_days = parseInt(age, 10);
+  }
+  return body;
+}
+
+function supportArchiveFilterLabel(body) {
+  const status =
+    body.all_tickets ? 'all statuses' :
+    body.include_resolved ? 'closed + resolved' : 'closed only';
+  let time = 'any age';
+  if (body.before_date) time = 'last active on or before ' + body.before_date;
+  else if (body.older_than_days) time = 'older than ' + body.older_than_days + ' days';
+  return status + ', ' + time;
+}
+
 async function supportArchiveClosedTickets() {
+  let body;
+  try {
+    body = supportArchivePayload();
+  } catch (e) {
+    toast(e.message || 'Invalid archive filters', 'err');
+    return;
+  }
+  const label = supportArchiveFilterLabel(body);
   const ok = confirm(
-    'Archive ALL support tickets?\n\n' +
-    'They will be removed from the admin inbox and metrics (fresh percentages), ' +
-    'and completely hidden from users — support page, notifications, and old links. ' +
-    'This cannot be undone from the UI.'
+    'Archive tickets matching:\n\n' +
+    label + '\n\n' +
+    'They will be hidden from admin metrics and removed from the user support page. ' +
+    'Open tickets are only included if you chose “all statuses”.'
   );
   if (!ok) return;
   try {
     const preview = await api('/api/admin/support/archive-closed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dry_run: true, all_tickets: true })
+      body: JSON.stringify(body)
     });
     const n = preview.archived_count || 0;
     if (!n) {
-      toast('No tickets to archive', 'ok');
+      toast('No tickets match those filters', 'ok');
       return;
     }
-    const confirmAgain = confirm('Archive ' + n + ' ticket' + (n === 1 ? '' : 's') + ' now? Users will no longer see any of them.');
+    const confirmAgain = confirm('Archive ' + n + ' ticket' + (n === 1 ? '' : 's') + ' now?\n\n' + label);
     if (!confirmAgain) return;
+    body.dry_run = false;
     const data = await api('/api/admin/support/archive-closed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dry_run: false, all_tickets: true })
+      body: JSON.stringify(body)
     });
     if (selectedSupportId && !(supportThreads || []).some(function (t) { return t.id === selectedSupportId; })) {
       selectedSupportId = null;

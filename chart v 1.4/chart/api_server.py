@@ -10775,6 +10775,47 @@ class AdminArchiveClosedSupportIn(BaseModel):
     dry_run: bool = False
     include_resolved: bool = True
     all_tickets: bool = False
+    older_than_days: int | None = Field(None, ge=1, le=3650)
+    before_date: str | None = Field(None, max_length=32)
+
+
+def _support_thread_archive_reference_dt():
+    """Best-effort finished/activity timestamp for archive time filters."""
+    return func.coalesce(
+        SupportThread.closed_at,
+        SupportThread.resolved_at,
+        SupportThread.last_message_at,
+        SupportThread.created_at,
+    )
+
+
+def _parse_support_archive_before_date(raw: str) -> datetime:
+    s = (raw or "").strip()[:10]
+    try:
+        d = datetime.strptime(s, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="before_date must be YYYY-MM-DD") from exc
+    return d.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+
+def _admin_support_archive_query(db, payload: AdminArchiveClosedSupportIn):
+    statuses = ("closed",)
+    if payload.include_resolved:
+        statuses = ("closed", "resolved")
+    if payload.all_tickets:
+        statuses = tuple(SUPPORT_STATUSES)
+    q = _support_exclude_archived(db.query(SupportThread))
+    if not payload.all_tickets:
+        q = q.filter(SupportThread.status.in_(statuses))
+    ref_dt = _support_thread_archive_reference_dt()
+    now = datetime.utcnow()
+    if payload.older_than_days is not None:
+        cutoff = now - timedelta(days=int(payload.older_than_days))
+        q = q.filter(ref_dt < cutoff)
+    if payload.before_date:
+        before = _parse_support_archive_before_date(payload.before_date)
+        q = q.filter(ref_dt <= before)
+    return q, list(statuses)
 
 
 class SupportCannedReplyIn(BaseModel):
@@ -11883,15 +11924,8 @@ async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, req
     _require_admin(request)
     db = SessionLocal()
     try:
-        statuses = ("closed",)
-        if payload.include_resolved:
-            statuses = ("closed", "resolved")
         now = datetime.utcnow()
-        q = _support_exclude_archived(db.query(SupportThread))
-        if payload.all_tickets:
-            statuses = tuple(SUPPORT_STATUSES)
-        else:
-            q = q.filter(SupportThread.status.in_(statuses))
+        q, statuses = _admin_support_archive_query(db, payload)
         rows = q.order_by(SupportThread.id.asc()).all()
         preview = [
             {
@@ -11902,12 +11936,20 @@ async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, req
             }
             for t in rows[:100]
         ]
+        filter_summary = {
+            "statuses": statuses,
+            "include_resolved": payload.include_resolved,
+            "all_tickets": payload.all_tickets,
+            "older_than_days": payload.older_than_days,
+            "before_date": payload.before_date,
+        }
         if payload.dry_run:
             return {
                 "success": True,
                 "dry_run": True,
                 "archived_count": len(rows),
-                "statuses": list(statuses),
+                "statuses": statuses,
+                "filters": filter_summary,
                 "preview": preview,
             }
         archived_ids: list[int] = []
@@ -11922,9 +11964,7 @@ async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, req
             target_type="support_thread",
             target_id=None,
             params={
-                "statuses": list(statuses),
-                "include_resolved": payload.include_resolved,
-                "all_tickets": payload.all_tickets,
+                **filter_summary,
                 "archived_count": len(archived_ids),
             },
             result={"archived_thread_ids": archived_ids[:100]},
@@ -11933,7 +11973,8 @@ async def admin_support_archive_closed(payload: AdminArchiveClosedSupportIn, req
             "success": True,
             "dry_run": False,
             "archived_count": len(archived_ids),
-            "statuses": list(statuses),
+            "statuses": statuses,
+            "filters": filter_summary,
             "preview": preview,
         }
     finally:
