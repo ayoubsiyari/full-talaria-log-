@@ -1629,8 +1629,8 @@ select { cursor:default; }
   overflow: hidden;
 }
 .support-inbox-body {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(240px, 1fr) auto;
   flex: 1;
   min-height: 0;
   padding: 0 !important;
@@ -1643,18 +1643,33 @@ select { cursor:default; }
   display: flex;
   flex-direction: column;
   gap: 12px;
-  flex: 0 1 auto;
-  max-height: min(42vh, 380px);
+  grid-row: 1;
+  max-height: min(38vh, 340px);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 .support-inbox-body > .support-thread-list {
-  flex: 1 1 240px;
-  min-height: 220px;
+  grid-row: 2;
+  flex: none;
+  min-height: 240px;
+  height: 100%;
 }
 .support-inbox-body > #supportInboxLoadMore {
+  grid-row: 3;
   flex-shrink: 0;
+}
+.support-import-export {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.support-import-export input[type=file] {
+  font-size: 12px;
+  max-width: 100%;
 }
 .support-filter-details {
   border-top: 1px solid var(--border-subtle);
@@ -4451,6 +4466,15 @@ select { cursor:default; }
                     <button type="button" class="btn sm" onclick="supportViewUserVisibleInbox()">View user-visible inbox</button>
                   </div>
                   <div class="support-sync-results" id="supportSyncResults"></div>
+                  <div class="support-import-export">
+                    <div class="support-filter-hint" style="font-size:11px;color:var(--text-muted);padding:0">
+                      User exports from <strong>Profile → Support → Export my tickets</strong>. Upload that JSON file here to restore them in admin inbox.
+                    </div>
+                    <input type="file" id="supportImportExportFile" accept=".json,application/json" />
+                    <div class="support-filter-actions">
+                      <button type="button" class="btn sm warn" onclick="supportImportFromExportFile()">Import user export file</button>
+                    </div>
+                  </div>
                 </details>
               </div>
               <div class="support-thread-list" id="supportThreadList">
@@ -5910,6 +5934,56 @@ function supportViewUserVisibleInbox() {
   if (status) status.value = '';
   loadSupportThreads();
   toast('Showing user-visible tickets (archived hidden)', 'ok');
+}
+
+async function supportImportFromExportFile() {
+  const input = $('supportImportExportFile');
+  if (!input || !input.files || !input.files[0]) {
+    toast('Choose a JSON export file from the user first', 'err');
+    return;
+  }
+  const file = input.files[0];
+  const syncPanel = document.querySelector('.support-sync-panel');
+  if (syncPanel && !syncPanel.open) syncPanel.open = true;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('dry_run', 'true');
+    const preview = await api('/api/admin/support/import-from-export', { method: 'POST', body: fd });
+    const n = preview.imported_count || 0;
+    if (!n) {
+      toast('No matching tickets found in that export file', 'err');
+      return;
+    }
+    const email = preview.export_user_email ? (' (' + preview.export_user_email + ')') : '';
+    const warn =
+      (preview.not_found_count ? '\n\nMissing in database: ' + preview.not_found_count : '') +
+      (preview.wrong_user_count ? '\n\nUser mismatch skipped: ' + preview.wrong_user_count : '');
+    const ok = confirm(
+      'Import ' + n + ' ticket' + (n === 1 ? '' : 's') + ' from user export' + email + '?\n\n' +
+      'They will be restored to the admin inbox (unarchived).' + warn
+    );
+    if (!ok) return;
+    const fd2 = new FormData();
+    fd2.append('file', file);
+    fd2.append('dry_run', 'false');
+    const data = await api('/api/admin/support/import-from-export', { method: 'POST', body: fd2 });
+    toast('Imported ' + (data.imported_count || 0) + ' ticket(s) from export', 'ok');
+    input.value = '';
+    await loadSupportThreads();
+    const reqSel = $('supportFilterRequester');
+    if (reqSel && data.export_user_email) {
+      for (let i = 0; i < reqSel.options.length; i++) {
+        if (reqSel.options[i].text.indexOf(data.export_user_email) >= 0) {
+          reqSel.value = reqSel.options[i].value;
+          supportOnRequesterChange();
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    toast(e.message || 'Import failed', 'err');
+  }
 }
 
 async function loadSupportUserReplyThreads() {

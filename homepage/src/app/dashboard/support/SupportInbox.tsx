@@ -177,6 +177,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
   const [structFeature, setStructFeature] = useState("");
   const [structUseCase, setStructUseCase] = useState("");
   const [csatSending, setCsatSending] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const newThreadFileRef = useRef<HTMLInputElement | null>(null);
@@ -443,6 +444,34 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
     }
   };
 
+  const exportMyTickets = async () => {
+    setExporting(true);
+    setUploadErr(null);
+    try {
+      const res = await fetch("/api/support/threads/export", { credentials: "include" });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(err.detail || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = cd.match(/filename="([^"]+)"/);
+      const filename = match?.[1] ?? `talaria-tickets-u${user?.id ?? "me"}.json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (loading || !user) {
     return (
       <div className="db-card" style={{ padding: 48, textAlign: "center", color: "#4a4850" }}>
@@ -487,14 +516,27 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
               gap: 8,
             }}
           >
-            <span style={{ fontSize: 12, fontWeight: 700, color: "#e8e4dc" }}>Your tickets</span>
-            <button
-              type="button"
-              className="db-btn-sm db-btn-accent"
-              onClick={() => setShowNew((s) => !s)}
-            >
-              {showNew ? "Cancel" : "New"}
-            </button>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#e8e4dc" }}>
+              Your tickets{threads.length ? ` (${threads.length})` : ""}
+            </span>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="db-btn-sm"
+                disabled={exporting || threads.length === 0}
+                title="Download a JSON file you can send to support for admin import"
+                onClick={() => void exportMyTickets()}
+              >
+                {exporting ? "Exporting…" : "Export my tickets"}
+              </button>
+              <button
+                type="button"
+                className="db-btn-sm db-btn-accent"
+                onClick={() => setShowNew((s) => !s)}
+              >
+                {showNew ? "Cancel" : "New"}
+              </button>
+            </div>
           </div>
           {showNew && (
             <div style={{ padding: 16, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>

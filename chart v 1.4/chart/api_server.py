@@ -1642,6 +1642,77 @@ def _support_import_preview_row(db, t: SupportThread) -> dict:
     }
 
 
+def _support_parse_ticket_ref(ref: str | None) -> int | None:
+    s = (ref or "").strip().upper()
+    if not s.startswith("TAL-"):
+        return None
+    tail = s[4:].lstrip("0") or "0"
+    try:
+        return int(tail)
+    except ValueError:
+        return None
+
+
+def _support_user_export_thread_row(db, t: SupportThread) -> dict:
+    last = (
+        db.query(SupportMessage)
+        .filter(SupportMessage.thread_id == t.id, SupportMessage.is_internal == False)
+        .order_by(SupportMessage.id.desc())
+        .first()
+    )
+    preview = (last.body[:200] + "…") if last and len(last.body or "") > 200 else (last.body if last else None)
+    msg_count = (
+        db.query(func.count(SupportMessage.id))
+        .filter(SupportMessage.thread_id == t.id, SupportMessage.is_internal == False)
+        .scalar()
+        or 0
+    )
+    return {
+        "id": int(t.id),
+        "ticket_ref": _support_ticket_ref(t.id),
+        "subject": t.subject or "",
+        "category": t.category or "other",
+        "status": t.status or "open",
+        "priority": t.priority or "normal",
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "last_message_at": t.last_message_at.isoformat() if t.last_message_at else None,
+        "archived_at": t.archived_at.isoformat() if t.archived_at else None,
+        "message_count": int(msg_count),
+        "last_message_preview": preview,
+    }
+
+
+def _support_import_ids_from_export(payload: dict) -> tuple[list[int], dict]:
+    """Return unique thread ids from a user export payload."""
+    threads = payload.get("threads")
+    if not isinstance(threads, list):
+        raise HTTPException(status_code=400, detail="Export file must contain a threads array")
+    ids: list[int] = []
+    seen: set[int] = set()
+    skipped = 0
+    for row in threads:
+        if not isinstance(row, dict):
+            skipped += 1
+            continue
+        tid = row.get("id")
+        if tid is None:
+            tid = _support_parse_ticket_ref(str(row.get("ticket_ref") or ""))
+        try:
+            tid_int = int(tid)
+        except (TypeError, ValueError):
+            skipped += 1
+            continue
+        if tid_int <= 0 or tid_int in seen:
+            continue
+        seen.add(tid_int)
+        ids.append(tid_int)
+    return ids, {
+        "export_user_id": (payload.get("user") or {}).get("id"),
+        "export_user_email": (payload.get("user") or {}).get("email"),
+        "skipped_rows": skipped,
+    }
+
+
 class SupportConnectionManager:
     """WebSocket connections subscribed to a support thread."""
 
@@ -10983,6 +11054,11 @@ class AdminSupportImportUserTicketsIn(BaseModel):
     user_id: int | None = None
 
 
+class AdminSupportImportExportIn(BaseModel):
+    dry_run: bool = False
+    export: dict
+
+
 class AdminSupportDeleteBulkIn(AdminSupportBulkFilterIn):
     pass
 
@@ -11696,6 +11772,38 @@ async def support_submit_csat(thread_id: int, payload: SupportCsatIn, request: R
         db.commit()
         db.refresh(t)
         return {"thread": _support_thread_dict(db, t, viewer=user)}
+    finally:
+        db.close()
+
+
+@app.get("/api/support/threads/export")
+async def support_export_my_threads(request: Request):
+    """Download JSON list of tickets visible to the signed-in user (for admin import)."""
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        _support_heal_archived_active_tickets(db)
+        rows = (
+            _support_exclude_archived(db.query(SupportThread).filter(SupportThread.user_id == user.id))
+            .order_by(nulls_last(SupportThread.last_message_at.desc()), SupportThread.id.desc())
+            .limit(5000)
+            .all()
+        )
+        payload = {
+            "format": "talaria-support-export",
+            "version": 1,
+            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "user": {"id": int(user.id), "email": user.email, "name": user.name},
+            "thread_count": len(rows),
+            "threads": [_support_user_export_thread_row(db, t) for t in rows],
+        }
+        fname = f"talaria-tickets-u{user.id}-{datetime.utcnow().strftime('%Y%m%d')}.json"
+        body = json.dumps(payload, indent=2)
+        return Response(
+            content=body,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
     finally:
         db.close()
 
@@ -12470,6 +12578,103 @@ async def admin_support_import_user_tickets(payload: AdminSupportImportUserTicke
             "dry_run": False,
             "imported_count": len(restored_ids),
             "preview": preview,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/support/import-from-export")
+async def admin_support_import_from_export(request: Request):
+    """Restore tickets listed in a user-export JSON file (clears archived_at)."""
+    _require_admin(request)
+    ct = (request.headers.get("content-type") or "").lower()
+    dry_run = False
+    export_payload: dict | None = None
+    if "multipart/form-data" in ct:
+        form = await request.form()
+        dry_run = str(form.get("dry_run") or "").lower() in ("1", "true", "yes", "on")
+        up = form.get("file")
+        if up is None or not hasattr(up, "read"):
+            raise HTTPException(status_code=400, detail="Upload a JSON export file from the user support page")
+        raw = await up.read()
+        try:
+            export_payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON export file") from exc
+    else:
+        try:
+            raw = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+        body = AdminSupportImportExportIn(**raw)
+        dry_run = bool(body.dry_run)
+        export_payload = body.export
+    if not isinstance(export_payload, dict):
+        raise HTTPException(status_code=400, detail="Export payload must be a JSON object")
+    if export_payload.get("format") and export_payload.get("format") != "talaria-support-export":
+        raise HTTPException(status_code=400, detail="Unrecognized export format")
+    thread_ids, meta = _support_import_ids_from_export(export_payload)
+    if not thread_ids:
+        raise HTTPException(status_code=400, detail="No ticket ids found in export file")
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        restored: list[dict] = []
+        not_found: list[int] = []
+        wrong_user: list[dict] = []
+        export_user_id = meta.get("export_user_id")
+        for tid in thread_ids:
+            t = db.query(SupportThread).filter(SupportThread.id == int(tid)).first()
+            if not t:
+                not_found.append(int(tid))
+                continue
+            if export_user_id is not None and int(t.user_id) != int(export_user_id):
+                wrong_user.append(
+                    {
+                        "id": int(t.id),
+                        "ticket_ref": _support_ticket_ref(t.id),
+                        "expected_user_id": int(export_user_id),
+                        "actual_user_id": int(t.user_id),
+                    }
+                )
+                continue
+            was_archived = _support_thread_archived(t)
+            if not dry_run:
+                t.archived_at = None
+                t.updated_at = now
+            restored.append(
+                {
+                    "id": int(t.id),
+                    "ticket_ref": _support_ticket_ref(t.id),
+                    "subject": (t.subject or "")[:120],
+                    "status": t.status,
+                    "was_archived": was_archived,
+                }
+            )
+        if not dry_run and restored:
+            db.commit()
+            _record_admin_action(
+                request,
+                action="support.tickets.import_from_export",
+                target_type="support_thread",
+                target_id=None,
+                params={
+                    "export_user_id": export_user_id,
+                    "export_user_email": meta.get("export_user_email"),
+                    "imported_count": len(restored),
+                },
+                result={"restored_thread_ids": [r["id"] for r in restored[:100]]},
+            )
+        return {
+            "success": True,
+            "dry_run": dry_run,
+            "imported_count": len(restored),
+            "not_found_count": len(not_found),
+            "not_found_ids": not_found[:50],
+            "wrong_user_count": len(wrong_user),
+            "wrong_user": wrong_user[:20],
+            "export_user_email": meta.get("export_user_email"),
+            "preview": restored[:100],
         }
     finally:
         db.close()
