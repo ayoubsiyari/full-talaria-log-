@@ -28,6 +28,18 @@ const syncV16SessionUrl = (sessionId) => {
   const fn = typeof window !== "undefined" ? window.__TALARIA_V16_SYNC_SESSION_URL__ : null;
   if (typeof fn === "function") fn(sessionId);
 };
+const syncV16ViewUrl = (view) => {
+  if (!view) return;
+  const fn = typeof window !== "undefined" ? window.__TALARIA_V16_SYNC_VIEW_URL__ : null;
+  if (typeof fn === "function") fn(view);
+};
+const V16_EMBEDDED_VIEWS = new Set(["dashboard", "trades", "sessions", "stratbank", "resources"]);
+const normalizeEmbeddedV16View = (raw) => {
+  const key = String(raw || "").trim().toLowerCase();
+  const aliases = { backtest: "sessions", strategies: "stratbank", strategy: "stratbank" };
+  const id = aliases[key] || key;
+  return V16_EMBEDDED_VIEWS.has(id) ? id : null;
+};
 /** Embedded V16 uses the dashboard BacktestNewSessionModal (API + chart redirect), not the in-file sessions form. */
 const openDashboardNewSession = (opts = {}) => {
   if (!isV16Embedded()) return false;
@@ -8524,6 +8536,19 @@ const TalariaV8b = () => {
     };
   }, []);
   useEffect(() => {
+    if (!isV16Embedded()) return;
+    const applyEmbeddedView = (view) => {
+      const id = normalizeEmbeddedV16View(view);
+      if (id) setSessView(id);
+    };
+    const onSetView = (e) => applyEmbeddedView(e?.detail?.view);
+    window.addEventListener("talaria-v16-set-view", onSetView);
+    try {
+      applyEmbeddedView(new URLSearchParams(window.location.search).get("view"));
+    } catch {}
+    return () => window.removeEventListener("talaria-v16-set-view", onSetView);
+  }, []);
+  useEffect(() => {
     const onResourcesShortcut = (e) => {
       if ((e.ctrlKey || e.metaKey) && String(e.key || "").toLowerCase() === "k") {
         if (sessView === "resources") {
@@ -10764,7 +10789,7 @@ const TalariaV8b = () => {
         );
         /* ── Shared left nav panel ── */
         const navPanel = (
-          <div style={{width:64,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 0 6px",background:c.el,gap:1,boxShadow:"4px 0 20px rgba(0,0,0,0.45)",zIndex:1}}>
+          <div style={{width:64,flexShrink:0,alignSelf:"stretch",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",padding:"0 0 6px",background:c.el,gap:1,boxShadow:"4px 0 20px rgba(0,0,0,0.45)",zIndex:1}}>
             {[
               {id:"dashboard", label:"Dashboard",  icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg>},
               {id:"trades",    label:"Trades",     icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M6.2 4v16M11.8 4v16M17.4 4v16" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" opacity=".72"/><rect x="4.4" y="7.1" width="3.6" height="5.4" stroke="currentColor" strokeWidth="1.45"/><rect x="10" y="11.2" width="3.6" height="5.6" stroke="currentColor" strokeWidth="1.45"/><rect x="15.6" y="6.4" width="3.6" height="4.8" stroke="currentColor" strokeWidth="1.45"/><path d="M5 18.5h7.4" stroke="currentColor" strokeWidth="1.45" strokeLinecap="square"/><path d="M13.5 18.5h5.2M16.7 15.7l2.8 2.8-2.8 2.8" stroke="currentColor" strokeWidth="1.45" strokeLinecap="square" strokeLinejoin="miter"/></svg>},
@@ -10773,11 +10798,16 @@ const TalariaV8b = () => {
               {id:"resources", label:"Resources",  icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="2" y="16.5" width="20" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="5.5" y1="16.5" x2="5.5" y2="20" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="3.5" y="12" width="17" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="7" y1="12" x2="7" y2="15.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><rect x="5" y="7.5" width="14" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.4"/><line x1="8.5" y1="7.5" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>},
             ].map(({id,label,icon})=>{
               const isA=sessView===id;
+              const goNavView = () => {
+                if (isA) return;
+                flushSync(() => setSessView(id));
+                if (isV16Embedded()) syncV16ViewUrl(id);
+              };
               return(
                 <div key={id} className={`tlr-session-nav-item${isA ? " tlr-session-nav-item-active" : ""}`} role="button" tabIndex={0}
-                  onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();if(!isA) flushSync(()=>setSessView(id));}}
+                  onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goNavView();}}
                   onClick={e=>e.preventDefault()}
-                  onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();if(!isA) flushSync(()=>setSessView(id));}}}
+                  onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goNavView();}}}
                   style={{width:"100%",height:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isA?c.acD:"transparent",color:isA?c.acL:c.ts}}>
                   {isA&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                   {icon}

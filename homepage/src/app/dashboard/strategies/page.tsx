@@ -1,6 +1,10 @@
-import StrategylabV9PageClient from "@/app/dashboard/strategies/StrategylabV9PageClient";
+import { Suspense } from "react";
+import { V16DashboardViewRedirect } from "../v16/V16DashboardViewRedirect";
 
-/** Strategy Lab (V9): journal strategies + chart sessions; same persistence as legacy lab (`strategy_definition` + `talaria_v9`). */
 export default function DashboardStrategiesPage() {
-  return <StrategylabV9PageClient />;
+  return (
+    <Suspense fallback={null}>
+      <V16DashboardViewRedirect view="stratbank" />
+    </Suspense>
+  );
 }

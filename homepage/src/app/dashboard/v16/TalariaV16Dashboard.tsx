@@ -6,6 +6,7 @@ import React, { useEffect, useLayoutEffect } from "react";
 import { useBacktestNewSession } from "../BacktestNewSessionContext";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 import { useV16LiveBootstrap } from "./useV16LiveBootstrap";
+import { normalizeV16DashboardView } from "./v16DashboardRoutes";
 
 const TalariaV16 = dynamic(() => import("talaria-handoff/TalariaV16.jsx"), {
   ssr: false,
@@ -36,10 +37,26 @@ export default function TalariaV16Dashboard() {
       const base = pathname.endsWith("/") ? pathname : `${pathname}/`;
       router.replace(`${base}?${params.toString()}`, { scroll: false });
     };
+    window.__TALARIA_V16_SYNC_VIEW_URL__ = (view) => {
+      const normalized = normalizeV16DashboardView(view) || "dashboard";
+      const params = new URLSearchParams(searchParams.toString());
+      if (normalized === "dashboard") params.delete("view");
+      else params.set("view", normalized);
+      const base = pathname.endsWith("/") ? pathname : `${pathname}/`;
+      const qs = params.toString();
+      router.replace(qs ? `${base}?${qs}` : base, { scroll: false });
+    };
     return () => {
       delete window.__TALARIA_V16_SYNC_SESSION_URL__;
+      delete window.__TALARIA_V16_SYNC_VIEW_URL__;
     };
   }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    const view = normalizeV16DashboardView(searchParams.get("view"));
+    if (!view) return;
+    window.dispatchEvent(new CustomEvent("talaria-v16-set-view", { detail: { view } }));
+  }, [searchParams]);
 
   return (
     <div

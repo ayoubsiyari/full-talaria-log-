@@ -32,7 +32,7 @@ export function defaultAppDashboardPathForUser(
   user: DashboardUser | null
 ): string {
   if (!user) return "/pricing/?browse=1";
-  if (userIsDashboardAdmin(user)) return "/dashboard/backtest/";
+  if (userIsDashboardAdmin(user)) return "/dashboard/?view=sessions";
   return defaultDashboardPathForUser(user);
 }
 
@@ -136,11 +136,11 @@ export function userHasDashboardModule(
 export function defaultDashboardPathForUser(user: DashboardUser | null): string {
   if (!user) return "/pricing/?browse=1";
   if (userIsDashboardAdmin(user)) {
-    return "/dashboard/backtest/";
+    return "/dashboard/?view=sessions";
   }
   if (userHasPaidFullDashboard(user)) {
     if (ADMIN_ONLY_WIP_SECTIONS) {
-      return "/dashboard/backtest/";
+      return "/dashboard/?view=sessions";
     }
     return "/dashboard/journal/";
   }
@@ -148,8 +148,8 @@ export function defaultDashboardPathForUser(user: DashboardUser | null): string 
   for (const mod of order) {
     if (isModuleAdminOnlyWip(mod)) continue;
     if (user.dashboard_modules?.[mod]) {
-      if (mod === "backtest") return "/dashboard/backtest/";
-      if (mod === "strategies") return "/dashboard/strategies/";
+      if (mod === "backtest") return "/dashboard/?view=sessions";
+      if (mod === "strategies") return "/dashboard/?view=stratbank";
     }
   }
   return "/pricing/?browse=1";

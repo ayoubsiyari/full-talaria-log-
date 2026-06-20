@@ -5,6 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
 import { BacktestNewSessionProvider } from "./BacktestNewSessionContext";
+import {
+  normalizeV16DashboardView,
+  SHELL_NAV_TO_V16_VIEW,
+  shellNavIdUsesV16Root,
+  v16DashboardHref,
+} from "./v16/v16DashboardRoutes";
 import "./dashboard-shell.css";
 import {
   dashboardPathRequiresPaidJournal,
@@ -323,13 +329,9 @@ const EXTERNAL_VIEWS: Record<string, string> = {
 };
 
 const INTERNAL_NAV: Record<string, string> = {
-  dashboard: "/dashboard/",
-  journal:   "/dashboard/journal/",
-  trades:    "/dashboard/trades/",
-  backtest:  "/dashboard/backtest/",
-  strategies: "/dashboard/strategies/",
-  cot:       "/dashboard/cot/",
-  admin:     "/dashboard/admin/",
+  journal: "/dashboard/journal/",
+  cot: "/dashboard/cot/",
+  admin: "/dashboard/admin/",
 };
 
 export default function DashboardShell({
@@ -360,7 +362,7 @@ export default function DashboardShell({
 
   React.useEffect(() => {
     window.__TALARIA_OPEN_STRATEGY_BUILDER__ = () => {
-      router.push("/dashboard/strategies/?create=1");
+      router.push(v16DashboardHref("stratbank", { create: "1" }));
     };
     return () => {
       delete window.__TALARIA_OPEN_STRATEGY_BUILDER__;
@@ -470,8 +472,19 @@ export default function DashboardShell({
     } else if (pathname.startsWith("/dashboard/support")) setActiveView("profile");
     else if (pathname.startsWith("/dashboard/admin")) setActiveView("admin");
     else if (pathname.startsWith("/dashboard/profile")) setActiveView("profile");
-    else if (pathname === "/dashboard" || pathname === "/dashboard/") setActiveView("dashboard");
-    else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
+    else if (pathname === "/dashboard" || pathname === "/dashboard/") {
+      try {
+        const view = normalizeV16DashboardView(
+          new URLSearchParams(window.location.search).get("view")
+        );
+        if (view === "trades") setActiveView("trades");
+        else if (view === "sessions") setActiveView("backtest");
+        else if (view === "stratbank") setActiveView("strategies");
+        else setActiveView("dashboard");
+      } catch {
+        setActiveView("dashboard");
+      }
+    } else if (pathname.startsWith("/dashboard")) setActiveView("dashboard");
   }, [pathname, user]);
 
   React.useEffect(() => {
@@ -514,6 +527,10 @@ export default function DashboardShell({
       return;
     }
     setActiveView(id);
+    if (shellNavIdUsesV16Root(id)) {
+      router.push(v16DashboardHref(SHELL_NAV_TO_V16_VIEW[id]));
+      return;
+    }
     if (EXTERNAL_VIEWS[id]) {
       setLoadedViews((prev) => ({ ...prev, [id]: true }));
     } else if (INTERNAL_NAV[id]) {
@@ -703,7 +720,7 @@ export default function DashboardShell({
               </a>
               {onAdminRoute ? (
                 <a
-                  href="/dashboard/backtest/"
+                  href="/dashboard/?view=sessions"
                   style={{
                     fontSize: 11,
                     fontWeight: 600,

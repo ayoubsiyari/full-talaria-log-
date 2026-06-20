@@ -610,7 +610,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
 
   const openNewStrategyLab = () => {
     closeNewSess();
-    router.push("/dashboard/strategies/?create=1");
+    router.push("/dashboard/?view=stratbank&create=1");
   };
 
   const maxTickersCap = userLimits.isAdmin ? 100 : Math.max(1, userLimits.maxTickers || 5);
