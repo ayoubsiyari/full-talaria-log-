@@ -79,7 +79,7 @@ function formatLocalTime(tz?: string) {
   }
 }
 
-function ProfilePageInner() {
+function ProfilePageInner({ v16Embed = false }: { v16Embed?: boolean }) {
   const { isArabic } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -89,14 +89,17 @@ function ProfilePageInner() {
   const setTab = React.useCallback(
     (next: SettingsTab) => {
       const q = new URLSearchParams(searchParams.toString());
+      if (v16Embed) q.set("view", "profile");
       q.set("tab", next);
       if (next !== "support") {
         q.delete("thread");
         q.delete("topic");
       }
-      router.replace(`/dashboard/profile/?${q.toString()}`);
+      router.replace(
+        v16Embed ? `/dashboard/?${q.toString()}` : `/dashboard/profile/?${q.toString()}`,
+      );
     },
-    [router, searchParams],
+    [router, searchParams, v16Embed],
   );
   const [user, setUser] = React.useState<MeUser | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -155,7 +158,9 @@ function ProfilePageInner() {
   const openBillingPortal = async () => {
     setBillingMsg(null);
     setBillingBusy("portal");
-    const returnUrl = `${window.location.origin}/dashboard/profile/`;
+    const returnUrl = v16Embed
+      ? `${window.location.origin}/dashboard/?view=profile&tab=subscription`
+      : `${window.location.origin}/dashboard/profile/`;
     try {
       const res = await fetch("/api/auth/billing-portal", {
         method: "POST",
@@ -298,7 +303,7 @@ function ProfilePageInner() {
 
   if (!user) {
     return (
-      <div className="prof-settings">
+      <div className={`prof-settings${v16Embed ? " prof-settings--v16-embed" : ""}`}>
         <div className="prof-loading">{isArabic ? "جاري التحميل…" : "Loading…"}</div>
       </div>
     );
@@ -319,11 +324,18 @@ function ProfilePageInner() {
   ];
 
   return (
-    <div className="prof-settings">
+    <div className={`prof-settings${v16Embed ? " prof-settings--v16-embed" : ""}`}>
       <div className="prof-settings__shell">
         <aside className="prof-settings__nav">
           <Link href="/dashboard/" className="prof-settings__back">
-            <span aria-hidden>‹</span> {isArabic ? "الإعدادات" : "Settings"}
+            <span aria-hidden>‹</span>{" "}
+            {v16Embed
+              ? isArabic
+                ? "لوحة التحكم"
+                : "Dashboard"
+              : isArabic
+                ? "الإعدادات"
+                : "Settings"}
           </Link>
 
           <div className="prof-settings__nav-group">
@@ -716,6 +728,6 @@ function ProfilePageInner() {
   );
 }
 
-export default function ProfilePageClient() {
-  return <ProfilePageInner />;
+export default function ProfilePageClient({ v16Embed = false }: { v16Embed?: boolean }) {
+  return <ProfilePageInner v16Embed={v16Embed} />;
 }

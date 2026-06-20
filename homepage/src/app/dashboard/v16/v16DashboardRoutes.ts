@@ -4,7 +4,8 @@ export type V16DashboardViewId =
   | "trades"
   | "sessions"
   | "stratbank"
-  | "resources";
+  | "resources"
+  | "profile";
 
 const V16_VIEW_ALIASES: Record<string, V16DashboardViewId> = {
   dashboard: "dashboard",
@@ -15,6 +16,7 @@ const V16_VIEW_ALIASES: Record<string, V16DashboardViewId> = {
   stratbank: "stratbank",
   strategy: "stratbank",
   resources: "resources",
+  profile: "profile",
 };
 
 /** Shell sidebar id → V16 sessView id */

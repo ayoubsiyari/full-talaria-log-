@@ -33,7 +33,7 @@ const syncV16ViewUrl = (view) => {
   const fn = typeof window !== "undefined" ? window.__TALARIA_V16_SYNC_VIEW_URL__ : null;
   if (typeof fn === "function") fn(view);
 };
-const V16_EMBEDDED_VIEWS = new Set(["dashboard", "trades", "sessions", "stratbank", "resources"]);
+const V16_EMBEDDED_VIEWS = new Set(["dashboard", "trades", "sessions", "stratbank", "resources", "profile"]);
 const normalizeEmbeddedV16View = (raw) => {
   const key = String(raw || "").trim().toLowerCase();
   const aliases = { backtest: "sessions", strategies: "stratbank", strategy: "stratbank" };
@@ -66,9 +66,10 @@ const openDashboardStrategyBuilder = () => {
   fn();
   return true;
 };
-/** Embedded V16 opens the dashboard profile page (real account/billing), not the in-file demo modal. */
+/** Embedded V16 opens profile inside the V16 shell (?view=profile), not the legacy dashboard sidebar. */
 const openV16Profile = (tab) => {
   if (!isV16Embedded()) return false;
+  window.dispatchEvent(new CustomEvent("talaria-v16-set-view", { detail: { view: "profile" } }));
   const fn = typeof window !== "undefined" ? window.__TALARIA_V16_OPEN_PROFILE__ : null;
   if (typeof fn === "function") {
     fn(tab);
@@ -78,8 +79,15 @@ const openV16Profile = (tab) => {
   const mapped = tab && tabMap[tab] ? tabMap[tab] : tab;
   const known = new Set(["profile", "security", "subscription", "support"]);
   const resolved = mapped && known.has(mapped) ? mapped : "profile";
-  const qs = resolved === "profile" ? "" : `?tab=${encodeURIComponent(resolved)}`;
-  window.location.assign(qs ? `/dashboard/profile/${qs}` : "/dashboard/profile/");
+  syncV16ViewUrl("profile");
+  if (resolved !== "profile") {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.set("view", "profile");
+      params.set("tab", resolved);
+      window.history.replaceState(null, "", `/dashboard/?${params.toString()}`);
+    } catch {}
+  }
   return true;
 };
 
@@ -10832,16 +10840,25 @@ const TalariaV8b = () => {
               );
             })}
             <div style={{flex:1}}/>
-            {(()=>(
-              <div className="tlr-session-nav-item" role="button" tabIndex={0}
-                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();if(!openV16Profile())flushSync(()=>setProfileOpen(true));}}
+            {(()=>{
+              const isProfileA = sessView === "profile";
+              const goProfileNav = () => {
+                if (isProfileA) return;
+                if (openV16Profile()) return;
+                flushSync(() => setProfileOpen(true));
+              };
+              return (
+              <div className={`tlr-session-nav-item${isProfileA ? " tlr-session-nav-item-active" : ""}`} role="button" tabIndex={0}
+                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goProfileNav();}}
                 onClick={e=>e.preventDefault()}
-                onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();if(!openV16Profile())flushSync(()=>setProfileOpen(true));}}}
-                style={{width:"100%",height:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",background:"transparent",color:c.ts}}>
+                onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goProfileNav();}}}
+                style={{width:"100%",height:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isProfileA?c.acD:"transparent",color:isProfileA?c.acL:c.ts}}>
+                {isProfileA&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 <span style={{fontSize:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>Profile</span>
               </div>
-            ))()}
+              );
+            })()}
           </div>
         );
 
@@ -31658,6 +31675,18 @@ const TalariaV8b = () => {
 
 
 
+            </div>
+          );
+        }
+
+        /* ── VIEW: PROFILE (live account settings inside V16 shell) ── */
+        if (sessView === "profile") {
+          return (
+            <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none"}}>
+              <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
+                {navPanel}
+                <div id="talaria-v16-profile-mount" style={{flex:1,minWidth:0,minHeight:0,overflow:"hidden",display:"flex",flexDirection:"column"}} />
+              </div>
             </div>
           );
         }

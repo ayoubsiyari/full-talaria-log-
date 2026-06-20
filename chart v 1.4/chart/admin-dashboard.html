@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="tickets-layout-20260524k">
+<meta name="x-admin-build" content="tickets-layout-20260619a">
 <title>Talaria — Admin Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1762,18 +1762,7 @@ select { cursor:default; }
   height: 100%;
   overflow: hidden;
 }
-.card.support-main {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "requester"
-    "header"
-    "toolbar"
-    "messages"
-    "composer";
-}
 .card.support-main > .support-user-card {
-  grid-area: requester;
   margin: 0;
   border-radius: 0;
   border-left: 0;
@@ -1787,10 +1776,6 @@ select { cursor:default; }
   max-height: 14vh;
   overflow-y: auto;
 }
-.card.support-main > .card-hdr.support-main-header { grid-area: header; }
-.card.support-main > .support-ticket-toolbar { grid-area: toolbar; }
-.card.support-main > .support-messages-wrap { grid-area: messages; }
-.card.support-main > .support-composer { grid-area: composer; }
 .support-chat-column {
   display: flex;
   flex-direction: column;
@@ -2013,6 +1998,10 @@ select { cursor:default; }
   flex-shrink: 0;
 }
 .support-ticket-toolbar.is-collapsed .support-toolbar-body { display: none; }
+.support-ticket-toolbar:not(.is-collapsed) .support-toolbar-body {
+  max-height: min(240px, 26vh);
+  overflow-y: auto;
+}
 .support-toolbar-toggle {
   width: 100%;
   display: flex;
@@ -2100,20 +2089,11 @@ select { cursor:default; }
   min-width: 180px;
 }
 .card.support-main > .support-messages-wrap {
-  grid-area: messages;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.support-messages-wrap {
-  min-height: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: rgba(0,0,0,.15);
-  overflow-y: auto;
+  flex: 1 1 0;
+  min-height: 140px;
+  background: rgba(0, 0, 0, 0.15);
   overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -2608,11 +2588,12 @@ select { cursor:default; }
 }
 .support-msg-img-wrap img {
   max-width: 100%;
-  max-height: min(520px, 60vh);
+  max-height: min(360px, 42vh);
   border-radius: 8px;
   display: block;
   vertical-align: middle;
   cursor: zoom-in;
+  object-fit: contain;
 }
 .btn.sm { padding: 6px 12px; font-size: 11px; }
 </style>
