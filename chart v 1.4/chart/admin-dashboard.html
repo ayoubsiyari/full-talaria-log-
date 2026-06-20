@@ -2483,12 +2483,11 @@ select { cursor:default; }
 }
 .support-stats-dual-pct .pct-block.resolve .pct-label { color: var(--ok); }
 .support-stats-dual-pct .pct-block.queue .pct-label { color: #fbbf24; }
+.support-stats-dual-pct .pct-block.queue .focus-value { color: #fbbf24; }
+.support-stats-dual-pct .pct-block.resolve .focus-value { color: var(--ok); }
 .support-stats-dual-pct .focus-value {
   font-size: 22px;
   line-height: 1.1;
-}
-.support-stats-queue-row {
-  margin-top: 6px;
 }
 .support-stats-resolve-grid {
   display: grid;
@@ -5308,26 +5307,24 @@ async function loadSupportTicketStats() {
       return (Math.round(n * 10) / 10).toString().replace(/\.0$/, '');
     }
 
-    function supportResolveFocusCard(title, tone, resolvePct, queuePct, resolved, queueN, userRepliedN, total) {
+    function supportResolveFocusCard(title, tone, resolvePct, resolved, queueN, userRepliedN, total) {
       const resolveLabel = supportFormatPct(resolvePct);
-      const queueLabel = supportFormatPct(queuePct);
       let meta;
       if (!total) {
         meta = 'No tickets yet';
       } else {
-        meta = resolved + ' finished · ' + queueN + ' in queue · ' + userRepliedN + ' user follow-ups (excluded from %)';
+        meta = resolved + ' resolved · ' + userRepliedN + ' user follow-ups (not in queue count)';
       }
       return [
         '<div class="support-stats-focus-card ' + tone + '">',
         '  <div class="support-stats-focus-top">',
         '    <div><div class="focus-title">' + esc(title) + '</div><div class="focus-meta">' + meta + '</div></div>',
         '    <div class="support-stats-dual-pct">',
+        '      <div class="pct-block queue"><div class="pct-label">In queue</div><div class="focus-value">' + queueN + '</div></div>',
         '      <div class="pct-block resolve"><div class="pct-label">Resolved</div><div class="focus-value">' + resolveLabel + '%</div></div>',
-        '      <div class="pct-block queue"><div class="pct-label">Queue</div><div class="focus-value">' + queueLabel + '%</div></div>',
         '    </div>',
         '  </div>',
         supportStatsBar(tone === 'resolve' ? 'resolve' : tone, resolvePct),
-        '  <div class="support-stats-queue-row">' + supportStatsBar('queue', queuePct) + '</div>',
         '</div>'
       ].join('');
     }
@@ -5367,8 +5364,8 @@ async function loadSupportTicketStats() {
     const quickSummary = $('supportStatsQuickSummary');
     if (quickSummary) {
       const parts = [
+        '<span style="color:#fbbf24">Queue ' + combinedQueue + '</span>',
         '<span style="color:var(--text-secondary)">Resolved ' + supportFormatPct(combinedResolvePct) + '%</span>',
-        '<span style="color:#fbbf24">Queue ' + supportFormatPct(combinedQueuePct) + '%</span>',
         '<span style="color:var(--ok)">Bug/Error ' + supportFormatPct(resolvePct) + '%</span>'
       ];
       if (ratedCount) {
@@ -5379,11 +5376,11 @@ async function loadSupportTicketStats() {
     }
 
     const resolveMetricsCards = [
-      supportResolveFocusCard('Bug / Error resolve', 'resolve', resolvePct, bugErrorQueuePct, bugErrorResolved, bugErrorQueue, bugErrorUserReplied, bugErrorTotal),
-      supportResolveFocusCard('Modifications resolve', 'modifications', modificationsResolvePct, modificationsQueuePct, modificationsResolved, modificationsQueue, modificationsUserReplied, modificationsTotal),
-      supportResolveFocusCard('Feature request resolve', 'feature', featureResolvePct, featureQueuePct, featureResolved, featureQueue, featureUserReplied, featureTotal),
-      supportResolveFocusCard('Suggestions resolve', 'suggestions', suggestionsResolvePct, suggestionsQueuePct, suggestionsResolved, suggestionsQueue, suggestionsUserReplied, suggestionsTotal),
-      supportResolveFocusCard('Total resolve (all 4)', 'total-resolve', combinedResolvePct, combinedQueuePct, combinedResolved, combinedQueue, combinedUserReplied, combinedTotal)
+      supportResolveFocusCard('Bug / Error resolve', 'resolve', resolvePct, bugErrorResolved, bugErrorQueue, bugErrorUserReplied, bugErrorTotal),
+      supportResolveFocusCard('Modifications resolve', 'modifications', modificationsResolvePct, modificationsResolved, modificationsQueue, modificationsUserReplied, modificationsTotal),
+      supportResolveFocusCard('Feature request resolve', 'feature', featureResolvePct, featureResolved, featureQueue, featureUserReplied, featureTotal),
+      supportResolveFocusCard('Suggestions resolve', 'suggestions', suggestionsResolvePct, suggestionsResolved, suggestionsQueue, suggestionsUserReplied, suggestionsTotal),
+      supportResolveFocusCard('Total resolve (all 4)', 'total-resolve', combinedResolvePct, combinedResolved, combinedQueue, combinedUserReplied, combinedTotal)
     ].join('');
 
     const topMetricsCards = [
