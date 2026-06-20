@@ -18,6 +18,7 @@ on:
       - "Sources Handoff/TalariaV16.jsx"
       - "Sources Handoff/scoreEngine.js"
       - "journal-backend/**"
+      - "shared/**"
       - "docker-compose.yml"
       - ".github/workflows/build-images.yml"
   workflow_dispatch:

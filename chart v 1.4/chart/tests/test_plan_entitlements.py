@@ -98,3 +98,25 @@ def test_free_tier_caps_never_raises_from_shallow_path(monkeypatch, tmp_path):
     monkeypatch.setenv("ENTITLEMENTS_CONFIG_PATH", str(cfg_dir / "entitlements.json"))
     caps = pe.free_tier_caps()
     assert caps["max_trading_sessions"] == 2
+
+
+def test_plan_templates_from_config(monkeypatch):
+    monkeypatch.setattr(
+        pe,
+        "_load_entitlements_config",
+        lambda: {
+            "plan_templates": [
+                {
+                    "id": "starter",
+                    "label": "Starter",
+                    "max_trading_sessions": 3,
+                    "tier_rank": 10,
+                    "features": ["3 sessions"],
+                }
+            ]
+        },
+    )
+    templates = pe.plan_templates()
+    assert len(templates) == 1
+    assert templates[0]["id"] == "starter"
+    assert templates[0]["max_trading_sessions"] == 3

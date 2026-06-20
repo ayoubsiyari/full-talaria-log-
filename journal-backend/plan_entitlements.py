@@ -79,6 +79,45 @@ def entitlements_resolver_v2_enabled() -> bool:
     return bool((cfg.get("feature_flags") or {}).get("ENTITLEMENTS_RESOLVER_V2", False))
 
 
+def _normalize_plan_template(raw: dict) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    tid = str(raw.get("id") or "").strip()
+    label = str(raw.get("label") or "").strip()
+    if not tid or not label:
+        return None
+    features_raw = raw.get("features")
+    features: list[str] = []
+    if isinstance(features_raw, list):
+        features = [str(x).strip() for x in features_raw if str(x).strip()]
+    return {
+        "id": tid,
+        "label": label,
+        "description": str(raw.get("description") or "").strip(),
+        "max_trading_sessions": max(0, int(raw.get("max_trading_sessions", 0) or 0)),
+        "max_tickers_per_session": max(0, int(raw.get("max_tickers_per_session", 0) or 0)),
+        "max_supporting_tickers_per_session": max(
+            0, int(raw.get("max_supporting_tickers_per_session", 0) or 0)
+        ),
+        "tier_rank": max(0, int(raw.get("tier_rank", 0) or 0)),
+        "features": features,
+    }
+
+
+def plan_templates() -> list[dict]:
+    """Ready-made entitlement presets for admin plan creation."""
+    cfg = _load_entitlements_config()
+    raw = cfg.get("plan_templates")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        norm = _normalize_plan_template(item)
+        if norm:
+            out.append(norm)
+    return out
+
+
 def _cap_int(raw, fallback: int) -> int:
     if raw is None:
         return max(0, fallback)

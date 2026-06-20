@@ -2758,6 +2758,11 @@ select { cursor:default; }
       <div class="field fg-full"><label>Description</label><textarea id="planDescription" rows="2" placeholder="What this plan includes..."></textarea></div>
       <div class="field"><label>Yearly Price ($)</label><input type="number" id="planPriceYearly" step="0.01" min="0" value="0"></div>
       <div class="field"><label>Trial Days</label><input type="number" id="planTrialDays" min="0" value="0"></div>
+      <div class="field fg-full">
+        <label>Ready template</label>
+        <div class="quick-btns" id="planTemplateBtns" style="flex-wrap:wrap;gap:6px"></div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:6px">One click fills session/ticker caps and tier rank. Features are added only if the list is empty.</div>
+      </div>
       <div class="field"><label>Backtest session cap</label><input type="number" id="planMaxTradingSessions" min="0" step="1" placeholder="e.g. 5, 15, 50" title="Applied to users when they subscribe to this plan"></div>
       <div class="field"><label>Ticker cap / session</label><input type="number" id="planMaxTickersPerSession" min="0" step="1" placeholder="e.g. 5"></div>
       <div class="field"><label>Supporting ticker cap</label><input type="number" id="planMaxSupportingTickers" min="0" step="1" placeholder="e.g. 5"></div>
@@ -11833,7 +11838,54 @@ function renderSubscriptions() {
 }
 
 // Plan modal
-function openCreatePlanModal() {
+let planTemplates = [];
+
+async function ensurePlanTemplatesLoaded() {
+  if (planTemplates.length) return planTemplates;
+  try {
+    const data = await api('/api/admin/subscriptions/plan-templates');
+    planTemplates = Array.isArray(data.templates) ? data.templates : [];
+  } catch (e) {
+    planTemplates = [];
+  }
+  return planTemplates;
+}
+
+function renderPlanTemplateButtons() {
+  const el = $('planTemplateBtns');
+  if (!el) return;
+  if (!planTemplates.length) {
+    el.innerHTML = '<span style="font-size:11px;color:var(--text-secondary)">No templates configured</span>';
+    return;
+  }
+  el.innerHTML = planTemplates.map(t =>
+    `<button type="button" class="btn sm plan-template-btn" data-template-id="${esc(t.id)}" title="${esc(t.description || t.label)}">${esc(t.label)}</button>`
+  ).join('');
+}
+
+function applyPlanTemplate(templateId) {
+  const t = planTemplates.find(x => x.id === templateId);
+  if (!t) return;
+  $('planMaxTradingSessions').value = t.max_trading_sessions != null ? String(t.max_trading_sessions) : '';
+  $('planMaxTickersPerSession').value = t.max_tickers_per_session != null ? String(t.max_tickers_per_session) : '';
+  $('planMaxSupportingTickers').value = t.max_supporting_tickers_per_session != null ? String(t.max_supporting_tickers_per_session) : '';
+  $('planTierRank').value = t.tier_rank != null ? String(t.tier_rank) : '';
+  if (Array.isArray(t.features) && t.features.length && !$('planFeatures').value.trim()) {
+    $('planFeatures').value = t.features.join('\n');
+  }
+  toast(`Applied "${t.label}" template`, 'ok');
+}
+
+(function bindPlanTemplateButtons() {
+  const el = $('planTemplateBtns');
+  if (!el) return;
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-template-id]');
+    if (btn) applyPlanTemplate(btn.getAttribute('data-template-id'));
+  });
+})();
+
+async function openCreatePlanModal() {
   $('planModalTitle').textContent = 'Create Plan';
   $('planModalId').value = '';
   $('planName').value = '';
@@ -11850,10 +11902,12 @@ function openCreatePlanModal() {
   $('planStripeProductId').value = '';
   $('planIsActive').value = '1';
   $('planFeatures').value = '';
+  await ensurePlanTemplatesLoaded();
+  renderPlanTemplateButtons();
   $('planModal').classList.add('open');
 }
 
-function openEditPlanModal(planId) {
+async function openEditPlanModal(planId) {
   const plan = allPlans.find(p => p.id === planId);
   if (!plan) return;
   $('planModalTitle').textContent = `Edit: ${plan.name}`;
@@ -11873,6 +11927,8 @@ function openEditPlanModal(planId) {
   $('planIsActive').value = plan.is_active ? '1' : '0';
   const feats = Array.isArray(plan.features) ? plan.features.join('\n') : '';
   $('planFeatures').value = feats;
+  await ensurePlanTemplatesLoaded();
+  renderPlanTemplateButtons();
   $('planModal').classList.add('open');
 }
 

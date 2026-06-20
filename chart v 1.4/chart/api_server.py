@@ -16441,6 +16441,13 @@ def _plan_public_dict(p, db=None):
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
+@app.get("/api/admin/subscriptions/plan-templates")
+async def admin_plan_templates(request: Request):
+    """Ready-made entitlement presets for the admin plan modal."""
+    _require_admin(request)
+    return {"templates": pe.plan_templates()}
+
+
 @app.get("/api/admin/subscriptions/plans")
 async def admin_list_plans(request: Request):
     _require_admin(request)
