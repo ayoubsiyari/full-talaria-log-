@@ -265,7 +265,7 @@ body {
 }
 #sec-support.active {
   display: grid !important;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   height: 100%;
@@ -1590,6 +1590,27 @@ select { cursor:default; }
   gap: 8px;
   align-items: end;
 }
+.support-tools-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.support-tools-field > span {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.support-bulk-delete-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.support-bulk-delete-hint.ready {
+  color: var(--warn, #fbbf24);
+}
 .support-tools-grid select,
 .support-tools-grid input[type=date] {
   width: 100%;
@@ -1678,13 +1699,19 @@ select { cursor:default; }
 .support-inbox-list-wrap {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .support-inbox-list-wrap > .support-thread-list {
-  flex: 1;
-  min-height: 180px;
+  flex: none;
+  min-height: 0;
+  overflow: visible;
+  height: auto;
+}
+.support-inbox-body > #supportInboxLoadMore {
+  flex-shrink: 0;
 }
 .support-import-export {
   display: flex;
@@ -1726,6 +1753,8 @@ select { cursor:default; }
   font-weight: 600;
   color: var(--warn, #fbbf24);
 }
+.support-inbox-card,
+.card.support-main {
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -4339,14 +4368,19 @@ select { cursor:default; }
             <div class="card-title">Bulk manage</div>
           </div>
           <div class="card-body">
-            <div class="support-tools-label">Match tickets by status, type, and age — then archive, delete, or unarchive</div>
+            <div class="support-tools-label">Pick status + <strong>ticket type</strong> + age, then run a bulk action. Delete only works when a type is selected.</div>
             <div class="support-tools-grid">
-              <select id="supportBulkStatus" title="Status scope">
+              <label class="support-tools-field">
+                <span>Status</span>
+                <select id="supportBulkStatus" title="Status scope">
                 <option value="closed_resolved" selected>Closed + resolved</option>
                 <option value="closed">Closed only</option>
                 <option value="all">All statuses</option>
               </select>
-              <select id="supportBulkCategory" title="Ticket type / category">
+              </label>
+              <label class="support-tools-field">
+                <span>Ticket type</span>
+                <select id="supportBulkCategory" title="Ticket type / category" onchange="supportUpdateBulkDeleteHint()">
                 <option value="">All types</option>
                 <option value="billing">Billing</option>
                 <option value="account">Account</option>
@@ -4358,7 +4392,10 @@ select { cursor:default; }
                 <option value="suggestions">Suggestions / Features</option>
                 <option value="other">Other</option>
               </select>
-              <select id="supportBulkAge" onchange="supportToggleBulkDate()" title="Time filter">
+              </label>
+              <label class="support-tools-field">
+                <span>Age</span>
+                <select id="supportBulkAge" onchange="supportToggleBulkDate()" title="Time filter">
                 <option value="">Any age</option>
                 <option value="7">Older than 7 days</option>
                 <option value="30">Older than 30 days</option>
@@ -4366,13 +4403,18 @@ select { cursor:default; }
                 <option value="180">Older than 180 days</option>
                 <option value="custom">Before date…</option>
               </select>
-              <input type="date" class="support-archive-before" id="supportBulkBefore" title="Last active on or before this date" />
+              </label>
+              <label class="support-tools-field">
+                <span>Before date</span>
+                <input type="date" class="support-archive-before" id="supportBulkBefore" title="Last active on or before this date" />
+              </label>
             </div>
+            <div class="support-bulk-delete-hint" id="supportBulkDeleteHint">Select a ticket type to enable delete by type.</div>
             <div class="support-tools-actions">
               <button type="button" class="btn sm" onclick="supportUnarchiveAll()" title="Restore every archived ticket">Unarchive all</button>
               <button type="button" class="btn sm" onclick="supportUnarchiveMatching()">Unarchive matched</button>
               <button type="button" class="btn sm warn" onclick="supportArchiveClosedTickets()">Archive matched</button>
-              <button type="button" class="btn sm danger" onclick="supportDeleteTickets()">Delete matched</button>
+              <button type="button" class="btn sm danger" id="supportBulkDeleteBtn" onclick="supportDeleteTickets()" disabled title="Select a ticket type first">Delete by type</button>
               <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
             </div>
             <div class="support-tools-sync">
@@ -4413,7 +4455,7 @@ select { cursor:default; }
                     <option value="resolved">Resolved</option>
                     <option value="closed">Closed</option>
                   </select>
-                  <select id="supportFilterCategory" onchange="loadSupportThreads()">
+                  <select id="supportFilterCategory" onchange="supportUpdateBulkDeleteHint();loadSupportThreads()">
                     <option value="">All types</option>
                     <option value="billing">Billing</option>
                     <option value="account">Account</option>
@@ -5615,11 +5657,46 @@ function supportToggleBulkDate() {
   dateEl.style.display = age === 'custom' ? '' : 'none';
 }
 
+function supportBulkCategoryValue() {
+  const bulk = ($('supportBulkCategory') && $('supportBulkCategory').value) || '';
+  if (bulk) return bulk;
+  return ($('supportFilterCategory') && $('supportFilterCategory').value) || '';
+}
+
+const SUPPORT_BULK_CATEGORY_LABELS = {
+  billing: 'Billing',
+  account: 'Account',
+  access: 'Access',
+  bug: 'Bug',
+  error: 'Error',
+  feature: 'Feature request',
+  modifications: 'Modifications',
+  suggestions: 'Suggestions',
+  other: 'Other'
+};
+
+function supportUpdateBulkDeleteHint() {
+  const cat = supportBulkCategoryValue();
+  const btn = $('supportBulkDeleteBtn');
+  const hint = $('supportBulkDeleteHint');
+  const label = cat ? (SUPPORT_BULK_CATEGORY_LABELS[cat] || cat) : '';
+  if (btn) {
+    btn.disabled = !cat;
+    btn.title = cat ? ('Delete ' + label + ' tickets matching filters') : 'Select a ticket type first';
+  }
+  if (hint) {
+    hint.classList.toggle('ready', !!cat);
+    hint.textContent = cat
+      ? 'Delete by type ready: ' + label + ' (plus status + age filters above).'
+      : 'Select a ticket type to enable delete by type.';
+  }
+}
+
 function supportBulkPayload() {
   const status = ($('supportBulkStatus') && $('supportBulkStatus').value) || 'closed_resolved';
   const age = ($('supportBulkAge') && $('supportBulkAge').value) || '';
   const before = ($('supportBulkBefore') && $('supportBulkBefore').value) || '';
-  const cat = ($('supportBulkCategory') && $('supportBulkCategory').value) || '';
+  const cat = supportBulkCategoryValue();
   const body = {
     dry_run: true,
     include_resolved: status === 'closed_resolved',
@@ -5636,18 +5713,6 @@ function supportBulkPayload() {
   }
   return body;
 }
-
-const SUPPORT_BULK_CATEGORY_LABELS = {
-  billing: 'Billing',
-  account: 'Account',
-  access: 'Access',
-  bug: 'Bug',
-  error: 'Error',
-  feature: 'Feature request',
-  modifications: 'Modifications',
-  suggestions: 'Suggestions',
-  other: 'Other'
-};
 
 function supportBulkFilterLabel(body) {
   const status =
@@ -5789,6 +5854,11 @@ async function supportArchiveClosedTickets() {
 }
 
 async function supportDeleteTickets() {
+  const cat = supportBulkCategoryValue();
+  if (!cat) {
+    toast('Select a ticket type in Bulk manage (or inbox “All types” filter) before delete', 'err');
+    return;
+  }
   let body;
   try {
     body = supportBulkPayload();
@@ -5798,7 +5868,7 @@ async function supportDeleteTickets() {
   }
   const label = supportBulkFilterLabel(body);
   const ok = confirm(
-    'PERMANENTLY DELETE tickets matching:\n\n' +
+    'PERMANENTLY DELETE ' + (SUPPORT_BULK_CATEGORY_LABELS[cat] || cat) + ' tickets matching:\n\n' +
     label + '\n\n' +
     'Messages and attachments will be removed. This cannot be undone.'
   );
@@ -6365,6 +6435,8 @@ async function loadSupport() {
   ensureLiveSupportSocket();
   bindSupportComposerHandlers();
   supportUpdateReplyPanelVisibility();
+  supportToggleBulkDate();
+  supportUpdateBulkDeleteHint();
   await Promise.all([
     loadSupportAgents(),
     loadSupportRequesters(),
