@@ -34,7 +34,26 @@ export function BacktestNewSessionProvider({
   const [initialState, setInitialState] = React.useState<BacktestNewSessionInitialState | null>(null);
   const onSavedListenersRef = React.useRef(new Set<() => void>());
 
-  const openNewSession = React.useCallback((opts?: BacktestNewSessionOpenOptions) => {
+  const openNewSession = React.useCallback(async (opts?: BacktestNewSessionOpenOptions) => {
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const u = data?.user;
+        if (u && u.role !== "admin") {
+          const count = u.trading_sessions_count ?? 0;
+          const cap = u.max_trading_sessions ?? 5;
+          if (cap > 0 && count >= cap) {
+            window.alert(
+              `Backtest session limit reached (${count}/${cap}). Delete an existing session or contact your administrator.`,
+            );
+            return;
+          }
+        }
+      }
+    } catch {
+      /* still open modal if auth check fails */
+    }
     const id = opts?.strategyId;
     const playbook =
       typeof id === "number" && Number.isFinite(id) && id > 0 ? `strategy:${id}` : "";

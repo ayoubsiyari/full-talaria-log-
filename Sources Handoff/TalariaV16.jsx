@@ -18874,6 +18874,83 @@ const TalariaV8b = () => {
             || String(trade?.data_source || "").toLowerCase() === "manual"
             || String(trade?.sourceOrigin || "").toLowerCase() === "manual"
           );
+          const csvEscapeTradeCell = (value) => {
+            if (value === null || value === undefined) return "";
+            let text;
+            if (typeof value === "object") {
+              try { text = JSON.stringify(value); } catch { return ""; }
+            } else {
+              text = String(value);
+            }
+            if (/[",\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+            return text;
+          };
+          const DASH_TRADE_EXPORT_KEY_ORDER = [
+            "journal_trade_id", "trade_id", "client_trade_id", "tradeId", "id", "n",
+            "sourceSessionName", "sessionName", "session_name", "sourceName", "sourceTitle", "parentSourceName",
+            "is_manual", "manual", "manuallyAdded", "data_source", "sourceOrigin", "sourceKind", "libraryType", "integrity", "editedAt",
+            "strategyName", "strategy", "strategyTitle", "setup", "strategy_label",
+            "symbol", "ticker", "direction", "side", "type", "orderType",
+            "quantity", "positionSize", "position_size", "size", "unit",
+            "status", "entryTime", "openTime", "entryDate", "date", "time", "entryClock",
+            "exitTime", "closeTime", "exitDate", "exitClock",
+            "entryPrice", "entry", "openPrice", "exitPrice", "exit", "closePrice",
+            "stopLoss", "sl", "planned_sl", "takeProfit", "tp", "target", "targetPrice",
+            "pnl_currency_net", "netPnl", "pnl", "pnl_dollars_net", "realizedPnL", "realized_pnl",
+            "rMultiple", "rr", "actual_rr_net", "actualRR", "actualRisk", "rewardToRiskRatio",
+            "riskAmount", "risk_amount", "riskPerTrade", "originalRisk", "planned_risk_amount", "riskAmount",
+            "plannedRisk", "riskPct", "risk_pct", "plannedRR", "planned_rr",
+            "duration", "durationMinutes", "timeHeldMinutes", "dur",
+            "closeType", "exit_reason", "reason", "hitType",
+            "mfe", "mae", "mfe_r", "mae_r", "total_mfe_r", "total_mae_r", "total_mfe", "total_mae",
+            "mfe_points", "mae_points", "highestPrice", "lowestPrice", "postExitHighest", "postExitLowest",
+            "commission", "spread", "slippage", "cost_friction_total", "commission_total", "commission_at_entry", "spread_pips_at_entry",
+            "preNotes", "notes", "postNotes", "postTradeNotes", "post_trade_notes",
+            "preTags", "postTags", "strategyTags", "tags", "strategy_variables", "strategyVariables", "post_strategy_variables", "postStrategyVariables",
+            "entries", "entryRows", "fills", "targets", "targetRows", "takeProfits", "planned_targets",
+            "partial_exits", "exits", "actual_exits", "exitRows", "partialCloses", "sl_tp_modifications",
+            "screenshots", "entryScreenshot", "exitScreenshot", "entryScreenshots", "railScreenshots",
+            "sourceSessionId", "trading_session_id", "sessionId", "sourceId", "journalId", "liveJournalId",
+            "updatedAt", "updated_at", "createdAt", "savedAt",
+          ];
+          const buildDashTradeExportColumns = (rows) => {
+            const keys = new Set();
+            (rows || []).forEach((r) => {
+              if (r && typeof r === "object") Object.keys(r).forEach((k) => keys.add(k));
+            });
+            const ordered = [];
+            DASH_TRADE_EXPORT_KEY_ORDER.forEach((k) => {
+              if (keys.has(k)) { ordered.push(k); keys.delete(k); }
+            });
+            [...keys].sort().forEach((k) => ordered.push(k));
+            return ordered;
+          };
+          const exportDashboardTradesCsv = () => {
+            const rawRows = Array.isArray(metrics?.trades) ? metrics.trades : [];
+            const rows = rawRows.map((trade, index) => {
+              const baseKey = getDashTradeRowKey(trade, index);
+              const override = dashTradesEditedOverrides[baseKey];
+              return override ? { ...trade, ...override } : trade;
+            });
+            if (!rows.length) return;
+            const columns = buildDashTradeExportColumns(rows);
+            const lines = [columns.map(csvEscapeTradeCell).join(",")];
+            rows.forEach((row) => {
+              lines.push(columns.map((k) => csvEscapeTradeCell(row[k])).join(","));
+            });
+            const stamp = new Date().toISOString().slice(0, 10);
+            const sourceSlug = String(ds?.name || ds?.label || "trades").replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "trades";
+            const blob = new Blob([`\uFEFF${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `talaria-${sourceSlug}-trades-${stamp}.csv`;
+            a.rel = "noopener";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          };
           const renderDashboardTradesLedgerV2 = () => {
             const rawRows = Array.isArray(metrics?.trades) ? metrics.trades : [];
             const firstValue = (trade, keys, fallback=null) => {
@@ -19693,7 +19770,18 @@ const TalariaV8b = () => {
                         {dashTxt("Trades","الصفقات")}
                       </h1>
                     </div>
-                    <div style={{flex:"0 0 auto",display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:0}}>
+                    <div style={{flex:"0 0 auto",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,marginBottom:0}}>
+                      <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                        onPointerDown={libraryPointerActivate(exportDashboardTradesCsv)}
+                        onKeyDown={libraryKeyActivate(exportDashboardTradesCsv)}
+                        aria-label={dashTxt("Export all trade fields to CSV","تصدير جميع حقول الصفقات")}
+                        style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(15,19,34,0.96)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:8.8,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"default",boxSizing:"border-box",opacity:sortedRecords.length?1:0.45,pointerEvents:sortedRecords.length?"auto":"none",transition:dashControlTransition}}>
+                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M5 21h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                        </svg>
+                        {dashTxt("Export CSV","تصدير CSV")}
+                      </div>
                       <DashboardEvidenceStrip compact/>
                     </div>
                   </div>
@@ -25564,6 +25652,19 @@ const TalariaV8b = () => {
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,padding:"0 20px 0 10px",marginLeft:"auto"}}>
                   {sessView !== "trades" && <DashboardPagesButton/>}
+                  {sessView === "trades" && (
+                    <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                      onPointerDown={libraryPointerActivate(exportDashboardTradesCsv)}
+                      onKeyDown={libraryKeyActivate(exportDashboardTradesCsv)}
+                      aria-label={dashTxt("Export all trade fields to CSV","تصدير جميع حقول الصفقات")}
+                      style={{height:36,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"rgba(15,19,34,0.92)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:12,fontWeight:800,letterSpacing:"0.07em",fontFamily:F,whiteSpace:"nowrap",cursor:"default",boxSizing:"border-box",flexShrink:0,opacity:metrics?.trades?.length?1:0.45,pointerEvents:metrics?.trades?.length?"auto":"none",transition:dashControlTransition}}>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M5 21h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      </svg>
+                      {dashTxt("Export","تصدير")}
+                    </div>
+                  )}
                   <div className="tlr-dashboard-add-trade" role="button" tabIndex={0}
                     onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();openAddTradeSourcePicker();}}
                     onClick={e=>e.preventDefault()}

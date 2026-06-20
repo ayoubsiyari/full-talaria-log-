@@ -187,6 +187,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const [newSessSupPickerSearch, setNewSessSupPickerSearch] = useState("");
   const [newSessSupPickerPos, setNewSessSupPickerPos] = useState({ top: 0, left: 0 });
   const [newSessSupPickerCat, setNewSessSupPickerCat] = useState("Forex");
+  const [userLimits, setUserLimits] = useState({
+    maxTradingSessions: 5,
+    maxTickers: 5,
+    maxSupporting: 5,
+    tradingSessionsCount: 0,
+    isAdmin: false,
+  });
   const [newSessTradingCostsEnabled, setNewSessTradingCostsEnabled] = useState(false);
   const [newSessCosts, setNewSessCosts] = useState({
     Forex: { commission: "7.00", leverage: "1:500" },
@@ -199,6 +206,30 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
   const [hov, setHov] = useState<any>(null);
   const [dropdown, setDropdown] = useState<any>(null);
   const [ddAnchor, setDdAnchor] = useState<any>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const u = data?.user || {};
+        if (cancelled) return;
+        setUserLimits({
+          maxTradingSessions: u.max_trading_sessions ?? 5,
+          maxTickers: u.max_tickers_per_session ?? 5,
+          maxSupporting: u.max_supporting_tickers_per_session ?? 5,
+          tradingSessionsCount: u.trading_sessions_count ?? 0,
+          isAdmin: u.role === "admin",
+        });
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
 
   // Viewport-fixed dropdowns use getBoundingClientRect() — must not scale (was 1.05 for design mockup zoom).
   const Z = 1;
@@ -582,11 +613,19 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     router.push("/dashboard/strategies/?create=1");
   };
 
+  const maxTickersCap = userLimits.isAdmin ? 100 : Math.max(1, userLimits.maxTickers || 5);
+  const maxSupportingCap = userLimits.isAdmin ? 100 : Math.max(0, userLimits.maxSupporting ?? 5);
+  const atSessionCap =
+    !userLimits.isAdmin &&
+    editSessId == null &&
+    userLimits.maxTradingSessions > 0 &&
+    userLimits.tradingSessionsCount >= userLimits.maxTradingSessions;
+
   const sessInfoDone = !!newSessName.trim();
   const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
   const lockedBox = { opacity: 0.35, pointerEvents: "none" as const, userSelect: "none" as const };
   const activeBox = {};
-  const isValid2 = !!(newSessName && newSessTickers.length > 0 && newSessStart && newSessEnd && newSessCapital);
+  const isValid2 = !!(newSessName && newSessTickers.length > 0 && newSessStart && newSessEnd && newSessCapital && !atSessionCap);
 
   const TlChk = (on: boolean, hKey: string, label: string | null, toggle: any, accent?: string) => {
     const ac = accent || c.acL;
@@ -803,6 +842,12 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
 
   const saveNewSession = async () => {
     if (!isValid2 || savingSession) return;
+    if (atSessionCap) {
+      window.alert(
+        `Backtest session limit reached (${userLimits.tradingSessionsCount}/${userLimits.maxTradingSessions}). Delete an existing session or contact your administrator.`,
+      );
+      return;
+    }
     setSavingSession(true);
     try {
       await persistSession();
@@ -936,6 +981,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                       <I n="x" s={18} cl={hov==="newSessX"?c.rd:c.ts}/>
                     </div>
                   </div>
+                  {atSessionCap && (
+                    <div style={{flexShrink:0,padding:"8px 16px",background:"rgba(255,80,104,0.08)",borderBottom:`1px solid rgba(255,80,104,0.2)`,fontSize:11,color:c.rd,fontFamily:F}}>
+                      Backtest session limit reached ({userLimits.tradingSessionsCount}/{userLimits.maxTradingSessions}). Delete an existing session or contact your administrator.
+                    </div>
+                  )}
 
                   {/* Scrollable form body */}
                   <div style={{flex:1,overflowY:"auto",padding:"16px 20px 68px"}} className="tlr-scroll" onScroll={()=>{setNewSessCalOpen(false);setNewSessStratDropOpen(false);setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(false);setDropdown(null);setDdAnchor(null);}} onClick={()=>{setNewSessStratDropOpen(false);setNewSessSymDropOpen(false);setNewSessAssetDropOpen(false);setNewSessCalOpen(false);setNewSessSymPickerOpen(false);setNewSessSupPickerOpen(false);setDropdown(null);setDdAnchor(null);}}>
@@ -1107,7 +1157,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                   const catKey=catMap[randomCat]||randomCat;
                                   const pool=allSymbols.filter(s=>s.cat===catKey);
                                   if(!pool.length)return;
-                                  const picks=[...pool].sort(()=>Math.random()-0.5).slice(0,Math.min(newSessRandomCount,10)).map(s=>s.sym);
+                                  const picks=[...pool].sort(()=>Math.random()-0.5).slice(0,Math.min(newSessRandomCount,maxTickersCap)).map(s=>s.sym);
                                   setNewSessAssetClass(randomCat);
                                   if(randomCat==="Stocks"||randomCat==="Crypto")setSessTradingMode("standard");
                                   setNewSessTickers(picks);
@@ -1124,14 +1174,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                 Random
                               </div>
                               <div style={{position:"relative",width:49,height:27,background:c.el,border:`1px solid ${c.brH}`,boxSizing:"border-box",flexShrink:0}}>
-                                <input type="number" min={1} max={10} value={newSessRandomCount}
-                                  onChange={e=>setNewSessRandomCount(Math.min(10,Math.max(1,parseInt(e.target.value)||1)))}
+                                <input type="number" min={1} max={maxTickersCap} value={newSessRandomCount}
+                                  onChange={e=>setNewSessRandomCount(Math.min(maxTickersCap,Math.max(1,parseInt(e.target.value)||1)))}
                                   onClick={e=>e.stopPropagation()}
                                   className="tlr-nospinner"
                                   style={{position:"absolute",left:0,right:18,top:0,bottom:0,width:"calc(100% - 18px)",height:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:11,fontWeight:600,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"center",padding:0,boxSizing:"border-box"}}/>
                                 <div style={{position:"absolute",right:0,top:0,bottom:0,width:18,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                                   {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                    <button key={i} onClick={e=>{e.stopPropagation();setNewSessRandomCount(v=>Math.min(10,Math.max(1,v+delta)));}}
+                                    <button key={i} onClick={e=>{e.stopPropagation();setNewSessRandomCount(v=>Math.min(maxTickersCap,Math.max(1,v+delta)));}}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                       style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,lineHeight:1,fontFamily:F,padding:0,borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
                                       {chr}
@@ -1173,7 +1223,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                         <I n="trashDraw" s={10} cl={hov==="prvTrdClr"?c.rd:c.tm}/>
                                       </div>
                                     )}
-                                    <span style={{fontSize:10,fontWeight:700,color:c.tm,fontFamily:F}}>{newSessTickers.length||"—"}</span>
+                                    <span style={{fontSize:10,fontWeight:700,color:c.tm,fontFamily:F}}>{newSessTickers.length||"—"}/{maxTickersCap}</span>
                                   </div>
                                 </div>
                               </div>
@@ -1208,9 +1258,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                             const hk="spick_"+s.sym;const isH=hov===hk;
                                             const bCol=isChk?c.acL:isH?c.tx:c.ts;
                                             return(
-                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessTickers.length<10){setNewSessTickers(p=>[...p,s.sym]);}}}
+                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessTickers.length<maxTickersCap){setNewSessTickers(p=>[...p,s.sym]);}}}
                                                 onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessTickers.length>=10?0.35:1,background:isH&&(isChk||newSessTickers.length<10)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
+                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessTickers.length>=maxTickersCap?0.35:1,background:isH&&(isChk||newSessTickers.length<maxTickersCap)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
                                                 <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
                                                   <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                                                   <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -1227,10 +1277,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                     </div>
                                   </>)}
                                 </div>
-                                {/* Tags — 5 per row, max 2 rows (10 symbols) */}
+                                {/* Tags — up to admin/user cap */}
                                 <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:3,alignContent:"flex-start"}}>
                                   {newSessTickers.length>0
-                                    ?newSessTickers.slice(0,10).map(t=>mkCell(t,e=>{e.stopPropagation();setNewSessTickers(p=>p.filter(x=>x!==t));}))
+                                    ?newSessTickers.slice(0,maxTickersCap).map(t=>mkCell(t,e=>{e.stopPropagation();setNewSessTickers(p=>p.filter(x=>x!==t));}))
                                     :<span style={{fontSize:9,color:c.tm,fontFamily:F,gridColumn:"1/-1",lineHeight:"40px"}}>—</span>
                                   }
                                 </div>
@@ -1267,7 +1317,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                         <I n="trashDraw" s={10} cl={hov==="prvSupClr"?c.rd:c.tm}/>
                                       </div>
                                     )}
-                                    <span style={{fontSize:10,fontWeight:700,color:c.tm,fontFamily:F}}>{newSessSupportTickers.length||"—"}</span>
+                                    <span style={{fontSize:10,fontWeight:700,color:c.tm,fontFamily:F}}>{newSessSupportTickers.length||"—"}/{maxSupportingCap}</span>
                                   </div>
                                 </div>
                               </div>
@@ -1315,9 +1365,9 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                             const hk="suppick_"+s.sym;const isH=hov===hk;
                                             const bCol=isChk?"rgba(232,194,82,0.9)":isH?c.tx:c.ts;
                                             return(
-                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessSupportTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessSupportTickers.length<10){setNewSessSupportTickers(p=>[...p,s.sym]);}}}
+                                              <div key={s.sym} onClick={()=>{if(isChk){setNewSessSupportTickers(p=>p.filter(x=>x!==s.sym));}else if(newSessSupportTickers.length<maxSupportingCap){setNewSessSupportTickers(p=>[...p,s.sym]);}}}
                                                 onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessSupportTickers.length>=10?0.35:1,background:isH&&(isChk||newSessSupportTickers.length<10)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
+                                                style={{display:"flex",alignItems:"center",padding:"4px 8px",gap:6,cursor:"default",opacity:!isChk&&newSessSupportTickers.length>=maxSupportingCap?0.35:1,background:isH&&(isChk||newSessSupportTickers.length<maxSupportingCap)?"rgba(255,255,255,0.04)":"transparent",transition:"background 0.08s,opacity 0.1s"}}>
                                                 <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
                                                   <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
                                                   <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -1334,10 +1384,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
                                     </div>
                                   </>)}
                                 </div>
-                                {/* Tags — 5 per row, max 2 rows (10 symbols) */}
+                                {/* Tags — up to admin/user cap */}
                                 <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:3,alignContent:"flex-start"}}>
                                   {newSessSupportTickers.length>0
-                                    ?newSessSupportTickers.slice(0,10).map(t=>mkCell(t,e=>{e.stopPropagation();setNewSessSupportTickers(p=>p.filter(x=>x!==t));}))
+                                    ?newSessSupportTickers.slice(0,maxSupportingCap).map(t=>mkCell(t,e=>{e.stopPropagation();setNewSessSupportTickers(p=>p.filter(x=>x!==t));}))
                                     :<span style={{fontSize:9,color:c.tm,fontFamily:F,gridColumn:"1/-1",lineHeight:"40px"}}>—</span>
                                   }
                                 </div>

@@ -273,6 +273,10 @@ def list_users():
                 "dashboard_modules": effective_dashboard_modules(user),
                 "has_active_subscription": sub is not None,
                 "subscription_status": sub.status if sub else None,
+                "max_sessions": user.max_sessions,
+                "max_trading_sessions": getattr(user, "max_trading_sessions", 5) or 5,
+                "max_tickers_per_session": getattr(user, "max_tickers_per_session", 5) or 5,
+                "max_supporting_tickers_per_session": getattr(user, "max_supporting_tickers_per_session", 5) or 5,
                 "created_at": user.created_at.isoformat() if user.created_at else None,
                 "updated_at": user.updated_at.isoformat() if user.updated_at else None,
                 # Additional computed fields
@@ -486,6 +490,14 @@ def update_user(user_id):
             )
             if grants:
                 user.has_journal_access = False
+        if 'max_sessions' in data:
+            user.max_sessions = max(1, int(data['max_sessions'] or 1))
+        if 'max_trading_sessions' in data:
+            user.max_trading_sessions = max(0, int(data['max_trading_sessions'] or 0))
+        if 'max_tickers_per_session' in data:
+            user.max_tickers_per_session = max(0, int(data['max_tickers_per_session'] or 0))
+        if 'max_supporting_tickers_per_session' in data:
+            user.max_supporting_tickers_per_session = max(0, int(data['max_supporting_tickers_per_session'] or 0))
         
         db.session.commit()
         
@@ -503,6 +515,10 @@ def update_user(user_id):
                 "has_journal_access": entitled,
                 "has_dashboard_access": user_has_any_dashboard_access(user),
                 "dashboard_modules": mods,
+                "max_sessions": user.max_sessions,
+                "max_trading_sessions": getattr(user, "max_trading_sessions", 5) or 5,
+                "max_tickers_per_session": getattr(user, "max_tickers_per_session", 5) or 5,
+                "max_supporting_tickers_per_session": getattr(user, "max_supporting_tickers_per_session", 5) or 5,
             }
         }), 200
         

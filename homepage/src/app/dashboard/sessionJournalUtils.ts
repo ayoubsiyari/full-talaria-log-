@@ -303,7 +303,17 @@ export function journalColumnLabel(key: string): string {
 }
 
 export function escapeCsvCell(val: unknown): string {
-  const s = val == null ? "" : String(val);
+  let s = "";
+  if (val == null) s = "";
+  else if (typeof val === "object") {
+    try {
+      s = JSON.stringify(val);
+    } catch {
+      s = "";
+    }
+  } else {
+    s = String(val);
+  }
   if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }

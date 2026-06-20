@@ -2468,6 +2468,15 @@ select { cursor:default; }
       <div class="field"><label>Max Devices</label>
         <input type="number" id="editMaxSessions" min="1" max="10" value="1" style="width:100px">
       </div>
+      <div class="field"><label>Max Backtest Sessions</label>
+        <input type="number" id="editMaxTradingSessions" min="0" max="100" value="5" style="width:100px">
+      </div>
+      <div class="field"><label>Max Trading Tickers / Session</label>
+        <input type="number" id="editMaxTickersPerSession" min="0" max="100" value="5" style="width:100px">
+      </div>
+      <div class="field"><label>Max Supporting Tickers / Session</label>
+        <input type="number" id="editMaxSupportingTickers" min="0" max="100" value="5" style="width:100px">
+      </div>
       <div class="field"><label>Access Expiry</label>
         <div class="access-mode" id="editAccessMode">
           <button data-mode="unlimited" class="active">Unlimited</button>
@@ -3019,6 +3028,15 @@ select { cursor:default; }
               </div>
               <div class="field"><label>Max Devices</label>
                 <input type="number" id="newMaxSessions" min="1" max="10" value="1" style="width:100px">
+              </div>
+              <div class="field"><label>Max Backtest Sessions</label>
+                <input type="number" id="newMaxTradingSessions" min="0" max="100" value="5" style="width:100px">
+              </div>
+              <div class="field"><label>Max Trading Tickers / Session</label>
+                <input type="number" id="newMaxTickersPerSession" min="0" max="100" value="5" style="width:100px">
+              </div>
+              <div class="field"><label>Max Supporting Tickers / Session</label>
+                <input type="number" id="newMaxSupportingTickers" min="0" max="100" value="5" style="width:100px">
               </div>
               <div class="field"><label>Access Duration</label>
                 <div class="access-mode" id="createAccessMode">
@@ -6373,7 +6391,13 @@ async function createUser() {
   if (!name || !email || !password) return toast('Fill in all fields', 'err');
   if (password.length < 6) return toast('Password must be at least 6 characters', 'err');
   const maxSess = parseInt($('newMaxSessions').value) || 1;
-  const body = { name, email, password, role, max_sessions: Math.max(1, maxSess) };
+  const body = {
+    name, email, password, role,
+    max_sessions: Math.max(1, maxSess),
+    max_trading_sessions: Math.max(0, parseInt($('newMaxTradingSessions').value) || 5),
+    max_tickers_per_session: Math.max(0, parseInt($('newMaxTickersPerSession').value) || 5),
+    max_supporting_tickers_per_session: Math.max(0, parseInt($('newMaxSupportingTickers').value) || 5),
+  };
   if (createAccessModeVal === 'date') {
     const d = $('newAccessDate').value;
     if (d) body.access_expires_at = new Date(d).toISOString();
@@ -6441,6 +6465,9 @@ function renderUserMonitorContent(data, userId) {
   parts.push(umKpi('Status', u.is_active === false ? 'Inactive' : 'Active'));
   parts.push(umKpi('Journal access', u.has_journal_access ? 'Yes' : 'No'));
   parts.push(umKpi('Max devices', umFmtNum(u.max_sessions, 0)));
+  parts.push(umKpi('Backtest session cap', umFmtNum(u.max_trading_sessions, 0)));
+  parts.push(umKpi('Trading tickers / session', umFmtNum(u.max_tickers_per_session, 0)));
+  parts.push(umKpi('Supporting tickers / session', umFmtNum(u.max_supporting_tickers_per_session, 0)));
   parts.push(umKpi('Created', u.created_at ? esc(new Date(u.created_at).toLocaleString()) : '—'));
   parts.push(umKpi('Last chart activity', s.last_chart_activity_at ? esc(timeAgo(s.last_chart_activity_at)) + ' · ' + esc(new Date(s.last_chart_activity_at).toLocaleString()) : 'Never'));
   parts.push(umKpi('Chart connections', umFmtNum(s.chart_connections, 0)));
@@ -6635,6 +6662,9 @@ function openEditModal(userId) {
   $('editRole').value = user.role;
   $('editPassword').value = '';
   $('editMaxSessions').value = user.max_sessions || 1;
+  $('editMaxTradingSessions').value = user.max_trading_sessions ?? 5;
+  $('editMaxTickersPerSession').value = user.max_tickers_per_session ?? 5;
+  $('editMaxSupportingTickers').value = user.max_supporting_tickers_per_session ?? 5;
   if (user.access_expires_at) {
     setEditAccessMode('date');
     $('editAccessDate').value = user.access_expires_at.slice(0, 16);
@@ -6665,6 +6695,9 @@ async function saveUser() {
     email: $('editEmail').value.trim(),
     role: $('editRole').value,
     max_sessions: Math.max(1, parseInt($('editMaxSessions').value) || 1),
+    max_trading_sessions: Math.max(0, parseInt($('editMaxTradingSessions').value) || 0),
+    max_tickers_per_session: Math.max(0, parseInt($('editMaxTickersPerSession').value) || 0),
+    max_supporting_tickers_per_session: Math.max(0, parseInt($('editMaxSupportingTickers').value) || 0),
   };
   const pw = $('editPassword').value;
   if (pw) body.password = pw;

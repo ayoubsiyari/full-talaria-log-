@@ -37,6 +37,10 @@ type MeUser = {
   has_journal_access: boolean;
   access_expires_at: string | null;
   max_sessions: number;
+  max_trading_sessions?: number;
+  max_tickers_per_session?: number;
+  max_supporting_tickers_per_session?: number;
+  trading_sessions_count?: number;
   subscription: SubscriptionInfo;
   created_at: string | null;
   updated_at: string | null;
@@ -572,12 +576,29 @@ function ProfilePageInner() {
                     <h2 className="prof-card__title">{isArabic ? "استخدام الحساب" : "Usage details"}</h2>
                     <div className="prof-hint">{isArabic ? "جلسات Backtest" : "Backtest sessions"}</div>
                     <div className="prof-usage-bar">
-                      <span style={{ width: user.max_sessions ? "8%" : "0%" }} />
+                      <span
+                        style={{
+                          width:
+                            user.max_trading_sessions && user.trading_sessions_count != null
+                              ? `${Math.min(100, (100 * user.trading_sessions_count) / user.max_trading_sessions)}%`
+                              : "0%",
+                        }}
+                      />
                     </div>
                     <div className="prof-hint">
                       {isArabic
-                        ? `الحد: ${user.max_sessions || "—"} جلسة`
-                        : `Limit: ${user.max_sessions || "—"} sessions`}
+                        ? `${user.trading_sessions_count ?? 0} / ${user.max_trading_sessions ?? "—"} جلسة`
+                        : `${user.trading_sessions_count ?? 0} / ${user.max_trading_sessions ?? "—"} sessions`}
+                    </div>
+                    <div className="prof-hint" style={{ marginTop: 8 }}>
+                      {isArabic
+                        ? `Tickers: ${user.max_tickers_per_session ?? "—"} · Supporting: ${user.max_supporting_tickers_per_session ?? "—"}`
+                        : `Trading tickers per session: ${user.max_tickers_per_session ?? "—"} · Supporting: ${user.max_supporting_tickers_per_session ?? "—"}`}
+                    </div>
+                    <div className="prof-hint" style={{ marginTop: 4 }}>
+                      {isArabic
+                        ? `الأجهزة المتزامنة: ${user.max_sessions || "—"}`
+                        : `Concurrent chart devices: ${user.max_sessions || "—"}`}
                     </div>
                     <div className="prof-kv-grid" style={{ marginTop: 16 }}>
                       <div className="prof-kv-mini">

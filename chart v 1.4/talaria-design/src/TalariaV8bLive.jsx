@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId, axisTextNeedsContrastFix, contrastingAxisTextColor } from "./v9ThemeSync.js";
-import { buildLiveTradeRowsFromOrderManager, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm } from "./orderManagerTradeRows.js";
+import { buildLiveTradeRowsFromOrderManager, syncOrderManagerBalanceFromLedger, resolveTradeCardRR, computeTradeCardAvgMetrics, computeOrderPanelActualAvgFromOm, filterTradePanelRowsByTab, exportTradePanelRowsToCsv } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
   ChartSymbolBadge,
@@ -9461,6 +9461,22 @@ const TalariaV8bLive = () => {
   const tradeNotesRef = useRef({});
   /** Latest `c` theme for listeners registered before `const c` exists (avoids TDZ on `c`). */
   const tradeRowThemeRef = useRef({ gn: "#00D4A1", rd: "#FF5068", tm: "rgba(255,255,255,0.50)" });
+  const exportBtmTrades = useCallback(() => {
+    const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+    if (btmTab === "analytics") {
+      if (om && typeof om.exportAnalyticsToCSV === "function") {
+        om.exportAnalyticsToCSV();
+      }
+      return;
+    }
+    const allTrades = buildLiveTradeRowsFromOrderManager(om, tradeRowThemeRef.current);
+    const allTradesR = allTrades.map((t) => {
+      const ov = tradeTagOverrides[t.id];
+      return ov ? { ...t, preTags: ov.pre ?? t.preTags, postTags: ov.post ?? t.postTags } : t;
+    });
+    const filtered = filterTradePanelRowsByTab(allTradesR, btmTab);
+    exportTradePanelRowsToCsv(filtered, btmTab);
+  }, [btmTab, tradeTagOverrides]);
   const [tradeScreenshots, setTradeScreenshots] = useState({});
   const [screenshots, setScreenshots] = useState([]);
   const [ssOpen, setSsOpen] = useState(true);

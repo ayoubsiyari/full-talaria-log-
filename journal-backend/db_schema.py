@@ -29,6 +29,24 @@ def ensure_users_schema(app) -> None:
                     )
                     conn.execute(
                         text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                            "max_trading_sessions INTEGER NOT NULL DEFAULT 5"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                            "max_tickers_per_session INTEGER NOT NULL DEFAULT 5"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                            "max_supporting_tickers_per_session INTEGER NOT NULL DEFAULT 5"
+                        )
+                    )
+                    conn.execute(
+                        text(
                             "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_id "
                             "ON users (public_id) WHERE public_id IS NOT NULL"
                         )
@@ -104,6 +122,27 @@ def ensure_users_schema(app) -> None:
                             )
                         except Exception:
                             pass
+                    if "max_trading_sessions" not in cols:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN "
+                                "max_trading_sessions INTEGER NOT NULL DEFAULT 5"
+                            )
+                        )
+                    if "max_tickers_per_session" not in cols:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN "
+                                "max_tickers_per_session INTEGER NOT NULL DEFAULT 5"
+                            )
+                        )
+                    if "max_supporting_tickers_per_session" not in cols:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN "
+                                "max_supporting_tickers_per_session INTEGER NOT NULL DEFAULT 5"
+                            )
+                        )
                     if "strategy_templates" in insp.get_table_names():
                         st_cols = {c["name"] for c in insp.get_columns("strategy_templates")}
                         if "publish_settings" not in st_cols:

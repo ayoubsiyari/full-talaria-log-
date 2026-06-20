@@ -82,6 +82,9 @@ class User(db.Model):
     stripe_customer_id = db.Column(db.String(100), nullable=True)
     access_expires_at = db.Column(db.DateTime, nullable=True)
     max_sessions = db.Column(db.Integer, default=1, nullable=False, server_default="1")
+    max_trading_sessions = db.Column(db.Integer, default=5, nullable=False, server_default="5")
+    max_tickers_per_session = db.Column(db.Integer, default=5, nullable=False, server_default="5")
+    max_supporting_tickers_per_session = db.Column(db.Integer, default=5, nullable=False, server_default="5")
     # Community / feed display id (e.g. TLR-00428173) — not the internal primary key.
     public_id = db.Column(db.String(20), unique=True, nullable=True, index=True)
 

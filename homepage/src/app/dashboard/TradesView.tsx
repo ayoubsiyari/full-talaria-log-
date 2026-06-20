@@ -259,7 +259,7 @@ export function TradesView() {
   }, [sortColumn, hiddenColumns]);
 
   const exportCsv = () => {
-    const cols = visibleColumns.length > 0 ? visibleColumns : allColumns;
+    const cols = allColumns;
     const csv = buildSessionJournalCsvText(cols, filteredRows);
     const stamp = new Date().toISOString().slice(0, 10);
     downloadUtf8Csv(`talaria-all-trades-${stamp}.csv`, csv);

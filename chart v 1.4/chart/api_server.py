@@ -657,6 +657,9 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     access_expires_at = Column(DateTime, nullable=True)
     max_sessions = Column(Integer, default=1, nullable=False, server_default="1")
+    max_trading_sessions = Column(Integer, default=5, nullable=False, server_default="5")
+    max_tickers_per_session = Column(Integer, default=5, nullable=False, server_default="5")
+    max_supporting_tickers_per_session = Column(Integer, default=5, nullable=False, server_default="5")
     has_journal_access = Column(Boolean, default=False)
     dashboard_module_grants = Column(Text, nullable=True)  # JSON: {"journal": true, ...}
     stripe_customer_id = Column(String, nullable=True)
@@ -974,6 +977,9 @@ try:
     with engine.connect() as _conn:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMP"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_sessions INTEGER NOT NULL DEFAULT 1"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_trading_sessions INTEGER NOT NULL DEFAULT 5"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_tickers_per_session INTEGER NOT NULL DEFAULT 5"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_supporting_tickers_per_session INTEGER NOT NULL DEFAULT 5"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_journal_access BOOLEAN DEFAULT FALSE"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS dashboard_module_grants TEXT"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)"))
@@ -9766,6 +9772,94 @@ def _ensure_user_public_id_chart(db, user: User) -> str | None:
     return None
 
 
+def _user_backtest_limits(user: User) -> dict:
+    """Per-user caps for backtest sessions and tickers (defaults: 5 each)."""
+    return {
+        "max_trading_sessions": max(0, int(getattr(user, "max_trading_sessions", 5) or 5)),
+        "max_tickers_per_session": max(0, int(getattr(user, "max_tickers_per_session", 5) or 5)),
+        "max_supporting_tickers_per_session": max(
+            0, int(getattr(user, "max_supporting_tickers_per_session", 5) or 5)
+        ),
+    }
+
+
+def _user_bypasses_backtest_limits(user: User) -> bool:
+    return getattr(user, "role", "") == "admin"
+
+
+def _normalize_symbol_list(raw) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    seen = set()
+    out = []
+    for item in raw:
+        sym = str(item or "").strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        out.append(sym)
+    return out
+
+
+def _session_config_ticker_counts(config: dict | None) -> tuple[int, int]:
+    cfg = config if isinstance(config, dict) else {}
+    tickers = _normalize_symbol_list(cfg.get("tickers"))
+    supporting = _normalize_symbol_list(cfg.get("supporting_tickers"))
+    if not tickers:
+        primary = str(cfg.get("symbol") or cfg.get("primary_symbol") or "").strip().upper()
+        if primary:
+            tickers = [primary]
+    return len(tickers), len(supporting)
+
+
+def _count_user_trading_sessions(db, user_id: int) -> int:
+    try:
+        return int(
+            db.query(func.count(TradingSession.id))
+            .filter(TradingSession.user_id == user_id)
+            .scalar()
+            or 0
+        )
+    except Exception:
+        return 0
+
+
+def _enforce_backtest_limits(
+    db,
+    user: User,
+    config: dict | None,
+    *,
+    is_create: bool = False,
+) -> None:
+    if _user_bypasses_backtest_limits(user):
+        return
+    limits = _user_backtest_limits(user)
+    if is_create:
+        current = _count_user_trading_sessions(db, user.id)
+        cap = limits["max_trading_sessions"]
+        if cap > 0 and current >= cap:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Backtest session limit reached ({current}/{cap}). "
+                    "Delete an existing session or contact your administrator."
+                ),
+            )
+    ticker_count, supporting_count = _session_config_ticker_counts(config)
+    max_tickers = limits["max_tickers_per_session"]
+    if max_tickers > 0 and ticker_count > max_tickers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many trading tickers ({ticker_count}). Maximum allowed: {max_tickers}.",
+        )
+    max_supporting = limits["max_supporting_tickers_per_session"]
+    if max_supporting > 0 and supporting_count > max_supporting:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many supporting tickers ({supporting_count}). Maximum allowed: {max_supporting}.",
+        )
+
+
 def _user_public_dict(user: User, db=None):
     created = getattr(user, 'created_at', None)
     updated = getattr(user, 'updated_at', created)
@@ -9845,6 +9939,9 @@ def _user_public_dict(user: User, db=None):
         "dashboard_modules": mod_map,
         "access_expires_at": expires.isoformat() if expires else None,
         "max_sessions": getattr(user, 'max_sessions', 1) or 1,
+        "max_trading_sessions": _user_backtest_limits(user)["max_trading_sessions"],
+        "max_tickers_per_session": _user_backtest_limits(user)["max_tickers_per_session"],
+        "max_supporting_tickers_per_session": _user_backtest_limits(user)["max_supporting_tickers_per_session"],
         "trading_sessions_count": trading_sessions_count,
         "subscription": sub_info,
         "created_at": created.isoformat() if created else None,
@@ -13297,6 +13394,9 @@ class _CreateUserIn(BaseModel):
     access_days: int | None = None
     access_expires_at: str | None = None
     max_sessions: int = 1
+    max_trading_sessions: int = 5
+    max_tickers_per_session: int = 5
+    max_supporting_tickers_per_session: int = 5
 
 
 @app.post("/api/admin/users")
@@ -13323,6 +13423,14 @@ async def admin_create_user(payload: _CreateUserIn, request: Request):
             is_active=True,
             access_expires_at=expires,
             max_sessions=max(1, payload.max_sessions) if payload.max_sessions else 1,
+            max_trading_sessions=max(0, payload.max_trading_sessions if payload.max_trading_sessions is not None else 5),
+            max_tickers_per_session=max(0, payload.max_tickers_per_session if payload.max_tickers_per_session is not None else 5),
+            max_supporting_tickers_per_session=max(
+                0,
+                payload.max_supporting_tickers_per_session
+                if payload.max_supporting_tickers_per_session is not None
+                else 5,
+            ),
         )
         db.add(user)
         db.commit()
@@ -13343,6 +13451,9 @@ class _UpdateUserIn(BaseModel):
     access_days: int | None = None
     password: str | None = None
     max_sessions: int | None = None
+    max_trading_sessions: int | None = None
+    max_tickers_per_session: int | None = None
+    max_supporting_tickers_per_session: int | None = None
 
 
 @app.put("/api/admin/users/{user_id}")
@@ -13368,6 +13479,12 @@ async def admin_update_user(user_id: int, payload: _UpdateUserIn, request: Reque
             user.password_hash = _hash_password(payload.password)
         if payload.max_sessions is not None:
             user.max_sessions = max(1, payload.max_sessions)
+        if payload.max_trading_sessions is not None:
+            user.max_trading_sessions = max(0, payload.max_trading_sessions)
+        if payload.max_tickers_per_session is not None:
+            user.max_tickers_per_session = max(0, payload.max_tickers_per_session)
+        if payload.max_supporting_tickers_per_session is not None:
+            user.max_supporting_tickers_per_session = max(0, payload.max_supporting_tickers_per_session)
         if payload.access_expires_at is not None:
             if payload.access_expires_at == "" or payload.access_expires_at.lower() == "null":
                 user.access_expires_at = None
@@ -18289,6 +18406,7 @@ async def create_trading_session(payload: TradingSessionCreateIn, request: Reque
 
     db = SessionLocal()
     try:
+        _enforce_backtest_limits(db, user, payload.config or {}, is_create=True)
         s = TradingSession(user_id=user.id, name=name, session_type=session_type, config_json=cfg_json)
         db.add(s)
         db.commit()
@@ -18803,7 +18921,12 @@ async def update_trading_session(session_id: int, payload: TradingSessionUpdateI
 
         if payload.config is not None:
             try:
-                s.config_json = json.dumps(payload.config or {}, separators=(",", ":"))
+                merged = payload.config or {}
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid config")
+            _enforce_backtest_limits(db, user, merged, is_create=False)
+            try:
+                s.config_json = json.dumps(merged, separators=(",", ":"))
             except Exception:
                 raise HTTPException(status_code=400, detail="Invalid config")
 
