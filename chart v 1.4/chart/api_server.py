@@ -723,7 +723,6 @@ class User(Base):
     max_trading_sessions = Column(Integer, default=5, nullable=False, server_default="5")
     max_tickers_per_session = Column(Integer, default=5, nullable=False, server_default="5")
     max_supporting_tickers_per_session = Column(Integer, default=5, nullable=False, server_default="5")
-    entitlements_override = Column(Boolean, default=False, nullable=False, server_default="0")
     has_journal_access = Column(Boolean, default=False)
     dashboard_module_grants = Column(Text, nullable=True)  # JSON: {"journal": true, ...}
     stripe_customer_id = Column(String, nullable=True)
@@ -748,10 +747,6 @@ class SubscriptionPlan(Base):
     features = Column(Text, nullable=True)
     trial_days = Column(Integer, default=0)
     max_trading_sessions = Column(Integer, nullable=True)
-    max_tickers_per_session = Column(Integer, nullable=True)
-    max_supporting_tickers_per_session = Column(Integer, nullable=True)
-    tier_rank = Column(Integer, default=0, nullable=False, server_default="0")
-    entitlements_json = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1082,10 +1077,19 @@ def _backfill_plan_tier_ranks(conn) -> None:
 
 def _migration_add_column(engine, table: str, column: str, col_ddl: str) -> None:
     """Add one column in its own transaction so a later failure cannot roll back earlier alters."""
+    from sqlalchemy import inspect as sa_inspect
+
     try:
-        with engine.connect() as conn:
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_ddl}"))
-            conn.commit()
+        insp = sa_inspect(engine)
+        if table in insp.get_table_names():
+            existing = {c["name"] for c in insp.get_columns(table)}
+            if column in existing:
+                return
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_ddl}"))
     except Exception as exc:
         try:
             print(f"[migration] skip {table}.{column}: {exc}", flush=True)
@@ -10096,16 +10100,165 @@ def _ensure_user_public_id_chart(db, user: User) -> str | None:
     return None
 
 
+def _user_entitlements_override_db(db, user_id: int) -> bool:
+    try:
+        row = db.execute(
+            text("SELECT entitlements_override FROM users WHERE id = :id"),
+            {"id": user_id},
+        ).scalar()
+        return bool(row)
+    except Exception:
+        return False
+
+
+def _set_user_entitlements_override_db(db, user_id: int, value: bool) -> None:
+    try:
+        db.execute(
+            text("UPDATE users SET entitlements_override = :v WHERE id = :id"),
+            {"id": user_id, "v": bool(value)},
+        )
+    except Exception:
+        pass
+
+
+class _PlanCapsRow:
+    def __init__(self, data: dict):
+        for k, v in data.items():
+            setattr(self, k, v)
+
+
+def _apply_plan_entitlements_chart(db, user, plan) -> None:
+    extra = _plan_extra_columns_from_db(db, plan.id)
+    caps_row = _PlanCapsRow(
+        {
+            "max_trading_sessions": extra.get("max_trading_sessions", getattr(plan, "max_trading_sessions", None)),
+            "max_tickers_per_session": extra.get("max_tickers_per_session"),
+            "max_supporting_tickers_per_session": extra.get("max_supporting_tickers_per_session"),
+        }
+    )
+    pe.apply_plan_entitlements(user, caps_row)
+    _set_user_entitlements_override_db(db, user.id, False)
+
+
+def _apply_admin_override_chart(db, user) -> None:
+    _set_user_entitlements_override_db(db, user.id, True)
+
+
+def _plan_extra_columns_from_db(db, plan_id: int) -> dict:
+    try:
+        row = (
+            db.execute(
+                text(
+                    "SELECT max_trading_sessions, max_tickers_per_session, "
+                    "max_supporting_tickers_per_session, tier_rank, entitlements_json "
+                    "FROM subscription_plans WHERE id = :id"
+                ),
+                {"id": plan_id},
+            )
+            .mappings()
+            .first()
+        )
+        return dict(row) if row else {}
+    except Exception:
+        try:
+            row = (
+                db.execute(
+                    text("SELECT max_trading_sessions FROM subscription_plans WHERE id = :id"),
+                    {"id": plan_id},
+                )
+                .mappings()
+                .first()
+            )
+            return dict(row) if row else {}
+        except Exception:
+            return {}
+
+
+def _update_plan_entitlement_columns_db(db, plan_id: int, payload: dict) -> None:
+    fields: dict = {}
+    for key in (
+        "max_trading_sessions",
+        "max_tickers_per_session",
+        "max_supporting_tickers_per_session",
+        "tier_rank",
+        "entitlements_json",
+    ):
+        if key not in payload or payload[key] is None:
+            continue
+        if key == "entitlements_json":
+            fields[key] = payload[key]
+        elif key == "tier_rank":
+            fields[key] = max(0, int(payload[key]))
+        else:
+            fields[key] = max(0, int(payload[key]))
+    if not fields:
+        return
+    sets = ", ".join(f"{col} = :{col}" for col in fields)
+    fields["id"] = plan_id
+    db.execute(text(f"UPDATE subscription_plans SET {sets} WHERE id = :id"), fields)
+
+
+def _plan_caps_from_db(db, plan_id: int | None) -> dict | None:
+    """Load plan entitlement columns via raw SQL (ORM may omit columns pre-migration)."""
+    if not plan_id:
+        return None
+    try:
+        row = db.execute(
+            text(
+                "SELECT max_trading_sessions, max_tickers_per_session, "
+                "max_supporting_tickers_per_session FROM subscription_plans WHERE id = :id"
+            ),
+            {"id": plan_id},
+        ).mappings().first()
+        if not row:
+            return None
+        return pe.plan_backtest_caps(_PlanCapsRow(dict(row)))
+    except Exception:
+        try:
+            row = db.execute(
+                text("SELECT max_trading_sessions FROM subscription_plans WHERE id = :id"),
+                {"id": plan_id},
+            ).mappings().first()
+            if not row:
+                return None
+            return pe.plan_backtest_caps(_PlanCapsRow(dict(row)))
+        except Exception:
+            return None
+
+
 def _user_backtest_limits(user: User, db=None) -> dict:
     """Per-user caps for backtest sessions and tickers."""
-    if db is not None:
-        try:
-            return pe.resolve_effective_limits_from_db(
-                db, user, UserModel=User, SubscriptionModel=Subscription, SubscriptionPlanModel=SubscriptionPlan
+    if db is None:
+        return pe.legacy_user_column_limits(user)
+    try:
+        if getattr(user, "role", "") == "admin":
+            return {
+                "max_trading_sessions": 0,
+                "max_tickers_per_session": 0,
+                "max_supporting_tickers_per_session": 0,
+                "entitlements_source": "admin",
+            }
+        if _user_entitlements_override_db(db, user.id):
+            caps = pe.legacy_user_column_limits(user)
+            caps["entitlements_source"] = "override"
+            return caps
+        sub = (
+            db.query(Subscription)
+            .filter(
+                Subscription.user_id == user.id,
+                Subscription.status.in_(["active", "trialing"]),
             )
-        except Exception:
-            return pe.legacy_user_column_limits(user)
-    return pe.legacy_user_column_limits(user)
+            .order_by(Subscription.id.desc())
+            .first()
+        )
+        if sub and sub.plan_id:
+            plan_caps = _plan_caps_from_db(db, sub.plan_id)
+            if plan_caps:
+                plan_caps["entitlements_source"] = "plan"
+                return plan_caps
+        return pe.effective_backtest_limits(user, active_subscription=sub, active_plan=None)
+    except Exception:
+        return pe.legacy_user_column_limits(user)
 
 
 def _user_bypasses_backtest_limits(user: User) -> bool:
@@ -10235,7 +10388,7 @@ def _limits_public_fields(user: User, db=None) -> dict:
     if "entitlements_source" in limits:
         out["entitlements_source"] = limits["entitlements_source"]
     if db is not None:
-        out["entitlements_override"] = bool(getattr(user, "entitlements_override", False))
+        out["entitlements_override"] = _user_entitlements_override_db(db, user.id)
     return out
 
 
@@ -14143,6 +14296,7 @@ async def admin_update_user(user_id: int, payload: _UpdateUserIn, request: Reque
             )
         ):
             pe.apply_admin_override(user)
+            _apply_admin_override_chart(db, user)
         if payload.access_expires_at is not None:
             if payload.access_expires_at == "" or payload.access_expires_at.lower() == "null":
                 user.access_expires_at = None
@@ -16165,7 +16319,7 @@ def _log_plan_entitlement_audit(db, plan_id: int | None, admin_user, action: str
         pass
 
 
-def _plan_public_dict(p):
+def _plan_public_dict(p, db=None):
     feats = []
     if p.features:
         if isinstance(p.features, list):
@@ -16176,6 +16330,7 @@ def _plan_public_dict(p):
                 feats = parsed if isinstance(parsed, list) else []
             except (json.JSONDecodeError, TypeError):
                 feats = [s.strip() for s in p.features.split(',') if s.strip()]
+    extra = _plan_extra_columns_from_db(db, p.id) if db is not None else {}
     return {
         "id": p.id,
         "name": p.name,
@@ -16188,11 +16343,11 @@ def _plan_public_dict(p):
         "stripe_product_id": p.stripe_product_id,
         "features": feats,
         "trial_days": p.trial_days or 0,
-        "max_trading_sessions": getattr(p, "max_trading_sessions", None),
-        "max_tickers_per_session": getattr(p, "max_tickers_per_session", None),
-        "max_supporting_tickers_per_session": getattr(p, "max_supporting_tickers_per_session", None),
-        "tier_rank": int(getattr(p, "tier_rank", 0) or 0),
-        "entitlements_json": getattr(p, "entitlements_json", None),
+        "max_trading_sessions": extra.get("max_trading_sessions", getattr(p, "max_trading_sessions", None)),
+        "max_tickers_per_session": extra.get("max_tickers_per_session"),
+        "max_supporting_tickers_per_session": extra.get("max_supporting_tickers_per_session"),
+        "tier_rank": int(extra.get("tier_rank") or 0),
+        "entitlements_json": extra.get("entitlements_json"),
         "is_active": bool(p.is_active),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
@@ -16205,7 +16360,7 @@ async def admin_list_plans(request: Request):
         plans = db.query(SubscriptionPlan).order_by(SubscriptionPlan.id).all()
         result = []
         for p in plans:
-            d = _plan_public_dict(p)
+            d = _plan_public_dict(p, db)
             d["subscriber_count"] = db.query(Subscription).filter(
                 Subscription.plan_id == p.id,
                 Subscription.status.in_(["active", "trialing"])
@@ -16251,16 +16406,24 @@ async def admin_create_plan(payload: _CreatePlanIn, request: Request):
             features=json.dumps(payload.features or []),
             trial_days=payload.trial_days,
             max_trading_sessions=payload.max_trading_sessions,
-            max_tickers_per_session=payload.max_tickers_per_session,
-            max_supporting_tickers_per_session=payload.max_supporting_tickers_per_session,
-            tier_rank=max(0, int(payload.tier_rank or 0)),
-            entitlements_json=payload.entitlements_json,
             is_active=payload.is_active,
         )
         db.add(plan)
+        db.flush()
+        _update_plan_entitlement_columns_db(
+            db,
+            plan.id,
+            {
+                "max_trading_sessions": payload.max_trading_sessions,
+                "max_tickers_per_session": payload.max_tickers_per_session,
+                "max_supporting_tickers_per_session": payload.max_supporting_tickers_per_session,
+                "tier_rank": payload.tier_rank,
+                "entitlements_json": payload.entitlements_json,
+            },
+        )
         db.commit()
         db.refresh(plan)
-        return {"plan": _plan_public_dict(plan)}
+        return {"plan": _plan_public_dict(plan, db)}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -16307,18 +16470,22 @@ async def admin_update_plan(plan_id: int, payload: _UpdatePlanIn, request: Reque
         if payload.trial_days is not None: plan.trial_days = payload.trial_days
         if payload.max_trading_sessions is not None:
             plan.max_trading_sessions = max(0, int(payload.max_trading_sessions))
-        if payload.max_tickers_per_session is not None:
-            plan.max_tickers_per_session = max(0, int(payload.max_tickers_per_session))
-        if payload.max_supporting_tickers_per_session is not None:
-            plan.max_supporting_tickers_per_session = max(0, int(payload.max_supporting_tickers_per_session))
-        if payload.tier_rank is not None:
-            plan.tier_rank = max(0, int(payload.tier_rank))
-        if payload.entitlements_json is not None:
-            plan.entitlements_json = payload.entitlements_json
-        if payload.is_active is not None: plan.is_active = payload.is_active
+        if payload.is_active is not None:
+            plan.is_active = payload.is_active
+        _update_plan_entitlement_columns_db(
+            db,
+            plan_id,
+            {
+                "max_trading_sessions": payload.max_trading_sessions,
+                "max_tickers_per_session": payload.max_tickers_per_session,
+                "max_supporting_tickers_per_session": payload.max_supporting_tickers_per_session,
+                "tier_rank": payload.tier_rank,
+                "entitlements_json": payload.entitlements_json,
+            },
+        )
         _log_plan_entitlement_audit(db, plan_id, admin_user, "plan_update", payload.model_dump(exclude_none=True))
         db.commit()
-        return {"plan": _plan_public_dict(plan), "sync_required": True}
+        return {"plan": _plan_public_dict(plan, db), "sync_required": True}
     except HTTPException:
         raise
     except Exception as e:
@@ -16351,10 +16518,10 @@ async def admin_sync_plan_entitlements(plan_id: int, request: Request):
             user = db.query(User).filter(User.id == sub.user_id).first()
             if not user:
                 continue
-            if getattr(user, "entitlements_override", False):
+            if _user_entitlements_override_db(db, user.id):
                 skipped_override += 1
                 continue
-            pe.apply_plan_entitlements(user, plan)
+            _apply_plan_entitlements_chart(db, user, plan)
             synced += 1
         _log_plan_entitlement_audit(
             db,
@@ -16551,7 +16718,7 @@ async def admin_assign_subscription(user_id: int, payload: _ManualSubIn, request
         if payload.plan_id:
             plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == payload.plan_id).first()
             if plan:
-                pe.apply_plan_entitlements(user, plan)
+                _apply_plan_entitlements_chart(db, user, plan)
 
         if ends:
             user.access_expires_at = ends
