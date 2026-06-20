@@ -10378,21 +10378,75 @@ def _enforce_backtest_limits(
     return user
 
 
+def _safe_iso(value) -> str | None:
+    if value is None:
+        return None
+    try:
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+    except Exception:
+        pass
+    try:
+        return str(value)
+    except Exception:
+        return None
+
+
 def _limits_public_fields(user: User, db=None) -> dict:
-    limits = _user_backtest_limits(user, db)
-    out = {
-        "max_trading_sessions": limits["max_trading_sessions"],
-        "max_tickers_per_session": limits["max_tickers_per_session"],
-        "max_supporting_tickers_per_session": limits["max_supporting_tickers_per_session"],
-    }
-    if "entitlements_source" in limits:
-        out["entitlements_source"] = limits["entitlements_source"]
-    if db is not None:
-        out["entitlements_override"] = _user_entitlements_override_db(db, user.id)
-    return out
+    try:
+        limits = _user_backtest_limits(user, db)
+        out = {
+            "max_trading_sessions": limits["max_trading_sessions"],
+            "max_tickers_per_session": limits["max_tickers_per_session"],
+            "max_supporting_tickers_per_session": limits["max_supporting_tickers_per_session"],
+        }
+        if "entitlements_source" in limits:
+            out["entitlements_source"] = limits["entitlements_source"]
+        if db is not None:
+            out["entitlements_override"] = _user_entitlements_override_db(db, user.id)
+        return out
+    except Exception:
+        legacy = pe.legacy_user_column_limits(user)
+        return {
+            "max_trading_sessions": legacy["max_trading_sessions"],
+            "max_tickers_per_session": legacy["max_tickers_per_session"],
+            "max_supporting_tickers_per_session": legacy["max_supporting_tickers_per_session"],
+            "entitlements_source": "legacy",
+            "entitlements_override": False,
+        }
 
 
 def _user_public_dict(user: User, db=None):
+    try:
+        return _user_public_dict_impl(user, db)
+    except Exception as exc:
+        try:
+            print(f"[auth] _user_public_dict fallback for user {getattr(user, 'id', '?')}: {exc}", flush=True)
+        except Exception:
+            pass
+        legacy = pe.legacy_user_column_limits(user)
+        return {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "public_id": getattr(user, "public_id", None),
+            "role": getattr(user, "role", "user"),
+            "is_active": bool(getattr(user, "is_active", True)),
+            "has_journal_access": bool(getattr(user, "has_journal_access", False)),
+            "has_active_subscription": False,
+            "has_dashboard_access": bool(getattr(user, "has_journal_access", False)),
+            "max_sessions": getattr(user, "max_sessions", 1) or 1,
+            "max_trading_sessions": legacy["max_trading_sessions"],
+            "max_tickers_per_session": legacy["max_tickers_per_session"],
+            "max_supporting_tickers_per_session": legacy["max_supporting_tickers_per_session"],
+            "trading_sessions_count": 0,
+            "subscription": None,
+            "entitlements_source": "legacy",
+            "entitlements_override": False,
+        }
+
+
+def _user_public_dict_impl(user: User, db=None):
     created = getattr(user, 'created_at', None)
     updated = getattr(user, 'updated_at', created)
     expires = getattr(user, 'access_expires_at', None)
@@ -10470,20 +10524,23 @@ def _user_public_dict(user: User, db=None):
         "has_active_subscription": subscription_entitled,
         "has_dashboard_access": has_dashboard_access,
         "dashboard_modules": mod_map,
-        "access_expires_at": expires.isoformat() if expires else None,
+        "access_expires_at": _safe_iso(expires),
         "max_sessions": getattr(user, 'max_sessions', 1) or 1,
         **_limits_public_fields(user, db),
         "trading_sessions_count": trading_sessions_count,
         "subscription": sub_info,
-        "created_at": created.isoformat() if created else None,
-        "updated_at": updated.isoformat() if updated else None,
+        "created_at": _safe_iso(created),
+        "updated_at": _safe_iso(updated),
         "country": getattr(user, "country", None),
         "phone": getattr(user, "phone", None),
-        "birth_date": getattr(user, "birth_date", None).isoformat() if getattr(user, "birth_date", None) else None,
+        "birth_date": _safe_iso(getattr(user, "birth_date", None)),
         "stripe_customer_id": getattr(user, "stripe_customer_id", None),
     }
     if db is not None and not subscription_entitled:
-        out.update(_subscription_access_context(db, user))
+        try:
+            out.update(_subscription_access_context(db, user))
+        except Exception:
+            pass
     return out
 
 def _dataset_settings_public_dict(settings: DatasetSettings | None, file_obj: CSVFile):
@@ -10553,6 +10610,7 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
 
     db = SessionLocal()
     try:
+        _apply_entitlements_schema_migrations(engine)
         user = db.query(User).filter(User.email == email).first()
         if not user:
             raise HTTPException(status_code=401, detail="Invalid email or password.")
@@ -10590,6 +10648,15 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
         except Exception:
             db.rollback()
         return {"success": True, **_auth_response_with_journal_token(user, db)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        try:
+            print(f"[auth] login failed for {email}: {exc}", flush=True)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Login failed due to a server error. Please try again.") from exc
     finally:
         db.close()
 
@@ -10609,6 +10676,7 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
 
     db = SessionLocal()
     try:
+        _apply_entitlements_schema_migrations(engine)
         user = db.query(User).filter(User.email == email).first()
         is_new = False
         if not user:
@@ -10663,6 +10731,18 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
             db.rollback()
         out = {"success": True, "is_new_user": is_new, **_auth_response_with_journal_token(user, db)}
         return out
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        try:
+            print(f"[auth] google sign-in failed for {email}: {exc}", flush=True)
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail="Google sign-in failed due to a server error. Please try again.",
+        ) from exc
     finally:
         db.close()
 
@@ -10910,7 +10990,16 @@ async def auth_me(request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
     db = SessionLocal()
     try:
+        _apply_entitlements_schema_migrations(engine)
         return _auth_response_with_journal_token(user, db)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        try:
+            print(f"[auth] /me failed for user {getattr(user, 'id', '?')}: {exc}", flush=True)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Could not load profile.") from exc
     finally:
         db.close()
 
