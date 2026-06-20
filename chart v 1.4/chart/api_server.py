@@ -12288,29 +12288,26 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
 
         def category_resolve_stats(*categories: str) -> dict:
             cats = tuple(categories)
-            total = base_q().filter(SupportThread.category.in_(cats)).count()
-            finished = (
-                base_q()
-                .filter(
-                    SupportThread.category.in_(cats),
-                    SupportThread.status.in_(finished_statuses),
-                )
-                .count()
-            )
-            active = (
-                base_q()
-                .filter(
-                    SupportThread.category.in_(cats),
-                    SupportThread.status.in_(active_statuses),
-                )
-                .count()
-            )
-            pct = _resolve_pct(finished, total)
+            base = base_q().filter(SupportThread.category.in_(cats))
+            total = base.count()
+            user_replied_n = base.filter(SupportThread.status == "user_replied").count()
+            open_n = base.filter(SupportThread.status == "open").count()
+            pending_n = base.filter(SupportThread.status == "pending").count()
+            finished = base.filter(SupportThread.status.in_(finished_statuses)).count()
+            queue_n = open_n + pending_n
+            # Percentages exclude user follow-ups (user_replied) — queue = open + pending only.
+            resolve_base = open_n + pending_n + finished
+            resolve_pct = _resolve_pct(finished, resolve_base)
+            queue_pct = _resolve_pct(queue_n, resolve_base)
             return {
                 "total": total,
                 "resolved": finished,
-                "active": active,
-                "pct": pct,
+                "active": open_n + pending_n + user_replied_n,
+                "user_replied": user_replied_n,
+                "queue": queue_n,
+                "resolve_base": resolve_base,
+                "pct": resolve_pct,
+                "queue_pct": queue_pct,
             }
 
         bug_error_stats = category_resolve_stats(*bug_error_cats)
@@ -12359,22 +12356,38 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
             "bug_error_total": bug_error_total,
             "bug_error_resolved": bug_error_resolved,
             "bug_error_active": bug_error_stats["active"],
+            "bug_error_queue": bug_error_stats["queue"],
+            "bug_error_queue_pct": bug_error_stats["queue_pct"],
+            "bug_error_user_replied": bug_error_stats["user_replied"],
+            "bug_error_resolve_base": bug_error_stats["resolve_base"],
             "resolve_pct": resolve_pct,
             "modifications_total": modifications_stats["total"],
             "modifications_resolved": modifications_stats["resolved"],
             "modifications_active": modifications_stats["active"],
+            "modifications_queue": modifications_stats["queue"],
+            "modifications_queue_pct": modifications_stats["queue_pct"],
+            "modifications_user_replied": modifications_stats["user_replied"],
             "modifications_resolve_pct": modifications_stats["pct"],
             "feature_total": feature_stats["total"],
             "feature_resolved": feature_stats["resolved"],
             "feature_active": feature_stats["active"],
+            "feature_queue": feature_stats["queue"],
+            "feature_queue_pct": feature_stats["queue_pct"],
+            "feature_user_replied": feature_stats["user_replied"],
             "feature_resolve_pct": feature_stats["pct"],
             "suggestions_total": suggestions_stats["total"],
             "suggestions_resolved": suggestions_stats["resolved"],
             "suggestions_active": suggestions_stats["active"],
+            "suggestions_queue": suggestions_stats["queue"],
+            "suggestions_queue_pct": suggestions_stats["queue_pct"],
+            "suggestions_user_replied": suggestions_stats["user_replied"],
             "suggestions_resolve_pct": suggestions_stats["pct"],
             "combined_resolve_total": combined_stats["total"],
             "combined_resolve_resolved": combined_stats["resolved"],
             "combined_resolve_active": combined_stats["active"],
+            "combined_resolve_queue": combined_stats["queue"],
+            "combined_resolve_queue_pct": combined_stats["queue_pct"],
+            "combined_resolve_user_replied": combined_stats["user_replied"],
             "combined_resolve_pct": combined_stats["pct"],
             "category_resolve": {
                 "bug_error": bug_error_stats,
