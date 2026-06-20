@@ -140,6 +140,8 @@ from analytics_core.session_seed_trades import (
     extract_session_contract,
     generate_session_seed_trades,
     load_bars_for_contract,
+    normalize_seed_scenario,
+    seed_scenario_catalog,
 )
 from dashboard_access import (
     effective_dashboard_modules,
@@ -18996,12 +18998,20 @@ async def import_trading_session_journal_csv(
         db.close()
 
 
+@app.get("/api/sessions/seed-demo-trades/scenarios")
+async def list_seed_demo_trade_scenarios(request: Request):
+    """QA helper: scenario presets for session-aligned demo trade seeding."""
+    _require_paid_journal_user(request)
+    return {"scenarios": seed_scenario_catalog()}
+
+
 @app.post("/api/sessions/{session_id}/seed-demo-trades")
 async def seed_trading_session_demo_trades(
     session_id: int,
     request: Request,
     count: int = Query(200, ge=1, le=2000),
     mode: str = Query("replace", description="replace or append seeded trades"),
+    scenario: str = Query("balanced", description="realistic | balanced | extreme | stress | losing | winning"),
 ):
     """QA helper: generate trades aligned to session tickers, date range, risk, and market bars."""
     user = _require_paid_journal_user(request)
@@ -19043,11 +19053,13 @@ async def seed_trading_session_demo_trades(
             return payload.get("bars") or []
 
         bars_by_ticker = load_bars_for_contract(contract, _bars_loader, limit=2500)
+        scenario_key = normalize_seed_scenario(scenario)
         generated = generate_session_seed_trades(
             session_public,
             count=count,
             seed=int(session_id) * 1000 + count,
             bars_by_ticker=bars_by_ticker,
+            scenario=scenario_key,
         )
         errs = generated.get("errors") or []
         if errs:
@@ -19102,6 +19114,9 @@ async def seed_trading_session_demo_trades(
         return {
             "seeded": len(new_trades),
             "mode": mode_clean,
+            "scenario": scenario_key,
+            "scenario_label": (generated.get("contract") or {}).get("scenario_label"),
+            "scenario_counts": (generated.get("contract") or {}).get("scenario_counts"),
             "journal_len": len(merged),
             "warnings": list(generated.get("warnings") or []),
             "warning": warning,

@@ -13,7 +13,172 @@ MONTHS = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
 ]
-CLOSE_TYPES = ["TP", "SL", "Manual", "Trailing SL", "BE"]
+CLOSE_TYPES = ["TP", "SL", "Manual", "Trailing SL", "BE", "Partial", "Time Stop", "Gap Exit"]
+
+SEED_SCENARIO_PROFILES: dict[str, dict[str, Any]] = {
+    "realistic": {
+        "label": "Realistic",
+        "win_rate": 0.54,
+        "tail_pct": 0.05,
+        "hint": "Stable win rate, almost no outliers.",
+    },
+    "balanced": {
+        "label": "Balanced",
+        "win_rate": 0.52,
+        "tail_pct": 0.20,
+        "hint": "~80% normal trades, ~20% tail cases.",
+    },
+    "extreme": {
+        "label": "Extreme tails",
+        "win_rate": 0.46,
+        "tail_pct": 0.50,
+        "hint": "Heavy tails: mega wins/losses, gaps, oversizing.",
+    },
+    "stress": {
+        "label": "Stress / all scenarios",
+        "win_rate": 0.50,
+        "tail_pct": 0.35,
+        "cycle_all": True,
+        "hint": "Cycles through every scenario type for QA coverage.",
+    },
+    "losing": {
+        "label": "Losing period",
+        "win_rate": 0.30,
+        "tail_pct": 0.12,
+        "hint": "Drawdown-style session with mostly losses.",
+    },
+    "winning": {
+        "label": "Winning streak",
+        "win_rate": 0.70,
+        "tail_pct": 0.10,
+        "hint": "Strong equity curve with controlled outliers.",
+    },
+}
+
+NORMAL_SCENARIOS = [
+    "win_tp", "loss_sl", "win_manual", "loss_manual", "breakeven",
+    "partial_win", "trailing_win", "small_loss", "planned_rr_hit",
+]
+TAIL_SCENARIOS = [
+    "mega_win", "mega_loss", "left_on_table", "survived_drawdown",
+    "oversized_lot", "micro_lot", "gap_loss", "news_spike_win",
+    "multi_day_hold", "split_entry", "scaled_in", "zero_pnl",
+    "rule_break", "time_stop", "partial_loss",
+]
+ALL_SCENARIOS = NORMAL_SCENARIOS + TAIL_SCENARIOS
+
+
+def normalize_seed_scenario(value: Any) -> str:
+    key = str(value or "balanced").strip().lower().replace(" ", "_")
+    aliases = {
+        "normal": "realistic",
+        "realistic": "realistic",
+        "mixed": "balanced",
+        "default": "balanced",
+        "extreme_tails": "extreme",
+        "extremes": "extreme",
+        "all": "stress",
+        "comprehensive": "stress",
+        "full": "stress",
+    }
+    key = aliases.get(key, key)
+    return key if key in SEED_SCENARIO_PROFILES else "balanced"
+
+
+def seed_scenario_catalog() -> list[dict[str, str]]:
+    return [
+        {"id": k, "label": v["label"], "hint": v["hint"]}
+        for k, v in SEED_SCENARIO_PROFILES.items()
+    ]
+
+
+def _pick_trade_scenario(rng: random.Random, profile: dict[str, Any], index: int, count: int) -> str:
+    if profile.get("cycle_all"):
+        return ALL_SCENARIOS[index % len(ALL_SCENARIOS)]
+    tail_pct = float(profile.get("tail_pct") or 0.2)
+    is_tail = rng.random() < tail_pct
+    if is_tail:
+        return rng.choice(TAIL_SCENARIOS + NORMAL_SCENARIOS[:2])
+    return rng.choice(NORMAL_SCENARIOS)
+
+
+def _scenario_trade_outcome(
+    rng: random.Random,
+    scenario: str,
+    *,
+    win_rate: float,
+    planned_rr: float,
+) -> dict[str, Any]:
+    """Map named scenario to win/loss, R multiple, and close type."""
+    win = rng.random() < win_rate
+    close_type = rng.choice(CLOSE_TYPES)
+    r_mult = 0.0
+    rules_followed = True
+    has_partial = False
+    is_split = scenario == "split_entry"
+    is_scaled = scenario == "scaled_in"
+
+    if scenario == "mega_win":
+        win, close_type, r_mult = True, "TP", rng.uniform(5.0, 10.0)
+    elif scenario == "mega_loss":
+        win, close_type, r_mult = False, "SL", -rng.uniform(2.5, 5.5)
+    elif scenario == "news_spike_win":
+        win, close_type, r_mult = True, "TP", rng.uniform(3.0, 6.5)
+    elif scenario == "gap_loss":
+        win, close_type, r_mult = False, "Gap Exit", -rng.uniform(1.5, 3.5)
+    elif scenario == "left_on_table":
+        win, close_type, r_mult = False, "Manual", -rng.uniform(0.15, 0.5)
+    elif scenario == "survived_drawdown":
+        win, close_type, r_mult = True, "Trailing SL", rng.uniform(0.4, 1.2)
+    elif scenario == "breakeven" or scenario == "zero_pnl":
+        win, close_type, r_mult = False, "BE", 0.0
+    elif scenario == "partial_win":
+        win, close_type, r_mult, has_partial = True, "Partial", rng.uniform(0.5, 1.3), True
+    elif scenario == "partial_loss":
+        win, close_type, r_mult, has_partial = False, "Partial", -rng.uniform(0.3, 0.9), True
+    elif scenario == "rule_break":
+        win, close_type, r_mult, rules_followed = rng.random() < 0.4, "Manual", rng.uniform(-1.2, 0.8), False
+    elif scenario == "oversized_lot":
+        win, close_type, r_mult = rng.random() < 0.35, rng.choice(["SL", "TP"]), rng.uniform(-2.5, 2.5)
+    elif scenario == "micro_lot":
+        win, close_type, r_mult = win, "Manual", rng.uniform(-0.3, 0.5)
+    elif scenario == "multi_day_hold":
+        win, close_type, r_mult = win, "Time Stop", rng.uniform(-0.8, 2.0)
+    elif scenario == "time_stop":
+        win, close_type, r_mult = win, "Time Stop", rng.uniform(-0.5, 1.0)
+    elif scenario == "win_tp":
+        win, close_type, r_mult = True, "TP", rng.uniform(0.5, min(planned_rr, 2.5))
+    elif scenario == "loss_sl":
+        win, close_type, r_mult = False, "SL", -rng.uniform(0.85, 1.05)
+    elif scenario == "win_manual":
+        win, close_type, r_mult = True, "Manual", rng.uniform(0.35, 1.8)
+    elif scenario == "loss_manual":
+        win, close_type, r_mult = False, "Manual", -rng.uniform(0.2, 0.95)
+    elif scenario == "trailing_win":
+        win, close_type, r_mult = True, "Trailing SL", rng.uniform(0.6, 2.2)
+    elif scenario == "small_loss":
+        win, close_type, r_mult = False, "Manual", -rng.uniform(0.15, 0.45)
+    elif scenario == "planned_rr_hit":
+        win, close_type, r_mult = True, "TP", planned_rr * rng.uniform(0.85, 1.05)
+    else:
+        if win:
+            r_mult = rng.uniform(0.35, min(planned_rr * 1.05, 3.0))
+            close_type = rng.choice(["TP", "Manual", "Trailing SL"])
+        else:
+            r_mult = -rng.uniform(0.25, 1.0)
+            close_type = rng.choice(["SL", "Manual", "BE"])
+
+    return {
+        "win": win,
+        "close_type": close_type,
+        "r_mult": r_mult,
+        "rules_followed": rules_followed,
+        "has_partial": has_partial,
+        "is_split": is_split,
+        "is_scaled": is_scaled,
+        "scenario": scenario,
+        "would_have_won": scenario == "left_on_table",
+    }
 
 _FALLBACK_INSTRUMENTS: dict[str, dict[str, float | str]] = {
     "EURUSD": {"market": "Forex", "pip": 0.0001, "base": 1.085, "pip_value": 10.0, "spread": 0.8},
@@ -199,12 +364,15 @@ def generate_session_seed_trades(
     count: int = 200,
     seed: int | None = None,
     bars_by_ticker: dict[str, list[dict[str, Any]]] | None = None,
+    scenario: str = "balanced",
 ) -> dict[str, Any]:
     contract = extract_session_contract(session_public)
     warnings: list[str] = []
     if not contract["tickers"]:
         return {"trades": [], "errors": ["Session has no tickers configured"], "warnings": warnings, "contract": contract}
 
+    scenario_key = normalize_seed_scenario(scenario)
+    profile = SEED_SCENARIO_PROFILES[scenario_key]
     rng = random.Random(seed if seed is not None else int(contract["session_id"] or 0) + count)
     bars_by_ticker = bars_by_ticker or {}
     tickers = contract["tickers"]
@@ -217,13 +385,16 @@ def generate_session_seed_trades(
     strategy = contract["strategy"]
     session_id = contract["session_id"]
     session_name = contract["session_name"]
+    win_rate = float(profile.get("win_rate") or 0.52)
+    if contract["trading_mode"] == "prop":
+        win_rate = min(win_rate, 0.50)
 
     for ticker in tickers:
         if ticker not in bars_by_ticker or not bars_by_ticker[ticker]:
             warnings.append(f"No market bars loaded for {ticker}; using fallback prices from session defaults.")
 
     trades: list[dict[str, Any]] = []
-    win_rate = 0.52 if contract["trading_mode"] != "prop" else 0.48
+    scenario_counts: dict[str, int] = {}
 
     for i in range(count):
         ticker = tickers[i % len(tickers)]
@@ -235,9 +406,15 @@ def generate_session_seed_trades(
         market = str(inst.get("market") or "Forex")
         bars = bars_by_ticker.get(ticker) or []
 
+        trade_scenario = _pick_trade_scenario(rng, profile, i, count)
+        scenario_counts[trade_scenario] = scenario_counts.get(trade_scenario, 0) + 1
+
         entry_ms = start_ms + int((i + rng.random()) / max(count, 1) * span)
         entry_ms = min(max(entry_ms, start_ms), end_ms - 60_000)
         hold_ms, hold_minutes = _hold_range_ms(contract["timeframe"], rng)
+        if trade_scenario == "multi_day_hold":
+            hold_ms = rng.randint(2, 7) * 24 * 3600 * 1000
+            hold_minutes = hold_ms // 60000
         exit_ms = min(entry_ms + hold_ms, end_ms)
         if exit_ms <= entry_ms:
             exit_ms = min(entry_ms + 3600_000, end_ms)
@@ -259,7 +436,11 @@ def generate_session_seed_trades(
             lo = float(entry_bar.get("l") or entry)
             bar_range = max(abs(hi - lo), pip * 5)
         sl_dist = max(bar_range * rng.uniform(0.8, 1.6), pip * rng.uniform(8, 25))
-        planned_rr = rng.choice([1.0, 1.5, 2.0, 2.5])
+        if trade_scenario in ("mega_win", "mega_loss", "gap_loss"):
+            sl_dist = max(pip * rng.uniform(3, 10), sl_dist * 0.5)
+        planned_rr = rng.choice([1.0, 1.5, 2.0, 2.5, 3.0])
+        if trade_scenario in ("mega_win", "news_spike_win"):
+            planned_rr = rng.uniform(4.0, 7.0)
         if direction == "BUY":
             stop = _price_fmt(entry - sl_dist, pip)
             target = _price_fmt(entry + sl_dist * planned_rr, pip)
@@ -267,43 +448,49 @@ def generate_session_seed_trades(
             stop = _price_fmt(entry + sl_dist, pip)
             target = _price_fmt(entry - sl_dist * planned_rr, pip)
 
-        win = rng.random() < win_rate
-        if win:
-            r_mult = rng.uniform(0.35, min(planned_rr * 1.05, 3.0))
-            close_type = rng.choice(["TP", "Manual", "Trailing SL"])
-            if exit_bar:
-                exit_price = float(exit_bar.get("c") or exit_bar.get("o") or entry)
-                if direction == "BUY" and exit_price < entry:
-                    exit_price = _price_fmt(entry + sl_dist * r_mult, pip)
-                elif direction == "SELL" and exit_price > entry:
-                    exit_price = _price_fmt(entry - sl_dist * r_mult, pip)
-                else:
-                    exit_price = _price_fmt(exit_price, pip)
-            else:
-                move = sl_dist * r_mult
-                exit_price = _price_fmt(entry + move if direction == "BUY" else entry - move, pip)
+        outcome = _scenario_trade_outcome(rng, trade_scenario, win_rate=win_rate, planned_rr=planned_rr)
+        r_mult = float(outcome["r_mult"])
+        close_type = str(outcome["close_type"])
+        if outcome["close_type"] == "SL":
+            exit_price = stop
+        elif outcome["close_type"] == "TP":
+            exit_price = target
+        elif outcome["close_type"] == "BE" or trade_scenario == "zero_pnl":
+            exit_price = entry
+        elif exit_bar:
+            exit_price = _price_fmt(float(exit_bar.get("c") or entry), pip)
         else:
-            r_mult = -rng.uniform(0.25, 1.0)
-            close_type = rng.choice(["SL", "Manual", "BE"])
-            if close_type == "SL":
-                exit_price = stop
-            elif exit_bar:
-                exit_price = _price_fmt(float(exit_bar.get("c") or entry), pip)
+            move = sl_dist * abs(r_mult)
+            if direction == "BUY":
+                exit_price = _price_fmt(entry + move if r_mult >= 0 else entry - move, pip)
             else:
-                move = sl_dist * abs(r_mult)
-                exit_price = _price_fmt(entry - move if direction == "BUY" else entry + move, pip)
+                exit_price = _price_fmt(entry - move if r_mult >= 0 else entry + move, pip)
 
         if risk_mode == "fixed":
             risk_amount = max(risk_pct, 10.0)
         else:
             risk_amount = balance * (risk_pct / 100.0)
+        if trade_scenario == "oversized_lot":
+            risk_amount *= rng.uniform(2.0, 4.0)
+        elif trade_scenario == "micro_lot":
+            risk_amount *= rng.uniform(0.05, 0.2)
         risk_amount = max(risk_amount, 10.0)
         pnl = round(r_mult * risk_amount, 2)
+        if trade_scenario == "zero_pnl":
+            pnl = 0.0
+            r_mult = 0.0
         balance_after = round(balance + pnl, 2)
         balance = balance_after
 
-        mae_r = abs(rng.uniform(0.05, 0.9 if win else 1.1))
-        mfe_r = abs(rng.uniform(0.1, max(0.2, abs(r_mult) + 0.4)))
+        mae_r = abs(rng.uniform(0.05, 1.2 if not outcome["win"] else 0.85))
+        mfe_r = abs(rng.uniform(0.1, max(0.25, abs(r_mult) + 0.5)))
+        if trade_scenario == "left_on_table":
+            mfe_r = rng.uniform(2.0, 5.5)
+            mae_r = rng.uniform(0.7, 1.4)
+        if outcome["win"]:
+            mae_r = min(mae_r, max(abs(r_mult), 0.2))
+        else:
+            mfe_r = min(mfe_r, 1.3)
         if direction == "BUY":
             mfe_price = _price_fmt(entry + mfe_r * sl_dist, pip)
             mae_price = _price_fmt(entry - mae_r * sl_dist, pip)
@@ -388,10 +575,17 @@ def generate_session_seed_trades(
             "sourceLabel": session_name,
             "sourceType": "backtest",
             "seedSource": "session-demo-seed",
-            "rulesFollowed": True,
+            "seedScenario": trade_scenario,
+            "seedProfile": scenario_key,
+            "rulesFollowed": outcome["rules_followed"],
+            "hasPartialCloses": outcome["has_partial"],
+            "partialClosePnL": round(pnl * 0.5, 2) if outcome["has_partial"] else 0,
+            "isSplitEntry": outcome["is_split"],
+            "isScaledTrade": outcome["is_scaled"],
+            "would_have_won": outcome["would_have_won"],
             "preTags": [strategy],
             "postTags": [post_tag],
-            "postTradeNotes": {"seed": True, "alignedToSession": True},
+            "postTradeNotes": {"seed": True, "alignedToSession": True, "scenario": trade_scenario, "profile": scenario_key},
             "balance_at_creation": round(balance - pnl, 2),
             "balance_at_exit": balance_after,
             "n": i + 1,
@@ -412,6 +606,9 @@ def generate_session_seed_trades(
             "start_ms": start_ms,
             "end_ms": end_ms,
             "count": count,
+            "scenario": scenario_key,
+            "scenario_label": profile["label"],
+            "scenario_counts": scenario_counts,
             "used_real_bars": sum(1 for t in tickers if bars_by_ticker.get(t)),
         },
     }

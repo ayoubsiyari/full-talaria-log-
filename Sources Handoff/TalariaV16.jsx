@@ -13,6 +13,16 @@ const getV16JournalBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.
 const getV16StrategyBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategies : null);
 const getV16StrategyBank = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategyBank : null);
 const getV16AppliedSourceBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.appliedSource : null);
+
+const SEED_TRADE_SCENARIO_FALLBACK = [
+  { id: "realistic", label: "Realistic", hint: "Stable win rate, almost no outliers." },
+  { id: "balanced", label: "Balanced", hint: "~80% normal trades, ~20% tail cases." },
+  { id: "extreme", label: "Extreme tails", hint: "Heavy tails: mega wins/losses, gaps, oversizing." },
+  { id: "stress", label: "Stress / all scenarios", hint: "Cycles through every scenario type for QA coverage." },
+  { id: "losing", label: "Losing period", hint: "Drawdown-style session with mostly losses." },
+  { id: "winning", label: "Winning streak", hint: "Strong equity curve with controlled outliers." },
+];
+const SEED_TRADE_COUNT_PRESETS = [50, 100, 200, 500, 1000];
 const syncV16SessionUrl = (sessionId) => {
   if (sessionId == null) return;
   const fn = typeof window !== "undefined" ? window.__TALARIA_V16_SYNC_SESSION_URL__ : null;
@@ -8089,6 +8099,12 @@ const TalariaV8b = () => {
   const dashTradesImportDismissRef = useRef(null);
   const dashTradesCsvImportRef = useRef(null);
   const [sessSeedBusy, setSessSeedBusy] = useState(null);
+  const [sessSeedModal, setSessSeedModal] = useState(null);
+  const [sessSeedCount, setSessSeedCount] = useState(200);
+  const [sessSeedCustomCount, setSessSeedCustomCount] = useState("");
+  const [sessSeedScenario, setSessSeedScenario] = useState("balanced");
+  const [sessSeedMode, setSessSeedMode] = useState("replace");
+  const [sessSeedScenarios, setSessSeedScenarios] = useState(SEED_TRADE_SCENARIO_FALLBACK);
   useEffect(() => () => {
     if (dashTradesImportDismissRef.current) clearTimeout(dashTradesImportDismissRef.current);
   }, []);
@@ -10352,12 +10368,39 @@ const TalariaV8b = () => {
       closeNewSess();
     }
   };
-  const seedSessionDemoTrades = (sess) => {
+  const openSessSeedModal = (sess) => {
+    if (!isV16LiveBoot() || !sess?.id) return;
+    setSessSeedModal(sess);
+    setSessSeedCount(200);
+    setSessSeedCustomCount("");
+    setSessSeedScenario("balanced");
+    setSessSeedMode("replace");
+    fetch("/api/sessions/seed-demo-trades/scenarios", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (Array.isArray(body?.scenarios) && body.scenarios.length) setSessSeedScenarios(body.scenarios);
+      })
+      .catch(() => {});
+  };
+  const closeSessSeedModal = () => setSessSeedModal(null);
+  const resolveSessSeedCount = () => {
+    const custom = String(sessSeedCustomCount || "").trim();
+    if (custom) return Math.min(2000, Math.max(1, parseInt(custom, 10) || sessSeedCount));
+    return Math.min(2000, Math.max(1, Number(sessSeedCount) || 200));
+  };
+  const runSessSeedTrades = () => {
+    const sess = sessSeedModal;
     if (!isV16LiveBoot() || !sess?.id || sessSeedBusy) return;
+    const count = resolveSessSeedCount();
+    const scenario = String(sessSeedScenario || "balanced");
+    const mode = sessSeedMode === "append" ? "append" : "replace";
     const name = String(sess.name || "Session");
-    if (!globalThis.confirm(`Generate 200 demo trades aligned to "${name}" settings?\n\nThis replaces any existing trades in that session.`)) return;
+    const scenarioMeta = (sessSeedScenarios || SEED_TRADE_SCENARIO_FALLBACK).find((s) => s.id === scenario);
+    const scenarioLabel = scenarioMeta?.label || scenario;
+    if (mode === "replace" && !globalThis.confirm(`Replace existing trades in "${name}" with ${count} seeded trades (${scenarioLabel})?`)) return;
     setSessSeedBusy(sess.id);
-    fetch(`/api/sessions/${encodeURIComponent(String(sess.id))}/seed-demo-trades?count=200&mode=replace`, {
+    const qs = new URLSearchParams({ count: String(count), mode, scenario });
+    fetch(`/api/sessions/${encodeURIComponent(String(sess.id))}/seed-demo-trades?${qs}`, {
       method: "POST",
       credentials: "include",
     })
@@ -10375,11 +10418,14 @@ const TalariaV8b = () => {
         const warnings = [...(Array.isArray(body?.warnings) ? body.warnings : []), body?.warning].filter(Boolean);
         const seeded = Number(body?.seeded) || 0;
         const tickers = Array.isArray(body?.contract?.tickers) ? body.contract.tickers.join(", ") : "";
+        const profile = body?.scenario_label || scenarioLabel;
         window.alert([
           `Seeded ${seeded} trades for "${name}".`,
+          `Profile: ${profile} (${mode})`,
           tickers ? `Tickers: ${tickers}` : "",
           warnings.length ? `Notes: ${warnings.join(" ")}` : "",
         ].filter(Boolean).join("\n"));
+        closeSessSeedModal();
         reloadEmbeddedV16Boot();
       })
       .catch((err) => {
@@ -11545,7 +11591,7 @@ const TalariaV8b = () => {
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     {label:"Duplicate", handler:e=>{duplicateSession(e,ms);setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
-                    ...(isV16LiveBoot() ? [{label:"Seed 200 trades", handler:()=>{seedSessionDemoTrades(ms);setSessActMenu(null);}, col:c.gold, disabled:!!sessSeedBusy, sub:sessSeedBusy===ms.id?"…":"QA", danger:false,
+                    ...(isV16LiveBoot() ? [{label:"Seed trades", handler:()=>{openSessSeedModal(ms);setSessActMenu(null);}, col:c.gold, disabled:!!sessSeedBusy, sub:sessSeedBusy===ms.id?"…":"QA", danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M12 3v4M12 17v4M3 12h4M17 12h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.7"/></svg>}] : []),
                     {label:"Delete",    handler:e=>{deleteSession(e,ms.id);setSessActMenu(null);}, col:c.rd, disabled:false, danger:true,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
@@ -11565,6 +11611,86 @@ const TalariaV8b = () => {
                   })}
                 </div>
               </>);
+            })()}
+
+{/* ── Seed trades settings modal ── */}
+            {sessSeedModal&&(()=>{
+              const seedSess = sessSeedModal;
+              const seedBusy = sessSeedBusy === seedSess.id;
+              const seedScenarioMeta = (sessSeedScenarios || SEED_TRADE_SCENARIO_FALLBACK).find((s)=>s.id===sessSeedScenario) || SEED_TRADE_SCENARIO_FALLBACK[1];
+              const seedCountPreview = resolveSessSeedCount();
+              const seedInp = (extra={})=>({background:c.el,border:`1px solid ${c.brH}`,color:c.tx,fontSize:11,fontWeight:600,padding:"0 8px",height:27,fontFamily:F,outline:"none",width:"100%",boxSizing:"border-box",...extra});
+              const seedLbl = (t)=>(<div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>{t}</div>);
+              return(
+                <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={seedBusy?undefined:closeSessSeedModal}>
+                  <div style={{position:"absolute",inset:0,background:"rgba(4,5,10,0.72)",backdropFilter:"blur(3px)"}}/>
+                  <div onClick={e=>e.stopPropagation()}
+                    style={{position:"relative",width:"min(420px,92vw)",background:c.sf,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",animation:"tlrPopIn 0.18s ease",boxShadow:"0 24px 72px rgba(0,0,0,0.9)",fontFamily:F}}>
+                    <div style={{height:2,background:`linear-gradient(90deg,${c.gold},${c.acL},${c.gold})`,flexShrink:0}}/>
+                    <div style={{height:44,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:`1px solid ${c.br}`}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <svg width={16} height={16} viewBox="0 0 24 24" fill="none"><path d="M12 3v4M12 17v4M3 12h4M17 12h4" stroke={c.gold} strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="12" r="3.5" stroke={c.gold} strokeWidth="1.7"/></svg>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700,color:c.tx,letterSpacing:"0.04em"}}>Seed demo trades</div>
+                          <div style={{fontSize:9,color:c.tm,marginTop:1}}>{String(seedSess.name||"Session")} · QA only</div>
+                        </div>
+                      </div>
+                      <div onClick={seedBusy?undefined:closeSessSeedModal}
+                        style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:seedBusy?"default":"default",opacity:seedBusy?0.35:1}}>
+                        <I n="x" s={18} cl={c.ts}/>
+                      </div>
+                    </div>
+                    <div style={{padding:"16px 18px 18px",display:"flex",flexDirection:"column",gap:14}}>
+                      <div>
+                        {seedLbl("Trade count")}
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                          {SEED_TRADE_COUNT_PRESETS.map((n)=>(
+                            <div key={n} onClick={seedBusy?undefined:()=>{setSessSeedCount(n);setSessSeedCustomCount("");}}
+                              style={{padding:"5px 10px",fontSize:10,fontWeight:700,cursor:seedBusy?"default":"default",border:`1px solid ${!sessSeedCustomCount.trim()&&sessSeedCount===n?c.gold:c.brH}`,color:!sessSeedCustomCount.trim()&&sessSeedCount===n?c.gold:c.ts,background:!sessSeedCustomCount.trim()&&sessSeedCount===n?"rgba(255,196,74,0.08)":"transparent",fontFamily:F}}>
+                              {n}
+                            </div>
+                          ))}
+                        </div>
+                        <input value={sessSeedCustomCount} onChange={e=>setSessSeedCustomCount(e.target.value.replace(/[^\d]/g,""))} disabled={seedBusy}
+                          placeholder={`Custom (1–2000) · using ${seedCountPreview}`} style={seedInp({opacity:seedBusy?0.5:1})}/>
+                      </div>
+                      <div>
+                        {seedLbl("Scenario profile")}
+                        <select value={sessSeedScenario} onChange={e=>setSessSeedScenario(e.target.value)} disabled={seedBusy}
+                          style={seedInp({cursor:seedBusy?"default":"default",appearance:"none",paddingRight:24})}>
+                          {(sessSeedScenarios||SEED_TRADE_SCENARIO_FALLBACK).map((opt)=>(
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                          ))}
+                        </select>
+                        <div style={{fontSize:10,color:c.ts,lineHeight:1.55,marginTop:8,padding:"8px 10px",background:c.el,border:`1px solid ${c.br}`}}>
+                          {seedScenarioMeta?.hint || "Trades are aligned to this session's tickers, dates, and risk settings."}
+                        </div>
+                      </div>
+                      <div>
+                        {seedLbl("Import mode")}
+                        <div style={{display:"flex",gap:8}}>
+                          {[{id:"replace",label:"Replace existing"},{id:"append",label:"Append to journal"}].map((opt)=>(
+                            <div key={opt.id} onClick={seedBusy?undefined:()=>setSessSeedMode(opt.id)}
+                              style={{flex:1,padding:"8px 10px",fontSize:10,fontWeight:700,textAlign:"center",cursor:seedBusy?"default":"default",border:`1px solid ${sessSeedMode===opt.id?c.acB:c.brH}`,color:sessSeedMode===opt.id?c.acL:c.ts,background:sessSeedMode===opt.id?"rgba(74,158,255,0.08)":"transparent",fontFamily:F}}>
+                              {opt.label}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:8,marginTop:4}}>
+                        <div onClick={seedBusy?undefined:closeSessSeedModal}
+                          style={{flex:1,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:c.ts,border:`1px solid ${c.brH}`,cursor:seedBusy?"default":"default",opacity:seedBusy?0.45:1,fontFamily:F}}>
+                          Cancel
+                        </div>
+                        <div onClick={seedBusy?undefined:runSessSeedTrades}
+                          style={{flex:1.4,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#0b0d14",background:seedBusy?c.tm:c.gold,cursor:seedBusy?"default":"default",fontFamily:F,letterSpacing:"0.04em"}}>
+                          {seedBusy ? "Generating…" : `Generate ${seedCountPreview} trades`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
             })()}
 
 {/* ── Strategy info popup ── */}
