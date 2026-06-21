@@ -48,6 +48,42 @@ const resolveLiveJournalAccountTarget = (accountOrApi, boot = getV16JournalBoot(
   };
 };
 
+const findDashLiveJournalBootAccount = (source, boot = getV16JournalBoot()) => {
+  if (!source || !boot?.accounts?.length) return null;
+  const accountId = source.id || String(source.key || "").replace(/^journalAccount:/, "");
+  return boot.accounts.find((a) =>
+    (source.liveAccountId != null && String(a.liveAccountId) === String(source.liveAccountId))
+    || (source.profileId != null && String(a.profileId) === String(source.profileId))
+    || String(a.id) === String(accountId)
+  ) || null;
+};
+
+const isGenericDashJournalAccountLabel = (value) => /^Account \d+$/i.test(String(value || "").trim());
+
+const resolveDashLiveJournalAddTradeLabel = (source, boot = getV16JournalBoot()) => {
+  if (!source) return "Live Journal";
+  const account = findDashLiveJournalBootAccount(source, boot);
+  const candidates = [
+    source.name,
+    account?.name,
+    source.label,
+    source.propFirm,
+    account?.propFirm,
+  ].map((v) => String(v || "").trim()).filter(Boolean);
+  for (const candidate of candidates) {
+    if (!isGenericDashJournalAccountLabel(candidate)) return candidate;
+  }
+  return candidates[0] || "Live Journal";
+};
+
+const resolveDashLiveJournalAddTradeTypeLabel = (source, boot = getV16JournalBoot()) => {
+  const account = findDashLiveJournalBootAccount(source, boot);
+  const typeKey = source?.accountTypeKey || account?.accountTypeKey;
+  if (typeKey === "prop") return "Prop Journal";
+  if (typeKey === "personal") return "Personal Journal";
+  return "Journal";
+};
+
 const SEED_TRADE_SCENARIO_FALLBACK = [
   { id: "realistic", label: "Realistic", hint: "Stable win rate, almost no outliers." },
   { id: "balanced", label: "Balanced", hint: "~80% normal trades, ~20% tail cases." },
@@ -14114,7 +14150,15 @@ const TalariaV8b = () => {
               if (dashV16JournalBoot) {
                 const accountId = kind === "strategyJournal" && id.includes("::") ? id.split("::").slice(-1).join("::") : id;
                 const account = dashV16JournalBoot.accounts.find(item => String(item.id) === String(accountId) || String(item.id) === String(id));
-                const label = account?.name || `${dashTxt("Account","حساب")} ${String(accountId).split("-").slice(-1)[0] || accountId}`;
+                const label = resolveDashLiveJournalAddTradeLabel({
+                  id: account?.id || accountId,
+                  key,
+                  label: account?.name,
+                  liveAccountId: account?.liveAccountId,
+                  profileId: account?.profileId,
+                  accountTypeKey: account?.accountTypeKey,
+                  propFirm: account?.propFirm,
+                }, dashV16JournalBoot);
                 const trades = dashV16JournalBoot.libraryTrades
                   .filter(trade => {
                     const tid = String(trade.tradeId ?? trade.id ?? "").replace(/^live-/, "");
@@ -25629,9 +25673,15 @@ const TalariaV8b = () => {
             }
             ensureDashAddTradeStrategyVariables(source, (enriched) => {
               const draft = buildDashAddTradeDraft(enriched);
-              const nextSource = isDashLiveJournalAddTradeSource(enriched) && draft.setup_tag
+              let nextSource = isDashLiveJournalAddTradeSource(enriched) && draft.setup_tag
                 ? applyDashAddTradeStrategyByName(enriched, draft.setup_tag)
                 : enriched;
+              if (isDashLiveJournalAddTradeSource(nextSource)) {
+                nextSource = {
+                  ...nextSource,
+                  label: resolveDashLiveJournalAddTradeLabel(nextSource, boot),
+                };
+              }
               setDashAddTradeEditorSource(nextSource);
               setDashAddTradeDraft(draft);
               setDashAddTradeEditorOpen(true);
@@ -25686,8 +25736,11 @@ const TalariaV8b = () => {
             };
             const source = {
               ...baseSource,
+              label: resolveDashLiveJournalAddTradeLabel({ ...baseSource, ...target, name: target.name }, boot),
               liveAccountId:target.liveAccountId,
               profileId:target.profileId,
+              accountTypeKey:target.accountTypeKey,
+              propFirm:target.propFirm,
               statusKind:"journal",
               isLiveJournalAccount:true,
               freeInstrumentPicker:true,
@@ -28293,8 +28346,21 @@ const TalariaV8b = () => {
                   addTradePrimarySourceSession?.propFirm,
                 ].filter(Boolean).join(" ").toLowerCase();
                 const addTradeIsPropBacktest = !addTradeIsJournalSource && /\bprop\b|propfirm|prop firm|challenge|funded|ftmo/.test(addTradeSourceModeText);
-                const addTradeSourceTypeLabel = addTradeIsPropBacktest ? dashTxt("Backtest (Prop)","اختبار (Prop)") : dashAddTradeEditorSource.typeLabel;
-                const addTradeSourceTypeColor = addTradeIsJournalSource ? c.gn : addTradeIsPropBacktest ? c.gold : c.acL;
+                const addTradeIsLiveJournalSource = isDashLiveJournalAddTradeSource(dashAddTradeEditorSource);
+                const addTradeSourceDisplayLabel = addTradeIsLiveJournalSource
+                  ? resolveDashLiveJournalAddTradeLabel(dashAddTradeEditorSource)
+                  : dashAddTradeEditorSource.label;
+                const addTradeSourceTypeLabel = addTradeIsLiveJournalSource
+                  ? dashTxt(
+                    resolveDashLiveJournalAddTradeTypeLabel(dashAddTradeEditorSource),
+                    dashAddTradeEditorSource.accountTypeKey === "prop" ? "يومية Prop" : dashAddTradeEditorSource.accountTypeKey === "personal" ? "يومية شخصية" : "يومية"
+                  )
+                  : addTradeIsPropBacktest
+                    ? dashTxt("Backtest (Prop)","اختبار (Prop)")
+                    : dashAddTradeEditorSource.typeLabel;
+                const addTradeSourceTypeColor = addTradeIsJournalSource
+                  ? (dashAddTradeEditorSource.accountTypeKey === "prop" ? c.gold : c.gn)
+                  : addTradeIsPropBacktest ? c.gold : c.acL;
                 const setupOptions = addTradeIsJournalSource ? getDashSourceStrategyOptions(dashAddTradeEditorSource) : getDashSourceSetupOptions(dashAddTradeEditorSource);
                 const addTradeSavedStrategyOptions = isDashLiveJournalAddTradeSource(dashAddTradeEditorSource)
                   ? getDashStrategyBankRows().map(row => String(row?.name || "").trim()).filter(Boolean)
@@ -31592,7 +31658,7 @@ const TalariaV8b = () => {
                           <div style={{width:1,height:20,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>
                           <div style={{minWidth:0}}>
                             <div style={{fontSize:8,fontWeight:950,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",lineHeight:1}}>{dashTxt("Add Trade","إضافة صفقة")}</div>
-                            <div style={{marginTop:4,fontSize:10.6,fontWeight:900,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:360}}>{dashAddTradeEditorSource.label} <span style={{color:addTradeReadableMuted,fontWeight:800}}>·</span> <span style={{color:addTradeSourceTypeColor}}>{addTradeSourceTypeLabel}</span></div>
+                            <div style={{marginTop:4,fontSize:10.6,fontWeight:900,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:360}}>{addTradeSourceDisplayLabel} <span style={{color:addTradeReadableMuted,fontWeight:800}}>·</span> <span style={{color:addTradeSourceTypeColor}}>{addTradeSourceTypeLabel}</span></div>
                           </div>
                         </div>
                         <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 10px",boxSizing:"border-box"}}>
