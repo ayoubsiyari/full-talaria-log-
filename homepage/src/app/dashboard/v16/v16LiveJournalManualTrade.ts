@@ -81,7 +81,7 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
     (trade.exitDate
       ? formatJournalDateTime(`${String(trade.exitDate).slice(0, 10)}T${String(trade.exitTime || "00:00").slice(0, 5)}`)
       : undefined);
-  const setup = String(trade.setup_tag || trade.setup || trade.tag || "Manual").trim();
+  const setup = String(trade.setup_tag || trade.setup || trade.tag || "Discretion").trim();
   const strategyIdRaw = trade.strategy_id ?? trade.strategyId;
   const strategyId = strategyIdRaw != null && String(strategyIdRaw).trim() !== "" ? strategyIdRaw : null;
   const market = String(trade.market || trade.asset_class || trade.assetClass || "");
@@ -139,6 +139,8 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
       trade_status: trade.status ?? null,
       strategy_type: trade.strategyTypeDescription ?? trade.strategy_type ?? null,
       custom_strategy: !!(trade.strategyTypeDescription || trade.strategy_type),
+      strategy_default_discretion: !!(trade.strategyDefaultDiscretion ?? setup === "Discretion"),
+      strategy_assignment: trade.strategy_assignment ?? (setup === "Discretion" ? "discretion" : null),
     },
   };
 }

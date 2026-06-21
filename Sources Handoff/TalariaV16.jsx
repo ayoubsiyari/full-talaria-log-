@@ -24670,13 +24670,25 @@ const TalariaV8b = () => {
           const resolveDashAddTradeEffectiveStrategy = (draft, source) => {
             const bankName = String(draft?.setup_tag || draft?.setup || "").trim();
             const bankRow = findDashAddTradeStrategyBankRowByName(bankName);
-            if (bankRow) return {label:bankRow.name, bankRow, isCustom:false};
+            if (bankRow) return {label:bankRow.name, bankRow, isCustom:false, isDefault:false};
             const customType = String(draft?.strategyTypeDescription || draft?.strategy_type || "").trim();
-            if (isDashLiveJournalAddTradeSource(source) && customType) return {label:customType, bankRow:null, isCustom:true};
-            if (bankName) return {label:bankName, bankRow:null, isCustom:!bankRow};
-            return {label:"", bankRow:null, isCustom:false};
+            if (isDashLiveJournalAddTradeSource(source)) {
+              if (customType) return {label:customType, bankRow:null, isCustom:true, isDefault:false};
+              return {label:DASH_LIVE_JOURNAL_DEFAULT_STRATEGY, bankRow:null, isCustom:false, isDefault:true};
+            }
+            if (bankName) return {label:bankName, bankRow:null, isCustom:!bankRow, isDefault:false};
+            return {label:"", bankRow:null, isCustom:false, isDefault:false};
           };
           const hasDashAddTradeStrategyLabel = (draft, source) => !!resolveDashAddTradeEffectiveStrategy(draft, source).label;
+          const isDashAddTradeDiscretionStrategyTrade = (tradeLike) => {
+            if (!tradeLike) return false;
+            if (tradeLike.strategyDefaultDiscretion) return true;
+            const assignment = String(tradeLike.strategy_assignment || tradeLike.extra_data?.strategy_assignment || "").trim().toLowerCase();
+            if (assignment === "discretion") return true;
+            if (tradeLike.extra_data?.strategy_default_discretion) return true;
+            const label = String(tradeLike.setup_tag || tradeLike.setup || tradeLike.strategy || "").trim();
+            return label === DASH_LIVE_JOURNAL_DEFAULT_STRATEGY;
+          };
           const findDashAddTradeStrategyBankRow = (source, session=null) => {
             const resolvedSession = session || resolveDashAddTradePrimarySession(source);
             const cfg = resolvedSession?.config && typeof resolvedSession.config === "object" ? resolvedSession.config : {};
@@ -24897,6 +24909,7 @@ const TalariaV8b = () => {
             return !!(source?.liveAccountId || source?.profileId || source?.freeInstrumentPicker || source?.isLiveJournalAccount);
           };
           const DASH_LIVE_JOURNAL_MARKETS = ["Forex", "Futures", "Stocks", "Crypto", "Indices"];
+          const DASH_LIVE_JOURNAL_DEFAULT_STRATEGY = "Discretion";
           const DASH_LIVE_JOURNAL_INDEX_SYMBOLS = ["SPX", "NDX", "US500", "NAS100", "US30", "DJI", "DAX", "FTSE", "GER40"];
           const dashCatalogInstrumentSymbol = (inst) => {
             const key = String(inst?.id || "").toLowerCase();
@@ -25536,10 +25549,19 @@ const TalariaV8b = () => {
               exitDate:exitStamp.date || "",
               exitTime:exitStamp.time || "",
               exitTimingEnabled:!!(exitStamp.date && exitStamp.time),
-              setup_tag:trade.setup_tag || trade.setup || draftBase.setup_tag,
-              setup:trade.setup || trade.setup_tag || draftBase.setup,
+              setup_tag:(() => {
+                const label = String(trade.setup_tag || trade.setup || "").trim();
+                if (isDashAddTradeDiscretionStrategyTrade(trade)) return "";
+                return findDashAddTradeStrategyBankRowByName(label) ? label : "";
+              })(),
+              setup:(() => {
+                const label = String(trade.setup || trade.setup_tag || "").trim();
+                if (isDashAddTradeDiscretionStrategyTrade(trade)) return "";
+                return findDashAddTradeStrategyBankRowByName(label) ? label : "";
+              })(),
               strategyTypeDescription:(() => {
-                const saved = String(trade.strategyTypeDescription || trade.strategy_type || "").trim();
+                if (isDashAddTradeDiscretionStrategyTrade(trade)) return "";
+                const saved = String(trade.strategyTypeDescription || trade.strategy_type || trade.extra_data?.strategy_type || "").trim();
                 if (saved) return saved;
                 const label = String(trade.setup_tag || trade.setup || "").trim();
                 if (label && !findDashAddTradeStrategyBankRowByName(label)) return label;
@@ -26091,11 +26113,11 @@ const TalariaV8b = () => {
             const validTargetPrices = targetRows
               .map(row => parseDashTradeNumber(row.price))
               .filter(price => price > 0);
-            const needsStrategy = isDashJournalAddTradeSource(source);
+            const needsStrategy = isDashJournalAddTradeSource(source) && !isDashLiveJournalAddTradeSource(source);
             const sessionRange = getDashAddTradeSessionDateRange(source);
             const hasSessionRange = !isDashLiveJournalAddTradeSource(source) && !!(sessionRange.minDate || sessionRange.maxDate);
             if (!isDashLiveJournalAddTradeSource(source) && instruments.length && !instruments.includes(String(draft?.symbol || "").toUpperCase())) return {ok:false, error:dashTxt("Choose an instrument that belongs to this source.","اختر أداة تابعة لهذا المصدر.")};
-            if (needsStrategy && !hasDashAddTradeStrategyLabel(draft, source)) return {ok:false, error:dashTxt("Select a saved strategy or describe the strategy type on the Tags tab.","اختر استراتيجية محفوظة أو صف نوع الاستراتيجية في تبويب الوسوم.")};
+            if (needsStrategy && !String(draft?.setup_tag || draft?.setup || "").trim()) return {ok:false, error:dashTxt("Choose the strategy used for this journal trade.","اختر الاستراتيجية المستخدمة لهذه الصفقة في اليومية.")};
             if (!Number.isFinite(startMs)) return {ok:false, error:dashTxt("Entry date and time are required.","تاريخ ووقت الدخول مطلوبان.")};
             if (hasSessionRange) {
               const entryIso = dashAddTradeIsoDay(draft?.date);
@@ -26172,8 +26194,8 @@ const TalariaV8b = () => {
               seen.add(cleaned);
               issues.push({message:cleaned, page});
             };
-            if (isDashJournalAddTradeSource(source) && !hasDashAddTradeStrategyLabel(draft, source)) {
-              addIssue(dashTxt("Select a saved strategy or enter a strategy type on the Tags tab.","اختر استراتيجية محفوظة أو أدخل نوع الاستراتيجية في تبويب الوسوم."), "tags");
+            if (isDashJournalAddTradeSource(source) && !isDashLiveJournalAddTradeSource(source) && !String(draft?.setup_tag || draft?.setup || "").trim()) {
+              addIssue(dashTxt("Choose the strategy used for this journal trade.","اختر الاستراتيجية المستخدمة لهذه الصفقة في اليومية."), "tags");
             }
             const validation = validateDashAddTradeDraft(draft, source);
             if (!validation.ok) addIssue(validation.error, inferDashAddTradeSaveIssuePage(validation.error, source));
@@ -26654,6 +26676,8 @@ const TalariaV8b = () => {
               setup:effectiveStrategy.label,
               setup_tag:effectiveStrategy.label,
               strategyTypeDescription:effectiveStrategy.isCustom ? effectiveStrategy.label : "",
+              strategyDefaultDiscretion:!!effectiveStrategy.isDefault,
+              strategy_assignment:effectiveStrategy.isDefault ? "discretion" : effectiveStrategy.isCustom ? "custom" : effectiveStrategy.bankRow ? "saved" : "manual",
               strategyId:effectiveStrategy.bankRow?.id ?? resolvedStrategyRecord?.id ?? dashAddTradeEditorSource?.strategyId ?? null,
               strategy_id:effectiveStrategy.bankRow?.id ?? resolvedStrategyRecord?.id ?? dashAddTradeEditorSource?.strategyId ?? null,
               timeframe:dashAddTradeDraft.timeframe,
@@ -26720,7 +26744,7 @@ const TalariaV8b = () => {
               session:selectedSession,
               exit_reason:exitReason,
               reason:exitReason ? exitReason.replace(/_/g, " ") : null,
-              tag:effectiveStrategy.label || flattenTags(addTradePreTagDefs, resolvedPreTagState, ["session"])[0] || "Manual",
+              tag:effectiveStrategy.label || flattenTags(addTradePreTagDefs, resolvedPreTagState, ["session"])[0] || DASH_LIVE_JOURNAL_DEFAULT_STRATEGY,
               preTags:flattenTags(addTradePreTagDefs, resolvedPreTagState, ["session"]),
               postTags:flattenTags(addTradePostTagDefs, resolvedPostTagState, ["exitRsn"]),
               planBehavior:selectedPlanReview,
@@ -31276,21 +31300,19 @@ const TalariaV8b = () => {
                                       {!isDashAddTradeBankStrategySelected(dashAddTradeDraft) && (
                                         <div style={{flex:"1 1 240px",minWidth:220,maxWidth:440,display:"flex",alignItems:"center",gap:10}}>
                                           <div style={{flex:"0 0 96px",minWidth:0}}>
-                                            {fieldLabel(dashTxt("Strategy type","نوع الاستراتيجية"), {tier:"mandatory", align:"left"})}
+                                            {fieldLabel(dashTxt("Strategy type","نوع الاستراتيجية"), {align:"left"})}
                                           </div>
                                           <input
                                             value={dashAddTradeDraft.strategyTypeDescription ?? ""}
                                             onChange={e=>updateDashAddTradeDraft("strategyTypeDescription", e.target.value)}
-                                            placeholder={dashTxt("e.g. Breakout, Scalping, ICT...","مثال: اختراق، سكالبينغ...")}
+                                            placeholder={dashTxt("Optional — defaults to Discretion","اختياري — الافتراضي Discretion")}
                                             style={{...inputStyle, flex:"1 1 auto", minWidth:0, height:32, fontSize:10.8, fontWeight:800}}
                                           />
                                         </div>
                                       )}
                                     </div>
                                     <div style={{fontSize:9.2,fontWeight:750,color:c.tm,fontFamily:F,lineHeight:1.45}}>
-                                      {setupOptions.length
-                                        ? dashTxt("Pick a saved strategy to load its Strategy Lab tags, or describe the strategy type manually.","اختر استراتيجية محفوظة لتحميل وسوم مختبر الاستراتيجية، أو صف نوع الاستراتيجية يدويا.")
-                                        : dashTxt("Describe the strategy type for this trade — default tags will appear below.","صف نوع الاستراتيجية لهذه الصفقة — ستظهر الوسوم الافتراضية أدناه.")}
+                                      {dashTxt("Strategy is optional for live journals. Leave blank to save as Discretion, pick a saved strategy for its tags, or type your own strategy type.","الاستراتيجية اختيارية في اليوميات الحية. اتركها فارغة للحفظ كـ Discretion، أو اختر استراتيجية محفوظة لوسومها، أو اكتب نوعا خاصا.")}
                                     </div>
                                   </>
                                 ) : (
@@ -31298,11 +31320,6 @@ const TalariaV8b = () => {
                                     {addTradeCompactDropdownField(dashTxt("Strategy","الاستراتيجية"), "setup_tag", setupOptions, {tier:"mandatory", menuKey:"setup_tag", inlineLabel:true, labelWidth:76, dropdownMaxHeight:232, searchable:true, searchPlaceholder:dashTxt("Search strategies...","ابحث عن الاستراتيجيات..."), pinnedOptions:addTradeUsedStrategyOptions, pinnedLabel:dashTxt("Used in this journal","مستخدمة في هذه اليومية"), pinnedColor:c.acL, emptySelectionLabel:dashTxt("Manual Strategy","استراتيجية يدوية")})}
                                   </div>
                                 )}
-                              </div>
-                            )}
-                            {isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) && !setupOptions.length && !String(dashAddTradeDraft?.strategyTypeDescription || "").trim() && (
-                              <div style={{padding:"0 16px 10px",borderBottom:`1px solid ${c.br}`,fontSize:10,fontWeight:750,color:c.tm,fontFamily:F,lineHeight:1.45}}>
-                                {dashTxt("No saved strategies yet — enter a strategy type above to continue.","لا توجد استراتيجيات محفوظة بعد — أدخل نوع الاستراتيجية أعلاه للمتابعة.")}
                               </div>
                             )}
                             <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",minHeight:0}}>
