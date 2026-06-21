@@ -8695,8 +8695,10 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
     }
     
     const separateIndicators = this._getVisibleSeparateIndicators();
+    const volumeInSeparatePanel = typeof this._volumeRendersInSeparatePanel === 'function'
+        && this._volumeRendersInSeparatePanel();
     
-    if (separateIndicators.length === 0) {
+    if (separateIndicators.length === 0 && !volumeInSeparatePanel) {
         const _cv = this.ctx && this.ctx.canvas;
         const _wp = _cv ? _cv.parentElement : null;
         if (_wp) { const _ol = _wp.querySelector('#separatePanelsOverlay'); if (_ol) _ol.innerHTML = ''; }

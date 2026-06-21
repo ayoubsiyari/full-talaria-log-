@@ -20228,8 +20228,8 @@ class Chart {
             cancelAnimationFrame(this._chartPanRenderLoopRaf);
             this._chartPanRenderLoopRaf = null;
         }
-        // Full-quality paint after zoomed-out drag (indicators/volume skipped during loop).
-        if (wasLooping && !this._isChartPanDragging() && this._isZoomedOutPaint()) {
+        // Full-quality paint after pan loop (lite path skips overlay indicators/volume).
+        if (wasLooping && !this._isChartPanDragging()) {
             if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
                 this.dataPipeline.invalidatePanDisplayCache();
             }
@@ -20740,7 +20740,8 @@ class Chart {
         if (typeof this._syncAdaptivePriceAxisMargin === 'function' && !skipHeavyChrome) {
             this._syncAdaptivePriceAxisMargin();
         }
-        if (typeof this._paintSeparatePanelStackBackground === 'function' && !skipHeavyChrome) {
+        // Keep separate-panel stack opaque even during lite pan (prevents candle bleed + legend drift).
+        if (typeof this._paintSeparatePanelStackBackground === 'function') {
             this._paintSeparatePanelStackBackground();
         }
 
@@ -20842,9 +20843,10 @@ class Chart {
                 if (typeof this.drawIndicators === 'function') {
                     this.drawIndicators();
                 }
-                if (typeof this.renderSeparatePanelIndicators === 'function') {
-                    this.renderSeparatePanelIndicators({ panFast: true });
-                }
+            }
+            // Separate panels + legend must stay painted during lite pan — canvas is cleared each frame.
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
+                this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
             if (!interactionLite && chartViewPanning) {
