@@ -1989,9 +1989,20 @@ class DrawingToolbar {
     }
 
     getSavedTemplates(toolType) {
+        if (typeof window !== 'undefined' && typeof window.loadDrawingToolTemplates === 'function') {
+            return window.loadDrawingToolTemplates(toolType);
+        }
         const key = this.getTemplatesKey(toolType);
         const saved = userStorage.getItem(key);
         return saved ? JSON.parse(saved) : [];
+    }
+
+    _persistDrawingToolTemplates(toolType, templates) {
+        if (typeof window !== 'undefined' && typeof window.saveDrawingToolTemplatesForType === 'function') {
+            window.saveDrawingToolTemplatesForType(toolType, templates);
+            return;
+        }
+        userStorage.setItem(this.getTemplatesKey(toolType), JSON.stringify(templates));
     }
 
     getSavedTemplatesHTML(toolType) {
@@ -2118,7 +2129,7 @@ class DrawingToolbar {
                 opacity: (styleSnapshot && styleSnapshot.opacity !== undefined) ? styleSnapshot.opacity : (actualDrawing.style && actualDrawing.style.opacity)
             };
             templates.push(newTemplate);
-            userStorage.setItem(this.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
+            this._persistDrawingToolTemplates(actualDrawing.type, templates);
 
             window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', {
                 detail: { toolType: actualDrawing.type }
@@ -2232,7 +2243,7 @@ class DrawingToolbar {
     deleteTemplate(toolType, templateId) {
         let templates = this.getSavedTemplates(toolType);
         templates = templates.filter(t => t.id !== templateId);
-        userStorage.setItem(this.getTemplatesKey(toolType), JSON.stringify(templates));
+        this._persistDrawingToolTemplates(toolType, templates);
         window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', {
             detail: { toolType }
         }));

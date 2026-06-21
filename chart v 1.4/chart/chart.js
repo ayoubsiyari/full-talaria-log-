@@ -11756,6 +11756,14 @@ class Chart {
 
     getUserChartTemplates() {
         try {
+            if (typeof window !== 'undefined' && window.preferencesSync && typeof window.preferencesSync.isReady === 'function' && window.preferencesSync.isReady()) {
+                const synced = window.preferencesSync.get('chart_templates', null);
+                if (synced && typeof synced === 'object') return synced;
+            }
+            if (typeof window !== 'undefined' && typeof window.loadChartTemplates === 'function') {
+                const synced = window.loadChartTemplates();
+                if (synced && typeof synced === 'object') return synced;
+            }
             const raw = userStorage.getItem('chart_user_templates');
             if (!raw) return {};
             const parsed = JSON.parse(raw);
@@ -11768,7 +11776,16 @@ class Chart {
 
     saveUserChartTemplates(templates) {
         try {
-            userStorage.setItem('chart_user_templates', JSON.stringify(templates || {}));
+            const payload = templates || {};
+            if (typeof window !== 'undefined' && typeof window.saveChartTemplates === 'function') {
+                window.saveChartTemplates(payload);
+                return;
+            }
+            if (typeof window !== 'undefined' && window.preferencesSync && typeof window.preferencesSync.updatePreference === 'function') {
+                window.preferencesSync.updatePreference('chart_templates', payload);
+                return;
+            }
+            userStorage.setItem('chart_user_templates', JSON.stringify(payload));
         } catch (e) {
         }
     }

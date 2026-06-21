@@ -24708,11 +24708,33 @@ body.light-mode .template-save-dialog .dialog-title {
 
     getSavedTemplates(toolType) {
 
+        if (typeof window !== 'undefined' && typeof window.loadDrawingToolTemplates === 'function') {
+
+            return window.loadDrawingToolTemplates(toolType);
+
+        }
+
         const key = `drawing_templates_${toolType}`;
 
         const saved = userStorage.getItem(key);
 
         return saved ? JSON.parse(saved) : [];
+
+    }
+
+
+
+    _persistDrawingToolTemplates(toolType, templates) {
+
+        if (typeof window !== 'undefined' && typeof window.saveDrawingToolTemplatesForType === 'function') {
+
+            window.saveDrawingToolTemplatesForType(toolType, templates);
+
+            return;
+
+        }
+
+        userStorage.setItem(`drawing_templates_${toolType}`, JSON.stringify(templates));
 
     }
 
@@ -25272,7 +25294,7 @@ showSaveTemplateDialog(drawing, dropdown) {
 
         templates.push(newTemplate);
 
-        userStorage.setItem(`drawing_templates_${actualDrawing.type}`, JSON.stringify(templates));
+        this._persistDrawingToolTemplates(actualDrawing.type, templates);
 
 
 
@@ -25866,7 +25888,7 @@ applyTemplate(drawing, templateId, modal) {
 
         templates = templates.filter(t => t.id !== templateId);
 
-        userStorage.setItem(`drawing_templates_${toolType}`, JSON.stringify(templates));
+        this._persistDrawingToolTemplates(toolType, templates);
 
         window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', {
 

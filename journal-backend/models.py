@@ -741,6 +741,7 @@ class UserPreferences(db.Model):
     chart_templates = db.Column(JSON, nullable=True, default=dict)  # User-created chart templates
     keyboard_shortcuts = db.Column(JSON, nullable=True, default=dict)  # Custom keyboard shortcuts
     drawing_tool_styles = db.Column(JSON, nullable=True, default=dict)  # Saved tool styles per type
+    drawing_tool_templates = db.Column(JSON, nullable=True, default=dict)  # Named drawing tool templates per type
     panel_sync_settings = db.Column(JSON, nullable=True, default=dict)  # Multi-panel sync preferences
     panel_settings = db.Column(JSON, nullable=True, default=dict)  # Individual panel configurations
     market_config = db.Column(JSON, nullable=True, default=dict)  # Market type, pip size, etc.

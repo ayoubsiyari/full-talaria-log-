@@ -31,10 +31,13 @@ class PreferencesSyncManager {
                 if (response.ok) {
                     const result = await response.json();
                     if (result.success) {
-                        this.preferences = result.preferences;
+                        const local = this.loadFromLocalStorage();
+                        const serverPrefs = result.preferences || {};
+                        this.preferences = this.mergeCloudWithLocal(serverPrefs, local);
                         // Keep userStorage keys (e.g. drawingToolStyles) in sync with server truth
                         // so modules that only read userStorage on init see the same data after refresh.
                         this.persistLoadedPreferencesToLocalStorage();
+                        this.queueMergedFieldsForSync(serverPrefs, this.preferences);
                         console.log('📥 User preferences loaded from cloud');
                         this.isLoaded = true;
                         return this.preferences;
@@ -68,6 +71,7 @@ class PreferencesSyncManager {
             'chart_templates',
             'keyboard_shortcuts',
             'drawing_tool_styles',
+            'drawing_tool_templates',
             'panel_sync_settings',
             'panel_settings',
             'market_config',
@@ -95,6 +99,7 @@ class PreferencesSyncManager {
             chart_templates: this.getLocalItem('chart_user_templates', {}),
             keyboard_shortcuts: this.getLocalItem('chart_custom_shortcuts', {}),
             drawing_tool_styles: this.getLocalItem('drawingToolStyles', {}),
+            drawing_tool_templates: this.loadDrawingToolTemplatesLocal(),
             panel_sync_settings: this.getLocalItem('chart_panel_sync_settings', {}),
             panel_settings: this.getAllPanelSettings(),
             market_config: this.getMarketConfig(),
@@ -102,6 +107,92 @@ class PreferencesSyncManager {
             general_settings: this.getLocalItem('talaria_general_settings', {}),
             keep_drawing_enabled: this.getLocalItem('chart_keep_drawing', '0') === '1'
         };
+    }
+
+    /**
+     * Merge cloud preferences with local-only data so empty server records
+     * do not wipe templates that were never synced.
+     */
+    mergeCloudWithLocal(serverPrefs, localPrefs) {
+        const merged = { ...(serverPrefs || {}) };
+        const templateFields = ['chart_templates', 'drawing_tool_templates'];
+        for (const field of templateFields) {
+            merged[field] = this.mergeJsonObjects(
+                serverPrefs && serverPrefs[field],
+                localPrefs && localPrefs[field]
+            );
+        }
+        return merged;
+    }
+
+    mergeJsonObjects(serverVal, localVal) {
+        const serverObj = (serverVal && typeof serverVal === 'object' && !Array.isArray(serverVal))
+            ? serverVal
+            : {};
+        const localObj = (localVal && typeof localVal === 'object' && !Array.isArray(localVal))
+            ? localVal
+            : {};
+
+        const serverEmpty = Object.keys(serverObj).length === 0;
+        const localEmpty = Object.keys(localObj).length === 0;
+
+        if (serverEmpty && !localEmpty) return { ...localObj };
+        if (!serverEmpty && localEmpty) return { ...serverObj };
+        if (serverEmpty && localEmpty) return {};
+        return { ...serverObj, ...localObj };
+    }
+
+    queueMergedFieldsForSync(serverPrefs, mergedPrefs) {
+        const fields = ['chart_templates', 'drawing_tool_templates'];
+        for (const field of fields) {
+            const serverVal = (serverPrefs && serverPrefs[field]) || {};
+            const mergedVal = (mergedPrefs && mergedPrefs[field]) || {};
+            try {
+                if (JSON.stringify(serverVal) !== JSON.stringify(mergedVal)) {
+                    this.pendingUpdates[field] = mergedVal;
+                }
+            } catch (e) {
+                this.pendingUpdates[field] = mergedVal;
+            }
+        }
+        if (Object.keys(this.pendingUpdates).length > 0) {
+            this.scheduleSyncToAPI();
+        }
+    }
+
+    /**
+     * Load per-tool drawing templates from aggregated cache or legacy keys.
+     */
+    loadDrawingToolTemplatesLocal() {
+        const aggregated = this.getLocalItem('drawing_tool_templates', null);
+        if (aggregated && typeof aggregated === 'object' && !Array.isArray(aggregated)) {
+            const keys = Object.keys(aggregated);
+            if (keys.length > 0) return aggregated;
+        }
+        return this.scanLegacyDrawingToolTemplates();
+    }
+
+    scanLegacyDrawingToolTemplates() {
+        const result = {};
+        try {
+            if (typeof localStorage === 'undefined') return result;
+            for (let i = 0; i < localStorage.length; i++) {
+                const storageKey = localStorage.key(i);
+                if (!storageKey) continue;
+                const match = storageKey.match(/(?:^u\d+_)?drawing_templates_(.+)$/);
+                if (!match) continue;
+                const toolType = match[1];
+                const raw = localStorage.getItem(storageKey);
+                if (!raw) continue;
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        result[toolType] = parsed;
+                    }
+                } catch (e) { /* ignore malformed */ }
+            }
+        } catch (e) { /* ignore */ }
+        return result;
     }
 
     /**
@@ -181,6 +272,17 @@ class PreferencesSyncManager {
                     break;
                 case 'drawing_tool_styles':
                     userStorage.setItem('drawingToolStyles', JSON.stringify(value));
+                    break;
+                case 'drawing_tool_templates':
+                    userStorage.setItem('drawing_tool_templates', JSON.stringify(value || {}));
+                    if (value && typeof value === 'object') {
+                        Object.keys(value).forEach((toolType) => {
+                            userStorage.setItem(
+                                `drawing_templates_${toolType}`,
+                                JSON.stringify(value[toolType] || [])
+                            );
+                        });
+                    }
                     break;
                 case 'panel_sync_settings':
                     userStorage.setItem('chart_panel_sync_settings', JSON.stringify(value));

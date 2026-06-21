@@ -53,6 +53,26 @@ window.loadChartTemplates = function() {
     return window.preferencesSync.get('chart_templates', {});
 };
 
+// Drawing Tool Templates (named style presets per tool type)
+window.loadDrawingToolTemplates = function(toolType) {
+    const all = window.preferencesSync.get('drawing_tool_templates', null);
+    if (all && typeof all === 'object' && Array.isArray(all[toolType])) {
+        return all[toolType];
+    }
+    try {
+        const saved = userStorage.getItem(`drawing_templates_${toolType}`);
+        return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+        return [];
+    }
+};
+
+window.saveDrawingToolTemplatesForType = function(toolType, templates) {
+    const all = { ...(window.preferencesSync.get('drawing_tool_templates', {}) || {}) };
+    all[toolType] = templates;
+    window.preferencesSync.updatePreference('drawing_tool_templates', all);
+};
+
 // Keyboard Shortcuts
 window.saveKeyboardShortcuts = function(shortcuts) {
     window.preferencesSync.updatePreference('keyboard_shortcuts', shortcuts);
