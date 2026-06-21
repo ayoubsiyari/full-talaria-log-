@@ -10659,13 +10659,23 @@ const TalariaV8b = () => {
     setDashSourceFilterKeys([]);
     if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
   };
-  const openEmbeddedJournalTrades = (row) => {
+  const openEmbeddedJournalTrades = (row, options = {}) => {
+    const { openAddTrade = false } = options;
     const account = resolveJournalSessionAccount(row);
     if (!account) return;
-    applyEmbeddedJournalSelection(account);
-    flushSync(() => setSessView("trades"));
+    flushSync(() => {
+      applyEmbeddedJournalSelection(account);
+      setSessView("trades");
+      if (!openAddTrade) {
+        setDashAddTradeEditorOpen(false);
+        setDashAddTradeDraft(null);
+        setDashAddTradeEditorSource(null);
+      }
+    });
     syncV16ViewUrl("trades");
-    requestAnimationFrame(() => liveJournalAddTradeBridgeRef.current?.open?.(account));
+    if (openAddTrade) {
+      requestAnimationFrame(() => liveJournalAddTradeBridgeRef.current?.open?.(account));
+    }
   };
   const openEmbeddedJournalDashboard = (row) => {
     const account = resolveJournalSessionAccount(row);
@@ -12062,7 +12072,7 @@ const TalariaV8b = () => {
                   {[
                     {label:"Trades", handler:()=>{openEmbeddedJournalTrades(ms);setSessActMenu(null);}, col:c.gn, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M6.2 4v16M11.8 4v16M17.4 4v16" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square"/></svg>},
-                    {label:"Add Trade", handler:()=>{openEmbeddedJournalTrades(ms);setSessActMenu(null);}, col:c.gn, disabled:false, danger:false,
+                    {label:"Add Trade", handler:()=>{openEmbeddedJournalTrades(ms, { openAddTrade: true });setSessActMenu(null);}, col:c.gn, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>},
                     {label:"Dashboard", handler:()=>{openEmbeddedJournalDashboard(ms);setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
@@ -14111,12 +14121,32 @@ const TalariaV8b = () => {
             ["journalAccount", "journalEntry", "strategyJournal"].includes(item.kind)
           );
           const appliedSelectionKind = dashLibraryAppliedSelection?.kind || dashLibraryAppliedSelectionRef.current?.kind;
-          const dsFromAppliedJournal = !dashStrategySource && appliedJournalDashboardItem && (
+          const provisionalJournalSourceItem = !appliedJournalDashboardItem && journalSelectionActive
+            ? (() => {
+              const sel = dashLibraryAppliedSelection || dashLibraryAppliedSelectionRef.current;
+              if (!sel || !["journalAccount", "journalEntry", "strategyJournal"].includes(sel.kind)) return null;
+              return {
+                key: `${sel.kind}:${sel.id}`,
+                kind: sel.kind,
+                label: sel.label || dashTxt("Live Journal","يومية حية"),
+                typeLabel: dashTxt("Journal","يومية"),
+                color: c.gn,
+                trades: [],
+                sessions: [],
+                liveAccountId: sel.liveAccountId,
+                profileId: sel.profileId,
+                statusKind: "journal",
+              };
+            })()
+            : null;
+          const activeJournalDashboardItem = appliedJournalDashboardItem || provisionalJournalSourceItem;
+          const dsFromAppliedJournal = !dashStrategySource && activeJournalDashboardItem && (
             dashboardAppliedSourceItems.length === 1
             || ["journalAccount", "journalEntry", "strategyJournal"].includes(appliedSelectionKind)
+            || journalSelectionActive
             || (dashAddTradeEditorOpen && !!(dashAddTradeEditorSource?.liveAccountId || dashAddTradeEditorSource?.isLiveJournalAccount))
           )
-            ? buildDashboardSessionFromAppliedSource(appliedJournalDashboardItem)
+            ? buildDashboardSessionFromAppliedSource(activeJournalDashboardItem)
             : null;
           const dashboardStrategyChildSourceItems = dashStrategySource
             ? dashSelectedStrategySessions.map(session => {
