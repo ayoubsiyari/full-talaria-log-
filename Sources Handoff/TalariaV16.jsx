@@ -6530,7 +6530,7 @@ const btDashTagsForSession = (session) => {
   if (/ict|smc|liquidity|sweep|order block|fvg/.test(base)) tags.push("Liquidity");
   if (/news|earnings|cpi|nfp|fomc/.test(base)) tags.push("Catalyst");
   if (/gold|xau|gc|silver|si/.test(base)) tags.push("Metals");
-  if ((session.tradingMode || "") === "prop") tags.push("Prop Rules");
+  if ((session.tradingMode || "") === "prop" || (session.tradingMode || "") === "journal-prop") tags.push("Prop Rules");
   tags.push(session.replayMode === "Tick" ? "Tick Replay" : "Candle Replay");
   return [...new Set(tags)].slice(0, 5);
 };
@@ -6754,7 +6754,8 @@ const btDashGoalConfig = (session = {}) => {
     : null;
 };
 const btDashPropConfig = (session = {}) => {
-  if ((session.tradingMode || "") !== "prop") return null;
+  const mode = session.tradingMode || "";
+  if (mode !== "prop" && mode !== "journal-prop") return null;
   const capital = Math.max(1000, Number(session.capital) || 10000);
   const asPct = (value, fallback = null) => {
     const n = btDashNumber(value);
@@ -7541,7 +7542,8 @@ function btDashComputeMetrics(session, filters = {}) {
   };
 }
 function btDashPropStatus(session, metrics) {
-  if ((session.tradingMode || "") !== "prop") return null;
+  const mode = session.tradingMode || "";
+  if (mode !== "prop" && mode !== "journal-prop") return null;
   const propConfig = metrics?.propConfig || btDashPropConfig(session);
   if (!propConfig) return null;
   const capital = Math.max(1000, Number(session.capital) || 10000);
@@ -10614,6 +10616,13 @@ const TalariaV8b = () => {
       platform: "Manual",
       accountNumber: account?.accountNumber,
       journalSubtype: account?.type,
+      propConfig: account?.propConfig || null,
+      propRules: account?.propRules || null,
+      profitTarget: account?.propConfig?.profitTargetPct ?? null,
+      dailyLoss: account?.propConfig?.dailyLossLimitPct ?? null,
+      totalDD: account?.propConfig?.maxDDLimitPct ?? null,
+      minDays: account?.propConfig?.minDays ?? null,
+      weekendHold: !!(account?.propRules?.weekendHold),
       _journalAccount: account,
     };
   };
@@ -10629,15 +10638,16 @@ const TalariaV8b = () => {
   };
   const getSessionRowStripeMeta = (sess) => {
     const isJournal = !!sess?.isJournalSession;
+    const isPropJournal = isJournal && (sess?.accountTypeKey === "prop" || sess?.tradingMode === "journal-prop");
     const isProp = !isJournal && sess?.tradingMode === "prop";
-    const stripeCol = isJournal ? c.gn : isProp ? c.gold : c.acL;
-    const hoverBorder = isJournal ? "rgba(0,212,161,0.45)" : isProp ? "rgba(201,168,76,0.35)" : c.acB;
-    const hoverShadow = isJournal
-      ? "0 0 0 1px rgba(0,212,161,0.25), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(0,212,161,0.15)"
-      : isProp
+    const stripeCol = isPropJournal || isProp ? c.gold : isJournal ? c.gn : c.acL;
+    const hoverBorder = isPropJournal || isProp ? "rgba(201,168,76,0.35)" : isJournal ? "rgba(0,212,161,0.45)" : isProp ? "rgba(201,168,76,0.35)" : c.acB;
+    const hoverShadow = isPropJournal || isProp
       ? "0 0 0 1px rgba(201,168,76,0.2), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(201,168,76,0.12)"
+      : isJournal
+      ? "0 0 0 1px rgba(0,212,161,0.25), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(0,212,161,0.15)"
       : `0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`;
-    return { isJournal, isProp, stripeCol, hoverBorder, hoverShadow };
+    return { isJournal, isProp: isProp || isPropJournal, stripeCol, hoverBorder, hoverShadow };
   };
   const applySessionsPageFilter = (s, filt) => {
     if (filt === "journal") return !!s?.isJournalSession;
@@ -14119,7 +14129,16 @@ const TalariaV8b = () => {
                     sourceDashboardKind:"journal",
                     sourceType:"live-journal",
                   }));
-                return {key,kind,label,typeLabel:dashTxt("Journal","يومية"),color:c.gn,trades,sessions:[],liveAccountId:account?.liveAccountId,profileId:account?.profileId,statusKind:"journal"};
+                return {
+                  key,kind,label,typeLabel:dashTxt("Journal","يومية"),
+                  color:account?.accountTypeKey === "prop" ? c.gold : c.gn,
+                  trades,sessions:[],liveAccountId:account?.liveAccountId,profileId:account?.profileId,statusKind:"journal",
+                  accountTypeKey:account?.accountTypeKey,
+                  startingBalance:account?.startingBalance,
+                  propFirm:account?.propFirm,
+                  propConfig:account?.propConfig,
+                  propRules:account?.propRules,
+                };
               }
               const [strategyScope, rawAccountId] = kind === "strategyJournal" && id.includes("::") ? id.split("::") : [null, id];
               const accountId = rawAccountId || id;
@@ -14139,23 +14158,34 @@ const TalariaV8b = () => {
             const totalPnl = trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
             const wins = trades.filter((t) => Number(t.pnl) > 0).length;
             const journalKinds = ["journalAccount", "journalEntry", "strategyJournal"];
+            const isPropJournal = sourceItem.accountTypeKey === "prop" || !!sourceItem.propConfig;
+            const capital = sourceItem.startingBalance != null ? Number(sourceItem.startingBalance) : 10000;
+            const propConfig = sourceItem.propConfig || null;
             return {
               id: sourceItem.key,
               key: sourceItem.key,
               name: sourceItem.label,
               strategyName: sourceItem.label,
               label: sourceItem.label,
-              tradingMode: journalKinds.includes(sourceItem.kind) ? "journal" : "standard",
+              tradingMode: isPropJournal ? "journal-prop" : journalKinds.includes(sourceItem.kind) ? "journal" : "standard",
               statusKind: sourceItem.statusKind || (journalKinds.includes(sourceItem.kind) ? "journal" : "backtest"),
               compositeTrades: trades,
               trades: trades.length,
-              capital: 10000,
+              capital,
               pnl: trades.length ? totalPnl : null,
               winRate: trades.length ? Math.round((wins / trades.length) * 100) : null,
               avgRR: null,
               progress: trades.length ? 100 : 0,
               assetClasses: [...new Set(trades.map((t) => t.market).filter(Boolean))],
               isJournalDashboard: journalKinds.includes(sourceItem.kind),
+              accountTypeKey: sourceItem.accountTypeKey,
+              propFirm: sourceItem.propFirm,
+              propConfig,
+              profitTarget: propConfig?.profitTargetPct ?? null,
+              dailyLoss: propConfig?.dailyLossLimitPct ?? null,
+              totalDD: propConfig?.maxDDLimitPct ?? null,
+              minDays: propConfig?.minDays ?? null,
+              weekendHold: !!(sourceItem.propRules?.weekendHold),
               liveAccountId: sourceItem.liveAccountId,
               profileId: sourceItem.profileId,
             };
@@ -14591,8 +14621,9 @@ const TalariaV8b = () => {
             ? filters
             : {...filters, sourceKeys:activeDashboardSourceKeys};
           const metrics = btDashComputeMetrics(dsForDashboardMetrics, dashboardMetricFilters);
-          const isPropD = ds.tradingMode==="prop";
-          const accent = ds.isJournalDashboard || ds.tradingMode==="journal" ? c.gn : isPropD ? c.gold : c.acL;
+          const isPropJournalDash = ds.tradingMode === "journal-prop" || (ds.isJournalDashboard && ds.accountTypeKey === "prop");
+          const isPropD = ds.tradingMode === "prop" || isPropJournalDash;
+          const accent = isPropJournalDash ? c.gold : ds.isJournalDashboard || ds.tradingMode === "journal" ? c.gn : isPropD ? c.gold : c.acL;
           const propStatus = btDashPropStatus(ds, metrics);
           const mc = btDashMonteCarlo(metrics, ds);
           const compareSession = sessions.find(s=>String(s.id)===String(dashCompareId) && String(s.id)!==String(ds.id));
@@ -22708,7 +22739,7 @@ const TalariaV8b = () => {
               },
               {
                 id:"pressure",
-                pages: (ds.tradingMode||"") === "prop" && propConfigured ? [
+                pages: ((ds.tradingMode||"") === "prop" || (ds.tradingMode||"") === "journal-prop") && propConfigured ? [
                   {id:"metric-target-progress", label:"Prop Pressure", value:propTargetPct == null ? "-" : fmtPct(propTargetPct,0), sub:propTargetPct == null ? "Profit target not configured" : "Target progress", color:(propTargetPct||0)>=100?c.gn:c.gold, visual:propTargetPct == null ? <MiniEmpty label="No target"/> : <KpiProgressMini value={propTargetPct||0} max={100} color={(propTargetPct||0)>=100?c.gn:c.gold} target={100} labelLeft="0%" labelRight="target"/>, target:"prop-rules", dim:propTargetPct == null},
                   {id:"metric-prop-headroom", label:"Daily-Loss Headroom", value:propDailyHeadroom == null ? "-" : fmtPct(propDailyHeadroom,0), sub:"Remaining daily loss room", color:(propDailyHeadroom||0)>35?c.gn:c.rd, visual:<KpiProgressMini value={propDailyHeadroom||0} max={100} color={(propDailyHeadroom||0)>35?c.gn:c.rd} labelLeft="risk" labelRight="room"/>, target:"prop-rules"},
                   {id:"metric-prop-headroom-dd", label:"Max-DD Headroom", value:propDdHeadroom == null ? "-" : fmtPct(propDdHeadroom,0), sub:"Remaining total drawdown room", color:(propDdHeadroom||0)>35?c.gn:c.rd, visual:<KpiProgressMini value={propDdHeadroom||0} max={100} color={(propDdHeadroom||0)>35?c.gn:c.rd} labelLeft="risk" labelRight="room"/>, target:"prop-rules"},

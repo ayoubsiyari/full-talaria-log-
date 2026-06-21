@@ -44,6 +44,13 @@ export type V16JournalAccountRow = {
   startingBalance?: number | null;
   currency?: string;
   propFirm?: string | null;
+  propRules?: Record<string, unknown> | null;
+  propConfig?: {
+    profitTargetPct: number | null;
+    dailyLossLimitPct: number | null;
+    maxDDLimitPct: number | null;
+    minDays: number | null;
+  } | null;
   notes?: string | null;
 };
 
@@ -144,6 +151,7 @@ export type ApiLiveJournalAccount = {
   starting_balance?: number | null;
   currency?: string;
   prop_firm?: string | null;
+  prop_rules?: Record<string, unknown> | null;
   notes?: string | null;
   status: string;
   trade_count?: number;

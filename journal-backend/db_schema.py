@@ -338,6 +338,8 @@ def ensure_users_schema(app) -> None:
                             conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN currency VARCHAR(8) NOT NULL DEFAULT 'USD'"))
                         if "prop_firm" not in live_cols:
                             conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN prop_firm VARCHAR(80)"))
+                        if "prop_rules" not in live_cols:
+                            conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN prop_rules JSON"))
                         if "notes" not in live_cols:
                             conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN notes TEXT"))
             app.logger.info(

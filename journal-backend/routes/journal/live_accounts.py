@@ -21,6 +21,50 @@ _PROP_SUBTYPES = frozenset({"Challenge", "Funded", "Demo"})
 _VALID_MARKETS = frozenset({"Forex", "Futures", "Stocks", "Crypto", "Indices"})
 
 
+def _default_prop_rules(market: str, balance: Decimal, firm: str | None = None) -> dict:
+    is_futures = str(market or "").strip().lower() == "futures"
+    cap = float(balance or 50000)
+    dl_pct = 2.5 if (firm or "").lower() == "topstep" and is_futures else 5.0
+    dd_pct = 6.0 if is_futures else 10.0
+    pt_pct = 10.0
+    return {
+        "numPhases": 1,
+        "challengeType": "Evaluation",
+        "limitMode": "amount" if is_futures else "percent",
+        "p1Pct": {"dl": str(dl_pct), "dd": str(dd_pct), "pt": str(pt_pct)},
+        "p2Pct": {"dl": str(dl_pct), "dd": str(dd_pct), "pt": "5"},
+        "p1Amt": {
+            "dl": str(int(round(cap * dl_pct / 100))),
+            "dd": str(int(round(cap * dd_pct / 100))),
+            "pt": str(int(round(cap * pt_pct / 100))),
+        },
+        "p2Amt": {
+            "dl": str(int(round(cap * dl_pct / 100))),
+            "dd": str(int(round(cap * dd_pct / 100))),
+            "pt": str(int(round(cap * 0.05))),
+        },
+        "minTradingDaysEnabled": True,
+        "minTradingDays": "2" if is_futures else "4",
+        "consistencyEnabled": False,
+        "consistencyPct": "30",
+        "trailingDrawdown": not is_futures,
+        "dailyLossEnabled": True,
+        "weekendHold": False,
+    }
+
+
+def _normalize_prop_rules(raw, *, market: str, balance: Decimal, firm: str | None, account_type: str) -> dict | None:
+    if account_type != "prop":
+        return None
+    if isinstance(raw, dict) and raw:
+        cleaned = dict(raw)
+        cleaned.setdefault("numPhases", 1)
+        cleaned.setdefault("challengeType", "Evaluation")
+        cleaned.setdefault("limitMode", "amount" if str(market).lower() == "futures" else "percent")
+        return cleaned
+    return _default_prop_rules(market, balance, firm)
+
+
 def _require_journal_user():
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
@@ -59,6 +103,13 @@ def _serialize_live_account(row: LiveJournalAccount, *, trade_count: int | None 
             starting_balance = float(row.starting_balance)
         except (TypeError, ValueError):
             starting_balance = None
+    prop_rules = row.prop_rules if isinstance(row.prop_rules, dict) else None
+    if row.account_type == "prop" and not prop_rules:
+        prop_rules = _default_prop_rules(
+            row.market or "Forex",
+            row.starting_balance or Decimal("50000"),
+            row.prop_firm,
+        )
     return {
         "id": row.id,
         "profile_id": row.profile_id,
@@ -71,6 +122,7 @@ def _serialize_live_account(row: LiveJournalAccount, *, trade_count: int | None 
         "starting_balance": starting_balance,
         "currency": row.currency or None,
         "prop_firm": row.prop_firm,
+        "prop_rules": prop_rules,
         "notes": row.notes,
         "status": row.status,
         "trade_count": int(trade_count or 0),
@@ -142,6 +194,14 @@ def _normalize_payload(data: dict, *, existing: LiveJournalAccount | None = None
     if not account_number:
         account_number = existing.account_number if existing else ""
 
+    prop_rules = _normalize_prop_rules(
+        data.get("prop_rules"),
+        market=market,
+        balance=starting_balance,
+        firm=prop_firm,
+        account_type=account_type,
+    )
+
     return {
         "name": name[:120],
         "account_number": account_number[:64] if account_number else "",
@@ -151,6 +211,7 @@ def _normalize_payload(data: dict, *, existing: LiveJournalAccount | None = None
         "account_subtype": account_subtype,
         "starting_balance": starting_balance,
         "prop_firm": prop_firm,
+        "prop_rules": prop_rules,
         "notes": notes,
     }, None
 
@@ -245,6 +306,7 @@ def create_live_journal_account():
             account_subtype=payload["account_subtype"],
             starting_balance=payload["starting_balance"],
             prop_firm=payload["prop_firm"],
+            prop_rules=payload["prop_rules"],
             notes=payload["notes"],
             status="active",
         )
@@ -295,6 +357,7 @@ def update_live_journal_account(account_id: int):
         row.account_subtype = payload["account_subtype"]
         row.starting_balance = payload["starting_balance"]
         row.prop_firm = payload["prop_firm"]
+        row.prop_rules = payload["prop_rules"]
         row.notes = payload["notes"]
         row.updated_at = datetime.utcnow()
 

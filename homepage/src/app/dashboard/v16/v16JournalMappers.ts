@@ -1,5 +1,9 @@
-import { JOURNAL_API_BASE } from "@/lib/journalApi";
-import { syncJournalTokenFromSession } from "@/lib/journalApi";
+import { JOURNAL_API_BASE, syncJournalTokenFromSession } from "@/lib/journalApi";
+import {
+  defaultLiveJournalPropRules,
+  flattenLiveJournalPropConfig,
+  parseLiveJournalPropRules,
+} from "@/lib/liveJournalPropRules";
 import { authHeaders } from "@/app/dashboard/strategies/strategyLabV9Auth";
 import type {
   ApiBrokerConnection,
@@ -324,6 +328,21 @@ export function buildJournalBootFromApi(
       startingBalance: liveMeta?.starting_balance ?? null,
       currency: liveMeta?.currency || "USD",
       propFirm: liveMeta?.prop_firm ?? null,
+      propRules: liveMeta?.prop_rules ?? null,
+      propConfig: liveMeta
+        ? flattenLiveJournalPropConfig(
+            parseLiveJournalPropRules(liveMeta.prop_rules) ||
+              (liveMeta.account_type === "prop"
+                ? defaultLiveJournalPropRules(
+                    liveMeta.market || "Forex",
+                    Number(liveMeta.starting_balance) || 50000,
+                    liveMeta.prop_firm || "FTMO"
+                  )
+                : null),
+            Number(liveMeta.starting_balance) || 10000,
+            liveMeta.market
+          )
+        : null,
       notes: liveMeta?.notes ?? null,
     });
 

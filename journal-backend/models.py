@@ -724,6 +724,7 @@ class LiveJournalAccount(db.Model):
     starting_balance = db.Column(db.Numeric(15, 2), nullable=True)
     currency = db.Column(db.String(8), nullable=False, default='USD')
     prop_firm = db.Column(db.String(80), nullable=True)
+    prop_rules = db.Column(JSON, nullable=True)
     notes = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), nullable=False, default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

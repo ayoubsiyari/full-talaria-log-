@@ -4,6 +4,13 @@ import * as React from "react";
 import { JOURNAL_API_BASE, syncJournalTokenFromSession } from "@/lib/journalApi";
 import { authHeaders } from "@/app/dashboard/strategies/strategyLabV9Auth";
 import type { ApiLiveJournalAccount, V16AccountTypeKey } from "./v16/v16SourceTypes";
+import type { LiveJournalPropRules } from "@/lib/liveJournalPropRules";
+import {
+  defaultLiveJournalPropRules,
+  liveJournalPropRulesToApiBody,
+  parseLiveJournalPropRules,
+} from "@/lib/liveJournalPropRules";
+import { LiveJournalPropRulesForm } from "./LiveJournalPropRulesForm";
 
 const F = "'Exo 2', sans-serif";
 const C = {
@@ -67,11 +74,17 @@ export function LiveJournalNewAccountModal({
   const [propFirm, setPropFirm] = React.useState("FTMO");
   const [propFirmCustom, setPropFirmCustom] = React.useState("");
   const [notes, setNotes] = React.useState("");
+  const [propRules, setPropRules] = React.useState<LiveJournalPropRules>(() =>
+    defaultLiveJournalPropRules("Forex", 50000, "FTMO")
+  );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const effectiveType = lockedType || accountTypeKey;
   const accent = effectiveType === "prop" ? C.gold : C.gn;
+  const resolvedPropFirm =
+    effectiveType === "prop" ? (propFirm === "Other" ? propFirmCustom.trim() : propFirm) : null;
+  const parsedBalance = parseBalanceInput(startingBalance) ?? (effectiveType === "prop" ? 50000 : 10000);
 
   React.useEffect(() => {
     if (!open) return;
@@ -101,6 +114,14 @@ export function LiveJournalNewAccountModal({
         setPropFirm("FTMO");
         setPropFirmCustom("");
       }
+      const bal =
+        edit.starting_balance != null && Number.isFinite(Number(edit.starting_balance))
+          ? Number(edit.starting_balance)
+          : 50000;
+      setPropRules(
+        parseLiveJournalPropRules(edit.prop_rules) ||
+          defaultLiveJournalPropRules(edit.market || "Forex", bal, firm)
+      );
     } else {
       setName("");
       setStartingBalance(type === "prop" ? "50000" : "10000");
@@ -108,6 +129,7 @@ export function LiveJournalNewAccountModal({
       setPropFirm("FTMO");
       setPropFirmCustom("");
       setNotes("");
+      setPropRules(defaultLiveJournalPropRules(type === "prop" ? "Forex" : "Forex", type === "prop" ? 50000 : 10000, "FTMO"));
     }
     setError(null);
   }, [open, initialState?.accountTypeKey, initialState?.editAccount]);
@@ -117,10 +139,15 @@ export function LiveJournalNewAccountModal({
     else if (accountSubtype === "Live") setAccountSubtype("Challenge");
   }, [effectiveType, accountSubtype]);
 
-  if (!open) return null;
+  React.useEffect(() => {
+    if (effectiveType !== "prop") return;
+    setPropRules((prev) => ({
+      ...prev,
+      limitMode: market.toLowerCase() === "futures" ? "amount" : "percent",
+    }));
+  }, [market, effectiveType]);
 
-  const resolvedPropFirm =
-    effectiveType === "prop" ? (propFirm === "Other" ? propFirmCustom.trim() : propFirm) : null;
+  if (!open) return null;
 
   const handleSave = async () => {
     const trimmedName = name.trim();
@@ -149,6 +176,7 @@ export function LiveJournalNewAccountModal({
         account_type: effectiveType,
         account_subtype: accountSubtype,
         prop_firm: resolvedPropFirm,
+        prop_rules: effectiveType === "prop" ? liveJournalPropRulesToApiBody(propRules) : null,
         notes: notes.trim() || null,
       };
       const editId = initialState?.editAccount?.id;
@@ -231,7 +259,7 @@ export function LiveJournalNewAccountModal({
       <div
         onMouseDown={(e) => e.stopPropagation()}
         style={{
-          width: 440,
+          width: effectiveType === "prop" ? 480 : 440,
           maxWidth: "calc(100vw - 36px)",
           maxHeight: "calc(100vh - 36px)",
           overflow: "auto",
@@ -392,6 +420,10 @@ export function LiveJournalNewAccountModal({
               ))}
             </div>
           </div>
+
+          {effectiveType === "prop" ? (
+            <LiveJournalPropRulesForm rules={propRules} onChange={setPropRules} balance={parsedBalance} />
+          ) : null}
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 9, fontWeight: 900, color: C.tm, letterSpacing: "0.08em", textTransform: "uppercase" }}>
