@@ -106,10 +106,14 @@ def ensure_users_schema(app) -> None:
                             "profile_id INTEGER NOT NULL UNIQUE REFERENCES journal_profiles(id), "
                             "name VARCHAR(120) NOT NULL, "
                             "account_number VARCHAR(64) NOT NULL, "
-                            "platform VARCHAR(80) NOT NULL DEFAULT 'MetaTrader 5', "
+                            "platform VARCHAR(80) NOT NULL DEFAULT 'Manual', "
                             "market VARCHAR(40) NOT NULL DEFAULT 'Forex', "
                             "account_type VARCHAR(20) NOT NULL DEFAULT 'personal', "
                             "account_subtype VARCHAR(20) NOT NULL DEFAULT 'Live', "
+                            "starting_balance NUMERIC(15, 2), "
+                            "currency VARCHAR(8) NOT NULL DEFAULT 'USD', "
+                            "prop_firm VARCHAR(80), "
+                            "notes TEXT, "
                             "status VARCHAR(20) NOT NULL DEFAULT 'active', "
                             "created_at TIMESTAMP, "
                             "updated_at TIMESTAMP"
@@ -120,6 +124,30 @@ def ensure_users_schema(app) -> None:
                         text(
                             "CREATE INDEX IF NOT EXISTS ix_live_journal_accounts_user_id "
                             "ON live_journal_accounts (user_id)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE live_journal_accounts ADD COLUMN IF NOT EXISTS "
+                            "starting_balance NUMERIC(15, 2)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE live_journal_accounts ADD COLUMN IF NOT EXISTS "
+                            "currency VARCHAR(8) NOT NULL DEFAULT 'USD'"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE live_journal_accounts ADD COLUMN IF NOT EXISTS "
+                            "prop_firm VARCHAR(80)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE live_journal_accounts ADD COLUMN IF NOT EXISTS "
+                            "notes TEXT"
                         )
                     )
                 else:
@@ -280,10 +308,14 @@ def ensure_users_schema(app) -> None:
                                 "profile_id INTEGER NOT NULL UNIQUE, "
                                 "name VARCHAR(120) NOT NULL, "
                                 "account_number VARCHAR(64) NOT NULL, "
-                                "platform VARCHAR(80) NOT NULL DEFAULT 'MetaTrader 5', "
+                                "platform VARCHAR(80) NOT NULL DEFAULT 'Manual', "
                                 "market VARCHAR(40) NOT NULL DEFAULT 'Forex', "
                                 "account_type VARCHAR(20) NOT NULL DEFAULT 'personal', "
                                 "account_subtype VARCHAR(20) NOT NULL DEFAULT 'Live', "
+                                "starting_balance NUMERIC(15, 2), "
+                                "currency VARCHAR(8) NOT NULL DEFAULT 'USD', "
+                                "prop_firm VARCHAR(80), "
+                                "notes TEXT, "
                                 "status VARCHAR(20) NOT NULL DEFAULT 'active', "
                                 "created_at DATETIME, "
                                 "updated_at DATETIME, "
@@ -298,6 +330,16 @@ def ensure_users_schema(app) -> None:
                                 "ON live_journal_accounts (user_id)"
                             )
                         )
+                    elif "live_journal_accounts" in insp.get_table_names():
+                        live_cols = {c["name"] for c in insp.get_columns("live_journal_accounts")}
+                        if "starting_balance" not in live_cols:
+                            conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN starting_balance NUMERIC(15, 2)"))
+                        if "currency" not in live_cols:
+                            conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN currency VARCHAR(8) NOT NULL DEFAULT 'USD'"))
+                        if "prop_firm" not in live_cols:
+                            conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN prop_firm VARCHAR(80)"))
+                        if "notes" not in live_cols:
+                            conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN notes TEXT"))
             app.logger.info(
                 "schema patch applied (users public_id, strategy_templates publish)"
             )

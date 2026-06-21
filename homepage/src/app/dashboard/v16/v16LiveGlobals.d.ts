@@ -54,8 +54,17 @@ declare global {
     /** Open dashboard live journal creator from embedded V16 Source modal. */
     __TALARIA_OPEN_NEW_LIVE_JOURNAL__?: (opts?: {
       accountTypeKey?: "personal" | "prop";
+      lockAccountType?: boolean;
       goToTradesAfterCreate?: boolean;
+      editAccount?: import("./v16SourceTypes").ApiLiveJournalAccount | null;
     }) => void;
+    /** Edit a persisted live journal account. */
+    __TALARIA_EDIT_LIVE_JOURNAL__?: (opts?: {
+      accountId?: number;
+      account?: import("./v16SourceTypes").ApiLiveJournalAccount | null;
+    }) => void;
+    /** Archive/delete a persisted live journal account. */
+    __TALARIA_DELETE_LIVE_JOURNAL__?: (accountId: number) => Promise<boolean>;
     /** Activate a persisted live journal profile before import/manual add. */
     __TALARIA_ACTIVATE_LIVE_JOURNAL__?: (accountId: number) => void | Promise<void>;
     /** Open dashboard session editor for an existing backtest (embedded V16). */

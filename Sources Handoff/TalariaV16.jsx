@@ -55,6 +55,23 @@ const openDashboardNewLiveJournal = (opts = {}) => {
   fn(opts);
   return true;
 };
+const openDashboardEditLiveJournal = (account) => {
+  if (!isV16Embedded() || !account) return false;
+  const fn = typeof window !== "undefined" ? window.__TALARIA_EDIT_LIVE_JOURNAL__ : null;
+  if (typeof fn !== "function") return false;
+  if (account.liveAccountId != null) {
+    fn({ accountId: Number(account.liveAccountId) });
+    return true;
+  }
+  fn({ account });
+  return true;
+};
+const deleteLiveJournalAccount = async (accountId) => {
+  if (typeof window === "undefined" || accountId == null) return false;
+  const fn = window.__TALARIA_DELETE_LIVE_JOURNAL__;
+  if (typeof fn !== "function") return false;
+  return fn(Number(accountId));
+};
 const activateLiveJournalAccount = (accountId) => {
   if (typeof window === "undefined" || accountId == null) return;
   const fn = window.__TALARIA_ACTIVATE_LIVE_JOURNAL__;
@@ -10468,6 +10485,13 @@ const TalariaV8b = () => {
   const mapJournalAccountToSessionRow = (account) => {
     const tradeCount = Number(account?.trades ?? account?.totalTrades ?? 0) || 0;
     const isPropJournal = account?.accountTypeKey === "prop";
+    const startingBalance = account?.startingBalance != null ? Number(account.startingBalance) : null;
+    const currency = account?.currency || "USD";
+    const descParts = [
+      isPropJournal ? (account?.propFirm || "Prop") : "Personal",
+      account?.market,
+      account?.type,
+    ].filter(Boolean);
     return {
       id: `journal-${account?.liveAccountId ?? account?.id}`,
       journalAccountKey: account?.id,
@@ -10475,14 +10499,15 @@ const TalariaV8b = () => {
       profileId: account?.profileId,
       isJournalSession: true,
       name: String(account?.name || "").split(" / ")[0] || "Journal",
-      strategyName: account?.connection || "Live Journal",
-      strategyDesc: [account?.connection, account?.accountNumber].filter(Boolean).join(" · "),
-      tickers: account?.accountNumber ? [account.accountNumber] : [],
+      strategyName: isPropJournal ? (account?.propFirm || "Prop firm") : "Personal account",
+      strategyDesc: descParts.join(" · "),
+      tickers: account?.market ? [account.market] : [],
       assetClasses: account?.market ? [account.market] : [],
       timeframe: "Live",
       startDate: String(account?.createdAt || account?.created || "").slice(0, 10),
       endDate: "",
-      capital: null,
+      capital: startingBalance,
+      journalCurrency: currency,
       createdAt: account?.createdAt || account?.created || new Date().toISOString(),
       trades: tradeCount,
       pnl: account?.pnl != null ? Number(account.pnl) : null,
@@ -10492,8 +10517,8 @@ const TalariaV8b = () => {
       accountTypeKey: account?.accountTypeKey,
       progress: tradeCount > 0 ? 100 : 0,
       rollbackAllowed: false,
-      commission: "None",
-      platform: account?.connection,
+      commission: "Manual",
+      platform: "Manual",
       accountNumber: account?.accountNumber,
       journalSubtype: account?.type,
       _journalAccount: account,
@@ -11005,6 +11030,7 @@ const TalariaV8b = () => {
           closeNewSessionJournalMethodPicker();
           openDashboardNewLiveJournal({
             accountTypeKey: newSessionJournalAccountType === "prop" ? "prop" : "personal",
+            lockAccountType: true,
             goToTradesAfterCreate: true,
           });
         };
@@ -11903,7 +11929,7 @@ const TalariaV8b = () => {
                         </div>
 
                         {/* Account size */}
-                        {colCell("Starting Bal.",sess.isJournalSession?"—":`$${(sess.capital||0).toLocaleString()}`,88)}
+                        {colCell("Starting Bal.",sess.isJournalSession?(sess.capital!=null?`${sess.journalCurrency||"USD"} ${Number(sess.capital).toLocaleString()}`:"—"):`$${(sess.capital||0).toLocaleString()}`,88)}
 
                         {/* Net P&L */}
                         {colCell("Net P&L",pnlVal,80,pnlCol)}
@@ -11956,6 +11982,7 @@ const TalariaV8b = () => {
               if(!ms)return null;
               const hasStarted=ms.progress>0;
               if(ms.isJournalSession){
+                const journalAccount = resolveJournalSessionAccount(ms);
                 return(<>
                 <div style={{position:"fixed",inset:0,zIndex:99997}} onClick={e=>{e.stopPropagation();setSessActMenu(null);}}/>
                 <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:sessActMenu.y+6,left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
@@ -11967,7 +11994,18 @@ const TalariaV8b = () => {
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>},
                     {label:"Dashboard", handler:()=>{openEmbeddedJournalDashboard(ms);setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
-                  ].map(({label,handler,col,disabled,sub,danger,icon})=>(
+                    {label:"divider"},
+                    {label:"Edit Journal", handler:()=>{openDashboardEditLiveJournal(journalAccount);setSessActMenu(null);}, col:c.ts, disabled:!journalAccount?.liveAccountId, danger:false,
+                      icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
+                    {label:"Delete", handler:()=>{
+                      if(!journalAccount?.liveAccountId) return;
+                      if(!window.confirm("Archive this journal? It will be removed from your list but existing trades stay saved.")) return;
+                      void deleteLiveJournalAccount(journalAccount.liveAccountId).then((ok)=>{ if(ok) reloadEmbeddedV16Boot(); setSessActMenu(null); });
+                    }, col:c.rd, disabled:!journalAccount?.liveAccountId, danger:true,
+                      icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
+                  ].map(({label,handler,col,disabled,sub,danger,icon})=>{
+                    if(label==="divider")return<div key="div" style={{height:1,background:c.br,margin:"2px 0"}}/>;
+                    return(
                     <div key={label} onClick={disabled?undefined:handler}
                       style={{position:"relative",padding:"8px 12px",fontSize:10,fontWeight:600,color:disabled?"rgba(255,255,255,0.28)":col,cursor:disabled?"default":"default",transition:"background 0.1s",display:"flex",alignItems:"center",gap:8,fontFamily:F}}
                       onMouseEnter={e=>{if(!disabled){e.currentTarget.style.background=danger?"rgba(255,80,104,0.09)":"rgba(255,255,255,0.04)";}const s=e.currentTarget.querySelector(".am-stripe");if(s&&!disabled)s.style.opacity="1";}}
@@ -11977,7 +12015,8 @@ const TalariaV8b = () => {
                       {label}
                       {sub&&<span style={{fontSize:8,color:c.tm,marginLeft:"auto"}}>{sub}</span>}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>);
               }
@@ -18238,7 +18277,7 @@ const TalariaV8b = () => {
             <div style={{minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:`1px solid ${c.br}`,background:c.sf,padding:"18px 14px"}}>
               <div style={{fontSize:10,fontWeight:800,color:c.tm,fontFamily:F,textAlign:"center"}}>{dashTxt("No live journal accounts yet.","لا توجد حسابات يومية حية بعد.")}</div>
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-                <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey }))} onKeyDown={libraryKeyActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey }))} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
+                <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true }))} onKeyDown={libraryKeyActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true }))} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
                   {dashTxt("Create Journal","إنشاء يومية")}
                 </div>
                 <div className="tlr-library-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>liveJournalAddTradeBridgeRef.current?.open?.())} onKeyDown={libraryKeyActivate(()=>liveJournalAddTradeBridgeRef.current?.open?.())} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.acL,color:"#fff",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer",boxShadow:`0 0 8px ${c.acG}`}}>
@@ -18264,7 +18303,7 @@ const TalariaV8b = () => {
                 color:c.gn,
                 shadow:"rgba(0,212,161,0.28)",
                 onClick:()=>{
-                  openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection() });
+                  openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection(), lockAccountType: true });
                 }
               }
             : {
@@ -18286,7 +18325,7 @@ const TalariaV8b = () => {
                 label:dashTxt("Create Journal","إنشاء يومية"),
                 color:c.gn,
                 shadow:"rgba(0,212,161,0.28)",
-                onClick:()=>{ setDashCompareOpen(false); openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromCat(dashCompareJournalCat) }); }
+                onClick:()=>{ setDashCompareOpen(false); openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromCat(dashCompareJournalCat), lockAccountType: true }); }
               }
             : dashCompareTab === "strategies"
               ? {
@@ -25249,7 +25288,7 @@ const TalariaV8b = () => {
                 || boot.accounts.find(item => item.isLiveJournalAccount);
             }
             if (!target?.liveAccountId && !target?.profileId) {
-              openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection() });
+              openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection(), lockAccountType: true });
               return;
             }
             const key = `journalAccount:${target.id}`;

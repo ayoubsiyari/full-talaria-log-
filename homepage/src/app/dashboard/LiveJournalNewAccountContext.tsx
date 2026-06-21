@@ -5,7 +5,7 @@ import {
   LiveJournalNewAccountModal,
   type LiveJournalNewAccountInitialState,
 } from "@/app/dashboard/LiveJournalNewAccountModal";
-import type { V16AccountTypeKey } from "@/app/dashboard/v16/v16SourceTypes";
+import type { ApiLiveJournalAccount, V16AccountTypeKey } from "@/app/dashboard/v16/v16SourceTypes";
 
 export type LiveJournalNewAccountRegisterFn = (
   fn: ((opts?: LiveJournalNewAccountOpenOptions) => void) | null
@@ -13,8 +13,12 @@ export type LiveJournalNewAccountRegisterFn = (
 
 export type LiveJournalNewAccountOpenOptions = {
   accountTypeKey?: V16AccountTypeKey;
+  /** Lock to Personal or Prop tab (no switching) when set from the New Session picker. */
+  lockAccountType?: boolean;
   /** After save, switch embedded V16 to Trades and open Add Trade for the new account. */
   goToTradesAfterCreate?: boolean;
+  /** Edit an existing persisted live journal account. */
+  editAccount?: ApiLiveJournalAccount | null;
 };
 
 type LiveJournalNewAccountContextValue = {
@@ -38,8 +42,11 @@ export function LiveJournalNewAccountProvider({
 
   const openNewLiveJournal = React.useCallback((opts?: LiveJournalNewAccountOpenOptions) => {
     pendingOpenOptionsRef.current = opts || null;
+    const typeKey: V16AccountTypeKey = opts?.editAccount?.account_type === "prop" || opts?.accountTypeKey === "prop" ? "prop" : "personal";
     setInitialState({
-      accountTypeKey: opts?.accountTypeKey === "prop" ? "prop" : "personal",
+      accountTypeKey: typeKey,
+      lockAccountType: Boolean(opts?.lockAccountType || opts?.editAccount),
+      editAccount: opts?.editAccount || null,
     });
     setOpen(true);
   }, []);
@@ -52,6 +59,47 @@ export function LiveJournalNewAccountProvider({
   React.useEffect(() => {
     window.__TALARIA_OPEN_NEW_LIVE_JOURNAL__ = (opts?: LiveJournalNewAccountOpenOptions) => {
       openNewLiveJournal(opts);
+    };
+    window.__TALARIA_EDIT_LIVE_JOURNAL__ = (opts?: { account?: ApiLiveJournalAccount | null; accountId?: number }) => {
+      if (opts?.account) {
+        openNewLiveJournal({ editAccount: opts.account, lockAccountType: true });
+        return;
+      }
+      if (opts?.accountId != null) {
+        void (async () => {
+          try {
+            const { syncJournalTokenFromSession, JOURNAL_API_BASE } = await import("@/lib/journalApi");
+            const { authHeaders } = await import("@/app/dashboard/strategies/strategyLabV9Auth");
+            await syncJournalTokenFromSession();
+            const res = await fetch(`${JOURNAL_API_BASE}/journal/live-accounts/${opts.accountId}`, {
+              headers: authHeaders(),
+            });
+            const data = (await res.json()) as { success?: boolean; account?: ApiLiveJournalAccount };
+            if (res.ok && data.success && data.account) {
+              openNewLiveJournal({ editAccount: data.account, lockAccountType: true });
+            }
+          } catch {
+            /* ignore */
+          }
+        })();
+      }
+    };
+    window.__TALARIA_DELETE_LIVE_JOURNAL__ = async (accountId: number) => {
+      try {
+        const { syncJournalTokenFromSession, JOURNAL_API_BASE } = await import("@/lib/journalApi");
+        const { authHeaders } = await import("@/app/dashboard/strategies/strategyLabV9Auth");
+        await syncJournalTokenFromSession();
+        const res = await fetch(`${JOURNAL_API_BASE}/journal/live-accounts/${accountId}`, {
+          method: "DELETE",
+          headers: authHeaders(),
+        });
+        const data = (await res.json()) as { success?: boolean };
+        if (!res.ok || !data.success) return false;
+        window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
+        return true;
+      } catch {
+        return false;
+      }
     };
     window.__TALARIA_ACTIVATE_LIVE_JOURNAL__ = async (accountId: number) => {
       try {
@@ -68,6 +116,8 @@ export function LiveJournalNewAccountProvider({
     };
     return () => {
       delete window.__TALARIA_OPEN_NEW_LIVE_JOURNAL__;
+      delete window.__TALARIA_EDIT_LIVE_JOURNAL__;
+      delete window.__TALARIA_DELETE_LIVE_JOURNAL__;
       delete window.__TALARIA_ACTIVATE_LIVE_JOURNAL__;
     };
   }, [openNewLiveJournal]);
@@ -85,7 +135,7 @@ export function LiveJournalNewAccountProvider({
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
       window.dispatchEvent(new CustomEvent("talaria-v16-close-source"));
-      if (opts?.goToTradesAfterCreate) {
+      if (opts?.goToTradesAfterCreate && !opts?.editAccount) {
         window.dispatchEvent(
           new CustomEvent("talaria-v16-journal-created", {
             detail: { account: account || {}, goToTradesAfterCreate: true },

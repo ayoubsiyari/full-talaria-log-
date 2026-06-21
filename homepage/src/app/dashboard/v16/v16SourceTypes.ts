@@ -41,6 +41,10 @@ export type V16JournalAccountRow = {
   profileId?: number;
   liveAccountId?: number;
   isLiveJournalAccount?: boolean;
+  startingBalance?: number | null;
+  currency?: string;
+  propFirm?: string | null;
+  notes?: string | null;
 };
 
 export type V16LibraryConnection = {
@@ -137,6 +141,10 @@ export type ApiLiveJournalAccount = {
   market: string;
   account_type: V16AccountTypeKey;
   account_subtype: string;
+  starting_balance?: number | null;
+  currency?: string;
+  prop_firm?: string | null;
+  notes?: string | null;
   status: string;
   trade_count?: number;
   created_at?: string | null;

@@ -289,11 +289,9 @@ export function buildJournalBootFromApi(
 
     accounts.push({
       id: key,
-      name: liveMeta
-        ? `${liveMeta.name} / ${liveMeta.market}`
-        : `${info.connection} / ${info.market}`,
+      name: liveMeta ? liveMeta.name : `${info.connection} / ${info.market}`,
       accountNumber: info.accountNumber,
-      connection: liveMeta ? liveMeta.platform : info.connection,
+      connection: liveMeta ? (liveMeta.prop_firm || "Manual Journal") : info.connection,
       connectionId: info.connectionId,
       accountIndex: info.accountIndex,
       type: liveMeta?.account_subtype || info.type,
@@ -302,7 +300,9 @@ export function buildJournalBootFromApi(
       market: info.market,
       trades: bucket.length,
       pnl,
-      pnlPct: null,
+      pnlPct: liveMeta?.starting_balance
+        ? pnl / Number(liveMeta.starting_balance) * 100
+        : null,
       pnlPctTotal: 0,
       hasEditedTrades: bucket.some(
         (e) => e.updated_at && e.created_at && e.updated_at !== e.created_at
@@ -321,6 +321,10 @@ export function buildJournalBootFromApi(
       profileId: liveMeta?.profile_id,
       liveAccountId: liveMeta?.id,
       isLiveJournalAccount: Boolean(liveMeta),
+      startingBalance: liveMeta?.starting_balance ?? null,
+      currency: liveMeta?.currency || "USD",
+      propFirm: liveMeta?.prop_firm ?? null,
+      notes: liveMeta?.notes ?? null,
     });
 
     bucket.forEach((entry, i) => {
@@ -372,6 +376,10 @@ export function buildJournalBootFromApi(
         profileId: live.profile_id,
         liveAccountId: live.id,
         createdAt: live.created_at,
+        startingBalance: live.starting_balance,
+        currency: live.currency,
+        propFirm: live.prop_firm,
+        notes: live.notes,
       },
       match: (trade) => {
         const tid = String(trade?.tradeId ?? trade?.id ?? "").replace(/^live-/, "");
