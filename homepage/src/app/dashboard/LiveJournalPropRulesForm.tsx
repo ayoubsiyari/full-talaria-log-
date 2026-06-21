@@ -15,7 +15,8 @@ const C = {
   tx: "rgba(255,255,255,0.92)",
   ts: "rgba(255,255,255,0.55)",
   tm: "rgba(255,255,255,0.38)",
-  gold: "#C9A84C",
+  ac: "#4A6AFF",
+  acD: "rgba(38,67,247,0.08)",
 } as const;
 
 const STEP_OPTIONS: { id: LiveJournalPropStepFormat; label: string }[] = [
@@ -48,9 +49,9 @@ function TabBtn({ active, label, onClick }: { active: boolean; label: string; on
       style={{
         height: 28,
         padding: "0 12px",
-        background: active ? `${C.gold}18` : "transparent",
-        color: active ? C.gold : C.ts,
-        border: `1px solid ${active ? `${C.gold}55` : C.brH}`,
+        background: active ? `${C.ac}18` : "transparent",
+        color: active ? C.ac : C.ts,
+        border: `1px solid ${active ? `${C.ac}55` : C.brH}`,
         fontSize: 10,
         fontWeight: 900,
         letterSpacing: "0.06em",
@@ -147,13 +148,13 @@ function Toggle({
         style={{
           width: 14,
           height: 14,
-          border: `1px solid ${checked ? C.gold : C.brH}`,
-          background: checked ? `${C.gold}33` : "transparent",
+          border: `1px solid ${checked ? C.ac : C.brH}`,
+          background: checked ? `${C.ac}33` : "transparent",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
           fontSize: 9,
-          color: C.gold,
+          color: C.ac,
         }}
       >
         {checked ? "✓" : ""}
@@ -186,7 +187,7 @@ function PhaseLimits({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {title ? (
-        <div style={{ fontSize: 8, fontWeight: 950, color: C.gold, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+        <div style={{ fontSize: 8, fontWeight: 950, color: C.ac, letterSpacing: "0.1em", textTransform: "uppercase" }}>
           {title}
         </div>
       ) : null}
@@ -259,13 +260,13 @@ export function LiveJournalPropRulesForm({ rules, onChange, balance, market, emb
           ? {}
           : {
               padding: 12,
-              border: `1px solid ${C.gold}44`,
-              background: `${C.gold}08`,
+              border: `1px solid ${C.ac}44`,
+              background: C.acD,
             }),
       }}
     >
       {!embedded ? (
-        <div style={{ fontSize: 9, fontWeight: 950, color: C.gold, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+        <div style={{ fontSize: 9, fontWeight: 950, color: C.ac, letterSpacing: "0.1em", textTransform: "uppercase" }}>
           Challenge rules
         </div>
       ) : null}

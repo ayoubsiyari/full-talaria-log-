@@ -78,7 +78,6 @@ export function LiveJournalNewAccountModal({
     acD: "rgba(38,67,247,0.08)",
     acB: "rgba(38,67,247,0.22)",
     acG: "rgba(74,106,255,0.35)",
-    gold: "#C9A84C",
     bg: "#07080E",
     sf: "#0A0C14",
     el: "#0F1119",
@@ -125,9 +124,9 @@ export function LiveJournalNewAccountModal({
   const currentStep = STEPS.find((s) => s.id === wizardStep) ?? STEPS[0];
   const currentStepId = currentStep.stepId;
   const isLastStep = wizardStep >= stepCount;
-  const accent = effectiveType === "prop" ? c.gold : c.acL;
-  const accentD = effectiveType === "prop" ? "rgba(201,168,76,0.10)" : c.acD;
-  const accentG = effectiveType === "prop" ? "rgba(201,168,76,0.35)" : c.acG;
+  const accent = c.acL;
+  const accentD = c.acD;
+  const accentG = c.acG;
   const stepFormat = effectiveType === "prop" ? liveJournalPropStepFormat(propRules) : null;
   const stepFormatLabel =
     stepFormat === "2-step" ? "2 Step" : stepFormat === "instant" ? "Instant" : stepFormat === "1-step" ? "1 Step" : null;
@@ -182,7 +181,7 @@ export function LiveJournalNewAccountModal({
           height: 9,
           background: accent,
           flexShrink: 0,
-          boxShadow: `0 0 4px ${accent === c.gold ? "rgba(200,150,0,0.4)" : c.acG}`,
+          boxShadow: `0 0 4px ${c.acG}`,
         }}
       />
       {t}
@@ -470,7 +469,7 @@ export function LiveJournalNewAccountModal({
         {(
           [
             ["personal", "Personal", "Track your own live account", c.acL, c.acG],
-            ["prop", "Prop Firm", "Track prop challenge or funded account", c.gold, "rgba(200,150,0,0.4)"],
+            ["prop", "Prop Firm", "Track prop challenge or funded account", c.acL, c.acG],
           ] as const
         ).map(([v, l, desc, acColor, acGlow]) => {
           const isA = accountTypeKey === v;
@@ -496,9 +495,7 @@ export function LiveJournalNewAccountModal({
                 position: "relative",
                 textAlign: "center",
                 background: isA
-                  ? v === "prop"
-                    ? "rgba(200,150,0,0.07)"
-                    : "rgba(74,106,255,0.07)"
+                  ? "rgba(74,106,255,0.07)"
                   : isH
                     ? "rgba(255,255,255,0.03)"
                     : "transparent",
@@ -563,9 +560,9 @@ export function LiveJournalNewAccountModal({
                   item,
                   propFirm === item,
                   () => setPropFirm(item),
-                  c.gold,
-                  "rgba(200,150,0,0.4)",
-                  "rgba(200,150,0,0.08)"
+                  c.acL,
+                  c.acG,
+                  c.acD
                 )
               )}
             </div>
@@ -587,9 +584,9 @@ export function LiveJournalNewAccountModal({
                   item,
                   accountSubtype === item,
                   () => setAccountSubtype(item),
-                  c.gold,
-                  "rgba(200,150,0,0.4)",
-                  "rgba(200,150,0,0.08)"
+                  c.acL,
+                  c.acG,
+                  c.acD
                 )
               )}
             </div>
@@ -613,12 +610,9 @@ export function LiveJournalNewAccountModal({
 
   const renderAccountStep = () => {
     const isProp = effectiveType === "prop";
-    const chipAc = isProp ? c.gold : c.acL;
-    const chipGlow = isProp ? "rgba(200,150,0,0.4)" : c.acG;
-    const chipBg = isProp ? "rgba(200,150,0,0.08)" : "rgba(74,106,255,0.08)";
     return (
       <div style={{ border: `1px solid ${c.brH}`, padding: "12px 14px" }}>
-        {secH(STEP_SECTION.account, isProp ? c.gold : c.acL)}
+        {secH(STEP_SECTION.account)}
         <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
           <span
             style={{
@@ -691,9 +685,9 @@ export function LiveJournalNewAccountModal({
                     setStartingBalance(preset);
                     if (market.toLowerCase() === "futures") applyFuturesPreset(Number(preset));
                   },
-                  chipAc,
-                  chipGlow,
-                  chipBg
+                  c.acL,
+                  c.acG,
+                  c.acD
                 );
               })}
             </div>
@@ -723,9 +717,9 @@ export function LiveJournalNewAccountModal({
                 item,
                 market === item,
                 () => setMarket(item),
-                isProp ? c.gold : c.acL,
-                isProp ? "rgba(200,150,0,0.4)" : c.acG,
-                isProp ? "rgba(200,150,0,0.08)" : "rgba(74,106,255,0.08)"
+                c.acL,
+                c.acG,
+                c.acD
               )
             )}
           </div>
@@ -736,7 +730,7 @@ export function LiveJournalNewAccountModal({
 
   const renderRulesStep = () => (
     <div style={{ border: `1px solid ${c.brH}`, padding: "12px 14px" }}>
-      {secH(STEP_SECTION.rules, c.gold)}
+      {secH(STEP_SECTION.rules)}
       <LiveJournalPropRulesForm
         embedded
         rules={propRules}
@@ -771,13 +765,13 @@ export function LiveJournalNewAccountModal({
       <div style={{ fontSize: 10, color: c.ts, lineHeight: 1.45, marginBottom: 12, fontFamily: F }}>
         {currentStep.hint}
       </div>
-      {reviewRow("Journal type", effectiveType === "prop" ? "Prop Firm" : "Personal", effectiveType === "prop" ? c.gold : c.acL)}
+      {reviewRow("Journal type", effectiveType === "prop" ? "Prop Firm" : "Personal", c.acL)}
       {reviewRow("Journal name", name.trim() || "—")}
-      {effectiveType === "prop" && resolvedPropFirm ? reviewRow("Prop firm", resolvedPropFirm, c.gold) : null}
-      {effectiveType === "prop" ? reviewRow("Account phase", accountSubtype, c.gold) : null}
+      {effectiveType === "prop" && resolvedPropFirm ? reviewRow("Prop firm", resolvedPropFirm, c.acL) : null}
+      {effectiveType === "prop" ? reviewRow("Account phase", accountSubtype, c.acL) : null}
       {reviewRow("Starting balance", `$${parsedBalance.toLocaleString()}`)}
       {reviewRow("Primary market", market || "—")}
-      {stepFormatLabel ? reviewRow("Challenge format", stepFormatLabel, c.gold) : null}
+      {stepFormatLabel ? reviewRow("Challenge format", stepFormatLabel, c.acL) : null}
       {notes.trim() ? reviewRow("Notes", notes.trim()) : null}
     </div>
   );
@@ -859,10 +853,12 @@ export function LiveJournalNewAccountModal({
     textTransform: "uppercase",
     color: enabled ? "#fff" : c.tm,
     background: enabled
-      ? `linear-gradient(135deg,${effectiveType === "prop" ? "#B8922E" : "#00A882"},${effectiveType === "prop" ? c.gold : c.gn})`
+      ? effectiveType === "prop"
+        ? `linear-gradient(135deg,${c.ac},${c.acL})`
+        : `linear-gradient(135deg,#00A882,${c.gn})`
       : "rgba(140,160,255,0.10)",
-    border: `1px solid ${enabled ? (effectiveType === "prop" ? "rgba(201,168,76,0.5)" : "rgba(0,212,161,0.5)") : "rgba(140,160,255,0.18)"}`,
-    boxShadow: enabled ? `0 2px 8px ${effectiveType === "prop" ? "rgba(201,168,76,0.25)" : "rgba(0,212,161,0.25)"}` : "none",
+    border: `1px solid ${enabled ? (effectiveType === "prop" ? "rgba(74,106,255,0.55)" : "rgba(0,212,161,0.5)") : "rgba(140,160,255,0.18)"}`,
+    boxShadow: enabled ? `0 2px 8px ${effectiveType === "prop" ? "rgba(38,67,247,0.25)" : "rgba(0,212,161,0.25)"}` : "none",
     cursor: saving ? "not-allowed" : "default",
     opacity: enabled ? 1 : 0.55,
     boxSizing: "border-box",
@@ -912,7 +908,7 @@ export function LiveJournalNewAccountModal({
           <div
             style={{
               height: 2,
-              background: `linear-gradient(90deg,${accent},${effectiveType === "prop" ? "#E8C96A" : c.acL},${accent})`,
+              background: `linear-gradient(90deg,${accent},${c.acL},${accent})`,
               flexShrink: 0,
             }}
           />
