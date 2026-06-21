@@ -5225,6 +5225,9 @@ class ReplaySystem {
         this._viewportLockForPlayback = null;
         this.autoScrollEnabled = false;
         this.userHasPanned = true;
+        if (this.chart && typeof this.chart._clearTfSwitchAnchorLock === 'function') {
+            this.chart._clearTfSwitchAnchorLock();
+        }
 
         // Show visual indicator that auto-scroll is disabled
         this.updateAutoScrollIndicator();

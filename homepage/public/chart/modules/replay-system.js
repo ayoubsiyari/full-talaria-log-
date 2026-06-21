@@ -2672,6 +2672,9 @@ class ReplaySystem {
         };
         this.autoScrollEnabled = false;
         this.userHasPanned = true;
+        if (chart && typeof chart._clearTfSwitchAnchorLock === 'function') {
+            chart._clearTfSwitchAnchorLock();
+        }
     }
 
     /** True while the user is dragging/zooming — playback must not fight the viewport. */
@@ -5225,6 +5228,9 @@ class ReplaySystem {
         this._viewportLockForPlayback = null;
         this.autoScrollEnabled = false;
         this.userHasPanned = true;
+        if (this.chart && typeof this.chart._clearTfSwitchAnchorLock === 'function') {
+            this.chart._clearTfSwitchAnchorLock();
+        }
 
         // Show visual indicator that auto-scroll is disabled
         this.updateAutoScrollIndicator();
