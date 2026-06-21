@@ -28,6 +28,11 @@ def upgrade():
             "user_preferences",
             sa.Column("drawing_tool_templates", JSON(), nullable=True),
         )
+    if "v9_chart_templates" not in cols:
+        op.add_column(
+            "user_preferences",
+            sa.Column("v9_chart_templates", JSON(), nullable=True),
+        )
 
 
 def downgrade():
@@ -38,3 +43,5 @@ def downgrade():
     cols = {c["name"] for c in insp.get_columns("user_preferences")}
     if "drawing_tool_templates" in cols:
         op.drop_column("user_preferences", "drawing_tool_templates")
+    if "v9_chart_templates" in cols:
+        op.drop_column("user_preferences", "v9_chart_templates")

@@ -72,6 +72,7 @@ class PreferencesSyncManager {
             'keyboard_shortcuts',
             'drawing_tool_styles',
             'drawing_tool_templates',
+            'v9_chart_templates',
             'panel_sync_settings',
             'panel_settings',
             'market_config',
@@ -100,6 +101,7 @@ class PreferencesSyncManager {
             keyboard_shortcuts: this.getLocalItem('chart_custom_shortcuts', {}),
             drawing_tool_styles: this.getLocalItem('drawingToolStyles', {}),
             drawing_tool_templates: this.loadDrawingToolTemplatesLocal(),
+            v9_chart_templates: this.readV9ChartTemplatesLocal(),
             panel_sync_settings: this.getLocalItem('chart_panel_sync_settings', {}),
             panel_settings: this.getAllPanelSettings(),
             market_config: this.getMarketConfig(),
@@ -122,6 +124,10 @@ class PreferencesSyncManager {
                 localPrefs && localPrefs[field]
             );
         }
+        merged.v9_chart_templates = this.mergeTemplateArrays(
+            serverPrefs && serverPrefs.v9_chart_templates,
+            localPrefs && localPrefs.v9_chart_templates
+        );
         return merged;
     }
 
@@ -142,8 +148,30 @@ class PreferencesSyncManager {
         return { ...serverObj, ...localObj };
     }
 
+    mergeTemplateArrays(serverVal, localVal) {
+        const serverArr = Array.isArray(serverVal) ? serverVal : [];
+        const localArr = Array.isArray(localVal) ? localVal : [];
+
+        if (serverArr.length === 0 && localArr.length > 0) return [...localArr];
+        if (localArr.length === 0 && serverArr.length > 0) return [...serverArr];
+        if (serverArr.length === 0 && localArr.length === 0) return [];
+
+        const byName = new Map();
+        serverArr.forEach((item) => {
+            if (item && typeof item.n === 'string' && item.n.trim()) {
+                byName.set(item.n.trim(), item);
+            }
+        });
+        localArr.forEach((item) => {
+            if (item && typeof item.n === 'string' && item.n.trim()) {
+                byName.set(item.n.trim(), item);
+            }
+        });
+        return Array.from(byName.values());
+    }
+
     queueMergedFieldsForSync(serverPrefs, mergedPrefs) {
-        const fields = ['chart_templates', 'drawing_tool_templates'];
+        const fields = ['chart_templates', 'drawing_tool_templates', 'v9_chart_templates'];
         for (const field of fields) {
             const serverVal = (serverPrefs && serverPrefs[field]) || {};
             const mergedVal = (mergedPrefs && mergedPrefs[field]) || {};
@@ -193,6 +221,17 @@ class PreferencesSyncManager {
             }
         } catch (e) { /* ignore */ }
         return result;
+    }
+
+    readV9ChartTemplatesLocal() {
+        try {
+            const raw = userStorage.getItem('v9CustomChartTemplates');
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
     }
 
     /**
@@ -283,6 +322,9 @@ class PreferencesSyncManager {
                             );
                         });
                     }
+                    break;
+                case 'v9_chart_templates':
+                    userStorage.setItem('v9CustomChartTemplates', JSON.stringify(value || []));
                     break;
                 case 'panel_sync_settings':
                     userStorage.setItem('chart_panel_sync_settings', JSON.stringify(value));

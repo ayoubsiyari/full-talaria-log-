@@ -505,6 +505,7 @@ def get_preferences():
                     'keyboard_shortcuts': {},
                     'drawing_tool_styles': {},
                     'drawing_tool_templates': {},
+                    'v9_chart_templates': [],
                     'panel_sync_settings': {},
                     'panel_settings': {},
                     'market_config': {},
@@ -523,6 +524,7 @@ def get_preferences():
                 'keyboard_shortcuts': prefs.keyboard_shortcuts or {},
                 'drawing_tool_styles': prefs.drawing_tool_styles or {},
                 'drawing_tool_templates': prefs.drawing_tool_templates or {},
+                'v9_chart_templates': prefs.v9_chart_templates or [],
                 'panel_sync_settings': prefs.panel_sync_settings or {},
                 'panel_settings': prefs.panel_settings or {},
                 'market_config': prefs.market_config or {},
@@ -554,6 +556,7 @@ def update_preferences():
     - keyboard_shortcuts
     - drawing_tool_styles
     - drawing_tool_templates
+    - v9_chart_templates
     - panel_sync_settings
     - panel_settings
     - market_config
@@ -591,6 +594,8 @@ def update_preferences():
             prefs.drawing_tool_styles = data['drawing_tool_styles']
         if 'drawing_tool_templates' in data:
             prefs.drawing_tool_templates = data['drawing_tool_templates']
+        if 'v9_chart_templates' in data:
+            prefs.v9_chart_templates = data['v9_chart_templates']
         if 'panel_sync_settings' in data:
             prefs.panel_sync_settings = data['panel_sync_settings']
         if 'panel_settings' in data:

@@ -73,6 +73,15 @@ window.saveDrawingToolTemplatesForType = function(toolType, templates) {
     window.preferencesSync.updatePreference('drawing_tool_templates', all);
 };
 
+// V9/V16 chart color templates (Settings → Template → Save as)
+window.loadV9ChartTemplates = function() {
+    return window.preferencesSync.get('v9_chart_templates', []);
+};
+
+window.saveV9ChartTemplates = function(templates) {
+    window.preferencesSync.updatePreference('v9_chart_templates', Array.isArray(templates) ? templates : []);
+};
+
 // Keyboard Shortcuts
 window.saveKeyboardShortcuts = function(shortcuts) {
     window.preferencesSync.updatePreference('keyboard_shortcuts', shortcuts);

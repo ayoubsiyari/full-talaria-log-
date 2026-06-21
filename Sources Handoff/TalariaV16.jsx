@@ -3,6 +3,13 @@ import { flushSync, createPortal } from "react-dom";
 import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Handle, Position, Background, BackgroundVariant, MiniMap, getBezierPath, BaseEdge, EdgeLabelRenderer, MarkerType, addEdge, applyNodeChanges, applyEdgeChanges, PanOnScrollMode } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { SCORE_CONFIG, DIM_KEYS, computeTalariaScore, computeTrend } from "./scoreEngine.js";
+import {
+  buildV9ChartTemplateSnapshot,
+  hydrateV9ChartTemplatesFromCloud,
+  mergeV9ChartTemplatesByName,
+  normalizeV9ChartTemplates,
+  persistV9ChartTemplates,
+} from "./v9ChartTemplatesStorage.js";
 
 const isV16Embedded = () => typeof window !== "undefined" && !!window.__TALARIA_V16_EMBEDDED__;
 const isV16LiveBoot = () =>
@@ -9368,19 +9375,7 @@ const TalariaV8b = () => {
   const [swHov, setSwHov] = useState(null);
   const [settDrop, setSettDrop] = useState(null);
   const [settDropPos, setSettDropPos] = useState({ top: 0, left: 0, w: 0 });
-  const [customTemplates, setCustomTemplates] = useState([]);
-  const [tplNameInput, setTplNameInput] = useState("");
-  const [settHdrTplDrop, setSettHdrTplDrop] = useState(false);
-  const [settHdrSaveAs, setSettHdrSaveAs] = useState(false);
-  const [settHdrTplName, setSettHdrTplName] = useState("");
-  const [cpH, setCpH] = useState(0);
-  const [cpS, setCpS] = useState(0);
-  const [cpV, setCpV] = useState(1);
-  const [cpA, setCpA] = useState(1);
-  const [cpHex, setCpHex] = useState('ffffff');
-  const [cpDragging, setCpDragging] = useState(null);
-  const [cpDragRect, setCpDragRect] = useState(null);
-  const [settings, setSettings] = useState({
+  const V16_DEFAULT_CHART_SETTINGS = {
     theme: "Talaria Dark", chartType: "candlestick", precision: "0.00000", timezone: "UTC",
     textColor: "#8CA0FF", background: "#07080E", gridColor: "rgba(140,160,255,0.15)", crosshairColor: "rgba(255,255,255,0.4)",
     priceLine: true, priceLineColor: "#FF5068",
@@ -9392,7 +9387,21 @@ const TalariaV8b = () => {
     crosshairOn: true, crosshairStyle: "dashed",
     priceLineStyle: "solid", priceLineThickness: 1,
     chartTemplate: "Dark Classic",
-  });
+  };
+  const [customTemplates, setCustomTemplates] = useState([]);
+  const customTemplatesSaveReadyRef = useRef(false);
+  const [tplNameInput, setTplNameInput] = useState("");
+  const [settHdrTplDrop, setSettHdrTplDrop] = useState(false);
+  const [settHdrSaveAs, setSettHdrSaveAs] = useState(false);
+  const [settHdrTplName, setSettHdrTplName] = useState("");
+  const [cpH, setCpH] = useState(0);
+  const [cpS, setCpS] = useState(0);
+  const [cpV, setCpV] = useState(1);
+  const [cpA, setCpA] = useState(1);
+  const [cpHex, setCpHex] = useState('ffffff');
+  const [cpDragging, setCpDragging] = useState(null);
+  const [cpDragRect, setCpDragRect] = useState(null);
+  const [settings, setSettings] = useState(V16_DEFAULT_CHART_SETTINGS);
 
   const [indOpen, setIndOpen] = useState(false);
   const [indPinned, setIndPinned] = useState([]);
@@ -9896,20 +9905,42 @@ const TalariaV8b = () => {
     const base = overrideSettings || defaultTemplateMap[name] || {};
     setSettings(prev => ({...prev, ...base, chartTemplate: name}));
   };
+  const upsertCustomTemplate = (name, srcSettings) => {
+    const snap = buildV9ChartTemplateSnapshot(name, srcSettings, V16_DEFAULT_CHART_SETTINGS);
+    if (!snap) return;
+    setCustomTemplates(prev => [...prev.filter(t => t.n !== snap.n), snap]);
+  };
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const loaded = await hydrateV9ChartTemplatesFromCloud(V16_DEFAULT_CHART_SETTINGS);
+      if (cancelled) return;
+      setCustomTemplates(loaded);
+      customTemplatesSaveReadyRef.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    const onPreferencesLoaded = () => {
+      const cloud = normalizeV9ChartTemplates(
+        window.preferencesSync?.get?.("v9_chart_templates", []),
+        V16_DEFAULT_CHART_SETTINGS
+      );
+      if (cloud.length === 0) return;
+      setCustomTemplates((prev) => mergeV9ChartTemplatesByName(prev, cloud));
+    };
+    window.addEventListener("preferencesLoaded", onPreferencesLoaded);
+    if (window.preferencesSync?.isReady?.()) onPreferencesLoaded();
+    return () => window.removeEventListener("preferencesLoaded", onPreferencesLoaded);
+  }, []);
+  useEffect(() => {
+    if (!customTemplatesSaveReadyRef.current) return;
+    persistV9ChartTemplates(customTemplates);
+  }, [customTemplates]);
   const saveCustomTemplate = () => {
     const name = tplNameInput.trim();
     if (!name) return;
-    const snap = {
-      n: name,
-      cols: [settings.bullBody, settings.bearBody, settings.background],
-      settings: {
-        bullBody:settings.bullBody,bullBorder:settings.bullBorder,bullWick:settings.bullWick,
-        bearBody:settings.bearBody,bearBorder:settings.bearBorder,bearWick:settings.bearWick,
-        background:settings.background,gridColor:settings.gridColor,
-        unifiedBarColorVal:settings.unifiedBarColorVal,
-      },
-    };
-    setCustomTemplates(prev => [...prev.filter(t=>t.n!==name), snap]);
+    upsertCustomTemplate(name, settings);
     setTplNameInput("");
   };
   // Bracket-style on/off indicator. Pass label to make the text part of the clickable area.
@@ -10486,7 +10517,6 @@ const TalariaV8b = () => {
     const tradeCount = Number(account?.trades ?? account?.totalTrades ?? 0) || 0;
     const isPropJournal = account?.accountTypeKey === "prop";
     const startingBalance = account?.startingBalance != null ? Number(account.startingBalance) : null;
-    const currency = account?.currency || "USD";
     const descParts = [
       isPropJournal ? (account?.propFirm || "Prop") : "Personal",
       account?.market,
@@ -10507,7 +10537,6 @@ const TalariaV8b = () => {
       startDate: String(account?.createdAt || account?.created || "").slice(0, 10),
       endDate: "",
       capital: startingBalance,
-      journalCurrency: currency,
       createdAt: account?.createdAt || account?.created || new Date().toISOString(),
       trades: tradeCount,
       pnl: account?.pnl != null ? Number(account.pnl) : null,
@@ -11929,7 +11958,7 @@ const TalariaV8b = () => {
                         </div>
 
                         {/* Account size */}
-                        {colCell("Starting Bal.",sess.isJournalSession?(sess.capital!=null?`${sess.journalCurrency||"USD"} ${Number(sess.capital).toLocaleString()}`:"—"):`$${(sess.capital||0).toLocaleString()}`,88)}
+                        {colCell("Starting Bal.",sess.isJournalSession?(sess.capital!=null?Number(sess.capital).toLocaleString():"—"):`$${(sess.capital||0).toLocaleString()}`,88)}
 
                         {/* Net P&L */}
                         {colCell("Net P&L",pnlVal,80,pnlCol)}
@@ -38791,12 +38820,12 @@ const TalariaV8b = () => {
                       <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
                         <input autoFocus value={settHdrTplName} onChange={e=>setSettHdrTplName(e.target.value)}
                           onKeyDown={e=>{
-                            if(e.key==="Enter"&&settHdrTplName.trim()){const nm=settHdrTplName.trim();const snap={n:nm,cols:[settings.bullBody,settings.bearBody,settings.background],settings:{bullBody:settings.bullBody,bullBorder:settings.bullBorder,bullWick:settings.bullWick,bearBody:settings.bearBody,bearBorder:settings.bearBorder,bearWick:settings.bearWick,background:settings.background,gridColor:settings.gridColor,unifiedBarColorVal:settings.unifiedBarColorVal}};setCustomTemplates(prev=>[...prev.filter(t=>t.n!==nm),snap]);setSettHdrSaveAs(false);setSettHdrTplName("");}
+                            if(e.key==="Enter"&&settHdrTplName.trim()){upsertCustomTemplate(settHdrTplName, settings);setSettHdrSaveAs(false);setSettHdrTplName("");}
                             if(e.key==="Escape"){setSettHdrSaveAs(false);setSettHdrTplName("");}
                           }}
                           placeholder="Template name…"
                           style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box",cursor:"text"}}/>
-                        <div onClick={()=>{if(settHdrTplName.trim()){const nm=settHdrTplName.trim();const snap={n:nm,cols:[settings.bullBody,settings.bearBody,settings.background],settings:{bullBody:settings.bullBody,bullBorder:settings.bullBorder,bullWick:settings.bullWick,bearBody:settings.bearBody,bearBorder:settings.bearBorder,bearWick:settings.bearWick,background:settings.background,gridColor:settings.gridColor,unifiedBarColorVal:settings.unifiedBarColorVal}};setCustomTemplates(prev=>[...prev.filter(t=>t.n!==nm),snap]);setSettHdrSaveAs(false);setSettHdrTplName("");}}}
+                        <div onClick={()=>{if(settHdrTplName.trim()){upsertCustomTemplate(settHdrTplName, settings);setSettHdrSaveAs(false);setSettHdrTplName("");}}}
                           onMouseEnter={()=>setSwHov("settTpl-ok")} onMouseLeave={()=>setSwHov(null)}
                           style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                             background:swHov==="settTpl-ok"?c.hv:"transparent",transition:"background 0.12s"}}>

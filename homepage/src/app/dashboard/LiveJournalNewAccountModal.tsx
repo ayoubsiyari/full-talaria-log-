@@ -21,7 +21,6 @@ const C = {
 } as const;
 
 const MARKETS = ["Forex", "Futures", "Stocks", "Crypto", "Indices"];
-const CURRENCIES = ["USD", "EUR", "GBP", "AUD", "CAD", "CHF", "JPY"];
 const PROP_SUBTYPES = ["Challenge", "Funded", "Demo"];
 const PROP_FIRMS = ["FTMO", "Topstep", "The5ers", "FundedNext", "E8 Funding", "MyForexFunds", "Other"];
 const PROP_BALANCE_PRESETS = ["10000", "25000", "50000", "100000", "200000"];
@@ -63,7 +62,6 @@ export function LiveJournalNewAccountModal({
   const [accountTypeKey, setAccountTypeKey] = React.useState<V16AccountTypeKey>("personal");
   const [name, setName] = React.useState("");
   const [startingBalance, setStartingBalance] = React.useState("");
-  const [currency, setCurrency] = React.useState("USD");
   const [market, setMarket] = React.useState("Forex");
   const [accountSubtype, setAccountSubtype] = React.useState("Live");
   const [propFirm, setPropFirm] = React.useState("FTMO");
@@ -90,7 +88,6 @@ export function LiveJournalNewAccountModal({
           ? String(edit.starting_balance)
           : ""
       );
-      setCurrency(edit.currency || "USD");
       setMarket(edit.market || "Forex");
       setNotes(edit.notes || "");
       const firm = edit.prop_firm || "FTMO";
@@ -107,7 +104,6 @@ export function LiveJournalNewAccountModal({
     } else {
       setName("");
       setStartingBalance(type === "prop" ? "50000" : "10000");
-      setCurrency("USD");
       setMarket("Forex");
       setPropFirm("FTMO");
       setPropFirmCustom("");
@@ -149,7 +145,6 @@ export function LiveJournalNewAccountModal({
       const body = {
         name: trimmedName,
         starting_balance: balance,
-        currency,
         market,
         account_type: effectiveType,
         account_subtype: accountSubtype,
@@ -384,19 +379,6 @@ export function LiveJournalNewAccountModal({
               style={inputStyle}
             />
           </label>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 9, fontWeight: 900, color: C.tm, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Currency
-            </span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {CURRENCIES.map((item) => (
-                <button key={item} type="button" style={tabBtn(currency === item, accent)} onClick={() => setCurrency(item)}>
-                  {item}
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 9, fontWeight: 900, color: C.tm, letterSpacing: "0.08em", textTransform: "uppercase" }}>

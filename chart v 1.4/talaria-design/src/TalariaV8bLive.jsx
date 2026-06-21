@@ -21,6 +21,13 @@ import {
   presetToGotoItem,
   isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
+import {
+  buildV9ChartTemplateSnapshot,
+  hydrateV9ChartTemplatesFromCloud,
+  mergeV9ChartTemplatesByName,
+  normalizeV9ChartTemplates,
+  persistV9ChartTemplates,
+} from "./v9ChartTemplatesStorage.js";
 
 function isMultichartEmbedPanel() {
   if (typeof window === "undefined") return false;
@@ -12185,6 +12192,7 @@ const TalariaV8bLive = () => {
   }, [settDrop]);
 
   const [customTemplates, setCustomTemplates] = useState([]);
+  const customTemplatesSaveReadyRef = useRef(false);
   const [tplNameInput, setTplNameInput] = useState("");
   const [settHdrTplDrop, setSettHdrTplDrop] = useState(false);
   const [settHdrSaveAs, setSettHdrSaveAs] = useState(false);
@@ -15518,52 +15526,40 @@ const TalariaV8bLive = () => {
     {n:"Cyberpunk",cols:["#00FFFF","#FF00FF","#FF00FF"]},
     {n:"Matrix",cols:["#00FF00","#FF0000","#32CD32"]},
   ];
-  const CUSTOM_TPL_STORAGE_KEY = "v9CustomChartTemplates";
-  const snapshotTemplateSettings = (src) => {
-    const snap = { ...src };
-    delete snap.chartTemplate;
-    return snap;
-  };
   const upsertCustomTemplate = (name, srcSettings) => {
-    const cleanName = (name || "").trim();
-    if (!cleanName) return;
-    const snap = {
-      n: cleanName,
-      cols: [srcSettings.bullBody, srcSettings.bearBody, srcSettings.background],
-      settings: snapshotTemplateSettings(srcSettings),
-    };
-    setCustomTemplates(prev => [...prev.filter(t => t.n !== cleanName), snap]);
+    const snap = buildV9ChartTemplateSnapshot(name, srcSettings, DEFAULT_CHART_SETTINGS);
+    if (!snap) return;
+    setCustomTemplates(prev => [...prev.filter(t => t.n !== snap.n), snap]);
   };
 
   useEffect(() => {
-    try {
-      const raw = window.userStorage?.getItem?.(CUSTOM_TPL_STORAGE_KEY) ?? localStorage.getItem(CUSTOM_TPL_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      const normalized = parsed
-        .filter(t => t && typeof t.n === "string" && t.n.trim())
-        .map(t => {
-          const tplSettings = t.settings && typeof t.settings === "object" ? t.settings : {};
-          const merged = { ...DEFAULT_CHART_SETTINGS, ...tplSettings };
-          delete merged.chartTemplate;
-          const fallbackCols = [merged.bullBody, merged.bearBody, merged.background];
-          return {
-            n: t.n.trim(),
-            cols: Array.isArray(t.cols) && t.cols.length === 3 ? t.cols : fallbackCols,
-            settings: merged,
-          };
-        });
-      setCustomTemplates(normalized);
-    } catch (_) {}
+    let cancelled = false;
+    (async () => {
+      const loaded = await hydrateV9ChartTemplatesFromCloud(DEFAULT_CHART_SETTINGS);
+      if (cancelled) return;
+      setCustomTemplates(loaded);
+      customTemplatesSaveReadyRef.current = true;
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    try {
-      const payload = JSON.stringify(customTemplates);
-      if (window.userStorage?.setItem) window.userStorage.setItem(CUSTOM_TPL_STORAGE_KEY, payload);
-      else localStorage.setItem(CUSTOM_TPL_STORAGE_KEY, payload);
-    } catch (_) {}
+    const onPreferencesLoaded = () => {
+      const cloud = normalizeV9ChartTemplates(
+        window.preferencesSync?.get?.("v9_chart_templates", []),
+        DEFAULT_CHART_SETTINGS
+      );
+      if (cloud.length === 0) return;
+      setCustomTemplates((prev) => mergeV9ChartTemplatesByName(prev, cloud));
+    };
+    window.addEventListener("preferencesLoaded", onPreferencesLoaded);
+    if (window.preferencesSync?.isReady?.()) onPreferencesLoaded();
+    return () => window.removeEventListener("preferencesLoaded", onPreferencesLoaded);
+  }, []);
+
+  useEffect(() => {
+    if (!customTemplatesSaveReadyRef.current) return;
+    persistV9ChartTemplates(customTemplates);
   }, [customTemplates]);
 
   const applyTemplate = (name, overrideSettings) => {

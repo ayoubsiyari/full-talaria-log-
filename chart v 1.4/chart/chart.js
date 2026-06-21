@@ -11758,11 +11758,11 @@ class Chart {
         try {
             if (typeof window !== 'undefined' && window.preferencesSync && typeof window.preferencesSync.isReady === 'function' && window.preferencesSync.isReady()) {
                 const synced = window.preferencesSync.get('chart_templates', null);
-                if (synced && typeof synced === 'object') return synced;
+                if (synced && typeof synced === 'object' && Object.keys(synced).length > 0) return synced;
             }
             if (typeof window !== 'undefined' && typeof window.loadChartTemplates === 'function') {
                 const synced = window.loadChartTemplates();
-                if (synced && typeof synced === 'object') return synced;
+                if (synced && typeof synced === 'object' && Object.keys(synced).length > 0) return synced;
             }
             const raw = userStorage.getItem('chart_user_templates');
             if (!raw) return {};

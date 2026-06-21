@@ -18,7 +18,6 @@ _VALID_ACCOUNT_TYPES = frozenset({"personal", "prop"})
 _VALID_SUBTYPES = frozenset({"Live", "Challenge", "Funded", "Demo"})
 _PERSONAL_SUBTYPES = frozenset({"Live"})
 _PROP_SUBTYPES = frozenset({"Challenge", "Funded", "Demo"})
-_VALID_CURRENCIES = frozenset({"USD", "EUR", "GBP", "AUD", "CAD", "CHF", "JPY"})
 _VALID_MARKETS = frozenset({"Forex", "Futures", "Stocks", "Crypto", "Indices"})
 
 
@@ -70,7 +69,7 @@ def _serialize_live_account(row: LiveJournalAccount, *, trade_count: int | None 
         "account_type": row.account_type,
         "account_subtype": row.account_subtype,
         "starting_balance": starting_balance,
-        "currency": row.currency or "USD",
+        "currency": row.currency or None,
         "prop_firm": row.prop_firm,
         "notes": row.notes,
         "status": row.status,
@@ -98,7 +97,7 @@ def _profile_description(payload: dict) -> str:
         parts.append(payload["prop_firm"])
     parts.append(payload["market"])
     if payload.get("starting_balance") is not None:
-        parts.append(f"{payload['currency']} {payload['starting_balance']}")
+        parts.append(str(payload["starting_balance"]))
     return " · ".join(parts)
 
 
@@ -128,10 +127,6 @@ def _normalize_payload(data: dict, *, existing: LiveJournalAccount | None = None
     if starting_balance is None:
         return None, (jsonify({"success": False, "error": "Starting balance is required and must be greater than zero"}), 400)
 
-    currency = str(data.get("currency") or "USD").strip().upper()
-    if currency not in _VALID_CURRENCIES:
-        currency = "USD"
-
     market = str(data.get("market") or "Forex").strip()
     if market not in _VALID_MARKETS:
         market = "Forex"
@@ -155,7 +150,6 @@ def _normalize_payload(data: dict, *, existing: LiveJournalAccount | None = None
         "account_type": account_type,
         "account_subtype": account_subtype,
         "starting_balance": starting_balance,
-        "currency": currency[:8],
         "prop_firm": prop_firm,
         "notes": notes,
     }, None
@@ -250,7 +244,6 @@ def create_live_journal_account():
             account_type=payload["account_type"],
             account_subtype=payload["account_subtype"],
             starting_balance=payload["starting_balance"],
-            currency=payload["currency"],
             prop_firm=payload["prop_firm"],
             notes=payload["notes"],
             status="active",
@@ -301,7 +294,6 @@ def update_live_journal_account(account_id: int):
         row.market = payload["market"]
         row.account_subtype = payload["account_subtype"]
         row.starting_balance = payload["starting_balance"]
-        row.currency = payload["currency"]
         row.prop_firm = payload["prop_firm"]
         row.notes = payload["notes"]
         row.updated_at = datetime.utcnow()

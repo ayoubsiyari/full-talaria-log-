@@ -22,6 +22,7 @@ COPY homepage/ ./
 # V16 dashboard monolith + score engine (imported by TalariaV16.jsx)
 COPY ["Sources Handoff/TalariaV16.jsx", "/app/Sources Handoff/TalariaV16.jsx"]
 COPY ["Sources Handoff/scoreEngine.js", "/app/Sources Handoff/scoreEngine.js"]
+COPY ["Sources Handoff/v9ChartTemplatesStorage.js", "/app/Sources Handoff/v9ChartTemplatesStorage.js"]
 
 # Google Sign-In (same OAuth Web client ID as trading-chart GOOGLE_CLIENT_ID)
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=
