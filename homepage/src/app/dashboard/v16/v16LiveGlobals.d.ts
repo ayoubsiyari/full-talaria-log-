@@ -73,6 +73,13 @@ declare global {
     __TALARIA_V16_BOOT_LOADING__?: boolean;
     /** Reload journal strategies and refresh boot.strategyBank (Add Trade tags). */
     __TALARIA_V16_REFRESH_STRATEGY_BANK__?: () => Promise<Record<string, unknown>[]>;
+    /** Persist Strategy Builder row to journal-backend. */
+    __TALARIA_V16_SAVE_STRATEGY__?: (
+      strat: Record<string, unknown>,
+      existingId?: number | null
+    ) => Promise<Record<string, unknown>>;
+    /** Delete a persisted strategy from journal-backend. */
+    __TALARIA_V16_DELETE_STRATEGY__?: (strategyId: number) => Promise<void>;
     /** Navigate to Strategy Lab and open the new-strategy builder. */
     __TALARIA_OPEN_STRATEGY_BUILDER__?: () => void;
     /** Open dashboard profile/settings from embedded V16 chrome. */

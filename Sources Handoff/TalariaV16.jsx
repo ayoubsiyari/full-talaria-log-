@@ -21,6 +21,31 @@ const isV16LiveBoot = () =>
 const getV16JournalBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.journal : null);
 const getV16StrategyBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategies : null);
 const getV16StrategyBank = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategyBank : null);
+const parseStratApiId = (id) => {
+  if (typeof id === "number" && Number.isFinite(id) && id > 0) return id;
+  const raw = String(id ?? "").trim();
+  if (/^\d+$/.test(raw)) {
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+};
+/** Merge boot strategy bank with local rows (empty boot array must not hide local saves). */
+const mergeV16StrategyBankRows = (bankRows, localRows = []) => {
+  const bank = Array.isArray(bankRows) ? bankRows : [];
+  const local = Array.isArray(localRows) ? localRows : [];
+  const byName = new Map();
+  [...bank, ...local].forEach((row) => {
+    if (!row) return;
+    const name = String(row?.name || "").trim();
+    if (name) byName.set(name.toLowerCase(), row);
+  });
+  return [...byName.values()];
+};
+const getV16StrategyBankRows = (localRows = []) => {
+  if (!isV16LiveBoot()) return Array.isArray(localRows) ? localRows : [];
+  return mergeV16StrategyBankRows(getV16StrategyBank(), localRows);
+};
 const getV16AppliedSourceBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.appliedSource : null);
 const resolveLiveJournalAccountTarget = (accountOrApi, boot = getV16JournalBoot()) => {
   if (!accountOrApi) return null;
@@ -6250,7 +6275,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
 }
 
 function StrategyBuilderModal(props) {
-  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, onSave, onClose, onOpenTemplates } = props;
+  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates } = props;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
   const [showGeneralInfoRequired, setShowGeneralInfoRequired] = React.useState(false);
 
@@ -6501,6 +6526,11 @@ function StrategyBuilderModal(props) {
               )}
             </div>
           )}
+          {saveError ? (
+            <div style={{flexShrink:0,padding:"8px 18px",borderTop:`1px solid ${c.rd}44`,background:"rgba(255,80,104,0.08)",color:c.rd,fontSize:11,fontWeight:750,lineHeight:1.35,fontFamily:F}}>
+              {saveError}
+            </div>
+          ) : null}
           {isSaving&&(
             <div style={{position:'absolute',inset:0,zIndex:20,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(4,5,15,0.74)',backdropFilter:'blur(4px)',animation:'tlrPopIn 0.12s ease'}} onClick={e=>e.stopPropagation()}>
               <div style={{width:360,display:'flex',flexDirection:'column',alignItems:'center',gap:18,fontFamily:F,textAlign:'center'}}>
@@ -8554,6 +8584,7 @@ const TalariaV8b = () => {
   const [stratLayoutMode, setStratLayoutMode] = useState("rows");
   const [stratBuilderOpen, setStratBuilderOpen] = useState(false);
   const [stratBuilderSaving, setStratBuilderSaving] = useState(false);
+  const [stratBuilderSaveError, setStratBuilderSaveError] = useState("");
   const [stratTemplatePickerOpen, setStratTemplatePickerOpen] = useState(false);
   const [stratEditId, setStratEditId] = useState(null);
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
@@ -8567,14 +8598,7 @@ const TalariaV8b = () => {
   });
   const mergeDashStrategyBankRows = useCallback((bankRows, localRows = []) => {
     const bank = Array.isArray(bankRows) ? bankRows : (Array.isArray(getV16StrategyBank()) ? getV16StrategyBank() : []);
-    const local = Array.isArray(localRows) ? localRows : [];
-    const byName = new Map();
-    [...bank, ...local].forEach((row) => {
-      if (!row) return;
-      const name = String(row?.name || "").trim();
-      if (name) byName.set(name.toLowerCase(), row);
-    });
-    return [...byName.values()];
+    return mergeV16StrategyBankRows(bank, localRows);
   }, []);
   useEffect(() => {
     if (!isV16LiveBoot()) return;
@@ -12582,7 +12606,7 @@ const TalariaV8b = () => {
                       {secH("Session Info")}
                       {(()=>{
                         const stratLive = isV16LiveBoot();
-                        const stratRows = stratLive ? (getV16StrategyBank() || myStrategies || []) : [];
+                        const stratRows = stratLive ? getV16StrategyBankRows(myStrategies) : [];
                         const mockMy = ["EMA Crossover","London Breakout","VWAP Scalp","Golden Cross Trend","Volume Breakout"];
                         const mockSaved = ["Momentum Surge","ICT Model A","SMC Liquidity Grab"];
                         const normStrat = (s) => (typeof s === "string" ? { id: s, name: s } : { id: s?.id ?? s?.name, name: String(s?.name || s?.title || "") });
@@ -25199,7 +25223,7 @@ const TalariaV8b = () => {
               return;
             }
             const applyBank = (bank) => {
-              const rows = Array.isArray(bank) && bank.length ? bank : (getV16StrategyBank() || myStrategies || []);
+              const rows = Array.isArray(bank) && bank.length ? bank : getV16StrategyBankRows(myStrategies);
               const row = rows.find(item => String(item.id) === String(strategyId));
               const vars = extractDashAddTradeVariablesFromBankRow(row);
               if (dashAddTradeVariablesHaveDefs(vars)) {
@@ -27001,7 +27025,7 @@ const TalariaV8b = () => {
             const cfg = session?.config && typeof session.config === "object" ? session.config : {};
             const strategyId = source?.strategyId ?? parseDashAddTradeSessionStrategyId(session) ?? cfg.strategy_id ?? cfg.strategyId;
             if (strategyId != null) {
-              const bank = getV16StrategyBank() || myStrategies || [];
+              const bank = getV16StrategyBankRows(myStrategies);
               const byId = bank.find(row => String(row.id) === String(strategyId));
               if (byId) return byId;
             }
@@ -27017,7 +27041,7 @@ const TalariaV8b = () => {
               draft?.setup,
               source?.label,
             ].map(normalizeDashAddTradeTagKey).filter(Boolean);
-            return (getV16StrategyBank() || myStrategies || []).find(strategy => {
+            return getV16StrategyBankRows(myStrategies).find(strategy => {
               const strategyKeys = [strategy?.id, strategy?.name, strategy?.title, strategy?.label].map(normalizeDashAddTradeTagKey).filter(Boolean);
               return strategyKeys.some(key => candidates.some(candidate => key === candidate || key.includes(candidate) || candidate.includes(key)));
             }) || null;
@@ -32260,7 +32284,7 @@ const TalariaV8b = () => {
 
           /* ─── Filter + sort my strategies ─── */
           const stratLiveMode = isV16LiveBoot();
-          const stratBankRows = stratLiveMode ? (getV16StrategyBank() || myStrategies || []) : myStrategies;
+          const stratBankRows = stratLiveMode ? getV16StrategyBankRows(myStrategies) : myStrategies;
           const minePreviewMode = !stratLiveMode && stratBankRows.length === 0;
           const userStrategySource = stratBankRows.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyName(s.name))}));
           const mineSource = stratLiveMode
@@ -32605,6 +32629,7 @@ const TalariaV8b = () => {
 
           /* ─── Builder modal open/close helper ─── */
           const openBuilder = (editStrat=null) => {
+            setStratBuilderSaveError("");
             if(editStrat){
               setStratEditId(editStrat.id);
               setStratBName(editStrat.name);
@@ -32741,13 +32766,25 @@ const TalariaV8b = () => {
               });
               return;
             }
-            setMyStrategies(prev=>prev.filter(s=>s.id!==source.id));
-            if (stratPerfStrat?.id === source.id) setStratPerfStrat(null);
-            if (stratShareStrat?.id === source.id) setStratShareStrat(null);
-            if (stratEditId === source.id) {
-              setStratBuilderOpen(false);
-              setStratEditId(null);
+            const apiId = parseStratApiId(source.id);
+            const removeLocal = () => {
+              setMyStrategies(prev=>prev.filter(s=>s.id!==source.id));
+              if (stratPerfStrat?.id === source.id) setStratPerfStrat(null);
+              if (stratShareStrat?.id === source.id) setStratShareStrat(null);
+              if (stratEditId === source.id) {
+                setStratBuilderOpen(false);
+                setStratEditId(null);
+              }
+            };
+            const deleter = typeof window !== "undefined" ? window.__TALARIA_V16_DELETE_STRATEGY__ : null;
+            if (isV16LiveBoot() && apiId != null && typeof deleter === "function") {
+              deleter(apiId).then(removeLocal).catch((err) => {
+                console.error("[V16] strategy delete failed", err);
+                window.alert(err?.message || "Could not delete strategy.");
+              });
+              return;
             }
+            removeLocal();
           };
 
           const saveBuilder = () => {
@@ -32773,16 +32810,31 @@ const TalariaV8b = () => {
               canvasEdges: canvasEdges,
               createdAt: stratEditId ? (myStrategies.find(s=>s.id===stratEditId)?.createdAt||new Date().toISOString()) : new Date().toISOString(),
             };
-            setStratBuilderSaving(true);
-            window.setTimeout(()=>{
-              if(stratEditId){
-                setMyStrategies(prev=>prev.map(s=>s.id===stratEditId?strat:s));
+            const applySavedRow = (savedRow) => {
+              const row = savedRow || strat;
+              if (stratEditId) {
+                setMyStrategies(prev=>prev.map(s=>s.id===stratEditId?row:s));
               } else {
-                setMyStrategies(prev=>[strat,...prev]);
+                setMyStrategies(prev=>[row,...prev]);
               }
               setStratBuilderSaving(false);
+              setStratBuilderSaveError("");
               setStratBuilderOpen(false);
-            },650);
+              setStratEditId(null);
+            };
+            setStratBuilderSaving(true);
+            setStratBuilderSaveError("");
+            const persist = typeof window !== "undefined" ? window.__TALARIA_V16_SAVE_STRATEGY__ : null;
+            if (isV16LiveBoot() && typeof persist === "function") {
+              const apiId = parseStratApiId(stratEditId);
+              persist(strat, apiId).then(applySavedRow).catch((err) => {
+                console.error("[V16] strategy save failed", err);
+                setStratBuilderSaving(false);
+                setStratBuilderSaveError(err?.message || "Could not save strategy.");
+              });
+              return;
+            }
+            window.setTimeout(()=> applySavedRow(strat), 650);
           };
 
           const saveCommunity = (strat) => {
@@ -33154,6 +33206,7 @@ const TalariaV8b = () => {
                   canvasInspectorCollapsed={canvasInspectorCollapsed} setCanvasInspectorCollapsed={setCanvasInspectorCollapsed}
                   stratEditId={stratEditId}
                   isSaving={stratBuilderSaving}
+                  saveError={stratBuilderSaveError}
                   sessions={strategyReviewSessions}
                   onSave={saveBuilder}
                   onClose={()=>{if(!stratBuilderSaving)setStratBuilderOpen(false);}}

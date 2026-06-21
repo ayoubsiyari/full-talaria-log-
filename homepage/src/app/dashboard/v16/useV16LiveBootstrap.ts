@@ -22,6 +22,11 @@ import {
   saveManualTradeToLiveJournal,
   type LiveJournalAddTradeSource,
 } from "./v16LiveJournalManualTrade";
+import {
+  deleteStrategyFromJournalApi,
+  parseStrategyApiId,
+  saveStrategyToJournalApi,
+} from "./v16StrategyApi";
 import { apiStrategyToBankRow } from "../strategies/strategyLabV9Mappers";
 import type { ApiStrategyRecord } from "../strategies/strategyLabV9Mappers";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
@@ -109,6 +114,32 @@ export function useV16LiveBootstrap(): BootState {
         window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
       }
       return strategyBank;
+    };
+
+    window.__TALARIA_V16_SAVE_STRATEGY__ = async (strat, existingId) => {
+      const apiId = existingId ?? parseStrategyApiId(strat?.id);
+      const saved = await saveStrategyToJournalApi(strat, apiId);
+      const refresh = window.__TALARIA_V16_REFRESH_STRATEGY_BANK__;
+      if (typeof refresh === "function") {
+        await refresh().catch(() => {
+          if (window.__TALARIA_V16_BOOT__) {
+            const bank = window.__TALARIA_V16_BOOT__.strategyBank || [];
+            const idx = bank.findIndex(
+              (row) => String(row?.id) === String(saved.id) || String(row?.name) === String(saved.name)
+            );
+            const next = idx >= 0 ? bank.map((row, i) => (i === idx ? saved : row)) : [saved, ...bank];
+            window.__TALARIA_V16_BOOT__.strategyBank = next;
+            window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
+          }
+        });
+      }
+      return saved;
+    };
+
+    window.__TALARIA_V16_DELETE_STRATEGY__ = async (strategyId) => {
+      await deleteStrategyFromJournalApi(strategyId);
+      const refresh = window.__TALARIA_V16_REFRESH_STRATEGY_BANK__;
+      if (typeof refresh === "function") await refresh();
     };
 
     (async () => {
@@ -226,6 +257,8 @@ export function useV16LiveBootstrap(): BootState {
       delete window.__TALARIA_V16_SAVE_MANUAL_TRADE__;
       delete window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__;
       delete window.__TALARIA_V16_REFRESH_STRATEGY_BANK__;
+      delete window.__TALARIA_V16_SAVE_STRATEGY__;
+      delete window.__TALARIA_V16_DELETE_STRATEGY__;
     };
   }, [reloadKey, urlSessionId]);
 
