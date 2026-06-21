@@ -25687,7 +25687,11 @@ const TalariaV8b = () => {
                 value = clampDashAddTradeIsoDate(value, range);
               }
               const next = {...prev, [field]:value};
-              return ["date", "time", "exitDate", "exitTime"].includes(field) ? ensureDashAddTradeExitAfterEntry(next) : next;
+              const withTiming = ["date", "time", "exitDate", "exitTime"].includes(field) ? ensureDashAddTradeExitAfterEntry(next) : next;
+              if (String(withTiming.exitDate || "").trim() && String(withTiming.exitTime || "").trim()) {
+                return {...withTiming, exitTimingEnabled:true};
+              }
+              return withTiming;
             });
           };
           const parseDashTradeNumber = value => {
@@ -26031,6 +26035,10 @@ const TalariaV8b = () => {
               const entryIso = dashAddTradeIsoDay(draft?.date);
               if (sessionRange.minDate && entryIso && entryIso < sessionRange.minDate) return {ok:false, error:dashTxt("Entry date must be within the backtest session range.","يجب أن يكون تاريخ الدخول ضمن نطاق جلسة الاختبار.")};
               if (sessionRange.maxDate && entryIso && entryIso > sessionRange.maxDate) return {ok:false, error:dashTxt("Entry date must be within the backtest session range.","يجب أن يكون تاريخ الدخول ضمن نطاق جلسة الاختبار.")};
+            } else if (isDashLiveJournalAddTradeSource(source)) {
+              const entryIso = dashAddTradeIsoDay(draft?.date);
+              const todayIso = dashAddTradeIsoDay(new Date().toISOString());
+              if (entryIso && todayIso && entryIso > todayIso) return {ok:false, error:dashTxt("Entry date cannot be in the future.","لا يمكن أن يكون تاريخ الدخول في المستقبل.")};
             } else if (startMs > nowMs) {
               return {ok:false, error:dashTxt("Entry date and time cannot be in the future.","لا يمكن أن يكون وقت الدخول في المستقبل.")};
             }
@@ -26080,6 +26088,34 @@ const TalariaV8b = () => {
             if (!(calculated.avgTarget > 0)) warnings.push(dashTxt("Without an initial target, planned R and OTP-hit stay blank.","بدون هدف أولي ستبقى قيمة R المخططة و OTP فارغة."));
             if (!String(draft?.commission ?? "").trim()) warnings.push(dashTxt("Without commission, net P&L equals gross before costs.","بدون عمولة سيكون صافي الربح مثل الإجمالي قبل التكاليف."));
             return {ok:true, error:"", warnings:[...new Set(warnings)], calculated};
+          };
+          const inferDashAddTradeSaveIssuePage = (message, source) => {
+            const text = String(message || "").toLowerCase();
+            if (/strategy|tag/.test(text)) return "tags";
+            if (/discipline|plan review|demon|behavior/.test(text)) return "discipline";
+            if (/note|screenshot/.test(text)) return "notes";
+            return "trade";
+          };
+          const getDashAddTradeSaveIssues = (draft, source) => {
+            if (!draft || !source) return [{message:dashTxt("Trade details are incomplete.","تفاصيل الصفقة غير مكتملة."), page:"trade"}];
+            const issues = [];
+            const seen = new Set();
+            const addIssue = (message, page="trade") => {
+              const cleaned = String(message || "").trim();
+              if (!cleaned || seen.has(cleaned)) return;
+              seen.add(cleaned);
+              issues.push({message:cleaned, page});
+            };
+            if (isDashJournalAddTradeSource(source)) {
+              const strategyName = String(draft?.setup_tag || draft?.setup || "").trim();
+              if (!strategyName) addIssue(dashTxt("Select a strategy on the Tags tab.","اختر استراتيجية في تبويب الوسوم."), "tags");
+              else if (isDashLiveJournalAddTradeSource(source) && !findDashAddTradeStrategyBankRowByName(strategyName)) {
+                addIssue(dashTxt("Pick a strategy from your Strategy tab (Tags step).","اختر استراتيجية من تبويب الاستراتيجية (خطوة الوسوم)."), "tags");
+              }
+            }
+            const validation = validateDashAddTradeDraft(draft, source);
+            if (!validation.ok) addIssue(validation.error, inferDashAddTradeSaveIssuePage(validation.error, source));
+            return issues;
           };
           const calcDashManualCurrency = (source, calculated, draft=dashAddTradeDraft) => {
             const spec = getDashInstrumentSpec(source, draft?.symbol, draft?.assetClass);
@@ -29918,8 +29954,20 @@ const TalariaV8b = () => {
                 const addTradeSaveValidation = dashAddTradeDraft && dashAddTradeEditorSource
                   ? validateDashAddTradeDraft(dashAddTradeDraft, dashAddTradeEditorSource)
                   : {ok:false, error:dashTxt("Trade details are incomplete.","تفاصيل الصفقة غير مكتملة.")};
+                const addTradeSaveIssues = dashAddTradeDraft && dashAddTradeEditorSource
+                  ? getDashAddTradeSaveIssues(dashAddTradeDraft, dashAddTradeEditorSource)
+                  : [{message:dashTxt("Trade details are incomplete.","تفاصيل الصفقة غير مكتملة."), page:"trade"}];
                 const addTradeCanSave = !!addTradeSaveValidation.ok;
-                const addTradeSaveBlockedReason = addTradeSaveValidation.error || dashTxt("Fix the highlighted fields before saving.","أصلح الحقول المحددة قبل الحفظ.");
+                const addTradeSaveBlockedReason = addTradeSaveIssues[0]?.message || addTradeSaveValidation.error || dashTxt("Fix the highlighted fields before saving.","أصلح الحقول المحددة قبل الحفظ.");
+                const revealAddTradeSaveBlockers = () => {
+                  const issues = getDashAddTradeSaveIssues(dashAddTradeDraft, dashAddTradeEditorSource);
+                  const primary = issues[0];
+                  setDashAddTradeValidationError(primary?.message || addTradeSaveBlockedReason);
+                  if (primary?.page) {
+                    const pageIndex = addTradePages.findIndex(page => page.id === primary.page);
+                    if (pageIndex >= 0) addTradeGoToPageIndex(pageIndex);
+                  }
+                };
                 const formatAddTradePlainSizeValue = value => {
                   const n = Number(value || 0);
                   if (!(n > 0)) return "";
@@ -30920,8 +30968,20 @@ const TalariaV8b = () => {
                   );
                 };
                 const renderAddTradeMessages = (placement="body") => {
+                  const saveBlockers = !addTradeCanSave
+                    ? addTradeSaveIssues.slice(0, 3).map(issue => ({
+                        text:issue.page && issue.page !== resolvedAddTradeEditorPage
+                          ? `${issue.message} · ${dashTxt("Go to","اذهب إلى")} ${addTradePages.find(page => page.id === issue.page)?.label || issue.page}`
+                          : issue.message,
+                        color:c.rd,
+                        border:`1px solid ${c.rd}55`,
+                        background:"rgba(255,74,108,0.08)",
+                        weight:850,
+                      }))
+                    : [];
                   const messages = [
                     ...(dashAddTradeValidationError ? [{text:dashAddTradeValidationError, color:c.rd, border:`1px solid ${c.rd}55`, background:"rgba(255,74,108,0.08)", weight:850}] : []),
+                    ...(!dashAddTradeValidationError ? saveBlockers : []),
                     ...addTradeDisplayedWarnings.map(warning => ({text:warning, color:c.gold, border:`1px solid ${c.gold}44`, background:"rgba(201,168,76,0.07)", weight:800})),
                   ];
                   if (!messages.length) return null;
@@ -31209,8 +31269,15 @@ const TalariaV8b = () => {
                         </div>
                       </div>
                       <div style={{height:50,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"0 12px",borderTop:`1px solid ${c.brH}`,background:c.el,boxSizing:"border-box",flexShrink:0}}>
-                        <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",overflow:"hidden"}}>
-                          {resultSummaryBar()}
+                        <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:10,overflow:"hidden"}}>
+                          {!addTradeCanSave && (
+                            <div style={{flexShrink:0,maxWidth:220,padding:"6px 9px",border:`1px solid ${c.rd}55`,background:"rgba(255,74,108,0.08)",color:c.rd,fontSize:9.2,fontWeight:850,lineHeight:1.35,fontFamily:F,boxSizing:"border-box"}}>
+                              {addTradeSaveBlockedReason}
+                            </div>
+                          )}
+                          <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+                            {resultSummaryBar()}
+                          </div>
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <div className="tlr-library-title-action tlr-add-trade-soft-action tlr-library-footer-cancel" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>{setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})} onKeyDown={libraryKeyActivate(()=>{setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})}
@@ -31226,15 +31293,15 @@ const TalariaV8b = () => {
                               <path d="M4.1 2.75 7.45 6 4.1 9.25" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"/>
                             </svg>
                           </div>
-                          <div className={addTradeCanSave ? "tlr-library-action tlr-add-trade-soft-action tlr-library-footer-go" : "tlr-library-footer-go"} role="button" tabIndex={addTradeCanSave ? 0 : -1} aria-disabled={!addTradeCanSave}
+                          <div className={addTradeCanSave ? "tlr-library-action tlr-add-trade-soft-action tlr-library-footer-go" : "tlr-library-footer-go"} role="button" tabIndex={0} aria-disabled={!addTradeCanSave}
                             {...dashInfoHandlers({
                               scope:"add-trade",
                               title:addTradeCanSave ? dashTxt("Save trade","حفظ الصفقة") : dashTxt("Cannot save","لا يمكن الحفظ"),
                               body:addTradeCanSave ? dashTxt("Save this manual trade to the selected source.","احفظ هذه الصفقة اليدوية في المصدر المحدد.") : addTradeSaveBlockedReason,
                               accent:addTradeCanSave ? c.acL : c.rd,
                             }, "add-trade-save-button")}
-                            onPointerDown={addTradeCanSave ? libraryPointerActivate(saveDashAddTradeDraft) : undefined}
-                            onKeyDown={addTradeCanSave ? libraryKeyActivate(saveDashAddTradeDraft) : undefined}
+                            onPointerDown={libraryPointerActivate(() => addTradeCanSave ? saveDashAddTradeDraft() : revealAddTradeSaveBlockers())}
+                            onKeyDown={libraryKeyActivate(() => addTradeCanSave ? saveDashAddTradeDraft() : revealAddTradeSaveBlockers())}
                             style={{height:32,minWidth:92,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:addTradeCanSave?c.acL:"rgba(255,255,255,0.055)",color:addTradeCanSave?"#fff":"rgba(255,255,255,0.34)",border:addTradeCanSave?"1px solid transparent":`1px solid ${c.br}`,fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxShadow:addTradeCanSave?libraryGoButtonStyle.boxShadow:"none",boxSizing:"border-box",opacity:addTradeCanSave?1:0.88,cursor:"default","--tlr-add-hover-bg":"#536fff","--tlr-add-hover-color":"#fff","--tlr-add-hover-border":"#536fff","--tlr-add-hover-shadow":"0 0 13px rgba(74,106,255,0.46)","--tlr-add-active-bg":"#3f5df6","--tlr-add-active-color":"#fff","--tlr-add-active-border":"#3f5df6","--tlr-add-active-shadow":"0 0 8px rgba(74,106,255,0.34)"}}>
                             {dashTxt("Save","حفظ")}
                           </div>
