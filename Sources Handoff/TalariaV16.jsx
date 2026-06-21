@@ -24937,6 +24937,23 @@ const TalariaV8b = () => {
               sessions:[ds],
             }];
           })();
+          const isDashJournalAddTradeSource = (source) => {
+            const text = `${source?.statusKind || ""} ${source?.kind || ""} ${source?.typeLabel || ""}`.toLowerCase();
+            return text.includes("journal");
+          };
+          const isDashLiveJournalAddTradeSource = (source) => {
+            if (!isDashJournalAddTradeSource(source)) return false;
+            return !!(source?.liveAccountId || source?.profileId || source?.freeInstrumentPicker || source?.isLiveJournalAccount);
+          };
+          const isManualLiveJournalAddTradeItem = (item, key) => {
+            const isJournal = String(item?.kind || "").toLowerCase().includes("journal");
+            if (!isJournal) return false;
+            if (item?.liveAccountId != null || item?.isLiveJournalAccount) return true;
+            const accountId = item?.id || String(key || "").split(":").slice(1).join(":");
+            const boot = getV16JournalBoot();
+            const account = boot?.accounts?.find((a) => String(a.id) === String(accountId));
+            return !!(account?.isLiveJournalAccount || account?.liveAccountId);
+          };
           const addTradeSourceChoices = [...new Map(addTradeBaseSourceItems.map((item, index) => {
             const sourceSessions = (Array.isArray(item.sessions) ? item.sessions : []).filter(Boolean);
             const sourceTrades = Array.isArray(item.trades) ? item.trades : [];
@@ -24957,8 +24974,9 @@ const TalariaV8b = () => {
                   editedTradesCount:Math.max(Number((primarySession || item)?.editedTradesCount || 0), manualTradeCount),
                 };
             const statusInfo = isJournalSource ? libraryJournalStatusInfo(statusSource) : libraryBacktestStatusInfo(statusSource);
+            const isManualLiveJournalSource = isManualLiveJournalAddTradeItem(item, key);
             const requiresAddTradeIntegrityWarning = isJournalSource
-              ? (!journalEdited && manualTradeCount === 0)
+              ? !isManualLiveJournalSource && !journalEdited && manualTradeCount === 0
               : (manualTradeCount === 0 && statusInfo.color === c.gn);
             const pnl = sourceTrades.reduce((sum, trade)=>sum+(Number(trade.pnl)||0),0);
             const markets = [...new Set(sourceSessions.flatMap(session=>session?.assetClasses||[]).filter(Boolean))];
@@ -24985,7 +25003,7 @@ const TalariaV8b = () => {
               statusKind,
               statusSource,
               statusInfo,
-              isGreenStatus:manualTradeCount === 0 && statusInfo.color === c.gn,
+              isGreenStatus:!isManualLiveJournalSource && manualTradeCount === 0 && statusInfo.color === c.gn,
               requiresAddTradeIntegrityWarning,
               addTradeWarningKind:isJournalSource ? "journal" : "backtest",
               tradeCount:(sourceTrades.length || Number(primarySession?.trades)||0) + manualTradeCount,
@@ -24994,14 +25012,6 @@ const TalariaV8b = () => {
               strategy,
             }];
           })).values()];
-          const isDashJournalAddTradeSource = (source) => {
-            const text = `${source?.statusKind || ""} ${source?.kind || ""} ${source?.typeLabel || ""}`.toLowerCase();
-            return text.includes("journal");
-          };
-          const isDashLiveJournalAddTradeSource = (source) => {
-            if (!isDashJournalAddTradeSource(source)) return false;
-            return !!(source?.liveAccountId || source?.profileId || source?.freeInstrumentPicker || source?.isLiveJournalAccount);
-          };
           const DASH_LIVE_JOURNAL_MARKETS = ["Forex", "Futures", "Stocks", "Crypto", "Indices"];
           const DASH_LIVE_JOURNAL_DEFAULT_STRATEGY = "Discretion";
           const DASH_LIVE_JOURNAL_INDEX_SYMBOLS = ["SPX", "NDX", "US500", "NAS100", "US30", "DJI", "DAX", "FTSE", "GER40"];
@@ -25527,9 +25537,9 @@ const TalariaV8b = () => {
               assetClasses:DASH_LIVE_JOURNAL_MARKETS,
               tickers:getDashLiveJournalInstrumentSymbols(),
               symbols:getDashLiveJournalInstrumentSymbols(),
-              requiresAddTradeIntegrityWarning:true,
+              requiresAddTradeIntegrityWarning:false,
               addTradeWarningKind:"journal",
-              isGreenStatus:true,
+              isGreenStatus:false,
             };
             if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
             applyEmbeddedJournalSelection(target);
@@ -25742,7 +25752,8 @@ const TalariaV8b = () => {
             if (!source) return;
             if (source.isStrategyDirectTarget) return;
             setDashPendingAddTradeSource(source);
-            if (source.requiresAddTradeIntegrityWarning || source.isGreenStatus) {
+            const needsIntegrityWarning = (source.requiresAddTradeIntegrityWarning || source.isGreenStatus) && !isDashLiveJournalAddTradeSource(source);
+            if (needsIntegrityWarning) {
               setDashAddTradeWarningDontShow(false);
               setDashAddTradeWarningOpen(true);
               return;
