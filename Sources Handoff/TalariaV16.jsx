@@ -24850,7 +24850,32 @@ const TalariaV8b = () => {
               strategy,
             }];
           })).values()];
+          const isDashJournalAddTradeSource = (source) => {
+            const text = `${source?.statusKind || ""} ${source?.kind || ""} ${source?.typeLabel || ""}`.toLowerCase();
+            return text.includes("journal");
+          };
+          const isDashLiveJournalAddTradeSource = (source) => {
+            if (!isDashJournalAddTradeSource(source)) return false;
+            return !!(source?.liveAccountId || source?.profileId || source?.freeInstrumentPicker || source?.isLiveJournalAccount);
+          };
+          const DASH_LIVE_JOURNAL_MARKETS = ["Forex", "Futures", "Stocks", "Crypto", "Indices"];
+          const DASH_LIVE_JOURNAL_INDEX_SYMBOLS = ["SPX", "NDX", "US500", "NAS100", "US30", "DJI", "DAX", "FTSE", "GER40"];
+          const dashCatalogInstrumentSymbol = (inst) => {
+            const key = String(inst?.id || "").toLowerCase();
+            const mapped = INST_SYM_DATA[key]?.id;
+            if (mapped) return mapped;
+            const raw = String(inst?.id || "").toUpperCase();
+            return raw.replace(/[^A-Z0-9]/gi, "").slice(0, 12);
+          };
+          const getDashLiveJournalInstrumentSymbols = () => [
+            ...new Set([
+              ...ALL_INSTRUMENTS.map(dashCatalogInstrumentSymbol),
+              ...DASH_LIVE_JOURNAL_INDEX_SYMBOLS,
+              "MNQ", "MES", "MYM", "MRTY", "M2K", "MCL", "MGC", "XAUUSD", "XAGUSD",
+            ].filter(Boolean).map(symbol => String(symbol).toUpperCase())),
+          ];
           const getDashSourceInstruments = (source) => {
+            if (isDashLiveJournalAddTradeSource(source)) return getDashLiveJournalInstrumentSymbols();
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions : [];
             const sourceTrades = Array.isArray(source?.trades) ? source.trades : [];
             const raw = [...new Set([
@@ -24883,6 +24908,7 @@ const TalariaV8b = () => {
             return raw;
           };
           const getDashSourceMarkets = (source) => {
+            if (isDashLiveJournalAddTradeSource(source)) return [...DASH_LIVE_JOURNAL_MARKETS];
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions : [];
             return [...new Set([
               ...(Array.isArray(source?.markets) ? source.markets : []),
@@ -24898,7 +24924,9 @@ const TalariaV8b = () => {
           };
           const inferDashAssetClass = (source, symbol="") => {
             const upperSymbol = String(symbol || "").toUpperCase();
-            const futuresSymbols = new Set(["ES","MES","NQ","MNQ","YM","MYM","RTY","M2K","MRTY","CL","MCL","GC","MGC","SI","SIL","NG","MNG","ZB","ZN","ZF","ZT","ZQ","UB","HO","RB"]);
+            const indexSymbols = new Set(DASH_LIVE_JOURNAL_INDEX_SYMBOLS);
+            if (indexSymbols.has(upperSymbol)) return "Indices";
+            const futuresSymbols = new Set(["ES","MES","NQ","MNQ","YM","MYM","RTY","M2K","MRTY","CL","MCL","GC","MGC","SI","SIL","NG","MNG","ZB","ZN","ZF","ZT","ZQ","UB","HO","RB","6E","6J","6B"]);
             if (futuresSymbols.has(upperSymbol)) return "Futures";
             if (/^(BTC|ETH|SOL|BNB|XRP|ADA|DOT|AVAX|LINK|MATIC)(USD|USDT)$/.test(upperSymbol)) return "Crypto";
             if (upperSymbol.length === 6 && currencyCountry[upperSymbol.slice(0, 3)] && currencyCountry[upperSymbol.slice(3, 6)]) return "Forex";
@@ -24970,10 +24998,6 @@ const TalariaV8b = () => {
             if (label.includes("vwap")) ["VWAP Reclaim","Deviation","Reclaim"].forEach(push);
             ["FVG","OB","Breaker","MSS","IFVG"].forEach(push);
             return [...values].slice(0, 18);
-          };
-          const isDashJournalAddTradeSource = (source) => {
-            const text = `${source?.statusKind || ""} ${source?.kind || ""} ${source?.typeLabel || ""}`.toLowerCase();
-            return text.includes("journal");
           };
           const getDashSourceStrategyOptions = (source) => {
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions : [];
@@ -25336,6 +25360,12 @@ const TalariaV8b = () => {
               liveAccountId:target.liveAccountId,
               profileId:target.profileId,
               statusKind:"journal",
+              isLiveJournalAccount:true,
+              freeInstrumentPicker:true,
+              markets:DASH_LIVE_JOURNAL_MARKETS,
+              assetClasses:DASH_LIVE_JOURNAL_MARKETS,
+              tickers:getDashLiveJournalInstrumentSymbols(),
+              symbols:getDashLiveJournalInstrumentSymbols(),
               requiresAddTradeIntegrityWarning:true,
               addTradeWarningKind:"journal",
               isGreenStatus:true,
@@ -25931,10 +25961,10 @@ const TalariaV8b = () => {
             const validTargetPrices = targetRows
               .map(row => parseDashTradeNumber(row.price))
               .filter(price => price > 0);
-            const needsStrategy = isDashJournalAddTradeSource(source);
+            const needsStrategy = isDashJournalAddTradeSource(source) && !isDashLiveJournalAddTradeSource(source);
             const sessionRange = getDashAddTradeSessionDateRange(source);
-            const hasSessionRange = !!(sessionRange.minDate || sessionRange.maxDate);
-            if (instruments.length && !instruments.includes(String(draft?.symbol || "").toUpperCase())) return {ok:false, error:dashTxt("Choose an instrument that belongs to this source.","اختر أداة تابعة لهذا المصدر.")};
+            const hasSessionRange = !isDashLiveJournalAddTradeSource(source) && !!(sessionRange.minDate || sessionRange.maxDate);
+            if (!isDashLiveJournalAddTradeSource(source) && instruments.length && !instruments.includes(String(draft?.symbol || "").toUpperCase())) return {ok:false, error:dashTxt("Choose an instrument that belongs to this source.","اختر أداة تابعة لهذا المصدر.")};
             if (needsStrategy && !String(draft?.setup_tag || draft?.setup || "").trim()) return {ok:false, error:dashTxt("Choose the strategy used for this journal trade.","اختر الاستراتيجية المستخدمة لهذه الصفقة في اليومية.")};
             if (!Number.isFinite(startMs)) return {ok:false, error:dashTxt("Entry date and time are required.","تاريخ ووقت الدخول مطلوبان.")};
             if (hasSessionRange) {
@@ -26304,7 +26334,9 @@ const TalariaV8b = () => {
               {id:"emotion", label:dashTxt("Emotion","الشعور"), type:"multi", single:true, options:["Calm","FOMO","Fearful","Greedy"]},
               {id:"exitRsn", label:dashTxt("Exit Reason","سبب الخروج"), type:"multi", single:true, options:["TP Hit","Manual","SL Hit","Trailing"]},
             ];
-            const fallback = isV16LiveBoot() ? [] : (slot === "pre" ? defaultPreDefs : defaultPostDefs);
+            const fallback = isDashLiveJournalAddTradeSource(source)
+              ? (slot === "pre" ? defaultPreDefs : defaultPostDefs)
+              : (isV16LiveBoot() ? [] : (slot === "pre" ? defaultPreDefs : defaultPostDefs));
             const resolved = (fromDirect.length ? fromDirect : fromVariables.length ? fromVariables : fallback).map(def => ({...def}));
             if (!isV16LiveBoot() && slot === "post" && !resolved.some(def => def.id === "planReview" || normalizeDashAddTradeTagKey(def.label) === "plan review")) {
               resolved.unshift({id:"planReview", label:dashTxt("Plan Review","مراجعة الخطة"), type:"multi", single:true, options:["According to Plan","Out of Plan","Missed Trade"]});
@@ -26338,6 +26370,23 @@ const TalariaV8b = () => {
               ? stop <= highestEntry || targetPrices.some(target => target >= lowestEntry)
               : stop >= lowestEntry || targetPrices.some(target => target <= highestEntry);
             return hasBreach ? "Out of Plan" : "According to Plan";
+          };
+          const buildDashJournalTagVariables = (preDefs, preState, postDefs, postState) => {
+            const out = {};
+            const apply = (defs, state) => {
+              (defs || []).forEach(def => {
+                if (!def?.id) return;
+                const val = state?.[def.id];
+                if (def.type === "bool") {
+                  if (val === true) out[def.id] = ["YES"];
+                } else if (Array.isArray(val) && val.length) {
+                  out[def.id] = val.map(String);
+                }
+              });
+            };
+            apply(preDefs, preState);
+            apply(postDefs, postState);
+            return out;
           };
           const saveDashAddTradeDraft = () => {
             if (!dashAddTradeDraft || !dashAddTradeEditorSource) return;
@@ -26527,6 +26576,9 @@ const TalariaV8b = () => {
               postTradeNotes:planOutcome ? {reason:selectedPlanReview, rule_outcome:planOutcome} : {},
               rulesFollowed:rulesFollowedFromPlan,
               screenshots:dashAddTradeScreenshots,
+              tagVariables:buildDashJournalTagVariables(addTradePreTagDefs, resolvedPreTagState, addTradePostTagDefs, resolvedPostTagState),
+              preTagState:resolvedPreTagState,
+              postTagState:resolvedPostTagState,
               createdAt:nowIso,
             };
             manualTrade.demons = btDashTradeDemons(manualTrade, {session:dashAddTradeEditorSource});
