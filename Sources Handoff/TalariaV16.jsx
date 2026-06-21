@@ -20,6 +20,32 @@ const getV16JournalBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.
 const getV16StrategyBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategies : null);
 const getV16StrategyBank = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategyBank : null);
 const getV16AppliedSourceBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.appliedSource : null);
+const resolveLiveJournalAccountTarget = (accountOrApi, boot = getV16JournalBoot()) => {
+  if (!accountOrApi) return null;
+  if (accountOrApi.id != null && (accountOrApi.liveAccountId != null || accountOrApi.isLiveJournalAccount || String(accountOrApi.id).startsWith("live-account-"))) {
+    return accountOrApi;
+  }
+  const apiId = accountOrApi.id ?? accountOrApi.account_id;
+  const profileId = accountOrApi.profile_id ?? accountOrApi.profileId;
+  if (boot?.accounts?.length) {
+    const fromBoot = boot.accounts.find((a) => {
+      if (!a?.isLiveJournalAccount) return false;
+      if (apiId != null && String(a.liveAccountId) === String(apiId)) return true;
+      if (profileId != null && String(a.profileId) === String(profileId)) return true;
+      if (apiId != null && String(a.id) === `live-account-${apiId}`) return true;
+      return false;
+    });
+    if (fromBoot) return fromBoot;
+  }
+  if (apiId == null && profileId == null) return null;
+  return {
+    id: apiId != null ? `live-account-${apiId}` : `live-profile-${profileId}`,
+    name: accountOrApi.name || accountOrApi.label || "Journal",
+    liveAccountId: apiId ?? null,
+    profileId: profileId ?? null,
+    isLiveJournalAccount: true,
+  };
+};
 
 const SEED_TRADE_SCENARIO_FALLBACK = [
   { id: "realistic", label: "Realistic", hint: "Stable win rate, almost no outliers." },
@@ -8468,7 +8494,27 @@ const TalariaV8b = () => {
     };
   }, []);
   useEffect(() => {
-    if (!newSessOpen) return;
+    if (!dashAddTradeEditorOpen) return;
+    let cancelled = false;
+    const syncBank = () => {
+      if (cancelled) return;
+      const bank = getV16StrategyBank();
+      const local = Array.isArray(myStrategies) ? myStrategies : [];
+      const merged = [...(Array.isArray(bank) ? bank : []), ...local];
+      const byName = new Map();
+      merged.forEach((row) => {
+        const name = String(row?.name || "").trim();
+        if (name) byName.set(name.toLowerCase(), row);
+      });
+      const rows = [...byName.values()];
+      if (rows.length) setMyStrategies(rows);
+    };
+    const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
+    if (typeof refresh === "function") refresh().finally(syncBank);
+    else syncBank();
+    return () => { cancelled = true; };
+  }, [dashAddTradeEditorOpen, dashAddTradeEditorPage]);
+  useEffect(() => {
     let cancelled = false;
     setNewSessApiFilesLoading(true);
     fetch("/api/files?session_ready=1", { credentials: "include" })
@@ -8664,13 +8710,8 @@ const TalariaV8b = () => {
           if (attempt < 24) setTimeout(() => tryOpen(attempt + 1), 120);
           return;
         }
-        const target = boot.accounts.find((a) => {
-          if (!a?.isLiveJournalAccount) return false;
-          if (apiAccount?.id != null && String(a.liveAccountId) === String(apiAccount.id)) return true;
-          if (apiAccount?.profile_id != null && String(a.profileId) === String(apiAccount.profile_id)) return true;
-          return false;
-        });
-        if (!target) {
+        const target = resolveLiveJournalAccountTarget(apiAccount, boot);
+        if (!target?.liveAccountId && target?.profileId == null) {
           if (attempt < 24) setTimeout(() => tryOpen(attempt + 1), 120);
           return;
         }
@@ -8690,6 +8731,7 @@ const TalariaV8b = () => {
       if (!e?.detail?.goToTradesAfterCreate) return;
       pendingJournalGoTradesRef.current = true;
       pendingJournalCreatedRef.current = e.detail.account || null;
+      applyEmbeddedJournalSelection(pendingJournalCreatedRef.current);
       flushSync(() => setSessView("trades"));
       syncV16ViewUrl("trades");
       finishJournalCreateGoTrades();
@@ -10598,15 +10640,16 @@ const TalariaV8b = () => {
     ) || row?._journalAccount || null;
   };
   const applyEmbeddedJournalSelection = (account) => {
-    if (!account) return;
+    const target = resolveLiveJournalAccountTarget(account);
+    if (!target) return;
     const sel = {
       kind: "journalAccount",
-      id: account.id,
-      label: String(account.name || "").split(" / ")[0] || account.name || "Journal",
-      liveAccountId: account.liveAccountId,
-      profileId: account.profileId,
+      id: target.id,
+      label: String(target.name || "").split(" / ")[0] || target.name || "Journal",
+      liveAccountId: target.liveAccountId,
+      profileId: target.profileId,
     };
-    const key = `journalAccount:${account.id}`;
+    const key = `journalAccount:${target.id}`;
     setDashStrategyId(null);
     setDashSessId(null);
     setDashLibraryAppliedSelection(sel);
@@ -10614,7 +10657,7 @@ const TalariaV8b = () => {
     dashLibraryAppliedMultiSelectionRef.current = [key];
     setDashLibraryAppliedMultiSelection([key]);
     setDashSourceFilterKeys([]);
-    if (account.liveAccountId) activateLiveJournalAccount(account.liveAccountId);
+    if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
   };
   const openEmbeddedJournalTrades = (row) => {
     const account = resolveJournalSessionAccount(row);
@@ -13857,7 +13900,11 @@ const TalariaV8b = () => {
               return true;
             });
           })();
-          const dashSelectedStrategySessions = dashStrategyId ? dashboardSessionPool.filter(s=>dashStrategyKey(s.strategyName)===dashStrategyId) : [];
+          const embeddedAppliedLibraryKind = dashLibraryAppliedSelection?.kind || dashLibraryAppliedSelectionRef.current?.kind;
+          const journalSelectionActive = ["journalAccount", "journalEntry", "strategyJournal"].includes(embeddedAppliedLibraryKind)
+            || pendingJournalGoTradesRef.current
+            || (dashAddTradeEditorOpen && !!(dashAddTradeEditorSource?.liveAccountId || dashAddTradeEditorSource?.isLiveJournalAccount));
+          const dashSelectedStrategySessions = !journalSelectionActive && dashStrategyId ? dashboardSessionPool.filter(s=>dashStrategyKey(s.strategyName)===dashStrategyId) : [];
           const dashSelectedStrategyLabel = dashSelectedStrategySessions[0]?.strategyName || dashTxt("Strategy","استراتيجية");
           const dashSelectedStrategyTrades = dashSelectedStrategySessions.flatMap(session =>
             btDashBuildTrades(session).map(trade => ({
@@ -14067,6 +14114,7 @@ const TalariaV8b = () => {
           const dsFromAppliedJournal = !dashStrategySource && appliedJournalDashboardItem && (
             dashboardAppliedSourceItems.length === 1
             || ["journalAccount", "journalEntry", "strategyJournal"].includes(appliedSelectionKind)
+            || (dashAddTradeEditorOpen && !!(dashAddTradeEditorSource?.liveAccountId || dashAddTradeEditorSource?.isLiveJournalAccount))
           )
             ? buildDashboardSessionFromAppliedSource(appliedJournalDashboardItem)
             : null;
@@ -14150,6 +14198,12 @@ const TalariaV8b = () => {
               const strategySessionIds = new Set(dashSelectedStrategySessions.map(session => String(session?.id)));
               const sourceSessionId = String(trade?.sourceSessionId || "").replace(/^strategySession:/, "");
               return sourceKey.startsWith("strategySession:") && strategySessionIds.has(sourceSessionId || sourceKey.replace("strategySession:", ""));
+            }
+            if (ds?.isJournalDashboard || ds?.statusKind === "journal" || String(ds?.tradingMode || "").includes("journal")) {
+              const journalKey = String(ds?.key || ds?.id || "");
+              if (journalKey && sourceKey === journalKey) return true;
+              if (journalKey.startsWith("journalAccount:") && sourceKey === journalKey) return true;
+              if (ds?.liveAccountId != null && sourceKey === `journalAccount:${ds.liveAccountId}`) return true;
             }
             return sourceKey === `session:${ds.id}` || sourceKey === String(ds.id || "");
           });
@@ -18306,7 +18360,7 @@ const TalariaV8b = () => {
             <div style={{minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:`1px solid ${c.br}`,background:c.sf,padding:"18px 14px"}}>
               <div style={{fontSize:10,fontWeight:800,color:c.tm,fontFamily:F,textAlign:"center"}}>{dashTxt("No live journal accounts yet.","لا توجد حسابات يومية حية بعد.")}</div>
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-                <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true }))} onKeyDown={libraryKeyActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true }))} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
+                <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true, goToTradesAfterCreate: true }))} onKeyDown={libraryKeyActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true, goToTradesAfterCreate: true }))} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
                   {dashTxt("Create Journal","إنشاء يومية")}
                 </div>
                 <div className="tlr-library-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>liveJournalAddTradeBridgeRef.current?.open?.())} onKeyDown={libraryKeyActivate(()=>liveJournalAddTradeBridgeRef.current?.open?.())} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.acL,color:"#fff",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer",boxShadow:`0 0 8px ${c.acG}`}}>
@@ -18332,7 +18386,7 @@ const TalariaV8b = () => {
                 color:c.gn,
                 shadow:"rgba(0,212,161,0.28)",
                 onClick:()=>{
-                  openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection(), lockAccountType: true });
+                  openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection(), lockAccountType: true, goToTradesAfterCreate: true });
                 }
               }
             : {
@@ -18354,7 +18408,7 @@ const TalariaV8b = () => {
                 label:dashTxt("Create Journal","إنشاء يومية"),
                 color:c.gn,
                 shadow:"rgba(0,212,161,0.28)",
-                onClick:()=>{ setDashCompareOpen(false); openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromCat(dashCompareJournalCat), lockAccountType: true }); }
+                onClick:()=>{ setDashCompareOpen(false); openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromCat(dashCompareJournalCat), lockAccountType: true, goToTradesAfterCreate: true }); }
               }
             : dashCompareTab === "strategies"
               ? {
@@ -24657,7 +24711,17 @@ const TalariaV8b = () => {
             }
             return null;
           };
-          const getDashStrategyBankRows = () => (getV16StrategyBank() || myStrategies || []).filter(Boolean);
+          const getDashStrategyBankRows = () => {
+            const bank = Array.isArray(getV16StrategyBank()) ? getV16StrategyBank() : [];
+            const local = Array.isArray(myStrategies) ? myStrategies : [];
+            const byName = new Map();
+            [...bank, ...local].forEach((row) => {
+              if (!row) return;
+              const name = String(row?.name || "").trim();
+              if (name) byName.set(name.toLowerCase(), row);
+            });
+            return [...byName.values()];
+          };
           const findDashAddTradeStrategyBankRowByName = (strategyName) => {
             const cleaned = String(strategyName || "").trim().toLowerCase();
             if (!cleaned) return null;
@@ -25395,7 +25459,7 @@ const TalariaV8b = () => {
           };
           liveJournalAddTradeBridgeRef.current.open = (account) => {
             const boot = getV16JournalBoot();
-            let target = account;
+            let target = resolveLiveJournalAccountTarget(account, boot);
             if (!target && boot) {
               const sel = dashLibrarySelectionRef.current;
               if (sel?.kind === "journalAccount") {
@@ -25408,7 +25472,7 @@ const TalariaV8b = () => {
                 || boot.accounts.find(item => item.isLiveJournalAccount);
             }
             if (!target?.liveAccountId && !target?.profileId) {
-              openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection(), lockAccountType: true });
+              openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection(), lockAccountType: true, goToTradesAfterCreate: true });
               return;
             }
             const key = `journalAccount:${target.id}`;
@@ -25438,8 +25502,11 @@ const TalariaV8b = () => {
               isGreenStatus:true,
             };
             if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
+            applyEmbeddedJournalSelection(target);
             commitLibrarySelection(makeLibraryJournalAccountSelection(target));
             setDashLibraryOpen(false);
+            flushSync(() => setSessView("trades"));
+            syncV16ViewUrl("trades");
             const openLiveJournalAddTrade = () => openSelectedAddTradeSource(source);
             const refreshBank = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
             if (typeof refreshBank === "function") refreshBank().finally(openLiveJournalAddTrade);
@@ -27981,6 +28048,9 @@ const TalariaV8b = () => {
                 const addTradeSourceTypeLabel = addTradeIsPropBacktest ? dashTxt("Backtest (Prop)","اختبار (Prop)") : dashAddTradeEditorSource.typeLabel;
                 const addTradeSourceTypeColor = addTradeIsJournalSource ? c.gn : addTradeIsPropBacktest ? c.gold : c.acL;
                 const setupOptions = addTradeIsJournalSource ? getDashSourceStrategyOptions(dashAddTradeEditorSource) : getDashSourceSetupOptions(dashAddTradeEditorSource);
+                const addTradeSavedStrategyOptions = isDashLiveJournalAddTradeSource(dashAddTradeEditorSource)
+                  ? getDashStrategyBankRows().map(row => String(row?.name || "").trim()).filter(Boolean)
+                  : setupOptions;
                 const addTradeUsedStrategyOptions = addTradeIsJournalSource ? getDashSourceUsedStrategyOptions(dashAddTradeEditorSource) : [];
                 const timeframeOptions = getDashSourceTimeframeOptions(dashAddTradeEditorSource);
                 const instrumentSpec = getDashInstrumentSpec(dashAddTradeEditorSource, dashAddTradeDraft.symbol, dashAddTradeDraft.assetClass);
@@ -31292,27 +31362,31 @@ const TalariaV8b = () => {
                                 {isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) ? (
                                   <>
                                     <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                                      {setupOptions.length > 0 && (
-                                        <div style={{width:340,maxWidth:"100%"}}>
-                                          {addTradeCompactDropdownField(dashTxt("Saved strategy","استراتيجية محفوظة"), "setup_tag", setupOptions, {menuKey:"setup_tag", inlineLabel:true, labelWidth:96, dropdownMaxHeight:232, searchable:true, searchPlaceholder:dashTxt("Search strategies...","ابحث عن الاستراتيجيات..."), pinnedOptions:addTradeUsedStrategyOptions, pinnedLabel:dashTxt("Used in this journal","مستخدمة في هذه اليومية"), pinnedColor:c.acL, emptySelectionLabel:dashTxt("Optional","اختياري")})}
-                                        </div>
-                                      )}
+                                      <div style={{width:340,maxWidth:"100%"}}>
+                                        {addTradeCompactDropdownField(dashTxt("Saved strategy","استراتيجية محفوظة"), "setup_tag", addTradeSavedStrategyOptions, {menuKey:"setup_tag", inlineLabel:true, labelWidth:96, dropdownMaxHeight:232, searchable:true, searchPlaceholder:dashTxt("Search strategies...","ابحث عن الاستراتيجيات..."), pinnedOptions:addTradeUsedStrategyOptions, pinnedLabel:dashTxt("Used in this journal","مستخدمة في هذه اليومية"), pinnedColor:c.acL, emptySelectionLabel:dashTxt("Optional","اختياري")})}
+                                      </div>
                                       {!isDashAddTradeBankStrategySelected(dashAddTradeDraft) && (
                                         <div style={{flex:"1 1 240px",minWidth:220,maxWidth:440,display:"flex",alignItems:"center",gap:10}}>
                                           <div style={{flex:"0 0 96px",minWidth:0}}>
                                             {fieldLabel(dashTxt("Strategy type","نوع الاستراتيجية"), {align:"left"})}
                                           </div>
                                           <input
+                                            list="dash-add-trade-strategy-bank-suggestions"
                                             value={dashAddTradeDraft.strategyTypeDescription ?? ""}
                                             onChange={e=>updateDashAddTradeDraft("strategyTypeDescription", e.target.value)}
                                             placeholder={dashTxt("Optional — defaults to Discretion","اختياري — الافتراضي Discretion")}
                                             style={{...inputStyle, flex:"1 1 auto", minWidth:0, height:32, fontSize:10.8, fontWeight:800}}
                                           />
+                                          <datalist id="dash-add-trade-strategy-bank-suggestions">
+                                            {addTradeSavedStrategyOptions.map(name => <option key={`strategy-suggest-${name}`} value={name} />)}
+                                          </datalist>
                                         </div>
                                       )}
                                     </div>
                                     <div style={{fontSize:9.2,fontWeight:750,color:c.tm,fontFamily:F,lineHeight:1.45}}>
-                                      {dashTxt("Strategy is optional for live journals. Leave blank to save as Discretion, pick a saved strategy for its tags, or type your own strategy type.","الاستراتيجية اختيارية في اليوميات الحية. اتركها فارغة للحفظ كـ Discretion، أو اختر استراتيجية محفوظة لوسومها، أو اكتب نوعا خاصا.")}
+                                      {addTradeSavedStrategyOptions.length
+                                        ? dashTxt("Pick a saved strategy from Strategy Lab for its tags, type your own strategy type, or leave blank to save as Discretion.","اختر استراتيجية محفوظة من مختبر الاستراتيجية لوسومها، أو اكتب نوعا خاصا، أو اتركه فارغا للحفظ كـ Discretion.")
+                                        : dashTxt("No saved strategies yet — leave blank to save as Discretion, or type a strategy type. Create strategies in the Strategy tab to reuse them here.","لا توجد استرategias محفوظة بعد — اتركه فارغا للحفظ كـ Discretion أو اكتب نوع الاستراتيجية. أنشئ استراتيجيات في تبويب Strategy لإعادة استخدامها هنا.")}
                                     </div>
                                   </>
                                 ) : (
