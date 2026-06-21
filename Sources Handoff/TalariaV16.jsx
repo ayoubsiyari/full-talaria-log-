@@ -8203,6 +8203,7 @@ const TalariaV8b = () => {
   const [dashAddTradeDraft, setDashAddTradeDraft] = useState(null);
   const [dashAddTradeGraphHoldDraft, setDashAddTradeGraphHoldDraft] = useState(null);
   const [dashAddTradeEditorPage, setDashAddTradeEditorPage] = useState("trade");
+  const [dashAddTradeStrategyBankLoading, setDashAddTradeStrategyBankLoading] = useState(false);
   const [dashAddTradeValidationError, setDashAddTradeValidationError] = useState("");
   const [dashAddTradePreTags, setDashAddTradePreTags] = useState({});
   const [dashAddTradePostTags, setDashAddTradePostTags] = useState({});
@@ -8475,19 +8476,38 @@ const TalariaV8b = () => {
     }
     return [];
   });
+  const mergeDashStrategyBankRows = useCallback((bankRows, localRows = []) => {
+    const bank = Array.isArray(bankRows) ? bankRows : (Array.isArray(getV16StrategyBank()) ? getV16StrategyBank() : []);
+    const local = Array.isArray(localRows) ? localRows : [];
+    const byName = new Map();
+    [...bank, ...local].forEach((row) => {
+      if (!row) return;
+      const name = String(row?.name || "").trim();
+      if (name) byName.set(name.toLowerCase(), row);
+    });
+    return [...byName.values()];
+  }, []);
   useEffect(() => {
     if (!isV16LiveBoot()) return;
     let cancelled = false;
-    const syncBank = () => {
+    const applyBank = (bankRows) => {
       if (cancelled) return;
+      setMyStrategies(prev => {
+        const merged = mergeDashStrategyBankRows(bankRows, prev);
+        return merged.length ? merged : prev;
+      });
+    };
+    const syncBank = () => {
       const bank = getV16StrategyBank();
       if (!Array.isArray(bank) || !bank.length) return false;
-      setMyStrategies(bank);
+      applyBank(bank);
       return true;
     };
     if (syncBank()) return;
-    const onBoot = () => syncBank();
+    const onBoot = () => { syncBank(); };
     window.addEventListener("talaria-v16-boot-updated", onBoot);
+    const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
+    if (typeof refresh === "function") refresh().then(applyBank).catch(() => {});
     const timer = window.setInterval(() => {
       if (syncBank()) window.clearInterval(timer);
     }, 500);
@@ -8496,28 +8516,30 @@ const TalariaV8b = () => {
       window.removeEventListener("talaria-v16-boot-updated", onBoot);
       window.clearInterval(timer);
     };
-  }, []);
+  }, [mergeDashStrategyBankRows]);
   useEffect(() => {
     if (!dashAddTradeEditorOpen) return;
     let cancelled = false;
-    const syncBank = () => {
+    const applyBank = (bankRows) => {
       if (cancelled) return;
-      const bank = getV16StrategyBank();
-      const local = Array.isArray(myStrategies) ? myStrategies : [];
-      const merged = [...(Array.isArray(bank) ? bank : []), ...local];
-      const byName = new Map();
-      merged.forEach((row) => {
-        const name = String(row?.name || "").trim();
-        if (name) byName.set(name.toLowerCase(), row);
-      });
-      const rows = [...byName.values()];
-      if (rows.length) setMyStrategies(rows);
+      setMyStrategies(prev => mergeDashStrategyBankRows(bankRows, prev));
+      setDashAddTradeStrategyBankLoading(false);
     };
+    const syncFromBoot = () => applyBank(getV16StrategyBank());
+    const onBoot = () => syncFromBoot();
+    window.addEventListener("talaria-v16-boot-updated", onBoot);
+    setDashAddTradeStrategyBankLoading(true);
     const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
-    if (typeof refresh === "function") refresh().finally(syncBank);
-    else syncBank();
-    return () => { cancelled = true; };
-  }, [dashAddTradeEditorOpen, dashAddTradeEditorPage]);
+    if (typeof refresh === "function") {
+      refresh().then(applyBank).catch(() => syncFromBoot());
+    } else {
+      syncFromBoot();
+    }
+    return () => {
+      cancelled = true;
+      window.removeEventListener("talaria-v16-boot-updated", onBoot);
+    };
+  }, [dashAddTradeEditorOpen, dashAddTradeEditorPage, mergeDashStrategyBankRows]);
   useEffect(() => {
     let cancelled = false;
     setNewSessApiFilesLoading(true);
@@ -29120,6 +29142,127 @@ const TalariaV8b = () => {
                     </div>
                   );
                 };
+                const addTradeLiveJournalStrategyField = () => {
+                  const menuKey = "live_journal_strategy";
+                  const isOpen = dashAddTradeTradeMenuOpen === menuKey;
+                  const searchValue = dashAddTradeDropdownSearch[menuKey] || "";
+                  const searchQuery = String(searchValue || "").trim().toLowerCase();
+                  const savedOptions = (addTradeSavedStrategyOptions || []).map(name => ({value:name, label:name}));
+                  const pinnedOptions = (addTradeUsedStrategyOptions || []).map(name => ({value:name, label:name, color:c.acL}));
+                  const pinnedKeySet = new Set(pinnedOptions.map(option => String(option.value || "").trim().toLowerCase()));
+                  const matchesSearch = option => !searchQuery || `${option.label || ""} ${option.value || ""}`.toLowerCase().includes(searchQuery);
+                  const visiblePinnedOptions = pinnedOptions.filter(matchesSearch);
+                  const visibleOptions = savedOptions
+                    .filter(option => !pinnedKeySet.has(String(option.value || "").trim().toLowerCase()))
+                    .filter(matchesSearch);
+                  const listMaxHeight = 232;
+                  const chooseStrategy = value => {
+                    updateDashAddTradeDraft("liveJournalStrategy", value);
+                    setDashAddTradeDropdownSearch(prev => ({...prev, [menuKey]:""}));
+                    setDashAddTradeTradeMenuOpen(null);
+                  };
+                  const openMenu = () => {
+                    setDashAddTradeCalendar(null);
+                    setDashAddTradeTimeMenu(null);
+                    setDashAddTradeMarketOpen(false);
+                    setDashAddTradeSymbolOpen(false);
+                    setDashAddTradeExcursionOpen(false);
+                    setDashAddTradeDropdownSearch(prev => ({...prev, [menuKey]:""}));
+                    setDashAddTradeTradeMenuOpen(prev => prev === menuKey ? null : menuKey);
+                  };
+                  const renderStrategyOption = (option, index, keyPrefix = "option") => {
+                    const active = String(option.value).toLowerCase() === String(addTradeLiveJournalStrategyValue || "").trim().toLowerCase();
+                    const activeColor = option.color || c.acL;
+                    const activeGlow = String(activeColor).startsWith("#") ? `${activeColor}66` : activeColor;
+                    return (
+                      <div key={`${menuKey}-${keyPrefix}-${option.value}-${index}`} className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-pressed={active}
+                        onPointerDown={libraryPointerActivate(()=>chooseStrategy(option.value))}
+                        onKeyDown={libraryKeyActivate(()=>chooseStrategy(option.value))}
+                        onMouseEnter={e=>{if(!active)e.currentTarget.style.background="rgba(255,255,255,0.045)";}}
+                        onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
+                        onMouseDown={e=>{e.currentTarget.style.background="rgba(255,255,255,0.07)";}}
+                        onMouseUp={e=>{e.currentTarget.style.background=active?"transparent":"rgba(255,255,255,0.045)";}}
+                        style={{position:"relative",height:26,display:"flex",alignItems:"center",padding:"0 10px 0 13px",background:"transparent",boxSizing:"border-box",transition:"none",overflow:"hidden","--tlr-add-hover-bg":active?"transparent":"rgba(255,255,255,0.055)","--tlr-add-hover-color":active?activeColor:c.tx,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":active?"transparent":"rgba(74,106,255,0.12)"}}>
+                        {active && <span aria-hidden="true" style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${activeColor},transparent)`,boxShadow:`0 0 6px ${activeGlow}`,pointerEvents:"none"}}/>}
+                        <span style={{minWidth:0,fontSize:10.2,fontWeight:850,color:active?activeColor:c.ts,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",letterSpacing:"0.01em",textTransform:"none"}}>{option.label}</span>
+                      </div>
+                    );
+                  };
+                  return (
+                    <div data-add-trade-drop="1" style={{width:420,maxWidth:"100%"}}>
+                      <div style={{minWidth:0,display:"flex",flexDirection:"row",alignItems:"center",gap:10}}>
+                        <div style={{flex:"0 0 76px",minWidth:0}}>
+                          {fieldLabel(dashTxt("Strategy","الاستراتيجية"), {align:"left"})}
+                        </div>
+                        <div style={{position:"relative",minWidth:0,flex:"1 1 auto",display:"flex",alignItems:"stretch",gap:0}}>
+                          <input
+                            value={addTradeLiveJournalStrategyValue}
+                            onChange={e=>updateDashAddTradeDraft("liveJournalStrategy", e.target.value)}
+                            onFocus={()=>setDashAddTradeTradeMenuOpen(menuKey)}
+                            placeholder={dashTxt("Optional — defaults to Discretion","اختياري — الافتراضي Discretion")}
+                            style={{...inputStyle, flex:"1 1 auto", minWidth:0, height:32, fontSize:10.8, fontWeight:800, borderTopRightRadius:0, borderBottomRightRadius:0, borderRight:"none"}}
+                          />
+                          <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-expanded={isOpen} aria-label={dashTxt("Browse saved strategies","تصفح الاستراتيجيات المحفوظة")}
+                            onPointerDown={libraryPointerActivate(openMenu)}
+                            onKeyDown={libraryKeyActivate(openMenu)}
+                            style={{...inputStyle, width:32, flexShrink:0, height:32, display:"flex", alignItems:"center", justifyContent:"center", padding:0, borderTopLeftRadius:0, borderBottomLeftRadius:0, background:c.el, borderColor:isOpen?c.acB:c.brH, boxShadow:"none"}}>
+                            <svg width={9} height={9} viewBox="0 0 10 10" aria-hidden="true" style={{display:"block",flexShrink:0,color:c.tm}}>
+                              <path d={isOpen ? "M2 6.4 5 3.4 8 6.4" : "M2 3.6 5 6.6 8 3.6"} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="square" strokeLinejoin="miter"/>
+                            </svg>
+                          </div>
+                          {isOpen && (
+                            <div onPointerDown={e=>e.stopPropagation()} style={{position:"absolute",left:0,top:34,width:"100%",zIndex:6,background:c.sf,border:`1px solid ${c.brH}`,borderTop:`2px solid ${c.acL}`,boxShadow:"0 14px 28px rgba(0,0,0,0.64)",boxSizing:"border-box",overflow:"hidden",padding:0}}>
+                              <div style={{padding:"7px 8px",borderBottom:`1px solid ${c.br}`}}>
+                                <input
+                                  autoFocus
+                                  value={searchValue}
+                                  onChange={e=>setDashAddTradeDropdownSearch(prev => ({...prev, [menuKey]:e.target.value}))}
+                                  onKeyDown={e=>{
+                                    e.stopPropagation();
+                                    if (e.key === "Enter" && visiblePinnedOptions[0]) chooseStrategy(visiblePinnedOptions[0].value);
+                                    else if (e.key === "Enter" && visibleOptions[0]) chooseStrategy(visibleOptions[0].value);
+                                    if (e.key === "Escape") setDashAddTradeTradeMenuOpen(null);
+                                  }}
+                                  placeholder={dashTxt("Search strategies...","ابحث عن الاستراتيجيات...")}
+                                  style={{width:"100%",height:24,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:800,fontFamily:F,padding:0,boxSizing:"border-box"}}
+                                />
+                              </div>
+                              <div className="tlr-scroll" style={{maxHeight:listMaxHeight,overflowY:"auto",overflowX:"hidden",padding:0}}>
+                                {dashAddTradeStrategyBankLoading ? (
+                                  <div style={{height:32,display:"flex",alignItems:"center",padding:"0 10px",fontSize:9.4,fontWeight:850,color:addTradeReadableMuted,fontFamily:F}}>
+                                    {dashTxt("Loading strategies...","جاري تحميل الاستراتيجيات...")}
+                                  </div>
+                                ) : (
+                                  <>
+                                    {visiblePinnedOptions.length > 0 && (
+                                      <div style={{padding:"5px 0 6px",borderBottom:visibleOptions.length ? `1px solid ${c.br}` : "none",background:"rgba(74,106,255,0.025)"}}>
+                                        <div style={{height:18,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px 0 13px",boxSizing:"border-box"}}>
+                                          <span style={{fontSize:7.8,fontWeight:950,color:c.acL,letterSpacing:"0.09em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                                            {dashTxt("Used in this journal","مستخدمة في هذه اليومية")}
+                                          </span>
+                                          <span style={{fontSize:7.4,fontWeight:950,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+                                            {visiblePinnedOptions.length}
+                                          </span>
+                                        </div>
+                                        {visiblePinnedOptions.map((option, index) => renderStrategyOption(option, index, "pinned"))}
+                                      </div>
+                                    )}
+                                    {visibleOptions.map((option, index) => renderStrategyOption(option, index))}
+                                    {!visiblePinnedOptions.length && !visibleOptions.length && (
+                                      <div style={{height:32,display:"flex",alignItems:"center",padding:"0 10px",fontSize:9.4,fontWeight:850,color:addTradeReadableMuted,fontFamily:F}}>
+                                        {dashTxt("No saved strategies found","لا توجد استراتيجيات محفوظة")}
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
                 const addTradeDirectionToggleField = () => {
                   const options = [
                     {value:"Long", label:dashTxt("Long","شراء"), color:c.gn},
@@ -31559,25 +31702,11 @@ const TalariaV8b = () => {
                               <div style={{padding:"11px 16px",borderBottom:`1px solid ${c.br}`,display:"flex",flexDirection:"column",gap:10,boxSizing:"border-box"}}>
                                 {isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) ? (
                                   <>
-                                    <div style={{width:420,maxWidth:"100%"}}>
-                                      <div style={{minWidth:0,display:"flex",flexDirection:"row",alignItems:"center",gap:10}}>
-                                        <div style={{flex:"0 0 76px",minWidth:0}}>
-                                          {fieldLabel(dashTxt("Strategy","الاستراتيجية"), {align:"left"})}
-                                        </div>
-                                        <input
-                                          list="dash-add-trade-live-journal-strategy-suggestions"
-                                          value={addTradeLiveJournalStrategyValue}
-                                          onChange={e=>updateDashAddTradeDraft("liveJournalStrategy", e.target.value)}
-                                          placeholder={dashTxt("Optional — defaults to Discretion","اختياري — الافتراضي Discretion")}
-                                          style={{...inputStyle, flex:"1 1 auto", minWidth:0, height:32, fontSize:10.8, fontWeight:800}}
-                                        />
-                                        <datalist id="dash-add-trade-live-journal-strategy-suggestions">
-                                          {addTradeSavedStrategyOptions.map(name => <option key={`strategy-suggest-${name}`} value={name} />)}
-                                        </datalist>
-                                      </div>
-                                    </div>
+                                    {addTradeLiveJournalStrategyField()}
                                     <div style={{fontSize:9.2,fontWeight:750,color:c.tm,fontFamily:F,lineHeight:1.45}}>
-                                      {addTradeSavedStrategyOptions.length
+                                      {dashAddTradeStrategyBankLoading
+                                        ? dashTxt("Loading your saved strategies from Strategy Lab...","جاري تحميل استراتيجياتك المحفوظة من مختبر الاستراتيجية...")
+                                        : addTradeSavedStrategyOptions.length
                                         ? dashTxt("Pick a saved strategy for its tags, type your own name, or leave blank to save as Discretion.","اختر استراتيجية محفوظة من مختبر الاستراتيجية لوسومها، أو اكتب نوعا خاصا، أو اتركه فارغا للحفظ كـ Discretion.")
                                         : dashTxt("No saved strategies yet — leave blank to save as Discretion, or type a strategy name. Create strategies in the Strategy tab to reuse them here.","لا توجد استرategias محفوظة بعد — اتركه فارغا للحفظ كـ Discretion أو اكتب نوع الاستراتيجية. أنشئ استراتيجيات في تبويب Strategy لإعادة استخدامها هنا.")}
                                     </div>

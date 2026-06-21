@@ -27,6 +27,7 @@ export function createEmptyV16Boot(): V16LiveBoot {
       defaultAccount,
     },
     strategies: [],
+    strategyBank: [],
     appliedSource: null,
   };
 }
