@@ -24,6 +24,7 @@ COPY ["Sources Handoff/TalariaV16.jsx", "/app/Sources Handoff/TalariaV16.jsx"]
 COPY ["Sources Handoff/scoreEngine.js", "/app/Sources Handoff/scoreEngine.js"]
 # Template storage lives in talaria-design; mirror into handoff for webpack alias at build time.
 COPY ["chart v 1.4/talaria-design/src/v9ChartTemplatesStorage.js", "/app/Sources Handoff/v9ChartTemplatesStorage.js"]
+COPY ["chart v 1.4/talaria-design/src/v9UiSettingsStorage.js", "/app/Sources Handoff/v9UiSettingsStorage.js"]
 
 # Google Sign-In (same OAuth Web client ID as trading-chart GOOGLE_CLIENT_ID)
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=

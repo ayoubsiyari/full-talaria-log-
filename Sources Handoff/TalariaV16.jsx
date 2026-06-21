@@ -11,6 +11,7 @@ import {
   readV9ChartTemplatesLocal,
   upsertV9ChartTemplateList,
 } from "./v9ChartTemplatesStorage.js";
+import { readV9UiSettingsLocal, persistV9UiSettings } from "./v9UiSettingsStorage.js";
 
 const isV16Embedded = () => typeof window !== "undefined" && !!window.__TALARIA_V16_EMBEDDED__;
 const isV16LiveBoot = () =>
@@ -9558,7 +9559,14 @@ const TalariaV8b = () => {
   const [cpHex, setCpHex] = useState('ffffff');
   const [cpDragging, setCpDragging] = useState(null);
   const [cpDragRect, setCpDragRect] = useState(null);
-  const [settings, setSettings] = useState(V16_DEFAULT_CHART_SETTINGS);
+  const [settings, setSettings] = useState(() => readV9UiSettingsLocal(V16_DEFAULT_CHART_SETTINGS));
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+    if (typeof window !== "undefined") {
+      window.__talariaV9SettingsSnapshot = settings;
+    }
+  }, [settings]);
 
   const [indOpen, setIndOpen] = useState(false);
   const [indPinned, setIndPinned] = useState([]);
@@ -9579,6 +9587,12 @@ const TalariaV8b = () => {
     setSettDrop(null);
     setTimeout(() => { setter(false); setClosing(s => { const n = new Set(s); n.delete(key); return n; }); }, 155);
   };
+  const confirmSettingsModal = useCallback(() => {
+    setColorPicker(null);
+    setSettDrop(null);
+    persistV9UiSettings(settingsRef.current);
+    animClose(setSettingsOpen, "settings");
+  }, []);
   // Smooth close for small dropdown/popup panels (uses tlrDropOut / tlrPopOut)
   const closePopup = (setter, key) => {
     setClosing(s => new Set([...s, key]));
@@ -39984,7 +39998,7 @@ const TalariaV8b = () => {
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,flexShrink:0}}>
             <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button onClick={confirmSettingsModal} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
       )}

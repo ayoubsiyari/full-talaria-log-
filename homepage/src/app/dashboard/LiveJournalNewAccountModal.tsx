@@ -45,7 +45,7 @@ const STEP_SECTION: Record<Exclude<WizardStepId, "review">, string> = {
   rules: "Challenge Rules",
 };
 
- = {
+export type LiveJournalNewAccountInitialState = {
   accountTypeKey?: V16AccountTypeKey;
   lockAccountType?: boolean;
   editAccount?: ApiLiveJournalAccount | null;
