@@ -17914,9 +17914,14 @@ class Chart {
 
         const tfMs = this.parseTimeframe(timeframe) || 60_000;
         const isFine = tfMs <= 4 * 60 * 60 * 1000;
+        const pendingBars = Number(this._pendingTfSwitchVisibleBarCount);
         const barLimit = Math.min(
             2000,
-            Math.max(isFine ? 2000 : 800, Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 800)
+            Math.max(
+                isFine ? 2000 : 800,
+                Number.isFinite(pendingBars) && pendingBars > 0 ? pendingBars + 80 : 0,
+                Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 800
+            )
         );
         // Backward-heavy: fine TFs keep ~30–40h+ of 1m (or ~12d of 15m) before playhead.
         const forwardBars = isFine
@@ -24518,7 +24523,6 @@ class Chart {
         const plotW = this.w - m.l - m.r;
         if (!(plotW > 0)) return;
         const centerTs = this._getVisibleCenterTimestamp();
-        if (!Number.isFinite(centerTs)) return;
         const barMs = this._estimateTimeframeStepMs();
         const leftIdx = this.pixelToDataIndex(m.l);
         const rightIdx = this.pixelToDataIndex(m.l + plotW);
@@ -24535,7 +24539,14 @@ class Chart {
             && (replay.userHasPanned || !replay.autoScrollEnabled));
 
         const vr = this._getViewportBarRange();
-        const visibleBarCount = Math.max(1, Math.ceil(Math.max(0, vr.last - vr.first)));
+        const pixelWin = typeof this._getVisibleFetchWindowFromPixels === 'function'
+            ? this._getVisibleFetchWindowFromPixels()
+            : null;
+        const visibleBarCount = Math.max(
+            1,
+            pixelWin?.visibleBarCount || Math.ceil(Math.max(0, vr.last - vr.first))
+        );
+        this._pendingTfSwitchVisibleBarCount = visibleBarCount;
         const viewportLeftIdx = vr.first;
         const leftScreenX = this.dataIndexToPixel(viewportLeftIdx);
 
@@ -24564,9 +24575,10 @@ class Chart {
         const rightTs = this.estimateTimestampForDataIndex(vr.last);
 
         this._tfSwitchViewport = {
-            centerTs,
+            centerTs: Number.isFinite(centerTs) ? centerTs : null,
             spanMs,
             visibleBarCount,
+            plotW,
             leftTs,
             rightTs,
             viewportLeftIdx,
@@ -24595,15 +24607,35 @@ class Chart {
      * fetch returned only the latest slice). Callers fall back to jumpToLatest() on
      * false so loading is never broken.
      */
+    _resolveTfSwitchTargetCandleWidth(vp) {
+        if (!vp) return this.candleWidth;
+        const m = this.margin;
+        const plotW = Math.max(
+            1,
+            (this.w - m.l - m.r) || vp.plotW || 0
+        );
+        if (Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0) {
+            return this._candleWidthForSpacing(plotW / vp.visibleBarCount);
+        }
+        if (Number.isFinite(vp.spanMs) && vp.spanMs > 0) {
+            const newBarMs = this._estimateTimeframeStepMs();
+            if (Number.isFinite(newBarMs) && newBarMs > 0) {
+                const barsInSpan = Math.max(2, vp.spanMs / newBarMs);
+                return this._candleWidthForSpacing(plotW / barsInSpan);
+            }
+        }
+        return vp.candleWidth;
+    }
+
     _restoreTfSwitchViewport() {
         const vp = this._tfSwitchViewport;
         this._tfSwitchViewport = null;
-        if (!vp || !Number.isFinite(vp.centerTs)) return false;
+        if (!vp) return false;
         if (!this.data || this.data.length === 0) return false;
-
-        const firstTs = this.data[0] && this.data[0].t;
-        const lastTs = this.data[this.data.length - 1] && this.data[this.data.length - 1].t;
-        if (!Number.isFinite(firstTs) || !Number.isFinite(lastTs)) return false;
+        if (!Number.isFinite(vp.visibleBarCount) && !Number.isFinite(vp.centerTs)
+            && !Number.isFinite(vp.anchorTs)) {
+            return false;
+        }
 
         const newBarMs = this._estimateTimeframeStepMs();
         const margin = (Number.isFinite(newBarMs) && newBarMs > 0) ? newBarMs : 0;
@@ -24617,28 +24649,21 @@ class Chart {
         };
 
         const anchorCheckTs = Number.isFinite(vp.anchorTs) ? vp.anchorTs : vp.centerTs;
-        const hasAnchor = tsMapsToLoadedBar(anchorCheckTs)
+        let hasAnchor = tsMapsToLoadedBar(anchorCheckTs)
             || tsMapsToLoadedBar(vp.centerTs)
             || tsMapsToLoadedBar(vp.leftTs);
-        if (!hasAnchor) {
-            return false;
+        if (!hasAnchor && Number.isFinite(vp.visibleBarCount) && this.data.length > 0) {
+            // Bar-count restore: anchor to closest loaded bar even when the exact
+            // wall-clock timestamp is outside the freshly fetched slice.
+            hasAnchor = true;
         }
+        if (!hasAnchor) return false;
 
         const m = this.margin;
-        const plotW = this.w - m.l - m.r;
+        const plotW = Math.max(1, (this.w - m.l - m.r) || vp.plotW || 0);
         if (!(plotW > 0)) return false;
 
-        // Keep the same number of candles on screen (200 × 1m → 200 × 1h), not the
-        // same wall-clock span (which would collapse to only a few higher-TF bars).
-        let targetCandleWidth = vp.candleWidth;
-        if (Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0) {
-            const targetSpacing = plotW / vp.visibleBarCount;
-            targetCandleWidth = this._candleWidthForSpacing(targetSpacing);
-        } else if (Number.isFinite(vp.spanMs) && vp.spanMs > 0 && Number.isFinite(newBarMs) && newBarMs > 0) {
-            const barsInSpan = Math.max(2, vp.spanMs / newBarMs);
-            const targetSpacing = plotW / barsInSpan;
-            targetCandleWidth = this._candleWidthForSpacing(targetSpacing);
-        }
+        const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth({ ...vp, plotW });
 
         // Preserve manual Y scale (double-click locked or user zoomed); else refit.
         if (vp.autoScale === false || vp.priceScaleLocked) {
@@ -24670,10 +24695,22 @@ class Chart {
             this._restorePositionAtScreenX(vp.leftTs, targetCandleWidth, vp.leftScreenX);
         } else if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
             this._restorePositionAtScreenX(vp.anchorTs, targetCandleWidth, vp.anchorScreenX);
-        } else {
+        } else if (Number.isFinite(vp.centerTs)) {
             this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
+        } else {
+            this._clampRestoredCandleWidth(targetCandleWidth);
+            const spacing = this.getCandleSpacing();
+            const count = Math.max(1, vp.visibleBarCount || 1);
+            const lastIdx = this.data.length - 1;
+            const scrollPos = Math.max(0, lastIdx - Math.floor(count * 0.7));
+            this.offsetX = -scrollPos * spacing;
+            this._chartViewRestored = true;
+            this.constrainOffset();
         }
         this._syncZoomLevelIndexFromCandleWidth();
+        if (Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0) {
+            this._tfSwitchVisibleBarCount = vp.visibleBarCount;
+        }
         return true;
     }
 
@@ -24730,11 +24767,14 @@ class Chart {
         const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
         if (!(spacing > 0)) return;
 
-        // Empty space on the left = the left plot edge maps to a bar index near 0
-        // (the same gap test the drag-load path uses, so it matches single-chart).
         const m = this.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, this.w - m.l - m.r);
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
-        if (leftIdx >= 6) return; // left already filled with loaded bars
+        const targetBars = Number(this._tfSwitchVisibleBarCount || this._pendingTfSwitchVisibleBarCount) || 0;
+        const needLeftFill = targetBars > 0
+            ? leftIdx < Math.max(6, Math.floor(targetBars * 0.35))
+            : leftIdx < 6;
+        if (!needLeftFill) return;
 
         const replay = this.replaySystem;
         const measureLen = () => (replay && Array.isArray(replay.fullRawData))
@@ -24812,6 +24852,9 @@ class Chart {
      * candle so the chart is never left on an empty/offscreen region.
      */
     _restoreOrJumpAfterTfSwitch() {
+        const vpSnap = this._tfSwitchViewport
+            ? { ...this._tfSwitchViewport }
+            : null;
         const restored = typeof this._restoreTfSwitchViewport === 'function'
             && this._restoreTfSwitchViewport();
         if (restored) {
@@ -24820,12 +24863,33 @@ class Chart {
             }
             return;
         }
-        // Soft fallback: center on captured wall-clock center before jumping to latest.
-        const vp = this._tfSwitchViewport;
-        this._tfSwitchViewport = null;
-        if (vp && Number.isFinite(vp.centerTs) && this.data && this.data.length > 0
-            && typeof this._restorePositionToTimestamp === 'function') {
-            this._restorePositionToTimestamp(vp.centerTs, vp.candleWidth);
+        const vp = vpSnap;
+        if (vp && this.data && this.data.length > 0) {
+            const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth(vp);
+            if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)
+                && typeof this._restorePositionAtScreenX === 'function') {
+                this._restorePositionAtScreenX(vp.anchorTs, targetCandleWidth, vp.anchorScreenX);
+            } else if (Number.isFinite(vp.centerTs)
+                && typeof this._restorePositionToTimestamp === 'function') {
+                this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
+            } else if (Number.isFinite(vp.visibleBarCount)) {
+                this._clampRestoredCandleWidth(targetCandleWidth);
+                const spacing = this.getCandleSpacing();
+                const count = Math.max(1, vp.visibleBarCount);
+                const lastIdx = this.data.length - 1;
+                const scrollPos = Math.max(0, lastIdx - Math.floor(count * 0.7));
+                this.offsetX = -scrollPos * spacing;
+                this._chartViewRestored = true;
+                this.constrainOffset();
+            } else if (typeof this.jumpToLatest === 'function') {
+                this.jumpToLatest();
+            } else {
+                this._chartViewRestored = false;
+                this.fitToView();
+            }
+            if (Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0) {
+                this._tfSwitchVisibleBarCount = vp.visibleBarCount;
+            }
             if (typeof this.constrainOffset === 'function') {
                 try { this.constrainOffset(); } catch (_e) { /* ignore */ }
             }
