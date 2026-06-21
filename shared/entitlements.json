@@ -8,7 +8,9 @@
   "defaults": {
     "max_trading_sessions": 5,
     "max_tickers_per_session": 5,
-    "max_supporting_tickers_per_session": 5
+    "max_supporting_tickers_per_session": 5,
+    "max_personal_live_journals": 5,
+    "max_prop_live_journals": 5
   },
   "feature_flags": {
     "ENTITLEMENTS_RESOLVER_V2": true

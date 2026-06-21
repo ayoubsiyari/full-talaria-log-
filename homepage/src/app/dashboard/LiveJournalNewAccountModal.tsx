@@ -13,6 +13,13 @@ import {
   parseLiveJournalPropRules,
 } from "@/lib/liveJournalPropRules";
 import { LiveJournalPropRulesForm } from "./LiveJournalPropRulesForm";
+import {
+  fetchLiveJournalLimits,
+  isLiveJournalTypeAtLimit,
+  liveJournalLimitLabel,
+  liveJournalLimitMessage,
+  type LiveJournalLimitsPayload,
+} from "@/lib/liveJournalLimits";
 
 const F = "'Exo 2', sans-serif";
 
@@ -56,6 +63,7 @@ export type LiveJournalNewAccountModalProps = {
   onClose: () => void;
   onSaved?: (account: Record<string, unknown>) => void | Promise<void>;
   initialState?: LiveJournalNewAccountInitialState | null;
+  journalLimits?: LiveJournalLimitsPayload | null;
 };
 
 function parseBalanceInput(raw: string): number | null {
@@ -71,6 +79,7 @@ export function LiveJournalNewAccountModal({
   onClose,
   onSaved,
   initialState,
+  journalLimits: journalLimitsProp = null,
 }: LiveJournalNewAccountModalProps) {
   const c = {
     ac: "#2643F7",
@@ -112,10 +121,16 @@ export function LiveJournalNewAccountModal({
   );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [journalLimits, setJournalLimits] = React.useState<LiveJournalLimitsPayload | null>(journalLimitsProp);
   const [wizardStep, setWizardStep] = React.useState(1);
   const [hov, setHov] = React.useState<string | null>(null);
 
   const effectiveType = lockedType || accountTypeKey;
+  const atJournalLimit =
+    !isEdit &&
+    isLiveJournalTypeAtLimit(journalLimits, effectiveType === "prop" ? "prop" : "personal");
+  const activeLimitBucket =
+    journalLimits?.[effectiveType === "prop" ? "prop" : "personal"] ?? null;
   const resolvedPropFirm =
     effectiveType === "prop" ? (propFirm === "Other" ? propFirmCustom.trim() : propFirm) : null;
   const parsedBalance = parseBalanceInput(startingBalance) ?? (effectiveType === "prop" ? 50000 : 10000);
@@ -205,8 +220,17 @@ export function LiveJournalNewAccountModal({
     }) as React.CSSProperties;
 
   React.useEffect(() => {
+    setJournalLimits(journalLimitsProp);
+  }, [journalLimitsProp]);
+
+  React.useEffect(() => {
     if (!open) return;
     const edit = initialState?.editAccount;
+    if (!edit) {
+      void fetchLiveJournalLimits().then((limits) => {
+        if (limits) setJournalLimits(limits);
+      });
+    }
     const type =
       edit?.account_type === "prop" || initialState?.accountTypeKey === "prop" ? "prop" : "personal";
     setAccountTypeKey(type);
@@ -348,6 +372,10 @@ export function LiveJournalNewAccountModal({
       setError(err);
       return;
     }
+    if (atJournalLimit && journalLimits) {
+      setError(liveJournalLimitMessage(journalLimits, effectiveType === "prop" ? "prop" : "personal"));
+      return;
+    }
     const trimmedName = name.trim();
     const balance = parseBalanceInput(startingBalance);
     if (!trimmedName) {
@@ -475,10 +503,12 @@ export function LiveJournalNewAccountModal({
           const isA = accountTypeKey === v;
           const hk = `mode_${v}`;
           const isH = hov === hk;
+          const typeAtLimit = !isEdit && isLiveJournalTypeAtLimit(journalLimits, v);
           return (
             <div
               key={v}
               onClick={() => {
+                if (typeAtLimit) return;
                 setAccountTypeKey(v);
                 setWizardStep(1);
               }}
@@ -490,10 +520,11 @@ export function LiveJournalNewAccountModal({
                 display: "flex",
                 flexDirection: "column",
                 gap: 2,
-                cursor: "default",
+                cursor: typeAtLimit ? "not-allowed" : "default",
                 transition: "all 0.15s",
                 position: "relative",
                 textAlign: "center",
+                opacity: typeAtLimit ? 0.45 : 1,
                 background: isA
                   ? "rgba(74,106,255,0.07)"
                   : isH
@@ -960,6 +991,25 @@ export function LiveJournalNewAccountModal({
               </div>
             </div>
 
+            {atJournalLimit && activeLimitBucket ? (
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: "8px 18px",
+                  background: "rgba(255,80,104,0.08)",
+                  borderTop: `1px solid rgba(255,80,104,0.2)`,
+                  borderBottom: `1px solid rgba(255,80,104,0.2)`,
+                  fontSize: 11,
+                  color: c.rd,
+                  fontFamily: F,
+                  lineHeight: 1.4,
+                }}
+              >
+                {liveJournalLimitLabel(effectiveType === "prop" ? "prop" : "personal")} limit reached (
+                {activeLimitBucket.count}/{activeLimitBucket.max}). Delete an existing journal to create a new one.
+              </div>
+            ) : null}
+
             {/* Step tabs */}
             <div style={{ display: "flex", borderTop: `1px solid ${c.brH}` }}>
               {STEPS.map((step) => {
@@ -1140,9 +1190,9 @@ export function LiveJournalNewAccountModal({
             ) : (
               <button
                 type="button"
-                onClick={saving ? undefined : () => void handleSave()}
-                disabled={saving}
-                style={saveBtnStyle(!saving)}
+                onClick={saving || atJournalLimit ? undefined : () => void handleSave()}
+                disabled={saving || atJournalLimit}
+                style={saveBtnStyle(!saving && !atJournalLimit)}
               >
                 {saving ? (
                   <span

@@ -124,3 +124,25 @@ def test_merge_plan_features_dedupes_cap_lines():
         "Trading journal access",
         "Priority email support",
     ]
+
+
+def test_live_journal_defaults():
+    caps = pe.live_journal_defaults()
+    assert caps["max_personal_live_journals"] == 5
+    assert caps["max_prop_live_journals"] == 5
+
+
+def test_effective_live_journal_limits_admin_unlimited():
+    user = _FakeUser(role="admin")
+    caps = pe.effective_live_journal_limits(user)
+    assert caps["max_personal_live_journals"] == 0
+    assert caps["max_prop_live_journals"] == 0
+    assert caps["entitlements_source"] == "admin"
+
+
+def test_effective_live_journal_limits_defaults():
+    user = _FakeUser()
+    caps = pe.effective_live_journal_limits(user)
+    assert caps["max_personal_live_journals"] == 5
+    assert caps["max_prop_live_journals"] == 5
+    assert caps["entitlements_source"] == "defaults"

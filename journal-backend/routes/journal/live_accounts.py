@@ -9,6 +9,7 @@ from flask import jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy import func
 
+import plan_entitlements as pe
 from models import LiveJournalAccount, Profile, User, db
 from subscription_access import user_entitles_journal
 
@@ -243,6 +244,72 @@ def _name_conflict(user_id: int, name: str, *, exclude_profile_id: int | None = 
     return q.first() is not None
 
 
+def _account_type_counts(user_id: int) -> dict[str, int]:
+    rows = (
+        db.session.query(LiveJournalAccount.account_type, func.count(LiveJournalAccount.id))
+        .filter(LiveJournalAccount.user_id == user_id, LiveJournalAccount.status == "active")
+        .group_by(LiveJournalAccount.account_type)
+        .all()
+    )
+    out = {"personal": 0, "prop": 0}
+    for account_type, count in rows:
+        key = str(account_type or "").strip().lower()
+        if key in out:
+            out[key] = int(count or 0)
+    return out
+
+
+def _live_journal_limits_response(user) -> dict:
+    caps = pe.effective_live_journal_limits(user)
+    counts = _account_type_counts(user.id)
+    return {
+        "personal": {
+            "count": counts["personal"],
+            "max": caps["max_personal_live_journals"],
+        },
+        "prop": {
+            "count": counts["prop"],
+            "max": caps["max_prop_live_journals"],
+        },
+    }
+
+
+def _live_journal_limit_label(account_type: str) -> str:
+    return "Prop journal" if str(account_type or "").strip().lower() == "prop" else "Personal live journal"
+
+
+def _check_live_journal_create_quota(user, account_type: str):
+    caps = pe.effective_live_journal_limits(user)
+    counts = _account_type_counts(user.id)
+    at = str(account_type or "").strip().lower()
+    if at == "personal":
+        cap = caps["max_personal_live_journals"]
+        count = counts["personal"]
+    elif at == "prop":
+        cap = caps["max_prop_live_journals"]
+        count = counts["prop"]
+    else:
+        return None
+    if cap <= 0:
+        return None
+    if count >= cap:
+        label = _live_journal_limit_label(at)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": (
+                        f"{label} limit reached ({count}/{cap}). "
+                        "Delete an existing journal to create a new one."
+                    ),
+                    "limits": _live_journal_limits_response(user),
+                }
+            ),
+            403,
+        )
+    return None
+
+
 @journal_bp.route("/live-accounts", methods=["GET"])
 @jwt_required()
 def list_live_journal_accounts():
@@ -268,10 +335,14 @@ def list_live_journal_accounts():
             {
                 "success": True,
                 "accounts": [_serialize_live_account(r, trade_count=counts.get(r.profile_id, 0)) for r in rows],
+                "limits": _live_journal_limits_response(user),
             }
         ), 200
     except Exception as exc:
         return _db_error_response(exc)
+
+
+@journal_bp.route("/live-accounts/<int:account_id>", methods=["GET"])
 @jwt_required()
 def get_live_journal_account(account_id: int):
     user, err = _require_journal_user()
@@ -294,6 +365,10 @@ def create_live_journal_account():
     payload, err = _normalize_payload(request.get_json(silent=True) or {})
     if err:
         return err
+
+    quota_err = _check_live_journal_create_quota(user, payload["account_type"])
+    if quota_err:
+        return quota_err
 
     profile_mode = "journal_live" if payload["account_type"] == "prop" else "journal"
     profile_name = payload["name"]

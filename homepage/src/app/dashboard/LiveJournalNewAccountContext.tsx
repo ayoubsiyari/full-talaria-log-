@@ -5,7 +5,14 @@ import {
   LiveJournalNewAccountModal,
   type LiveJournalNewAccountInitialState,
 } from "@/app/dashboard/LiveJournalNewAccountModal";
+import { LiveJournalLimitModal } from "@/app/dashboard/LiveJournalLimitModal";
 import type { ApiLiveJournalAccount, V16AccountTypeKey } from "@/app/dashboard/v16/v16SourceTypes";
+import {
+  fetchLiveJournalLimits,
+  isLiveJournalTypeAtLimit,
+  type LiveJournalAccountTypeKey,
+  type LiveJournalLimitsPayload,
+} from "@/lib/liveJournalLimits";
 
 export type LiveJournalNewAccountRegisterFn = (
   fn: ((opts?: LiveJournalNewAccountOpenOptions) => void) | null
@@ -37,18 +44,38 @@ export function LiveJournalNewAccountProvider({
 }) {
   const [open, setOpen] = React.useState(false);
   const [initialState, setInitialState] = React.useState<LiveJournalNewAccountInitialState | null>(null);
+  const [journalLimits, setJournalLimits] = React.useState<LiveJournalLimitsPayload | null>(null);
+  const [limitGate, setLimitGate] = React.useState<{
+    type: LiveJournalAccountTypeKey;
+    limits: LiveJournalLimitsPayload;
+  } | null>(null);
   const onSavedListenersRef = React.useRef(new Set<() => void>());
   const pendingOpenOptionsRef = React.useRef<LiveJournalNewAccountOpenOptions | null>(null);
 
   const openNewLiveJournal = React.useCallback((opts?: LiveJournalNewAccountOpenOptions) => {
     pendingOpenOptionsRef.current = opts || null;
     const typeKey: V16AccountTypeKey = opts?.editAccount?.account_type === "prop" || opts?.accountTypeKey === "prop" ? "prop" : "personal";
-    setInitialState({
-      accountTypeKey: typeKey,
-      lockAccountType: Boolean(opts?.lockAccountType || opts?.editAccount),
-      editAccount: opts?.editAccount || null,
-    });
-    setOpen(true);
+
+    const launch = (limits: LiveJournalLimitsPayload | null) => {
+      if (!opts?.editAccount && isLiveJournalTypeAtLimit(limits, typeKey)) {
+        if (limits) setLimitGate({ type: typeKey, limits });
+        return;
+      }
+      setJournalLimits(limits);
+      setInitialState({
+        accountTypeKey: typeKey,
+        lockAccountType: Boolean(opts?.lockAccountType || opts?.editAccount),
+        editAccount: opts?.editAccount || null,
+      });
+      setOpen(true);
+    };
+
+    if (opts?.editAccount) {
+      launch(null);
+      return;
+    }
+
+    void fetchLiveJournalLimits().then(launch);
   }, []);
 
   React.useEffect(() => {
@@ -171,6 +198,13 @@ export function LiveJournalNewAccountProvider({
         onClose={handleClose}
         onSaved={handleSaved}
         initialState={initialState}
+        journalLimits={journalLimits}
+      />
+      <LiveJournalLimitModal
+        open={!!limitGate}
+        accountType={limitGate?.type || "personal"}
+        limits={limitGate?.limits || null}
+        onClose={() => setLimitGate(null)}
       />
     </LiveJournalNewAccountContext.Provider>
   );

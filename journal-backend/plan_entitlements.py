@@ -356,6 +356,38 @@ def effective_backtest_limits(
     }
 
 
+def live_journal_defaults() -> dict:
+    """Default caps for personal and prop live journal accounts (subscribers)."""
+    cfg = _load_entitlements_config()
+    defaults = cfg.get("defaults") or {}
+    return {
+        "max_personal_live_journals": max(
+            0, int(defaults.get("max_personal_live_journals", 5) or 5)
+        ),
+        "max_prop_live_journals": max(0, int(defaults.get("max_prop_live_journals", 5) or 5)),
+    }
+
+
+def effective_live_journal_limits(user) -> dict:
+    """Resolve enforceable live journal account caps (0 = unlimited for admins)."""
+    if getattr(user, "role", "") == "admin":
+        return {
+            "max_personal_live_journals": 0,
+            "max_prop_live_journals": 0,
+            "entitlements_source": "admin",
+        }
+
+    caps = live_journal_defaults()
+    mp = (os.getenv("MAX_PERSONAL_LIVE_JOURNALS") or "").strip()
+    mprop = (os.getenv("MAX_PROP_LIVE_JOURNALS") or "").strip()
+    if mp:
+        caps["max_personal_live_journals"] = max(0, int(mp))
+    if mprop:
+        caps["max_prop_live_journals"] = max(0, int(mprop))
+    caps["entitlements_source"] = "defaults"
+    return caps
+
+
 def user_should_revoke_entitlements(user, subscription_model, db_session) -> bool:
     """True when user has no active/trialing sub, no admin extension, no override."""
     if not user or getattr(user, "entitlements_override", False):
