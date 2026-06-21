@@ -286,5 +286,6 @@ def serialize_entry(entry):
         'variables': entry.variables or {},
         'date': entry.date.isoformat() if entry.date else None,
         'created_at': entry.created_at.isoformat() if entry.created_at else None,
-        'updated_at': entry.updated_at.isoformat() if entry.updated_at else None
+        'updated_at': entry.updated_at.isoformat() if entry.updated_at else None,
+        'profile_id': entry.profile_id,
     }

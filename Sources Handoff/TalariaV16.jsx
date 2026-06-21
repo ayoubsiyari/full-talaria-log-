@@ -7896,6 +7896,23 @@ const TalariaV8b = () => {
         return false;
       });
   };
+  const persistLiveJournalManualTrade = (source, trade) => {
+    const saver = typeof window !== "undefined" ? window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ : null;
+    if (typeof saver !== "function") return Promise.resolve(false);
+    return saver({
+      key: source?.key,
+      kind: source?.kind,
+      label: source?.label,
+      liveAccountId: source?.liveAccountId,
+      profileId: source?.profileId,
+    }, trade)
+      .then(() => true)
+      .catch((err) => {
+        console.error("[V16] live journal manual trade save failed", err);
+        return false;
+      });
+  };
+  const liveJournalAddTradeBridgeRef = useRef({ open: null });
   const [dashStrategyId, setDashStrategyId] = useState(null);
   const [dashHov, setDashHov] = useState(null);
   const [dashMode, setDashMode] = useState(() => {
@@ -13524,7 +13541,7 @@ const TalariaV8b = () => {
                     sourceDashboardKind:"journal",
                     sourceType:"live-journal",
                   }));
-                return {key,kind,label,typeLabel:dashTxt("Journal","يومية"),color:c.gn,trades,sessions:[]};
+                return {key,kind,label,typeLabel:dashTxt("Journal","يومية"),color:c.gn,trades,sessions:[],liveAccountId:account?.liveAccountId,profileId:account?.profileId,statusKind:"journal"};
               }
               const [strategyScope, rawAccountId] = kind === "strategyJournal" && id.includes("::") ? id.split("::") : [null, id];
               const accountId = rawAccountId || id;
@@ -17773,6 +17790,9 @@ const TalariaV8b = () => {
                 <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey }))} onKeyDown={libraryKeyActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey }))} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
                   {dashTxt("Create Journal","إنشاء يومية")}
                 </div>
+                <div className="tlr-library-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>liveJournalAddTradeBridgeRef.current?.open?.())} onKeyDown={libraryKeyActivate(()=>liveJournalAddTradeBridgeRef.current?.open?.())} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.acL,color:"#fff",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer",boxShadow:`0 0 8px ${c.acG}`}}>
+                  {dashTxt("Add Trade","إضافة صفقة")}
+                </div>
                 <div className="tlr-library-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(openLiveJournalImportFlow)} onKeyDown={libraryKeyActivate(openLiveJournalImportFlow)} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.brH}`,color:c.ts,fontSize:9,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
                   {dashTxt("Import trades","استيراد الصفقات")}
                 </div>
@@ -17802,6 +17822,14 @@ const TalariaV8b = () => {
                 shadow:c.acG,
                 onClick:()=>{ setDashLibraryOpen(false); if(!openDashboardNewSession({ tradingMode: dashLibraryModeCat === "prop" ? "prop" : "standard" })){ setSessView("sessions"); goNew(); } }
               };
+          const libraryJournalSecondaryAction = dashLibraryTab === "journals"
+            ? {
+                label:dashTxt("Add Trade","إضافة صفقة"),
+                color:c.acL,
+                shadow:c.acG,
+                onClick:()=>liveJournalAddTradeBridgeRef.current?.open?.(),
+              }
+            : null;
           const compareHeaderAction = dashCompareTab === "journals"
             ? {
                 label:dashTxt("Create Journal","إنشاء يومية"),
@@ -24755,6 +24783,49 @@ const TalariaV8b = () => {
               setDashAddTradeEditorOpen(true);
             });
           };
+          liveJournalAddTradeBridgeRef.current.open = (account) => {
+            const boot = getV16JournalBoot();
+            let target = account;
+            if (!target && boot) {
+              const sel = dashLibrarySelectionRef.current;
+              if (sel?.kind === "journalAccount") {
+                target = boot.accounts.find(item => String(item.id) === String(sel.id));
+              }
+            }
+            if (!target && boot) {
+              const typeKey = libraryLiveJournalTypeFromSelection();
+              target = boot.accounts.find(item => item.isLiveJournalAccount && item.accountTypeKey === typeKey)
+                || boot.accounts.find(item => item.isLiveJournalAccount);
+            }
+            if (!target?.liveAccountId && !target?.profileId) {
+              openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection() });
+              return;
+            }
+            const key = `journalAccount:${target.id}`;
+            const baseSource = resolveDashboardAppliedSource(key) || {
+              key,
+              kind:"journalAccount",
+              id:target.id,
+              label:target.name || dashTxt("Live Journal","يومية حية"),
+              typeLabel:dashTxt("Journal","يومية"),
+              color:c.gn,
+              trades:[],
+              sessions:[],
+            };
+            const source = {
+              ...baseSource,
+              liveAccountId:target.liveAccountId,
+              profileId:target.profileId,
+              statusKind:"journal",
+              requiresAddTradeIntegrityWarning:true,
+              addTradeWarningKind:"journal",
+              isGreenStatus:true,
+            };
+            if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
+            commitLibrarySelection(makeLibraryJournalAccountSelection(target));
+            setDashLibraryOpen(false);
+            openSelectedAddTradeSource(source);
+          };
           const openDashTradeEditorFromTrade = (trade, rowKey=null) => {
             if (!trade) return;
             const key = rowKey || getDashTradeRowKey(trade, 0);
@@ -25940,11 +26011,18 @@ const TalariaV8b = () => {
               createdAt:nowIso,
             };
             manualTrade.demons = btDashTradeDemons(manualTrade, {session:dashAddTradeEditorSource});
+            const canPersistToJournal = isJournalManualTrade && typeof window !== "undefined" && typeof window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ === "function";
             const canPersistToBacktestSession = isV16LiveBoot() && sourceSessionId && !isJournalManualTrade;
             const applyLocalManualTrade = (tradeRow) => {
               setDashManualTrades((prev) => [tradeRow, ...prev]);
             };
             const persistOrLocalManualTrade = (tradeRow, onLocal) => {
+              if (canPersistToJournal) {
+                persistLiveJournalManualTrade(dashAddTradeEditorSource, tradeRow).then((ok) => {
+                  if (!ok) onLocal();
+                });
+                return;
+              }
               if (!canPersistToBacktestSession) {
                 onLocal();
                 return;
@@ -26552,6 +26630,21 @@ const TalariaV8b = () => {
                         </div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                        {!dashCompareOpen && libraryJournalSecondaryAction && (
+                          <div className="tlr-library-action" role="button" tabIndex={0} aria-label={libraryJournalSecondaryAction.label}
+                            onClick={e=>{e.stopPropagation();libraryJournalSecondaryAction.onClick();}}
+                            onKeyDown={libraryKeyActivate(e=>{e.stopPropagation();libraryJournalSecondaryAction.onClick();})}
+                            onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
+                            onMouseDown={e=>{e.currentTarget.style.transform=dashPressTransform;}}
+                            onMouseUp={e=>{e.currentTarget.style.transform="translateY(0)";}}
+                            style={{"--tlr-action-glow":libraryJournalSecondaryAction.shadow,height:30,minWidth:118,padding:"0 13px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:libraryJournalSecondaryAction.color,color:"#fff",fontSize:9.6,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"pointer",boxShadow:`0 0 8px ${libraryJournalSecondaryAction.shadow}`,filter:"brightness(1)",opacity:1,transition:dashControlTransition,boxSizing:"border-box",transform:"translateY(0)"}}>
+                            <svg width={13} height={13} viewBox="0 0 12 12" fill="none" style={{flexShrink:0}}>
+                              <line x1="6" y1="1.5" x2="6" y2="10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square"/>
+                              <line x1="1.5" y1="6" x2="10.5" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="square"/>
+                            </svg>
+                            {libraryJournalSecondaryAction.label}
+                          </div>
+                        )}
                         {!dashCompareOpen && (
                           <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} aria-label={libraryHeaderAction.label}
                             onClick={e=>{e.stopPropagation();libraryHeaderAction.onClick();}}

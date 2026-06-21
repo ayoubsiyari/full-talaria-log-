@@ -30,6 +30,17 @@ declare global {
       sessionId: string | number,
       trade: Record<string, unknown>
     ) => Promise<Record<string, unknown>>;
+    /** Persist manual dashboard trade to live journal profile (embedded live only). */
+    __TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__?: (
+      source: {
+        key?: string;
+        kind?: string;
+        label?: string;
+        liveAccountId?: number;
+        profileId?: number;
+      },
+      trade: Record<string, unknown>
+    ) => Promise<Record<string, unknown>>;
     /** Update ?sessionId= when user applies a backtest source in the library. */
     __TALARIA_V16_SYNC_SESSION_URL__?: (sessionId: string | number) => void;
     /** Update ?view= when user switches Dashboard / Trades / Backtest / Strategies in V16 nav. */

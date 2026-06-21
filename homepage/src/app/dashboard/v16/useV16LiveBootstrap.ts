@@ -18,6 +18,10 @@ import {
   type SessionKpis,
 } from "./v16Mappers";
 import { refreshV16SessionTrades, saveManualTradeToSession } from "./v16ManualTradeApi";
+import {
+  saveManualTradeToLiveJournal,
+  type LiveJournalAddTradeSource,
+} from "./v16LiveJournalManualTrade";
 import { apiStrategyToBankRow } from "../strategies/strategyLabV9Mappers";
 import type { ApiStrategyRecord } from "../strategies/strategyLabV9Mappers";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
@@ -80,6 +84,11 @@ export function useV16LiveBootstrap(): BootState {
       window.__TALARIA_V16_TRADES__[sid] = trades;
       return saved;
     };
+
+    window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ = async (
+      source: LiveJournalAddTradeSource,
+      trade: Record<string, unknown>
+    ) => saveManualTradeToLiveJournal(source, trade);
 
     window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ = async () => {
       const journalPayload = await fetchJournalApiData().catch(() => ({
@@ -215,6 +224,7 @@ export function useV16LiveBootstrap(): BootState {
       window.__TALARIA_V16_BOOT_LOADING__ = false;
       delete window.__TALARIA_V16_FETCH_TRADES_FOR_SESSION__;
       delete window.__TALARIA_V16_SAVE_MANUAL_TRADE__;
+      delete window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__;
       delete window.__TALARIA_V16_REFRESH_STRATEGY_BANK__;
     };
   }, [reloadKey, urlSessionId]);
