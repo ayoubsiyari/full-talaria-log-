@@ -25635,6 +25635,7 @@ const TalariaV8b = () => {
           };
           const openSelectedAddTradeSource = (source) => {
             if (!source) return;
+            const boot = getV16JournalBoot();
             setDashAddTradePickerOpen(false);
             setDashAddTradeWarningOpen(false);
             setDashPendingAddTradeSource(null);
@@ -25647,7 +25648,6 @@ const TalariaV8b = () => {
             setDashAddTradeScreenshotSlot("pre");
             setDashAddTradeExcursionOpen(false);
             if (isDashLiveJournalAddTradeSource(source)) {
-              const boot = getV16JournalBoot();
               const accountId = source.id || String(source.key || "").replace(/^journalAccount:/, "");
               const account = resolveLiveJournalAccountTarget(
                 boot?.accounts?.find((a) => String(a.id) === String(accountId) || String(a.liveAccountId) === String(source.liveAccountId)) || {
