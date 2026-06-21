@@ -8455,6 +8455,48 @@ Chart.prototype._clearSeparatePanelAxisOverlayDecor = function() {
     overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
 };
 
+/** Apply main-chart grid stroke style from chartSettings (returns false when grid hidden). */
+Chart.prototype._applyChartGridStrokeStyle = function(ctx, axis) {
+    const cs = this.chartSettings || {};
+    if (cs.showGrid === false || cs.gridStyle === 'None') return false;
+    const wantVert = axis === 'vertical';
+    const wantHorz = axis === 'horizontal';
+    if (wantVert && cs.gridStyle !== 'Vert and horz' && cs.gridStyle !== 'Vertical') return false;
+    if (wantHorz && cs.gridStyle !== 'Vert and horz' && cs.gridStyle !== 'Horizontal') return false;
+    const gridLW = Math.max(1, parseInt(cs.gridLineWidth, 10) || 1);
+    const gridPat = cs.gridPattern || 'solid';
+    ctx.strokeStyle = cs.gridColor || 'rgba(42, 46, 57, 0.6)';
+    ctx.lineWidth = gridLW;
+    if (gridPat === 'dashed') ctx.setLineDash([6, 4]);
+    else if (gridPat === 'dotted') ctx.setLineDash([2, 4]);
+    else if (gridPat === 'longDash') ctx.setLineDash([10, 5]);
+    else ctx.setLineDash([]);
+    return true;
+};
+
+/** Vertical time grid through separate indicator stack — same _timeTicks as main chart. */
+Chart.prototype._drawSeparatePanelVerticalTimeGrid = function(ctx, m, panelTop, panelBottom, plotRight) {
+    if (!ctx || !this._applyChartGridStrokeStyle(ctx, 'vertical')) return;
+    const ticks = this._timeTicks;
+    if (!Array.isArray(ticks) || !ticks.length) {
+        ctx.setLineDash([]);
+        return;
+    }
+    const xMin = m.l;
+    const xMax = Number.isFinite(plotRight) ? plotRight : (this.w - m.r);
+    const y0 = panelTop;
+    const y1 = panelBottom;
+    for (let i = 0; i < ticks.length; i++) {
+        const x = ticks[i].x;
+        if (x < xMin || x > xMax) continue;
+        ctx.beginPath();
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, y1);
+        ctx.stroke();
+    }
+    ctx.setLineDash([]);
+};
+
 /** Opaque fill for the separate-panel stack — call before candles so price series cannot bleed through. */
 Chart.prototype._paintSeparatePanelStackBackground = function() {
     if (typeof this._getVisibleSeparateIndicators !== 'function') return;
@@ -8818,6 +8860,11 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         slotTopCursor += slotHeight;
     });
 
+    // Time-aligned vertical grid — continuous with main chart (drawn after bg, under plots).
+    if (typeof this._drawSeparatePanelVerticalTimeGrid === 'function') {
+        this._drawSeparatePanelVerticalTimeGrid(ctx, m, panelTop, panelBottom, panelAxisLeft);
+    }
+
     // Draw each indicator in its own slot (top-down: volume first, then oscillators)
     panelSlots.forEach((slot) => {
         const indicator = slot.indicator;
@@ -8997,26 +9044,27 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         
         const color = indicator.style.color || '#ff6d00';
         
-        // Draw Y-axis grid lines and labels
-        ctx.fillStyle = _isLightBg ? '#5f6b80' : '#9ca7be';
+        // Draw Y-axis grid lines and labels (match main chart grid settings)
         ctx.font = '10px Roboto';
         ctx.textAlign = 'right';
         const numGridLines = panFast ? 2 : 4;
+        const horzGridOn = typeof this._applyChartGridStrokeStyle === 'function'
+            && this._applyChartGridStrokeStyle(ctx, 'horizontal');
         for (let i = 0; i <= numGridLines; i++) {
             const val = min + (max - min) * (i / numGridLines);
             const y = scaleY(val);
             
-            // Grid line
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.beginPath();
-            ctx.moveTo(m.l, y);
-            ctx.lineTo(this.w, y);
-            ctx.stroke();
+            if (horzGridOn) {
+                ctx.beginPath();
+                ctx.moveTo(m.l, y);
+                ctx.lineTo(panelAxisLeft, y);
+                ctx.stroke();
+            }
             
-            // Y-axis label
             ctx.fillStyle = '#787b86';
-            ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
+            if (!panFast) ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
         }
+        if (horzGridOn) ctx.setLineDash([]);
         
         // Draw the indicator plot (TradingView-style line / step / area / columns / …)
         this.drawLineIndicator(values, color, indicator.style.lineWidth || 2, visibleStart, visibleEnd, indicator.style.lineStyle, {
@@ -11883,18 +11931,22 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         ctx.textAlign = 'right';
         ctx.fillStyle = '#787b86';
         const numGridLines = fast ? 2 : 4;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.lineWidth = 1;
+        const plotRight = this.w - m.r;
+        const horzGridOn = typeof this._applyChartGridStrokeStyle === 'function'
+            && this._applyChartGridStrokeStyle(ctx, 'horizontal');
         for (let i = 0; i <= numGridLines; i++) {
             const tickVal = min + (max - min) * (i / numGridLines);
             const tickY = scaleY(tickVal);
             if (!Number.isFinite(tickY)) continue;
-            ctx.beginPath();
-            ctx.moveTo(m.l, tickY);
-            ctx.lineTo(this.w, tickY);
-            ctx.stroke();
+            if (horzGridOn) {
+                ctx.beginPath();
+                ctx.moveTo(m.l, tickY);
+                ctx.lineTo(plotRight, tickY);
+                ctx.stroke();
+            }
             if (!fast) ctx.fillText(tickVal.toFixed(d) + sfx, this.w - 6, tickY + 3);
         }
+        if (horzGridOn) ctx.setLineDash([]);
     };
 
     // ---- Awesome Oscillator: histogram from zero (growing / falling colors) ----

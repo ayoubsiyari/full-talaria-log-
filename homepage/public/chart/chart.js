@@ -21074,12 +21074,14 @@ class Chart {
             this.ctx.strokeStyle = this.chartSettings.gridColor;
             this.ctx.lineWidth = gridLW;
             applyGridDash();
+            const indPanelH = plotLayout ? plotLayout.indPanelH : (this.separateIndicatorPanelHeight || 0);
+            const gridBottom = indPanelH > 0 ? (this.h - m.b) : pricePlotBottom;
             for (let i = 0; i < this._timeTicks.length; i++) {
                 const x = this._timeTicks[i].x;
                 if (x >= m.l && x <= this.w - m.r) {
                     this.ctx.beginPath();
                     this.ctx.moveTo(x, m.t);
-                    this.ctx.lineTo(x, pricePlotBottom);
+                    this.ctx.lineTo(x, gridBottom);
                     this.ctx.stroke();
                 }
             }
