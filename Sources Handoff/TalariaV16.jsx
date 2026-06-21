@@ -8010,13 +8010,23 @@ const TalariaV8b = () => {
   const persistLiveJournalManualTrade = (source, trade) => {
     const saver = typeof window !== "undefined" ? window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ : null;
     if (typeof saver !== "function") return Promise.resolve(false);
-    return saver({
-      key: source?.key,
-      kind: source?.kind,
-      label: source?.label,
-      liveAccountId: source?.liveAccountId,
-      profileId: source?.profileId,
-    }, trade)
+    const boot = getV16JournalBoot();
+    const account = findDashLiveJournalBootAccount(source, boot);
+    const enrichedSource = {
+      ...source,
+      liveAccountId: source?.liveAccountId ?? account?.liveAccountId ?? null,
+      profileId: source?.profileId ?? account?.profileId ?? null,
+      accountTypeKey: source?.accountTypeKey || account?.accountTypeKey,
+    };
+    if (!isDashLiveJournalAddTradeSource(enrichedSource)) {
+      console.error("[V16] live journal save blocked: source is not a live journal account");
+      return Promise.resolve(false);
+    }
+    if (enrichedSource.liveAccountId == null && enrichedSource.profileId == null) {
+      console.error("[V16] live journal save blocked: missing liveAccountId/profileId");
+      return Promise.resolve(false);
+    }
+    return saver(enrichedSource, trade)
       .then(() => true)
       .catch((err) => {
         console.error("[V16] live journal manual trade save failed", err);
@@ -27226,8 +27236,9 @@ const TalariaV8b = () => {
               createdAt:nowIso,
             };
             manualTrade.demons = btDashTradeDemons(manualTrade, {session:dashAddTradeEditorSource});
-            const canPersistToJournal = isJournalManualTrade && typeof window !== "undefined" && typeof window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ === "function";
-            const canPersistToBacktestSession = isV16LiveBoot() && sourceSessionId && !isJournalManualTrade;
+            const isLiveJournalManualTrade = isDashLiveJournalAddTradeSource(dashAddTradeEditorSource);
+            const canPersistToJournal = isLiveJournalManualTrade && typeof window !== "undefined" && typeof window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ === "function";
+            const canPersistToBacktestSession = isV16LiveBoot() && sourceSessionId && !isLiveJournalManualTrade;
             const applyLocalManualTrade = (tradeRow) => {
               setDashManualTrades((prev) => [tradeRow, ...prev]);
             };

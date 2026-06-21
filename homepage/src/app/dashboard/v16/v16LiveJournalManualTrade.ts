@@ -7,7 +7,28 @@ export type LiveJournalAddTradeSource = {
   label?: string;
   liveAccountId?: number;
   profileId?: number;
+  accountTypeKey?: "personal" | "prop" | string;
 };
+
+async function activateLiveJournalProfile(source: LiveJournalAddTradeSource): Promise<void> {
+  await syncJournalTokenFromSession();
+  const headers = authHeaders();
+
+  if (source.liveAccountId != null) {
+    await fetch(`${JOURNAL_API_BASE}/journal/live-accounts/${source.liveAccountId}/activate`, {
+      method: "POST",
+      headers,
+    });
+    return;
+  }
+
+  if (source.profileId != null) {
+    await fetch(`${JOURNAL_API_BASE}/profile/profiles/${source.profileId}/activate`, {
+      method: "POST",
+      headers,
+    });
+  }
+}
 
 function instrumentTypeFromMarket(market?: string): string {
   const m = String(market || "").toLowerCase();
@@ -149,17 +170,10 @@ export async function saveManualTradeToLiveJournal(
   source: LiveJournalAddTradeSource,
   trade: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  await syncJournalTokenFromSession();
-  const headers = authHeaders();
-
-  if (source.liveAccountId != null) {
-    await fetch(`${JOURNAL_API_BASE}/journal/live-accounts/${source.liveAccountId}/activate`, {
-      method: "POST",
-      headers,
-    });
-  }
+  await activateLiveJournalProfile(source);
 
   const payload = mapManualTradeToJournalAddPayload(trade);
+  const headers = authHeaders();
   const res = await fetch(`${JOURNAL_API_BASE}/journal/add`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
