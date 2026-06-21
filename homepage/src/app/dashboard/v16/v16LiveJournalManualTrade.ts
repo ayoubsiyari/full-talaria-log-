@@ -137,6 +137,8 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
       excursion_mode: trade.excursion_mode ?? trade.excursionMode ?? null,
       exit_reason: trade.exit_reason ?? trade.exitReason ?? null,
       trade_status: trade.status ?? null,
+      strategy_type: trade.strategyTypeDescription ?? trade.strategy_type ?? null,
+      custom_strategy: !!(trade.strategyTypeDescription || trade.strategy_type),
     },
   };
 }
