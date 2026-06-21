@@ -84,6 +84,28 @@ const resolveDashLiveJournalAddTradeTypeLabel = (source, boot = getV16JournalBoo
   return "Journal";
 };
 
+const isDashJournalLibraryKind = (kind) => ["journalAccount", "journalEntry", "strategyJournal"].includes(kind);
+
+const isDashLiveJournalAddTradeSource = (source) => {
+  if (!source) return false;
+  const text = `${source?.statusKind || ""} ${source?.kind || ""} ${source?.typeLabel || ""}`.toLowerCase();
+  if (!text.includes("journal")) return false;
+  return !!(source?.liveAccountId || source?.profileId || source?.freeInstrumentPicker || source?.isLiveJournalAccount);
+};
+
+const makeDashAddTradePinnedLibrarySelection = (source, boot = getV16JournalBoot()) => {
+  if (!isDashLiveJournalAddTradeSource(source)) return null;
+  const account = findDashLiveJournalBootAccount(source, boot);
+  return {
+    kind: "journalAccount",
+    id: String(source.id || source.key || "").replace(/^journalAccount:/, "") || account?.id,
+    label: resolveDashLiveJournalAddTradeLabel(source, boot),
+    liveAccountId: source.liveAccountId ?? account?.liveAccountId ?? null,
+    profileId: source.profileId ?? account?.profileId ?? null,
+    accountTypeKey: source.accountTypeKey || account?.accountTypeKey,
+  };
+};
+
 const SEED_TRADE_SCENARIO_FALLBACK = [
   { id: "realistic", label: "Realistic", hint: "Stable win rate, almost no outliers." },
   { id: "balanced", label: "Balanced", hint: "~80% normal trades, ~20% tail cases." },
@@ -8117,21 +8139,33 @@ const TalariaV8b = () => {
           });
         });
       }
+      const pinnedJournalSelection = (
+        dashLibraryAppliedSelectionRef.current
+        && isDashJournalLibraryKind(dashLibraryAppliedSelectionRef.current.kind)
+      ) || (
+        dashAddTradeEditorOpenRef.current
+        && isDashLiveJournalAddTradeSource(dashAddTradeEditorSourceRef.current)
+      );
       if (boot.openSessionId != null) {
         const appliedBoot = boot.appliedSource;
-        if (!appliedBoot || appliedBoot.kind === "session") setDashSessId(boot.openSessionId);
+        if ((!appliedBoot || appliedBoot.kind === "session") && !pinnedJournalSelection) {
+          setDashSessId(boot.openSessionId);
+        }
       }
       const applied = boot.appliedSource;
       if (applied) {
-        setDashLibraryAppliedSelection(applied);
-        dashLibraryAppliedSelectionRef.current = applied;
-        if (applied.kind && applied.id != null) {
-          const key = `${applied.kind}:${applied.id}`;
-          dashLibraryAppliedMultiSelectionRef.current = [key];
-          setDashLibraryAppliedMultiSelection([key]);
-          if (applied.kind === "journalAccount" || applied.kind === "journalEntry" || applied.kind === "strategyJournal") {
-            setDashSessId(null);
-            setDashStrategyId(null);
+        const keepPinnedJournal = pinnedJournalSelection && applied.kind === "session";
+        if (!keepPinnedJournal) {
+          setDashLibraryAppliedSelection(applied);
+          dashLibraryAppliedSelectionRef.current = applied;
+          if (applied.kind && applied.id != null) {
+            const key = `${applied.kind}:${applied.id}`;
+            dashLibraryAppliedMultiSelectionRef.current = [key];
+            setDashLibraryAppliedMultiSelection([key]);
+            if (isDashJournalLibraryKind(applied.kind)) {
+              setDashSessId(null);
+              setDashStrategyId(null);
+            }
           }
         }
       }
@@ -8238,6 +8272,12 @@ const TalariaV8b = () => {
   const [dashAddTradeWarningDontShow, setDashAddTradeWarningDontShow] = useState(false);
   const [dashAddTradeEditorOpen, setDashAddTradeEditorOpen] = useState(false);
   const [dashAddTradeEditorSource, setDashAddTradeEditorSource] = useState(null);
+  const dashAddTradeEditorOpenRef = useRef(false);
+  const dashAddTradeEditorSourceRef = useRef(null);
+  useEffect(() => {
+    dashAddTradeEditorOpenRef.current = dashAddTradeEditorOpen;
+    dashAddTradeEditorSourceRef.current = dashAddTradeEditorSource;
+  }, [dashAddTradeEditorOpen, dashAddTradeEditorSource]);
   const [dashAddTradeDraft, setDashAddTradeDraft] = useState(null);
   const [dashAddTradeGraphHoldDraft, setDashAddTradeGraphHoldDraft] = useState(null);
   const [dashAddTradeEditorPage, setDashAddTradeEditorPage] = useState("trade");
@@ -10716,6 +10756,7 @@ const TalariaV8b = () => {
       label: String(target.name || "").split(" / ")[0] || target.name || "Journal",
       liveAccountId: target.liveAccountId,
       profileId: target.profileId,
+      accountTypeKey: target.accountTypeKey,
     };
     const key = `journalAccount:${target.id}`;
     setDashStrategyId(null);
@@ -13999,10 +14040,12 @@ const TalariaV8b = () => {
               return true;
             });
           })();
-          const embeddedAppliedLibraryKind = dashLibraryAppliedSelection?.kind || dashLibraryAppliedSelectionRef.current?.kind;
-          const journalSelectionActive = ["journalAccount", "journalEntry", "strategyJournal"].includes(embeddedAppliedLibraryKind)
+          const embeddedAppliedLibraryKind = (dashAddTradeEditorOpen && isDashLiveJournalAddTradeSource(dashAddTradeEditorSource))
+            ? "journalAccount"
+            : (dashLibraryAppliedSelection?.kind || dashLibraryAppliedSelectionRef.current?.kind);
+          const journalSelectionActive = isDashJournalLibraryKind(embeddedAppliedLibraryKind)
             || pendingJournalGoTradesRef.current
-            || (dashAddTradeEditorOpen && !!(dashAddTradeEditorSource?.liveAccountId || dashAddTradeEditorSource?.isLiveJournalAccount));
+            || (dashAddTradeEditorOpen && isDashLiveJournalAddTradeSource(dashAddTradeEditorSource));
           const dashSelectedStrategySessions = !journalSelectionActive && dashStrategyId ? dashboardSessionPool.filter(s=>dashStrategyKey(s.strategyName)===dashStrategyId) : [];
           const dashSelectedStrategyLabel = dashSelectedStrategySessions[0]?.strategyName || dashTxt("Strategy","استراتيجية");
           const dashSelectedStrategyTrades = dashSelectedStrategySessions.flatMap(session =>
@@ -14237,7 +14280,7 @@ const TalariaV8b = () => {
           const appliedJournalDashboardItem = dashboardAppliedSourceItems.find((item) =>
             ["journalAccount", "journalEntry", "strategyJournal"].includes(item.kind)
           );
-          const appliedSelectionKind = dashLibraryAppliedSelection?.kind || dashLibraryAppliedSelectionRef.current?.kind;
+          const appliedSelectionKind = embeddedAppliedLibraryKind;
           const provisionalJournalSourceItem = !appliedJournalDashboardItem && journalSelectionActive
             ? (() => {
               const sel = dashLibraryAppliedSelection || dashLibraryAppliedSelectionRef.current;
@@ -14256,30 +14299,31 @@ const TalariaV8b = () => {
               };
             })()
             : null;
-          const addTradeEditorJournalItem = dashAddTradeEditorOpen && dashAddTradeEditorSource && (
-            dashAddTradeEditorSource.liveAccountId
-            || dashAddTradeEditorSource.isLiveJournalAccount
-            || dashAddTradeEditorSource.freeInstrumentPicker
-          )
+          const addTradeEditorJournalItem = dashAddTradeEditorOpen && isDashLiveJournalAddTradeSource(dashAddTradeEditorSource)
             ? {
               key: dashAddTradeEditorSource.key || `journalAccount:${dashAddTradeEditorSource.id}`,
               kind: "journalAccount",
-              label: dashAddTradeEditorSource.label || dashTxt("Live Journal","يومية حية"),
+              label: resolveDashLiveJournalAddTradeLabel(dashAddTradeEditorSource),
               typeLabel: dashTxt("Journal","يومية"),
-              color: c.gn,
+              color: dashAddTradeEditorSource.accountTypeKey === "prop" ? c.gold : c.gn,
               trades: Array.isArray(dashAddTradeEditorSource.trades) ? dashAddTradeEditorSource.trades : [],
               sessions: [],
               liveAccountId: dashAddTradeEditorSource.liveAccountId,
               profileId: dashAddTradeEditorSource.profileId,
+              accountTypeKey: dashAddTradeEditorSource.accountTypeKey,
+              propFirm: dashAddTradeEditorSource.propFirm,
+              propConfig: dashAddTradeEditorSource.propConfig,
+              propRules: dashAddTradeEditorSource.propRules,
+              startingBalance: dashAddTradeEditorSource.startingBalance,
               statusKind: "journal",
             }
             : null;
-          const activeJournalDashboardItem = appliedJournalDashboardItem || provisionalJournalSourceItem || addTradeEditorJournalItem;
+          const activeJournalDashboardItem = addTradeEditorJournalItem || appliedJournalDashboardItem || provisionalJournalSourceItem;
           const dsFromAppliedJournal = !dashStrategySource && activeJournalDashboardItem && (
             dashboardAppliedSourceItems.length === 1
             || ["journalAccount", "journalEntry", "strategyJournal"].includes(appliedSelectionKind)
             || journalSelectionActive
-            || (dashAddTradeEditorOpen && !!(dashAddTradeEditorSource?.liveAccountId || dashAddTradeEditorSource?.isLiveJournalAccount))
+            || (dashAddTradeEditorOpen && isDashLiveJournalAddTradeSource(dashAddTradeEditorSource))
           )
             ? buildDashboardSessionFromAppliedSource(activeJournalDashboardItem)
             : null;
@@ -17840,7 +17884,16 @@ const TalariaV8b = () => {
           const makeLibrarySessionSelection = (session) => session ? {kind:"session",id:session.id,sessionId:session.id,label:session.name,rollbackAllowed:!!session.rollbackAllowed} : null;
           const makeLibraryStrategySelection = (strategy) => strategy ? {kind:"strategy",id:strategy.id,label:strategy.label} : null;
           const makeLibraryStrategyJournalSelection = (journal) => journal ? {kind:"strategyJournal",id:journal.id,sessionId:journal.primarySession?.id,label:journal.name,hasEditedTrades:!!journal.hasEditedTrades} : null;
-          const makeLibraryJournalAccountSelection = (account) => account ? {kind:"journalAccount",id:account.id,journalCat:activeLibraryJournal.id,label:account.name,hasEditedTrades:!!account.hasEditedTrades} : null;
+          const makeLibraryJournalAccountSelection = (account) => account ? {
+            kind:"journalAccount",
+            id:account.id,
+            journalCat:activeLibraryJournal.id,
+            label:account.name,
+            hasEditedTrades:!!account.hasEditedTrades,
+            liveAccountId:account.liveAccountId,
+            profileId:account.profileId,
+            accountTypeKey:account.accountTypeKey,
+          } : null;
           const makeLibraryJournalEntrySelection = (entry) => entry ? {kind:"journalEntry",id:entry.id,journalCat:dashLibraryJournalCat,label:`${entry.side} / ${entry.reason}`,hasEditedTrade:libraryTradeHasEdits(entry, entry.sourceSession)} : null;
           const isLibrarySelectionVisible = (sel) => {
             if (!sel) return false;
@@ -17867,22 +17920,13 @@ const TalariaV8b = () => {
                 label: ds.name || ds.label || dashTxt("Live Journal","يومية حية"),
                 liveAccountId: ds.liveAccountId,
                 profileId: ds.profileId,
+                accountTypeKey: ds.accountTypeKey,
               }
               : {kind:"session",id:ds.id,sessionId:ds.id,label:ds.name,rollbackAllowed:!!ds.rollbackAllowed};
-          const addTradeEditorLibrarySelection = dashAddTradeEditorOpen && dashAddTradeEditorSource && (
-            dashAddTradeEditorSource.liveAccountId
-            || dashAddTradeEditorSource.isLiveJournalAccount
-            || dashAddTradeEditorSource.freeInstrumentPicker
-          )
-            ? {
-              kind:"journalAccount",
-              id: String(dashAddTradeEditorSource.id || dashAddTradeEditorSource.key || "").replace(/^journalAccount:/, ""),
-              label: dashAddTradeEditorSource.label || dashTxt("Live Journal","يومية حية"),
-              liveAccountId: dashAddTradeEditorSource.liveAccountId,
-              profileId: dashAddTradeEditorSource.profileId,
-            }
+          const addTradeEditorLibrarySelection = dashAddTradeEditorOpen
+            ? makeDashAddTradePinnedLibrarySelection(dashAddTradeEditorSource)
             : null;
-          const appliedLibrarySelection = dashLibraryAppliedSelection || addTradeEditorLibrarySelection || currentDashboardLibrarySelection;
+          const appliedLibrarySelection = addTradeEditorLibrarySelection || dashLibraryAppliedSelection || currentDashboardLibrarySelection;
           if (!dashLibraryAppliedSelectionRef.current && appliedLibrarySelection) dashLibraryAppliedSelectionRef.current = appliedLibrarySelection;
           dashLibraryAppliedMultiSelectionRef.current = Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : [];
           dashLibraryAppliedStrategyChildSelectionRef.current = dashLibraryAppliedStrategyChildSelection || {};
@@ -18170,7 +18214,13 @@ const TalariaV8b = () => {
           const dashboardLibraryType = (() => {
             const kind = appliedLibrarySelection?.kind;
             if (kind === "strategy") return {label:dashTxt("Strategy","استراتيجية"), color:c.acL};
-            if (kind === "journalAccount" || kind === "journalEntry" || kind === "strategyJournal") return {label:dashTxt("Journal","يومية"), color:c.gn};
+            if (kind === "journalAccount" || kind === "journalEntry" || kind === "strategyJournal") {
+              const account = findDashLiveJournalBootAccount(appliedLibrarySelection, getV16JournalBoot());
+              const typeKey = appliedLibrarySelection?.accountTypeKey || account?.accountTypeKey;
+              if (typeKey === "prop") return {label:dashTxt("Prop Firm","تمويل"), color:c.gold};
+              if (typeKey === "personal") return {label:dashTxt("Personal","شخصي"), color:c.gn};
+              return {label:dashTxt("Journal","يومية"), color:c.gn};
+            }
             return {label:dashTxt("Backtest","اختبار"), color:c.acL};
           })();
           const dashboardLibraryAccent = dashboardLibraryType.color;
@@ -25100,10 +25150,6 @@ const TalariaV8b = () => {
             const text = `${source?.statusKind || ""} ${source?.kind || ""} ${source?.typeLabel || ""}`.toLowerCase();
             return text.includes("journal");
           };
-          const isDashLiveJournalAddTradeSource = (source) => {
-            if (!isDashJournalAddTradeSource(source)) return false;
-            return !!(source?.liveAccountId || source?.profileId || source?.freeInstrumentPicker || source?.isLiveJournalAccount);
-          };
           const isManualLiveJournalAddTradeItem = (item, key) => {
             const isJournal = String(item?.kind || "").toLowerCase().includes("journal");
             if (!isJournal) return false;
@@ -25656,20 +25702,33 @@ const TalariaV8b = () => {
                   liveAccountId: source.liveAccountId,
                   profileId: source.profileId,
                   isLiveJournalAccount: true,
+                  accountTypeKey: source.accountTypeKey,
                 },
                 boot
               );
-              if (account) {
-                applyEmbeddedJournalSelection(account);
-                const librarySel = makeLibraryJournalAccountSelection(account) || {
-                  kind:"journalAccount",
-                  id: account.id,
-                  label: account.name || source.label || dashTxt("Live Journal","يومية حية"),
-                  liveAccountId: account.liveAccountId,
-                  profileId: account.profileId,
-                };
+              const librarySel = makeDashAddTradePinnedLibrarySelection(source, boot) || {
+                kind:"journalAccount",
+                id: account?.id || accountId,
+                label: resolveDashLiveJournalAddTradeLabel(source, boot),
+                liveAccountId: source.liveAccountId ?? account?.liveAccountId ?? null,
+                profileId: source.profileId ?? account?.profileId ?? null,
+                accountTypeKey: source.accountTypeKey || account?.accountTypeKey,
+              };
+              flushSync(() => {
+                if (account) applyEmbeddedJournalSelection(account);
+                else {
+                  setDashStrategyId(null);
+                  setDashSessId(null);
+                  setDashLibraryAppliedSelection(librarySel);
+                  dashLibraryAppliedSelectionRef.current = librarySel;
+                  const key = `journalAccount:${librarySel.id}`;
+                  dashLibraryAppliedMultiSelectionRef.current = [key];
+                  setDashLibraryAppliedMultiSelection([key]);
+                  setDashSourceFilterKeys([]);
+                  if (librarySel.liveAccountId) activateLiveJournalAccount(librarySel.liveAccountId);
+                }
                 commitLibrarySelection(librarySel);
-              }
+              });
             }
             ensureDashAddTradeStrategyVariables(source, (enriched) => {
               const draft = buildDashAddTradeDraft(enriched);
@@ -25979,6 +26038,36 @@ const TalariaV8b = () => {
             setDashAddTradeValidationError("");
             setDashPendingAddTradeSource(null);
             const selectableSources = addTradeSourceChoices.filter(source => !source.isStrategyDirectTarget);
+            const matchJournalAddTradeSource = (journalRef) => {
+              if (!journalRef) return null;
+              return selectableSources.find((source) =>
+                isDashLiveJournalAddTradeSource(source)
+                && (
+                  (journalRef.liveAccountId != null && String(source.liveAccountId) === String(journalRef.liveAccountId))
+                  || (journalRef.profileId != null && String(source.profileId) === String(journalRef.profileId))
+                  || String(source.id || source.key || "").replace(/^journalAccount:/, "") === String(journalRef.id)
+                )
+              ) || null;
+            };
+            const applied = dashLibraryAppliedSelectionRef.current || dashLibraryAppliedSelection;
+            const appliedJournalMatch = applied?.kind === "journalAccount"
+              ? matchJournalAddTradeSource(applied)
+              : null;
+            if (appliedJournalMatch) {
+              chooseAddTradeSource(appliedJournalMatch);
+              return;
+            }
+            const dsJournalMatch = (ds?.isJournalSession || ds?.isJournalDashboard || ds?.statusKind === "journal")
+              ? matchJournalAddTradeSource({
+                id: String(ds.key || ds.id || "").replace(/^journalAccount:/, "") || ds.id,
+                liveAccountId: ds.liveAccountId,
+                profileId: ds.profileId,
+              })
+              : null;
+            if (dsJournalMatch) {
+              chooseAddTradeSource(dsJournalMatch);
+              return;
+            }
             if (selectableSources.length === 1) {
               chooseAddTradeSource(selectableSources[0]);
               return;
