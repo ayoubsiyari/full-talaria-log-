@@ -7964,6 +7964,9 @@ const TalariaV8b = () => {
       });
   };
   const liveJournalAddTradeBridgeRef = useRef({ open: null });
+  const liveJournalNavBridgeRef = useRef({ pinAccount: null });
+  const pendingJournalAddTradeRef = useRef(null);
+  const pendingJournalPinRef = useRef(null);
   const pendingJournalGoTradesRef = useRef(false);
   const pendingJournalCreatedRef = useRef(null);
   const [newSessionKindPickerOpen, setNewSessionKindPickerOpen] = useState(false);
@@ -10656,12 +10659,22 @@ const TalariaV8b = () => {
     setDashSourceFilterKeys([]);
     if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
   };
+  const pinEmbeddedJournalAccount = (account) => {
+    const pinFn = liveJournalNavBridgeRef.current?.pinAccount;
+    if (typeof pinFn === "function") {
+      pinFn(account);
+      pendingJournalPinRef.current = null;
+      return;
+    }
+    applyEmbeddedJournalSelection(account);
+    pendingJournalPinRef.current = account;
+  };
   const openEmbeddedJournalTrades = (row, options = {}) => {
     const { openAddTrade = false } = options;
     const account = resolveJournalSessionAccount(row);
     if (!account) return;
     flushSync(() => {
-      applyEmbeddedJournalSelection(account);
+      pinEmbeddedJournalAccount(account);
       setSessView("trades");
       if (!openAddTrade) {
         setDashAddTradeEditorOpen(false);
@@ -10671,13 +10684,24 @@ const TalariaV8b = () => {
     });
     syncV16ViewUrl("trades");
     if (openAddTrade) {
-      requestAnimationFrame(() => liveJournalAddTradeBridgeRef.current?.open?.(account));
+      pendingJournalAddTradeRef.current = account;
+      const tryOpenAddTrade = (attempt = 0) => {
+        const openFn = liveJournalAddTradeBridgeRef.current?.open;
+        if (typeof openFn === "function") {
+          pendingJournalAddTradeRef.current = null;
+          openFn(account);
+          return;
+        }
+        if (attempt < 30) requestAnimationFrame(() => tryOpenAddTrade(attempt + 1));
+        else pendingJournalAddTradeRef.current = null;
+      };
+      tryOpenAddTrade();
     }
   };
   const openEmbeddedJournalDashboard = (row) => {
     const account = resolveJournalSessionAccount(row);
     if (!account) return;
-    applyEmbeddedJournalSelection(account);
+    pinEmbeddedJournalAccount(account);
     flushSync(() => setSessView("dashboard"));
     syncV16ViewUrl("dashboard");
   };
@@ -25560,6 +25584,24 @@ const TalariaV8b = () => {
               setDashAddTradeEditorOpen(true);
             });
           };
+          liveJournalNavBridgeRef.current.pinAccount = (account) => {
+            const boot = getV16JournalBoot();
+            const target = resolveLiveJournalAccountTarget(account, boot);
+            if (!target) return;
+            applyEmbeddedJournalSelection(target);
+            const librarySel = makeLibraryJournalAccountSelection(target) || {
+              kind:"journalAccount",
+              id:target.id,
+              label:target.name || dashTxt("Live Journal","يومية حية"),
+              liveAccountId:target.liveAccountId,
+              profileId:target.profileId,
+            };
+            commitLibrarySelection(librarySel);
+          };
+          if (pendingJournalPinRef.current) {
+            liveJournalNavBridgeRef.current.pinAccount(pendingJournalPinRef.current);
+            pendingJournalPinRef.current = null;
+          }
           liveJournalAddTradeBridgeRef.current.open = (account) => {
             const boot = getV16JournalBoot();
             let target = resolveLiveJournalAccountTarget(account, boot);
@@ -25605,8 +25647,7 @@ const TalariaV8b = () => {
               isGreenStatus:false,
             };
             if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
-            applyEmbeddedJournalSelection(target);
-            commitLibrarySelection(makeLibraryJournalAccountSelection(target));
+            liveJournalNavBridgeRef.current.pinAccount?.(target);
             setDashLibraryOpen(false);
             flushSync(() => setSessView("trades"));
             syncV16ViewUrl("trades");
