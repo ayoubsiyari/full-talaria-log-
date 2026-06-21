@@ -104,7 +104,14 @@ export function mapLiveJournalEntryToV16Trade(
   const tradeId = `live-${entry.id}`;
   const extra = entry.extra_data;
   const extraObj = extra && typeof extra === "object" ? (extra as Record<string, unknown>) : {};
-  const planReviewKey = String(extraObj.plan_review || extraObj.planReview || "").trim() || null;
+  const planReviewKey = String(
+    extraObj.plan_review ||
+      extraObj.planReview ||
+      (extraObj.post_tag_state && typeof extraObj.post_tag_state === "object"
+        ? (extraObj.post_tag_state as Record<string, unknown>).planReview
+        : "") ||
+      ""
+  ).trim() || null;
   const rulesFollowed =
     typeof extraObj.rules_followed === "boolean"
       ? extraObj.rules_followed

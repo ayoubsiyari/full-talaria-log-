@@ -2871,7 +2871,12 @@ class ReplaySystem {
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
         if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
             && !this._timeframeChanging) {
-            this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
+            if (this.chart._tfSwitchAnchorLock
+                && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
+                this.chart._reapplyTfSwitchAnchorLock();
+            } else {
+                this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
+            }
         }
         
         // Update UI elements
@@ -2882,7 +2887,8 @@ class ReplaySystem {
         this.chart.isLoading = false;
         
         // Apply constraints
-        if (typeof this.chart.constrainOffset === 'function') {
+        if (typeof this.chart.constrainOffset === 'function'
+            && !this.chart._tfSwitchAnchorLock) {
             this.chart.constrainOffset();
         }
         this._applyPlaybackViewportLock(this.chart);

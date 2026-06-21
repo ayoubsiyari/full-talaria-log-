@@ -33224,6 +33224,7 @@ const TalariaV8bLive = () => {
               const filtered = rawList.map((e, idx) => {
                 const d = api.displayForEvent(e);
                 const imp = e.impact === "medium" ? "med" : e.impact;
+                const isHeadline = e.kind === "headline";
                 return {
                   id: `${e.t}:${idx}:${(e.event || "").slice(0, 48)}`,
                   time: d ? d.time : "",
@@ -33232,9 +33233,13 @@ const TalariaV8bLive = () => {
                   impact: imp,
                   title: e.event,
                   date: d ? d.dateStr : "",
-                  actual: e.actual,
-                  forecast: e.forecast,
-                  previous: e.previous,
+                  actual: isHeadline ? "" : e.actual,
+                  forecast: isHeadline ? "" : e.forecast,
+                  previous: isHeadline ? "" : e.previous,
+                  snippet: isHeadline ? (e.forecast || "") : "",
+                  source: isHeadline ? (e.source || e.actual || "") : "",
+                  url: e.url || "",
+                  kind: e.kind || "calendar",
                   tab: newsTab,
                 };
               });
@@ -33242,7 +33247,7 @@ const TalariaV8bLive = () => {
               if (st && st.loading) {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                    <div style={{ padding: "40px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Loading economic calendar…</div>
+                    <div style={{ padding: "40px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Loading news…</div>
                   </div>
                 );
               }
@@ -33256,7 +33261,7 @@ const TalariaV8bLive = () => {
               if (!api) {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Economic calendar unavailable.</div>
+                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>News unavailable.</div>
                   </div>
                 );
               }
@@ -33286,7 +33291,7 @@ const TalariaV8bLive = () => {
                     {/* Search bar */}
                     <div style={{flex:1,display:"flex",alignItems:"center",gap:6,background:c.well,border:`1px solid ${c.brH}`,padding:"5px 8px"}}>
                       <I n="search" s={13} cl={c.tm}/>
-                      <input type="text" placeholder="Search events…" value={newsSearch} onChange={(e) => {
+                      <input type="text" placeholder="Search news…" value={newsSearch} onChange={(e) => {
                         const v = e.target.value;
                         setNewsSearch(v);
                         if (newsSearchToModuleDebounceRef.current) clearTimeout(newsSearchToModuleDebounceRef.current);
@@ -33487,20 +33492,23 @@ const TalariaV8bLive = () => {
                   {/* News list */}
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto"}}>
                     {filtered.length===0
-                      ? <div style={{padding:"32px 14px",textAlign:"center",color:c.tm,fontSize:11}}>No events match filters</div>
+                      ? <div style={{padding:"32px 14px",textAlign:"center",color:c.tm,fontSize:11}}>No news matches filters</div>
                       : filtered.map((ev,idx)=>{
                           const col=impCol[ev.impact];
                           const barCount=ev.impact==="high"?3:ev.impact==="med"?2:1;
                           const isH=swHov===`nev-${ev.id}`;
-                          const hasAct=ev.actual&&ev.actual!=="-"&&ev.actual!==null;
+                          const isHeadline=ev.kind==="headline";
+                          const hasAct=!isHeadline&&ev.actual&&ev.actual!=="-"&&ev.actual!==null;
                           const actVal=hasAct?parseFloat(ev.actual):null;
-                          const fcVal=ev.forecast&&ev.forecast!=="-"?parseFloat(ev.forecast):null;
+                          const fcVal=!isHeadline&&ev.forecast&&ev.forecast!=="-"?parseFloat(ev.forecast):null;
                           const actCol=hasAct?(fcVal!=null?(actVal>=fcVal?c.gn:c.rd):c.tx):c.tm;
                           const beat=hasAct&&fcVal!=null&&actVal>fcVal;
                           const miss=hasAct&&fcVal!=null&&actVal<fcVal;
-                          const hasFc=ev.forecast&&ev.forecast!=="-";
-                          const hasPrev=ev.previous&&ev.previous!=="-";
+                          const hasFc=!isHeadline&&ev.forecast&&ev.forecast!=="-";
+                          const hasPrev=!isHeadline&&ev.previous&&ev.previous!=="-";
                           const hasData=hasAct||hasFc||hasPrev;
+                          const hasSnippet=isHeadline&&!!ev.snippet;
+                          const hasSource=isHeadline&&!!ev.source;
                           return (
                             <div key={ev.id}
                               onMouseEnter={()=>setSwHov(`nev-${ev.id}`)}
@@ -33539,14 +33547,29 @@ const TalariaV8bLive = () => {
                                   <span style={{fontSize:11,fontWeight:600,color:c.acL,
                                     overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
                                     lineHeight:1.3,flex:1}}>
-                                    {ev.title}
+                                    {ev.url ? (
+                                      <a href={ev.url} target="_blank" rel="noopener noreferrer"
+                                        style={{color:"inherit",textDecoration:"none"}}
+                                        onClick={(e)=>e.stopPropagation()}>
+                                        {ev.title}
+                                      </a>
+                                    ) : ev.title}
                                   </span>
                                 </div>
                                 {/* Date */}
-                                <div style={{fontSize:11,fontWeight:500,color:c.tm,marginBottom:hasData?4:0,
+                                <div style={{fontSize:11,fontWeight:500,color:c.tm,marginBottom:(hasData||hasSnippet||hasSource)?4:0,
                                   fontVariantNumeric:"tabular-nums"}}>
                                   {(()=>{const [y,mo,d]=ev.date.split(".").map(Number);const day=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(y,mo-1,d).getDay()];return `${day} ${ev.date}`;})()}
                                 </div>
+                                {hasSnippet && (
+                                  <div style={{fontSize:10,color:c.ts,lineHeight:1.35,marginBottom:hasSource?3:0,
+                                    overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+                                    {ev.snippet}
+                                  </div>
+                                )}
+                                {hasSource && (
+                                  <div style={{fontSize:10,color:c.tm,fontWeight:600}}>{ev.source}</div>
+                                )}
                                 {/* Values: label above, value below, no container */}
                                 {hasData && (
                                   <div style={{display:"flex",gap:10}}>

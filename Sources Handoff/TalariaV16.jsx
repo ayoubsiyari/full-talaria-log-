@@ -46,6 +46,50 @@ const getV16StrategyBankRows = (localRows = []) => {
   if (!isV16LiveBoot()) return Array.isArray(localRows) ? localRows : [];
   return mergeV16StrategyBankRows(getV16StrategyBank(), localRows);
 };
+const DASH_PLAN_REVIEW_LABELS = {
+  according_to_plan: "According to Plan",
+  out_of_plan: "Out of Plan",
+  missed_trade: "Missed Trade",
+};
+const resolveDashTradeDisciplineLabel = (trade) => {
+  if (!trade || typeof trade !== "object") return null;
+  const extra = trade.extra_data && typeof trade.extra_data === "object" ? trade.extra_data : {};
+  const tagVars = extra.tag_variables && typeof extra.tag_variables === "object" ? extra.tag_variables : {};
+  const variables = trade.variables && typeof trade.variables === "object" ? trade.variables : {};
+  const postTagState = extra.post_tag_state && typeof extra.post_tag_state === "object" ? extra.post_tag_state : {};
+  let raw =
+    trade.planReviewKey ??
+    trade.planReview ??
+    extra.plan_review ??
+    extra.discipline_status ??
+    trade.discipline_status ??
+    tagVars.plan_review ??
+    variables.plan_review ??
+    postTagState.planReview ??
+    null;
+  if (Array.isArray(raw)) raw = raw.find(Boolean) ?? raw[0];
+  const text = String(raw ?? "").trim();
+  if (text) {
+    const snake = text.toLowerCase().replace(/\s+/g, "_");
+    if (DASH_PLAN_REVIEW_LABELS[snake]) return DASH_PLAN_REVIEW_LABELS[snake];
+    if (DASH_PLAN_REVIEW_LABELS[text]) return DASH_PLAN_REVIEW_LABELS[text];
+    if (/according/i.test(text)) return "According to Plan";
+    if (/out.of.plan/i.test(text)) return "Out of Plan";
+    if (/missed/i.test(text)) return "Missed Trade";
+    return text;
+  }
+  const postTags = Array.isArray(trade.postTags) ? trade.postTags : [];
+  const tagged = postTags.find((tag) => /according to plan|out of plan|missed trade/i.test(String(tag)));
+  return tagged ? String(tagged) : null;
+};
+const dashTradeDisciplineAccent = (label, palette) => {
+  if (!label) return palette.tm;
+  const lower = String(label).toLowerCase();
+  if (lower.includes("according")) return palette.gn;
+  if (lower.includes("missed")) return palette.gold;
+  if (lower.includes("out of")) return palette.rd;
+  return palette.acL;
+};
 const getV16AppliedSourceBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.appliedSource : null);
 const resolveLiveJournalAccountTarget = (accountOrApi, boot = getV16JournalBoot()) => {
   if (!accountOrApi) return null;
@@ -21095,6 +21139,8 @@ const TalariaV8b = () => {
               const demons = asList(trade.demons || trade.demonTags || trade.demonPatterns);
               const preItems = [...asList(trade?.preTags), ...asList(trade?.strategyTags)];
               const postItems = asList(trade?.postTags);
+              const disciplineLabel = resolveDashTradeDisciplineLabel(trade);
+              const disciplineAccent = dashTradeDisciplineAccent(disciplineLabel, c);
               const entryTime = fmtDateTime(firstValue(trade, ["entryTime","openTime","entryDate","date"], ""));
               const exitTime = fmtDateTime(firstValue(trade, ["closeTime","exitTime","exitDate"], ""));
               const postNotesText = noteTextFrom(record.values.postNotes.raw) || record.values.postNotes.text || "";
@@ -21155,6 +21201,12 @@ const TalariaV8b = () => {
                         <div>
                           <div style={{fontSize:7.8,fontWeight:950,color:"#B78CFF",letterSpacing:"0.065em",textTransform:"uppercase",lineHeight:1,marginBottom:5}}>Post-trade Tags</div>
                           {detailChips(postItems, "#B78CFF", "No post tags")}
+                        </div>
+                        <div>
+                          <div style={{fontSize:7.8,fontWeight:950,color:c.acL,letterSpacing:"0.065em",textTransform:"uppercase",lineHeight:1,marginBottom:5}}>Discipline</div>
+                          {disciplineLabel
+                            ? detailChips([disciplineLabel], disciplineAccent, "Not set")
+                            : <span style={{fontSize:9.6,fontWeight:850,color:c.tm}}>Not set</span>}
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"58px minmax(0,1fr)",gap:8,alignItems:"start"}}>
                           <span style={{fontSize:7.8,fontWeight:950,color:c.tm,letterSpacing:"0.055em",textTransform:"uppercase",lineHeight:1.3}}>Notes</span>
