@@ -38,7 +38,14 @@ declare global {
     __TALARIA_OPEN_NEW_SESSION__?: (opts?: {
       strategyId?: number;
       strategyName?: string;
+      tradingMode?: "standard" | "prop";
     }) => void;
+    /** Open dashboard live journal creator from embedded V16 Source modal. */
+    __TALARIA_OPEN_NEW_LIVE_JOURNAL__?: (opts?: {
+      accountTypeKey?: "personal" | "prop";
+    }) => void;
+    /** Activate a persisted live journal profile before import/manual add. */
+    __TALARIA_ACTIVATE_LIVE_JOURNAL__?: (accountId: number) => void | Promise<void>;
     /** Open dashboard session editor for an existing backtest (embedded V16). */
     __TALARIA_OPEN_EDIT_SESSION__?: (sess: Record<string, unknown>) => void;
     /** True while embedded bootstrap is fetching sessions/trades (show loading UI). */

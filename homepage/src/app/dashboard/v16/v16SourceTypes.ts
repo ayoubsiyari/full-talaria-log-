@@ -38,6 +38,9 @@ export type V16JournalAccountRow = {
   sessions: Record<string, unknown>[];
   strategyIds: number[];
   strategyNames: string[];
+  profileId?: number;
+  liveAccountId?: number;
+  isLiveJournalAccount?: boolean;
 };
 
 export type V16LibraryConnection = {
@@ -83,6 +86,7 @@ export type V16JournalBoot = {
 
 export type ApiJournalEntry = {
   id: number;
+  profile_id?: number;
   symbol: string;
   direction: string;
   entry_price?: number;
@@ -122,4 +126,19 @@ export type ApiJournalProfile = {
   name: string;
   mode: "backtest" | "journal" | "journal_live" | string;
   is_active?: boolean;
+};
+
+export type ApiLiveJournalAccount = {
+  id: number;
+  profile_id: number;
+  name: string;
+  account_number: string;
+  platform: string;
+  market: string;
+  account_type: V16AccountTypeKey;
+  account_subtype: string;
+  status: string;
+  trade_count?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
 };

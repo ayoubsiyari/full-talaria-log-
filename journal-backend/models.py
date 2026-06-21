@@ -708,6 +708,27 @@ class BrokerConnection(db.Model):
     user = db.relationship('User', backref=db.backref('broker_connections', lazy=True))
 
 
+class LiveJournalAccount(db.Model):
+    """Persisted live journal account shell (personal or prop) linked to a journal profile."""
+    __tablename__ = 'live_journal_accounts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    profile_id = db.Column(db.Integer, db.ForeignKey('journal_profiles.id'), nullable=False, unique=True)
+    name = db.Column(db.String(120), nullable=False)
+    account_number = db.Column(db.String(64), nullable=False)
+    platform = db.Column(db.String(80), nullable=False, default='MetaTrader 5')
+    market = db.Column(db.String(40), nullable=False, default='Forex')
+    account_type = db.Column(db.String(20), nullable=False, default='personal')
+    account_subtype = db.Column(db.String(20), nullable=False, default='Live')
+    status = db.Column(db.String(20), nullable=False, default='active')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('live_journal_accounts', lazy=True))
+    profile = db.relationship('Profile', backref=db.backref('live_journal_account', uselist=False, lazy=True))
+
+
 class UserPreferences(db.Model):
     """Stores all user preferences for cross-device sync."""
     __tablename__ = 'user_preferences'

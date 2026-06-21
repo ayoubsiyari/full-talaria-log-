@@ -98,6 +98,30 @@ def ensure_users_schema(app) -> None:
                             ")"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS live_journal_accounts ("
+                            "id SERIAL PRIMARY KEY, "
+                            "user_id INTEGER NOT NULL REFERENCES users(id), "
+                            "profile_id INTEGER NOT NULL UNIQUE REFERENCES journal_profiles(id), "
+                            "name VARCHAR(120) NOT NULL, "
+                            "account_number VARCHAR(64) NOT NULL, "
+                            "platform VARCHAR(80) NOT NULL DEFAULT 'MetaTrader 5', "
+                            "market VARCHAR(40) NOT NULL DEFAULT 'Forex', "
+                            "account_type VARCHAR(20) NOT NULL DEFAULT 'personal', "
+                            "account_subtype VARCHAR(20) NOT NULL DEFAULT 'Live', "
+                            "status VARCHAR(20) NOT NULL DEFAULT 'active', "
+                            "created_at TIMESTAMP, "
+                            "updated_at TIMESTAMP"
+                            ")"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_live_journal_accounts_user_id "
+                            "ON live_journal_accounts (user_id)"
+                        )
+                    )
                 else:
                     if "users" not in insp.get_table_names():
                         return
@@ -245,6 +269,33 @@ def ensure_users_schema(app) -> None:
                                 "FOREIGN KEY(strategy_id) REFERENCES strategies(id), "
                                 "UNIQUE(template_id, user_id)"
                                 ")"
+                            )
+                        )
+                    if "live_journal_accounts" not in insp.get_table_names():
+                        conn.execute(
+                            text(
+                                "CREATE TABLE live_journal_accounts ("
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                "user_id INTEGER NOT NULL, "
+                                "profile_id INTEGER NOT NULL UNIQUE, "
+                                "name VARCHAR(120) NOT NULL, "
+                                "account_number VARCHAR(64) NOT NULL, "
+                                "platform VARCHAR(80) NOT NULL DEFAULT 'MetaTrader 5', "
+                                "market VARCHAR(40) NOT NULL DEFAULT 'Forex', "
+                                "account_type VARCHAR(20) NOT NULL DEFAULT 'personal', "
+                                "account_subtype VARCHAR(20) NOT NULL DEFAULT 'Live', "
+                                "status VARCHAR(20) NOT NULL DEFAULT 'active', "
+                                "created_at DATETIME, "
+                                "updated_at DATETIME, "
+                                "FOREIGN KEY(user_id) REFERENCES users(id), "
+                                "FOREIGN KEY(profile_id) REFERENCES journal_profiles(id)"
+                                ")"
+                            )
+                        )
+                        conn.execute(
+                            text(
+                                "CREATE INDEX IF NOT EXISTS ix_live_journal_accounts_user_id "
+                                "ON live_journal_accounts (user_id)"
                             )
                         )
             app.logger.info(

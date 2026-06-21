@@ -5,6 +5,7 @@ import type {
   ApiBrokerConnection,
   ApiJournalEntry,
   ApiJournalProfile,
+  ApiLiveJournalAccount,
   V16AccountTypeKey,
   V16AppliedSource,
   V16JournalAccountInfo,
@@ -157,9 +158,14 @@ function buildAccountInfo(
 export function buildJournalBootFromApi(
   entries: ApiJournalEntry[],
   connections: ApiBrokerConnection[],
-  activeProfile: ApiJournalProfile | null
+  activeProfile: ApiJournalProfile | null,
+  liveAccounts: ApiLiveJournalAccount[] = []
 ): V16JournalBoot {
   const accountTypeKey = accountTypeKeyForProfile(activeProfile);
+  const liveByProfileId = new Map<number, ApiLiveJournalAccount>();
+  for (const live of liveAccounts) {
+    liveByProfileId.set(live.profile_id, live);
+  }
   const manualKey = "manual-journal";
   const manualConnectionId = "manual-journal";
   const defaultAccount = buildAccountInfo(
@@ -203,7 +209,37 @@ export function buildJournalBootFromApi(
   }
   accountTradeBuckets.set(manualKey, []);
 
+  const liveAccountKeys = new Map<number, string>();
+  for (const live of liveAccounts) {
+    const key = `live-account-${live.id}`;
+    const connId = `live-${live.id}`;
+    const typeKey: V16AccountTypeKey = live.account_type === "prop" ? "prop" : "personal";
+    const info = buildAccountInfo(
+      key,
+      live.account_number,
+      live.name || live.platform,
+      connId,
+      live.id,
+      typeKey,
+      live.market || "Forex",
+      live.account_subtype || accountStatusLabel(typeKey)
+    );
+    accountByKey[key] = info;
+    accountMeta.set(key, info);
+    accountTradeBuckets.set(key, []);
+    liveAccountKeys.set(live.profile_id, key);
+  }
+
   for (const entry of entries) {
+    const liveKey =
+      entry.profile_id != null ? liveAccountKeys.get(Number(entry.profile_id)) : undefined;
+    if (liveKey) {
+      accountTradeBuckets.get(liveKey)!.push(entry);
+      tradeToAccountKey[String(entry.id)] = liveKey;
+      tradeToAccountKey[`live-${entry.id}`] = liveKey;
+      continue;
+    }
+
     let assignedKey = manualKey;
     for (const conn of connections) {
       const connId = `broker-${conn.id}`;
@@ -231,10 +267,14 @@ export function buildJournalBootFromApi(
 
   const accounts: V16JournalAccountRow[] = [];
   const libraryTrades: Record<string, unknown>[] = [];
+  const liveAccountKeySet = new Set(
+    liveAccounts.map((live) => `live-account-${live.id}`)
+  );
 
   for (const [key, bucket] of accountTradeBuckets.entries()) {
-    if (!bucket.length) continue;
+    if (!bucket.length && !liveAccountKeySet.has(key)) continue;
     const info = accountByKey[key] || defaultAccount;
+    const liveMeta = liveAccounts.find((live) => `live-account-${live.id}` === key);
     const pnl = bucket.reduce((s, e) => s + (Number(e.pnl) || 0), 0);
     const strategyIds = [
       ...new Set(bucket.map((e) => e.strategy_id).filter((id): id is number => typeof id === "number" && id > 0)),
@@ -249,12 +289,14 @@ export function buildJournalBootFromApi(
 
     accounts.push({
       id: key,
-      name: `${info.connection} / ${info.market}`,
+      name: liveMeta
+        ? `${liveMeta.name} / ${liveMeta.market}`
+        : `${info.connection} / ${info.market}`,
       accountNumber: info.accountNumber,
-      connection: info.connection,
+      connection: liveMeta ? liveMeta.platform : info.connection,
       connectionId: info.connectionId,
       accountIndex: info.accountIndex,
-      type: info.type,
+      type: liveMeta?.account_subtype || info.type,
       accountTypeKey: info.accountTypeKey,
       accountTypeLabel: info.accountTypeKey === "prop" ? "Prop" : "Personal",
       market: info.market,
@@ -265,22 +307,26 @@ export function buildJournalBootFromApi(
       hasEditedTrades: bucket.some(
         (e) => e.updated_at && e.created_at && e.updated_at !== e.created_at
       ),
-      createdAt: createdAt || new Date().toISOString(),
-      created: isoDay(createdAt),
-      lastSync: isoDay(bucket.map((e) => e.updated_at).filter(Boolean).sort().slice(-1)[0]),
+      createdAt: liveMeta?.created_at || createdAt || new Date().toISOString(),
+      created: isoDay(liveMeta?.created_at || createdAt),
+      lastSync: isoDay(
+        bucket.map((e) => e.updated_at).filter(Boolean).sort().slice(-1)[0] ||
+          liveMeta?.created_at
+      ),
       totalTrades: bucket.length,
       primarySession: null,
       sessions: [],
       strategyIds,
       strategyNames,
+      profileId: liveMeta?.profile_id,
+      liveAccountId: liveMeta?.id,
+      isLiveJournalAccount: Boolean(liveMeta),
     });
 
     bucket.forEach((entry, i) => {
       libraryTrades.push(mapLiveJournalEntryToV16Trade(entry, i, key));
     });
   }
-
-  accounts.sort((a, b) => b.trades - a.trades || a.name.localeCompare(b.name));
 
   const libraryConnections: V16LibraryConnection[] = connections.map((conn) => {
     const connId = `broker-${conn.id}`;
@@ -300,6 +346,40 @@ export function buildJournalBootFromApi(
       },
     };
   });
+
+  for (const live of liveAccounts) {
+    const connId = `live-${live.id}`;
+    const typeKey: V16AccountTypeKey = live.account_type === "prop" ? "prop" : "personal";
+    const rows = libraryTrades.filter((t) => {
+      const key = tradeToAccountKey[String(t.tradeId)] || "";
+      return key === `live-account-${live.id}`;
+    });
+    libraryConnections.push({
+      id: connId,
+      label: live.name || live.platform,
+      color: typeKey === "prop" ? "#C9A84C" : "#00d4a1",
+      count: 1,
+      entryCount: rows.length,
+      accountTypeKey: typeKey,
+      custom: true,
+      connection: {
+        id: connId,
+        name: live.name,
+        platform: live.platform,
+        account: live.account_number,
+        accountType: live.account_subtype,
+        market: live.market,
+        profileId: live.profile_id,
+        liveAccountId: live.id,
+        createdAt: live.created_at,
+      },
+      match: (trade) => {
+        const tid = String(trade?.tradeId ?? trade?.id ?? "").replace(/^live-/, "");
+        const key = tradeToAccountKey[tid] || tradeToAccountKey[`live-${tid}`];
+        return key === `live-account-${live.id}`;
+      },
+    });
+  }
 
   if (accounts.some((a) => a.id === manualKey || a.id.startsWith(`${manualKey}::`))) {
     const manualRows = libraryTrades.filter((t) => {
@@ -324,9 +404,12 @@ export function buildJournalBootFromApi(
   const connectionOptions = [
     ...new Set([
       ...connections.map((c) => brokerDisplayName(c.broker, c.label)),
+      ...liveAccounts.map((live) => live.name || live.platform),
       "Manual Journal",
     ]),
   ];
+
+  accounts.sort((a, b) => b.trades - a.trades || a.name.localeCompare(b.name));
 
   return {
     libraryTrades,
@@ -430,22 +513,58 @@ export async function fetchJournalApiData(): Promise<{
   connections: ApiBrokerConnection[];
   strategies: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[];
   activeProfile: ApiJournalProfile | null;
+  liveAccounts: ApiLiveJournalAccount[];
 }> {
   await syncJournalTokenFromSession();
   const headers = authHeaders();
 
-  const [entriesRes, connectionsRes, strategiesRes, profilesRes] = await Promise.all([
+  const [entriesRes, connectionsRes, strategiesRes, profilesRes, liveAccountsRes] = await Promise.all([
     fetch(`${JOURNAL_API_BASE}/journal/list`, { headers, cache: "no-store" }).catch(() => null),
     fetch(`${JOURNAL_API_BASE}/journal/broker/list`, { headers, cache: "no-store" }).catch(() => null),
     fetch(`${JOURNAL_API_BASE}/strategies`, { headers, cache: "no-store" }).catch(() => null),
     fetch(`${JOURNAL_API_BASE}/profile/profiles`, { headers, cache: "no-store" }).catch(() => null),
+    fetch(`${JOURNAL_API_BASE}/journal/live-accounts`, { headers, cache: "no-store" }).catch(() => null),
   ]);
 
-  let entries: ApiJournalEntry[] = [];
+  let liveAccounts: ApiLiveJournalAccount[] = [];
+  if (liveAccountsRes?.ok) {
+    const data = (await liveAccountsRes.json()) as { accounts?: ApiLiveJournalAccount[] };
+    liveAccounts = Array.isArray(data.accounts) ? data.accounts : [];
+  }
+
+  const entryById = new Map<number, ApiJournalEntry>();
+
+  const mergeEntries = (rows: ApiJournalEntry[]) => {
+    for (const row of rows) {
+      if (typeof row.id === "number") entryById.set(row.id, row);
+    }
+  };
+
   if (entriesRes?.ok) {
     const data = (await entriesRes.json()) as ApiJournalEntry[] | { trades?: ApiJournalEntry[] };
-    entries = Array.isArray(data) ? data : Array.isArray(data?.trades) ? data.trades : [];
+    mergeEntries(Array.isArray(data) ? data : Array.isArray(data?.trades) ? data.trades : []);
   }
+
+  const profileIds = [
+    ...new Set(
+      liveAccounts
+        .map((a) => a.profile_id)
+        .filter((id): id is number => typeof id === "number" && id > 0)
+    ),
+  ];
+  await Promise.all(
+    profileIds.map(async (profileId) => {
+      const res = await fetch(
+        `${JOURNAL_API_BASE}/journal/list?profile_id=${profileId}`,
+        { headers, cache: "no-store" }
+      ).catch(() => null);
+      if (!res?.ok) return;
+      const data = (await res.json()) as ApiJournalEntry[] | { trades?: ApiJournalEntry[] };
+      mergeEntries(Array.isArray(data) ? data : Array.isArray(data?.trades) ? data.trades : []);
+    })
+  );
+
+  const entries = Array.from(entryById.values());
 
   let connections: ApiBrokerConnection[] = [];
   if (connectionsRes?.ok) {
@@ -479,5 +598,5 @@ export async function fetchJournalApiData(): Promise<{
     activeProfile = profiles.find((p) => p.is_active) || profiles[0] || null;
   }
 
-  return { entries, connections, strategies, activeProfile };
+  return { entries, connections, strategies, activeProfile, liveAccounts };
 }

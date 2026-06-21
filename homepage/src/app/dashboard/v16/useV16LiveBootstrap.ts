@@ -87,6 +87,7 @@ export function useV16LiveBootstrap(): BootState {
         connections: [],
         strategies: [],
         activeProfile: null,
+        liveAccounts: [],
       }));
       const strategyBank = (journalPayload.strategies || []).map((s) =>
         apiStrategyToBankRow(s as ApiStrategyRecord)
@@ -118,6 +119,7 @@ export function useV16LiveBootstrap(): BootState {
             connections: [],
             strategies: [],
             activeProfile: null,
+            liveAccounts: [],
           })),
         ]);
 
@@ -159,7 +161,8 @@ export function useV16LiveBootstrap(): BootState {
         const journal = buildJournalBootFromApi(
           journalPayload.entries,
           journalPayload.connections,
-          journalPayload.activeProfile
+          journalPayload.activeProfile,
+          journalPayload.liveAccounts
         );
 
         const strategies = buildStrategyGroups(

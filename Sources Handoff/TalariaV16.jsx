@@ -48,6 +48,18 @@ const openDashboardNewSession = (opts = {}) => {
   fn(opts);
   return true;
 };
+const openDashboardNewLiveJournal = (opts = {}) => {
+  if (!isV16Embedded()) return false;
+  const fn = typeof window !== "undefined" ? window.__TALARIA_OPEN_NEW_LIVE_JOURNAL__ : null;
+  if (typeof fn !== "function") return false;
+  fn(opts);
+  return true;
+};
+const activateLiveJournalAccount = (accountId) => {
+  if (typeof window === "undefined" || accountId == null) return;
+  const fn = window.__TALARIA_ACTIVATE_LIVE_JOURNAL__;
+  if (typeof fn === "function") fn(Number(accountId));
+};
 const openDashboardEditSession = (sess) => {
   if (!isV16Embedded()) return false;
   const fn = typeof window !== "undefined" ? window.__TALARIA_OPEN_EDIT_SESSION__ : null;
@@ -8046,9 +8058,6 @@ const TalariaV8b = () => {
       setDashTradesLoading(false);
     };
   }, [dashSessId, dashStrategyId, sessView]);
-  const [dashLibraryConnectionOpen, setDashLibraryConnectionOpen] = useState(false);
-  const [dashLibraryConnections, setDashLibraryConnections] = useState([]);
-  const [dashConnectionDraft, setDashConnectionDraft] = useState({name:"",platform:"MetaTrader 5",accountType:"Live",market:"Forex",account:""});
   const [dashCompareOpen, setDashCompareOpen] = useState(false);
   const [dashCompareId, setDashCompareId] = useState(null);
   const [dashCompareDraftId, setDashCompareDraftId] = useState(null);
@@ -8571,6 +8580,12 @@ const TalariaV8b = () => {
       applyEmbeddedView(new URLSearchParams(window.location.search).get("view"));
     } catch {}
     return () => window.removeEventListener("talaria-v16-set-view", onSetView);
+  }, []);
+  useEffect(() => {
+    if (!isV16Embedded()) return;
+    const onCloseSource = () => setDashLibraryOpen(false);
+    window.addEventListener("talaria-v16-close-source", onCloseSource);
+    return () => window.removeEventListener("talaria-v16-close-source", onCloseSource);
   }, []);
   useEffect(() => {
     const onResourcesShortcut = (e) => {
@@ -16532,6 +16547,7 @@ const TalariaV8b = () => {
             const text = String(value || "").toLowerCase();
             return text.includes("prop") || text.includes("challenge") || text.includes("funded") || text.includes("demo") || text.includes("تمويل") || text.includes("تحدي") || text.includes("ممول") ? "prop" : "personal";
           };
+          const journalRowAccountTypeKey = (account) => account?.accountTypeKey || journalAccountTypeKeyForValue(account?.type);
           const libraryJournalAccountGroupLabel = (key) => key === "prop" ? dashTxt("Prop","تمويل") : dashTxt("Personal","شخصي");
           const libraryConnectionTypeLabel = (value) => {
             if (value === "Challenge" || value === "Prop") return dashTxt("Challenge","تحدي");
@@ -16552,9 +16568,6 @@ const TalariaV8b = () => {
           };
           const journalConnectionNames = v16JournalBoot?.connectionOptions?.length ? v16JournalBoot.connectionOptions : ["MetaTrader 5","TradingView","cTrader","Interactive Brokers"];
           const journalConnectionId = (name) => String(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
-          const libraryConnectionOptions = v16JournalBoot?.connectionOptions?.length ? [...v16JournalBoot.connectionOptions, "DXtrade", "TradeLocker", "Match-Trader"] : ["MetaTrader 5","TradingView","cTrader","Interactive Brokers","DXtrade","TradeLocker","Match-Trader"];
-          const libraryConnectionTypes = ["Live","Challenge","Funded","Demo"];
-          const libraryConnectionMarkets = ["Forex","Futures","Stocks","Crypto","Indices"];
           const journalConnectionFor = (trade) => {
             if (v16JournalBoot) {
               const tid = String(trade?.tradeId ?? trade?.id ?? "").replace(/^live-/, "");
@@ -16788,36 +16801,12 @@ const TalariaV8b = () => {
             : libraryJournalRowsForSessions(dashboardSessionPool);
           const journalAccountCountForRows = (rows) => rows.length ? Math.min(4, Math.max(1, Math.ceil(rows.length / 24))) : 0;
           const libraryJournalConnections = v16JournalBoot?.connections?.length
-            ? [
-                ...v16JournalBoot.connections,
-                ...dashLibraryConnections.map(connection => ({
-                  id:connection.id,
-                  label:connection.name || connection.platform,
-                  color:c.gn,
-                  count:1,
-                  entryCount:0,
-                  custom:true,
-                  connection,
-                  match:()=>false,
-                })),
-              ]
-            : [
-            ...journalConnectionNames.map((name,i) => {
+            ? v16JournalBoot.connections
+            : journalConnectionNames.map((name,i) => {
             const id = journalConnectionId(name);
             const rows = libraryJournalTrades.filter(t=>journalConnectionFor(t)===name);
             return {id,label:name,color:c.gn,count:journalAccountCountForRows(rows),entryCount:rows.length,match:t=>journalConnectionFor(t)===name};
-            }),
-            ...dashLibraryConnections.map(connection => ({
-              id:connection.id,
-              label:connection.name || connection.platform,
-              color:c.gn,
-              count:1,
-              entryCount:0,
-              custom:true,
-              connection,
-              match:()=>false,
-            })),
-          ];
+            });
           const libraryJournalAccountTypeCats = [
             {
               id:"personal-accounts",
@@ -16825,7 +16814,7 @@ const TalariaV8b = () => {
               color:c.gn,
               accountTypeKey:"personal",
               rowLabel:libraryJournalAccountGroupLabel("personal"),
-              count:libraryAllJournalAccountRows.filter(account=>journalAccountTypeKeyForValue(account.type)==="personal").length,
+              count:libraryAllJournalAccountRows.filter(account=>journalRowAccountTypeKey(account)==="personal").length,
               match:trade=>journalAccountForTrade(trade).accountTypeKey==="personal",
             },
             {
@@ -16834,7 +16823,7 @@ const TalariaV8b = () => {
               color:c.gold,
               accountTypeKey:"prop",
               rowLabel:libraryJournalAccountGroupLabel("prop"),
-              count:libraryAllJournalAccountRows.filter(account=>journalAccountTypeKeyForValue(account.type)==="prop").length,
+              count:libraryAllJournalAccountRows.filter(account=>journalRowAccountTypeKey(account)==="prop").length,
               match:trade=>journalAccountForTrade(trade).accountTypeKey==="prop",
             },
           ];
@@ -16844,7 +16833,7 @@ const TalariaV8b = () => {
               const customTypeKey = connection.custom ? journalAccountTypeKeyForValue(connection.connection?.accountType) : null;
               const accounts = connection.custom
                 ? (customTypeKey === typeCat.accountTypeKey ? [connection] : [])
-                : libraryAllJournalAccountRows.filter(account => account.connectionId === connection.id && journalAccountTypeKeyForValue(account.type) === typeCat.accountTypeKey);
+                : libraryAllJournalAccountRows.filter(account => account.connectionId === connection.id && journalRowAccountTypeKey(account) === typeCat.accountTypeKey);
               if (!accounts.length) return null;
               return {
                 ...connection,
@@ -16879,6 +16868,20 @@ const TalariaV8b = () => {
             if (connection.custom) {
               const customTypeKey = journalAccountTypeKeyForValue(connection.connection?.accountType);
               if (connection.accountTypeKey && customTypeKey !== connection.accountTypeKey) return [];
+              const liveAccountId = connection.connection?.liveAccountId;
+              if (liveAccountId != null) {
+                const persisted = libraryAllJournalAccountRows.filter(
+                  account => String(account.liveAccountId || "") === String(liveAccountId)
+                );
+                if (persisted.length) {
+                  return persisted.map(account => ({
+                    ...account,
+                    lastSync: account.created || account.lastSync,
+                    color: connection.color,
+                    accountTypeLabel: connection.accountTypeLabel || libraryJournalAccountGroupLabel(account.accountTypeKey),
+                  }));
+                }
+              }
               const created = libraryIsoDate(connection.connection?.createdAt || new Date().toISOString());
               return [{
                 id:`${connection.baseConnectionId || connection.id}-account`,
@@ -16899,7 +16902,7 @@ const TalariaV8b = () => {
             }
             if (connection.accountTypeKey) {
               return libraryAllJournalAccountRows
-                .filter(account=>journalAccountTypeKeyForValue(account.type)===connection.accountTypeKey && (!connection.baseConnectionId || account.connectionId===connection.baseConnectionId))
+                .filter(account=>journalRowAccountTypeKey(account)===connection.accountTypeKey && (!connection.baseConnectionId || account.connectionId===connection.baseConnectionId))
                 .map(account=>({...account,lastSync:account.created,color:connection.color,accountTypeLabel:connection.accountTypeLabel || libraryJournalAccountGroupLabel(connection.accountTypeKey)}));
             }
             const rows = libraryJournalTrades.filter(connection.match);
@@ -17068,7 +17071,6 @@ const TalariaV8b = () => {
             openDashSubWindow("trade-journal",dashTxt("Live Journal","اليوميات الحية"));
           };
           const applyLibraryJournalSource = () => {
-            setDashLibraryConnectionOpen(false);
             setDashLibraryOpen(false);
           };
           const openLibraryStrategyJournal = (session) => {
@@ -17717,7 +17719,6 @@ const TalariaV8b = () => {
           const closeDashLibrary = () => {
             setDashLibraryVisibleNow(false);
             flushSync(()=>{
-              setDashLibraryConnectionOpen(false);
               resetLibraryPendingToApplied();
               setDashLibraryOpen(false);
             });
@@ -17735,7 +17736,6 @@ const TalariaV8b = () => {
               if (next) {
                 setDashFiltersScope(scope);
                 if (nextAnchor) setDashFiltersAnchor(nextAnchor);
-                setDashLibraryConnectionOpen(false);
                 setDashCompareOpen(false);
                 setDashLibraryOpen(false);
                 setDashCardMenu(null);
@@ -17754,72 +17754,73 @@ const TalariaV8b = () => {
             closeDashComparePicker();
             closeDashLibrary();
           };
-          const openLibraryConnectionWindow = () => {
-            setDashConnectionDraft({name:"",platform:"MetaTrader 5",accountType:"Live",market:"Forex",account:""});
-            setDashLibraryConnectionOpen(true);
+          const libraryLiveJournalTypeFromSelection = () => {
+            const cat = String(dashLibraryJournalCat || "");
+            if (cat.includes("prop-accounts")) return "prop";
+            if (cat.includes("personal-accounts")) return "personal";
+            return "personal";
           };
-          const saveLibraryConnection = () => {
-            const account = String(dashConnectionDraft.account || "").trim();
-            if (!account) return;
-            const platform = dashConnectionDraft.platform || "MetaTrader 5";
-            const id = `custom-${Date.now()}`;
-            const label = String(dashConnectionDraft.name || "").trim() || platform;
-            const nextConnection = {
-              id,
-              name:label,
-              platform,
-              account,
-              accountType:dashConnectionDraft.accountType || "Live",
-              market:dashConnectionDraft.market || "Forex",
-              createdAt:new Date().toISOString(),
-            };
-            const accountGroupKey = journalAccountTypeKeyForValue(nextConnection.accountType);
-            const journalGroupCatId = `${accountGroupKey === "prop" ? "prop-accounts" : "personal-accounts"}-${id}`;
-            setDashLibraryConnections(prev=>[...prev,nextConnection]);
-            setDashLibraryTab("journals");
-            setDashLibraryJournalCat(journalGroupCatId);
-            setDashLibraryTreeOpen(prev=>({...prev,journals:true,[accountGroupKey === "prop" ? "journalProp" : "journalPersonal"]:true}));
-            setDashLibrarySelection({
-              kind:"journalAccount",
-              id:`${id}-account`,
-              journalCat:id,
-              label:`${dashTxt("Account","حساب")} ${account}`,
-            });
-            setDashLibraryConnectionOpen(false);
-            setDashConnectionDraft({name:"",platform:"MetaTrader 5",accountType:"Live",market:"Forex",account:""});
+          const libraryLiveJournalTypeFromCat = (catId) => {
+            const cat = String(catId || "");
+            if (cat.includes("prop-accounts")) return "prop";
+            if (cat.includes("personal-accounts")) return "personal";
+            return "personal";
+          };
+          const renderJournalEmptyState = (typeKey = libraryLiveJournalTypeFromSelection()) => (
+            <div style={{minHeight:120,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:`1px solid ${c.br}`,background:c.sf,padding:"18px 14px"}}>
+              <div style={{fontSize:10,fontWeight:800,color:c.tm,fontFamily:F,textAlign:"center"}}>{dashTxt("No live journal accounts yet.","لا توجد حسابات يومية حية بعد.")}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
+                <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey }))} onKeyDown={libraryKeyActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey }))} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
+                  {dashTxt("Create Journal","إنشاء يومية")}
+                </div>
+                <div className="tlr-library-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(openLiveJournalImportFlow)} onKeyDown={libraryKeyActivate(openLiveJournalImportFlow)} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.brH}`,color:c.ts,fontSize:9,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
+                  {dashTxt("Import trades","استيراد الصفقات")}
+                </div>
+              </div>
+            </div>
+          );
+          const openLiveJournalImportFlow = (account) => {
+            if (account?.liveAccountId) activateLiveJournalAccount(account.liveAccountId);
+            else if (account?.profileId) {
+              /* profile-only fallback */
+            }
+            setDashLibraryOpen(false);
+            openDashSubWindow("trade-journal", dashTxt("Live Journal", "اليوميات الحية"));
           };
           const libraryHeaderAction = dashLibraryTab === "journals"
             ? {
-                label:dashTxt("Add Connection","إضافة اتصال"),
+                label:dashTxt("Create Journal","إنشاء يومية"),
                 color:c.gn,
                 shadow:"rgba(0,212,161,0.28)",
-                onClick:openLibraryConnectionWindow
+                onClick:()=>{
+                  openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection() });
+                }
               }
             : {
                 label:dashTxt("Create Session","إنشاء جلسة"),
                 color:c.acL,
                 shadow:c.acG,
-                onClick:()=>{ setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); if(!openDashboardNewSession()){ setSessView("sessions"); goNew(); } }
+                onClick:()=>{ setDashLibraryOpen(false); if(!openDashboardNewSession({ tradingMode: dashLibraryModeCat === "prop" ? "prop" : "standard" })){ setSessView("sessions"); goNew(); } }
               };
           const compareHeaderAction = dashCompareTab === "journals"
             ? {
-                label:dashTxt("Add Connection","إضافة اتصال"),
+                label:dashTxt("Create Journal","إنشاء يومية"),
                 color:c.gn,
                 shadow:"rgba(0,212,161,0.28)",
-                onClick:()=>{ setDashCompareOpen(false); openLibraryConnectionWindow(); }
+                onClick:()=>{ setDashCompareOpen(false); openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromCat(dashCompareJournalCat) }); }
               }
             : dashCompareTab === "strategies"
               ? {
                   label:dashTxt("Create Strategy","إنشاء استراتيجية"),
                   color:c.acL,
                   shadow:c.acG,
-                  onClick:()=>{ setDashCompareOpen(false); setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); openBlankStrategyBuilder(); }
+                  onClick:()=>{ setDashCompareOpen(false); setDashLibraryOpen(false); openBlankStrategyBuilder(); }
                 }
               : {
                   label:dashTxt("Create Session","إنشاء جلسة"),
                   color:c.acL,
                   shadow:c.acG,
-                  onClick:()=>{ setDashCompareOpen(false); setDashLibraryConnectionOpen(false); setDashLibraryOpen(false); if(!openDashboardNewSession()){ setSessView("sessions"); goNew(); } }
+                  onClick:()=>{ setDashCompareOpen(false); setDashLibraryOpen(false); if(!openDashboardNewSession({ tradingMode: dashCompareModeCat === "prop" ? "prop" : "standard" })){ setSessView("sessions"); goNew(); } }
                 };
           const toggleLibraryStrategyBox = (id) => setDashLibraryStrategyExpanded(prev => prev[id] ? {} : {[id]: true});
           const toggleLibraryTree = (id) => setDashLibraryTreeOpen(prev => ({...prev,[id]:!prev[id]}));
@@ -26616,7 +26617,7 @@ const TalariaV8b = () => {
                                       {libraryPercentPnlCell(account.pnlPct, tone, `${account.trades} ${dashTxt("trades","صفقات")}`)}
                                     </div>
                                   );
-                                }) : <div style={{height:90,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.br}`,background:c.sf,fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No connected accounts.","لا توجد حسابات متصلة.")}</div>
+                                }) : renderJournalEmptyState(libraryLiveJournalTypeFromSelection())
                               ) : libraryJournalAccountGroups.length ? libraryJournalAccountGroups.map(group=>(
                                 <div key={group.id} style={{display:"grid",alignContent:"start",gap:0,marginBottom:12}}>
                                   <div style={{height:28,display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1px solid ${c.br}`,marginBottom:4}}>
@@ -26641,7 +26642,7 @@ const TalariaV8b = () => {
                                     );
                                   })}
                                 </div>
-                              )) : <div style={{height:90,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.br}`,background:c.sf,fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No connected accounts.","لا توجد حسابات متصلة.")}</div>}
+                              )) : renderJournalEmptyState(libraryLiveJournalTypeFromSelection())}
                             </div>
                           </>
                         ) : (
@@ -26721,67 +26722,6 @@ const TalariaV8b = () => {
                       </div>
                     </div>
                   </div>
-                  {dashLibraryConnectionOpen && (
-                    <div style={{position:"fixed",inset:0,zIndex:100004,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.34)",padding:18}} onMouseDown={e=>{e.stopPropagation();setDashLibraryConnectionOpen(false);}}>
-                      <div onMouseDown={e=>e.stopPropagation()} style={{width:430,maxWidth:"calc(100vw - 48px)",background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 24px 72px rgba(0,0,0,0.9)",display:"flex",flexDirection:"column",animation:"tlrPopIn 0.12s ease",fontFamily:F}}>
-                        <div style={{height:2,background:`linear-gradient(90deg,transparent,${c.gn},transparent)`,boxShadow:`0 0 8px ${c.gn}66`,flexShrink:0}}/>
-                        <div style={{height:44,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:`1px solid ${c.br}`,background:c.sf}}>
-                          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-                            <div style={{width:2,height:18,background:`linear-gradient(180deg,transparent,${c.gn},transparent)`,boxShadow:`0 0 6px ${c.gn}66`,flexShrink:0}}/>
-                            <div style={{fontSize:12,fontWeight:900,color:c.tx,letterSpacing:"0.05em",fontFamily:F,whiteSpace:"nowrap"}}>{dashTxt("Add Connection","إضافة اتصال")}</div>
-                          </div>
-                          <div className="tlr-library-action" role="button" tabIndex={0} aria-label={dashTxt("Close","إغلاق")} onClick={()=>setDashLibraryConnectionOpen(false)} onKeyDown={libraryKeyActivate(()=>setDashLibraryConnectionOpen(false))} style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",color:c.ts,background:"transparent"}}>
-                            <I n="x" s={17} cl={c.ts}/>
-                          </div>
-                        </div>
-                        <div style={{padding:"14px 16px 16px",display:"flex",flexDirection:"column",gap:12}}>
-                          {[
-                            [dashTxt("Connection name","اسم الاتصال"),"name",dashTxt("Optional display name","اسم اختياري")],
-                            [dashTxt("Account number","رقم الحساب"),"account",dashTxt("Required","مطلوب")],
-                          ].map(([label,key,placeholder])=>(
-                            <label key={key} style={{display:"flex",flexDirection:"column",gap:5}}>
-                              <span style={{fontSize:8.5,fontWeight:900,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase"}}>{label}</span>
-                              <input value={dashConnectionDraft[key]||""} onChange={e=>setDashConnectionDraft(prev=>({...prev,[key]:e.target.value.slice(0,32)}))} placeholder={placeholder} style={{height:30,background:c.sf,border:`1px solid ${key==="account"&&!dashConnectionDraft.account?c.gn+"55":c.brH}`,outline:"none",color:c.tx,fontSize:11,fontWeight:800,fontFamily:F,padding:"0 9px",boxSizing:"border-box"}}/>
-                            </label>
-                          ))}
-                          {[
-                            [dashTxt("Connection","الاتصال"),"platform",libraryConnectionOptions],
-                            [dashTxt("Type","النوع"),"accountType",libraryConnectionTypes],
-                            [dashTxt("Market","السوق"),"market",libraryConnectionMarkets],
-                          ].map(([label,key,items])=>(
-                            <div key={key} style={{display:"flex",flexDirection:"column",gap:6}}>
-                              <div style={{fontSize:8.5,fontWeight:900,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase"}}>{label}</div>
-                              <div style={{display:"flex",alignItems:"center",gap:0,flexWrap:"wrap"}}>
-                                {items.map(item=>{
-                                  const active = dashConnectionDraft[key]===item;
-                                  const text = key==="accountType" ? libraryConnectionTypeLabel(item) : key==="market" ? libraryConnectionMarketLabel(item) : item;
-                                  return (
-                                    <div key={item} role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>setDashConnectionDraft(prev=>({...prev,[key]:item})))} onKeyDown={libraryKeyActivate(()=>setDashConnectionDraft(prev=>({...prev,[key]:item})))} className={`tlr-library-status-tab${active ? " tlr-library-status-tab-active" : ""}`} style={{height:25,padding:"0 9px",display:"flex",alignItems:"center",background:active?"rgba(0,212,161,0.10)":"transparent",color:active?c.gn:c.ts,fontSize:8.8,fontWeight:900,letterSpacing:"0.05em",textTransform:"uppercase",borderBottom:active?`1px solid ${c.gn}`:"1px solid transparent",boxShadow:active?`0 4px 12px -8px ${c.gn}`:"none",boxSizing:"border-box","--tlr-status-hover-bg":"rgba(255,255,255,0.06)"}}>
-                                      {text}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{height:48,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"0 14px",borderTop:`1px solid ${c.brH}`,background:c.sf}}>
-                          <div style={{fontSize:8.5,fontWeight:800,color:c.tm,letterSpacing:"0.05em",textTransform:"uppercase",fontFamily:F}}>
-                            {dashConnectionDraft.account ? dashTxt("Ready to add","جاهز للإضافة") : dashTxt("Account number required","رقم الحساب مطلوب")}
-                          </div>
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <div className="tlr-library-title-action" role="button" tabIndex={0} onClick={()=>setDashLibraryConnectionOpen(false)} onKeyDown={libraryKeyActivate(()=>setDashLibraryConnectionOpen(false))} style={{height:30,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",color:c.ts,fontSize:9,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F}}>
-                              {dashTxt("Cancel","إلغاء")}
-                            </div>
-                            <div className="tlr-library-action" role="button" tabIndex={dashConnectionDraft.account?0:-1} aria-disabled={dashConnectionDraft.account?"false":"true"} onClick={saveLibraryConnection} onKeyDown={libraryKeyActivate(saveLibraryConnection)} style={{height:30,minWidth:118,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,opacity:dashConnectionDraft.account?1:0.35,pointerEvents:dashConnectionDraft.account?"auto":"none",boxShadow:dashConnectionDraft.account?`0 0 10px ${c.gn}44`:"none"}}>
-                              <svg width={11} height={11} viewBox="0 0 12 12" fill="none"><line x1="6" y1="1.5" x2="6" y2="10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square"/><line x1="1.5" y1="6" x2="10.5" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="square"/></svg>
-                              {dashTxt("Add Connection","إضافة اتصال")}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               {dashCompareOpen && (
                 <div ref={dashCompareShellRef} className={`tlr-library-shell${dashCompareMultiple ? " tlr-library-multiple-on" : ""}`} aria-hidden={!dashCompareOpen} style={{position:"fixed",inset:0,zIndex:100002,background:"transparent",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
@@ -26997,7 +26937,7 @@ const TalariaV8b = () => {
                                       {libraryPercentPnlCell(account.pnlPct, tone, `${account.trades} ${dashTxt("trades","صفقات")}`)}
                                     </div>
                                   );
-                                }) : <div style={{height:90,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.br}`,background:c.sf,fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No connected accounts.","لا توجد حسابات متصلة.")}</div>
+                                }) : renderJournalEmptyState(libraryLiveJournalTypeFromCat(dashCompareJournalCat))
                               ) : libraryJournalAccountGroups.length ? libraryJournalAccountGroups.map(group=>(
                                 <div key={`compare-${group.id}`} style={{display:"grid",alignContent:"start",gap:0,marginBottom:12}}>
                                   <div style={{height:28,display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1px solid ${c.br}`,marginBottom:4}}>
@@ -27025,7 +26965,7 @@ const TalariaV8b = () => {
                                     );
                                   })}
                                 </div>
-                              )) : <div style={{height:90,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.br}`,background:c.sf,fontSize:10,fontWeight:800,color:c.tm,fontFamily:F}}>{dashTxt("No connected accounts.","لا توجد حسابات متصلة.")}</div>}
+                              )) : renderJournalEmptyState(libraryLiveJournalTypeFromCat(dashCompareJournalCat))}
                             </div>
                           </>
                         )}

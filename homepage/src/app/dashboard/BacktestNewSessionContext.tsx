@@ -13,6 +13,7 @@ export type BacktestNewSessionRegisterFn = (fn: (() => void) | null) => void;
 export type BacktestNewSessionOpenOptions = {
   strategyId?: number;
   strategyName?: string;
+  tradingMode?: "standard" | "prop";
 };
 
 export type BacktestEditSessionPayload = BacktestNewSessionInitialState["editSession"];
@@ -64,6 +65,7 @@ export function BacktestNewSessionProvider({
     setInitialState({
       playbook,
       sessionName: name,
+      tradingMode: opts?.tradingMode === "prop" ? "prop" : "standard",
     });
     setOpen(true);
   }, [showSessionLimitGate]);

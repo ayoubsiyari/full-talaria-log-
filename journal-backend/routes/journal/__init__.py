@@ -11,4 +11,5 @@ from . import brokers  # noqa: E402, F401
 from . import exit_analysis  # noqa: E402, F401
 from . import filters  # noqa: E402, F401
 from . import import_export  # noqa: E402, F401
+from . import live_accounts  # noqa: E402, F401
 from . import trades  # noqa: E402, F401

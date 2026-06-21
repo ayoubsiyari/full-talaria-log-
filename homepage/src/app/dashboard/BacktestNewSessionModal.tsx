@@ -41,6 +41,7 @@ function IconI({ n, s = 18, cl = "currentColor" }: { n: string; s?: number; cl?:
 export type BacktestNewSessionInitialState = {
   playbook?: string;
   sessionName?: string;
+  tradingMode?: "standard" | "prop";
   editSession?: {
     id: number | string;
     name?: string;
@@ -457,6 +458,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       } else {
         if (initialState?.sessionName) setNewSessName(initialState.sessionName);
         if (initialState?.playbook) setNewSessPlaybook(initialState.playbook);
+        if (initialState?.tradingMode === "prop") setSessTradingMode("prop");
+        else if (initialState?.tradingMode === "standard") setSessTradingMode("standard");
       }
     }
     prevOpen.current = open;
