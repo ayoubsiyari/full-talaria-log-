@@ -24657,16 +24657,24 @@ const TalariaV8b = () => {
             }
             return null;
           };
+          const getDashStrategyBankRows = () => (getV16StrategyBank() || myStrategies || []).filter(Boolean);
+          const findDashAddTradeStrategyBankRowByName = (strategyName) => {
+            const cleaned = String(strategyName || "").trim().toLowerCase();
+            if (!cleaned) return null;
+            return getDashStrategyBankRows().find(row => String(row?.name || "").trim().toLowerCase() === cleaned) || null;
+          };
           const findDashAddTradeStrategyBankRow = (source, session=null) => {
             const resolvedSession = session || resolveDashAddTradePrimarySession(source);
             const cfg = resolvedSession?.config && typeof resolvedSession.config === "object" ? resolvedSession.config : {};
-            const bank = getV16StrategyBank() || myStrategies || [];
+            const bank = getDashStrategyBankRows();
             const strategyId = source?.strategyId ?? parseDashAddTradeSessionStrategyId(resolvedSession);
             if (strategyId != null) {
               const byId = bank.find(row => String(row.id) === String(strategyId));
               if (byId) return byId;
             }
             const nameCandidates = [
+              source?.setup_tag,
+              source?.setup,
               source?.strategyName,
               source?.strategy,
               resolvedSession?.strategyName,
@@ -24681,6 +24689,22 @@ const TalariaV8b = () => {
               const rowName = String(row.name || "").trim().toLowerCase();
               return rowName && nameCandidates.includes(rowName);
             }) || null;
+          };
+          const applyDashAddTradeStrategyByName = (source, strategyName) => {
+            if (!source) return source;
+            const row = findDashAddTradeStrategyBankRowByName(strategyName);
+            const variables = extractDashAddTradeVariablesFromBankRow(row);
+            return {
+              ...source,
+              setup_tag: row?.name || strategyName || "",
+              setup: row?.name || strategyName || "",
+              strategyId: row?.id ?? null,
+              strategyName: row?.name || strategyName || "",
+              strategy: row?.name || strategyName || "",
+              strategyRecord: row || null,
+              variables: dashAddTradeVariablesHaveDefs(variables) ? variables : [],
+              strategyVariables: dashAddTradeVariablesHaveDefs(variables) ? variables : [],
+            };
           };
           const getDashAddTradeSessionDateRange = (source) => {
             const session = resolveDashAddTradePrimarySession(source);
@@ -25000,6 +25024,12 @@ const TalariaV8b = () => {
             return [...values].slice(0, 18);
           };
           const getDashSourceStrategyOptions = (source) => {
+            if (isDashLiveJournalAddTradeSource(source)) {
+              return getDashStrategyBankRows()
+                .map(row => String(row?.name || "").trim())
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+            }
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions : [];
             const sourceTrades = Array.isArray(source?.trades) ? source.trades : [];
             const values = new Set();
@@ -25204,7 +25234,12 @@ const TalariaV8b = () => {
             const tp = lastTrade.takeProfit ?? lastTrade.tp ?? "";
             const tradeNumber = 1000 + sourceTrades.length + dashManualTrades.filter(trade => String(trade.sourceKey) === String(source?.key)).length + 1;
             const tradeId = `manual-${source?.key || "source"}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`.replace(/[^a-zA-Z0-9:_-]/g, "-");
-            const fallbackStrategy = isDashJournalAddTradeSource(source) ? dashTxt("Manual Strategy","استراتيجية يدوية") : "";
+            const fallbackStrategy = isDashLiveJournalAddTradeSource(source)
+              ? ""
+              : (isDashJournalAddTradeSource(source) ? dashTxt("Manual Strategy","استراتيجية يدوية") : "");
+            const defaultSetupTag = isDashLiveJournalAddTradeSource(source)
+              ? (setupOptions[0] || "")
+              : (setupOptions[0] || fallbackStrategy);
             return {
               id:`#${String(tradeNumber).padStart(4, "0")}`,
               trade_id:tradeId,
@@ -25220,8 +25255,8 @@ const TalariaV8b = () => {
               exitTimingEnabled:false,
               size:"",
               unit:instrumentSpec.unit,
-              setup_tag:setupOptions[0] || fallbackStrategy,
-              setup:setupOptions[0] || fallbackStrategy,
+              setup_tag:defaultSetupTag,
+              setup:defaultSetupTag,
               timeframe:timeframeOptions[0] || "5m",
               commission:costSettings.commission,
               spread:costSettings.spread,
@@ -25321,8 +25356,12 @@ const TalariaV8b = () => {
             setDashAddTradeScreenshotSlot("pre");
             setDashAddTradeExcursionOpen(false);
             ensureDashAddTradeStrategyVariables(source, (enriched) => {
-              setDashAddTradeEditorSource(enriched);
-              setDashAddTradeDraft(buildDashAddTradeDraft(enriched));
+              const draft = buildDashAddTradeDraft(enriched);
+              const nextSource = isDashLiveJournalAddTradeSource(enriched) && draft.setup_tag
+                ? applyDashAddTradeStrategyByName(enriched, draft.setup_tag)
+                : enriched;
+              setDashAddTradeEditorSource(nextSource);
+              setDashAddTradeDraft(draft);
               setDashAddTradeEditorOpen(true);
             });
           };
@@ -25373,7 +25412,10 @@ const TalariaV8b = () => {
             if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
             commitLibrarySelection(makeLibraryJournalAccountSelection(target));
             setDashLibraryOpen(false);
-            openSelectedAddTradeSource(source);
+            const openLiveJournalAddTrade = () => openSelectedAddTradeSource(source);
+            const refreshBank = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
+            if (typeof refreshBank === "function") refreshBank().finally(openLiveJournalAddTrade);
+            else openLiveJournalAddTrade();
           };
           const openDashTradeEditorFromTrade = (trade, rowKey=null) => {
             if (!trade) return;
@@ -25524,7 +25566,11 @@ const TalariaV8b = () => {
             setDashAddTradePickerOpen(false);
             setDashAddTradeWarningOpen(false);
             setDashPendingAddTradeSource(null);
-            setDashAddTradeEditorSource(enrichDashAddTradeSource(source));
+            const enrichedSource = enrichDashAddTradeSource(source);
+            const editorSource = isDashLiveJournalAddTradeSource(enrichedSource) && draft.setup_tag
+              ? applyDashAddTradeStrategyByName(enrichedSource, draft.setup_tag)
+              : enrichedSource;
+            setDashAddTradeEditorSource(editorSource);
             setDashAddTradeDraft(draftWithSnapshot);
             setDashAddTradeEditorPage("trade");
             setDashAddTradeValidationError("");
@@ -25627,7 +25673,15 @@ const TalariaV8b = () => {
                 if (costSettings.locked) return {...base, commission:costSettings.commission, spread:costSettings.spread, slippage:costSettings.slippage};
                 return {...base, spread:instrumentSpec.costField === "spread" ? prev.spread : "", slippage:instrumentSpec.costField === "slippage" ? prev.slippage : ""};
               }
-              if (field === "setup_tag") return {...prev, setup_tag:value, setup:value};
+              if (field === "setup_tag") {
+                const next = {...prev, setup_tag:value, setup:value};
+                if (isDashLiveJournalAddTradeSource(dashAddTradeEditorSource)) {
+                  setDashAddTradeEditorSource(current => applyDashAddTradeStrategyByName(current, value));
+                  setDashAddTradePreTags({});
+                  setDashAddTradePostTags({});
+                }
+                return next;
+              }
               if (field === "date" || field === "exitDate") {
                 const range = getDashAddTradeSessionDateRange(dashAddTradeEditorSource);
                 value = clampDashAddTradeIsoDate(value, range);
@@ -25961,11 +26015,17 @@ const TalariaV8b = () => {
             const validTargetPrices = targetRows
               .map(row => parseDashTradeNumber(row.price))
               .filter(price => price > 0);
-            const needsStrategy = isDashJournalAddTradeSource(source) && !isDashLiveJournalAddTradeSource(source);
+            const needsStrategy = isDashJournalAddTradeSource(source);
             const sessionRange = getDashAddTradeSessionDateRange(source);
             const hasSessionRange = !isDashLiveJournalAddTradeSource(source) && !!(sessionRange.minDate || sessionRange.maxDate);
             if (!isDashLiveJournalAddTradeSource(source) && instruments.length && !instruments.includes(String(draft?.symbol || "").toUpperCase())) return {ok:false, error:dashTxt("Choose an instrument that belongs to this source.","اختر أداة تابعة لهذا المصدر.")};
             if (needsStrategy && !String(draft?.setup_tag || draft?.setup || "").trim()) return {ok:false, error:dashTxt("Choose the strategy used for this journal trade.","اختر الاستراتيجية المستخدمة لهذه الصفقة في اليومية.")};
+            if (isDashLiveJournalAddTradeSource(source)) {
+              const strategyName = String(draft?.setup_tag || draft?.setup || "").trim();
+              if (!findDashAddTradeStrategyBankRowByName(strategyName)) {
+                return {ok:false, error:dashTxt("Select a strategy from the Strategy tab.","اختر استراتيجية من تبويب الاستراتيجية.")};
+              }
+            }
             if (!Number.isFinite(startMs)) return {ok:false, error:dashTxt("Entry date and time are required.","تاريخ ووقت الدخول مطلوبان.")};
             if (hasSessionRange) {
               const entryIso = dashAddTradeIsoDay(draft?.date);
@@ -26335,7 +26395,7 @@ const TalariaV8b = () => {
               {id:"exitRsn", label:dashTxt("Exit Reason","سبب الخروج"), type:"multi", single:true, options:["TP Hit","Manual","SL Hit","Trailing"]},
             ];
             const fallback = isDashLiveJournalAddTradeSource(source)
-              ? (slot === "pre" ? defaultPreDefs : defaultPostDefs)
+              ? []
               : (isV16LiveBoot() ? [] : (slot === "pre" ? defaultPreDefs : defaultPostDefs));
             const resolved = (fromDirect.length ? fromDirect : fromVariables.length ? fromVariables : fallback).map(def => ({...def}));
             if (!isV16LiveBoot() && slot === "post" && !resolved.some(def => def.id === "planReview" || normalizeDashAddTradeTagKey(def.label) === "plan review")) {
@@ -26407,6 +26467,7 @@ const TalariaV8b = () => {
             const autoRiskAmount = Number.isFinite(currency.riskCurrency) ? currency.riskCurrency : null;
             const addTradePreTagDefs = resolveDashAddTradeTagDefs(dashAddTradeEditorSource, "pre", dashAddTradeDraft);
             const addTradePostTagDefs = resolveDashAddTradeTagDefs(dashAddTradeEditorSource, "post", dashAddTradeDraft);
+            const resolvedStrategyRecord = resolveDashAddTradeStrategyRecord(dashAddTradeEditorSource, dashAddTradeDraft);
             const flattenTags = (defs, state, excludeIds=[]) => defs.filter(def => !excludeIds.includes(def.id)).flatMap(def => def.type === "bool"
               ? (state[def.id] === true ? [def.label] : [])
               : (Array.isArray(state[def.id]) ? state[def.id] : [])
@@ -26493,6 +26554,8 @@ const TalariaV8b = () => {
               status:closed ? "Closed" : "Open",
               setup:dashAddTradeDraft.setup_tag || dashAddTradeDraft.setup,
               setup_tag:dashAddTradeDraft.setup_tag || dashAddTradeDraft.setup,
+              strategyId:resolvedStrategyRecord?.id ?? dashAddTradeEditorSource?.strategyId ?? null,
+              strategy_id:resolvedStrategyRecord?.id ?? dashAddTradeEditorSource?.strategyId ?? null,
               timeframe:dashAddTradeDraft.timeframe,
               entry:calculated.avgEntry == null ? "" : calculated.avgEntry.toFixed(2),
               entryPrice:calculated.avgEntry == null ? null : +calculated.avgEntry.toFixed(5),
@@ -28549,7 +28612,8 @@ const TalariaV8b = () => {
                   const optionIdentity = option => `${String(option.value || "").trim().toLowerCase()}::${String(option.label || "").trim().toLowerCase()}`;
                   const pinnedKeySet = new Set(pinnedOptions.map(optionIdentity));
                   const currentValue = dashAddTradeDraft[field] ?? normalizedOptions[0]?.value ?? "";
-                  const selected = normalizedOptions.find(option => String(option.value).toLowerCase() === String(currentValue).toLowerCase()) || normalizedOptions[0] || {value:"", label:""};
+                  const matchedOption = normalizedOptions.find(option => String(option.value).toLowerCase() === String(currentValue).toLowerCase());
+                  const selected = matchedOption || normalizedOptions[0] || {value:"", label:props.emptySelectionLabel || ""};
                   const menuKey = props.menuKey || field;
                   const isOpen = dashAddTradeTradeMenuOpen === menuKey;
                   const searchable = !!props.searchable;
@@ -31078,8 +31142,13 @@ const TalariaV8b = () => {
                             {addTradeIsJournalSource && (
                               <div style={{padding:"11px 16px",borderBottom:`1px solid ${c.br}`,display:"flex",alignItems:"center",justifyContent:"flex-start",gap:14,boxSizing:"border-box"}}>
                                 <div style={{width:340,maxWidth:"100%"}}>
-                                  {addTradeCompactDropdownField(dashTxt("Strategy","الاستراتيجية"), "setup_tag", setupOptions.length ? setupOptions : [dashTxt("Manual Strategy","استراتيجية يدوية")], {tier:"mandatory", menuKey:"setup_tag", inlineLabel:true, labelWidth:76, dropdownMaxHeight:232, searchable:true, searchPlaceholder:dashTxt("Search strategies...","ابحث عن الاستراتيجيات..."), pinnedOptions:addTradeUsedStrategyOptions, pinnedLabel:dashTxt("Used in this journal","مستخدمة في هذه اليومية"), pinnedColor:c.acL})}
+                                  {addTradeCompactDropdownField(dashTxt("Strategy","الاستراتيجية"), "setup_tag", setupOptions, {tier:"mandatory", menuKey:"setup_tag", inlineLabel:true, labelWidth:76, dropdownMaxHeight:232, searchable:true, searchPlaceholder:dashTxt("Search strategies...","ابحث عن الاستراتيجيات..."), pinnedOptions:addTradeUsedStrategyOptions, pinnedLabel:dashTxt("Used in this journal","مستخدمة في هذه اليومية"), pinnedColor:c.acL, emptySelectionLabel:isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) ? dashTxt("Select strategy...","اختر استراتيجية...") : dashTxt("Manual Strategy","استراتيجية يدوية")})}
                                 </div>
+                              </div>
+                            )}
+                            {isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) && !setupOptions.length && (
+                              <div style={{padding:"10px 16px",borderBottom:`1px solid ${c.br}`,fontSize:10,fontWeight:750,color:c.tm,fontFamily:F,lineHeight:1.45}}>
+                                {dashTxt("Create strategies in the Strategy tab first — their pre/post trade tags will appear here.","أنشئ استراتيجيات في تبويب الاستراتيجية أولاً — ستظهر وسوم ما قبل/بعد الصفقة هنا.")}
                               </div>
                             )}
                             <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",minHeight:0}}>
@@ -31091,7 +31160,15 @@ const TalariaV8b = () => {
                                   </div>
                                   <span style={{marginLeft:"auto",fontSize:8,fontWeight:850,color:"rgba(255,140,66,0.62)",letterSpacing:"0.06em",textTransform:"uppercase",fontVariantNumeric:"tabular-nums"}}>{addTradePreSelectedCount}/10</span>
                                 </div>
-                                {renderTagRows("pre", addTradePreTagDefs, addTradeResolvedPreTags, "#FF8C42")}
+                                {addTradePreTagDefs.length
+                                  ? renderTagRows("pre", addTradePreTagDefs, addTradeResolvedPreTags, "#FF8C42")
+                                  : (isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) ? (
+                                    <div style={{fontSize:10,fontWeight:750,color:addTradeReadableMuted,fontFamily:F,lineHeight:1.45}}>
+                                      {dashAddTradeDraft?.setup_tag
+                                        ? dashTxt("This strategy has no pre-trade tag variables defined in Strategy Lab.","لا توجد متغيرات وسوم قبل الصفقة لهذه الاستراتيجية في مختبر الاستراتيجية.")
+                                        : dashTxt("Select a strategy above to load pre-trade tags.","اختر استراتيجية أعلاه لتحميل وسوم ما قبل الصفقة.")}
+                                    </div>
+                                  ) : renderTagRows("pre", addTradePreTagDefs, addTradeResolvedPreTags, "#FF8C42"))}
                               </div>
                               <div style={{padding:"15px 16px",minWidth:0}}>
                                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
@@ -31101,7 +31178,15 @@ const TalariaV8b = () => {
                                   </div>
                                   <span style={{marginLeft:"auto",fontSize:8,fontWeight:850,color:"rgba(180,140,255,0.62)",letterSpacing:"0.06em",textTransform:"uppercase",fontVariantNumeric:"tabular-nums"}}>{addTradePostSelectedCount}/10</span>
                                 </div>
-                                {renderTagRows("post", addTradeVisiblePostTagDefs, addTradeResolvedPostTags, "rgba(180,140,255,0.95)")}
+                                {addTradeVisiblePostTagDefs.length
+                                  ? renderTagRows("post", addTradeVisiblePostTagDefs, addTradeResolvedPostTags, "rgba(180,140,255,0.95)")
+                                  : (isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) ? (
+                                    <div style={{fontSize:10,fontWeight:750,color:addTradeReadableMuted,fontFamily:F,lineHeight:1.45}}>
+                                      {dashAddTradeDraft?.setup_tag
+                                        ? dashTxt("This strategy has no post-trade tag variables defined in Strategy Lab.","لا توجد متغيرات وسوم بعد الصفقة لهذه الاستراتيجية في مختبر الاستراتيجية.")
+                                        : dashTxt("Select a strategy above to load post-trade tags.","اختر استراتيجية أعلاه لتحميل وسوم ما بعد الصفقة.")}
+                                    </div>
+                                  ) : renderTagRows("post", addTradeVisiblePostTagDefs, addTradeResolvedPostTags, "rgba(180,140,255,0.95"))}
                               </div>
                             </div>
                           </div>

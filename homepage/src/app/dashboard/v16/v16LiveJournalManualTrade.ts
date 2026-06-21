@@ -82,6 +82,8 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
       ? formatJournalDateTime(`${String(trade.exitDate).slice(0, 10)}T${String(trade.exitTime || "00:00").slice(0, 5)}`)
       : undefined);
   const setup = String(trade.setup_tag || trade.setup || trade.tag || "Manual").trim();
+  const strategyIdRaw = trade.strategy_id ?? trade.strategyId;
+  const strategyId = strategyIdRaw != null && String(strategyIdRaw).trim() !== "" ? strategyIdRaw : null;
   const market = String(trade.market || trade.asset_class || trade.assetClass || "");
   const variables = buildVariablesFromTrade(trade);
   const demonCatcher =
@@ -106,6 +108,7 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
     rr: trade.rMultiple ?? trade.rr ?? trade.actual_rr_net ?? null,
     strategy: setup,
     setup,
+    strategy_id: strategyId,
     commission: trade.commission ?? trade.commission_total ?? null,
     slippage: trade.slippage ?? null,
     instrument_type: instrumentTypeFromMarket(market),
