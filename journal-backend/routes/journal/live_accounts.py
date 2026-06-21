@@ -21,6 +21,24 @@ _PROP_SUBTYPES = frozenset({"Challenge", "Funded", "Demo"})
 _VALID_MARKETS = frozenset({"Forex", "Futures", "Stocks", "Crypto", "Indices"})
 
 
+def _db_error_response(exc: Exception):
+    msg = str(exc)
+    if "prop_rules" in msg and "does not exist" in msg:
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": (
+                        "Database is missing the prop_rules column. "
+                        "Restart journal-backend or run scripts/migrate-live-journal-prop-rules.sh on the server."
+                    ),
+                }
+            ),
+            503,
+        )
+    return jsonify({"success": False, "error": msg}), 500
+
+
 def _default_prop_rules(market: str, balance: Decimal, firm: str | None = None) -> dict:
     is_futures = str(market or "").strip().lower() == "futures"
     cap = float(balance or 50000)
@@ -232,28 +250,28 @@ def list_live_journal_accounts():
     if err:
         return err
 
-    rows = (
-        LiveJournalAccount.query.filter_by(user_id=user.id, status="active")
-        .order_by(LiveJournalAccount.created_at.desc())
-        .all()
-    )
-    from models import JournalEntry
+    try:
+        rows = (
+            LiveJournalAccount.query.filter_by(user_id=user.id, status="active")
+            .order_by(LiveJournalAccount.created_at.desc())
+            .all()
+        )
+        from models import JournalEntry
 
-    counts = dict(
-        db.session.query(JournalEntry.profile_id, func.count(JournalEntry.id))
-        .filter(JournalEntry.user_id == user.id)
-        .group_by(JournalEntry.profile_id)
-        .all()
-    )
-    return jsonify(
-        {
-            "success": True,
-            "accounts": [_serialize_live_account(r, trade_count=counts.get(r.profile_id, 0)) for r in rows],
-        }
-    ), 200
-
-
-@journal_bp.route("/live-accounts/<int:account_id>", methods=["GET"])
+        counts = dict(
+            db.session.query(JournalEntry.profile_id, func.count(JournalEntry.id))
+            .filter(JournalEntry.user_id == user.id)
+            .group_by(JournalEntry.profile_id)
+            .all()
+        )
+        return jsonify(
+            {
+                "success": True,
+                "accounts": [_serialize_live_account(r, trade_count=counts.get(r.profile_id, 0)) for r in rows],
+            }
+        ), 200
+    except Exception as exc:
+        return _db_error_response(exc)
 @jwt_required()
 def get_live_journal_account(account_id: int):
     user, err = _require_journal_user()
@@ -318,7 +336,7 @@ def create_live_journal_account():
         return jsonify({"success": True, "account": _serialize_live_account(row, trade_count=0)}), 201
     except Exception as exc:
         db.session.rollback()
-        return jsonify({"success": False, "error": str(exc)}), 500
+        return _db_error_response(exc)
 
 
 @journal_bp.route("/live-accounts/<int:account_id>", methods=["PATCH"])
@@ -367,7 +385,7 @@ def update_live_journal_account(account_id: int):
         return jsonify({"success": True, "account": _serialize_live_account(row)}), 200
     except Exception as exc:
         db.session.rollback()
-        return jsonify({"success": False, "error": str(exc)}), 500
+        return _db_error_response(exc)
 
 
 @journal_bp.route("/live-accounts/<int:account_id>", methods=["DELETE"])
@@ -392,7 +410,7 @@ def delete_live_journal_account(account_id: int):
         return jsonify({"success": True}), 200
     except Exception as exc:
         db.session.rollback()
-        return jsonify({"success": False, "error": str(exc)}), 500
+        return _db_error_response(exc)
 
 
 @journal_bp.route("/live-accounts/<int:account_id>/activate", methods=["POST"])
@@ -418,4 +436,4 @@ def activate_live_journal_account(account_id: int):
         ), 200
     except Exception as exc:
         db.session.rollback()
-        return jsonify({"success": False, "error": str(exc)}), 500
+        return _db_error_response(exc)

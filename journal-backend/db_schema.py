@@ -113,6 +113,7 @@ def ensure_users_schema(app) -> None:
                             "starting_balance NUMERIC(15, 2), "
                             "currency VARCHAR(8) NOT NULL DEFAULT 'USD', "
                             "prop_firm VARCHAR(80), "
+                            "prop_rules JSONB, "
                             "notes TEXT, "
                             "status VARCHAR(20) NOT NULL DEFAULT 'active', "
                             "created_at TIMESTAMP, "
@@ -142,6 +143,12 @@ def ensure_users_schema(app) -> None:
                         text(
                             "ALTER TABLE live_journal_accounts ADD COLUMN IF NOT EXISTS "
                             "prop_firm VARCHAR(80)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE live_journal_accounts ADD COLUMN IF NOT EXISTS "
+                            "prop_rules JSONB"
                         )
                     )
                     conn.execute(
