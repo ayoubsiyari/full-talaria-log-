@@ -22,11 +22,12 @@ import {
   isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
 import {
-  buildV9ChartTemplateSnapshot,
+  deleteV9ChartTemplateAtIndex,
   hydrateV9ChartTemplatesFromCloud,
   mergeV9ChartTemplatesByName,
   normalizeV9ChartTemplates,
-  persistV9ChartTemplates,
+  readV9ChartTemplatesLocal,
+  upsertV9ChartTemplateList,
 } from "./v9ChartTemplatesStorage.js";
 
 function isMultichartEmbedPanel() {
@@ -12191,21 +12192,6 @@ const TalariaV8bLive = () => {
     return () => document.removeEventListener("mousedown", onDocDown, true);
   }, [settDrop]);
 
-  const [customTemplates, setCustomTemplates] = useState([]);
-  const customTemplatesSaveReadyRef = useRef(false);
-  const [tplNameInput, setTplNameInput] = useState("");
-  const [settHdrTplDrop, setSettHdrTplDrop] = useState(false);
-  const [settHdrSaveAs, setSettHdrSaveAs] = useState(false);
-  const [settHdrTplName, setSettHdrTplName] = useState("");
-  const [cpH, setCpH] = useState(0);
-  const [cpS, setCpS] = useState(0);
-  const [cpV, setCpV] = useState(1);
-  const [cpA, setCpA] = useState(1);
-  const [cpHex, setCpHex] = useState('ffffff');
-  /** Mirror state for document listeners registered once ([] effect) — assign each render (no useEffect lag). */
-  const colorPickerRef = useRef(null);
-  const cpPickerDraggingRef = useRef(false);
-  colorPickerRef.current = colorPicker;
   const DEFAULT_CHART_SETTINGS = {
     theme: "Talaria Dark", chartType: "candlestick", precision: "Default", timezone: "UTC",
     textColor: "#FFFFFF", background: "#000000", gridColor: "rgba(42, 46, 57, 0.6)", crosshairColor: "rgba(120, 123, 134, 0.4)",
@@ -12219,6 +12205,23 @@ const TalariaV8bLive = () => {
     priceLineStyle: "dashed", priceLineThickness: 1,
     chartTemplate: "Talaria Dark",
   };
+
+  const [customTemplates, setCustomTemplates] = useState(() =>
+    readV9ChartTemplatesLocal(DEFAULT_CHART_SETTINGS)
+  );
+  const [tplNameInput, setTplNameInput] = useState("");
+  const [settHdrTplDrop, setSettHdrTplDrop] = useState(false);
+  const [settHdrSaveAs, setSettHdrSaveAs] = useState(false);
+  const [settHdrTplName, setSettHdrTplName] = useState("");
+  const [cpH, setCpH] = useState(0);
+  const [cpS, setCpS] = useState(0);
+  const [cpV, setCpV] = useState(1);
+  const [cpA, setCpA] = useState(1);
+  const [cpHex, setCpHex] = useState('ffffff');
+  /** Mirror state for document listeners registered once ([] effect) — assign each render (no useEffect lag). */
+  const colorPickerRef = useRef(null);
+  const cpPickerDraggingRef = useRef(false);
+  colorPickerRef.current = colorPicker;
   const [settings, setSettings] = useState(DEFAULT_CHART_SETTINGS);
   const settingsRef = useRef(settings);
   useEffect(() => {
@@ -15527,18 +15530,17 @@ const TalariaV8bLive = () => {
     {n:"Matrix",cols:["#00FF00","#FF0000","#32CD32"]},
   ];
   const upsertCustomTemplate = (name, srcSettings) => {
-    const snap = buildV9ChartTemplateSnapshot(name, srcSettings, DEFAULT_CHART_SETTINGS);
-    if (!snap) return;
-    setCustomTemplates(prev => [...prev.filter(t => t.n !== snap.n), snap]);
+    setCustomTemplates((prev) =>
+      upsertV9ChartTemplateList(prev, name, srcSettings, DEFAULT_CHART_SETTINGS)
+    );
   };
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const loaded = await hydrateV9ChartTemplatesFromCloud(DEFAULT_CHART_SETTINGS);
+      const merged = await hydrateV9ChartTemplatesFromCloud(DEFAULT_CHART_SETTINGS);
       if (cancelled) return;
-      setCustomTemplates(loaded);
-      customTemplatesSaveReadyRef.current = true;
+      setCustomTemplates((prev) => mergeV9ChartTemplatesByName(prev, merged));
     })();
     return () => { cancelled = true; };
   }, []);
@@ -15556,11 +15558,6 @@ const TalariaV8bLive = () => {
     if (window.preferencesSync?.isReady?.()) onPreferencesLoaded();
     return () => window.removeEventListener("preferencesLoaded", onPreferencesLoaded);
   }, []);
-
-  useEffect(() => {
-    if (!customTemplatesSaveReadyRef.current) return;
-    persistV9ChartTemplates(customTemplates);
-  }, [customTemplates]);
 
   const applyTemplate = (name, overrideSettings) => {
     const base = overrideSettings || defaultTemplateMap[name] || {};
@@ -29882,7 +29879,7 @@ const TalariaV8bLive = () => {
                           background:swHov===`settTpl-${idx}`?c.hv2:"transparent",transition:"background 0.1s"}}>
                         <span onClick={()=>{applyTemplate(tpl.n,tpl.settings);setSettHdrTplDrop(false);}}
                           style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12,color:swHov===`settTpl-${idx}`?c.tx:c.ts,fontWeight:500}}>{tpl.n}</span>
-                        <div onClick={e=>{e.stopPropagation();setCustomTemplates(prev=>prev.filter((_,i)=>i!==idx));}}
+                        <div onClick={e=>{e.stopPropagation();setCustomTemplates(prev=>deleteV9ChartTemplateAtIndex(prev, idx));}}
                           onMouseEnter={()=>setSwHov(`settTpl-del-${idx}`)} onMouseLeave={()=>setSwHov(`settTpl-${idx}`)}
                           style={{padding:"2px 4px",cursor:"default"}}>
                           <I n="x" s={11} cl={swHov===`settTpl-del-${idx}`?c.rd:c.tm}/>
@@ -36079,7 +36076,7 @@ const TalariaV8bLive = () => {
                       {tpl.cols.map((col,ci)=><div key={ci} style={{width:8,height:8,borderRadius:"50%",background:col,boxShadow:`0 0 4px ${col}88`}}/>)}
                     </div>
                     <span style={{flex:1,fontSize:13,color:isAct?c.acL:c.ts,fontWeight:isAct?700:500}}>{tpl.n}</span>
-                    <div onClick={(e)=>{e.stopPropagation();setCustomTemplates(prev=>prev.filter((_,j)=>j!==i));}}
+                    <div onClick={(e)=>{e.stopPropagation();setCustomTemplates(prev=>deleteV9ChartTemplateAtIndex(prev, i));}}
                       onMouseEnter={()=>setSwHov("ldtpldel-"+i)} onMouseLeave={()=>setSwHov("ldtpl-"+i)}
                       style={{fontSize:15,lineHeight:1,color:swHov==="ldtpldel-"+i?c.rd:"rgba(140,160,255,0.3)",cursor:"default",padding:"0 2px",transition:"color 0.12s"}}>×</div>
                   </div>

@@ -4,11 +4,12 @@ import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Handle, Position,
 import 'reactflow/dist/style.css';
 import { SCORE_CONFIG, DIM_KEYS, computeTalariaScore, computeTrend } from "./scoreEngine.js";
 import {
-  buildV9ChartTemplateSnapshot,
+  deleteV9ChartTemplateAtIndex,
   hydrateV9ChartTemplatesFromCloud,
   mergeV9ChartTemplatesByName,
   normalizeV9ChartTemplates,
-  persistV9ChartTemplates,
+  readV9ChartTemplatesLocal,
+  upsertV9ChartTemplateList,
 } from "./v9ChartTemplatesStorage.js";
 
 const isV16Embedded = () => typeof window !== "undefined" && !!window.__TALARIA_V16_EMBEDDED__;
@@ -9430,8 +9431,9 @@ const TalariaV8b = () => {
     priceLineStyle: "solid", priceLineThickness: 1,
     chartTemplate: "Dark Classic",
   };
-  const [customTemplates, setCustomTemplates] = useState([]);
-  const customTemplatesSaveReadyRef = useRef(false);
+  const [customTemplates, setCustomTemplates] = useState(() =>
+    readV9ChartTemplatesLocal(V16_DEFAULT_CHART_SETTINGS)
+  );
   const [tplNameInput, setTplNameInput] = useState("");
   const [settHdrTplDrop, setSettHdrTplDrop] = useState(false);
   const [settHdrSaveAs, setSettHdrSaveAs] = useState(false);
@@ -9948,17 +9950,16 @@ const TalariaV8b = () => {
     setSettings(prev => ({...prev, ...base, chartTemplate: name}));
   };
   const upsertCustomTemplate = (name, srcSettings) => {
-    const snap = buildV9ChartTemplateSnapshot(name, srcSettings, V16_DEFAULT_CHART_SETTINGS);
-    if (!snap) return;
-    setCustomTemplates(prev => [...prev.filter(t => t.n !== snap.n), snap]);
+    setCustomTemplates((prev) =>
+      upsertV9ChartTemplateList(prev, name, srcSettings, V16_DEFAULT_CHART_SETTINGS)
+    );
   };
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const loaded = await hydrateV9ChartTemplatesFromCloud(V16_DEFAULT_CHART_SETTINGS);
+      const merged = await hydrateV9ChartTemplatesFromCloud(V16_DEFAULT_CHART_SETTINGS);
       if (cancelled) return;
-      setCustomTemplates(loaded);
-      customTemplatesSaveReadyRef.current = true;
+      setCustomTemplates((prev) => mergeV9ChartTemplatesByName(prev, merged));
     })();
     return () => { cancelled = true; };
   }, []);
@@ -9975,10 +9976,6 @@ const TalariaV8b = () => {
     if (window.preferencesSync?.isReady?.()) onPreferencesLoaded();
     return () => window.removeEventListener("preferencesLoaded", onPreferencesLoaded);
   }, []);
-  useEffect(() => {
-    if (!customTemplatesSaveReadyRef.current) return;
-    persistV9ChartTemplates(customTemplates);
-  }, [customTemplates]);
   const saveCustomTemplate = () => {
     const name = tplNameInput.trim();
     if (!name) return;
@@ -14139,7 +14136,25 @@ const TalariaV8b = () => {
               };
             })()
             : null;
-          const activeJournalDashboardItem = appliedJournalDashboardItem || provisionalJournalSourceItem;
+          const addTradeEditorJournalItem = dashAddTradeEditorOpen && dashAddTradeEditorSource && (
+            dashAddTradeEditorSource.liveAccountId
+            || dashAddTradeEditorSource.isLiveJournalAccount
+            || dashAddTradeEditorSource.freeInstrumentPicker
+          )
+            ? {
+              key: dashAddTradeEditorSource.key || `journalAccount:${dashAddTradeEditorSource.id}`,
+              kind: "journalAccount",
+              label: dashAddTradeEditorSource.label || dashTxt("Live Journal","يومية حية"),
+              typeLabel: dashTxt("Journal","يومية"),
+              color: c.gn,
+              trades: Array.isArray(dashAddTradeEditorSource.trades) ? dashAddTradeEditorSource.trades : [],
+              sessions: [],
+              liveAccountId: dashAddTradeEditorSource.liveAccountId,
+              profileId: dashAddTradeEditorSource.profileId,
+              statusKind: "journal",
+            }
+            : null;
+          const activeJournalDashboardItem = appliedJournalDashboardItem || provisionalJournalSourceItem || addTradeEditorJournalItem;
           const dsFromAppliedJournal = !dashStrategySource && activeJournalDashboardItem && (
             dashboardAppliedSourceItems.length === 1
             || ["journalAccount", "journalEntry", "strategyJournal"].includes(appliedSelectionKind)
@@ -14163,7 +14178,9 @@ const TalariaV8b = () => {
             ? [...new Set((Array.isArray(dashSourceFilterKeys) ? dashSourceFilterKeys : []).map(String).filter(key=>dashboardAppliedSourceKeySet.has(key)))]
             : [];
           const ds = dashStrategySource || dsFromAppliedJournal || dashboardSessionPool.find(s=>String(s.id)===String(dashSessId)) || dashboardSessionPool[0];
-          const dashboardSourceKind = dashStrategySource ? "strategy" : "session";
+          const dashboardSourceKind = dashStrategySource
+            ? "strategy"
+            : (ds?.isJournalDashboard || ds?.statusKind === "journal" || ds?.liveAccountId ? "journal" : "session");
           const liveDashBooting = isV16Embedded() && (
             dashBootLoading
             || dashTradesLoading
@@ -17722,8 +17739,29 @@ const TalariaV8b = () => {
           dashLibraryStrategyChildSelectionRef.current = dashLibraryStrategyChildSelection || {};
           const currentDashboardLibrarySelection = dashboardSourceKind === "strategy"
             ? {kind:"strategy",id:dashStrategyId || dashStrategyKey(ds.strategyName),label:ds.strategyName || ds.name}
-            : {kind:"session",id:ds.id,sessionId:ds.id,label:ds.name,rollbackAllowed:!!ds.rollbackAllowed};
-          const appliedLibrarySelection = dashLibraryAppliedSelection || currentDashboardLibrarySelection;
+            : (ds?.isJournalDashboard || ds?.statusKind === "journal" || ds?.liveAccountId)
+              ? {
+                kind:"journalAccount",
+                id: String(ds.key || ds.id || "").replace(/^journalAccount:/, "") || ds.id,
+                label: ds.name || ds.label || dashTxt("Live Journal","يومية حية"),
+                liveAccountId: ds.liveAccountId,
+                profileId: ds.profileId,
+              }
+              : {kind:"session",id:ds.id,sessionId:ds.id,label:ds.name,rollbackAllowed:!!ds.rollbackAllowed};
+          const addTradeEditorLibrarySelection = dashAddTradeEditorOpen && dashAddTradeEditorSource && (
+            dashAddTradeEditorSource.liveAccountId
+            || dashAddTradeEditorSource.isLiveJournalAccount
+            || dashAddTradeEditorSource.freeInstrumentPicker
+          )
+            ? {
+              kind:"journalAccount",
+              id: String(dashAddTradeEditorSource.id || dashAddTradeEditorSource.key || "").replace(/^journalAccount:/, ""),
+              label: dashAddTradeEditorSource.label || dashTxt("Live Journal","يومية حية"),
+              liveAccountId: dashAddTradeEditorSource.liveAccountId,
+              profileId: dashAddTradeEditorSource.profileId,
+            }
+            : null;
+          const appliedLibrarySelection = dashLibraryAppliedSelection || addTradeEditorLibrarySelection || currentDashboardLibrarySelection;
           if (!dashLibraryAppliedSelectionRef.current && appliedLibrarySelection) dashLibraryAppliedSelectionRef.current = appliedLibrarySelection;
           dashLibraryAppliedMultiSelectionRef.current = Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : [];
           dashLibraryAppliedStrategyChildSelectionRef.current = dashLibraryAppliedStrategyChildSelection || {};
@@ -25487,6 +25525,31 @@ const TalariaV8b = () => {
             setDashAddTradeScreenshots({pre:[], post:[]});
             setDashAddTradeScreenshotSlot("pre");
             setDashAddTradeExcursionOpen(false);
+            if (isDashLiveJournalAddTradeSource(source)) {
+              const boot = getV16JournalBoot();
+              const accountId = source.id || String(source.key || "").replace(/^journalAccount:/, "");
+              const account = resolveLiveJournalAccountTarget(
+                boot?.accounts?.find((a) => String(a.id) === String(accountId) || String(a.liveAccountId) === String(source.liveAccountId)) || {
+                  id: accountId,
+                  name: source.label,
+                  liveAccountId: source.liveAccountId,
+                  profileId: source.profileId,
+                  isLiveJournalAccount: true,
+                },
+                boot
+              );
+              if (account) {
+                applyEmbeddedJournalSelection(account);
+                const librarySel = makeLibraryJournalAccountSelection(account) || {
+                  kind:"journalAccount",
+                  id: account.id,
+                  label: account.name || source.label || dashTxt("Live Journal","يومية حية"),
+                  liveAccountId: account.liveAccountId,
+                  profileId: account.profileId,
+                };
+                commitLibrarySelection(librarySel);
+              }
+            }
             ensureDashAddTradeStrategyVariables(source, (enriched) => {
               const draft = buildDashAddTradeDraft(enriched);
               const nextSource = isDashLiveJournalAddTradeSource(enriched) && draft.setup_tag
@@ -39274,7 +39337,7 @@ const TalariaV8b = () => {
                           background:swHov===`settTpl-${idx}`?c.hv2:"transparent",transition:"background 0.1s"}}>
                         <span onClick={()=>{applyTemplate(tpl.n,tpl.settings);setSettHdrTplDrop(false);}}
                           style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12,color:swHov===`settTpl-${idx}`?c.tx:c.ts,fontWeight:500}}>{tpl.n}</span>
-                        <div onClick={e=>{e.stopPropagation();setCustomTemplates(prev=>prev.filter((_,i)=>i!==idx));}}
+                        <div onClick={e=>{e.stopPropagation();setCustomTemplates(prev=>deleteV9ChartTemplateAtIndex(prev, idx));}}
                           onMouseEnter={()=>setSwHov(`settTpl-del-${idx}`)} onMouseLeave={()=>setSwHov(`settTpl-${idx}`)}
                           style={{padding:"2px 4px",cursor:"default"}}>
                           <I n="x" s={11} cl={swHov===`settTpl-del-${idx}`?c.rd:c.tm}/>
@@ -43553,7 +43616,7 @@ const TalariaV8b = () => {
                       {tpl.cols.map((col,ci)=><div key={ci} style={{width:8,height:8,borderRadius:"50%",background:col,boxShadow:`0 0 4px ${col}88`}}/>)}
                     </div>
                     <span style={{flex:1,fontSize:13,color:isAct?c.acL:c.ts,fontWeight:isAct?700:500}}>{tpl.n}</span>
-                    <div onClick={(e)=>{e.stopPropagation();setCustomTemplates(prev=>prev.filter((_,j)=>j!==i));}}
+                    <div onClick={(e)=>{e.stopPropagation();setCustomTemplates(prev=>deleteV9ChartTemplateAtIndex(prev, i));}}
                       onMouseEnter={()=>setSwHov("ldtpldel-"+i)} onMouseLeave={()=>setSwHov("ldtpl-"+i)}
                       style={{fontSize:15,lineHeight:1,color:swHov==="ldtpldel-"+i?c.rd:"rgba(140,160,255,0.3)",cursor:"default",padding:"0 2px",transition:"color 0.12s"}}>×</div>
                   </div>

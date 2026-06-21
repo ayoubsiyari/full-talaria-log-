@@ -183,11 +183,27 @@ export function snapshotV9TemplateSettings(src) {
 export function buildV9ChartTemplateSnapshot(name, srcSettings, fallbackSettings = {}) {
   const cleanName = (name || "").trim();
   if (!cleanName) return null;
-  const settings = snapshotV9TemplateSettings(srcSettings);
-  const merged = { ...fallbackSettings, ...settings };
+  const settings = snapshotV9TemplateSettings({ ...fallbackSettings, ...(srcSettings || {}) });
   return {
     n: cleanName,
-    cols: [merged.bullBody, merged.bearBody, merged.background],
-    settings: snapshotV9TemplateSettings(merged),
+    cols: [settings.bullBody, settings.bearBody, settings.background],
+    settings,
   };
+}
+
+/** Update list, persist locally + cloud immediately (safe to call from setState updater). */
+export function upsertV9ChartTemplateList(prev, name, srcSettings, fallbackSettings = {}) {
+  const snap = buildV9ChartTemplateSnapshot(name, srcSettings, fallbackSettings);
+  if (!snap) return Array.isArray(prev) ? prev : [];
+  const next = [...(Array.isArray(prev) ? prev : []).filter((t) => t.n !== snap.n), snap];
+  persistV9ChartTemplates(next);
+  return next;
+}
+
+/** Remove one template by index and persist. */
+export function deleteV9ChartTemplateAtIndex(prev, index) {
+  const list = Array.isArray(prev) ? prev : [];
+  const next = list.filter((_, i) => i !== index);
+  persistV9ChartTemplates(next);
+  return next;
 }
