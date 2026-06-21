@@ -17,6 +17,7 @@ from security_redirects import append_checkout_session_placeholder, is_allowed_s
 from subscription_access import admin_extension_entitles, user_entitles_journal
 from plan_entitlements import (
     apply_plan_entitlements,
+    merge_plan_features_for_display,
     revoke_to_free_tier,
     subscription_status_requires_revoke,
     user_should_revoke_entitlements,
@@ -1285,7 +1286,14 @@ def get_public_plans():
                 'price_monthly': plan.price_monthly if hasattr(plan, 'price_monthly') else plan.price,
                 'price_yearly': plan.price_yearly if hasattr(plan, 'price_yearly') else (plan.price * 10 if plan.price else 0),
                 'interval': plan.interval,
-                'features': _parse_features(plan.features),
+                'features': merge_plan_features_for_display(
+                    max_trading_sessions=getattr(plan, 'max_trading_sessions', None),
+                    max_tickers_per_session=getattr(plan, 'max_tickers_per_session', None),
+                    max_supporting_tickers_per_session=getattr(
+                        plan, 'max_supporting_tickers_per_session', None
+                    ),
+                    stored_features=_parse_features(plan.features),
+                ),
                 'trial_days': plan.trial_days,
                 'max_trading_sessions': getattr(plan, 'max_trading_sessions', None),
                 'max_tickers_per_session': getattr(plan, 'max_tickers_per_session', None),

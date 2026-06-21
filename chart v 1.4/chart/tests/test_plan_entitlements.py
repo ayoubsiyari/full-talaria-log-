@@ -120,3 +120,23 @@ def test_plan_templates_from_config(monkeypatch):
     assert len(templates) == 1
     assert templates[0]["id"] == "starter"
     assert templates[0]["max_trading_sessions"] == 3
+
+
+def test_merge_plan_features_dedupes_cap_lines():
+    merged = pe.merge_plan_features_for_display(
+        max_trading_sessions=3,
+        max_tickers_per_session=3,
+        max_supporting_tickers_per_session=3,
+        stored_features=[
+            "3 backtest sessions",
+            "3 trading tickers per session",
+            "3 supporting tickers per session",
+            "Trading journal access",
+        ],
+    )
+    assert merged == [
+        "3 backtest sessions",
+        "3 trading tickers per session",
+        "3 supporting tickers per session",
+        "Trading journal access",
+    ]

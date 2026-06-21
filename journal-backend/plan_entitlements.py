@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -115,6 +116,83 @@ def plan_templates() -> list[dict]:
         norm = _normalize_plan_template(item)
         if norm:
             out.append(norm)
+    return out
+
+
+_ENTITLEMENT_FEATURE_RES = (
+    re.compile(r"^\d+\s+backtest\s+sessions?$", re.I),
+    re.compile(r"^\d+\s+trading\s+tickers?\s+per\s+session$", re.I),
+    re.compile(r"^\d+\s+supporting\s+tickers?\s+per\s+session$", re.I),
+    re.compile(r"^unlimited\s+backtest\s+sessions?$", re.I),
+    re.compile(r"^unlimited\s+(trading\s+)?tickers?\s+per\s+session$", re.I),
+    re.compile(r"^unlimited\s+supporting\s+tickers?\s+per\s+session$", re.I),
+)
+
+
+def is_entitlement_feature_line(line: str) -> bool:
+    """True when a stored feature line duplicates auto-generated cap bullets."""
+    text = str(line or "").strip()
+    if not text:
+        return False
+    return any(r.match(text) for r in _ENTITLEMENT_FEATURE_RES)
+
+
+def plan_entitlement_display_lines(
+    *,
+    max_trading_sessions=None,
+    max_tickers_per_session=None,
+    max_supporting_tickers_per_session=None,
+) -> list[str]:
+    """Pricing/admin bullets derived from numeric plan caps (source of truth)."""
+    lines: list[str] = []
+    if max_trading_sessions is not None:
+        ms = int(max_trading_sessions)
+        if ms == 0:
+            lines.append("Unlimited backtest sessions")
+        elif ms > 0:
+            lines.append(f"{ms} backtest session{'s' if ms != 1 else ''}")
+    if max_tickers_per_session is not None:
+        mt = int(max_tickers_per_session)
+        if mt == 0:
+            lines.append("Unlimited trading tickers per session")
+        elif mt > 0:
+            lines.append(f"{mt} trading ticker{'s' if mt != 1 else ''} per session")
+    if max_supporting_tickers_per_session is not None:
+        msu = int(max_supporting_tickers_per_session)
+        if msu == 0:
+            lines.append("Unlimited supporting tickers per session")
+        elif msu > 0:
+            lines.append(f"{msu} supporting ticker{'s' if msu != 1 else ''} per session")
+    return lines
+
+
+def merge_plan_features_for_display(
+    *,
+    max_trading_sessions=None,
+    max_tickers_per_session=None,
+    max_supporting_tickers_per_session=None,
+    stored_features=None,
+) -> list[str]:
+    """Cap lines first (from DB fields), then marketing features — no duplicates."""
+    caps = plan_entitlement_display_lines(
+        max_trading_sessions=max_trading_sessions,
+        max_tickers_per_session=max_tickers_per_session,
+        max_supporting_tickers_per_session=max_supporting_tickers_per_session,
+    )
+    extras: list[str] = []
+    for raw in stored_features or []:
+        line = str(raw).strip()
+        if not line or is_entitlement_feature_line(line):
+            continue
+        extras.append(line)
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in caps + extras:
+        key = line.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(line)
     return out
 
 

@@ -65,16 +65,58 @@ type PlanRow = {
 
 function planEntitlementLines(plan: PlanRow): string[] {
   const lines: string[] = [];
-  if (plan.max_trading_sessions != null && plan.max_trading_sessions > 0) {
-    lines.push(`${plan.max_trading_sessions} backtest session${plan.max_trading_sessions === 1 ? "" : "s"}`);
+  const ms = plan.max_trading_sessions;
+  if (ms != null) {
+    if (ms === 0) lines.push("Unlimited backtest sessions");
+    else if (ms > 0) lines.push(`${ms} backtest session${ms === 1 ? "" : "s"}`);
   }
-  if (plan.max_tickers_per_session != null && plan.max_tickers_per_session > 0) {
-    lines.push(`${plan.max_tickers_per_session} trading ticker${plan.max_tickers_per_session === 1 ? "" : "s"} per session`);
+  const mt = plan.max_tickers_per_session;
+  if (mt != null) {
+    if (mt === 0) lines.push("Unlimited trading tickers per session");
+    else if (mt > 0) lines.push(`${mt} trading ticker${mt === 1 ? "" : "s"} per session`);
   }
-  if (plan.max_supporting_tickers_per_session != null && plan.max_supporting_tickers_per_session > 0) {
-    lines.push(`${plan.max_supporting_tickers_per_session} supporting ticker${plan.max_supporting_tickers_per_session === 1 ? "" : "s"} per session`);
+  const mst = plan.max_supporting_tickers_per_session;
+  if (mst != null) {
+    if (mst === 0) lines.push("Unlimited supporting tickers per session");
+    else if (mst > 0) {
+      lines.push(`${mst} supporting ticker${mst === 1 ? "" : "s"} per session`);
+    }
   }
   return lines;
+}
+
+const ENTITLEMENT_FEATURE_RES = [
+  /^\d+\s+backtest\s+sessions?$/i,
+  /^\d+\s+trading\s+tickers?\s+per\s+session$/i,
+  /^\d+\s+supporting\s+tickers?\s+per\s+session$/i,
+  /^unlimited\s+backtest\s+sessions?$/i,
+  /^unlimited\s+(trading\s+)?tickers?\s+per\s+session$/i,
+  /^unlimited\s+supporting\s+tickers?\s+per\s+session$/i,
+];
+
+function isEntitlementFeatureLine(line: string): boolean {
+  const text = line.trim();
+  if (!text) return false;
+  return ENTITLEMENT_FEATURE_RES.some((re) => re.test(text));
+}
+
+/** Caps from plan fields first, then marketing bullets — strips duplicate cap lines from DB. */
+function buildPlanFeatureList(plan: PlanRow): string[] {
+  const caps = planEntitlementLines(plan);
+  const stored = Array.isArray(plan.features) ? (plan.features as string[]) : parseFeatures(plan.features);
+  const extras = stored
+    .map((f) => String(f).trim())
+    .filter(Boolean)
+    .filter((line) => !isEntitlementFeatureLine(line));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of [...caps, ...extras]) {
+    const key = line.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(line);
+  }
+  return out;
 }
 
 type SubscriptionPayload = {
@@ -592,10 +634,7 @@ export default function PricingClient() {
                 const isPro = plan.is_popular || plan.name?.toLowerCase().includes("pro");
                 const price = getPrice(plan);
                 const savings = getSavings(plan);
-                const features = [
-                  ...planEntitlementLines(plan),
-                  ...(Array.isArray(plan.features) ? (plan.features as string[]) : []),
-                ];
+                const features = buildPlanFeatureList(plan);
 
                 const isSingle = plans.length === 1;
                 return (

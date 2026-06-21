@@ -102,3 +102,25 @@ def test_admin_extension_keeps_user_limits():
     caps = pe.effective_backtest_limits(user)
     assert caps["max_trading_sessions"] == 12
     assert caps["entitlements_source"] == "extension"
+
+
+def test_merge_plan_features_dedupes_cap_lines():
+    merged = pe.merge_plan_features_for_display(
+        max_trading_sessions=5,
+        max_tickers_per_session=5,
+        max_supporting_tickers_per_session=5,
+        stored_features=[
+            "5 backtest sessions",
+            "5 trading tickers per session",
+            "5 supporting tickers per session",
+            "Trading journal access",
+            "Priority email support",
+        ],
+    )
+    assert merged == [
+        "5 backtest sessions",
+        "5 trading tickers per session",
+        "5 supporting tickers per session",
+        "Trading journal access",
+        "Priority email support",
+    ]
