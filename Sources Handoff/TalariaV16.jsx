@@ -128,6 +128,13 @@ const findDashLiveJournalBootAccount = (source, boot = getV16JournalBoot()) => {
   ) || null;
 };
 
+const resolveDashLiveJournalMarket = (source, boot = getV16JournalBoot()) => {
+  if (!source) return null;
+  const account = findDashLiveJournalBootAccount(source, boot);
+  const market = String(source?.market || account?.market || "").trim();
+  return market || null;
+};
+
 const isGenericDashJournalAccountLabel = (value) => /^Account \d+$/i.test(String(value || "").trim());
 
 const resolveDashLiveJournalAddTradeLabel = (source, boot = getV16JournalBoot()) => {
@@ -14383,6 +14390,7 @@ const TalariaV8b = () => {
                   trades,sessions:[],liveAccountId:account?.liveAccountId,profileId:account?.profileId,statusKind:"journal",
                   accountTypeKey:account?.accountTypeKey,
                   startingBalance:account?.startingBalance,
+                  market:account?.market,
                   propFirm:account?.propFirm,
                   propConfig:account?.propConfig,
                   propRules:account?.propRules,
@@ -25396,15 +25404,11 @@ const TalariaV8b = () => {
             const raw = String(inst?.id || "").toUpperCase();
             return raw.replace(/[^A-Z0-9]/gi, "").slice(0, 12);
           };
-          const getDashLiveJournalInstrumentSymbols = () => [
-            ...new Set([
-              ...ALL_INSTRUMENTS.map(dashCatalogInstrumentSymbol),
-              ...DASH_LIVE_JOURNAL_INDEX_SYMBOLS,
-              "MNQ", "MES", "MYM", "MRTY", "M2K", "MCL", "MGC", "XAUUSD", "XAGUSD",
-            ].filter(Boolean).map(symbol => String(symbol).toUpperCase())),
-          ];
           const getDashSourceInstruments = (source) => {
-            if (isDashLiveJournalAddTradeSource(source)) return getDashLiveJournalInstrumentSymbols();
+            if (isDashLiveJournalAddTradeSource(source)) {
+              const journalMarket = resolveDashLiveJournalMarket(source);
+              return getDashLiveJournalInstrumentSymbols(journalMarket);
+            }
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions : [];
             const sourceTrades = Array.isArray(source?.trades) ? source.trades : [];
             const raw = [...new Set([
@@ -25437,7 +25441,15 @@ const TalariaV8b = () => {
             return raw;
           };
           const getDashSourceMarkets = (source) => {
-            if (isDashLiveJournalAddTradeSource(source)) return [...DASH_LIVE_JOURNAL_MARKETS];
+            if (isDashLiveJournalAddTradeSource(source)) {
+              const journalMarket = resolveDashLiveJournalMarket(source);
+              if (journalMarket) return [journalMarket];
+              const account = findDashLiveJournalBootAccount(source);
+              if (account?.accountTypeKey === "prop" || source?.accountTypeKey === "prop") {
+                return ["Forex", "Futures"];
+              }
+              return [...DASH_LIVE_JOURNAL_MARKETS];
+            }
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions : [];
             return [...new Set([
               ...(Array.isArray(source?.markets) ? source.markets : []),
@@ -25472,6 +25484,35 @@ const TalariaV8b = () => {
             if (joined.includes("crypto")) return "Crypto";
             if (joined.includes("future")) return "Futures";
             return markets[0] || "Futures";
+          };
+          const dashSymbolMatchesJournalMarket = (symbol, journalMarket) => {
+            const market = String(journalMarket || "").trim();
+            if (!market) return true;
+            const cls = inferDashAssetClass({ market, markets: [market], assetClasses: [market] }, symbol);
+            return String(cls).toLowerCase() === String(market).toLowerCase();
+          };
+          const getDashLiveJournalInstrumentSymbols = (journalMarket=null) => {
+            const all = [...new Set([
+              ...ALL_INSTRUMENTS.map(dashCatalogInstrumentSymbol),
+              ...DASH_LIVE_JOURNAL_INDEX_SYMBOLS,
+              "MNQ", "MES", "MYM", "MRTY", "M2K", "MCL", "MGC", "XAUUSD", "XAGUSD",
+            ].filter(Boolean).map(symbol => String(symbol).toUpperCase()))];
+            const market = String(journalMarket || "").trim();
+            if (!market) return all;
+            return all.filter(symbol => dashSymbolMatchesJournalMarket(symbol, market));
+          };
+          const pickDashLiveJournalDefaultSymbol = (symbols, journalMarket) => {
+            const list = (Array.isArray(symbols) ? symbols : []).map(symbol => String(symbol || "").toUpperCase()).filter(Boolean);
+            if (!list.length) {
+              const m = String(journalMarket || "").toLowerCase();
+              if (m.includes("forex")) return "EURUSD";
+              if (m.includes("future")) return "ES";
+              return "ES";
+            }
+            const m = String(journalMarket || "").toLowerCase();
+            if (m.includes("forex")) return list.find(symbol => symbol === "EURUSD") || list[0];
+            if (m.includes("future")) return list.find(symbol => symbol === "ES") || list.find(symbol => symbol === "NQ") || list[0];
+            return list[0];
           };
           const dashUnitOptionsForAsset = (assetClass) => {
             const normalized = String(assetClass || "").toLowerCase();
@@ -25727,9 +25768,10 @@ const TalariaV8b = () => {
             const hhmm = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
             const side = String(lastTrade.side || "Long");
             const sourceInstruments = getDashSourceInstruments(source);
+            const journalMarket = isDashLiveJournalAddTradeSource(source) ? resolveDashLiveJournalMarket(source) : null;
             const lastSymbol = lastTrade.symbol ? String(lastTrade.symbol).toUpperCase() : "";
-            const symbol = (lastSymbol && sourceInstruments.includes(lastSymbol) ? lastSymbol : sourceInstruments[0]) || "ES";
-            const assetClass = inferDashAssetClass(source, symbol);
+            const symbol = (lastSymbol && sourceInstruments.includes(lastSymbol) ? lastSymbol : pickDashLiveJournalDefaultSymbol(sourceInstruments, journalMarket));
+            const assetClass = journalMarket || inferDashAssetClass(source, symbol);
             const instrumentSpec = getDashInstrumentSpec(source, symbol, assetClass);
             const costSettings = getDashAddTradeCostSettings(source, symbol, assetClass);
             const setupOptions = isDashJournalAddTradeSource(source) ? getDashSourceStrategyOptions(source) : getDashSourceSetupOptions(source);
@@ -25905,9 +25947,13 @@ const TalariaV8b = () => {
                 ? applyDashAddTradeStrategyByName(enriched, draft.setup_tag)
                 : enriched;
               if (isDashLiveJournalAddTradeSource(nextSource)) {
+                const journalMarket = resolveDashLiveJournalMarket(nextSource, boot);
                 nextSource = {
                   ...nextSource,
                   label: resolveDashLiveJournalAddTradeLabel(nextSource, boot),
+                  market: journalMarket || nextSource.market,
+                  markets: journalMarket ? [journalMarket] : nextSource.markets,
+                  assetClasses: journalMarket ? [journalMarket] : nextSource.assetClasses,
                 };
               }
               setDashAddTradeEditorSource(nextSource);
@@ -25962,20 +26008,24 @@ const TalariaV8b = () => {
               trades:[],
               sessions:[],
             };
+            const journalMarket = target.market || resolveDashLiveJournalMarket(target, boot) || null;
+            const journalMarkets = journalMarket ? [journalMarket] : DASH_LIVE_JOURNAL_MARKETS;
+            const journalSymbols = getDashLiveJournalInstrumentSymbols(journalMarket);
             const source = {
               ...baseSource,
               label: resolveDashLiveJournalAddTradeLabel({ ...baseSource, ...target, name: target.name }, boot),
               liveAccountId:target.liveAccountId,
               profileId:target.profileId,
               accountTypeKey:target.accountTypeKey,
+              market: journalMarket,
               propFirm:target.propFirm,
               statusKind:"journal",
               isLiveJournalAccount:true,
               freeInstrumentPicker:true,
-              markets:DASH_LIVE_JOURNAL_MARKETS,
-              assetClasses:DASH_LIVE_JOURNAL_MARKETS,
-              tickers:getDashLiveJournalInstrumentSymbols(),
-              symbols:getDashLiveJournalInstrumentSymbols(),
+              markets: journalMarkets,
+              assetClasses: journalMarkets,
+              tickers: journalSymbols,
+              symbols: journalSymbols,
               requiresAddTradeIntegrityWarning:false,
               addTradeWarningKind:"journal",
               isGreenStatus:false,

@@ -1,6 +1,5 @@
 /**
  * News sidebar + chart time-axis markers — historical headlines via Marketaux (/api/news/historical).
- * Finnhub economic calendar is optional fallback when MARKETAUX is unavailable and FINNHUB has calendar access.
  */
 (function () {
     'use strict';
@@ -1005,20 +1004,6 @@
         return all;
     }
 
-    async function fetchFinnhubCalendar(fromStr, toStr) {
-        var url = '/api/finnhub/calendar/economic?from=' + encodeURIComponent(fromStr) +
-            '&to=' + encodeURIComponent(toStr);
-        var r = await fetch(url, { method: 'GET', credentials: 'include' });
-        var j = await r.json().catch(function () { return {}; });
-        if (!r.ok) {
-            throw new Error(detailFromJson(j, r.status));
-        }
-        if (j.error) throw new Error(j.error);
-        var rawList = j.economicCalendar || j.data || [];
-        if (!Array.isArray(rawList)) rawList = [];
-        return rawList;
-    }
-
     async function loadCalendar(force) {
         if (state.loading && !force) return;
         if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
@@ -1032,31 +1017,16 @@
             var fromStr = rng.fromStr;
             var toStr = rng.toStr;
             var symbol = getCurrentChartSymbol();
+            var articles = await fetchHistoricalNewsChunks(fromStr, toStr, symbol);
             var out = [];
-            var usedSource = 'marketaux';
-
-            try {
-                var articles = await fetchHistoricalNewsChunks(fromStr, toStr, symbol);
-                for (var i = 0; i < articles.length; i++) {
-                    var n = normalizeNewsArticle(articles[i]);
-                    if (n) out.push(n);
-                }
-            } catch (histErr) {
-                usedSource = 'finnhub';
-                var rawList = await fetchFinnhubCalendar(fromStr, toStr);
-                for (var j = 0; j < rawList.length; j++) {
-                    var cal = normalizeRaw(rawList[j]);
-                    if (cal) out.push(cal);
-                }
-                if (!out.length) {
-                    throw histErr;
-                }
+            for (var i = 0; i < articles.length; i++) {
+                var n = normalizeNewsArticle(articles[i]);
+                if (n) out.push(n);
             }
-
             out.sort(function (a, b) { return a.t - b.t; });
             if (myId !== calendarLoadId) return;
             state.events = out;
-            state.dataSource = usedSource;
+            state.dataSource = 'marketaux';
             mergeIntoChartMarkerCache(out);
             pruneChartMarkerCache();
             state.loaded = true;
@@ -1064,8 +1034,8 @@
         } catch (err) {
             if (myId !== calendarLoadId) return;
             var msg = (err && err.message) ? String(err.message) : 'Failed to load news';
-            if (msg.indexOf('MARKETAUX_API_TOKEN') === -1 && msg.indexOf('403') !== -1) {
-                msg += ' Set MARKETAUX_API_TOKEN in chart/.env (free at marketaux.com) for historical news.';
+            if (msg.indexOf('MARKETAUX_API_TOKEN') === -1) {
+                msg += ' Add MARKETAUX_API_TOKEN to chart/.env (free key at marketaux.com) and restart the chart API.';
             }
             state.error = msg;
             if (!state.events || state.events.length === 0) {

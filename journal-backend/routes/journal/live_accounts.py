@@ -20,6 +20,7 @@ _VALID_SUBTYPES = frozenset({"Live", "Challenge", "Funded", "Demo"})
 _PERSONAL_SUBTYPES = frozenset({"Live"})
 _PROP_SUBTYPES = frozenset({"Challenge", "Funded", "Demo"})
 _VALID_MARKETS = frozenset({"Forex", "Futures", "Stocks", "Crypto", "Indices"})
+_VALID_PROP_MARKETS = frozenset({"Forex", "Futures"})
 
 
 def _db_error_response(exc: Exception):
@@ -201,12 +202,15 @@ def _normalize_payload(data: dict, *, existing: LiveJournalAccount | None = None
         return None, (jsonify({"success": False, "error": "Starting balance is required and must be greater than zero"}), 400)
 
     market = str(data.get("market") or "Forex").strip()
-    if market not in _VALID_MARKETS:
+    if account_type == "prop":
+        if market not in _VALID_PROP_MARKETS:
+            market = "Forex"
+    elif market not in _VALID_MARKETS:
         market = "Forex"
 
     prop_firm = str(data.get("prop_firm") or "").strip()[:80] or None
     if account_type == "prop" and not prop_firm:
-        return None, (jsonify({"success": False, "error": "Prop firm is required"}), 400)
+        prop_firm = name[:80] if name else "Prop"
 
     notes = str(data.get("notes") or "").strip()[:2000] or None
     platform = "Manual"

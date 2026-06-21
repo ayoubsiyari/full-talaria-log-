@@ -5841,7 +5841,7 @@ class Chart {
             this.updateSymbolSelector(this.currentSymbol);
         }
 
-        if (startIndex === 0 && !options.skipFitToView) {
+        if (startIndex === 0 && !options.skipFitToView && !this._timeframeSwitching) {
             this.resize();
             this.fitToView();
             this.scheduleRender();
@@ -13768,6 +13768,9 @@ class Chart {
         if (this._chartViewRestored) {
             return;
         }
+        if (this._timeframeSwitching || this._tfSwitchAnchorLock) {
+            return;
+        }
 
         // Replay: never use the non-replay branch below that sets offsetX = 0 when "all candles fit"
         // — on a zoomed-out candle width the entire backtest slice fits on screen and Y auto-scale
@@ -17742,35 +17745,19 @@ class Chart {
             this._ingestSmartWindowResult(result, { skipFitToView: true, skipIndicators: true });
             this._deferRecalculateIndicators();
 
-            // Immediately put the chart into a renderable state.
-            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
-            // which some listeners react to with a render. Without a valid offsetX for
-            // the NEW dataset, those intermediate renders produce
-            // "No candles drawn! All N candles are outside viewport" warnings and a
-            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
-            // The rAF below refines the view (restore center timestamp) once dimensions settle.
-            if (Array.isArray(this.data) && this.data.length > 0) {
-                this._chartViewRestored = false;
-                this.fitToView();
-            }
-
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
+
+            // Do NOT call fitToView here — it pins small datasets to offsetX=0 (far left)
+            // before the captured playhead anchor is restored in the rAF below.
             if (this.hideLoader) this.hideLoader();
 
             requestAnimationFrame(() => {
                 if (loadId !== this._timeframeLoadSeq) return;
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
-
-                // TradingView parity: restore the same visible wall-clock window
-                // captured before the switch. The server /smart window is
-                // end-anchored, so when the user was viewing recent data the
-                // captured center is inside the fetched bars and the view is
-                // preserved; when it isn't (scrolled far back), restore returns
-                // false and we self-heal to the latest candle instead.
-                this._restoreOrJumpAfterTfSwitch();
+                this._finishTfSwitchViewportRestore();
                 // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
                 // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
@@ -24605,22 +24592,23 @@ class Chart {
         const viewportLeftIdx = vr.first;
         const leftScreenX = this.dataIndexToPixel(viewportLeftIdx);
 
-        if (userOwnsViewport) {
-            // Panned / manual zoom: keep the left edge pinned at the same screen X.
-            anchorMode = 'viewportLeft';
-            anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
-            anchorScreenX = leftScreenX;
-        } else if (replay && replay.isActive) {
-            anchorMode = 'playhead';
+        // TF switch always pins the playhead / last bar at the same screen pixel —
+        // never the left viewport edge (that caused candles to jump far left on
+        // higher TFs when the loaded window is shorter than the visible range).
+        const spacing = this.getCandleSpacing();
+        let anchorIdx = Math.max(0, this.data.length - 1);
+        anchorMode = 'playhead';
+        if (replay && replay.isActive) {
             anchorTs = this._captureReplayPlayheadMs(replay);
-            const lastIdx = Math.max(0, this.data.length - 1);
-            const lastBar = this.data[lastIdx];
-            if (lastBar && Number.isFinite(lastBar.t)) {
-                anchorTs = lastBar.t;
-            }
-            const spacing = this.getCandleSpacing();
-            anchorScreenX = this.dataIndexToPixel(lastIdx) + spacing / 2;
+            const idxFromTs = this._findClosestBarIndexForTimestamp(anchorTs);
+            if (Number.isFinite(idxFromTs)) anchorIdx = idxFromTs;
         }
+        const anchorBar = this.data[anchorIdx];
+        if (anchorBar && Number.isFinite(anchorBar.t)) {
+            anchorTs = anchorBar.t;
+        }
+        anchorScreenX = this.dataIndexToPixel(anchorIdx) + spacing / 2;
+
         if (!Number.isFinite(anchorTs)) {
             const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
             const rightBar = this.data[rightBarIdx];
@@ -24751,15 +24739,7 @@ class Chart {
             }
         }
 
-        if (vp.anchorMode === 'viewportLeft'
-            && Number.isFinite(vp.leftTs)
-            && Number.isFinite(vp.leftScreenX)) {
-            this._commitTfSwitchAnchorLock({
-                ...vp,
-                anchorTs: vp.leftTs,
-                anchorScreenX: vp.leftScreenX,
-            });
-        } else if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
+        if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
             this._commitTfSwitchAnchorLock(vp);
         } else if (Number.isFinite(vp.centerTs)) {
             this._clampRestoredCandleWidth(targetCandleWidth);

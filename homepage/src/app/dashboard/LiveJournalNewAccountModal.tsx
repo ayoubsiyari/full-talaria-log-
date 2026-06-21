@@ -24,8 +24,8 @@ import {
 const F = "'Exo 2', sans-serif";
 
 const MARKETS = ["Forex", "Futures", "Stocks", "Crypto", "Indices"];
+const PROP_MARKETS = ["Forex", "Futures"];
 const PROP_SUBTYPES = ["Challenge", "Funded", "Demo"];
-const PROP_FIRMS = ["FTMO", "Topstep", "The5ers", "FundedNext", "E8 Funding", "MyForexFunds", "Other"];
 const PROP_BALANCE_PRESETS = ["10000", "25000", "50000", "100000", "200000"];
 const FUTURES_BALANCE_PRESETS = ["25000", "50000", "100000", "150000"];
 
@@ -40,7 +40,7 @@ const PERSONAL_WIZARD_STEPS: WizardStepDef[] = [
 ];
 
 const PROP_WIZARD_STEPS: WizardStepDef[] = [
-  { id: 1, stepId: "info", label: "General Info", hint: "Name the journal, prop firm, and account phase." },
+  { id: 1, stepId: "info", label: "General Info", hint: "Name the journal and account phase." },
   { id: 2, stepId: "account", label: "Account Settings", hint: "Choose account size and primary market." },
   { id: 3, stepId: "rules", label: "Challenge Rules", hint: "Configure drawdown, profit target, and step format." },
   { id: 4, stepId: "review", label: "Review", hint: "Confirm your prop journal before saving." },
@@ -113,11 +113,9 @@ export function LiveJournalNewAccountModal({
   const [startingBalance, setStartingBalance] = React.useState("");
   const [market, setMarket] = React.useState("Forex");
   const [accountSubtype, setAccountSubtype] = React.useState("Live");
-  const [propFirm, setPropFirm] = React.useState("FTMO");
-  const [propFirmCustom, setPropFirmCustom] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [propRules, setPropRules] = React.useState<LiveJournalPropRules>(() =>
-    defaultLiveJournalPropRules("Forex", 50000, "FTMO")
+    defaultLiveJournalPropRules("Forex", 50000, "Prop")
   );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -131,9 +129,8 @@ export function LiveJournalNewAccountModal({
     isLiveJournalTypeAtLimit(journalLimits, effectiveType === "prop" ? "prop" : "personal");
   const activeLimitBucket =
     journalLimits?.[effectiveType === "prop" ? "prop" : "personal"] ?? null;
-  const resolvedPropFirm =
-    effectiveType === "prop" ? (propFirm === "Other" ? propFirmCustom.trim() : propFirm) : null;
   const parsedBalance = parseBalanceInput(startingBalance) ?? (effectiveType === "prop" ? 50000 : 10000);
+  const accountMarkets = effectiveType === "prop" ? PROP_MARKETS : MARKETS;
   const STEPS = effectiveType === "prop" ? PROP_WIZARD_STEPS : PERSONAL_WIZARD_STEPS;
   const stepCount = STEPS.length;
   const currentStep = STEPS.find((s) => s.id === wizardStep) ?? STEPS[0];
@@ -247,34 +244,21 @@ export function LiveJournalNewAccountModal({
       );
       setMarket(edit.market || "Forex");
       setNotes(edit.notes || "");
-      const firm = edit.prop_firm || "FTMO";
-      if (PROP_FIRMS.includes(firm)) {
-        setPropFirm(firm);
-        setPropFirmCustom("");
-      } else if (firm) {
-        setPropFirm("Other");
-        setPropFirmCustom(firm);
-      } else {
-        setPropFirm("FTMO");
-        setPropFirmCustom("");
-      }
       const bal =
         edit.starting_balance != null && Number.isFinite(Number(edit.starting_balance))
           ? Number(edit.starting_balance)
           : 50000;
       setPropRules(
         parseLiveJournalPropRules(edit.prop_rules) ||
-          defaultLiveJournalPropRules(edit.market || "Forex", bal, firm)
+          defaultLiveJournalPropRules(edit.market || "Forex", bal, edit.prop_firm || edit.name || "Prop")
       );
     } else {
       setName("");
       setStartingBalance(type === "prop" ? "50000" : "10000");
       setMarket("Forex");
-      setPropFirm("FTMO");
-      setPropFirmCustom("");
       setNotes("");
       setPropRules(
-        defaultLiveJournalPropRules(type === "prop" ? "Forex" : "Forex", type === "prop" ? 50000 : 10000, "FTMO")
+        defaultLiveJournalPropRules("Forex", type === "prop" ? 50000 : 10000, "Prop")
       );
     }
     setError(null);
@@ -285,6 +269,10 @@ export function LiveJournalNewAccountModal({
     if (effectiveType === "personal") setAccountSubtype("Live");
     else if (accountSubtype === "Live") setAccountSubtype("Challenge");
   }, [effectiveType, accountSubtype]);
+
+  React.useEffect(() => {
+    if (effectiveType === "prop" && !PROP_MARKETS.includes(market)) setMarket("Forex");
+  }, [effectiveType, market]);
 
   React.useEffect(() => {
     setWizardStep((prev) => Math.min(Math.max(1, prev), stepCount));
@@ -309,7 +297,6 @@ export function LiveJournalNewAccountModal({
   const validateStep = (stepId: WizardStepId): string | null => {
     if (stepId === "info") {
       if (!name.trim()) return "Journal name is required.";
-      if (effectiveType === "prop" && !resolvedPropFirm) return "Prop firm is required.";
       return null;
     }
     if (stepId === "account") {
@@ -321,11 +308,7 @@ export function LiveJournalNewAccountModal({
   };
 
   const stepComplete = (stepId: WizardStepId): boolean => {
-    if (stepId === "info") {
-      if (!name.trim()) return false;
-      if (effectiveType === "prop" && !resolvedPropFirm) return false;
-      return true;
-    }
+    if (stepId === "info") return !!name.trim();
     if (stepId === "account") return parseBalanceInput(startingBalance) != null;
     return true;
   };
@@ -386,11 +369,6 @@ export function LiveJournalNewAccountModal({
       setError("Starting balance is required and must be greater than zero.");
       return;
     }
-    if (effectiveType === "prop" && !resolvedPropFirm) {
-      setError("Prop firm is required.");
-      return;
-    }
-
     setSaving(true);
     setError(null);
     try {
@@ -401,7 +379,7 @@ export function LiveJournalNewAccountModal({
         market,
         account_type: effectiveType,
         account_subtype: accountSubtype,
-        prop_firm: resolvedPropFirm,
+        prop_firm: effectiveType === "prop" ? trimmedName : null,
         prop_rules: effectiveType === "prop" ? liveJournalPropRulesToApiBody(propRules) : null,
         notes: notes.trim() || null,
       };
@@ -581,48 +559,22 @@ export function LiveJournalNewAccountModal({
         />
       </div>
       {effectiveType === "prop" ? (
-        <>
-          <div style={{ marginBottom: 10 }}>
-            {lbl("Prop firm", true)}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {PROP_FIRMS.map((item) =>
-                renderChip(
-                  `firm_${item}`,
-                  item,
-                  propFirm === item,
-                  () => setPropFirm(item),
-                  c.acL,
-                  c.acG,
-                  c.acD
-                )
-              )}
-            </div>
-            {propFirm === "Other" ? (
-              <input
-                value={propFirmCustom}
-                onChange={(e) => setPropFirmCustom(e.target.value.slice(0, 80))}
-                placeholder="Enter prop firm name"
-                style={{ ...inp(), marginTop: 8 }}
-              />
-            ) : null}
+        <div style={{ marginBottom: 10 }}>
+          {lbl("Account phase")}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {PROP_SUBTYPES.map((item) =>
+              renderChip(
+                `phase_${item}`,
+                item,
+                accountSubtype === item,
+                () => setAccountSubtype(item),
+                c.acL,
+                c.acG,
+                c.acD
+              )
+            )}
           </div>
-          <div style={{ marginBottom: 10 }}>
-            {lbl("Account phase")}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {PROP_SUBTYPES.map((item) =>
-                renderChip(
-                  `phase_${item}`,
-                  item,
-                  accountSubtype === item,
-                  () => setAccountSubtype(item),
-                  c.acL,
-                  c.acG,
-                  c.acD
-                )
-              )}
-            </div>
-          </div>
-        </>
+        </div>
       ) : null}
       <div>
         {lbl("Description")}
@@ -742,7 +694,7 @@ export function LiveJournalNewAccountModal({
             Primary market
           </span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {MARKETS.map((item) =>
+            {accountMarkets.map((item) =>
               renderChip(
                 `market_${item}`,
                 item,
@@ -798,7 +750,6 @@ export function LiveJournalNewAccountModal({
       </div>
       {reviewRow("Journal type", effectiveType === "prop" ? "Prop Firm" : "Personal", c.acL)}
       {reviewRow("Journal name", name.trim() || "—")}
-      {effectiveType === "prop" && resolvedPropFirm ? reviewRow("Prop firm", resolvedPropFirm, c.acL) : null}
       {effectiveType === "prop" ? reviewRow("Account phase", accountSubtype, c.acL) : null}
       {reviewRow("Starting balance", `$${parsedBalance.toLocaleString()}`)}
       {reviewRow("Primary market", market || "—")}

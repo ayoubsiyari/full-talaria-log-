@@ -2672,9 +2672,6 @@ class ReplaySystem {
         };
         this.autoScrollEnabled = false;
         this.userHasPanned = true;
-        if (chart && typeof chart._clearTfSwitchAnchorLock === 'function') {
-            chart._clearTfSwitchAnchorLock();
-        }
     }
 
     /** True while the user is dragging/zooming — playback must not fight the viewport. */
