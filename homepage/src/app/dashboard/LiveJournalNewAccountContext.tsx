@@ -4,8 +4,8 @@ import * as React from "react";
 import {
   LiveJournalNewAccountModal,
   type LiveJournalNewAccountInitialState,
-} from "./LiveJournalNewAccountModal";
-import type { V16AccountTypeKey } from "./v16/v16SourceTypes";
+} from "@/app/dashboard/LiveJournalNewAccountModal";
+import type { V16AccountTypeKey } from "@/app/dashboard/v16/v16SourceTypes";
 
 export type LiveJournalNewAccountRegisterFn = (
   fn: ((opts?: LiveJournalNewAccountOpenOptions) => void) | null

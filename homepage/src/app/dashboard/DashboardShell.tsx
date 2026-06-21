@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
 import { BacktestNewSessionProvider } from "./BacktestNewSessionContext";
-import { LiveJournalNewAccountProvider } from "./LiveJournalNewAccountContext";
+import { LiveJournalNewAccountProvider } from "@/app/dashboard/LiveJournalNewAccountContext";
 import {
   normalizeV16DashboardView,
   SHELL_NAV_TO_V16_VIEW,
@@ -946,7 +946,7 @@ export default function DashboardShell({
         <main style={{ flex: 1, minHeight: 0, overflow: "hidden", background: DASH_C.bg, position: "relative", display: "flex", flexDirection: "column" }}>
 
           <LiveJournalNewAccountProvider register={registerLiveJournalOpenNew}>
-          <BacktestNewSessionProvider register={registerBacktestOpenNewSession}>
+            <BacktestNewSessionProvider register={registerBacktestOpenNewSession}>
             {/* Internal Next.js pages (dashboard, journal, cot, support, …) */}
             <div style={{
               position: "absolute", inset: 0,
@@ -998,7 +998,7 @@ export default function DashboardShell({
                 }}
               />
             ))}
-          </BacktestNewSessionProvider>
+            </BacktestNewSessionProvider>
           </LiveJournalNewAccountProvider>
         </main>
       </div>
