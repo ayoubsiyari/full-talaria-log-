@@ -8962,6 +8962,162 @@ def api_finnhub_news(
     return _proxy_finnhub_json(upstream)
 
 
+def _marketaux_api_token() -> str:
+    return (os.getenv("MARKETAUX_API_TOKEN") or "").strip()
+
+
+def _proxy_marketaux_json(upstream_url: str):
+    """GET JSON from Marketaux (server-side token)."""
+    req = urllib.request.Request(
+        upstream_url,
+        headers={"User-Agent": "TalariaChart/1.0"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode(errors="replace")[:1200]
+        except Exception:
+            pass
+        if e.code in (401, 403):
+            raise HTTPException(
+                status_code=e.code,
+                detail=(
+                    f"Marketaux HTTP {e.code}: {body or e.reason}. "
+                    "Check MARKETAUX_API_TOKEN (free key at marketaux.com)."
+                ),
+            ) from e
+        raise HTTPException(
+            status_code=502,
+            detail=f"Marketaux HTTP {e.code}: {body or e.reason}",
+        ) from e
+    except urllib.error.URLError as e:
+        raise HTTPException(status_code=502, detail=f"Marketaux unreachable: {e.reason!r}") from e
+
+
+def _forex_symbol_search_query(symbol: str) -> str:
+    """Build Marketaux search query for a forex pair like EURUSD."""
+    sym = re.sub(r"[^a-zA-Z]", "", (symbol or "")).upper()
+    if len(sym) >= 6 and sym.isalpha():
+        base, quote_ccy = sym[:3], sym[3:6]
+        slash = f"{base}/{quote_ccy}"
+        return f'"{slash}" OR {sym} OR {base} OR {quote_ccy}'
+    if sym:
+        return sym
+    return "forex OR currency OR \"foreign exchange\""
+
+
+def _marketaux_published_ts(published_at: str) -> int:
+    if not published_at:
+        return 0
+    raw = str(published_at).strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+        return int(dt.timestamp())
+    except ValueError:
+        return 0
+
+
+def _normalize_marketaux_article(article: dict, symbol: str) -> dict:
+    ts = _marketaux_published_ts(article.get("published_at") or "")
+    entities = article.get("entities") or []
+    related_parts = []
+    for ent in entities[:6]:
+        if isinstance(ent, dict):
+            sym = ent.get("symbol")
+            if sym:
+                related_parts.append(str(sym))
+    related = ",".join(related_parts)
+    if not related and symbol:
+        sym = re.sub(r"[^a-zA-Z]", "", symbol).upper()
+        if len(sym) >= 6:
+            related = f"{sym[:3]},{sym[3:6]}"
+    summary = (
+        article.get("snippet")
+        or article.get("description")
+        or ""
+    )
+    return {
+        "id": article.get("uuid") or article.get("url") or "",
+        "datetime": ts,
+        "datetime_iso": (article.get("published_at") or "")[:19].replace("T", " ") + " UTC"
+        if ts
+        else "",
+        "headline": str(article.get("title") or "")[:500],
+        "summary": str(summary)[:2000],
+        "source": str(article.get("source") or ""),
+        "url": str(article.get("url") or ""),
+        "related": related,
+        "demo": False,
+    }
+
+
+@app.get("/api/news/historical")
+def api_news_historical(
+    from_: int = Query(..., alias="from", description="Start Unix timestamp (seconds)"),
+    to: int = Query(..., description="End Unix timestamp (seconds)"),
+    symbol: str | None = Query(None, description="Forex pair e.g. EURUSD"),
+    limit: int = Query(50, ge=1, le=100),
+    page: int = Query(1, ge=1, le=400),
+):
+    """Historical financial news by date range — Marketaux token stays on the server."""
+    token = _marketaux_api_token()
+    if not token:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "MARKETAUX_API_TOKEN is not set. Add it to chart/.env next to api_server.py "
+                "(MARKETAUX_API_TOKEN=...) — free key at https://www.marketaux.com/ "
+                "— then restart the chart API."
+            ),
+        )
+    if to <= from_:
+        raise HTTPException(status_code=400, detail="`to` must be greater than `from`")
+    span_sec = to - from_
+    if span_sec > 31 * 86400:
+        to = from_ + 31 * 86400
+
+    from datetime import timezone
+
+    start_dt = datetime.fromtimestamp(from_, tz=timezone.utc)
+    end_dt = datetime.fromtimestamp(to, tz=timezone.utc)
+    published_after = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    published_before = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    search = _forex_symbol_search_query(symbol or "")
+
+    q_parts = [
+        f"api_token={quote(token, safe='')}",
+        f"language=en",
+        f"search={quote(search, safe='')}",
+        f"published_after={quote(published_after, safe='')}",
+        f"published_before={quote(published_before, safe='')}",
+        f"sort=published_at",
+        f"limit={limit}",
+        f"page={page}",
+    ]
+    upstream = f"https://api.marketaux.com/v1/news/all?{'&'.join(q_parts)}"
+    payload = _proxy_marketaux_json(upstream)
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        data = []
+    items = [_normalize_marketaux_article(a, symbol or "") for a in data if isinstance(a, dict)]
+    items.sort(key=lambda x: x.get("datetime") or 0, reverse=True)
+    meta = payload.get("meta") if isinstance(payload, dict) else {}
+    return {
+        "success": True,
+        "items": items[:limit],
+        "source": "marketaux",
+        "meta": meta if isinstance(meta, dict) else {},
+    }
+
+
 @app.get("/api/file/{file_id}/tile-meta/{tf}")
 async def get_tile_meta(file_id: int, tf: str):
     """Return tile index (count, timestamps per tile) for a file+timeframe."""
