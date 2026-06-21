@@ -22,23 +22,30 @@ const PROP_FIRMS = ["FTMO", "Topstep", "The5ers", "FundedNext", "E8 Funding", "M
 const PROP_BALANCE_PRESETS = ["10000", "25000", "50000", "100000", "200000"];
 const FUTURES_BALANCE_PRESETS = ["25000", "50000", "100000", "150000"];
 
-type WizardStepId = "info" | "account" | "rules";
+type WizardStepId = "info" | "account" | "rules" | "review";
 
-const STEP_META: Record<WizardStepId, { label: string; section: string }> = {
-  info: { label: "Journal Info", section: "Journal Info" },
-  account: { label: "Account Settings", section: "Account Settings" },
-  rules: { label: "Challenge Rules", section: "Challenge Rules" },
+type WizardStepDef = { id: number; stepId: WizardStepId; label: string; hint: string };
+
+const PERSONAL_WIZARD_STEPS: WizardStepDef[] = [
+  { id: 1, stepId: "info", label: "General Info", hint: "Name your journal and add optional notes." },
+  { id: 2, stepId: "account", label: "Account Settings", hint: "Set starting balance and primary market." },
+  { id: 3, stepId: "review", label: "Review", hint: "Confirm details before creating the journal." },
+];
+
+const PROP_WIZARD_STEPS: WizardStepDef[] = [
+  { id: 1, stepId: "info", label: "General Info", hint: "Name the journal, prop firm, and account phase." },
+  { id: 2, stepId: "account", label: "Account Settings", hint: "Choose account size and primary market." },
+  { id: 3, stepId: "rules", label: "Challenge Rules", hint: "Configure drawdown, profit target, and step format." },
+  { id: 4, stepId: "review", label: "Review", hint: "Confirm your prop journal before saving." },
+];
+
+const STEP_SECTION: Record<Exclude<WizardStepId, "review">, string> = {
+  info: "General Info",
+  account: "Account Settings",
+  rules: "Challenge Rules",
 };
 
-function IconX({ s = 18, cl = "currentColor" }: { s?: number; cl?: string }) {
-  return (
-    <svg width={s} height={s} viewBox="0 -960 960 960" fill={cl}>
-      <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z" />
-    </svg>
-  );
-}
-
-export type LiveJournalNewAccountInitialState = {
+ = {
   accountTypeKey?: V16AccountTypeKey;
   lockAccountType?: boolean;
   editAccount?: ApiLiveJournalAccount | null;
@@ -82,6 +89,8 @@ export function LiveJournalNewAccountModal({
     tm: "rgba(255,255,255,0.50)",
     gn: "#00D4A1",
     rd: "#FF5068",
+    hv: "rgba(255,255,255,0.03)",
+    hv2: "rgba(255,255,255,0.04)",
   };
 
   const isEdit = Boolean(initialState?.editAccount?.id);
@@ -104,16 +113,21 @@ export function LiveJournalNewAccountModal({
   );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [wizardStep, setWizardStep] = React.useState(0);
+  const [wizardStep, setWizardStep] = React.useState(1);
   const [hov, setHov] = React.useState<string | null>(null);
 
   const effectiveType = lockedType || accountTypeKey;
   const resolvedPropFirm =
     effectiveType === "prop" ? (propFirm === "Other" ? propFirmCustom.trim() : propFirm) : null;
   const parsedBalance = parseBalanceInput(startingBalance) ?? (effectiveType === "prop" ? 50000 : 10000);
-  const stepIds: WizardStepId[] = effectiveType === "prop" ? ["info", "account", "rules"] : ["info", "account"];
-  const currentStepId = stepIds[Math.min(wizardStep, stepIds.length - 1)] ?? "info";
-  const isLastStep = wizardStep >= stepIds.length - 1;
+  const STEPS = effectiveType === "prop" ? PROP_WIZARD_STEPS : PERSONAL_WIZARD_STEPS;
+  const stepCount = STEPS.length;
+  const currentStep = STEPS.find((s) => s.id === wizardStep) ?? STEPS[0];
+  const currentStepId = currentStep.stepId;
+  const isLastStep = wizardStep >= stepCount;
+  const accent = effectiveType === "prop" ? c.gold : c.acL;
+  const accentD = effectiveType === "prop" ? "rgba(201,168,76,0.10)" : c.acD;
+  const accentG = effectiveType === "prop" ? "rgba(201,168,76,0.35)" : c.acG;
   const stepFormat = effectiveType === "prop" ? liveJournalPropStepFormat(propRules) : null;
   const stepFormatLabel =
     stepFormat === "2-step" ? "2 Step" : stepFormat === "instant" ? "Instant" : stepFormat === "1-step" ? "1 Step" : null;
@@ -198,7 +212,7 @@ export function LiveJournalNewAccountModal({
       edit?.account_type === "prop" || initialState?.accountTypeKey === "prop" ? "prop" : "personal";
     setAccountTypeKey(type);
     setAccountSubtype(type === "prop" ? edit?.account_subtype || "Challenge" : "Live");
-    setWizardStep(0);
+    setWizardStep(1);
     setHov(null);
 
     if (edit) {
@@ -241,6 +255,7 @@ export function LiveJournalNewAccountModal({
       );
     }
     setError(null);
+    setWizardStep(1);
   }, [open, initialState?.accountTypeKey, initialState?.editAccount]);
 
   React.useEffect(() => {
@@ -249,8 +264,8 @@ export function LiveJournalNewAccountModal({
   }, [effectiveType, accountSubtype]);
 
   React.useEffect(() => {
-    setWizardStep((prev) => Math.min(prev, stepIds.length - 1));
-  }, [stepIds.length]);
+    setWizardStep((prev) => Math.min(Math.max(1, prev), stepCount));
+  }, [stepCount]);
 
   const applyFuturesPreset = React.useCallback((balanceValue: number) => {
     const preset = futuresPresetForBalance(balanceValue);
@@ -278,7 +293,26 @@ export function LiveJournalNewAccountModal({
       if (parseBalanceInput(startingBalance) == null) return "Starting balance is required and must be greater than zero.";
       return null;
     }
+    if (stepId === "rules" || stepId === "review") return null;
     return null;
+  };
+
+  const stepComplete = (stepId: WizardStepId): boolean => {
+    if (stepId === "info") {
+      if (!name.trim()) return false;
+      if (effectiveType === "prop" && !resolvedPropFirm) return false;
+      return true;
+    }
+    if (stepId === "account") return parseBalanceInput(startingBalance) != null;
+    return true;
+  };
+
+  const canGoToStep = (targetId: number) => {
+    for (const step of STEPS) {
+      if (step.id >= targetId) break;
+      if (!stepComplete(step.stepId)) return false;
+    }
+    return true;
   };
 
   const handleNext = () => {
@@ -288,12 +322,25 @@ export function LiveJournalNewAccountModal({
       return;
     }
     setError(null);
-    setWizardStep((prev) => Math.min(prev + 1, stepIds.length - 1));
+    setWizardStep((s) => Math.min(stepCount, s + 1));
   };
 
-  const handleBack = () => {
+  const goPrev = () => {
     setError(null);
-    setWizardStep((prev) => Math.max(prev - 1, 0));
+    setWizardStep((s) => Math.max(1, s - 1));
+  };
+
+  const goToStep = (id: number) => {
+    if (saving) return;
+    if (id > wizardStep && !canGoToStep(id)) {
+      const err = validateStep(currentStepId);
+      if (err) setError(err);
+      return;
+    }
+    if (id <= wizardStep || canGoToStep(id)) {
+      setError(null);
+      setWizardStep(id);
+    }
   };
 
   const handleSave = async () => {
@@ -434,7 +481,7 @@ export function LiveJournalNewAccountModal({
               key={v}
               onClick={() => {
                 setAccountTypeKey(v);
-                setWizardStep(0);
+                setWizardStep(1);
               }}
               onMouseEnter={() => setHov(hk)}
               onMouseLeave={() => setHov(null)}
@@ -494,7 +541,7 @@ export function LiveJournalNewAccountModal({
 
   const renderInfoStep = () => (
     <div style={{ border: `1px solid ${c.brH}`, padding: "12px 14px" }}>
-      {secH(STEP_META.info.section)}
+      {secH(STEP_SECTION.info)}
       {renderModeToggle()}
       <div style={{ marginBottom: 10 }}>
         {lbl("Journal name", true)}
@@ -571,7 +618,7 @@ export function LiveJournalNewAccountModal({
     const chipBg = isProp ? "rgba(200,150,0,0.08)" : "rgba(74,106,255,0.08)";
     return (
       <div style={{ border: `1px solid ${c.brH}`, padding: "12px 14px" }}>
-        {secH(STEP_META.account.section, isProp ? c.gold : c.acL)}
+        {secH(STEP_SECTION.account, isProp ? c.gold : c.acL)}
         <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
           <span
             style={{
@@ -689,7 +736,7 @@ export function LiveJournalNewAccountModal({
 
   const renderRulesStep = () => (
     <div style={{ border: `1px solid ${c.brH}`, padding: "12px 14px" }}>
-      {secH(STEP_META.rules.section, c.gold)}
+      {secH(STEP_SECTION.rules, c.gold)}
       <LiveJournalPropRulesForm
         embedded
         rules={propRules}
@@ -700,21 +747,128 @@ export function LiveJournalNewAccountModal({
     </div>
   );
 
-  const modalTitle = isEdit
+  const reviewRow = (label: string, value: string, valueColor = c.tx) => (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "140px 1fr",
+        gap: 12,
+        padding: "8px 0",
+        borderBottom: `1px solid ${c.br}`,
+        alignItems: "baseline",
+      }}
+    >
+      <span style={{ fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: F }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 11, fontWeight: 700, color: valueColor, fontFamily: F, wordBreak: "break-word" }}>{value}</span>
+    </div>
+  );
+
+  const renderReviewStep = () => (
+    <div style={{ border: `1px solid ${c.brH}`, padding: "12px 14px" }}>
+      {secH("Review", accent)}
+      <div style={{ fontSize: 10, color: c.ts, lineHeight: 1.45, marginBottom: 12, fontFamily: F }}>
+        {currentStep.hint}
+      </div>
+      {reviewRow("Journal type", effectiveType === "prop" ? "Prop Firm" : "Personal", effectiveType === "prop" ? c.gold : c.acL)}
+      {reviewRow("Journal name", name.trim() || "—")}
+      {effectiveType === "prop" && resolvedPropFirm ? reviewRow("Prop firm", resolvedPropFirm, c.gold) : null}
+      {effectiveType === "prop" ? reviewRow("Account phase", accountSubtype, c.gold) : null}
+      {reviewRow("Starting balance", `$${parsedBalance.toLocaleString()}`)}
+      {reviewRow("Primary market", market || "—")}
+      {stepFormatLabel ? reviewRow("Challenge format", stepFormatLabel, c.gold) : null}
+      {notes.trim() ? reviewRow("Notes", notes.trim()) : null}
+    </div>
+  );
+
+  const builderTitle = isEdit
     ? effectiveType === "prop"
       ? "Edit Prop Journal"
       : "Edit Personal Journal"
     : effectiveType === "prop"
-      ? "New Prop Journal"
-      : "New Personal Journal";
+      ? "Prop Journal"
+      : "Live Journal";
 
-  const summaryItems: [string, string][] = [
-    [effectiveType === "prop" ? "Prop Firm" : "Personal", effectiveType === "prop" ? c.gold : c.ts],
-    [market || "—", c.ts],
-    [`$${parsedBalance.toLocaleString()}`, c.ts],
-  ];
-  if (stepFormatLabel) summaryItems.push([stepFormatLabel, c.gold]);
-  if (resolvedPropFirm) summaryItems.splice(1, 0, [resolvedPropFirm, c.gold]);
+  const secondaryBtnStyle: React.CSSProperties = {
+    height: 32,
+    minWidth: 86,
+    padding: "0 14px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    fontFamily: F,
+    borderRadius: 0,
+    textTransform: "uppercase",
+    color: c.ts,
+    border: "1px solid rgba(140,160,255,0.22)",
+    background: "rgba(140,160,255,0.04)",
+    boxShadow: "none",
+    cursor: "default",
+    boxSizing: "border-box",
+    lineHeight: 1,
+    outline: "none",
+    userSelect: "none",
+    transition: "background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease",
+  };
+
+  const primaryBtnStyle = (enabled = true): React.CSSProperties => ({
+    height: 32,
+    minWidth: 86,
+    padding: "0 16px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    fontFamily: F,
+    borderRadius: 0,
+    textTransform: "uppercase",
+    color: enabled ? "rgba(255,255,255,0.96)" : c.tm,
+    background: enabled ? `linear-gradient(135deg,${c.ac},${c.acL})` : "rgba(140,160,255,0.10)",
+    border: `1px solid ${enabled ? "rgba(74,106,255,0.55)" : "rgba(140,160,255,0.18)"}`,
+    boxShadow: enabled ? "0 2px 8px rgba(38,67,247,0.25)" : "none",
+    cursor: "default",
+    opacity: enabled ? 1 : 0.55,
+    boxSizing: "border-box",
+    lineHeight: 1,
+    outline: "none",
+    userSelect: "none",
+    transition: "background 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, transform 0.08s ease",
+  });
+
+  const saveBtnStyle = (enabled = true): React.CSSProperties => ({
+    height: 32,
+    padding: "0 16px",
+    minWidth: 132,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+    fontFamily: F,
+    borderRadius: 0,
+    textTransform: "uppercase",
+    color: enabled ? "#fff" : c.tm,
+    background: enabled
+      ? `linear-gradient(135deg,${effectiveType === "prop" ? "#B8922E" : "#00A882"},${effectiveType === "prop" ? c.gold : c.gn})`
+      : "rgba(140,160,255,0.10)",
+    border: `1px solid ${enabled ? (effectiveType === "prop" ? "rgba(201,168,76,0.5)" : "rgba(0,212,161,0.5)") : "rgba(140,160,255,0.18)"}`,
+    boxShadow: enabled ? `0 2px 8px ${effectiveType === "prop" ? "rgba(201,168,76,0.25)" : "rgba(0,212,161,0.25)"}` : "none",
+    cursor: saving ? "not-allowed" : "default",
+    opacity: enabled ? 1 : 0.55,
+    boxSizing: "border-box",
+    outline: "none",
+    userSelect: "none",
+  });
 
   if (!open) return null;
 
@@ -743,133 +897,152 @@ export function LiveJournalNewAccountModal({
           onClick={(e) => e.stopPropagation()}
           style={{
             position: "relative",
-            width: "min(680px, 90vw)",
-            height: "min(88vh, 660px)",
-            background: c.sf,
+            width: "min(900px, 94vw)",
+            height: "min(90vh, 720px)",
+            background: c.bg,
             border: `1px solid ${c.brH}`,
             display: "flex",
             flexDirection: "column",
             animation: "tlrPopIn 0.18s ease",
-            boxShadow: "0 24px 72px rgba(0,0,0,0.9)",
+            boxShadow: "0 32px 96px rgba(0,0,0,0.9), 0 0 0 1px rgba(140,160,255,0.13)",
             fontFamily: F,
+            overflow: "hidden",
           }}
         >
           <div
             style={{
               height: 2,
-              background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,
+              background: `linear-gradient(90deg,${accent},${effectiveType === "prop" ? "#E8C96A" : c.acL},${accent})`,
               flexShrink: 0,
             }}
           />
-          <div
-            style={{
-              height: 44,
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "0 16px",
-              borderBottom: `1px solid ${c.br}`,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <img src="/LOGO-07.png" style={{ width: 22, height: 22, objectFit: "contain" }} alt="" />
-              <div style={{ fontSize: 12, fontWeight: 700, color: c.tx, letterSpacing: "0.04em", fontFamily: F }}>
-                {modalTitle}
+
+          {/* Wizard header — matches Strategy Builder */}
+          <div style={{ flexShrink: 0, borderBottom: `1px solid ${c.brH}`, background: c.bg }}>
+            <div style={{ height: 44, display: "flex", alignItems: "center", gap: 12, padding: "0 18px" }}>
+              <img src="/LOGO-07.png" alt="Talaria" style={{ width: 26, height: 26, objectFit: "contain", flexShrink: 0 }} />
+              <div style={{ fontSize: 13, fontWeight: 800, color: c.tx, fontFamily: F, flex: 1 }}>
+                {builderTitle}
+                <span style={{ color: accent, fontWeight: 600, marginLeft: 8 }}>
+                  — Step {wizardStep} of {stepCount}
+                </span>
+              </div>
+              <div
+                onClick={saving ? undefined : onClose}
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "default",
+                  color: c.tm,
+                  opacity: saving ? 0.45 : 1,
+                  transition: "color 0.12s, background 0.12s, transform 0.08s",
+                }}
+                onMouseEnter={(e) => {
+                  if (!saving) {
+                    e.currentTarget.style.color = c.rd;
+                    e.currentTarget.style.background = "rgba(255,80,104,0.08)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = c.tm;
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.transform = "scale(1)";
+                }}
+                onMouseDown={(e) => {
+                  if (!saving) e.currentTarget.style.transform = "scale(0.92)";
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = "scale(1)";
+                }}
+              >
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
               </div>
             </div>
-            <div
-              onClick={onClose}
-              onMouseEnter={() => setHov("modalX")}
-              onMouseLeave={() => setHov(null)}
-              style={{
-                width: 30,
-                height: 30,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "default",
-                background: hov === "modalX" ? "rgba(255,80,80,0.07)" : "transparent",
-                transition: "background 0.12s",
-              }}
-            >
-              <IconX s={18} cl={hov === "modalX" ? c.rd : c.ts} />
-            </div>
-          </div>
 
-          <div
-            style={{
-              flexShrink: 0,
-              padding: "10px 20px 0",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            {stepIds.map((id, i) => {
-              const done = i < wizardStep;
-              const active = i === wizardStep;
-              const accent = effectiveType === "prop" ? c.gold : c.acL;
-              return (
-                <React.Fragment key={id}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            {/* Step tabs */}
+            <div style={{ display: "flex", borderTop: `1px solid ${c.brH}` }}>
+              {STEPS.map((step) => {
+                const isActive = wizardStep === step.id;
+                const isDone = wizardStep > step.id;
+                return (
+                  <div
+                    key={step.stepId}
+                    onClick={() => goToStep(step.id)}
+                    style={{
+                      flex: 1,
+                      height: 36,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 7,
+                      cursor: "default",
+                      position: "relative",
+                      opacity: saving && !isActive ? 0.62 : 1,
+                      transition: "background 0.12s, opacity 0.12s",
+                      background: isActive ? accentD : "transparent",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive && !saving) e.currentTarget.style.background = c.hv;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.background = "transparent";
+                    }}
+                  >
                     <div
                       style={{
                         width: 18,
                         height: 18,
-                        borderRadius: "50%",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 9,
-                        fontWeight: 800,
-                        fontFamily: F,
+                        background: isActive ? accent : isDone ? c.gn : "rgba(255,255,255,0.1)",
                         flexShrink: 0,
-                        background: active || done ? (effectiveType === "prop" ? "rgba(200,150,0,0.15)" : c.acD) : c.el,
-                        border: `1px solid ${active || done ? accent : c.brH}`,
-                        color: active || done ? accent : c.tm,
+                        transition: "background 0.15s",
                       }}
                     >
-                      {done ? "✓" : i + 1}
+                      {isDone ? (
+                        <svg width={10} height={10} viewBox="0 0 16 16" fill="none">
+                          <path d="M3 8l4 4 6-7" stroke="rgba(4,5,15,0.9)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ) : (
+                        <span style={{ fontSize: 9, fontWeight: 900, color: isActive ? "#fff" : "rgba(255,255,255,0.4)", fontFamily: F }}>
+                          {step.id}
+                        </span>
+                      )}
                     </div>
-                    <span
-                      style={{
-                        fontSize: 9,
-                        fontWeight: active ? 800 : 600,
-                        color: active ? c.tx : done ? c.ts : c.tm,
-                        letterSpacing: "0.06em",
-                        textTransform: "uppercase",
-                        fontFamily: F,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {STEP_META[id].label}
+                    <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? accent : isDone ? c.gn : c.tm, fontFamily: F }}>
+                      {step.label}
                     </span>
+                    {isActive ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          height: 2,
+                          background: `linear-gradient(90deg,transparent,${accent},transparent)`,
+                          boxShadow: `0 0 6px ${accentG}`,
+                        }}
+                      />
+                    ) : null}
                   </div>
-                  {i < stepIds.length - 1 ? (
-                    <div
-                      style={{
-                        flex: 1,
-                        height: 1,
-                        minWidth: 12,
-                        background: done ? accent : c.br,
-                        opacity: done ? 0.6 : 1,
-                      }}
-                    />
-                  ) : null}
-                </React.Fragment>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
-          <div
-            className="tlr-scroll"
-            style={{ flex: 1, overflowY: "auto", padding: "16px 20px 68px" }}
-          >
-            <div style={{ maxWidth: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="tlr-scroll" style={{ flex: 1, overflowY: "auto", padding: "20px 24px 24px", minHeight: 0 }}>
+            <div style={{ maxWidth: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
               {currentStepId === "info" ? renderInfoStep() : null}
               {currentStepId === "account" ? renderAccountStep() : null}
               {currentStepId === "rules" ? renderRulesStep() : null}
+              {currentStepId === "review" ? renderReviewStep() : null}
               {error ? (
                 <div
                   style={{
@@ -888,167 +1061,112 @@ export function LiveJournalNewAccountModal({
             </div>
           </div>
 
+          {/* Footer — Strategy Builder pattern */}
           <div
             style={{
-              height: 46,
               flexShrink: 0,
+              height: 56,
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              padding: "0 16px",
+              padding: "0 20px",
               borderTop: `1px solid ${c.brH}`,
               background: c.el,
-              gap: 10,
-              boxShadow: "0 -4px 20px rgba(0,0,0,0.5)",
             }}
           >
-            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 0, overflow: "hidden", fontFamily: F }}>
-              {summaryItems.map(([val, col], i, arr) => (
-                <span
-                  key={`${val}_${i}`}
+            <button
+              type="button"
+              onClick={saving ? undefined : wizardStep === 1 ? onClose : goPrev}
+              disabled={saving}
+              style={{ ...secondaryBtnStyle, opacity: saving ? 0.5 : 1 }}
+              onMouseEnter={(e) => {
+                if (!saving) {
+                  e.currentTarget.style.background = "rgba(140,160,255,0.07)";
+                  e.currentTarget.style.borderColor = "rgba(140,160,255,0.40)";
+                  e.currentTarget.style.color = c.tx;
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(140,160,255,0.04)";
+                e.currentTarget.style.borderColor = "rgba(140,160,255,0.22)";
+                e.currentTarget.style.color = c.ts;
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              {wizardStep > 1 && (
+                <svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+                  <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              )}
+              {wizardStep === 1 ? "Cancel" : "Back"}
+            </button>
+
+            <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+              {STEPS.map((step) => (
+                <div
+                  key={`dot_${step.id}`}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0,
-                    overflow: "hidden",
-                    minWidth: 0,
-                    flexShrink: i === arr.length - 1 ? 1 : 0,
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: wizardStep === step.id ? accent : c.brH,
+                    transition: "background 0.15s",
                   }}
-                >
-                  <b
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: col,
-                      fontVariantNumeric: "tabular-nums",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {val}
-                  </b>
-                  {i < arr.length - 1 ? (
-                    <span style={{ fontSize: 10, color: c.tm, margin: "0 6px", flexShrink: 0 }}>·</span>
-                  ) : null}
-                </span>
+                />
               ))}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-              <div
-                onClick={onClose}
-                onMouseEnter={() => setHov("cancel")}
-                onMouseLeave={() => setHov(null)}
-                style={{
-                  height: 27,
-                  padding: "0 14px",
-                  display: "flex",
-                  alignItems: "center",
-                  border: `1px solid ${hov === "cancel" ? c.brH : c.br}`,
-                  background: "transparent",
-                  cursor: "default",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: hov === "cancel" ? c.tx : c.ts,
-                  letterSpacing: "0.04em",
-                  fontFamily: F,
-                  transition: "all 0.12s",
+
+            {!isLastStep ? (
+              <button
+                type="button"
+                onClick={saving ? undefined : handleNext}
+                disabled={saving}
+                style={primaryBtnStyle(!saving)}
+                onMouseEnter={(e) => {
+                  if (!saving) {
+                    e.currentTarget.style.background = `linear-gradient(135deg,${c.acL},#6A8AFF)`;
+                    e.currentTarget.style.boxShadow = "0 2px 14px rgba(38,67,247,0.5)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!saving) {
+                    e.currentTarget.style.background = `linear-gradient(135deg,${c.ac},${c.acL})`;
+                    e.currentTarget.style.boxShadow = "0 2px 8px rgba(38,67,247,0.25)";
+                    e.currentTarget.style.transform = "scale(1)";
+                  }
                 }}
               >
-                Cancel
-              </div>
-              {wizardStep > 0 ? (
-                <div
-                  onClick={handleBack}
-                  onMouseEnter={() => setHov("back")}
-                  onMouseLeave={() => setHov(null)}
-                  style={{
-                    height: 27,
-                    padding: "0 14px",
-                    display: "flex",
-                    alignItems: "center",
-                    border: `1px solid ${hov === "back" ? c.brH : c.br}`,
-                    background: "transparent",
-                    cursor: "default",
-                    fontSize: 10,
-                    fontWeight: 600,
-                    color: hov === "back" ? c.tx : c.ts,
-                    letterSpacing: "0.04em",
-                    fontFamily: F,
-                    transition: "all 0.12s",
-                  }}
-                >
-                  Back
-                </div>
-              ) : null}
-              {!isLastStep ? (
-                <div
-                  onClick={handleNext}
-                  onMouseEnter={() => setHov("next")}
-                  onMouseLeave={() => setHov(null)}
-                  style={{
-                    height: 27,
-                    padding: "0 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    background: `linear-gradient(135deg,${c.ac},${c.acL})`,
-                    cursor: "default",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: "#fff",
-                    letterSpacing: "0.05em",
-                    boxShadow: "0 2px 10px rgba(38,67,247,0.35)",
-                    filter: hov === "next" ? "brightness(1.12)" : "brightness(1)",
-                    transition: "all 0.12s",
-                    flexShrink: 0,
-                    fontFamily: F,
-                  }}
-                >
-                  Next
-                  <svg width={8} height={8} viewBox="0 0 12 12" fill="none">
-                    <polygon points="2,1 11,6 2,11" fill="currentColor" />
+                Next
+                <svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+                  <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={saving ? undefined : () => void handleSave()}
+                disabled={saving}
+                style={saveBtnStyle(!saving)}
+              >
+                {saving ? (
+                  <span
+                    style={{
+                      width: 12,
+                      height: 12,
+                      border: "2px solid rgba(255,255,255,0.22)",
+                      borderTopColor: "rgba(255,255,255,0.95)",
+                      borderRadius: "50%",
+                      animation: "tlrLoadRotate 0.7s linear infinite",
+                    }}
+                  />
+                ) : (
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12l5 5L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
                   </svg>
-                </div>
-              ) : (
-                <div
-                  onClick={saving ? undefined : () => void handleSave()}
-                  onMouseEnter={() => setHov("create")}
-                  onMouseLeave={() => setHov(null)}
-                  style={{
-                    height: 27,
-                    padding: "0 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    background: saving ? "rgba(38,67,247,0.15)" : `linear-gradient(135deg,${c.ac},${c.acL})`,
-                    cursor: saving ? "not-allowed" : "default",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: saving ? "rgba(255,255,255,0.25)" : "#fff",
-                    letterSpacing: "0.05em",
-                    boxShadow: saving ? "none" : "0 2px 10px rgba(38,67,247,0.35)",
-                    filter: hov === "create" && !saving ? "brightness(1.12)" : "brightness(1)",
-                    transition: "all 0.12s",
-                    flexShrink: 0,
-                    fontFamily: F,
-                    opacity: saving ? 0.6 : 1,
-                  }}
-                >
-                  <svg width={10} height={10} viewBox="0 0 20 20" fill="none">
-                    <path
-                      d="M4 2h9l3 3v13H4V2z"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinejoin="round"
-                    />
-                    <rect x="7" y="2" width="6" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.3" />
-                    <rect x="6" y="12" width="8" height="6" rx="0.5" stroke="currentColor" strokeWidth="1.3" />
-                  </svg>
-                  {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Journal"}
-                </div>
-              )}
-            </div>
+                )}
+                {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Journal"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1056,6 +1174,10 @@ export function LiveJournalNewAccountModal({
         @keyframes tlrPopIn {
           from { opacity: 0; transform: scale(0.98); }
           to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes tlrLoadRotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </>
