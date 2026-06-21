@@ -59,10 +59,14 @@ function buildVariablesFromTrade(trade: Record<string, unknown>): Record<string,
       if (Array.isArray(val)) out[key] = val.map(String);
       else if (val != null && val !== "") out[key] = [String(val)];
     }
+    const planReviewKey = String(trade.planReviewKey ?? trade.planReview ?? "").trim();
+    if (planReviewKey && !out.plan_review) out.plan_review = [planReviewKey];
     return out;
   }
 
   const variables: Record<string, string[]> = {};
+  const planReviewKey = String(trade.planReviewKey ?? trade.planReview ?? "").trim();
+  if (planReviewKey) variables.plan_review = [planReviewKey];
   const preTags = Array.isArray(trade.preTags) ? trade.preTags : [];
   const postTags = Array.isArray(trade.postTags) ? trade.postTags : [];
   if (preTags.length) variables.pre_tags = preTags.map(String);
@@ -111,6 +115,15 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
     trade.demonCatcher && typeof trade.demonCatcher === "object"
       ? (trade.demonCatcher as Record<string, unknown>)
       : null;
+  const planReviewKey = String(trade.planReviewKey ?? trade.planReview ?? "").trim() || null;
+  const planOutcome =
+    planReviewKey === "according_to_plan"
+      ? "followed"
+      : planReviewKey === "out_of_plan"
+        ? "deviated"
+        : planReviewKey === "missed_trade"
+          ? "missed"
+          : null;
 
   return {
     symbol: String(trade.symbol || "").toUpperCase(),
@@ -148,9 +161,12 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
       tag_variables: variables,
       pre_tag_state: trade.preTagState ?? null,
       post_tag_state: trade.postTagState ?? null,
-      plan_review: trade.planReviewKey ?? trade.planReview ?? null,
+      plan_review: planReviewKey,
+      plan_outcome: planOutcome,
       plan_behavior: trade.plan_behavior ?? trade.planBehavior ?? null,
-      rules_followed: trade.rulesFollowed ?? null,
+      discipline_status: planReviewKey,
+      missed_trade: !!(trade.missedTrade || planReviewKey === "missed_trade"),
+      rules_followed: trade.rulesFollowed ?? (planOutcome ? planOutcome === "followed" : null),
       demons: trade.demons ?? [],
       demon_catcher: demonCatcher,
       demon_category: trade.demon_category ?? trade.demonCategory ?? null,

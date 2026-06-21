@@ -26046,7 +26046,7 @@ const TalariaV8b = () => {
               exits:exitRowsForDraft,
               notes:String(trade.notes || trade.preNotes || ""),
               session:trade.session || draftBase.session,
-              planReview:trade.planReviewKey || draftBase.planReview,
+              planReview:trade.planReviewKey || trade.planReview || trade.extra_data?.plan_review || draftBase.planReview,
               mae:tradeMaeR,
               mfe:tradeMfeR,
               mae_r:tradeMaeR,
@@ -26747,6 +26747,12 @@ const TalariaV8b = () => {
             if (isDashJournalAddTradeSource(source) && !isDashLiveJournalAddTradeSource(source) && !String(draft?.setup_tag || draft?.setup || "").trim()) {
               addIssue(dashTxt("Choose the strategy used for this journal trade.","اختر الاستراتيجية المستخدمة لهذه الصفقة في اليومية."), "tags");
             }
+            if (isDashLiveJournalAddTradeSource(source) && source?.accountTypeKey !== "prop") {
+              const planKey = String(draft?.planReview || "").trim();
+              if (!["according_to_plan", "out_of_plan", "missed_trade"].includes(planKey)) {
+                addIssue(dashTxt("Select whether this trade was according to plan, out of plan, or missed.","حدد ما إذا كانت الصفقة وفق الخطة أو خارجها أو فائتة."), "discipline");
+              }
+            }
             const validation = validateDashAddTradeDraft(draft, source);
             if (!validation.ok) addIssue(validation.error, inferDashAddTradeSaveIssuePage(validation.error, source));
             return issues;
@@ -27299,7 +27305,7 @@ const TalariaV8b = () => {
               postTags:flattenTags(addTradePostTagDefs, resolvedPostTagState, ["exitRsn"]),
               planBehavior:selectedPlanReview,
               plan_behavior:selectedPlanReview,
-              planReviewKey:isJournalManualTrade ? draftPlanReviewKey : null,
+              planReviewKey:isJournalManualTrade && dashAddTradeEditorSource?.accountTypeKey !== "prop" ? draftPlanReviewKey : null,
               demonCatcher:isJournalManualTrade ? {
                 planReview:draftPlanReviewKey || null,
                 category:selectedManualDemonLabel || dashAddTradeDraft.demonCategory || "",
@@ -28627,7 +28633,10 @@ const TalariaV8b = () => {
                 const addTradePreTagDefs = resolveDashAddTradeTagDefs(dashAddTradeEditorSource, "pre", dashAddTradeDraft);
                 const addTradePostTagDefs = resolveDashAddTradeTagDefs(dashAddTradeEditorSource, "post", dashAddTradeDraft);
                 const isAddTradePlanReviewDef = def => def?.id === "planReview" || normalizeDashAddTradeTagKey(def?.label) === "plan review";
-                const addTradeVisiblePostTagDefs = addTradePostTagDefs;
+                const addTradeIsPersonalLiveJournal = addTradeIsLiveJournalSource && dashAddTradeEditorSource?.accountTypeKey !== "prop";
+                const addTradeVisiblePostTagDefs = addTradeIsPersonalLiveJournal
+                  ? addTradePostTagDefs.filter(def => !isAddTradePlanReviewDef(def))
+                  : addTradePostTagDefs;
                 const findDashAddTradeTagOption = (def, candidates=[]) => {
                   const options = def?.type === "bool" ? ["YES","NO"] : (def?.options || []);
                   const keys = candidates.map(normalizeDashAddTradeTagKey).filter(Boolean);
@@ -28680,7 +28689,7 @@ const TalariaV8b = () => {
                 const addTradePlanReviewOptions = [
                   {id:"according_to_plan", label:dashTxt("According to Plan","وفق الخطة"), color:c.gn},
                   {id:"out_of_plan", label:dashTxt("Out of Plan","خارج الخطة"), color:c.rd},
-                  {id:"missed_trade", label:dashTxt("Missed Trade","صفقة فائتة"), color:c.gold},
+                  {id:"missed_trade", label:dashTxt("Missed Trade","صفقة فائتة"), color:c.acL},
                 ];
                 const addTradeManualDemonDefs = BT_DASH_DEMON_DEFS.filter(def => def.source === "manual");
                 const addTradePreviewTrade = (() => {
@@ -31649,12 +31658,32 @@ const TalariaV8b = () => {
                   );
                 };
                 const renderJournalBehaviorReview = () => {
-                  const planIdByLabel = {"According to Plan":"according_to_plan","Out of Plan":"out_of_plan","Missed Trade":"missed_trade"};
-                  const selectedPlanLabel = Array.isArray(dashAddTradePostTags.planReview) && dashAddTradePostTags.planReview.length ? dashAddTradePostTags.planReview[0] : null;
-                  const activePlan = planIdByLabel[selectedPlanLabel] || dashAddTradeDraft.planReview || "according_to_plan";
-                  const needsDemonInputs = activePlan !== "according_to_plan";
+                  const addTradeIsPersonalLiveJournal = addTradeIsLiveJournalSource && dashAddTradeEditorSource?.accountTypeKey !== "prop";
+                  const activePlan = String(dashAddTradeDraft.planReview || "").trim();
+                  const needsDemonInputs = activePlan === "out_of_plan" || activePlan === "missed_trade";
+                  const showPlanAdherence = addTradeIsPersonalLiveJournal;
+                  const showDemonCatcher = addTradeIsLiveJournalSource && (!addTradeIsPersonalLiveJournal || needsDemonInputs);
                   const disciplineEnabled = !!addTradeIsJournalSource;
-                  const disciplineAccent = addTradeActiveDemons.length ? BT_DASH_DEMON_AMBER : (needsDemonInputs ? c.rd : c.gold);
+                  const disciplineAccent = addTradeActiveDemons.length ? BT_DASH_DEMON_AMBER : (needsDemonInputs ? c.rd : c.acL);
+                  const planReviewChip = option => {
+                    const active = activePlan === option.id;
+                    return (
+                      <div key={`plan-review-${option.id}`} className="tlr-library-action tlr-add-trade-soft-action" role="radio" aria-checked={active} tabIndex={0}
+                        onPointerDown={libraryPointerActivate(()=>setDashAddTradePlanReview(option.id))}
+                        onKeyDown={libraryKeyActivate(()=>setDashAddTradePlanReview(option.id))}
+                        style={{minHeight:52,padding:"10px 12px",display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"center",gap:4,background:active?`${option.color}12`:"rgba(255,255,255,0.014)",border:`1px solid ${active?`${option.color}66`:c.br}`,boxSizing:"border-box",position:"relative","--tlr-add-hover-bg":active?`${option.color}18`:"rgba(74,106,255,0.06)","--tlr-add-hover-color":active?option.color:c.tx,"--tlr-add-hover-border":active?`${option.color}77`:"rgba(140,160,255,0.32)","--tlr-add-hover-shadow":active?`0 0 10px ${option.color}22`:"none","--tlr-add-active-bg":active?`${option.color}22`:"rgba(74,106,255,0.10)"}}>
+                        <span style={{fontSize:9.4,fontWeight:950,color:active?option.color:c.ts,letterSpacing:"0.04em",lineHeight:1.2}}>{option.label}</span>
+                        <span style={{fontSize:8,fontWeight:780,color:addTradeReadableMuted,lineHeight:1.25}}>
+                          {option.id === "according_to_plan"
+                            ? dashTxt("Executed the planned setup and rules.","نُفِّذ الإعداد والقواعد المخططة.")
+                            : option.id === "out_of_plan"
+                              ? dashTxt("Took the trade but broke plan or setup rules.","تمت الصفقة لكن خارج الخطة أو القواعد.")
+                              : dashTxt("Setup appeared but the trade was not taken.","ظهر الإعداد لكن لم تُنفَّذ الصفقة.")}
+                        </span>
+                        {active ? <span aria-hidden="true" style={{position:"absolute",left:10,right:10,bottom:-1,height:1,background:`linear-gradient(90deg,transparent,${option.color},transparent)`,boxShadow:`0 0 6px ${option.color}88`,pointerEvents:"none"}}/> : null}
+                      </div>
+                    );
+                  };
                   const groupedManualDemons = addTradeManualDemonDefs.reduce((map, def) => {
                     const group = def.group || dashTxt("Manual","يدوي");
                     if (!map[group]) map[group] = [];
@@ -31695,12 +31724,29 @@ const TalariaV8b = () => {
                   };
                   return (
                     <div style={{minHeight:360,padding:"16px 18px",display:"flex",flexDirection:"column",gap:14,boxSizing:"border-box"}}>
+                      {showPlanAdherence ? (
+                        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                          {addTradeSectionTitle(dashTxt("Plan Adherence","الالتزام بالخطة"), c.acL, (
+                            <span style={{fontSize:8,fontWeight:900,color:activePlan ? c.acL : c.rd,letterSpacing:"0.06em",textTransform:"uppercase"}}>
+                              {activePlan ? dashTxt("Required","مطلوب") : dashTxt("Select one","اختر واحدا")}
+                            </span>
+                          ))}
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
+                            {addTradePlanReviewOptions.map(planReviewChip)}
+                          </div>
+                          <div style={{fontSize:9.2,fontWeight:780,color:addTradeReadableMuted,lineHeight:1.45}}>
+                            {dashTxt("This is saved with the trade for future discipline analytics.","يُحفظ مع الصفقة لتحليلات الانضباط مستقبلا.")}
+                          </div>
+                        </div>
+                      ) : null}
+                      {showDemonCatcher ? (
+                        <>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
                         <div style={{position:"relative",width:"fit-content",paddingBottom:4}}>
                           <span style={{...labelStyle,color:disciplineEnabled?disciplineAccent:c.tm}}>{dashTxt("Demon Catcher","صائد العادات")}</span>
                           <span aria-hidden="true" style={{position:"absolute",left:0,right:0,bottom:0,height:1,background:`linear-gradient(90deg,transparent,${disciplineEnabled?disciplineAccent:c.tm},transparent)`,boxShadow:disciplineEnabled?`0 0 7px ${disciplineAccent}66`:"none",opacity:disciplineEnabled?0.86:0.35}}/>
                         </div>
-                        <span style={{fontSize:8,fontWeight:850,color:disciplineEnabled?(needsDemonInputs?c.rd:c.gold):c.tm,letterSpacing:"0.055em",textTransform:"uppercase",whiteSpace:"nowrap"}}>
+                        <span style={{fontSize:8,fontWeight:850,color:disciplineEnabled?(needsDemonInputs?c.rd:c.acL):c.tm,letterSpacing:"0.055em",textTransform:"uppercase",whiteSpace:"nowrap"}}>
                           {disciplineEnabled
                             ? (addTradeActiveDemons.length ? `${addTradeActiveDemons.length} ${dashTxt("demon signals","إشارات")}` : dashTxt("Optional unless a leak appears","اختياري ما لم يظهر خطأ"))
                             : dashTxt("Live journals only","لليوميات الحية فقط")}
@@ -31743,6 +31789,8 @@ const TalariaV8b = () => {
                           </div>
                         </div>
                       )}
+                        </>
+                      ) : null}
                       </div>
                   );
                 };

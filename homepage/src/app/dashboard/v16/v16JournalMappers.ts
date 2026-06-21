@@ -102,6 +102,17 @@ export function mapLiveJournalEntryToV16Trade(
   const tag = String(entry.setup || entry.strategy || "").trim() || "Journal";
   const date = isoDay(entry.close_time || entry.date || entry.open_time);
   const tradeId = `live-${entry.id}`;
+  const extra = entry.extra_data;
+  const extraObj = extra && typeof extra === "object" ? (extra as Record<string, unknown>) : {};
+  const planReviewKey = String(extraObj.plan_review || extraObj.planReview || "").trim() || null;
+  const rulesFollowed =
+    typeof extraObj.rules_followed === "boolean"
+      ? extraObj.rules_followed
+      : planReviewKey === "according_to_plan"
+        ? true
+        : planReviewKey
+          ? false
+          : true;
 
   return {
     id: tradeId,
@@ -122,7 +133,12 @@ export function mapLiveJournalEntryToV16Trade(
     mfe: Math.abs(rMultiple) * 0.8,
     plannedRR: 2,
     actualRR: Math.abs(rMultiple),
-    rulesFollowed: true,
+    rulesFollowed,
+    planReview: planReviewKey,
+    planReviewKey,
+    plan_behavior: extraObj.plan_behavior ?? extraObj.planBehavior ?? null,
+    missedTrade: planReviewKey === "missed_trade" || extraObj.missed_trade === true,
+    extra_data: extraObj,
     preTags: [tag],
     postTags: [pnl >= 0 ? "Win" : "Loss"],
     sourceKey: `journalAccount:${accountKey}`,
