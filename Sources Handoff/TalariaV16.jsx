@@ -7917,6 +7917,8 @@ const TalariaV8b = () => {
   const pendingJournalCreatedRef = useRef(null);
   const [newSessionKindPickerOpen, setNewSessionKindPickerOpen] = useState(false);
   const [newSessionJournalKindOpen, setNewSessionJournalKindOpen] = useState(false);
+  const [newSessionJournalMethodOpen, setNewSessionJournalMethodOpen] = useState(false);
+  const [newSessionJournalAccountType, setNewSessionJournalAccountType] = useState("personal");
   const [dashStrategyId, setDashStrategyId] = useState(null);
   const [dashHov, setDashHov] = useState(null);
   const [dashMode, setDashMode] = useState(() => {
@@ -10984,6 +10986,7 @@ const TalariaV8b = () => {
         };
         const closeNewSessionKindPicker = () => setNewSessionKindPickerOpen(false);
         const closeNewSessionJournalKindPicker = () => setNewSessionJournalKindOpen(false);
+        const closeNewSessionJournalMethodPicker = () => setNewSessionJournalMethodOpen(false);
         const openNewSessionKindPicker = () => setNewSessionKindPickerOpen(true);
         const startNewBacktestFromPicker = () => {
           closeNewSessionKindPicker();
@@ -10993,9 +10996,17 @@ const TalariaV8b = () => {
           closeNewSessionKindPicker();
           setNewSessionJournalKindOpen(true);
         };
-        const startNewJournalFromPicker = (accountTypeKey) => {
+        const openJournalMethodFromPicker = (accountTypeKey) => {
           closeNewSessionJournalKindPicker();
-          openDashboardNewLiveJournal({ accountTypeKey, goToTradesAfterCreate: true });
+          setNewSessionJournalAccountType(accountTypeKey === "prop" ? "prop" : "personal");
+          setNewSessionJournalMethodOpen(true);
+        };
+        const startManualJournalFromPicker = () => {
+          closeNewSessionJournalMethodPicker();
+          openDashboardNewLiveJournal({
+            accountTypeKey: newSessionJournalAccountType === "prop" ? "prop" : "personal",
+            goToTradesAfterCreate: true,
+          });
         };
         const renderNewSessionPickerModal = ({ title, subtitle, options, onClose }) => (
           <div style={{position:"fixed",inset:0,zIndex:100002,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
@@ -11013,23 +11024,33 @@ const TalariaV8b = () => {
                 </div>
               </div>
               <div style={{padding:"16px 18px 18px",display:"flex",flexDirection:"column",gap:10}}>
-                {options.map((opt) => (
-                  <div key={opt.id} onClick={opt.onClick}
-                    style={{padding:"14px 16px",border:`1px solid ${opt.border || c.brH}`,background:opt.bg || c.el,cursor:"default",transition:"border-color 0.12s,box-shadow 0.12s"}}
-                    onMouseEnter={e=>{e.currentTarget.style.borderColor=opt.hoverBorder||c.acB;e.currentTarget.style.boxShadow=`0 0 0 1px ${opt.hoverBorder||c.acB}`;}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor=opt.border||c.brH;e.currentTarget.style.boxShadow="none";}}>
+                {options.map((opt) => {
+                  const disabled = !!opt.comingSoon || !!opt.disabled;
+                  return (
+                  <div key={opt.id} onClick={disabled ? undefined : opt.onClick}
+                    style={{padding:"14px 16px",border:`1px solid ${opt.border || c.brH}`,background:opt.bg || c.el,cursor:"default",opacity:disabled?0.58:1,transition:"border-color 0.12s,box-shadow 0.12s,opacity 0.12s"}}
+                    onMouseEnter={disabled?undefined:(e=>{e.currentTarget.style.borderColor=opt.hoverBorder||c.acB;e.currentTarget.style.boxShadow=`0 0 0 1px ${opt.hoverBorder||c.acB}`;})}
+                    onMouseLeave={disabled?undefined:(e=>{e.currentTarget.style.borderColor=opt.border||c.brH;e.currentTarget.style.boxShadow="none";})}>
                     <div style={{display:"flex",alignItems:"center",gap:12}}>
                       <div style={{width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",background:opt.iconBg||"rgba(74,106,255,0.12)",color:opt.iconColor||c.acL,flexShrink:0}}>
                         {opt.icon}
                       </div>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:800,color:c.tx,letterSpacing:"0.04em"}}>{opt.label}</div>
-                        <div style={{fontSize:10,color:c.ts,lineHeight:1.5,marginTop:3}}>{opt.desc}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                          <div style={{fontSize:12,fontWeight:800,color:disabled?c.ts:c.tx,letterSpacing:"0.04em"}}>{opt.label}</div>
+                          {opt.comingSoon ? (
+                            <span style={{fontSize:7.5,fontWeight:900,color:c.gold,letterSpacing:"0.08em",textTransform:"uppercase",padding:"2px 6px",border:`1px solid rgba(201,168,76,0.35)`,background:"rgba(201,168,76,0.1)"}}>Coming soon</span>
+                          ) : null}
+                        </div>
+                        <div style={{fontSize:10,color:c.tm,lineHeight:1.5,marginTop:3}}>{opt.desc}</div>
                       </div>
-                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" style={{flexShrink:0,color:c.tm}}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {!disabled ? (
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" style={{flexShrink:0,color:c.tm}}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      ) : null}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -12040,7 +12061,7 @@ const TalariaV8b = () => {
                   border:"rgba(0,212,161,0.18)",
                   hoverBorder:"rgba(0,212,161,0.45)",
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
-                  onClick:()=>startNewJournalFromPicker("personal"),
+                  onClick:()=>openJournalMethodFromPicker("personal"),
                 },
                 {
                   id:"prop",
@@ -12051,7 +12072,45 @@ const TalariaV8b = () => {
                   border:"rgba(201,168,76,0.22)",
                   hoverBorder:"rgba(201,168,76,0.5)",
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
-                  onClick:()=>startNewJournalFromPicker("prop"),
+                  onClick:()=>openJournalMethodFromPicker("prop"),
+                },
+              ],
+            })}
+
+{/* ── Journal entry method picker (Manual / CSV / Broker) ── */}
+            {newSessionJournalMethodOpen && renderNewSessionPickerModal({
+              title:"Add trades",
+              subtitle:newSessionJournalAccountType === "prop" ? "Prop firm · Choose how to populate your journal" : "Real account · Choose how to populate your journal",
+              onClose:closeNewSessionJournalMethodPicker,
+              options:[
+                {
+                  id:"manual",
+                  label:"Manual trades",
+                  desc:"Create the journal and add trades one by one in the Trades tab.",
+                  iconBg:"rgba(0,212,161,0.12)",
+                  iconColor:c.gn,
+                  border:"rgba(0,212,161,0.18)",
+                  hoverBorder:"rgba(0,212,161,0.45)",
+                  icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>,
+                  onClick:startManualJournalFromPicker,
+                },
+                {
+                  id:"csv",
+                  label:"CSV import",
+                  desc:"Upload a CSV export from your platform to bulk-import trades.",
+                  comingSoon:true,
+                  iconBg:"rgba(255,255,255,0.04)",
+                  iconColor:c.tm,
+                  icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+                },
+                {
+                  id:"broker",
+                  label:"Link with broker",
+                  desc:"Connect MetaTrader, cTrader, or your broker for automatic sync.",
+                  comingSoon:true,
+                  iconBg:"rgba(255,255,255,0.04)",
+                  iconColor:c.tm,
+                  icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><path d="M7 7h10v10H7z" stroke="currentColor" strokeWidth="1.5"/><path d="M4 10V8a2 2 0 012-2h2M20 10V8a2 2 0 00-2-2h-2M4 14v2a2 2 0 002 2h2M20 14v2a2 2 0 01-2 2h-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
                 },
               ],
             })}
