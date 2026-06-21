@@ -33492,7 +33492,11 @@ const TalariaV8bLive = () => {
                   {/* News list */}
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto"}}>
                     {filtered.length===0
-                      ? <div style={{padding:"32px 14px",textAlign:"center",color:c.tm,fontSize:11}}>No news matches filters</div>
+                      ? <div style={{padding:"32px 14px",textAlign:"center",color:c.tm,fontSize:11}}>
+                          {st && st.eventCount > 0
+                            ? "No news matches filters — try turning off Chart symbol only or clear search."
+                            : "No headlines for this chart date range — pan to another period."}
+                        </div>
                       : filtered.map((ev,idx)=>{
                           const col=impCol[ev.impact];
                           const barCount=ev.impact==="high"?3:ev.impact==="med"?2:1;

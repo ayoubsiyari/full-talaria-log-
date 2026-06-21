@@ -8998,16 +8998,48 @@ def _proxy_marketaux_json(upstream_url: str):
         raise HTTPException(status_code=502, detail=f"Marketaux unreachable: {e.reason!r}") from e
 
 
-def _forex_symbol_search_query(symbol: str) -> str:
+def _forex_symbol_search_query(symbol: str, *, broad: bool = False) -> str:
     """Build Marketaux search query for a forex pair like EURUSD."""
+    if broad:
+        return 'forex OR "foreign exchange" OR currency OR "central bank" OR ECB OR Fed'
     sym = re.sub(r"[^a-zA-Z]", "", (symbol or "")).upper()
     if len(sym) >= 6 and sym.isalpha():
         base, quote_ccy = sym[:3], sym[3:6]
         slash = f"{base}/{quote_ccy}"
-        return f'"{slash}" OR {sym} OR {base} OR {quote_ccy}'
+        return f'("{slash}" OR {sym} OR {base}/{quote_ccy} OR {base} OR {quote_ccy})'
     if sym:
         return sym
-    return "forex OR currency OR \"foreign exchange\""
+    return 'forex OR currency OR "foreign exchange"'
+
+
+def _marketaux_fetch_news(
+    token: str,
+    *,
+    published_after: str,
+    published_before: str,
+    search: str,
+    limit: int,
+    page: int,
+) -> tuple[list[dict], dict]:
+    q_parts = [
+        f"api_token={quote(token, safe='')}",
+        "language=en",
+        f"search={quote(search, safe='')}",
+        f"published_after={quote(published_after, safe='')}",
+        f"published_before={quote(published_before, safe='')}",
+        "sort=published_on",
+        "sort_order=desc",
+        "group_similar=false",
+        f"limit={limit}",
+        f"page={page}",
+    ]
+    upstream = f"https://api.marketaux.com/v1/news/all?{'&'.join(q_parts)}"
+    payload = _proxy_marketaux_json(upstream)
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        data = []
+    meta = payload.get("meta") if isinstance(payload, dict) else {}
+    return data, meta if isinstance(meta, dict) else {}
 
 
 def _marketaux_published_ts(published_at: str) -> int:
@@ -9090,31 +9122,48 @@ def api_news_historical(
     end_dt = datetime.fromtimestamp(to, tz=timezone.utc)
     published_after = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
     published_before = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
-    search = _forex_symbol_search_query(symbol or "")
+    sym_clean = re.sub(r"[^a-zA-Z]", "", (symbol or "")).upper()
 
-    q_parts = [
-        f"api_token={quote(token, safe='')}",
-        f"language=en",
-        f"search={quote(search, safe='')}",
-        f"published_after={quote(published_after, safe='')}",
-        f"published_before={quote(published_before, safe='')}",
-        f"sort=published_at",
-        f"limit={limit}",
-        f"page={page}",
-    ]
-    upstream = f"https://api.marketaux.com/v1/news/all?{'&'.join(q_parts)}"
-    payload = _proxy_marketaux_json(upstream)
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(data, list):
-        data = []
-    items = [_normalize_marketaux_article(a, symbol or "") for a in data if isinstance(a, dict)]
+    searches = [_forex_symbol_search_query(sym_clean)]
+    if sym_clean:
+        searches.append(_forex_symbol_search_query(sym_clean, broad=True))
+    searches.append(_forex_symbol_search_query("", broad=True))
+
+    data: list[dict] = []
+    meta: dict = {}
+    seen_uuids: set[str] = set()
+    for search in searches:
+        chunk, chunk_meta = _marketaux_fetch_news(
+            token,
+            published_after=published_after,
+            published_before=published_before,
+            search=search,
+            limit=limit,
+            page=page,
+        )
+        if chunk_meta.get("found") and not meta:
+            meta = chunk_meta
+        for article in chunk:
+            if not isinstance(article, dict):
+                continue
+            uid = str(article.get("uuid") or article.get("url") or "")
+            if uid and uid in seen_uuids:
+                continue
+            if uid:
+                seen_uuids.add(uid)
+            data.append(article)
+        if len(data) >= limit:
+            break
+
+    items = [_normalize_marketaux_article(a, symbol or "") for a in data[:limit]]
     items.sort(key=lambda x: x.get("datetime") or 0, reverse=True)
-    meta = payload.get("meta") if isinstance(payload, dict) else {}
+    if not meta:
+        meta = {}
     return {
         "success": True,
         "items": items[:limit],
         "source": "marketaux",
-        "meta": meta if isinstance(meta, dict) else {},
+        "meta": meta,
     }
 
 

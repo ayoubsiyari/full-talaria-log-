@@ -460,6 +460,15 @@
     function passesCountryUserFilter(e) {
         var codes = state.filters.countryCodes;
         if (!codes || codes.length === 0) return true;
+        if (codes.length === 1 && codes[0] === '__') return false;
+        if (e && e.kind === 'headline') {
+            var keys = e.countryKeys || (e.countryKey ? [e.countryKey] : []);
+            if (!keys.length) return true;
+            for (var hi = 0; hi < keys.length; hi++) {
+                if (codes.indexOf(keys[hi]) !== -1) return true;
+            }
+            return false;
+        }
         var k = e.countryKey || countryCode(e.country || '');
         if (!k) return false;
         return codes.indexOf(k) !== -1;
@@ -470,8 +479,8 @@
         if (!passesImpactFilter(e)) return false;
         if (!passesCountryUserFilter(e)) return false;
         if (!state.filters.pairOnly) return true;
+        if (e && e.kind === 'headline') return true;
         var pair = parseForexPair(getCurrentChartSymbol());
-        // If we cannot resolve a 6-letter FX pair, do not show every release — that looked like a broken filter.
         if (!pair) return false;
         return eventMatchesChartPair(e, pair);
     }
@@ -728,20 +737,44 @@
         return '';
     }
 
-    function normalizeNewsArticle(raw) {
+    function headlineCountryKeys(raw, chartSymbol) {
+        var keys = [];
+        var seen = {};
+        function add(code) {
+            var c = String(code || '').trim().toUpperCase();
+            if (!c || seen[c]) return;
+            seen[c] = true;
+            keys.push(c);
+        }
+        add(deriveCountryKeyFromNews(raw));
+        var pair = parseForexPair(chartSymbol);
+        if (pair) {
+            [pair.base, pair.quote].forEach(function (ccy) {
+                var regs = CCY_TO_REGION_CODES[ccy];
+                if (regs && regs.length) {
+                    add(regs[0]);
+                }
+            });
+        }
+        return keys;
+    }
+
+    function normalizeNewsArticle(raw, chartSymbol) {
         var tsSec = parseInt(raw.datetime, 10);
         if (!Number.isFinite(tsSec) || tsSec <= 0) return null;
         var headline = String(raw.headline || raw.title || 'News').slice(0, 500);
         var summary = String(raw.summary || raw.snippet || raw.description || '').slice(0, 240);
         var source = String(raw.source || '');
         var related = String(raw.related || '');
-        var countryKey = deriveCountryKeyFromNews(raw);
+        var countryKeys = headlineCountryKeys(raw, chartSymbol);
+        var countryKey = countryKeys.length ? countryKeys[0] : '';
         return {
             t: tsSec * 1000,
             event: headline,
             country: countryKey,
             currency: '',
             countryKey: countryKey,
+            countryKeys: countryKeys,
             flagEmoji: flagEmoji(countryKey || 'US'),
             impact: 'medium',
             actual: source,
@@ -752,7 +785,8 @@
             kind: 'headline',
             url: String(raw.url || ''),
             source: source,
-            related: related
+            related: related,
+            symbolScoped: !!chartSymbol
         };
     }
 
@@ -914,7 +948,9 @@
         }
         var list = filterEvents();
         if (!list.length) {
-            var hint = 'No news matches your filters or search. Try other impact levels, countries, or clear the search.';
+            var hint = state.events && state.events.length
+                ? 'No news matches your filters or search. Try turning off "Chart symbol only", clearing search, or selecting more countries.'
+                : 'No headlines found for this chart date range. Pan the chart or widen the visible window.';
             if (hasRoots) {
                 setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">' + escapeHtml(hint) + '</div>');
             }
@@ -1018,9 +1054,12 @@
             var toStr = rng.toStr;
             var symbol = getCurrentChartSymbol();
             var articles = await fetchHistoricalNewsChunks(fromStr, toStr, symbol);
+            if (!articles.length && symbol) {
+                articles = await fetchHistoricalNewsChunks(fromStr, toStr, '');
+            }
             var out = [];
             for (var i = 0; i < articles.length; i++) {
-                var n = normalizeNewsArticle(articles[i]);
+                var n = normalizeNewsArticle(articles[i], symbol);
                 if (n) out.push(n);
             }
             out.sort(function (a, b) { return a.t - b.t; });
@@ -1391,6 +1430,8 @@
                 tab: state.tab,
                 query: state.query,
                 loaded: state.loaded,
+                eventCount: state.events ? state.events.length : 0,
+                dataSource: state.dataSource || '',
                 filters: {
                     impactHigh: state.filters.impactHigh,
                     impactMedium: state.filters.impactMedium,
