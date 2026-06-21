@@ -8023,9 +8023,24 @@ const TalariaV8b = () => {
           });
         });
       }
-      if (boot.openSessionId != null) setDashSessId(boot.openSessionId);
+      if (boot.openSessionId != null) {
+        const appliedBoot = boot.appliedSource;
+        if (!appliedBoot || appliedBoot.kind === "session") setDashSessId(boot.openSessionId);
+      }
       const applied = boot.appliedSource;
-      if (applied) setDashLibraryAppliedSelection(applied);
+      if (applied) {
+        setDashLibraryAppliedSelection(applied);
+        dashLibraryAppliedSelectionRef.current = applied;
+        if (applied.kind && applied.id != null) {
+          const key = `${applied.kind}:${applied.id}`;
+          dashLibraryAppliedMultiSelectionRef.current = [key];
+          setDashLibraryAppliedMultiSelection([key]);
+          if (applied.kind === "journalAccount" || applied.kind === "journalEntry" || applied.kind === "strategyJournal") {
+            setDashSessId(null);
+            setDashStrategyId(null);
+          }
+        }
+      }
     };
     syncBoot();
     window.addEventListener("talaria-v16-boot-updated", syncBoot);
@@ -8640,6 +8655,7 @@ const TalariaV8b = () => {
         }
         pendingJournalGoTradesRef.current = false;
         pendingJournalCreatedRef.current = null;
+        applyEmbeddedJournalSelection(target);
         openFn(target);
       };
       tryOpen();
@@ -10525,9 +10541,29 @@ const TalariaV8b = () => {
       row?.journalAccountKey != null && String(a.id) === String(row.journalAccountKey)
     ) || row?._journalAccount || null;
   };
+  const applyEmbeddedJournalSelection = (account) => {
+    if (!account) return;
+    const sel = {
+      kind: "journalAccount",
+      id: account.id,
+      label: String(account.name || "").split(" / ")[0] || account.name || "Journal",
+      liveAccountId: account.liveAccountId,
+      profileId: account.profileId,
+    };
+    const key = `journalAccount:${account.id}`;
+    setDashStrategyId(null);
+    setDashSessId(null);
+    setDashLibraryAppliedSelection(sel);
+    dashLibraryAppliedSelectionRef.current = sel;
+    dashLibraryAppliedMultiSelectionRef.current = [key];
+    setDashLibraryAppliedMultiSelection([key]);
+    setDashSourceFilterKeys([]);
+    if (account.liveAccountId) activateLiveJournalAccount(account.liveAccountId);
+  };
   const openEmbeddedJournalTrades = (row) => {
     const account = resolveJournalSessionAccount(row);
     if (!account) return;
+    applyEmbeddedJournalSelection(account);
     flushSync(() => setSessView("trades"));
     syncV16ViewUrl("trades");
     requestAnimationFrame(() => liveJournalAddTradeBridgeRef.current?.open?.(account));
@@ -10535,18 +10571,7 @@ const TalariaV8b = () => {
   const openEmbeddedJournalDashboard = (row) => {
     const account = resolveJournalSessionAccount(row);
     if (!account) return;
-    const applied = {
-      kind: "journalAccount",
-      id: account.id,
-      label: account.name,
-      liveAccountId: account.liveAccountId,
-      profileId: account.profileId,
-    };
-    setDashStrategyId(null);
-    setDashSessId(null);
-    setDashLibraryAppliedSelection(applied);
-    dashLibraryAppliedSelectionRef.current = applied;
-    if (account.liveAccountId) activateLiveJournalAccount(account.liveAccountId);
+    applyEmbeddedJournalSelection(account);
     flushSync(() => setSessView("dashboard"));
     syncV16ViewUrl("dashboard");
   };
@@ -13750,7 +13775,10 @@ const TalariaV8b = () => {
             const fromState = Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : [];
             const fromRef = Array.isArray(dashLibraryAppliedMultiSelectionRef.current) ? dashLibraryAppliedMultiSelectionRef.current : [];
             const rows = fromState.length ? fromState : fromRef;
-            return rows.map(String).filter(Boolean);
+            if (rows.length) return rows.map(String).filter(Boolean);
+            const applied = dashLibraryAppliedSelection || dashLibraryAppliedSelectionRef.current;
+            if (applied?.kind && applied.id != null) return [`${applied.kind}:${applied.id}`];
+            return [];
           })())];
           const dashV16JournalBoot = getV16JournalBoot();
           const dashSourceJournalConnectionNames = dashV16JournalBoot?.connectionOptions?.length ? dashV16JournalBoot.connectionOptions : ["MetaTrader 5","TradingView","cTrader","Interactive Brokers"];
@@ -13878,6 +13906,43 @@ const TalariaV8b = () => {
             return null;
           };
           const dashboardAppliedSourceItems = dashboardAppliedSourceKeysRaw.map(resolveDashboardAppliedSource).filter(Boolean);
+          const buildDashboardSessionFromAppliedSource = (sourceItem) => {
+            if (!sourceItem) return null;
+            const trades = Array.isArray(sourceItem.trades) ? sourceItem.trades : [];
+            const totalPnl = trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+            const wins = trades.filter((t) => Number(t.pnl) > 0).length;
+            const journalKinds = ["journalAccount", "journalEntry", "strategyJournal"];
+            return {
+              id: sourceItem.key,
+              key: sourceItem.key,
+              name: sourceItem.label,
+              strategyName: sourceItem.label,
+              label: sourceItem.label,
+              tradingMode: journalKinds.includes(sourceItem.kind) ? "journal" : "standard",
+              statusKind: sourceItem.statusKind || (journalKinds.includes(sourceItem.kind) ? "journal" : "backtest"),
+              compositeTrades: trades,
+              trades: trades.length,
+              capital: 10000,
+              pnl: trades.length ? totalPnl : null,
+              winRate: trades.length ? Math.round((wins / trades.length) * 100) : null,
+              avgRR: null,
+              progress: trades.length ? 100 : 0,
+              assetClasses: [...new Set(trades.map((t) => t.market).filter(Boolean))],
+              isJournalDashboard: journalKinds.includes(sourceItem.kind),
+              liveAccountId: sourceItem.liveAccountId,
+              profileId: sourceItem.profileId,
+            };
+          };
+          const appliedJournalDashboardItem = dashboardAppliedSourceItems.find((item) =>
+            ["journalAccount", "journalEntry", "strategyJournal"].includes(item.kind)
+          );
+          const appliedSelectionKind = dashLibraryAppliedSelection?.kind || dashLibraryAppliedSelectionRef.current?.kind;
+          const dsFromAppliedJournal = !dashStrategySource && appliedJournalDashboardItem && (
+            dashboardAppliedSourceItems.length === 1
+            || ["journalAccount", "journalEntry", "strategyJournal"].includes(appliedSelectionKind)
+          )
+            ? buildDashboardSessionFromAppliedSource(appliedJournalDashboardItem)
+            : null;
           const dashboardStrategyChildSourceItems = dashStrategySource
             ? dashSelectedStrategySessions.map(session => {
                 const key = `strategySession:${session.id}`;
@@ -13892,7 +13957,7 @@ const TalariaV8b = () => {
           const dashboardValidSourceFilterKeys = dashboardHasSourceFilter
             ? [...new Set((Array.isArray(dashSourceFilterKeys) ? dashSourceFilterKeys : []).map(String).filter(key=>dashboardAppliedSourceKeySet.has(key)))]
             : [];
-          const ds = dashStrategySource || dashboardSessionPool.find(s=>String(s.id)===String(dashSessId)) || dashboardSessionPool[0];
+          const ds = dashStrategySource || dsFromAppliedJournal || dashboardSessionPool.find(s=>String(s.id)===String(dashSessId)) || dashboardSessionPool[0];
           const dashboardSourceKind = dashStrategySource ? "strategy" : "session";
           const liveDashBooting = isV16Embedded() && (
             dashBootLoading
@@ -14253,7 +14318,7 @@ const TalariaV8b = () => {
             : {...filters, sourceKeys:activeDashboardSourceKeys};
           const metrics = btDashComputeMetrics(dsForDashboardMetrics, dashboardMetricFilters);
           const isPropD = ds.tradingMode==="prop";
-          const accent = isPropD ? c.gold : c.acL;
+          const accent = ds.isJournalDashboard || ds.tradingMode==="journal" ? c.gn : isPropD ? c.gold : c.acL;
           const propStatus = btDashPropStatus(ds, metrics);
           const mc = btDashMonteCarlo(metrics, ds);
           const compareSession = sessions.find(s=>String(s.id)===String(dashCompareId) && String(s.id)!==String(ds.id));
@@ -17646,6 +17711,10 @@ const TalariaV8b = () => {
             setDashLibraryAppliedSelection(sel);
             setDashLibraryAppliedMultiSelection(dashLibraryAppliedMultiSelectionRef.current);
             setDashSourceFilterKeys([]);
+            if (sel.kind === "journalAccount" || sel.kind === "journalEntry" || sel.kind === "strategyJournal") {
+              setDashSessId(null);
+              setDashStrategyId(null);
+            }
           };
           const runLibrarySelection = () => {
             const sel = dashLibrarySelectionRef.current || effectiveLibrarySelection;
