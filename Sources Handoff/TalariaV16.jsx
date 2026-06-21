@@ -7913,6 +7913,10 @@ const TalariaV8b = () => {
       });
   };
   const liveJournalAddTradeBridgeRef = useRef({ open: null });
+  const pendingJournalGoTradesRef = useRef(false);
+  const pendingJournalCreatedRef = useRef(null);
+  const [newSessionKindPickerOpen, setNewSessionKindPickerOpen] = useState(false);
+  const [newSessionJournalKindOpen, setNewSessionJournalKindOpen] = useState(false);
   const [dashStrategyId, setDashStrategyId] = useState(null);
   const [dashHov, setDashHov] = useState(null);
   const [dashMode, setDashMode] = useState(() => {
@@ -8603,6 +8607,56 @@ const TalariaV8b = () => {
     const onCloseSource = () => setDashLibraryOpen(false);
     window.addEventListener("talaria-v16-close-source", onCloseSource);
     return () => window.removeEventListener("talaria-v16-close-source", onCloseSource);
+  }, []);
+  useEffect(() => {
+    if (!isV16Embedded()) return;
+    const finishJournalCreateGoTrades = () => {
+      if (!pendingJournalGoTradesRef.current) return;
+      const apiAccount = pendingJournalCreatedRef.current;
+      if (!apiAccount?.id && apiAccount?.profile_id == null) return;
+      const tryOpen = (attempt = 0) => {
+        if (!pendingJournalGoTradesRef.current) return;
+        const boot = getV16JournalBoot();
+        if (!boot?.accounts?.length) {
+          if (attempt < 24) setTimeout(() => tryOpen(attempt + 1), 120);
+          return;
+        }
+        const target = boot.accounts.find((a) => {
+          if (!a?.isLiveJournalAccount) return false;
+          if (apiAccount?.id != null && String(a.liveAccountId) === String(apiAccount.id)) return true;
+          if (apiAccount?.profile_id != null && String(a.profileId) === String(apiAccount.profile_id)) return true;
+          return false;
+        });
+        if (!target) {
+          if (attempt < 24) setTimeout(() => tryOpen(attempt + 1), 120);
+          return;
+        }
+        const openFn = liveJournalAddTradeBridgeRef.current?.open;
+        if (typeof openFn !== "function") {
+          if (attempt < 24) setTimeout(() => tryOpen(attempt + 1), 120);
+          return;
+        }
+        pendingJournalGoTradesRef.current = false;
+        pendingJournalCreatedRef.current = null;
+        openFn(target);
+      };
+      tryOpen();
+    };
+    const onJournalCreated = (e) => {
+      if (!e?.detail?.goToTradesAfterCreate) return;
+      pendingJournalGoTradesRef.current = true;
+      pendingJournalCreatedRef.current = e.detail.account || null;
+      flushSync(() => setSessView("trades"));
+      syncV16ViewUrl("trades");
+      finishJournalCreateGoTrades();
+    };
+    const onBootUpdated = () => finishJournalCreateGoTrades();
+    window.addEventListener("talaria-v16-journal-created", onJournalCreated);
+    window.addEventListener("talaria-v16-boot-updated", onBootUpdated);
+    return () => {
+      window.removeEventListener("talaria-v16-journal-created", onJournalCreated);
+      window.removeEventListener("talaria-v16-boot-updated", onBootUpdated);
+    };
   }, []);
   useEffect(() => {
     const onResourcesShortcut = (e) => {
@@ -10787,6 +10841,58 @@ const TalariaV8b = () => {
           if (openDashboardNewSession(opts)) return;
           setNewSessName(""); setNewSessStart(""); setNewSessEnd(""); setNewSessStartInput(""); setNewSessEndInput(""); setNewSessCapital("10000"); setSessTradingMode("standard"); setNewSessDescription(""); setNewSessPlaybook(""); setNewSessPlaybookId(null); setNewSessMarginCall("100"); setNewSessStopOut("50"); setNewSessProtect("none"); setNewSessNavEnabled(true); setNewSessFilePickerOpen(false); setNewSessTickers([]); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessAssetClass("Forex"); setNewSessAdvancedOrder(false); setNewSessRollback(false); setNewSessTradingStyle(""); setNewSessSupportTickers([]); setNewSessSupportAssetClass("Forex"); setNewSessSupportInput(""); setNewSessOpen(true);
         };
+        const closeNewSessionKindPicker = () => setNewSessionKindPickerOpen(false);
+        const closeNewSessionJournalKindPicker = () => setNewSessionJournalKindOpen(false);
+        const openNewSessionKindPicker = () => setNewSessionKindPickerOpen(true);
+        const startNewBacktestFromPicker = () => {
+          closeNewSessionKindPicker();
+          goNew();
+        };
+        const openJournalTypeFromPicker = () => {
+          closeNewSessionKindPicker();
+          setNewSessionJournalKindOpen(true);
+        };
+        const startNewJournalFromPicker = (accountTypeKey) => {
+          closeNewSessionJournalKindPicker();
+          openDashboardNewLiveJournal({ accountTypeKey, goToTradesAfterCreate: true });
+        };
+        const renderNewSessionPickerModal = ({ title, subtitle, options, onClose }) => (
+          <div style={{position:"fixed",inset:0,zIndex:100002,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+            <div style={{position:"absolute",inset:0,background:"rgba(4,5,10,0.72)",backdropFilter:"blur(3px)"}}/>
+            <div onClick={e=>e.stopPropagation()}
+              style={{position:"relative",width:"min(440px,92vw)",background:c.sf,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",animation:"tlrPopIn 0.18s ease",boxShadow:"0 24px 72px rgba(0,0,0,0.9)",fontFamily:F}}>
+              <div style={{height:2,background:`linear-gradient(90deg,${c.acL},${c.gn},${c.acL})`,flexShrink:0}}/>
+              <div style={{height:44,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:`1px solid ${c.br}`}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:c.tx,letterSpacing:"0.04em"}}>{title}</div>
+                  {subtitle ? <div style={{fontSize:9,color:c.tm,marginTop:1}}>{subtitle}</div> : null}
+                </div>
+                <div onClick={onClose} style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default"}}>
+                  <I n="x" s={18} cl={c.ts}/>
+                </div>
+              </div>
+              <div style={{padding:"16px 18px 18px",display:"flex",flexDirection:"column",gap:10}}>
+                {options.map((opt) => (
+                  <div key={opt.id} onClick={opt.onClick}
+                    style={{padding:"14px 16px",border:`1px solid ${opt.border || c.brH}`,background:opt.bg || c.el,cursor:"default",transition:"border-color 0.12s,box-shadow 0.12s"}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor=opt.hoverBorder||c.acB;e.currentTarget.style.boxShadow=`0 0 0 1px ${opt.hoverBorder||c.acB}`;}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor=opt.border||c.brH;e.currentTarget.style.boxShadow="none";}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",background:opt.iconBg||"rgba(74,106,255,0.12)",color:opt.iconColor||c.acL,flexShrink:0}}>
+                        {opt.icon}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:800,color:c.tx,letterSpacing:"0.04em"}}>{opt.label}</div>
+                        <div style={{fontSize:10,color:c.ts,lineHeight:1.5,marginTop:3}}>{opt.desc}</div>
+                      </div>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" style={{flexShrink:0,color:c.tm}}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
         const openBlankStrategyBuilder = () => {
           setStratEditId(null);
           setStratBName("");
@@ -10913,7 +11019,7 @@ const TalariaV8b = () => {
               </div>
               <div style={{flex:1}}/>
               {/* New Session */}
-              <div onClick={goNew} style={{display:"flex",alignItems:"center",gap:7,height:36,padding:"0 20px",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:13,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 2px 10px rgba(38,67,247,0.35)",flexShrink:0,transition:"filter 0.12s",fontFamily:F,marginRight:20}}
+              <div onClick={openNewSessionKindPicker} style={{display:"flex",alignItems:"center",gap:7,height:36,padding:"0 20px",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:13,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 2px 10px rgba(38,67,247,0.35)",flexShrink:0,transition:"filter 0.12s",fontFamily:F,marginRight:20}}
                 onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                 onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
@@ -11325,7 +11431,7 @@ const TalariaV8b = () => {
                   <svg width={56} height={56} viewBox="0 0 24 24" fill="none" style={{marginBottom:18,color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.2"/><line x1="7" y1="8" x2="17" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="16" x2="15" y2="16" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
                   <div style={{fontSize:16,fontWeight:700,color:c.ts,marginBottom:8}}>No saved sessions yet</div>
                   <div style={{fontSize:13,color:c.tm,marginBottom:24}}>Create your first backtesting session to get started</div>
-                  <div onClick={goNew} style={{display:"flex",alignItems:"center",gap:8,height:38,padding:"0 22px",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:12,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 4px 18px rgba(38,67,247,0.4)",clipPath:"polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)"}}>
+                  <div onClick={openNewSessionKindPicker} style={{display:"flex",alignItems:"center",gap:8,height:38,padding:"0 22px",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:12,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 4px 18px rgba(38,67,247,0.4)",clipPath:"polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%)"}}>
                     <span style={{fontSize:17,lineHeight:1}}>+</span> Create New Session
                   </div>
                 </div>
@@ -11707,6 +11813,66 @@ const TalariaV8b = () => {
                 </div>
               </>);
             })()}
+
+{/* ── New session kind picker (Backtest vs Journal) ── */}
+            {newSessionKindPickerOpen && renderNewSessionPickerModal({
+              title:"New Session",
+              subtitle:"Choose what you want to create",
+              onClose:closeNewSessionKindPicker,
+              options:[
+                {
+                  id:"backtest",
+                  label:"Backtest",
+                  desc:"Run historical replay sessions with chart data and strategy testing.",
+                  iconBg:"rgba(74,106,255,0.14)",
+                  iconColor:c.acL,
+                  icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><polyline points="3,20 3,4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><polyline points="3,15 8,11 12,14 18,7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+                  onClick:startNewBacktestFromPicker,
+                },
+                {
+                  id:"journal",
+                  label:"Journal",
+                  desc:"Track live trades manually on a real account or prop firm journal.",
+                  iconBg:"rgba(0,212,161,0.12)",
+                  iconColor:c.gn,
+                  border:"rgba(0,212,161,0.18)",
+                  hoverBorder:"rgba(0,212,161,0.45)",
+                  icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><line x1="8" y1="8" x2="16" y2="8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><line x1="8" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><line x1="8" y1="16" x2="12" y2="16" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+                  onClick:openJournalTypeFromPicker,
+                },
+              ],
+            })}
+
+{/* ── Journal account type picker (Real account vs Prop firm) ── */}
+            {newSessionJournalKindOpen && renderNewSessionPickerModal({
+              title:"New Journal",
+              subtitle:"Choose account type",
+              onClose:closeNewSessionJournalKindPicker,
+              options:[
+                {
+                  id:"personal",
+                  label:"Real account",
+                  desc:"Personal live account for tracking your own trading journal.",
+                  iconBg:"rgba(0,212,161,0.12)",
+                  iconColor:c.gn,
+                  border:"rgba(0,212,161,0.18)",
+                  hoverBorder:"rgba(0,212,161,0.45)",
+                  icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>,
+                  onClick:()=>startNewJournalFromPicker("personal"),
+                },
+                {
+                  id:"prop",
+                  label:"Prop firm",
+                  desc:"Challenge or funded prop account journal with prop-specific tracking.",
+                  iconBg:"rgba(201,168,76,0.12)",
+                  iconColor:c.gold,
+                  border:"rgba(201,168,76,0.22)",
+                  hoverBorder:"rgba(201,168,76,0.5)",
+                  icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>,
+                  onClick:()=>startNewJournalFromPicker("prop"),
+                },
+              ],
+            })}
 
 {/* ── Seed trades settings modal ── */}
             {sessSeedModal&&(()=>{

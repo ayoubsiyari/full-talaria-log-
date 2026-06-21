@@ -13,6 +13,8 @@ export type LiveJournalNewAccountRegisterFn = (
 
 export type LiveJournalNewAccountOpenOptions = {
   accountTypeKey?: V16AccountTypeKey;
+  /** After save, switch embedded V16 to Trades and open Add Trade for the new account. */
+  goToTradesAfterCreate?: boolean;
 };
 
 type LiveJournalNewAccountContextValue = {
@@ -32,8 +34,10 @@ export function LiveJournalNewAccountProvider({
   const [open, setOpen] = React.useState(false);
   const [initialState, setInitialState] = React.useState<LiveJournalNewAccountInitialState | null>(null);
   const onSavedListenersRef = React.useRef(new Set<() => void>());
+  const pendingOpenOptionsRef = React.useRef<LiveJournalNewAccountOpenOptions | null>(null);
 
   const openNewLiveJournal = React.useCallback((opts?: LiveJournalNewAccountOpenOptions) => {
+    pendingOpenOptionsRef.current = opts || null;
     setInitialState({
       accountTypeKey: opts?.accountTypeKey === "prop" ? "prop" : "personal",
     });
@@ -75,10 +79,19 @@ export function LiveJournalNewAccountProvider({
     };
   }, []);
 
-  const handleSaved = React.useCallback(async () => {
+  const handleSaved = React.useCallback(async (account?: Record<string, unknown>) => {
+    const opts = pendingOpenOptionsRef.current;
+    pendingOpenOptionsRef.current = null;
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
       window.dispatchEvent(new CustomEvent("talaria-v16-close-source"));
+      if (opts?.goToTradesAfterCreate) {
+        window.dispatchEvent(
+          new CustomEvent("talaria-v16-journal-created", {
+            detail: { account: account || {}, goToTradesAfterCreate: true },
+          })
+        );
+      }
     }
     for (const fn of onSavedListenersRef.current) {
       try {
@@ -90,6 +103,7 @@ export function LiveJournalNewAccountProvider({
   }, []);
 
   const handleClose = React.useCallback(() => {
+    pendingOpenOptionsRef.current = null;
     setOpen(false);
     setInitialState(null);
   }, []);

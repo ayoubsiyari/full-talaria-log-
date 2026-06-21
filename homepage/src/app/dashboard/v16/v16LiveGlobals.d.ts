@@ -54,6 +54,7 @@ declare global {
     /** Open dashboard live journal creator from embedded V16 Source modal. */
     __TALARIA_OPEN_NEW_LIVE_JOURNAL__?: (opts?: {
       accountTypeKey?: "personal" | "prop";
+      goToTradesAfterCreate?: boolean;
     }) => void;
     /** Activate a persisted live journal profile before import/manual add. */
     __TALARIA_ACTIVATE_LIVE_JOURNAL__?: (accountId: number) => void | Promise<void>;
