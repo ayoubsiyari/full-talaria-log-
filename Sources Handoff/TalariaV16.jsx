@@ -7999,11 +7999,13 @@ const TalariaV8b = () => {
   const [dashBootLoading, setDashBootLoading] = useState(
     () => isV16Embedded() && !!window.__TALARIA_V16_BOOT_LOADING__
   );
+  const [v16BootRevision, setV16BootRevision] = useState(0);
   const [dashTradesLoading, setDashTradesLoading] = useState(false);
   useEffect(() => {
     if (!isV16Embedded()) return;
     const syncBoot = () => {
       setDashBootLoading(!!window.__TALARIA_V16_BOOT_LOADING__);
+      setV16BootRevision((n) => n + 1);
       if (!isV16LiveBoot()) return;
       const boot = window.__TALARIA_V16_BOOT__;
       if (!boot) return;
@@ -10445,6 +10447,113 @@ const TalariaV8b = () => {
     setSessView("dashboard");
     syncV16SessionUrl(session.id);
   };
+  const mapJournalAccountToSessionRow = (account) => {
+    const tradeCount = Number(account?.trades ?? account?.totalTrades ?? 0) || 0;
+    const isPropJournal = account?.accountTypeKey === "prop";
+    return {
+      id: `journal-${account?.liveAccountId ?? account?.id}`,
+      journalAccountKey: account?.id,
+      liveAccountId: account?.liveAccountId,
+      profileId: account?.profileId,
+      isJournalSession: true,
+      name: String(account?.name || "").split(" / ")[0] || "Journal",
+      strategyName: account?.connection || "Live Journal",
+      strategyDesc: [account?.connection, account?.accountNumber].filter(Boolean).join(" · "),
+      tickers: account?.accountNumber ? [account.accountNumber] : [],
+      assetClasses: account?.market ? [account.market] : [],
+      timeframe: "Live",
+      startDate: String(account?.createdAt || account?.created || "").slice(0, 10),
+      endDate: "",
+      capital: null,
+      createdAt: account?.createdAt || account?.created || new Date().toISOString(),
+      trades: tradeCount,
+      pnl: account?.pnl != null ? Number(account.pnl) : null,
+      winRate: null,
+      avgRR: null,
+      tradingMode: isPropJournal ? "journal-prop" : "journal",
+      accountTypeKey: account?.accountTypeKey,
+      progress: tradeCount > 0 ? 100 : 0,
+      rollbackAllowed: false,
+      commission: "None",
+      platform: account?.connection,
+      accountNumber: account?.accountNumber,
+      journalSubtype: account?.type,
+      _journalAccount: account,
+    };
+  };
+  const getSessionsPageRows = () => {
+    void v16BootRevision;
+    const backtests = sessions || [];
+    if (!isV16Embedded() || !isV16LiveBoot()) return backtests;
+    const journalBoot = getV16JournalBoot();
+    const journalRows = (journalBoot?.accounts || [])
+      .filter((a) => a?.isLiveJournalAccount)
+      .map(mapJournalAccountToSessionRow);
+    return [...journalRows, ...backtests];
+  };
+  const getSessionRowStripeMeta = (sess) => {
+    const isJournal = !!sess?.isJournalSession;
+    const isProp = !isJournal && sess?.tradingMode === "prop";
+    const stripeCol = isJournal ? c.gn : isProp ? c.gold : c.acL;
+    const hoverBorder = isJournal ? "rgba(0,212,161,0.45)" : isProp ? "rgba(201,168,76,0.35)" : c.acB;
+    const hoverShadow = isJournal
+      ? "0 0 0 1px rgba(0,212,161,0.25), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(0,212,161,0.15)"
+      : isProp
+      ? "0 0 0 1px rgba(201,168,76,0.2), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(201,168,76,0.12)"
+      : `0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`;
+    return { isJournal, isProp, stripeCol, hoverBorder, hoverShadow };
+  };
+  const applySessionsPageFilter = (s, filt) => {
+    if (filt === "journal") return !!s?.isJournalSession;
+    if (filt === "not-started") return s.progress === 0;
+    if (filt === "active") return s.progress > 0 && s.progress < 100;
+    if (filt === "completed") return s.progress === 100;
+    if (filt === "standard") return !s?.isJournalSession && s.tradingMode !== "prop";
+    if (filt === "prop") return !s?.isJournalSession && s.tradingMode === "prop";
+    return true;
+  };
+  const getSessionRowModeLabel = (sess) => {
+    if (sess?.isJournalSession) {
+      return sess.accountTypeKey === "prop" || sess.tradingMode === "journal-prop" ? "Journal · Prop" : "Journal · Real";
+    }
+    return sess?.tradingMode === "prop" ? "Prop Firm" : "Standard";
+  };
+  const resolveJournalSessionAccount = (row) => {
+    const boot = getV16JournalBoot();
+    if (!boot?.accounts?.length) return row?._journalAccount || null;
+    return boot.accounts.find((a) =>
+      row?.journalAccountKey != null && String(a.id) === String(row.journalAccountKey)
+    ) || row?._journalAccount || null;
+  };
+  const openEmbeddedJournalTrades = (row) => {
+    const account = resolveJournalSessionAccount(row);
+    if (!account) return;
+    flushSync(() => setSessView("trades"));
+    syncV16ViewUrl("trades");
+    requestAnimationFrame(() => liveJournalAddTradeBridgeRef.current?.open?.(account));
+  };
+  const openEmbeddedJournalDashboard = (row) => {
+    const account = resolveJournalSessionAccount(row);
+    if (!account) return;
+    const applied = {
+      kind: "journalAccount",
+      id: account.id,
+      label: account.name,
+      liveAccountId: account.liveAccountId,
+      profileId: account.profileId,
+    };
+    setDashStrategyId(null);
+    setDashSessId(null);
+    setDashLibraryAppliedSelection(applied);
+    dashLibraryAppliedSelectionRef.current = applied;
+    if (account.liveAccountId) activateLiveJournalAccount(account.liveAccountId);
+    flushSync(() => setSessView("dashboard"));
+    syncV16ViewUrl("dashboard");
+  };
+  const openEmbeddedSessionOrJournalDashboard = (sess) => {
+    if (sess?.isJournalSession) openEmbeddedJournalDashboard(sess);
+    else openEmbeddedSessionDashboard(sess);
+  };
   const launchSession = (sess) => {
     if (isV16Embedded()) {
       if (sess) openEmbeddedChartSession(sess);
@@ -10454,6 +10563,13 @@ const TalariaV8b = () => {
     setTypedQuote("");
     setSessPageFading(true);
     setTimeout(() => { setSessionPage(false); setSessPageFading(false); setLoading(true); }, 280);
+  };
+  const launchSessionOrJournal = (sess) => {
+    if (sess?.isJournalSession) {
+      openEmbeddedJournalTrades(sess);
+      return;
+    }
+    launchSession(sess);
   };
   const startNewSession = () => {
     const name = newSessName.trim() || `Session ${sessions.length + 1}`;
@@ -11002,6 +11118,7 @@ const TalariaV8b = () => {
 
         /* ── VIEW: SAVED SESSIONS ── */
         if (sessView === "sessions") {
+        const sessionsPageRows = getSessionsPageRows();
         const uiZ = v16EmbeddedRoot ? 1 : Z;
         return (
           <div style={{position:"fixed",inset:0,zIndex:99998,background:c.bg,fontFamily:F,display:"flex",flexDirection:"column",opacity:sessPageFading?0:1,transition:sessPageFading?"opacity 0.28s ease":"none"}}>
@@ -11038,25 +11155,28 @@ const TalariaV8b = () => {
               {/* ── Sessions Dashboard ── */}
               {(()=>{
                 // ── Compute stats ──
-                const withPnl=sessions.filter(s=>s.pnl!=null);
-                const completed=sessions.filter(s=>s.progress===100).length;
-                const active=sessions.filter(s=>s.progress>0&&s.progress<100).length;
-                const notStarted=sessions.filter(s=>s.progress===0).length;
-                const propSess=sessions.filter(s=>s.tradingMode==="prop");
-                const stdSess=sessions.filter(s=>s.tradingMode!=="prop");
+                const withPnl=sessionsPageRows.filter(s=>s.pnl!=null);
+                const completed=sessionsPageRows.filter(s=>s.progress===100).length;
+                const active=sessionsPageRows.filter(s=>s.progress>0&&s.progress<100).length;
+                const notStarted=sessionsPageRows.filter(s=>s.progress===0).length;
+                const journalSess=sessionsPageRows.filter(s=>s.isJournalSession);
+                const propSess=sessionsPageRows.filter(s=>!s.isJournalSession&&s.tradingMode==="prop");
+                const stdSess=sessionsPageRows.filter(s=>!s.isJournalSession&&s.tradingMode!=="prop");
+                const journalCompleted=journalSess.filter(s=>s.progress===100).length;
+                const journalActive=journalSess.filter(s=>s.progress>0&&s.progress<100).length;
                 const propCompleted=propSess.filter(s=>s.progress===100).length;
                 const propActive=propSess.filter(s=>s.progress>0&&s.progress<100).length;
                 const stdCompleted=stdSess.filter(s=>s.progress===100).length;
                 const stdActive=stdSess.filter(s=>s.progress>0&&s.progress<100).length;
-                const totalTrades=sessions.reduce((a,s)=>a+(s.trades||0),0);
+                const totalTrades=sessionsPageRows.reduce((a,s)=>a+(s.trades||0),0);
                 const profSess=withPnl.filter(s=>s.pnl>0).length;
                 const profPct=withPnl.length?Math.round(profSess/withPnl.length*100):0;
-                const totalDays=sessions.reduce((a,s)=>{
+                const totalDays=sessionsPageRows.reduce((a,s)=>{
                   if(!s.startDate||!s.endDate)return a;
                   return a+Math.max(0,Math.round((new Date(s.endDate)-new Date(s.startDate))/86400000));
                 },0);
                 const tickerFreq={};
-                sessions.forEach(s=>(s.tickers||[]).forEach(t=>{tickerFreq[t]=(tickerFreq[t]||0)+1;}));
+                sessionsPageRows.forEach(s=>(s.tickers||[]).forEach(t=>{tickerFreq[t]=(tickerFreq[t]||0)+1;}));
                 const uniqueTickers=Object.keys(tickerFreq).length;
                 const topTickers=Object.entries(tickerFreq).sort((a,b)=>b[1]-a[1]).slice(0,7);
                 const tkMax=topTickers[0]?.[1]||1;
@@ -11064,7 +11184,7 @@ const TalariaV8b = () => {
                 const PR=46,PC=2*Math.PI*PR;
                 const profLen=(profPct/100)*PC;
                 // ── Trades bars ──
-                const trBars=[...sessions].sort((a,b)=>(b.trades||0)-(a.trades||0));
+                const trBars=[...sessionsPageRows].sort((a,b)=>(b.trades||0)-(a.trades||0));
                 const trMax=trBars[0]?.trades||1;
                 // ── Days dots ──
                 const dotsN=Math.min(Math.ceil(totalDays/30),56);
@@ -11079,7 +11199,7 @@ const TalariaV8b = () => {
                         <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:10}}>
                           <div style={{fontSize:9,fontWeight:800,letterSpacing:"0.08em",color:c.tm,fontFamily:F,textTransform:"uppercase"}}>Sessions & Mode</div>
                           <div style={{display:"flex",alignItems:"baseline",gap:4}}>
-                            <span style={{fontSize:18,fontWeight:800,color:c.tx,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{sessions.length}</span>
+                            <span style={{fontSize:18,fontWeight:800,color:c.tx,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{sessionsPageRows.length}</span>
                             <span style={{fontSize:8,color:c.tm,fontFamily:F}}>total</span>
                           </div>
                         </div>
@@ -11088,6 +11208,7 @@ const TalariaV8b = () => {
                           {[
                             {label:"Standard",count:stdSess.length,done:stdCompleted,act:stdActive,col:c.acL},
                             {label:"Prop Firm",count:propSess.length,done:propCompleted,act:propActive,col:c.gold},
+                            {label:"Journal",count:journalSess.length,done:journalCompleted,act:journalActive,col:c.gn},
                           ].map(({label,count,done,act,col})=>{
                             const pending=count-done-act;
                             const pct=n=>count?`${(n/count)*100}%`:"0%";
@@ -11136,7 +11257,7 @@ const TalariaV8b = () => {
                               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"3px 16px"}}>
                                 {[
                                   ["Trades",(hov.sess.trades||0).toLocaleString(),c.tx],
-                                  ["Mode",hov.sess.tradingMode==="prop"?"Prop Firm":"Standard",hov.col],
+                                  ["Mode",getSessionRowModeLabel(hov.sess),hov.col],
                                   ["Strategy",hov.sess.strategyName||"—",c.ts],
                                   ["Progress",`${hov.sess.progress}%`,c.ts],
                                   ["Starting Balance",`$${(hov.sess.capital||0).toLocaleString()}`,c.ts],
@@ -11169,7 +11290,7 @@ const TalariaV8b = () => {
                             <svg width={svgW} height={maxH} style={{display:"block",flex:"none",marginBottom:2}}>
                               {trBars.map((s,i)=>{
                                 const h=s.trades?Math.max(3,Math.round((s.trades/trMax)*maxH)):2;
-                                const col=s.tradingMode==="prop"?c.gold:c.acL;
+                                const col=s.isJournalSession?c.gn:(s.tradingMode==="prop"?c.gold:c.acL);
                                 const isH=hov&&hov.type==="trbar"&&hov.sess&&hov.sess.id===s.id;
                                 return(
                                   <rect key={s.id}
@@ -11184,7 +11305,7 @@ const TalariaV8b = () => {
                           );
                         })()}
                         <div style={{display:"flex",gap:12,marginTop:5}}>
-                          {[{l:"Standard",col:c.acL},{l:"Prop Firm",col:c.gold}].map(({l,col})=>(
+                          {[{l:"Standard",col:c.acL},{l:"Prop Firm",col:c.gold},{l:"Journal",col:c.gn}].map(({l,col})=>(
                             <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
                               <div style={{width:8,height:2,background:col}}/>
                               <span style={{fontSize:8,color:c.tm,fontFamily:F}}>{l}</span>
@@ -11284,13 +11405,14 @@ const TalariaV8b = () => {
               <div style={{position:"sticky",top:0,zIndex:5,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1288,margin:"0 auto",display:"flex",alignItems:"flex-end",height:40,gap:5}}>
                 <div style={{position:"absolute",bottom:0,left:32,right:32,height:1,background:c.brH,pointerEvents:"none"}}/>
                 {(()=>{
-                  const getCount=v=>v==="all"?sessions.length:sessions.filter(s=>v==="not-started"?s.progress===0:v==="active"?(s.progress>0&&s.progress<100):v==="completed"?s.progress===100:v==="standard"?s.tradingMode!=="prop":v==="prop"?s.tradingMode==="prop":true).length;
-                  return[["all","All"],["not-started","Not Started"],["active","Active"],["completed","Completed"],["standard","Standard"],["prop","Prop Firm"]].map(([v,l])=>{
+                  const getCount=v=>v==="all"?sessionsPageRows.length:sessionsPageRows.filter(s=>applySessionsPageFilter(s,v)).length;
+                  return[["all","All"],["not-started","Not Started"],["active","Active"],["completed","Completed"],["standard","Standard"],["prop","Prop Firm"],["journal","Journal"]].map(([v,l])=>{
                     const isA=sessFilter===v;
                     const isPropTab=v==="prop";
-                    const tabCol=isA?(isPropTab?c.gold:c.acL):c.ts;
-                    const tabBg=isA?(isPropTab?"rgba(201,168,76,0.10)":c.acD):"transparent";
-                    const badgeBg=isA?(isPropTab?"rgba(201,168,76,0.18)":"rgba(74,106,255,0.2)"):"rgba(255,255,255,0.07)";
+                    const isJournalTab=v==="journal";
+                    const tabCol=isA?(isJournalTab?c.gn:isPropTab?c.gold:c.acL):c.ts;
+                    const tabBg=isA?(isJournalTab?"rgba(0,212,161,0.10)":isPropTab?"rgba(201,168,76,0.10)":c.acD):"transparent";
+                    const badgeBg=isA?(isJournalTab?"rgba(0,212,161,0.18)":isPropTab?"rgba(201,168,76,0.18)":"rgba(74,106,255,0.2)"):"rgba(255,255,255,0.07)";
                     return(
                       <div key={v} onClick={()=>setSessFilter(v)}
                         style={{position:"relative",height:26,display:"flex",alignItems:"center",gap:5,padding:"0 12px",cursor:"default",
@@ -11301,7 +11423,7 @@ const TalariaV8b = () => {
                         onMouseLeave={e=>{if(!isA){e.currentTarget.style.background="transparent";e.currentTarget.style.color=c.ts;}}}>
                         {l}
                         <span style={{fontSize:8,fontWeight:700,background:badgeBg,color:tabCol,padding:"1px 5px",transition:"all 0.12s"}}>{getCount(v)}</span>
-                        {isA&&<div style={{position:"absolute",bottom:0,left:"10%",right:"10%",height:1.5,background:`linear-gradient(90deg,transparent,${isPropTab?c.gold:c.acL},transparent)`,boxShadow:isPropTab?`0 0 4px ${c.gold}88`:undefined}}/>}
+                        {isA&&<div style={{position:"absolute",bottom:0,left:"10%",right:"10%",height:1.5,background:`linear-gradient(90deg,transparent,${isJournalTab?c.gn:isPropTab?c.gold:c.acL},transparent)`,boxShadow:isJournalTab?`0 0 4px ${c.gn}88`:isPropTab?`0 0 4px ${c.gold}88`:undefined}}/>}
                       </div>
                     );
                   });
@@ -11400,7 +11522,7 @@ const TalariaV8b = () => {
                 </div>
               </div>
               {/* Sticky column headers */}
-              {sessions.length>0&&sessLayoutMode==="rows"&&(
+              {sessionsPageRows.length>0&&sessLayoutMode==="rows"&&(
                 <div style={{position:"sticky",top:40,zIndex:4,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1288,margin:"0 auto",display:"flex",alignItems:"center",height:26}}>
                   <div style={{position:"absolute",bottom:0,left:32,right:32,height:1,background:c.brH,pointerEvents:"none"}}/>
                   <div style={{width:96,flexShrink:0}}></div>
@@ -11426,7 +11548,7 @@ const TalariaV8b = () => {
                 </div>
               )}
               <div style={{padding:"0 32px 24px"}}>
-              {sessions.length===0?(
+              {sessionsPageRows.length===0?(
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"60vh",textAlign:"center"}}>
                   <svg width={56} height={56} viewBox="0 0 24 24" fill="none" style={{marginBottom:18,color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1.5" stroke="currentColor" strokeWidth="1.2"/><line x1="7" y1="8" x2="17" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="12" x2="13" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="7" y1="16" x2="15" y2="16" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
                   <div style={{fontSize:16,fontWeight:700,color:c.ts,marginBottom:8}}>No saved sessions yet</div>
@@ -11436,37 +11558,40 @@ const TalariaV8b = () => {
                   </div>
                 </div>
               ):sessLayoutMode==="cards"?(()=>{
-                const _applyFilter=(s)=>{if(sessFilter==="not-started")return s.progress===0;if(sessFilter==="active")return s.progress>0&&s.progress<100;if(sessFilter==="completed")return s.progress===100;if(sessFilter==="standard")return s.tradingMode!=="prop";if(sessFilter==="prop")return s.tradingMode==="prop";return true;};
-                const _fss=[...sessions].filter(s=>{if(!sessSearchQ)return true;const q=sessSearchQ.toLowerCase();return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(_applyFilter).sort((a,b)=>{if(!sessSortBy)return new Date(b.createdAt||0)-new Date(a.createdAt||0);const dir=sessSortDir==="asc"?1:-1;let cmp=0;if(sessSortBy==="name")cmp=a.name.localeCompare(b.name);else if(sessSortBy==="strategy")cmp=(a.strategyName||"").localeCompare(b.strategyName||"");else if(sessSortBy==="mode")cmp=(a.tradingMode||"").localeCompare(b.tradingMode||"");else if(sessSortBy==="asset")cmp=((a.assetClasses||[])[0]||"").localeCompare((b.assetClasses||[])[0]||"");else if(sessSortBy==="symbol")cmp=(a.tickers?.[0]||"").localeCompare(b.tickers?.[0]||"");else if(sessSortBy==="date")cmp=new Date(a.startDate||0)-new Date(b.startDate||0);else if(sessSortBy==="capital")cmp=(a.capital||0)-(b.capital||0);else if(sessSortBy==="pnl")cmp=(a.pnl??-Infinity)-(b.pnl??-Infinity);else if(sessSortBy==="winRate")cmp=(a.winRate??-1)-(b.winRate??-1);else if(sessSortBy==="avgRR")cmp=(a.avgRR??-1)-(b.avgRR??-1);else if(sessSortBy==="trades")cmp=(a.trades||0)-(b.trades||0);else if(sessSortBy==="progress")cmp=(a.progress||0)-(b.progress||0);return cmp*dir;});
+                const _applyFilter=(s)=>applySessionsPageFilter(s,sessFilter);
+                const _fss=[...sessionsPageRows].filter(s=>{if(!sessSearchQ)return true;const q=sessSearchQ.toLowerCase();return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(_applyFilter).sort((a,b)=>{if(!sessSortBy)return new Date(b.createdAt||0)-new Date(a.createdAt||0);const dir=sessSortDir==="asc"?1:-1;let cmp=0;if(sessSortBy==="name")cmp=a.name.localeCompare(b.name);else if(sessSortBy==="strategy")cmp=(a.strategyName||"").localeCompare(b.strategyName||"");else if(sessSortBy==="mode")cmp=(a.tradingMode||"").localeCompare(b.tradingMode||"");else if(sessSortBy==="asset")cmp=((a.assetClasses||[])[0]||"").localeCompare((b.assetClasses||[])[0]||"");else if(sessSortBy==="symbol")cmp=(a.tickers?.[0]||"").localeCompare(b.tickers?.[0]||"");else if(sessSortBy==="date")cmp=new Date(a.startDate||0)-new Date(b.startDate||0);else if(sessSortBy==="capital")cmp=(a.capital||0)-(b.capital||0);else if(sessSortBy==="pnl")cmp=(a.pnl??-Infinity)-(b.pnl??-Infinity);else if(sessSortBy==="winRate")cmp=(a.winRate??-1)-(b.winRate??-1);else if(sessSortBy==="avgRR")cmp=(a.avgRR??-1)-(b.avgRR??-1);else if(sessSortBy==="trades")cmp=(a.trades||0)-(b.trades||0);else if(sessSortBy==="progress")cmp=(a.progress||0)-(b.progress||0);return cmp*dir;});
                 return(
                 <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                   {_fss.map(sess=>{
                     const isH=sessHov===sess.id;
-                    const isProp=sess.tradingMode==="prop";
+                    const {isJournal,isProp,stripeCol,hoverBorder,hoverShadow}=getSessionRowStripeMeta(sess);
                     const hasPnl=sess.pnl!=null;
                     const pnlPos=hasPnl&&sess.pnl>=0;
-                    const stripeCol=isProp?c.gold:c.acL;
                     const createdStr=sess.createdAt?new Date(sess.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"—";
                     const progress=sess.progress??0;
                     const pnlCol=hasPnl?(pnlPos?c.gn:c.rd):c.tm;
                     const pnlVal=hasPnl?`${pnlPos?"+":""}$${sess.pnl.toLocaleString()}`:"—";
-                    const optLines=[{label:"Rollback",on:!!sess.rollbackAllowed},{label:"Costs",on:!!(sess.commission&&sess.commission!=="None")}];
+                    const optLines=sess.isJournalSession
+                      ? [{label:"Manual",on:true},{label:sess.platform||"Journal",on:!!sess.platform}]
+                      : [{label:"Rollback",on:!!sess.rollbackAllowed},{label:"Costs",on:!!(sess.commission&&sess.commission!=="None")}];
+                    const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPos?"Passed":"Lost"):"Done"):`${progress}%`);
+                    const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm);
                     return(
                       <div key={sess.id}
                         onMouseEnter={()=>setSessHov(sess.id)} onMouseLeave={()=>setSessHov(null)}
                         onClick={e=>{const btn=e.currentTarget.querySelector(".sess-act-btn");if(btn){const r=btn.getBoundingClientRect();setSessActMenu(sessActMenu?.id===sess.id?null:{id:sess.id,x:(r.left+r.right)/2/Z,y:r.bottom/Z});}else{const r=e.currentTarget.getBoundingClientRect();setSessActMenu(sessActMenu?.id===sess.id?null:{id:sess.id,x:r.right/Z-20,y:r.bottom/Z});}}}
-                        style={{borderTop:`3px solid ${stripeCol}`,borderRight:`1px solid ${isH?(isProp?"rgba(201,168,76,0.35)":c.acB):c.brH}`,borderBottom:`1px solid ${isH?(isProp?"rgba(201,168,76,0.35)":c.acB):c.brH}`,borderLeft:`1px solid ${isH?(isProp?"rgba(201,168,76,0.35)":c.acB):c.brH}`,background:c.sf,cursor:"default",transition:"box-shadow 0.15s,border-color 0.15s",boxShadow:isH?(isProp?`0 0 0 1px rgba(201,168,76,0.2),0 4px 24px rgba(0,0,0,0.6),0 0 18px rgba(201,168,76,0.12)`:`0 0 0 1px ${c.acB},0 4px 24px rgba(0,0,0,0.6),0 0 18px rgba(38,67,247,0.15)`):"0 3px 12px rgba(0,0,0,0.5)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                        style={{borderTop:`3px solid ${stripeCol}`,borderRight:`1px solid ${isH?hoverBorder:c.brH}`,borderBottom:`1px solid ${isH?hoverBorder:c.brH}`,borderLeft:`1px solid ${isH?hoverBorder:c.brH}`,background:c.sf,cursor:"default",transition:"box-shadow 0.15s,border-color 0.15s",boxShadow:isH?hoverShadow:"0 3px 12px rgba(0,0,0,0.5)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
                         {/* Row 1: Resume + Dashboard buttons | session name + created | ⋯ */}
                         <div style={{display:"flex",alignItems:"center",gap:0,padding:"10px 10px 0",borderBottom:`1px solid ${c.brH}`,paddingBottom:8}}>
                           {/* Resume */}
-                          <div onClick={e=>{e.stopPropagation();launchSession(sess);}}
+                          <div onClick={e=>{e.stopPropagation();launchSessionOrJournal(sess);}}
                             onMouseEnter={()=>setHov("rs_"+sess.id)} onMouseLeave={()=>setHov(null)}
-                            style={{width:26,height:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:"0 2px 8px rgba(38,67,247,0.35)"}}>
+                            style={{width:26,height:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:isJournal?"linear-gradient(135deg,#00a878,#00d4a1)":"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:isJournal?"0 2px 8px rgba(0,212,161,0.35)":"0 2px 8px rgba(38,67,247,0.35)"}}>
                             <svg width={9} height={9} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)"/></svg>
                           </div>
                           {/* Dashboard */}
-                          <div onClick={e=>{e.stopPropagation();openEmbeddedSessionDashboard(sess);}}
+                          <div onClick={e=>{e.stopPropagation();openEmbeddedSessionOrJournalDashboard(sess);}}
                             onMouseEnter={()=>setHov("db_"+sess.id)} onMouseLeave={()=>setHov(null)}
                             style={{width:26,height:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:hov==="db_"+sess.id?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.07)",border:`1px solid ${hov==="db_"+sess.id?c.brH:c.br}`,cursor:"default",transition:"background 0.12s,border-color 0.12s",marginLeft:5}}>
                             <svg width={11} height={11} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="11" y="1" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="1" y="11" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="11" y="11" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/></svg>
@@ -11500,7 +11625,7 @@ const TalariaV8b = () => {
 
                         {/* Row 3: Mode | Asset | Symbols */}
                         <div style={{padding:"7px 10px",display:"flex",alignItems:"center",gap:8,borderBottom:`1px solid ${c.brH}`}}>
-                          <div style={{fontSize:10,fontWeight:700,color:isProp?c.gold:c.acL,fontFamily:F,flexShrink:0}}>{isProp?"Prop Firm":"Standard"}</div>
+                          <div style={{fontSize:10,fontWeight:700,color:isJournal?c.gn:(isProp?c.gold:c.acL),fontFamily:F,flexShrink:0}}>{getSessionRowModeLabel(sess)}</div>
                           <div style={{width:1,height:12,background:c.brH,flexShrink:0}}/>
                           <div style={{fontSize:10,fontWeight:600,color:c.ts,fontFamily:F,flexShrink:0}}>{(sess.assetClasses||[])[0]||"—"}</div>
                           <div style={{width:1,height:12,background:c.brH,flexShrink:0}}/>
@@ -11520,7 +11645,9 @@ const TalariaV8b = () => {
 
                         {/* Row 4: Date range mini timeline */}
                         <div style={{padding:"7px 10px",borderBottom:`1px solid ${c.brH}`}}>
-                          {sess.startDate&&sess.endDate?(()=>{
+                          {sess.isJournalSession&&sess.startDate?(
+                            <span style={{fontSize:9,color:c.ts,fontFamily:F}}>Live · since {createdStr}</span>
+                          ):sess.startDate&&sess.endDate?(()=>{
                             const parse=d=>{const[y,mo,day]=d.split("-");return{y,mo:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mo-1],day:Number(day)};};
                             const sd=parse(sess.startDate),ed=parse(sess.endDate);
                             const durMs=new Date(sess.endDate)-new Date(sess.startDate);
@@ -11575,9 +11702,9 @@ const TalariaV8b = () => {
                         {/* Row 7: Progress */}
                         <div style={{padding:"6px 10px 8px",display:"flex",alignItems:"center",gap:8}}>
                           <div style={{flex:1,height:2,background:"rgba(255,255,255,0.07)",overflow:"hidden"}}>
-                            <div style={{width:`${Math.min(progress,100)}%`,height:"100%",background:progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):c.acL,transition:"width 0.3s ease"}}/>
+                            <div style={{width:`${Math.min(progress,100)}%`,height:"100%",background:isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):c.acL),transition:"width 0.3s ease"}}/>
                           </div>
-                          <span style={{fontSize:10,fontWeight:800,color:progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm,fontVariantNumeric:"tabular-nums",fontFamily:F,flexShrink:0}}>{progress>=100?(isProp?(pnlPos?"Passed":"Lost"):"Done"):`${progress}%`}</span>
+                          <span style={{fontSize:10,fontWeight:800,color:progressColor,fontVariantNumeric:"tabular-nums",fontFamily:F,flexShrink:0}}>{progressLabel}</span>
                         </div>
 
                       </div>
@@ -11587,7 +11714,7 @@ const TalariaV8b = () => {
                 );
               })():(
               <div style={{width:"fit-content",margin:"0 auto",display:"flex",flexDirection:"column"}}>
-              {[...sessions].filter(s=>{if(!sessSearchQ)return true;const q=sessSearchQ.toLowerCase();return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(s=>{if(sessFilter==="not-started")return s.progress===0;if(sessFilter==="active")return s.progress>0&&s.progress<100;if(sessFilter==="completed")return s.progress===100;if(sessFilter==="standard")return s.tradingMode!=="prop";if(sessFilter==="prop")return s.tradingMode==="prop";return true;}).sort((a,b)=>{
+              {[...sessionsPageRows].filter(s=>{if(!sessSearchQ)return true;const q=sessSearchQ.toLowerCase();return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(s=>applySessionsPageFilter(s,sessFilter)).sort((a,b)=>{
                   if(!sessSortBy) return new Date(b.createdAt||0)-new Date(a.createdAt||0);
                   const dir=sessSortDir==="asc"?1:-1;
                   let cmp=0;
@@ -11606,42 +11733,44 @@ const TalariaV8b = () => {
                   return cmp*dir;
                 }).map((sess,idx,arr)=>{
                   const isH=sessHov===sess.id;
-                  const isProp=sess.tradingMode==="prop";
+                  const {isJournal,isProp,stripeCol,hoverBorder,hoverShadow}=getSessionRowStripeMeta(sess);
                   const hasPnl=sess.pnl!=null;
                   const pnlPos=hasPnl&&sess.pnl>=0;
-                  const stripeCol=isProp?c.gold:c.acL;
                   const createdStr=sess.createdAt?new Date(sess.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"—";
                   const progress=sess.progress??0;
                   const hasStarted=progress>0;
                   const pnlCol=hasPnl?(pnlPos?c.gn:c.rd):c.tm;
                   const fmtD=d=>{if(!d)return"—";const[y,mo,day]=d.split("-");return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mo-1]+" "+Number(day)+", "+y;};
                   const pnlVal=hasPnl?`${pnlPos?"+":""}$${sess.pnl.toLocaleString()}`:"—";
+                  const modeLabel=getSessionRowModeLabel(sess);
+                  const modeColor=isJournal?c.gn:(isProp?c.gold:c.acL);
+                  const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPos?"Passed":"Lost"):"Done"):`${progress}%`);
+                  const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm);
                   const colCell=(label,val,w,valCol=c.ts)=>(
                     <div style={{width:w,flexShrink:0,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",borderRight:"none",overflow:"hidden"}}>
                       <div style={{fontSize:10,fontWeight:700,color:valCol,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums",fontFamily:F,textAlign:"center"}}>{val}</div>
                     </div>
                   );
-                  const optLines=[
-                    {label:"Rollback", on:!!sess.rollbackAllowed},
-                    {label:"Costs", on:!!(sess.commission&&sess.commission!=="None")},
-                  ];
+                  const optLines=sess.isJournalSession
+                    ? [{label:"Manual", on:true}, {label:sess.platform||"Journal", on:!!sess.platform}]
+                    : [{label:"Rollback", on:!!sess.rollbackAllowed}, {label:"Costs", on:!!(sess.commission&&sess.commission!=="None")}];
                   return(
                     <React.Fragment key={sess.id}>
                     <div onMouseEnter={()=>setSessHov(sess.id)} onMouseLeave={()=>setSessHov(null)}
                       onClick={e=>{const btn=e.currentTarget.querySelector(".sess-act-btn");if(btn){const r=btn.getBoundingClientRect();setSessActMenu(sessActMenu?.id===sess.id?null:{id:sess.id,x:(r.left+r.right)/2/Z,y:r.bottom/Z});}else{const r=e.currentTarget.getBoundingClientRect();setSessActMenu(sessActMenu?.id===sess.id?null:{id:sess.id,x:r.right/Z-35,y:r.bottom/Z});}}}
-                      style={{borderTop:`1px solid ${isH?(isProp?"rgba(201,168,76,0.35)":c.acB):c.brH}`,borderRight:`1px solid ${isH?(isProp?"rgba(201,168,76,0.35)":c.acB):c.brH}`,borderBottom:`1px solid ${isH?(isProp?"rgba(201,168,76,0.35)":c.acB):c.brH}`,borderLeft:`3px solid ${stripeCol}`,background:c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease",boxShadow:isH?(isProp?`0 0 0 1px rgba(201,168,76,0.2), 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(201,168,76,0.12)`:`0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`):"0 3px 12px rgba(0,0,0,0.5)",position:"relative",display:"flex",flexDirection:"column",height:80,overflow:"hidden",marginBottom:6}}>
+                      style={{borderTop:`1px solid ${isH?hoverBorder:c.brH}`,borderRight:`1px solid ${isH?hoverBorder:c.brH}`,borderBottom:`1px solid ${isH?hoverBorder:c.brH}`,borderLeft:`3px solid ${stripeCol}`,background:c.sf,cursor:"default",transition:"box-shadow 0.15s ease, border-color 0.15s ease",boxShadow:isH?hoverShadow:"0 3px 12px rgba(0,0,0,0.5)",position:"relative",display:"flex",flexDirection:"column",height:80,overflow:"hidden",marginBottom:6}}>
 
                       {/* Content row */}
                       <div style={{display:"flex",alignItems:"stretch",flex:1}}>
 
                         {/* Resume | Dashboard — icon-only squares side by side */}
                         <div style={{width:96,flexShrink:0,display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6,padding:"0 10px",borderRight:"none"}}>
-                          <div onClick={e=>{e.stopPropagation();launchSession(sess);}}
+                          <div onClick={e=>{e.stopPropagation();launchSessionOrJournal(sess);}}
                             onMouseEnter={()=>setHov("rs_"+sess.id)} onMouseLeave={()=>setHov(null)}
-                            style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:"0 2px 8px rgba(38,67,247,0.35)",flexShrink:0}}>
+                            style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:isJournal?"linear-gradient(135deg,#00a878,#00d4a1)":"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",transition:"filter 0.12s",filter:hov==="rs_"+sess.id?"brightness(1.2)":"brightness(1)",boxShadow:isJournal?"0 2px 8px rgba(0,212,161,0.35)":"0 2px 8px rgba(38,67,247,0.35)",flexShrink:0}}>
                             <svg width={10} height={10} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="rgba(255,255,255,0.95)"/></svg>
                           </div>
-                          <div onClick={e=>{e.stopPropagation();openEmbeddedSessionDashboard(sess);}}
+                          <div onClick={e=>{e.stopPropagation();openEmbeddedSessionOrJournalDashboard(sess);}}
                             onMouseEnter={()=>setHov("db_"+sess.id)} onMouseLeave={()=>setHov(null)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",background:hov==="db_"+sess.id?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.07)",border:`1px solid ${hov==="db_"+sess.id?c.brH:c.br}`,cursor:"default",transition:"background 0.12s,border-color 0.12s",flexShrink:0}}>
                             <svg width={12} height={12} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="11" y="1" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="1" y="11" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/><rect x="11" y="11" width="8" height="8" fill={hov==="db_"+sess.id?c.tx:c.ts}/></svg>
@@ -11669,7 +11798,7 @@ const TalariaV8b = () => {
                         </div>
 
                         {/* Mode */}
-                        {colCell("Mode",isProp?"Prop Firm":"Standard",74,isProp?c.gold:c.acL)}
+                        {colCell("Mode",modeLabel,74,modeColor)}
 
                         {/* Asset class — one per session */}
                         {colCell("Asset",(sess.assetClasses||[])[0]||"—",90)}
@@ -11689,7 +11818,9 @@ const TalariaV8b = () => {
 
                         {/* Date range — mini timeline */}
                         <div style={{width:134,flexShrink:0,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",borderRight:"none"}}>
-                          {sess.startDate&&sess.endDate?(()=>{
+                          {sess.isJournalSession&&sess.startDate?(
+                            <span style={{fontSize:9,color:c.ts,fontFamily:F,textAlign:"center"}}>Live · since {createdStr}</span>
+                          ):sess.startDate&&sess.endDate?(()=>{
                             const parse=d=>{const[y,mo,day]=d.split("-");return{y,mo:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mo-1],day:Number(day)};};
                             const s=parse(sess.startDate),e=parse(sess.endDate);
                             const durMs=new Date(sess.endDate)-new Date(sess.startDate);
@@ -11726,7 +11857,7 @@ const TalariaV8b = () => {
                         </div>
 
                         {/* Account size */}
-                        {colCell("Starting Bal.",`$${(sess.capital||0).toLocaleString()}`,88)}
+                        {colCell("Starting Bal.",sess.isJournalSession?"—":`$${(sess.capital||0).toLocaleString()}`,88)}
 
                         {/* Net P&L */}
                         {colCell("Net P&L",pnlVal,80,pnlCol)}
@@ -11742,9 +11873,9 @@ const TalariaV8b = () => {
 
                         {/* Progress */}
                         <div style={{width:66,flexShrink:0,padding:"0 8px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,borderRight:"none",overflow:"hidden"}}>
-                          <span style={{fontSize:10,fontWeight:800,color:progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm,fontVariantNumeric:"tabular-nums",fontFamily:F}}>{progress>=100?(isProp?(pnlPos?"Passed":"Lost"):"Done"):`${progress}%`}</span>
+                          <span style={{fontSize:10,fontWeight:800,color:progressColor,fontVariantNumeric:"tabular-nums",fontFamily:F}}>{progressLabel}</span>
                           <div style={{width:"100%",height:2,background:"rgba(255,255,255,0.07)",overflow:"hidden"}}>
-                            <div style={{width:`${Math.min(progress,100)}%`,height:"100%",background:progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):c.acL,transition:"width 0.3s ease"}}/>
+                            <div style={{width:`${Math.min(progress,100)}%`,height:"100%",background:isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):c.acL),transition:"width 0.3s ease"}}/>
                           </div>
                         </div>
 
@@ -11775,9 +11906,35 @@ const TalariaV8b = () => {
 
 {/* ── Session action dropdown ── */}
             {sessActMenu&&(()=>{
-              const ms=sessions.find(s=>s.id===sessActMenu.id);
+              const ms=sessionsPageRows.find(s=>s.id===sessActMenu.id);
               if(!ms)return null;
               const hasStarted=ms.progress>0;
+              if(ms.isJournalSession){
+                return(<>
+                <div style={{position:"fixed",inset:0,zIndex:99997}} onClick={e=>{e.stopPropagation();setSessActMenu(null);}}/>
+                <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:sessActMenu.y+6,left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
+                  <div style={{height:2,background:`linear-gradient(90deg,${c.gn},${c.acL},${c.gn})`}}/>
+                  {[
+                    {label:"Trades", handler:()=>{openEmbeddedJournalTrades(ms);setSessActMenu(null);}, col:c.gn, disabled:false, danger:false,
+                      icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M6.2 4v16M11.8 4v16M17.4 4v16" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square"/></svg>},
+                    {label:"Add Trade", handler:()=>{openEmbeddedJournalTrades(ms);setSessActMenu(null);}, col:c.gn, disabled:false, danger:false,
+                      icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>},
+                    {label:"Dashboard", handler:()=>{openEmbeddedJournalDashboard(ms);setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
+                      icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
+                  ].map(({label,handler,col,disabled,sub,danger,icon})=>(
+                    <div key={label} onClick={disabled?undefined:handler}
+                      style={{position:"relative",padding:"8px 12px",fontSize:10,fontWeight:600,color:disabled?"rgba(255,255,255,0.28)":col,cursor:disabled?"default":"default",transition:"background 0.1s",display:"flex",alignItems:"center",gap:8,fontFamily:F}}
+                      onMouseEnter={e=>{if(!disabled){e.currentTarget.style.background=danger?"rgba(255,80,104,0.09)":"rgba(255,255,255,0.04)";}const s=e.currentTarget.querySelector(".am-stripe");if(s&&!disabled)s.style.opacity="1";}}
+                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";const s=e.currentTarget.querySelector(".am-stripe");if(s)s.style.opacity="0";}}>
+                      <div className="am-stripe" style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,opacity:0,background:`linear-gradient(180deg,transparent,${disabled?c.tm:col},transparent)`,transition:"opacity 0.1s"}}/>
+                      <span style={{opacity:disabled?0.3:1,flexShrink:0,display:"flex"}}>{icon}</span>
+                      {label}
+                      {sub&&<span style={{fontSize:8,color:c.tm,marginLeft:"auto"}}>{sub}</span>}
+                    </div>
+                  ))}
+                </div>
+              </>);
+              }
               return(<>
                 <div style={{position:"fixed",inset:0,zIndex:99997}} onClick={e=>{e.stopPropagation();setSessActMenu(null);}}/>
                 <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:sessActMenu.y+6,left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
