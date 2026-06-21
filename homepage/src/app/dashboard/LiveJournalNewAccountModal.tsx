@@ -7,6 +7,7 @@ import type { ApiLiveJournalAccount, V16AccountTypeKey } from "./v16/v16SourceTy
 import type { LiveJournalPropRules } from "@/lib/liveJournalPropRules";
 import {
   defaultLiveJournalPropRules,
+  futuresPresetForBalance,
   liveJournalPropRulesToApiBody,
   parseLiveJournalPropRules,
 } from "@/lib/liveJournalPropRules";
@@ -31,6 +32,7 @@ const MARKETS = ["Forex", "Futures", "Stocks", "Crypto", "Indices"];
 const PROP_SUBTYPES = ["Challenge", "Funded", "Demo"];
 const PROP_FIRMS = ["FTMO", "Topstep", "The5ers", "FundedNext", "E8 Funding", "MyForexFunds", "Other"];
 const PROP_BALANCE_PRESETS = ["10000", "25000", "50000", "100000", "200000"];
+const FUTURES_BALANCE_PRESETS = ["25000", "50000", "100000", "150000"];
 
 export type LiveJournalNewAccountInitialState = {
   accountTypeKey?: V16AccountTypeKey;
@@ -139,15 +141,23 @@ export function LiveJournalNewAccountModal({
     else if (accountSubtype === "Live") setAccountSubtype("Challenge");
   }, [effectiveType, accountSubtype]);
 
-  React.useEffect(() => {
-    if (effectiveType !== "prop") return;
+  const applyFuturesPreset = React.useCallback((balanceValue: number) => {
+    const preset = futuresPresetForBalance(balanceValue);
+    if (!preset) return;
     setPropRules((prev) => ({
       ...prev,
-      limitMode: market.toLowerCase() === "futures" ? "amount" : "percent",
+      limitMode: "amount",
+      p1Amt: preset,
+      p2Amt: { ...preset, pt: String(Math.round(balanceValue * 0.05)) },
     }));
-  }, [market, effectiveType]);
+  }, []);
 
   if (!open) return null;
+
+  const balancePresets =
+    effectiveType === "prop" && market.toLowerCase() === "futures"
+      ? FUTURES_BALANCE_PRESETS
+      : PROP_BALANCE_PRESETS;
 
   const handleSave = async () => {
     const trimmedName = name.trim();
@@ -388,12 +398,15 @@ export function LiveJournalNewAccountModal({
             </span>
             {effectiveType === "prop" ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
-                {PROP_BALANCE_PRESETS.map((preset) => (
+                {balancePresets.map((preset) => (
                   <button
                     key={preset}
                     type="button"
                     style={tabBtn(startingBalance === preset, C.gold)}
-                    onClick={() => setStartingBalance(preset)}
+                    onClick={() => {
+                      setStartingBalance(preset);
+                      if (market.toLowerCase() === "futures") applyFuturesPreset(Number(preset));
+                    }}
                   >
                     ${Number(preset).toLocaleString()}
                   </button>
@@ -422,7 +435,12 @@ export function LiveJournalNewAccountModal({
           </div>
 
           {effectiveType === "prop" ? (
-            <LiveJournalPropRulesForm rules={propRules} onChange={setPropRules} balance={parsedBalance} />
+            <LiveJournalPropRulesForm
+              rules={propRules}
+              onChange={setPropRules}
+              balance={parsedBalance}
+              market={market}
+            />
           ) : null}
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>

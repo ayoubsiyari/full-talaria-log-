@@ -30,6 +30,7 @@ def _default_prop_rules(market: str, balance: Decimal, firm: str | None = None) 
     return {
         "numPhases": 1,
         "challengeType": "Evaluation",
+        "currentPhase": 1,
         "limitMode": "amount" if is_futures else "percent",
         "p1Pct": {"dl": str(dl_pct), "dd": str(dd_pct), "pt": str(pt_pct)},
         "p2Pct": {"dl": str(dl_pct), "dd": str(dd_pct), "pt": "5"},
@@ -60,6 +61,7 @@ def _normalize_prop_rules(raw, *, market: str, balance: Decimal, firm: str | Non
         cleaned = dict(raw)
         cleaned.setdefault("numPhases", 1)
         cleaned.setdefault("challengeType", "Evaluation")
+        cleaned.setdefault("currentPhase", 1)
         cleaned.setdefault("limitMode", "amount" if str(market).lower() == "futures" else "percent")
         return cleaned
     return _default_prop_rules(market, balance, firm)

@@ -1,7 +1,12 @@
 "use client";
 
 import * as React from "react";
-import type { LiveJournalPropRules } from "@/lib/liveJournalPropRules";
+import type { LiveJournalPropRules, LiveJournalPropStepFormat } from "@/lib/liveJournalPropRules";
+import {
+  applyLiveJournalPropStepFormat,
+  futuresPresetForBalance,
+  liveJournalPropStepFormat,
+} from "@/lib/liveJournalPropRules";
 
 const F = "'Exo 2', sans-serif";
 const C = {
@@ -13,10 +18,17 @@ const C = {
   gold: "#C9A84C",
 } as const;
 
+const STEP_OPTIONS: { id: LiveJournalPropStepFormat; label: string }[] = [
+  { id: "1-step", label: "1 Step" },
+  { id: "2-step", label: "2 Step" },
+  { id: "instant", label: "Instant" },
+];
+
 type Props = {
   rules: LiveJournalPropRules;
   onChange: (rules: LiveJournalPropRules) => void;
   balance: number;
+  market: string;
 };
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -24,6 +36,30 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
     <span style={{ fontSize: 8, fontWeight: 900, color: C.tm, letterSpacing: "0.08em", textTransform: "uppercase" }}>
       {children}
     </span>
+  );
+}
+
+function TabBtn({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        height: 28,
+        padding: "0 12px",
+        background: active ? `${C.gold}18` : "transparent",
+        color: active ? C.gold : C.ts,
+        border: `1px solid ${active ? `${C.gold}55` : C.brH}`,
+        fontSize: 10,
+        fontWeight: 900,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        cursor: "pointer",
+        fontFamily: F,
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -126,24 +162,91 @@ function Toggle({
   );
 }
 
-export function LiveJournalPropRulesForm({ rules, onChange, balance }: Props) {
-  const isAmount = rules.limitMode === "amount";
-  const cap = Math.max(1000, balance || 50000);
-  const phase = isAmount ? rules.p1Amt : rules.p1Pct;
-
-  const setPhase = (key: "dl" | "dd" | "pt", val: string) => {
-    if (isAmount) {
-      onChange({ ...rules, p1Amt: { ...rules.p1Amt, [key]: val } });
-    } else {
-      onChange({ ...rules, p1Pct: { ...rules.p1Pct, [key]: val } });
-    }
-  };
-
+function PhaseLimits({
+  title,
+  isAmount,
+  phase,
+  cap,
+  dailyLossEnabled,
+  onChangePhase,
+}: {
+  title: string;
+  isAmount: boolean;
+  phase: { dl: string; dd: string; pt: string };
+  cap: number;
+  dailyLossEnabled: boolean;
+  onChangePhase: (key: "dl" | "dd" | "pt", val: string) => void;
+}) {
   const approx = (pct: string) => {
     const n = Number(pct);
-    if (!Number.isFinite(n)) return "";
-    return isAmount ? "" : `≈ $${Math.round(cap * (n / 100)).toLocaleString()}`;
+    if (!Number.isFinite(n) || isAmount) return "";
+    return `≈ $${Math.round(cap * (n / 100)).toLocaleString()}`;
   };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {title ? (
+        <div style={{ fontSize: 8, fontWeight: 950, color: C.gold, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          {title}
+        </div>
+      ) : null}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <FieldLabel>{isAmount ? "Daily loss ($)" : "Daily loss (%)"}</FieldLabel>
+          <NumInput
+            value={phase.dl}
+            onChange={(v) => onChangePhase("dl", v)}
+            suffix={isAmount ? undefined : "%"}
+            disabled={!dailyLossEnabled}
+          />
+          {!isAmount ? <span style={{ fontSize: 8, color: C.tm, fontFamily: F }}>{approx(phase.dl)}</span> : null}
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <FieldLabel>{isAmount ? "Max drawdown ($)" : "Max drawdown (%)"}</FieldLabel>
+          <NumInput value={phase.dd} onChange={(v) => onChangePhase("dd", v)} suffix={isAmount ? undefined : "%"} />
+          {!isAmount ? <span style={{ fontSize: 8, color: C.tm, fontFamily: F }}>{approx(phase.dd)}</span> : null}
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <FieldLabel>{isAmount ? "Profit target ($)" : "Profit target (%)"}</FieldLabel>
+          <NumInput value={phase.pt} onChange={(v) => onChangePhase("pt", v)} suffix={isAmount ? undefined : "%"} />
+          {!isAmount ? <span style={{ fontSize: 8, color: C.tm, fontFamily: F }}>{approx(phase.pt)}</span> : null}
+        </label>
+      </div>
+    </div>
+  );
+}
+
+export function LiveJournalPropRulesForm({ rules, onChange, balance, market }: Props) {
+  const isAmount = rules.limitMode === "amount" || market.toLowerCase() === "futures";
+  const cap = Math.max(1000, balance || 50000);
+  const stepFormat = liveJournalPropStepFormat(rules);
+  const showPhase2 = rules.numPhases === 2 && stepFormat === "2-step";
+
+  const setPhase = (phaseNum: 1 | 2, key: "dl" | "dd" | "pt", val: string) => {
+    if (phaseNum === 2) {
+      if (isAmount) onChange({ ...rules, p2Amt: { ...rules.p2Amt, [key]: val } });
+      else onChange({ ...rules, p2Pct: { ...rules.p2Pct, [key]: val } });
+      return;
+    }
+    if (isAmount) onChange({ ...rules, p1Amt: { ...rules.p1Amt, [key]: val } });
+    else onChange({ ...rules, p1Pct: { ...rules.p1Pct, [key]: val } });
+  };
+
+  React.useEffect(() => {
+    const nextLimit = market.toLowerCase() === "futures" ? "amount" : "percent";
+    if (rules.limitMode === nextLimit) return;
+    const preset = market.toLowerCase() === "futures" ? futuresPresetForBalance(cap) : null;
+    onChange({
+      ...rules,
+      limitMode: nextLimit,
+      ...(preset
+        ? {
+            p1Amt: preset,
+            p2Amt: { ...preset, pt: String(Math.round(cap * 0.05)) },
+          }
+        : {}),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [market]);
 
   return (
     <div
@@ -160,34 +263,56 @@ export function LiveJournalPropRulesForm({ rules, onChange, balance }: Props) {
         Challenge rules
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <FieldLabel>{isAmount ? "Daily loss ($)" : "Daily loss (%)"}</FieldLabel>
-          <NumInput
-            value={phase.dl}
-            onChange={(v) => setPhase("dl", v)}
-            suffix={isAmount ? undefined : "%"}
-            disabled={!rules.dailyLossEnabled}
-          />
-          {!isAmount ? (
-            <span style={{ fontSize: 8, color: C.tm, fontFamily: F }}>{approx(phase.dl)}</span>
-          ) : null}
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <FieldLabel>{isAmount ? "Max drawdown ($)" : "Max drawdown (%)"}</FieldLabel>
-          <NumInput value={phase.dd} onChange={(v) => setPhase("dd", v)} suffix={isAmount ? undefined : "%"} />
-          {!isAmount ? (
-            <span style={{ fontSize: 8, color: C.tm, fontFamily: F }}>{approx(phase.dd)}</span>
-          ) : null}
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <FieldLabel>{isAmount ? "Profit target ($)" : "Profit target (%)"}</FieldLabel>
-          <NumInput value={phase.pt} onChange={(v) => setPhase("pt", v)} suffix={isAmount ? undefined : "%"} />
-          {!isAmount ? (
-            <span style={{ fontSize: 8, color: C.tm, fontFamily: F }}>{approx(phase.pt)}</span>
-          ) : null}
-        </label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <FieldLabel>Challenge steps</FieldLabel>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {STEP_OPTIONS.map((opt) => (
+            <TabBtn
+              key={opt.id}
+              active={stepFormat === opt.id}
+              label={opt.label}
+              onClick={() => onChange(applyLiveJournalPropStepFormat(rules, opt.id))}
+            />
+          ))}
+        </div>
+        <span style={{ fontSize: 8, color: C.tm, fontFamily: F, lineHeight: 1.45 }}>
+          {stepFormat === "instant"
+            ? "Instant funding — single funded-style limits, no min-day rule by default."
+            : stepFormat === "2-step"
+              ? "Two evaluation steps — set limits for Step 1 and Step 2."
+              : "Single evaluation step before funded account."}
+        </span>
       </div>
+
+      {showPhase2 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <FieldLabel>Checker uses step</FieldLabel>
+          <div style={{ display: "flex", gap: 6 }}>
+            <TabBtn active={rules.currentPhase === 1} label="Step 1" onClick={() => onChange({ ...rules, currentPhase: 1 })} />
+            <TabBtn active={rules.currentPhase === 2} label="Step 2" onClick={() => onChange({ ...rules, currentPhase: 2 })} />
+          </div>
+        </div>
+      ) : null}
+
+      <PhaseLimits
+        title={showPhase2 ? "Step 1 limits" : stepFormat === "instant" ? "Instant limits" : "Step limits"}
+        isAmount={isAmount}
+        phase={isAmount ? rules.p1Amt : rules.p1Pct}
+        cap={cap}
+        dailyLossEnabled={rules.dailyLossEnabled}
+        onChangePhase={(key, val) => setPhase(1, key, val)}
+      />
+
+      {showPhase2 ? (
+        <PhaseLimits
+          title="Step 2 limits"
+          isAmount={isAmount}
+          phase={isAmount ? rules.p2Amt : rules.p2Pct}
+          cap={cap}
+          dailyLossEnabled={rules.dailyLossEnabled}
+          onChangePhase={(key, val) => setPhase(2, key, val)}
+        />
+      ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
         <Toggle checked={rules.dailyLossEnabled} onChange={(v) => onChange({ ...rules, dailyLossEnabled: v })} label="Daily loss limit" />
@@ -195,20 +320,22 @@ export function LiveJournalPropRulesForm({ rules, onChange, balance }: Props) {
         <Toggle checked={rules.weekendHold} onChange={(v) => onChange({ ...rules, weekendHold: v })} label="Allow weekend hold" />
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-        <Toggle
-          checked={rules.minTradingDaysEnabled}
-          onChange={(v) => onChange({ ...rules, minTradingDaysEnabled: v })}
-          label="Min trading days"
-        />
-        <NumInput
-          value={rules.minTradingDays}
-          onChange={(v) => onChange({ ...rules, minTradingDays: v })}
-          disabled={!rules.minTradingDaysEnabled}
-          width={52}
-        />
-        <span style={{ fontSize: 9, color: C.tm, fontFamily: F }}>days</span>
-      </div>
+      {stepFormat !== "instant" ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          <Toggle
+            checked={rules.minTradingDaysEnabled}
+            onChange={(v) => onChange({ ...rules, minTradingDaysEnabled: v })}
+            label="Min trading days"
+          />
+          <NumInput
+            value={rules.minTradingDays}
+            onChange={(v) => onChange({ ...rules, minTradingDays: v })}
+            disabled={!rules.minTradingDaysEnabled}
+            width={52}
+          />
+          <span style={{ fontSize: 9, color: C.tm, fontFamily: F }}>days</span>
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
         <Toggle

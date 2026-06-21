@@ -50,6 +50,10 @@ export type V16JournalAccountRow = {
     dailyLossLimitPct: number | null;
     maxDDLimitPct: number | null;
     minDays: number | null;
+    numPhases?: 1 | 2;
+    challengeType?: string;
+    currentPhase?: 1 | 2;
+    stepFormat?: "1-step" | "2-step" | "instant";
   } | null;
   notes?: string | null;
 };
