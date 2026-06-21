@@ -39,6 +39,9 @@ type URow={
   max_trading_sessions?: number;
   max_tickers_per_session?: number;
   max_supporting_tickers_per_session?: number;
+  max_personal_live_journals?: number;
+  max_prop_live_journals?: number;
+  entitlements_override?: boolean;
 };
 
 function PaymentCell({ u, admin }: { u: URow; admin: boolean }) {
@@ -83,6 +86,8 @@ export default function AdminDashboard() {
   const [eMaxSessions, setEMaxSessions] = useState("5");
   const [eMaxTickers, setEMaxTickers] = useState("5");
   const [eMaxSupporting, setEMaxSupporting] = useState("5");
+  const [eMaxPersonalJournals, setEMaxPersonalJournals] = useState("5");
+  const [eMaxPropJournals, setEMaxPropJournals] = useState("5");
 
   const msg=(text:string,ok=true)=>{setFlash({text,ok});setTimeout(()=>setFlash(null),3000);};
   const isAdm=(u:URow)=>!!(u.is_admin||u.role==="admin");
@@ -145,6 +150,8 @@ export default function AdminDashboard() {
       max_trading_sessions: Math.max(0, parseInt(eMaxSessions, 10) || 0),
       max_tickers_per_session: Math.max(0, parseInt(eMaxTickers, 10) || 0),
       max_supporting_tickers_per_session: Math.max(0, parseInt(eMaxSupporting, 10) || 0),
+      max_personal_live_journals: Math.max(0, parseInt(eMaxPersonalJournals, 10) || 0),
+      max_prop_live_journals: Math.max(0, parseInt(eMaxPropJournals, 10) || 0),
     })});
     if(r.ok){msg("Saved — user should refresh the dashboard or log in again.");setEditing(null);load();}else msg("Failed",false);
   }
@@ -288,13 +295,29 @@ export default function AdminDashboard() {
                   </label>
                 </div>
               </div>
+              <div className="mt-3 pt-3 border-t border-white/10">
+                <p className="text-xs text-white/40 mb-2">Live journal limits (per user):</p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <label className="text-xs text-white/60">
+                    Max personal live journals
+                    <input type="number" min={0} max={100} value={eMaxPersonalJournals} onChange={e=>setEMaxPersonalJournals(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"/>
+                  </label>
+                  <label className="text-xs text-white/60">
+                    Max prop journals
+                    <input type="number" min={0} max={100} value={eMaxPropJournals} onChange={e=>setEMaxPropJournals(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"/>
+                  </label>
+                </div>
+                <p className="text-[11px] text-white/30 mt-2">0 = unlimited. Saving any limit marks this user as custom entitlements (same as backtest caps).</p>
+              </div>
               <button onClick={saveUser} className="rounded-xl bg-blue-600 px-6 py-2 text-sm font-medium hover:bg-blue-500 transition">Save Changes</button>
             </div>
           )}
           <div className="rounded-xl border border-white/10 overflow-x-auto">
             <table className="w-full text-sm min-w-[760px]">
               <thead className="bg-white/5 text-white/40 text-xs uppercase tracking-wide">
-                <tr>{["ID","Email / Name","Role","Journal","Payment","Backtest limits","Trades","Joined",""].map(h=><th key={h} className={`px-4 py-2.5 ${h?"text-left":"text-right"}`}>{h}</th>)}</tr>
+                <tr>{["ID","Email / Name","Role","Journal","Payment","Backtest limits","Journal limits","Trades","Joined",""].map(h=><th key={h} className={`px-4 py-2.5 ${h?"text-left":"text-right"}`}>{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {filtered.map(u=>(
@@ -307,11 +330,14 @@ export default function AdminDashboard() {
                     <td className="px-4 py-2.5 text-white/40 text-xs whitespace-nowrap">
                       {isAdm(u) ? "—" : `${u.max_trading_sessions ?? 5} sess · ${u.max_tickers_per_session ?? 5} trd · ${u.max_supporting_tickers_per_session ?? 5} sup`}
                     </td>
+                    <td className="px-4 py-2.5 text-white/40 text-xs whitespace-nowrap">
+                      {isAdm(u) ? "—" : `${u.max_personal_live_journals ?? 5} personal · ${u.max_prop_live_journals ?? 5} prop${u.entitlements_override ? " *" : ""}`}
+                    </td>
                     <td className="px-4 py-2.5 text-white/40">{u.trades_count??"—"}</td>
                     <td className="px-4 py-2.5 text-white/30 text-xs">{u.created_at?new Date(u.created_at).toLocaleDateString():"—"}</td>
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={()=>{setEditing(u);setEAdmin(isAdm(u));setEJournal(!!u.has_journal_access);setEActive(u.is_active??true);setEModules(u.dashboard_modules??{});setEMaxSessions(String(u.max_trading_sessions??5));setEMaxTickers(String(u.max_tickers_per_session??5));setEMaxSupporting(String(u.max_supporting_tickers_per_session??5));}} className="p-1.5 rounded-lg hover:bg-white/10 transition text-white/40 hover:text-white"><Edit className="h-3.5 w-3.5"/></button>
+                        <button onClick={()=>{setEditing(u);setEAdmin(isAdm(u));setEJournal(!!u.has_journal_access);setEActive(u.is_active??true);setEModules(u.dashboard_modules??{});setEMaxSessions(String(u.max_trading_sessions??5));setEMaxTickers(String(u.max_tickers_per_session??5));setEMaxSupporting(String(u.max_supporting_tickers_per_session??5));setEMaxPersonalJournals(String(u.max_personal_live_journals??5));setEMaxPropJournals(String(u.max_prop_live_journals??5));}} className="p-1.5 rounded-lg hover:bg-white/10 transition text-white/40 hover:text-white"><Edit className="h-3.5 w-3.5"/></button>
                         <button onClick={()=>deleteUser(u.id)} className="p-1.5 rounded-lg hover:bg-red-500/20 transition text-white/40 hover:text-red-400"><Trash2 className="h-3.5 w-3.5"/></button>
                       </div>
                     </td>

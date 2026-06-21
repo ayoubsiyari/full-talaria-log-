@@ -15,9 +15,12 @@ class _FakeUser:
     def __init__(self, **kwargs):
         self.role = "user"
         self.entitlements_override = False
+        self.has_journal_access = False
         self.max_trading_sessions = 5
         self.max_tickers_per_session = 5
         self.max_supporting_tickers_per_session = 5
+        self.max_personal_live_journals = 5
+        self.max_prop_live_journals = 5
         self.access_expires_at = None
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -143,6 +146,33 @@ def test_effective_live_journal_limits_admin_unlimited():
 def test_effective_live_journal_limits_defaults():
     user = _FakeUser()
     caps = pe.effective_live_journal_limits(user)
-    assert caps["max_personal_live_journals"] == 5
-    assert caps["max_prop_live_journals"] == 5
-    assert caps["entitlements_source"] == "defaults"
+    assert caps["max_personal_live_journals"] == 0
+    assert caps["max_prop_live_journals"] == 0
+    assert caps["entitlements_source"] == "free"
+
+
+def test_effective_live_journal_limits_manual_access():
+    user = _FakeUser(has_journal_access=True, max_personal_live_journals=7, max_prop_live_journals=4)
+    caps = pe.effective_live_journal_limits(user)
+    assert caps["max_personal_live_journals"] == 7
+    assert caps["max_prop_live_journals"] == 4
+    assert caps["entitlements_source"] == "manual"
+
+
+def test_effective_live_journal_limits_override():
+    user = _FakeUser(
+        entitlements_override=True,
+        max_personal_live_journals=12,
+        max_prop_live_journals=3,
+    )
+    caps = pe.effective_live_journal_limits(user)
+    assert caps["max_personal_live_journals"] == 12
+    assert caps["max_prop_live_journals"] == 3
+    assert caps["entitlements_source"] == "override"
+
+
+def test_plan_live_journal_caps():
+    plan = _FakePlan(max_personal_live_journals=8, max_prop_live_journals=6)
+    caps = pe.plan_live_journal_caps(plan)
+    assert caps["max_personal_live_journals"] == 8
+    assert caps["max_prop_live_journals"] == 6

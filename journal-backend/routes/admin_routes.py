@@ -277,6 +277,9 @@ def list_users():
                 "max_trading_sessions": getattr(user, "max_trading_sessions", 5) or 5,
                 "max_tickers_per_session": getattr(user, "max_tickers_per_session", 5) or 5,
                 "max_supporting_tickers_per_session": getattr(user, "max_supporting_tickers_per_session", 5) or 5,
+                "max_personal_live_journals": getattr(user, "max_personal_live_journals", 5) or 5,
+                "max_prop_live_journals": getattr(user, "max_prop_live_journals", 5) or 5,
+                "entitlements_override": bool(getattr(user, "entitlements_override", False)),
                 "created_at": user.created_at.isoformat() if user.created_at else None,
                 "updated_at": user.updated_at.isoformat() if user.updated_at else None,
                 # Additional computed fields
@@ -457,6 +460,7 @@ def update_user(user_id):
             user_has_any_dashboard_access,
         )
         from subscription_access import user_entitles_journal
+        import plan_entitlements as pe
 
         user = User.query.get_or_404(user_id)
         data = request.get_json() or {}
@@ -498,6 +502,22 @@ def update_user(user_id):
             user.max_tickers_per_session = max(0, int(data['max_tickers_per_session'] or 0))
         if 'max_supporting_tickers_per_session' in data:
             user.max_supporting_tickers_per_session = max(0, int(data['max_supporting_tickers_per_session'] or 0))
+        if 'max_personal_live_journals' in data:
+            user.max_personal_live_journals = max(0, int(data['max_personal_live_journals'] or 0))
+        if 'max_prop_live_journals' in data:
+            user.max_prop_live_journals = max(0, int(data['max_prop_live_journals'] or 0))
+
+        if any(
+            k in data
+            for k in (
+                "max_trading_sessions",
+                "max_tickers_per_session",
+                "max_supporting_tickers_per_session",
+                "max_personal_live_journals",
+                "max_prop_live_journals",
+            )
+        ):
+            pe.apply_admin_override(user)
         
         db.session.commit()
         
@@ -519,6 +539,9 @@ def update_user(user_id):
                 "max_trading_sessions": getattr(user, "max_trading_sessions", 5) or 5,
                 "max_tickers_per_session": getattr(user, "max_tickers_per_session", 5) or 5,
                 "max_supporting_tickers_per_session": getattr(user, "max_supporting_tickers_per_session", 5) or 5,
+                "max_personal_live_journals": getattr(user, "max_personal_live_journals", 5) or 5,
+                "max_prop_live_journals": getattr(user, "max_prop_live_journals", 5) or 5,
+                "entitlements_override": bool(getattr(user, "entitlements_override", False)),
             }
         }), 200
         

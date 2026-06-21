@@ -85,6 +85,8 @@ class User(db.Model):
     max_trading_sessions = db.Column(db.Integer, default=5, nullable=False, server_default="5")
     max_tickers_per_session = db.Column(db.Integer, default=5, nullable=False, server_default="5")
     max_supporting_tickers_per_session = db.Column(db.Integer, default=5, nullable=False, server_default="5")
+    max_personal_live_journals = db.Column(db.Integer, default=5, nullable=False, server_default="5")
+    max_prop_live_journals = db.Column(db.Integer, default=5, nullable=False, server_default="5")
     entitlements_override = db.Column(db.Boolean, default=False, nullable=False, server_default="0")
     # Community / feed display id (e.g. TLR-00428173) — not the internal primary key.
     public_id = db.Column(db.String(20), unique=True, nullable=True, index=True)
@@ -588,6 +590,8 @@ class SubscriptionPlan(db.Model):
     max_trading_sessions = db.Column(db.Integer, nullable=True)
     max_tickers_per_session = db.Column(db.Integer, nullable=True)
     max_supporting_tickers_per_session = db.Column(db.Integer, nullable=True)
+    max_personal_live_journals = db.Column(db.Integer, nullable=True)
+    max_prop_live_journals = db.Column(db.Integer, nullable=True)
     tier_rank = db.Column(db.Integer, default=0, nullable=False, server_default="0")
     entitlements_json = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, default=True)

@@ -47,6 +47,18 @@ def ensure_users_schema(app) -> None:
                     )
                     conn.execute(
                         text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                            "max_personal_live_journals INTEGER NOT NULL DEFAULT 5"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                            "max_prop_live_journals INTEGER NOT NULL DEFAULT 5"
+                        )
+                    )
+                    conn.execute(
+                        text(
                             "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_id "
                             "ON users (public_id) WHERE public_id IS NOT NULL"
                         )
@@ -202,6 +214,20 @@ def ensure_users_schema(app) -> None:
                                 "max_supporting_tickers_per_session INTEGER NOT NULL DEFAULT 5"
                             )
                         )
+                    if "max_personal_live_journals" not in cols:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN "
+                                "max_personal_live_journals INTEGER NOT NULL DEFAULT 5"
+                            )
+                        )
+                    if "max_prop_live_journals" not in cols:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE users ADD COLUMN "
+                                "max_prop_live_journals INTEGER NOT NULL DEFAULT 5"
+                            )
+                        )
                     if "entitlements_override" not in cols:
                         conn.execute(
                             text(
@@ -230,6 +256,20 @@ def ensure_users_schema(app) -> None:
                                 text(
                                     "ALTER TABLE subscription_plans ADD COLUMN "
                                     "max_supporting_tickers_per_session INTEGER"
+                                )
+                            )
+                        if "max_personal_live_journals" not in plan_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE subscription_plans ADD COLUMN "
+                                    "max_personal_live_journals INTEGER"
+                                )
+                            )
+                        if "max_prop_live_journals" not in plan_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE subscription_plans ADD COLUMN "
+                                    "max_prop_live_journals INTEGER"
                                 )
                             )
                         if "tier_rank" not in plan_cols:

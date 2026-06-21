@@ -3,6 +3,8 @@
     "max_trading_sessions": 1,
     "max_tickers_per_session": 2,
     "max_supporting_tickers_per_session": 2,
+    "max_personal_live_journals": 0,
+    "max_prop_live_journals": 0,
     "has_journal_access": false
   },
   "defaults": {
@@ -23,6 +25,8 @@
       "max_trading_sessions": 1,
       "max_tickers_per_session": 2,
       "max_supporting_tickers_per_session": 2,
+      "max_personal_live_journals": 0,
+      "max_prop_live_journals": 0,
       "tier_rank": 0,
       "features": []
     },
@@ -33,6 +37,8 @@
       "max_trading_sessions": 3,
       "max_tickers_per_session": 3,
       "max_supporting_tickers_per_session": 3,
+      "max_personal_live_journals": 3,
+      "max_prop_live_journals": 3,
       "tier_rank": 10,
       "features": [
         "Trading journal access"
@@ -45,6 +51,8 @@
       "max_trading_sessions": 5,
       "max_tickers_per_session": 5,
       "max_supporting_tickers_per_session": 5,
+      "max_personal_live_journals": 5,
+      "max_prop_live_journals": 5,
       "tier_rank": 20,
       "features": [
         "Trading journal access",
@@ -58,6 +66,8 @@
       "max_trading_sessions": 15,
       "max_tickers_per_session": 10,
       "max_supporting_tickers_per_session": 10,
+      "max_personal_live_journals": 15,
+      "max_prop_live_journals": 15,
       "tier_rank": 30,
       "features": [
         "Full dashboard access",
@@ -71,6 +81,8 @@
       "max_trading_sessions": 0,
       "max_tickers_per_session": 0,
       "max_supporting_tickers_per_session": 0,
+      "max_personal_live_journals": 0,
+      "max_prop_live_journals": 0,
       "tier_rank": 50,
       "features": [
         "Full dashboard access",

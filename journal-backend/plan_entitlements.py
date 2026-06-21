@@ -59,6 +59,8 @@ def free_tier_caps() -> dict:
         "max_supporting_tickers_per_session": max(
             0, int(ft.get("max_supporting_tickers_per_session", 2) or 2)
         ),
+        "max_personal_live_journals": max(0, int(ft.get("max_personal_live_journals", 0) or 0)),
+        "max_prop_live_journals": max(0, int(ft.get("max_prop_live_journals", 0) or 0)),
         "has_journal_access": bool(ft.get("has_journal_access", False)),
         "_defaults": {
             "max_trading_sessions": max(0, int(defaults.get("max_trading_sessions", 5) or 5)),
@@ -66,6 +68,10 @@ def free_tier_caps() -> dict:
             "max_supporting_tickers_per_session": max(
                 0, int(defaults.get("max_supporting_tickers_per_session", 5) or 5)
             ),
+            "max_personal_live_journals": max(
+                0, int(defaults.get("max_personal_live_journals", 5) or 5)
+            ),
+            "max_prop_live_journals": max(0, int(defaults.get("max_prop_live_journals", 5) or 5)),
         },
     }
 
@@ -100,6 +106,8 @@ def _normalize_plan_template(raw: dict) -> dict | None:
         "max_supporting_tickers_per_session": max(
             0, int(raw.get("max_supporting_tickers_per_session", 0) or 0)
         ),
+        "max_personal_live_journals": max(0, int(raw.get("max_personal_live_journals", 0) or 0)),
+        "max_prop_live_journals": max(0, int(raw.get("max_prop_live_journals", 0) or 0)),
         "tier_rank": max(0, int(raw.get("tier_rank", 0) or 0)),
         "features": features,
     }
@@ -231,19 +239,55 @@ def plan_backtest_caps(plan) -> dict:
     }
 
 
+def plan_live_journal_caps(plan) -> dict:
+    """Extract enforceable live journal caps from a subscription plan row."""
+    ft = free_tier_caps()
+    defaults = ft["_defaults"]
+    if not plan:
+        return {
+            "max_personal_live_journals": defaults["max_personal_live_journals"],
+            "max_prop_live_journals": defaults["max_prop_live_journals"],
+        }
+    return {
+        "max_personal_live_journals": _cap_int(
+            getattr(plan, "max_personal_live_journals", None),
+            defaults["max_personal_live_journals"],
+        ),
+        "max_prop_live_journals": _cap_int(
+            getattr(plan, "max_prop_live_journals", None),
+            defaults["max_prop_live_journals"],
+        ),
+    }
+
+
+def plan_entitlement_caps(plan) -> dict:
+    """All enforceable caps copied from a subscription plan row."""
+    return {**plan_backtest_caps(plan), **plan_live_journal_caps(plan)}
+
+
 def _apply_caps_to_user(user, caps: dict, *, entitlements_override: bool) -> None:
     if not user:
         return
     user.max_trading_sessions = caps["max_trading_sessions"]
     user.max_tickers_per_session = caps["max_tickers_per_session"]
     user.max_supporting_tickers_per_session = caps["max_supporting_tickers_per_session"]
+    if hasattr(user, "max_personal_live_journals"):
+        user.max_personal_live_journals = caps.get(
+            "max_personal_live_journals",
+            live_journal_defaults()["max_personal_live_journals"],
+        )
+    if hasattr(user, "max_prop_live_journals"):
+        user.max_prop_live_journals = caps.get(
+            "max_prop_live_journals",
+            live_journal_defaults()["max_prop_live_journals"],
+        )
     if hasattr(user, "entitlements_override"):
         user.entitlements_override = entitlements_override
 
 
 def apply_plan_entitlements(user, plan) -> None:
     """Copy plan caps to user cache; clear admin override flag."""
-    caps = plan_backtest_caps(plan)
+    caps = plan_entitlement_caps(plan)
     _apply_caps_to_user(user, caps, entitlements_override=False)
 
 
@@ -270,6 +314,8 @@ def revoke_to_free_tier(user) -> None:
             "max_trading_sessions": ft["max_trading_sessions"],
             "max_tickers_per_session": ft["max_tickers_per_session"],
             "max_supporting_tickers_per_session": ft["max_supporting_tickers_per_session"],
+            "max_personal_live_journals": ft["max_personal_live_journals"],
+            "max_prop_live_journals": ft["max_prop_live_journals"],
         },
         entitlements_override=False,
     )
@@ -287,6 +333,14 @@ def legacy_user_column_limits(user) -> dict:
         "max_supporting_tickers_per_session": _cap_int(
             getattr(user, "max_supporting_tickers_per_session", None),
             defaults["max_supporting_tickers_per_session"],
+        ),
+        "max_personal_live_journals": _cap_int(
+            getattr(user, "max_personal_live_journals", None),
+            defaults["max_personal_live_journals"],
+        ),
+        "max_prop_live_journals": _cap_int(
+            getattr(user, "max_prop_live_journals", None),
+            defaults["max_prop_live_journals"],
         ),
     }
 
@@ -352,24 +406,39 @@ def effective_backtest_limits(
         "max_trading_sessions": ft["max_trading_sessions"],
         "max_tickers_per_session": ft["max_tickers_per_session"],
         "max_supporting_tickers_per_session": ft["max_supporting_tickers_per_session"],
+        "max_personal_live_journals": ft["max_personal_live_journals"],
+        "max_prop_live_journals": ft["max_prop_live_journals"],
         "entitlements_source": "free",
     }
 
 
 def live_journal_defaults() -> dict:
-    """Default caps for personal and prop live journal accounts (subscribers)."""
-    cfg = _load_entitlements_config()
-    defaults = cfg.get("defaults") or {}
+    """Default live journal caps for subscribers (from shared/entitlements.json)."""
+    ft = free_tier_caps()
     return {
-        "max_personal_live_journals": max(
-            0, int(defaults.get("max_personal_live_journals", 5) or 5)
-        ),
-        "max_prop_live_journals": max(0, int(defaults.get("max_prop_live_journals", 5) or 5)),
+        "max_personal_live_journals": ft["_defaults"]["max_personal_live_journals"],
+        "max_prop_live_journals": ft["_defaults"]["max_prop_live_journals"],
     }
 
 
-def effective_live_journal_limits(user) -> dict:
-    """Resolve enforceable live journal account caps (0 = unlimited for admins)."""
+def _apply_env_live_journal_overrides(caps: dict) -> dict:
+    out = dict(caps)
+    mp = (os.getenv("MAX_PERSONAL_LIVE_JOURNALS") or "").strip()
+    mprop = (os.getenv("MAX_PROP_LIVE_JOURNALS") or "").strip()
+    if mp:
+        out["max_personal_live_journals"] = max(0, int(mp))
+    if mprop:
+        out["max_prop_live_journals"] = max(0, int(mprop))
+    return out
+
+
+def effective_live_journal_limits(
+    user,
+    *,
+    active_subscription=None,
+    active_plan=None,
+) -> dict:
+    """Resolve live journal caps (0 = unlimited for admins)."""
     if getattr(user, "role", "") == "admin":
         return {
             "max_personal_live_journals": 0,
@@ -377,15 +446,54 @@ def effective_live_journal_limits(user) -> dict:
             "entitlements_source": "admin",
         }
 
-    caps = live_journal_defaults()
-    mp = (os.getenv("MAX_PERSONAL_LIVE_JOURNALS") or "").strip()
-    mprop = (os.getenv("MAX_PROP_LIVE_JOURNALS") or "").strip()
-    if mp:
-        caps["max_personal_live_journals"] = max(0, int(mp))
-    if mprop:
-        caps["max_prop_live_journals"] = max(0, int(mprop))
-    caps["entitlements_source"] = "defaults"
-    return caps
+    if getattr(user, "entitlements_override", False):
+        caps = legacy_user_column_limits(user)
+        out = {
+            "max_personal_live_journals": caps["max_personal_live_journals"],
+            "max_prop_live_journals": caps["max_prop_live_journals"],
+            "entitlements_source": "override",
+        }
+        return _apply_env_live_journal_overrides(out)
+
+    sub = active_subscription
+    plan = active_plan
+    if sub and getattr(sub, "status", "").lower() in _ACTIVE_SUB_STATUSES and getattr(sub, "plan_id", None):
+        if plan is None and hasattr(sub, "plan"):
+            plan = sub.plan
+        if plan:
+            caps = plan_live_journal_caps(plan)
+            out = {
+                "max_personal_live_journals": caps["max_personal_live_journals"],
+                "max_prop_live_journals": caps["max_prop_live_journals"],
+                "entitlements_source": "plan",
+            }
+            return _apply_env_live_journal_overrides(out)
+
+    if _admin_extension_active(user):
+        caps = legacy_user_column_limits(user)
+        out = {
+            "max_personal_live_journals": caps["max_personal_live_journals"],
+            "max_prop_live_journals": caps["max_prop_live_journals"],
+            "entitlements_source": "extension",
+        }
+        return _apply_env_live_journal_overrides(out)
+
+    if getattr(user, "has_journal_access", False):
+        caps = legacy_user_column_limits(user)
+        out = {
+            "max_personal_live_journals": caps["max_personal_live_journals"],
+            "max_prop_live_journals": caps["max_prop_live_journals"],
+            "entitlements_source": "manual",
+        }
+        return _apply_env_live_journal_overrides(out)
+
+    ft = free_tier_caps()
+    out = {
+        "max_personal_live_journals": ft["max_personal_live_journals"],
+        "max_prop_live_journals": ft["max_prop_live_journals"],
+        "entitlements_source": "free",
+    }
+    return _apply_env_live_journal_overrides(out)
 
 
 def user_should_revoke_entitlements(user, subscription_model, db_session) -> bool:
