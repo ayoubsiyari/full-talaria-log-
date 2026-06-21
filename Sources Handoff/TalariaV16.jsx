@@ -115,6 +115,8 @@ const resolveLiveJournalAccountTarget = (accountOrApi, boot = getV16JournalBoot(
     liveAccountId: apiId ?? null,
     profileId: profileId ?? null,
     isLiveJournalAccount: true,
+    accountTypeKey: accountOrApi.account_type === "prop" || accountOrApi.accountTypeKey === "prop" ? "prop" : accountOrApi.accountTypeKey,
+    market: accountOrApi.market || accountOrApi.connection?.market || null,
   };
 };
 
@@ -130,9 +132,48 @@ const findDashLiveJournalBootAccount = (source, boot = getV16JournalBoot()) => {
 
 const resolveDashLiveJournalMarket = (source, boot = getV16JournalBoot()) => {
   if (!source) return null;
+  const direct = String(source?.market || "").trim();
+  if (direct) return direct;
+
   const account = findDashLiveJournalBootAccount(source, boot);
-  const market = String(source?.market || account?.market || "").trim();
-  return market || null;
+  if (account?.market) return String(account.market).trim();
+
+  if (boot?.accounts?.length) {
+    if (source?.liveAccountId != null) {
+      const byLiveId = boot.accounts.find((a) =>
+        a.isLiveJournalAccount && String(a.liveAccountId) === String(source.liveAccountId)
+      );
+      if (byLiveId?.market) return String(byLiveId.market).trim();
+    }
+    if (source?.profileId != null) {
+      const byProfile = boot.accounts.find((a) =>
+        a.isLiveJournalAccount && String(a.profileId) === String(source.profileId)
+      );
+      if (byProfile?.market) return String(byProfile.market).trim();
+    }
+  }
+
+  const connPool = boot?.connections || boot?.libraryConnections || [];
+  if (source?.liveAccountId != null && Array.isArray(connPool)) {
+    const liveConn = connPool.find((row) =>
+      String(row?.id || "") === `live-${source.liveAccountId}`
+      || String(row?.connection?.liveAccountId || "") === String(source.liveAccountId)
+    );
+    const connMarket = String(liveConn?.connection?.market || "").trim();
+    if (connMarket) return connMarket;
+  }
+
+  const markets = (Array.isArray(source?.markets) ? source.markets : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (markets.length === 1) return markets[0];
+
+  const assetClasses = (Array.isArray(source?.assetClasses) ? source.assetClasses : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (assetClasses.length === 1) return assetClasses[0];
+
+  return null;
 };
 
 const isGenericDashJournalAccountLabel = (value) => /^Account \d+$/i.test(String(value || "").trim());
@@ -14432,7 +14473,10 @@ const TalariaV8b = () => {
               winRate: trades.length ? Math.round((wins / trades.length) * 100) : null,
               avgRR: null,
               progress: trades.length ? 100 : 0,
-              assetClasses: [...new Set(trades.map((t) => t.market).filter(Boolean))],
+              assetClasses: sourceItem.market
+                ? [sourceItem.market]
+                : [...new Set(trades.map((t) => t.market).filter(Boolean))],
+              market: sourceItem.market || null,
               isJournalDashboard: journalKinds.includes(sourceItem.kind),
               accountTypeKey: sourceItem.accountTypeKey,
               propFirm: sourceItem.propFirm,
@@ -25357,6 +25401,7 @@ const TalariaV8b = () => {
                 };
             const statusInfo = isJournalSource ? libraryJournalStatusInfo(statusSource) : libraryBacktestStatusInfo(statusSource);
             const isManualLiveJournalSource = isManualLiveJournalAddTradeItem(item, key);
+            const liveJournalMarket = isManualLiveJournalSource ? resolveDashLiveJournalMarket(item) : null;
             const requiresAddTradeIntegrityWarning = isJournalSource
               ? !isManualLiveJournalSource && !journalEdited && manualTradeCount === 0
               : (manualTradeCount === 0 && statusInfo.color === c.gn);
@@ -25390,7 +25435,10 @@ const TalariaV8b = () => {
               addTradeWarningKind:isJournalSource ? "journal" : "backtest",
               tradeCount:(sourceTrades.length || Number(primarySession?.trades)||0) + manualTradeCount,
               pnl,
-              markets,
+              market: item.market || liveJournalMarket || null,
+              isLiveJournalAccount: isManualLiveJournalSource || item.isLiveJournalAccount || false,
+              markets: liveJournalMarket ? [liveJournalMarket] : markets,
+              assetClasses: liveJournalMarket ? [liveJournalMarket] : (item.assetClasses || markets),
               strategy,
             }];
           })).values()];
@@ -25443,12 +25491,7 @@ const TalariaV8b = () => {
           const getDashSourceMarkets = (source) => {
             if (isDashLiveJournalAddTradeSource(source)) {
               const journalMarket = resolveDashLiveJournalMarket(source);
-              if (journalMarket) return [journalMarket];
-              const account = findDashLiveJournalBootAccount(source);
-              if (account?.accountTypeKey === "prop" || source?.accountTypeKey === "prop") {
-                return ["Forex", "Futures"];
-              }
-              return [...DASH_LIVE_JOURNAL_MARKETS];
+              return journalMarket ? [journalMarket] : [];
             }
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions : [];
             return [...new Set([
@@ -25942,19 +25985,39 @@ const TalariaV8b = () => {
               });
             }
             ensureDashAddTradeStrategyVariables(source, (enriched) => {
-              const draft = buildDashAddTradeDraft(enriched);
-              let nextSource = isDashLiveJournalAddTradeSource(enriched) && draft.setup_tag
-                ? applyDashAddTradeStrategyByName(enriched, draft.setup_tag)
-                : enriched;
-              if (isDashLiveJournalAddTradeSource(nextSource)) {
-                const journalMarket = resolveDashLiveJournalMarket(nextSource, boot);
+              const bootRef = getV16JournalBoot();
+              let nextSource = enriched;
+              let journalMarket = null;
+              if (isDashLiveJournalAddTradeSource(enriched)) {
+                journalMarket = resolveDashLiveJournalMarket(enriched, bootRef)
+                  || String(account?.market || enriched.market || source?.market || "").trim()
+                  || null;
                 nextSource = {
-                  ...nextSource,
-                  label: resolveDashLiveJournalAddTradeLabel(nextSource, boot),
-                  market: journalMarket || nextSource.market,
-                  markets: journalMarket ? [journalMarket] : nextSource.markets,
-                  assetClasses: journalMarket ? [journalMarket] : nextSource.assetClasses,
+                  ...enriched,
+                  label: resolveDashLiveJournalAddTradeLabel(enriched, bootRef),
+                  market: journalMarket || enriched.market || account?.market || source?.market || null,
+                  markets: journalMarket ? [journalMarket] : enriched.markets,
+                  assetClasses: journalMarket ? [journalMarket] : enriched.assetClasses,
+                  isLiveJournalAccount: true,
+                  accountTypeKey: enriched.accountTypeKey || account?.accountTypeKey || source?.accountTypeKey,
                 };
+              }
+              let draft = buildDashAddTradeDraft(nextSource);
+              if (journalMarket) {
+                const lockedSymbols = getDashLiveJournalInstrumentSymbols(journalMarket);
+                const symbol = lockedSymbols.includes(String(draft.symbol || "").toUpperCase())
+                  ? String(draft.symbol || "").toUpperCase()
+                  : pickDashLiveJournalDefaultSymbol(lockedSymbols, journalMarket);
+                const instrumentSpec = getDashInstrumentSpec(nextSource, symbol, journalMarket);
+                draft = {
+                  ...draft,
+                  symbol,
+                  assetClass: journalMarket,
+                  unit: instrumentSpec.unit || draft.unit,
+                };
+              }
+              if (isDashLiveJournalAddTradeSource(nextSource) && draft.setup_tag) {
+                nextSource = applyDashAddTradeStrategyByName(nextSource, draft.setup_tag);
               }
               setDashAddTradeEditorSource(nextSource);
               setDashAddTradeDraft(draft);
@@ -28693,6 +28756,16 @@ const TalariaV8b = () => {
                   : dashTxt("Editable for this live journal","قابل للتعديل لهذه اليومية");
                 const editorAssetClass = instrumentSpec.assetClass || inferDashAssetClass(dashAddTradeEditorSource, dashAddTradeDraft.symbol);
                 const sourceMarketOptions = (() => {
+                  if (isDashLiveJournalAddTradeSource(dashAddTradeEditorSource)) {
+                    const journalMarket = resolveDashLiveJournalMarket(dashAddTradeEditorSource);
+                    if (journalMarket) return [journalMarket];
+                    const locked = getDashSourceMarkets(dashAddTradeEditorSource)
+                      .map(market => String(market || "").trim())
+                      .filter(Boolean);
+                    if (locked.length) return locked;
+                    const fallback = String(dashAddTradeDraft?.assetClass || editorAssetClass || "").trim();
+                    return fallback ? [fallback] : ["Futures"];
+                  }
                   const direct = getDashSourceMarkets(dashAddTradeEditorSource)
                     .map(market => String(market || "").trim())
                     .filter(Boolean);

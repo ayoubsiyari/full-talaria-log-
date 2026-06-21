@@ -8990,6 +8990,15 @@ def _proxy_marketaux_json(upstream_url: str):
                     "Check MARKETAUX_API_TOKEN (free key at marketaux.com)."
                 ),
             ) from e
+        if e.code == 402:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Marketaux daily API limit reached (free tier ~100 requests/day). "
+                    "Cached headlines are returned when available; otherwise try again tomorrow "
+                    "or upgrade at marketaux.com."
+                ),
+            ) from e
         raise HTTPException(
             status_code=502,
             detail=f"Marketaux HTTP {e.code}: {body or e.reason}",
@@ -9040,6 +9049,49 @@ def _marketaux_fetch_news(
         data = []
     meta = payload.get("meta") if isinstance(payload, dict) else {}
     return data, meta if isinstance(meta, dict) else {}
+
+
+_NEWS_HIST_MEM: dict[str, tuple[float, dict]] = {}
+_NEWS_HIST_MEM_LOCK = threading.Lock()
+
+
+def _news_hist_cache_ttl_sec() -> int:
+    raw = (os.getenv("MARKETAUX_NEWS_CACHE_TTL_SEC") or "86400").strip()
+    try:
+        return max(300, int(raw))
+    except ValueError:
+        return 86400
+
+
+def _news_hist_cache_key(from_: int, to: int, symbol: str, limit: int, page: int) -> str:
+    sym = re.sub(r"[^a-zA-Z]", "", (symbol or "")).upper()
+    return f"{from_}|{to}|{sym}|{limit}|{page}"
+
+
+def _news_hist_cache_get(key: str) -> dict | None:
+    now = time.time()
+    with _NEWS_HIST_MEM_LOCK:
+        row = _NEWS_HIST_MEM.get(key)
+        if row and row[0] > now:
+            return row[1]
+    cached = chart_redis.news_hist_get_cache(key)
+    if cached:
+        with _NEWS_HIST_MEM_LOCK:
+            _NEWS_HIST_MEM[key] = (now + _news_hist_cache_ttl_sec(), cached)
+        return cached
+    return None
+
+
+def _news_hist_cache_set(key: str, payload: dict) -> None:
+    ttl = _news_hist_cache_ttl_sec()
+    exp = time.time() + ttl
+    with _NEWS_HIST_MEM_LOCK:
+        _NEWS_HIST_MEM[key] = (exp, payload)
+        if len(_NEWS_HIST_MEM) > 512:
+            stale = [k for k, v in _NEWS_HIST_MEM.items() if v[0] <= time.time()]
+            for k in stale[:256]:
+                _NEWS_HIST_MEM.pop(k, None)
+    chart_redis.news_hist_set_cache(key, payload, ttl)
 
 
 def _marketaux_published_ts(published_at: str) -> int:
@@ -9124,23 +9176,40 @@ def api_news_historical(
     published_before = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
     sym_clean = re.sub(r"[^a-zA-Z]", "", (symbol or "")).upper()
 
-    searches = [_forex_symbol_search_query(sym_clean)]
-    if sym_clean:
-        searches.append(_forex_symbol_search_query(sym_clean, broad=True))
-    searches.append(_forex_symbol_search_query("", broad=True))
+    cache_key = _news_hist_cache_key(from_, to, sym_clean, limit, page)
+    cached = _news_hist_cache_get(cache_key)
+    if cached:
+        out = dict(cached)
+        out["cached"] = True
+        return out
+
+    search_candidates = [
+        _forex_symbol_search_query(sym_clean),
+        _forex_symbol_search_query(sym_clean, broad=True) if sym_clean else None,
+        _forex_symbol_search_query("", broad=True),
+    ]
 
     data: list[dict] = []
     meta: dict = {}
     seen_uuids: set[str] = set()
-    for search in searches:
-        chunk, chunk_meta = _marketaux_fetch_news(
-            token,
-            published_after=published_after,
-            published_before=published_before,
-            search=search,
-            limit=limit,
-            page=page,
-        )
+    last_err: HTTPException | None = None
+    for search in search_candidates:
+        if not search or data:
+            break
+        try:
+            chunk, chunk_meta = _marketaux_fetch_news(
+                token,
+                published_after=published_after,
+                published_before=published_before,
+                search=search,
+                limit=limit,
+                page=page,
+            )
+        except HTTPException as exc:
+            last_err = exc
+            if exc.status_code == 503 and "daily API limit" in str(exc.detail):
+                break
+            raise
         if chunk_meta.get("found") and not meta:
             meta = chunk_meta
         for article in chunk:
@@ -9152,19 +9221,30 @@ def api_news_historical(
             if uid:
                 seen_uuids.add(uid)
             data.append(article)
-        if len(data) >= limit:
-            break
+
+    if not data and last_err is not None:
+        stale = _news_hist_cache_get(cache_key)
+        if stale:
+            out = dict(stale)
+            out["cached"] = True
+            out["message"] = str(last_err.detail)
+            return out
+        raise last_err
 
     items = [_normalize_marketaux_article(a, symbol or "") for a in data[:limit]]
     items.sort(key=lambda x: x.get("datetime") or 0, reverse=True)
     if not meta:
         meta = {}
-    return {
+    payload = {
         "success": True,
         "items": items[:limit],
         "source": "marketaux",
         "meta": meta,
+        "cached": False,
     }
+    if items:
+        _news_hist_cache_set(cache_key, payload)
+    return payload
 
 
 @app.get("/api/file/{file_id}/tile-meta/{tf}")

@@ -17706,13 +17706,28 @@ class Chart {
             }
 
             const session = this.backtestingSession || {};
+            const snap = this._tfSwitchViewport;
+            let windowRange = options.windowRange || null;
+            let smartOpts = options.smartOpts ? { ...options.smartOpts } : null;
+            if (!windowRange && snap) {
+                const anchorTs = Number.isFinite(snap.anchorTs) ? snap.anchorTs : snap.centerTs;
+                const barCount = snap.visibleBarCount || this._pendingTfSwitchVisibleBarCount;
+                if (Number.isFinite(anchorTs) && Number.isFinite(barCount) && barCount > 0) {
+                    windowRange = this._buildTfSwitchBarCountWindow(timeframe, anchorTs, barCount);
+                    smartOpts = smartOpts || {};
+                    if (smartOpts.skipSessionDates !== false) smartOpts.skipSessionDates = true;
+                    if (!Number.isFinite(Number(smartOpts.limit)) || Number(smartOpts.limit) <= 0) {
+                        smartOpts.limit = this._tfSwitchFetchLimitForBarCount(barCount);
+                    }
+                }
+            }
             const result = await this._fetchSmartWindow(
                 this.currentFileId,
                 timeframe,
                 session,
                 options.anchor,
-                options.windowRange || null,
-                options.smartOpts || null
+                windowRange,
+                smartOpts
             );
 
             if (loadId !== this._timeframeLoadSeq) return;
@@ -17889,54 +17904,59 @@ class Chart {
     }
 
     /**
-     * Backtest replay TF fetch window centered on the playhead (fine TFs) so switching
-     * 1D→1m at April 2015 does not pull only the last N minutes before session end.
+     * TradingView-style TF fetch: N native bars at the new timeframe around anchorTs,
+     * not the same wall-clock span as the previous TF.
+     */
+    _buildTfSwitchBarCountWindow(timeframe, anchorTs, visibleBarCount) {
+        const tfMs = this.parseTimeframe(timeframe) || 60_000;
+        const bars = Number.isFinite(visibleBarCount) && visibleBarCount > 0
+            ? visibleBarCount
+            : 200;
+        const buffer = Math.max(40, Math.ceil(bars * 0.15));
+        const totalBars = Math.min(2000, Math.max(120, bars + buffer));
+        const forwardBars = Math.min(
+            Math.max(24, Math.floor(totalBars * 0.08)),
+            Math.floor(totalBars * 0.2)
+        );
+        const backwardBars = Math.max(1, totalBars - forwardBars);
+        const anchor = Number.isFinite(anchorTs) ? anchorTs : Date.now();
+        return {
+            startTs: Math.floor(anchor - backwardBars * tfMs),
+            endTs: Math.floor(anchor + forwardBars * tfMs),
+        };
+    }
+
+    _tfSwitchFetchLimitForBarCount(visibleBarCount) {
+        const bars = Number.isFinite(visibleBarCount) && visibleBarCount > 0
+            ? visibleBarCount
+            : 200;
+        return Math.min(2000, Math.max(120, Math.ceil(bars * 1.2) + 60));
+    }
+
+    /**
+     * Backtest replay TF fetch window centered on the playhead by visible bar count.
      */
     _getBacktestReplayFetchRange(timeframe, session, playheadMs) {
         const sessionEndMs = this._getBacktestSessionEndMs(session);
-        let sessionStartMs = null;
-        try {
-            const raw = session?.startDate || session?.start_date;
-            if (raw) {
-                const t = new Date(raw).getTime();
-                if (Number.isFinite(t)) sessionStartMs = t;
-            }
-        } catch (_e) { /* ignore */ }
-
+        const sessionStartMs = this._getBacktestSessionStartMs(session);
         const tfMs = this.parseTimeframe(timeframe) || 60_000;
-        const isFine = tfMs <= 4 * 60 * 60 * 1000;
         const pendingBars = Number(this._pendingTfSwitchVisibleBarCount);
-        const barLimit = Math.min(
-            2000,
-            Math.max(
-                isFine ? 2000 : 800,
-                Number.isFinite(pendingBars) && pendingBars > 0 ? pendingBars + 80 : 0,
-                Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 800
-            )
-        );
-        // Backward-heavy: fine TFs keep ~30–40h+ of 1m (or ~12d of 15m) before playhead.
-        const forwardBars = isFine
-            ? Math.min(120, Math.max(24, Math.floor(barLimit * 0.06)))
-            : Math.min(200, Math.max(40, Math.floor(barLimit * 0.12)));
-        const backwardBars = Math.max(1, barLimit - forwardBars);
+        const barCount = Number.isFinite(pendingBars) && pendingBars > 0
+            ? pendingBars
+            : (Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 800);
         const anchor = Number.isFinite(playheadMs) ? playheadMs : sessionEndMs;
         if (!Number.isFinite(anchor)) {
             return this._getBacktestSessionEndFetchRange(sessionEndMs);
         }
 
-        let endTs = anchor + forwardBars * tfMs;
+        const range = this._buildTfSwitchBarCountWindow(timeframe, anchor, barCount);
         if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
-            endTs = Math.min(endTs, sessionEndMs);
+            range.endTs = Math.min(range.endTs, sessionEndMs);
         }
-        let startTs = anchor - backwardBars * tfMs;
         if (sessionStartMs != null && Number.isFinite(sessionStartMs)) {
-            startTs = Math.max(startTs, sessionStartMs - 200 * tfMs);
+            range.startTs = Math.max(range.startTs, sessionStartMs - 200 * tfMs);
         }
-
-        return {
-            startTs: Math.floor(startTs),
-            endTs: Math.floor(endTs),
-        };
+        return range;
     }
 
     _backtestFetchLimitForTimeframe(timeframe) {
@@ -18089,12 +18109,18 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
 
         const playheadMs = savedReplayTimestamp ?? this._captureReplayPlayheadMs(replay);
-        const historyRange = Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch >= 86400000
-            ? (this._getBacktestInitialFetchRange(timeframe, session)
-                || this._getBacktestSessionEndFetchRange(sessionEndMs))
-            : (Number.isFinite(playheadMs)
-                ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
-                : this._getBacktestSessionEndFetchRange(sessionEndMs));
+        const pendingBars = Number(this._pendingTfSwitchVisibleBarCount);
+        let historyRange;
+        if (Number.isFinite(playheadMs) && Number.isFinite(pendingBars) && pendingBars > 0) {
+            historyRange = this._getBacktestReplayFetchRange(timeframe, session, playheadMs);
+        } else if (Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch >= 86400000) {
+            historyRange = this._getBacktestInitialFetchRange(timeframe, session)
+                || this._getBacktestSessionEndFetchRange(sessionEndMs);
+        } else if (Number.isFinite(playheadMs)) {
+            historyRange = this._getBacktestReplayFetchRange(timeframe, session, playheadMs);
+        } else {
+            historyRange = this._getBacktestSessionEndFetchRange(sessionEndMs);
+        }
         const fetchOpts = {
             skipSessionDates: true,
             limit: this._backtestFetchLimitForTimeframe(timeframe),
@@ -24488,7 +24514,9 @@ class Chart {
         }
         const m = this.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, (this.w - m.l - m.r) || vp.plotW || 0);
-        const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth({ ...vp, plotW });
+        const targetCandleWidth = Number.isFinite(vp.candleWidth) && vp.candleWidth > 0
+            ? vp.candleWidth
+            : this.candleWidth;
         this._tfSwitchAnchorLock = {
             anchorTs: vp.anchorTs,
             anchorScreenX: vp.anchorScreenX,
@@ -24504,11 +24532,9 @@ class Chart {
         if (!lock || !this.data || this.data.length === 0) return false;
         const m = this.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, (this.w - m.l - m.r) || lock.plotW || 0);
-        const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth({
-            visibleBarCount: lock.visibleBarCount,
-            plotW,
-            candleWidth: lock.candleWidth,
-        });
+        const targetCandleWidth = Number.isFinite(lock.candleWidth) && lock.candleWidth > 0
+            ? lock.candleWidth
+            : this.candleWidth;
         this._restorePositionAtScreenX(
             lock.anchorTs,
             targetCandleWidth,
@@ -24637,6 +24663,7 @@ class Chart {
             anchorTs,
             anchorScreenX,
             candleWidth: this.candleWidth,
+            candleSpacing: this.getCandleSpacing(),
             offsetX: this.offsetX,
             autoScale: this.autoScale !== false,
             priceZoom: this.priceZoom,
@@ -24657,24 +24684,13 @@ class Chart {
      * fetch returned only the latest slice). Callers fall back to jumpToLatest() on
      * false so loading is never broken.
      */
+    /** TradingView parity: keep the exact captured candle width on TF switch. */
     _resolveTfSwitchTargetCandleWidth(vp) {
         if (!vp) return this.candleWidth;
-        const m = this.margin;
-        const plotW = Math.max(
-            1,
-            (this.w - m.l - m.r) || vp.plotW || 0
-        );
-        if (Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0) {
-            return this._candleWidthForSpacing(plotW / vp.visibleBarCount);
+        if (Number.isFinite(vp.candleWidth) && vp.candleWidth > 0) {
+            return vp.candleWidth;
         }
-        if (Number.isFinite(vp.spanMs) && vp.spanMs > 0) {
-            const newBarMs = this._estimateTimeframeStepMs();
-            if (Number.isFinite(newBarMs) && newBarMs > 0) {
-                const barsInSpan = Math.max(2, vp.spanMs / newBarMs);
-                return this._candleWidthForSpacing(plotW / barsInSpan);
-            }
-        }
-        return vp.candleWidth;
+        return this.candleWidth;
     }
 
     _restoreTfSwitchViewport() {
@@ -24713,7 +24729,9 @@ class Chart {
         const plotW = Math.max(1, (this.w - m.l - m.r) || vp.plotW || 0);
         if (!(plotW > 0)) return false;
 
-        const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth({ ...vp, plotW });
+        const targetCandleWidth = Number.isFinite(vp.candleWidth) && vp.candleWidth > 0
+            ? vp.candleWidth
+            : this.candleWidth;
 
         // Preserve manual Y scale (double-click locked or user zoomed); else refit.
         if (vp.autoScale === false || vp.priceScaleLocked) {
@@ -24901,7 +24919,9 @@ class Chart {
                 this._commitTfSwitchAnchorLock(vp);
             } else if (Number.isFinite(vp.centerTs)
                 && typeof this._restorePositionToTimestamp === 'function') {
-                const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth(vp);
+                const targetCandleWidth = Number.isFinite(vp.candleWidth) && vp.candleWidth > 0
+                    ? vp.candleWidth
+                    : this.candleWidth;
                 this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
             } else if (typeof this.jumpToLatest === 'function') {
                 this.jumpToLatest();

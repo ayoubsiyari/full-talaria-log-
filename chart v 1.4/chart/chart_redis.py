@@ -23,6 +23,7 @@ _WHATIF_QUEUE_LIST = f"{KEY_PREFIX}whatif:queue"
 _WHATIF_WAKE_LIST = f"{KEY_PREFIX}whatif:wake"
 _WHATIF_JOB_PREFIX = f"{KEY_PREFIX}whatif:job:"
 _WHATIF_CACHE_PREFIX = f"{KEY_PREFIX}whatif:cache:"
+_NEWS_HIST_CACHE_PREFIX = f"{KEY_PREFIX}news:hist:"
 
 _pool = None
 _client: Redis | None = None
@@ -232,6 +233,29 @@ def whatif_set_cache(cache_key: str, result: dict, ttl_sec: int) -> None:
         if len(body) > 8_000_000:
             return
         c.setex(f"{_WHATIF_CACHE_PREFIX}{cache_key}", max(60, int(ttl_sec)), body)
+    except Exception:
+        pass
+
+
+def news_hist_get_cache(cache_key: str) -> dict | None:
+    c = get_client()
+    if c is None or not cache_key:
+        return None
+    try:
+        return _json_load(c.get(f"{_NEWS_HIST_CACHE_PREFIX}{cache_key}"))
+    except Exception:
+        return None
+
+
+def news_hist_set_cache(cache_key: str, payload: dict, ttl_sec: int) -> None:
+    c = get_client()
+    if c is None or not cache_key:
+        return
+    try:
+        body = json.dumps(payload, separators=(",", ":"))
+        if len(body) > 4_000_000:
+            return
+        c.setex(f"{_NEWS_HIST_CACHE_PREFIX}{cache_key}", max(300, int(ttl_sec)), body)
     except Exception:
         pass
 

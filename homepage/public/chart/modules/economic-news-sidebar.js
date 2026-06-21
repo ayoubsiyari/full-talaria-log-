@@ -180,7 +180,9 @@
     /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
     var MAX_CALENDAR_FETCH_DAYS = 120;
     var lastFetchFinishedAt = 0;
-    var FETCH_COOLDOWN_MS = 5000;
+    var FETCH_COOLDOWN_MS = 60000;
+    /** In-memory chunk cache — avoids repeat Marketaux calls when panning the same range. */
+    var newsChunkCache = {};
 
     /** Always fetch through at least this many days after reference "now" so the Upcoming tab can show a full week. */
     var UPCOMING_NEWS_DAYS_AHEAD = 7;
@@ -1018,6 +1020,20 @@
             var chunkEnd = Math.min(cursor + HISTORICAL_NEWS_CHUNK_MS - 1, endMs);
             var fromSec = Math.floor(cursor / 1000);
             var toSec = Math.floor(chunkEnd / 1000);
+            var cacheKey = fromSec + '|' + toSec + '|' + sym;
+            if (newsChunkCache[cacheKey]) {
+                var cachedChunk = newsChunkCache[cacheKey];
+                for (var ci = 0; ci < cachedChunk.length; ci++) {
+                    var cit = cachedChunk[ci];
+                    var csk = String(cit.id || cit.url || cit.headline || ci);
+                    if (!seen[csk]) {
+                        seen[csk] = true;
+                        all.push(cit);
+                    }
+                }
+                cursor = chunkEnd + 1;
+                continue;
+            }
             var url = '/api/news/historical?from=' + encodeURIComponent(String(fromSec)) +
                 '&to=' + encodeURIComponent(String(toSec)) + '&limit=50';
             if (sym) url += '&symbol=' + encodeURIComponent(sym);
@@ -1027,6 +1043,7 @@
                 throw new Error(detailFromJson(j, r.status));
             }
             var items = (j && j.items) || [];
+            newsChunkCache[cacheKey] = items.slice();
             for (var i = 0; i < items.length; i++) {
                 var it = items[i];
                 if (!it || typeof it !== 'object') continue;
@@ -1054,9 +1071,6 @@
             var toStr = rng.toStr;
             var symbol = getCurrentChartSymbol();
             var articles = await fetchHistoricalNewsChunks(fromStr, toStr, symbol);
-            if (!articles.length && symbol) {
-                articles = await fetchHistoricalNewsChunks(fromStr, toStr, '');
-            }
             var out = [];
             for (var i = 0; i < articles.length; i++) {
                 var n = normalizeNewsArticle(articles[i], symbol);
@@ -1073,7 +1087,11 @@
         } catch (err) {
             if (myId !== calendarLoadId) return;
             var msg = (err && err.message) ? String(err.message) : 'Failed to load news';
-            if (msg.indexOf('MARKETAUX_API_TOKEN') === -1) {
+            var low = msg.toLowerCase();
+            if (low.indexOf('marketaaux_api_token') === -1 &&
+                low.indexOf('usage_limit') === -1 &&
+                low.indexOf('daily api limit') === -1 &&
+                low.indexOf('daily limit') === -1) {
                 msg += ' Add MARKETAUX_API_TOKEN to chart/.env (free key at marketaux.com) and restart the chart API.';
             }
             state.error = msg;
