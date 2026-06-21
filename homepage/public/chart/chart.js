@@ -17298,9 +17298,9 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
 
-        // TradingView parity: keep the same visible wall-clock window across the
-        // TF switch (snapshot taken in _beginTimeframeSwitching). Falls back to
-        // the latest candle only when the previous center isn't in the new data.
+        // Keep the same visible bar count across the TF switch (snapshot taken in
+        // _beginTimeframeSwitching). Falls back to the latest candle only when the
+        // previous center isn't in the new data.
         this.resize();
         this._restoreOrJumpAfterTfSwitch();
         this._endTimeframeSwitching();
@@ -24484,8 +24484,8 @@ class Chart {
     /**
      * Approximate the candleWidth that yields a given on-screen candle spacing.
      * Inverts _getSpacingForCandleWidth via binary search (spacing is monotonic
-     * in candleWidth). Used when switching timeframe so the same wall-clock
-     * window keeps filling the plot width on the new TF.
+     * in candleWidth). Used when switching timeframe so the same visible bar
+     * count keeps filling the plot width on the new TF.
      */
     _candleWidthForSpacing(targetSpacing) {
         const s = Number(targetSpacing);
@@ -24507,9 +24507,9 @@ class Chart {
 
     /**
      * Snapshot viewport state before a timeframe switch (old TF still on screen).
-     * TradingView-style: keep horizontal zoom + anchor the playhead / last candle
-     * at the same pixel X on the new TF. Stored on `this._tfSwitchViewport`;
-     * consumed by _restoreTfSwitchViewport().
+     * Preserve the on-screen candle count (e.g. 200 bars on 1m → 200 bars on 1h)
+     * and anchor the playhead / last candle at the same pixel X on the new TF.
+     * Stored on `this._tfSwitchViewport`; consumed by _restoreTfSwitchViewport().
      */
     _captureTfSwitchViewport() {
         this._tfSwitchViewport = null;
@@ -24535,11 +24535,12 @@ class Chart {
             && (replay.userHasPanned || !replay.autoScrollEnabled));
 
         const vr = this._getViewportBarRange();
+        const visibleBarCount = Math.max(1, Math.ceil(Math.max(0, vr.last - vr.first)));
         const viewportLeftIdx = vr.first;
         const leftScreenX = this.dataIndexToPixel(viewportLeftIdx);
 
         if (userOwnsViewport) {
-            // Panned / manual zoom: preserve the visible wall-clock window (TradingView).
+            // Panned / manual zoom: keep the left edge pinned at the same screen X.
             anchorMode = 'viewportLeft';
             anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
             anchorScreenX = leftScreenX;
@@ -24565,6 +24566,7 @@ class Chart {
         this._tfSwitchViewport = {
             centerTs,
             spanMs,
+            visibleBarCount,
             leftTs,
             rightTs,
             viewportLeftIdx,
@@ -24586,12 +24588,12 @@ class Chart {
     }
 
     /**
-     * Restore the wall-clock window captured by _captureTfSwitchViewport() onto
-     * the freshly loaded timeframe. Returns true when the position was restored,
-     * false when it could not be (no snapshot, no data, or the snapshot's center
-     * timestamp is outside the loaded window — e.g. a server fetch returned only
-     * the latest slice). Callers fall back to jumpToLatest() on false so loading
-     * is never broken.
+     * Restore the viewport captured by _captureTfSwitchViewport() onto the freshly
+     * loaded timeframe (same visible bar count + anchor pixel). Returns true when
+     * the position was restored, false when it could not be (no snapshot, no data,
+     * or the snapshot's center timestamp is outside the loaded window — e.g. a server
+     * fetch returned only the latest slice). Callers fall back to jumpToLatest() on
+     * false so loading is never broken.
      */
     _restoreTfSwitchViewport() {
         const vp = this._tfSwitchViewport;
@@ -24626,9 +24628,13 @@ class Chart {
         const plotW = this.w - m.l - m.r;
         if (!(plotW > 0)) return false;
 
-        // TradingView parity: keep the same visible wall-clock span on the new TF.
+        // Keep the same number of candles on screen (200 × 1m → 200 × 1h), not the
+        // same wall-clock span (which would collapse to only a few higher-TF bars).
         let targetCandleWidth = vp.candleWidth;
-        if (Number.isFinite(vp.spanMs) && vp.spanMs > 0 && Number.isFinite(newBarMs) && newBarMs > 0) {
+        if (Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0) {
+            const targetSpacing = plotW / vp.visibleBarCount;
+            targetCandleWidth = this._candleWidthForSpacing(targetSpacing);
+        } else if (Number.isFinite(vp.spanMs) && vp.spanMs > 0 && Number.isFinite(newBarMs) && newBarMs > 0) {
             const barsInSpan = Math.max(2, vp.spanMs / newBarMs);
             const targetSpacing = plotW / barsInSpan;
             targetCandleWidth = this._candleWidthForSpacing(targetSpacing);
