@@ -29,6 +29,7 @@ type Props = {
   onChange: (rules: LiveJournalPropRules) => void;
   balance: number;
   market: string;
+  embedded?: boolean;
 };
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -215,7 +216,7 @@ function PhaseLimits({
   );
 }
 
-export function LiveJournalPropRulesForm({ rules, onChange, balance, market }: Props) {
+export function LiveJournalPropRulesForm({ rules, onChange, balance, market, embedded = false }: Props) {
   const isAmount = rules.limitMode === "amount" || market.toLowerCase() === "futures";
   const cap = Math.max(1000, balance || 50000);
   const stepFormat = liveJournalPropStepFormat(rules);
@@ -254,14 +255,20 @@ export function LiveJournalPropRulesForm({ rules, onChange, balance, market }: P
         display: "flex",
         flexDirection: "column",
         gap: 12,
-        padding: 12,
-        border: `1px solid ${C.gold}44`,
-        background: `${C.gold}08`,
+        ...(embedded
+          ? {}
+          : {
+              padding: 12,
+              border: `1px solid ${C.gold}44`,
+              background: `${C.gold}08`,
+            }),
       }}
     >
-      <div style={{ fontSize: 9, fontWeight: 950, color: C.gold, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-        Challenge rules
-      </div>
+      {!embedded ? (
+        <div style={{ fontSize: 9, fontWeight: 950, color: C.gold, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          Challenge rules
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <FieldLabel>Challenge steps</FieldLabel>
