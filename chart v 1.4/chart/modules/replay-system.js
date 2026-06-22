@@ -2633,8 +2633,6 @@ class ReplaySystem {
     _replayUserOwnsViewport(chartInstance = this.chart) {
         if (!this.isActive || !chartInstance) return false;
         if (this.userHasPanned || !this.autoScrollEnabled) return true;
-        // TF-switch anchor freeze is not a user pan — don't block follow / play scroll.
-        if (chartInstance._tfSwitchAnchorLock) return false;
 
         const st = typeof this.getReplayAutoScrollState === 'function'
             ? this.getReplayAutoScrollState(chartInstance)
@@ -2656,11 +2654,6 @@ class ReplaySystem {
     _capturePlaybackViewportLock() {
         const chart = this.chart;
         if (!this.isActive || !chart) {
-            this._viewportLockForPlayback = null;
-            return;
-        }
-        // Follow mode — never freeze viewport on Play (TF-switch drift is not user pan).
-        if (this.autoScrollEnabled && !this.userHasPanned) {
             this._viewportLockForPlayback = null;
             return;
         }
@@ -2708,25 +2701,6 @@ class ReplaySystem {
         chartInstance.autoScale = lock.autoScale;
         chartInstance.manualCenterPrice = lock.manualCenterPrice;
         chartInstance.manualRange = lock.manualRange;
-    }
-
-    /**
-     * Follow replay playhead when auto-scroll is on (clears TF-switch freeze first).
-     */
-    _followReplayPlayhead(chartInstance = this.chart, opts = {}) {
-        if (!this.isActive || !chartInstance) return false;
-        if (this.userHasPanned || !this.autoScrollEnabled) return false;
-        if (chartInstance._tfSwitchAnchorLock
-            && typeof chartInstance._clearTfSwitchAnchorLock === 'function') {
-            chartInstance._clearTfSwitchAnchorLock();
-        }
-        chartInstance._chartViewRestored = false;
-        return this.syncReplayViewportToPlayhead(chartInstance, {
-            forceRecenter: true,
-            resetPriceScale: opts.resetPriceScale != null ? opts.resetPriceScale : false,
-            render: opts.render != null ? opts.render : false,
-            centerPlayhead: opts.centerPlayhead,
-        });
     }
 
     /**
@@ -2894,17 +2868,14 @@ class ReplaySystem {
             }
         }
         
-        // Auto-scroll: TF-switch anchor freeze while paused; follow playhead only during playback.
+        // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
         if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
-            && !this._timeframeChanging && !this.userHasPanned) {
-            if (this.chart._tfSwitchAnchorLock) {
-                if (this.isPlaying) {
-                    this._followReplayPlayhead(this.chart, { render: false });
-                } else if (typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
-                    this.chart._reapplyTfSwitchAnchorLock();
-                }
-            } else if (this.isPlaying) {
-                this._followReplayPlayhead(this.chart, { render: false });
+            && !this._timeframeChanging) {
+            if (this.chart._tfSwitchAnchorLock
+                && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
+                this.chart._reapplyTfSwitchAnchorLock();
+            } else {
+                this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
             }
         }
         
@@ -3223,11 +3194,6 @@ class ReplaySystem {
             this._maybeNotifyReplayToast('Already at the end of this backtest — step back or move the replay head to continue.');
             this.syncPlayPauseUI();
             return;
-        }
-
-        // TF-switch anchor freeze is not user pan — release so follow tracks the playhead.
-        if (this.chart && !this.userHasPanned) {
-            this._followReplayPlayhead(this.chart, { render: false });
         }
 
         this._capturePlaybackViewportLock();
@@ -4242,16 +4208,11 @@ class ReplaySystem {
             }
         }
         
-        // Auto-scroll if enabled (preserve TF anchor while paused; follow only when playing).
-        if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this.userHasPanned) {
-            if (this.chart._tfSwitchAnchorLock) {
-                if (this.isPlaying) {
-                    this._followReplayPlayhead(this.chart, { render: false });
-                } else if (typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
-                    this.chart._reapplyTfSwitchAnchorLock();
-                }
-            } else if (this.isPlaying) {
-                this._followReplayPlayhead(this.chart, { render: false });
+        // Auto-scroll if enabled
+        if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this._replayUserOwnsViewport(this.chart)) {
+            const autoScrollState = this.getReplayAutoScrollState(this.chart);
+            if (autoScrollState) {
+                this.chart.offsetX = autoScrollState.offsetX;
             }
         }
         
@@ -5266,8 +5227,6 @@ class ReplaySystem {
         this.userHasPanned = true;
         if (this.chart && typeof this.chart._clearTfSwitchAnchorLock === 'function') {
             this.chart._clearTfSwitchAnchorLock();
-        } else if (this.chart && typeof this.chart._cancelTfSwitchHistoryFill === 'function') {
-            this.chart._cancelTfSwitchHistoryFill();
         }
 
         // Show visual indicator that auto-scroll is disabled
@@ -5283,13 +5242,19 @@ class ReplaySystem {
         this._viewportLockForPlayback = null;
 
         const chart = this.chart;
-        if (chart && typeof chart._clearTfSwitchAnchorLock === 'function') {
-            chart._clearTfSwitchAnchorLock();
+        if (chart && typeof chart._isMultichartViewportJustReset === 'function'
+            && chart._isMultichartViewportJustReset()) {
+            if (this.isActive) {
+                this.updateChartData(true);
+            }
+            requestAnimationFrame(() => {
+                this.updateAutoScrollIndicator();
+            });
+            return;
         }
-        if (chart) chart._chartViewRestored = false;
-        if (this.isActive && typeof this._followReplayPlayhead === 'function') {
-            this._followReplayPlayhead(chart, { render: true });
-        } else if (chart && typeof chart.jumpToLatest === 'function') {
+
+        // Reset zoom and scroll to latest candle (same as double-click on time axis).
+        if (chart && typeof chart.jumpToLatest === 'function') {
             chart.jumpToLatest();
         }
 
