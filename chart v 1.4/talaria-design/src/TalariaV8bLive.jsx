@@ -1842,6 +1842,12 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
   if (pickerKey === "tlBorderColor" && tlStyle.borderColor) {
     return { stroke: tlStyle.borderColor, borderColor: tlStyle.borderColor };
   }
+  if (pickerKey === "tlFlatChPriceColor" && tlStyle.flatChPriceColor) {
+    if (tlStyle.flatChPriceColor !== tlStyle.lineColor) {
+      return { handlePriceColor: tlStyle.flatChPriceColor };
+    }
+    return {};
+  }
   if (pickerKey === "pfMedianColor" && tlStyle.pfMedianColor) {
     return { medianColor: tlStyle.pfMedianColor };
   }
@@ -1953,6 +1959,17 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
   }
   if (d.type === "gann-fan" && pickerKey.startsWith("gannFanLv-")) {
     v9ApplyGannFanFromTlStyle(d, tlStyle);
+    return true;
+  }
+  if (
+    pickerKey === "tlFlatChPriceColor" &&
+    (d.type === "flat-top-bottom" || d.type === "disjoint-channel")
+  ) {
+    if (tlStyle.flatChPriceColor && tlStyle.flatChPriceColor !== tlStyle.lineColor) {
+      d.style.handlePriceColor = tlStyle.flatChPriceColor;
+    } else {
+      delete d.style.handlePriceColor;
+    }
     return true;
   }
   if (v9IsFibSpeedFanType(d.type) && pickerKey.startsWith("fibFanTimeLevel-")) {
@@ -2200,7 +2217,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     extendLeft: isPf ? !!tlStyle.extendLeft : !!tlStyle.extendLeft,
     extendRight: isPf ? tlStyle.extendRight !== false : !!tlStyle.extendRight,
     ...(legacyTool === "flat-top-bottom" || legacyTool === "disjoint-channel"
-      ? { showHandlePrices: tlStyle.flatChPrices !== false }
+      ? {
+          showHandlePrices: tlStyle.flatChPrices !== false,
+          ...(tlStyle.flatChPriceColor && tlStyle.flatChPriceColor !== tlStyle.lineColor
+            ? { handlePriceColor: tlStyle.flatChPriceColor }
+            : {}),
+        }
       : {}),
     showPriceLabel: !!tlStyle.priceLabels,
     showTimeLabel: !!tlStyle.timeLabels,
@@ -4597,7 +4619,7 @@ function v9CpPickerKeyFlushesTlStyle(key) {
   }
   const direct = new Set([
     "tlLineColor", "tlBgColor", "tlMidLineColor", "tlTextColor", "tlLabelColor",
-    "tlLabelBgColor", "tlBorderColor", "fibTrendColor", "fibGridColor",
+    "tlLabelBgColor", "tlBorderColor", "tlFlatChPriceColor", "fibTrendColor", "fibGridColor",
     "regUpperBg", "regLowerBg",
     "pfMedianColor", "pfBgColor",
   ]);
@@ -6971,6 +6993,11 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
   }
   if (d.type === "flat-top-bottom" || d.type === "disjoint-channel") {
     d.style.showHandlePrices = tlStyle.flatChPrices !== false;
+    if (tlStyle.flatChPriceColor && tlStyle.flatChPriceColor !== tlStyle.lineColor) {
+      d.style.handlePriceColor = tlStyle.flatChPriceColor;
+    } else {
+      delete d.style.handlePriceColor;
+    }
   }
   if (d.type === "regression-trend") {
     v9ApplyRegressionStyleFromTl(d.style, tlStyle);
@@ -7137,7 +7164,10 @@ function v9TlStylePatchFromDrawing(d) {
     extendRight: !!(s.extendRight === true || s.extendRight === 1
       || (typeof s.extendRight === 'string' && /^(true|1|yes)$/i.test(String(s.extendRight).trim()))),
     ...(d.type === "flat-top-bottom" || d.type === "disjoint-channel"
-      ? { flatChPrices: s.showHandlePrices !== false }
+      ? {
+          flatChPrices: s.showHandlePrices !== false,
+          flatChPriceColor: s.handlePriceColor || s.stroke || out.lineColor,
+        }
       : {}),
     ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
     ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
@@ -16247,6 +16277,7 @@ const TalariaV8bLive = () => {
     else if(targetKey === "tlLabelColor") cpApplyTlStyle(s=>({...s, labelColor: colorVal}), { colorOnly: true });
     else if(targetKey === "tlLabelBgColor") cpApplyTlStyle(s=>({...s, labelBgColor: colorVal}), { colorOnly: true });
     else if(targetKey === "tlBorderColor") cpApplyTlStyle(s=>({...s, borderColor: colorVal}), { colorOnly: true });
+    else if(targetKey === "tlFlatChPriceColor") cpApplyTlStyle(s=>({...s, flatChPriceColor: colorVal}), { colorOnly: true, pickerKey: "tlFlatChPriceColor" });
     else if(targetKey?.startsWith("chLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, chLines: s.chLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey?.startsWith("regLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, regLines: s.regLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey === "regUpperBg") cpApplyTlStyle(s=>({...s, regUpperBg: colorVal}), { colorOnly: true });
@@ -19566,7 +19597,7 @@ const TalariaV8bLive = () => {
     tlStyle.showBorder, tlStyle.borderColor, tlStyle.borderType, tlStyle.borderWidth,
     tlStyle.midLine, tlStyle.midLineColor, tlStyle.midLineType, tlStyle.midLineWidth,
     tlStyle.ep1, tlStyle.ep2, tlStyle.extendLeft, tlStyle.extendRight,
-    tlStyle.flatChPrices,
+    tlStyle.flatChPrices, tlStyle.flatChPriceColor,
     tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,
     tlStyle.showInfo, tlStyle.showInfoTypes,
     tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
@@ -24039,11 +24070,25 @@ const TalariaV8bLive = () => {
             })()}
 
             {/* ── INPUT TAB (flat / disjoint channel) ── */}
-            {tlSettTab==="input" && (tlSubTool.icon === "flatChannel" || tlSubTool.icon === "disjointCh") && (
-              <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                {TlChk(tlStyle.flatChPrices, "tlchk-flatChPrices-in", "Show Prices", applyFlatChPricesToggle)}
-              </div>
-            )}
+            {tlSettTab==="input" && (tlSubTool.icon === "flatChannel" || tlSubTool.icon === "disjointCh") && (() => {
+              const priceLabelColor = tlStyle.flatChPriceColor || tlStyle.lineColor;
+              return (
+                <>
+                  <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
+                    {TlChk(tlStyle.flatChPrices, "tlchk-flatChPrices-in", "Show Prices", applyFlatChPricesToggle)}
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", padding:"4px 0 8px", gap:10 }}>
+                    <span style={{ fontSize:12, color:c.ts, flex:1 }}>Price label color</span>
+                    <div data-v9-color-swatch="1" {...modalPointerActivate((e) => openCP(e, "tlFlatChPriceColor", priceLabelColor))}
+                      onMouseEnter={()=>setSwHov("tlFlatChPriceColor")} onMouseLeave={()=>setSwHov(null)}
+                      style={v9TlColorSwatchBoxStyle(priceLabelColor, {
+                        active: colorPicker === "tlFlatChPriceColor",
+                        hover: swHov === "tlFlatChPriceColor",
+                      })}/>
+                  </div>
+                </>
+              );
+            })()}
 
             {/* ── INPUT TAB (RR tool: Long/Short Position) ── */}
             {tlSettTab==="input" && isRRTool && (()=>{

@@ -1561,7 +1561,7 @@ class FlatTopBottomTool extends BaseDrawing {
             [s[1].sx, s[1].sy, s[3].sx, s[3].sy]
         ];
 
-        const fill = this.style.stroke || '#ff9800';
+        const fill = this.style.handlePriceColor || this.style.stroke || '#ff9800';
         const fontSize = 11;
 
         this.virtualPoints.forEach((point, index) => {

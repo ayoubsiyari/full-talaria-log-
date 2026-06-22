@@ -10300,6 +10300,9 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     const drawStride = (Number.isFinite(spacing) && spacing > 0 && spacing < 1)
         ? Math.max(1, Math.floor(1 / spacing))
         : 1;
+    const scatterStride = (Number.isFinite(spacing) && spacing > 0 && spacing < 1)
+        ? Math.max(1, Math.floor(1 / spacing))
+        : Math.max(1, Math.round(spacing / 10));
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -10386,7 +10389,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     } else if (style === 'Cross') {
         const r = Math.max(2.5, lw * 1.5);
         ctx.beginPath();
-        for (let i = startIndex; i < endIndex; i += drawStride) {
+        for (let i = startIndex; i < endIndex; i += scatterStride) {
             const val = valueAt(i);
             if (val == null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);
@@ -10401,7 +10404,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     } else if (style === 'Circles') {
         const r = Math.max(2, lw * 1.1);
         ctx.beginPath();
-        for (let i = startIndex; i < endIndex; i += drawStride) {
+        for (let i = startIndex; i < endIndex; i += scatterStride) {
             const val = valueAt(i);
             if (val == null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);

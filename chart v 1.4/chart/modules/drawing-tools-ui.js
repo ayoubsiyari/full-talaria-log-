@@ -7346,10 +7346,11 @@ body.light-mode .template-save-dialog .dialog-title {
                 handlePricesRow.style.cssText = 'padding-top: 12px; border-top: 1px solid #2a2e39; margin-top: 8px; display: flex; align-items: center; gap: 8px; min-height: 36px;';
 
                 const handlePricesChecked = drawing.style.showHandlePrices !== false;
+                const handlePriceColor = drawing.style.handlePriceColor || drawing.style.stroke || '#ff9800';
 
                 handlePricesRow.innerHTML = `
 
-                    <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <div class="tv-checkbox-wrapper" style="min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px; flex: 1;">
 
                         <div class="tv-checkbox ${handlePricesChecked ? 'checked' : ''}" data-prop="showHandlePrices">
 
@@ -7363,7 +7364,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         <span class="tv-checkbox-label" style="white-space: nowrap;">Prices</span>
 
-                    </div>`;
+                    </div>
+
+                    <button class="tv-color-btn" data-prop="handlePriceColor" title="Price label color" style="background: ${handlePriceColor};"></button>`;
 
                 flatTopSection.appendChild(handlePricesRow);
 
@@ -22941,6 +22944,30 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 return;
 
+            } else if (prop === 'handlePriceColor') {
+
+                actualDrawing.style.handlePriceColor = finalColor;
+
+                drawing.style.handlePriceColor = finalColor;
+
+                this.pendingChanges.handlePriceColor = finalColor;
+
+                if (actualDrawing.group) {
+
+                    actualDrawing.group.selectAll('.flat-top-bottom-handle-price').attr('fill', finalColor);
+
+                }
+
+                if (drawingManager) {
+
+                    drawingManager.renderDrawing(actualDrawing);
+
+                    drawingManager.saveDrawings();
+
+                }
+
+                return;
+
             } else if (prop === 'textColor') {
 
                 actualDrawing.style.textColor = finalColor;
@@ -23445,6 +23472,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (this.pendingChanges.showHandlePrices !== undefined) drawing.style.showHandlePrices = this.pendingChanges.showHandlePrices;
 
+        if (this.pendingChanges.handlePriceColor !== undefined) drawing.style.handlePriceColor = this.pendingChanges.handlePriceColor;
+
         
 
         // Background properties
@@ -23802,6 +23831,8 @@ body.light-mode .template-save-dialog .dialog-title {
         if (this.pendingChanges.extendRight !== undefined) drawing.style.extendRight = this.pendingChanges.extendRight;
 
         if (this.pendingChanges.showHandlePrices !== undefined) drawing.style.showHandlePrices = this.pendingChanges.showHandlePrices;
+
+        if (this.pendingChanges.handlePriceColor !== undefined) drawing.style.handlePriceColor = this.pendingChanges.handlePriceColor;
 
         
 
