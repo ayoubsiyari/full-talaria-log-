@@ -8809,16 +8809,20 @@ const TalariaV8b = () => {
         dashAddTradeEditorOpenRef.current
         && isDashLiveJournalAddTradeSource(dashAddTradeEditorSourceRef.current)
       );
+      const userAppliedSource = dashLibraryAppliedSelectionRef.current || dashLibraryAppliedSelection;
+      const hasExplicitUserSource = !!(userAppliedSource?.kind && userAppliedSource?.id != null);
       if (boot.openSessionId != null) {
         const appliedBoot = boot.appliedSource;
-        if ((!appliedBoot || appliedBoot.kind === "session") && !pinnedJournalSelection) {
+        if (userAppliedSource?.kind === "session" && userAppliedSource.id != null) {
+          setDashSessId(userAppliedSource.sessionId || userAppliedSource.id);
+        } else if ((!appliedBoot || appliedBoot.kind === "session") && !pinnedJournalSelection && !hasExplicitUserSource) {
           setDashSessId(boot.openSessionId);
         }
       }
       const applied = boot.appliedSource;
       if (applied) {
         const keepPinnedJournal = pinnedJournalSelection && applied.kind === "session";
-        if (!keepPinnedJournal) {
+        if (!keepPinnedJournal && !hasExplicitUserSource) {
           setDashLibraryAppliedSelection(applied);
           dashLibraryAppliedSelectionRef.current = applied;
           if (applied.kind && applied.id != null) {
@@ -8843,6 +8847,18 @@ const TalariaV8b = () => {
     if (typeof fetcher !== "function") return;
     const sessionIds = new Set();
     if (dashSessId != null) sessionIds.add(String(dashSessId));
+    const appliedSource = dashLibraryAppliedSelectionRef.current || dashLibraryAppliedSelection;
+    if (appliedSource?.kind === "session" && appliedSource.id != null) {
+      sessionIds.add(String(appliedSource.sessionId || appliedSource.id));
+    }
+    const appliedSourceKeys = Array.isArray(dashLibraryAppliedMultiSelectionRef.current) && dashLibraryAppliedMultiSelectionRef.current.length
+      ? dashLibraryAppliedMultiSelectionRef.current
+      : (Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : []);
+    appliedSourceKeys.forEach((key) => {
+      const [kind, ...rest] = String(key || "").split(":");
+      const id = rest.join(":");
+      if ((kind === "session" || kind === "strategySession") && id) sessionIds.add(String(id));
+    });
     if (dashStrategyId) {
       const strategyKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, "-").replace(/^-|-$/g, "") || "untitled";
       (sessionsRef.current || []).forEach((s) => {
@@ -8886,7 +8902,7 @@ const TalariaV8b = () => {
       cancelled = true;
       setDashTradesLoading(false);
     };
-  }, [dashSessId, dashStrategyId, sessView]);
+  }, [dashSessId, dashStrategyId, sessView, dashLibraryAppliedSelection, dashLibraryAppliedMultiSelection]);
   const [dashCompareOpen, setDashCompareOpen] = useState(false);
   const [dashCompareId, setDashCompareId] = useState(null);
   const [dashCompareDraftId, setDashCompareDraftId] = useState(null);
