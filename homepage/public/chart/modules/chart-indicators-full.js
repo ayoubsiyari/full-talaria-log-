@@ -2114,6 +2114,39 @@
         return bars;
     }
 
+    /** One scatter dot per visible anchor segment — same bar index for every VWAP plot. */
+    function resolveVwapScatterBarIndices(vwapData, rawAnchorBars, startIndex, endIndex, plotOffset) {
+        if (!vwapData || !Array.isArray(vwapData.vwap) || !rawAnchorBars || !rawAnchorBars.length) return [];
+        const lo = Math.max(0, startIndex | 0);
+        const hi = endIndex == null ? vwapData.vwap.length : Math.min(vwapData.vwap.length, endIndex | 0);
+        const pickVal = function(i) {
+            const v = plotOffset ? seriesValueAtPlotOffset(vwapData.vwap, i, plotOffset) : vwapData.vwap[i];
+            return (v != null && !isNaN(v)) ? v : null;
+        };
+        const out = [];
+        for (let ai = 0; ai < rawAnchorBars.length; ai++) {
+            const segStart = rawAnchorBars[ai];
+            const segEnd = ai + 1 < rawAnchorBars.length ? rawAnchorBars[ai + 1] : vwapData.vwap.length;
+            if (segEnd <= lo || segStart >= hi) continue;
+            const from = Math.max(segStart, lo);
+            const to = Math.min(segEnd, hi);
+            for (let j = from; j < to; j++) {
+                if (pickVal(j) != null) {
+                    out.push(j);
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Bands stay continuous lines — Circles/Cross apply to the main VWAP line only. */
+    function vwapBandDrawStyle(lineStyle) {
+        const n = String(lineStyle || 'Line').toLowerCase();
+        if (n === 'circles' || n === 'cross') return 'Line';
+        return lineStyle || 'Line';
+    }
+
     /** VWAP with anchored periods, optional std-dev / % bands, and plot offset. */
     function calculateVWAPIndicatorData(data, params) {
         params = params || {};
@@ -10696,25 +10729,39 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
     const vwapVal = function(arr, i) {
         return plotOffset ? seriesValueAtPlotOffset(arr, i, plotOffset) : arr[i];
     };
-    const anchorBars = (Array.isArray(data.anchorBars) && data.anchorBars.length)
+    const rawAnchorBars = (Array.isArray(data.anchorBars) && data.anchorBars.length)
         ? data.anchorBars
         : buildVwapAnchorBarIndices(this.data, params.anchorPeriod || 'session');
-    const drawVwapSeries = function(arr, lineStyle, color, width, dashStyle) {
+    const scatterBars = resolveVwapScatterBarIndices(data, rawAnchorBars, startIndex, endIndex, plotOffset);
+    const drawVwapMainSeries = function(arr, lineStyle, color, width, dashStyle) {
         if (!arr) return;
         const plotStyle = this._normalizePlotStyle(lineStyle);
         const opts = Object.assign({ dashStyle: dashStyle || 'Solid' }, lineOpts);
-        if ((plotStyle === 'Circles' || plotStyle === 'Cross') && anchorBars.length) {
-            this._drawIndicatorScatterAtBarIndices(arr, anchorBars, color, width, startIndex, endIndex, lineStyle, opts);
+        if ((plotStyle === 'Circles' || plotStyle === 'Cross') && scatterBars.length) {
+            this._drawIndicatorScatterAtBarIndices(arr, scatterBars, color, width, startIndex, endIndex, lineStyle, opts);
         } else {
             this.drawLineIndicator(arr, color, width, startIndex, endIndex, lineStyle, opts);
         }
     }.bind(this);
+    const drawBandLine = function(arr, lineStyle, color, width, dashStyle) {
+        if (!arr) return;
+        const opts = Object.assign({ dashStyle: dashStyle || 'Solid' }, lineOpts);
+        this.drawLineIndicator(
+            arr,
+            color,
+            width,
+            startIndex,
+            endIndex,
+            vwapBandDrawStyle(lineStyle),
+            opts
+        );
+    }.bind(this);
     const drawBandPair = function(upperArr, lowerArr, upperStyleLocal, lowerStyleLocal) {
         if (style.showUpper1 !== false && upperArr) {
-            drawVwapSeries(upperArr, upperStyleLocal || upperStyle, upperCol, upperW, upperDash);
+            drawBandLine(upperArr, upperStyleLocal || upperStyle, upperCol, upperW, upperDash);
         }
         if (style.showLower1 !== false && lowerArr) {
-            drawVwapSeries(lowerArr, lowerStyleLocal || lowerStyle, lowerCol, lowerW, lowerDash);
+            drawBandLine(lowerArr, lowerStyleLocal || lowerStyle, lowerCol, lowerW, lowerDash);
         }
     }.bind(this);
 
@@ -10759,7 +10806,7 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
     }
 
     if (style.showVwap !== false) {
-        drawVwapSeries(
+        drawVwapMainSeries(
             data.vwap,
             legacyS,
             resolve(style.color, style.lineOpacity),

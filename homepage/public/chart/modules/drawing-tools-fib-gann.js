@@ -63,19 +63,11 @@ class FibChannelTool extends BaseDrawing {
         const extendLines = !!this.style.extendLines;
         const zonesEnabled = !!this.style.showZones;
         const reverse = !!this.style.reverse;
-        const showPrices = this.style.showPrices !== false;
         const showLevelValues = this.style.levelsEnabled !== false;
-        const levelsLabelMode = (this.style.levelsLabelMode === 'percent' || this.style.levelsLabelMode === 'values') ? this.style.levelsLabelMode : 'values';
         const zoneOpacity = Math.max(0, Math.min(1, (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity))) ? parseFloat(this.style.backgroundOpacity) : 0.08));
         const xRange = scales.xScale.range();
 
         const priceDecimals = (typeof this.getPriceDecimals === 'function') ? this.getPriceDecimals(this.points[0]?.y) : 2;
-        const formatLevelText = (v) => {
-            const n = parseFloat(v);
-            if (!isFinite(n)) return '';
-            if (levelsLabelMode === 'percent') return `${(n * 100).toFixed(1)}%`;
-            return (Math.round(n * 1000) / 1000).toString();
-        };
 
         // Preview (2 points): draw the base line
         if (this.points.length === 2) {
@@ -222,14 +214,12 @@ class FibChannelTool extends BaseDrawing {
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
 
-                const baseLabel = formatLevelText(lvl);
-                let priceText = '';
-                if (showPrices && scales.yScale && typeof scales.yScale.invert === 'function') {
-                    const p = scales.yScale.invert(seg.y2);
-                    if (isFinite(p)) priceText = ` (${p.toFixed(priceDecimals)})`;
-                }
+                const baseLabel = BaseDrawing.formatFibLevelLabel(this.style, lvl, {
+                    price: scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(seg.y2) : null,
+                    priceDecimals,
+                });
                 if (!showLevelValues) return;
-                const labelText = `${baseLabel}${priceText}`;
+                const labelText = baseLabel;
                 const lp = fibHorizontalSpanLabelPlacement(this.style, seg.x1, seg.x2);
 
                 this.group.append('text')
@@ -281,6 +271,8 @@ class FibTimeZoneTool extends BaseDrawing {
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
+        if (this.style.showPrices === undefined) this.style.showPrices = true;
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
         const defaultLevels = [
             { value: 0, enabled: true, color: '#787b86' },
             { value: 1, enabled: true, color: '#f23645' },
@@ -427,7 +419,7 @@ class FibTimeZoneTool extends BaseDrawing {
                 let vGap = null;
                 const tzLabelFontSize = 10;
                 if (showLevelValues) {
-                    labelText = String(fib);
+                    labelText = BaseDrawing.formatFibLevelLabel(this.style, fibN);
                     lp = fibVerticalSpanLabelPlacement(this.style, x, 0, chartHeight);
                     vGap = fibVerticalCenterLabelGap(this.style, this.group, labelText, lp.y, tzLabelFontSize, '600');
                 }
@@ -497,6 +489,8 @@ class FibSpeedFanTool extends BaseDrawing {
         if (this.style.gridLineWidth === undefined) this.style.gridLineWidth = 1;
         if (this.style.gridLineDasharray === undefined) this.style.gridLineDasharray = '';
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
+        if (this.style.showPrices === undefined) this.style.showPrices = true;
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 1, enabled: true, color: '#2962ff' },
             { value: 0.75, enabled: true, color: '#00bcd4' },
@@ -536,8 +530,8 @@ class FibSpeedFanTool extends BaseDrawing {
         const chartWidth = scales.chart?.w || 2000;
 
         const showLevelValues = this.style.levelsEnabled !== false;
-
-        // Anchor / trend segment between the two anchor points
+        const priceDecimals = (typeof this.getPriceDecimals === 'function') ? this.getPriceDecimals(p1?.y) : 2;
+        const formatRatioLabel = (v, price) => BaseDrawing.formatFibLevelLabel(this.style, v, { price, priceDecimals });
         const fanTrendEnabled = this.style.trendLineEnabled !== false;
         const fanTrendColor = this.style.trendLineColor || this.style.stroke || '#787b86';
         const fanTrendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '6,6';
@@ -599,11 +593,6 @@ class FibSpeedFanTool extends BaseDrawing {
             }
         }
 
-        const formatRatioLabel = (v) => {
-            if (!isFinite(v)) return '';
-            return (Math.round(v * 1000) / 1000).toString();
-        };
-
         // Grid (TradingView-like rectangle guides) — time levels when set, else price levels
         if (this.style.gridEnabled !== false) {
             const gridColor = this.style.gridColor || '#787b86';
@@ -659,7 +648,7 @@ class FibSpeedFanTool extends BaseDrawing {
                         .attr('font-size', '10px')
                         .attr('text-anchor', lp.anchor)
                         .style('pointer-events', 'none')
-                        .text(formatRatioLabel(l.value));
+                        .text(formatRatioLabel(l.value, scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(y) : null));
                 }
             });
 
@@ -703,7 +692,7 @@ class FibSpeedFanTool extends BaseDrawing {
                         .attr('font-size', '10px')
                         .attr('text-anchor', fibPointTextAnchor(this.style))
                         .style('pointer-events', 'none')
-                        .text(l.value);
+                        .text(formatRatioLabel(l.value, scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(topLabelY) : null));
                 }
             }
         });
@@ -757,7 +746,7 @@ class FibSpeedFanTool extends BaseDrawing {
 
             // Labels on rays (TradingView-like)
             if (showLevelValues) {
-                const labelText = formatRatioLabel(ratio);
+                const labelText = formatRatioLabel(ratio, scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(targetY) : null);
                 const rayEndX = (ratio === 0) ? x2 : extendX;
                 const rayEndY = (ratio === 0) ? y2 : (y1 + ((targetY - y1) / dx) * (extendX - x1));
                 const lp = fibSegmentParamPlacement(this.style, x1, y1, rayEndX, rayEndY);
@@ -807,6 +796,9 @@ class TrendFibTimeTool extends BaseDrawing {
         if (!this.style.trendLineColor) this.style.trendLineColor = this.style.stroke;
         if (this.style.trendLineDasharray === undefined) this.style.trendLineDasharray = '6,6';
         if (this.style.trendLineWidth === undefined) this.style.trendLineWidth = this.style.strokeWidth || 1;
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
+        if (this.style.showPrices === undefined) this.style.showPrices = true;
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 0, enabled: true, color: '#787b86' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -977,7 +969,7 @@ class TrendFibTimeTool extends BaseDrawing {
                 let tftGap = null;
                 const tftLabelFontSize = 10;
                 if (showLevelValues) {
-                    tftLabelText = String(level);
+                    tftLabelText = BaseDrawing.formatFibLevelLabel(this.style, level);
                     tftLp = fibVerticalSpanLabelPlacement(this.style, x, 0, chartHeight);
                     tftGap = fibVerticalCenterLabelGap(this.style, this.group, tftLabelText, tftLp.y, tftLabelFontSize, '600');
                 }
@@ -1050,6 +1042,8 @@ class FibCirclesTool extends BaseDrawing {
             this.style.backgroundOpacity = 0.12;
         }
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
+        if (this.style.showPrices === undefined) this.style.showPrices = true;
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -1157,6 +1151,7 @@ class FibCirclesTool extends BaseDrawing {
         this._clearDrawingLabels(scales);
 
         const showLevelValues = this.style.levelsEnabled !== false;
+        const priceDecimals = (typeof this.getPriceDecimals === 'function') ? this.getPriceDecimals(this.points[0]?.y) : 2;
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1330,7 +1325,10 @@ class FibCirclesTool extends BaseDrawing {
                     .attr('font-size', '10px')
                     .attr('dominant-baseline', 'middle')
                     .style('pointer-events', 'none')
-                    .text(level.toFixed(3));
+                    .text(BaseDrawing.formatFibLevelLabel(this.style, level, {
+                        price: scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(ly) : null,
+                        priceDecimals,
+                    }));
             }
         });
 
@@ -1582,6 +1580,8 @@ class FibArcsTool extends BaseDrawing {
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
+        if (this.style.showPrices === undefined) this.style.showPrices = true;
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
         if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
@@ -1645,6 +1645,7 @@ class FibArcsTool extends BaseDrawing {
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
         const fullCirc = this.style.v9FibArcsFullCircle === true || this.style.fullCircle === true;
         const showLevelValues = this.style.levelsEnabled !== false;
+        const priceDecimals = (typeof this.getPriceDecimals === 'function') ? this.getPriceDecimals(this.points[0]?.y) : 2;
 
         const hexToRgba = (hex, alpha) => {
             if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
@@ -1761,7 +1762,10 @@ class FibArcsTool extends BaseDrawing {
                     .attr('fill', color)
                     .attr('font-size', '10px')
                     .style('pointer-events', 'none')
-                    .text(level.toFixed(3));
+                    .text(BaseDrawing.formatFibLevelLabel(this.style, level, {
+                        price: scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(y1) : null,
+                        priceDecimals,
+                    }));
             }
         });
 
@@ -1839,6 +1843,8 @@ class FibWedgeTool extends BaseDrawing {
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
+        if (this.style.showPrices === undefined) this.style.showPrices = true;
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 0, enabled: false, color: '#787b86' },
             { value: 0.236, enabled: true, color: '#f23645' },
@@ -2013,6 +2019,7 @@ class FibWedgeTool extends BaseDrawing {
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
         const showLevelValues = this.style.levelsEnabled !== false;
+        const priceDecimals = (typeof this.getPriceDecimals === 'function') ? this.getPriceDecimals(this.points[0]?.y) : 2;
 
         const enabledLevelsSorted = this.levels
             .map((l, idx) => ({
@@ -2128,7 +2135,10 @@ class FibWedgeTool extends BaseDrawing {
                     .attr('font-size', '10px')
                     .attr('text-anchor', fibPointTextAnchor(this.style))
                     .style('pointer-events', 'none')
-                    .text(level.toString());
+                    .text(BaseDrawing.formatFibLevelLabel(this.style, level, {
+                        price: scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(lp.y) : null,
+                        priceDecimals,
+                    }));
             }
         });
 
@@ -4212,9 +4222,7 @@ class TrendFibExtensionTool extends BaseDrawing {
             const showZones = !!this.style.showZones;
 
             const reverse = !!this.style.reverse;
-            const showPrices = this.style.showPrices !== false;
             const showLevelValues = this.style.levelsEnabled !== false;
-            const levelsLabelMode = (this.style.levelsLabelMode === 'percent' || this.style.levelsLabelMode === 'values') ? this.style.levelsLabelMode : 'values';
             const zoneOpacity = Math.max(0, Math.min(1, (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity))) ? parseFloat(this.style.backgroundOpacity) : 0.08));
 
             const signedMove = reverse ? (-priceMove) : priceMove;
@@ -4350,17 +4358,12 @@ class TrendFibExtensionTool extends BaseDrawing {
                 let extGap = null;
                 const extLabelFontSize = 10;
                 const priceDecimals = this.getPriceDecimals ? this.getPriceDecimals(price1) : 2;
-                const levelLabel = (() => {
-                    if (levelsLabelMode === 'percent') {
-                        return `${(level * 100).toFixed(1)}%`;
-                    }
-                    if (typeof levelObj === 'object' && levelObj.label != null && `${levelObj.label}` !== '') {
-                        return `${levelObj.label}`;
-                    }
-                    return `${level}`;
-                })();
                 if (showLevelValues) {
-                    extLabelText = showPrices ? `${levelLabel} (${priceAtLevel.toFixed(priceDecimals)})` : `${levelLabel}`;
+                    extLabelText = BaseDrawing.formatFibLevelLabel(this.style, level, {
+                        label: typeof levelObj === 'object' ? levelObj.label : null,
+                        price: priceAtLevel,
+                        priceDecimals,
+                    });
                     extLp = fibHorizontalSpanLabelPlacement(this.style, leftX, rightX);
                     extGap = fibHorizontalCenterLabelGap(this.style, this.group, extLabelText, extLp.x, extLabelFontSize, '600');
                 }

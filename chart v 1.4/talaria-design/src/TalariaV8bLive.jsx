@@ -2302,9 +2302,8 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         ? +tlStyle.fibBgOpacity
         : 0.08;
     patch.reverse = !!tlStyle.fibReverse;
-    patch.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
+    v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
-    patch.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
     patch.extendLines = !!tlStyle.fibExtendLines;
   }
@@ -7357,6 +7356,13 @@ function v9TlStylePatchFromDrawing(d) {
             fibLineType,
             fibLevelsOn: s.levelsEnabled !== false,
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
+            ...(() => {
+              const fibLevelsMode = v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices);
+              return {
+                fibLevelsMode,
+                fibPrices: v9FibShowPricesFromLevelsMode(fibLevelsMode),
+              };
+            })(),
           };
         })()
       : {}),
@@ -7410,6 +7416,13 @@ function v9TlStylePatchFromDrawing(d) {
                 : 0.12,
             fibLevelsOn: s.levelsEnabled !== false,
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition, { vertical: true }),
+            ...(() => {
+              const fibLevelsMode = v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices);
+              return {
+                fibLevelsMode,
+                fibPrices: v9FibShowPricesFromLevelsMode(fibLevelsMode),
+              };
+            })(),
           };
         })()
       : {}),
@@ -7446,6 +7459,13 @@ function v9TlStylePatchFromDrawing(d) {
             fibBgOpacity: bgOp,
             fibLevelsOn: s.levelsEnabled !== false,
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
+            ...(() => {
+              const fibLevelsMode = v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices);
+              return {
+                fibLevelsMode,
+                fibPrices: v9FibShowPricesFromLevelsMode(fibLevelsMode),
+              };
+            })(),
           };
         })()
       : {}),
@@ -7473,6 +7493,13 @@ function v9TlStylePatchFromDrawing(d) {
             fibArcsFullCircle: !!s.v9FibArcsFullCircle,
             fibLevelsOn: s.levelsEnabled !== false,
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
+            ...(() => {
+              const fibLevelsMode = v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices);
+              return {
+                fibLevelsMode,
+                fibPrices: v9FibShowPricesFromLevelsMode(fibLevelsMode),
+              };
+            })(),
           };
         })()
       : {}),
@@ -7545,6 +7572,13 @@ function v9TlStylePatchFromDrawing(d) {
             ),
             fibLevelsOn: s.levelsEnabled !== false,
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition, { vertical: true }),
+            ...(() => {
+              const fibLevelsMode = v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices);
+              return {
+                fibLevelsMode,
+                fibPrices: v9FibShowPricesFromLevelsMode(fibLevelsMode),
+              };
+            })(),
           };
         })()
       : {}),
@@ -22773,13 +22807,9 @@ const TalariaV8bLive = () => {
                           </div>
                         );
                       })()}
-                      {/* Prices */}
-                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
-                        {TlChk(tlStyle.fibPrices,"tlchk-fibPrices","Show Prices",applyTlFibPricesToggle)}
-                      </div>}
                       {/* Level values */}
                       {(() => {
-                        const fibSupportsLevelsMode = !["fibFan", "fibTime", "fibTimeZone", "fibArcs", "fibWedge", "fibCircles", "fibSpiral"].includes(tlSubTool.icon);
+                        const fibSupportsLevelsMode = tlSubTool.icon !== "fibSpiral";
                         if (!fibSupportsLevelsMode) {
                           return (
                             <div style={{ padding:"6px 0" }}>

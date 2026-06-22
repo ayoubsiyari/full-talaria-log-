@@ -100,9 +100,7 @@ class FibonacciRetracementTool extends BaseDrawing {
         const priceDecimals = this.getPriceDecimals(p1.y);
 
         const reverse = !!this.style.reverse;
-        const showPrices = this.style.showPrices !== false;
         const showLevelValues = this.style.levelsEnabled !== false;
-        const levelsLabelMode = (this.style.levelsLabelMode === 'percent' || this.style.levelsLabelMode === 'values') ? this.style.levelsLabelMode : 'values';
         const zonesEnabled = !!this.style.showZones;
         const zoneOpacity = Math.max(0, Math.min(1, (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity))) ? parseFloat(this.style.backgroundOpacity) : 0.08));
 
@@ -111,14 +109,11 @@ class FibonacciRetracementTool extends BaseDrawing {
             return p1.y + (priceDiff * (1 - levelValue));
         };
 
-        const formatLevelText = (level) => {
-            if (levelsLabelMode === 'percent') {
-                const pct = level.value * 100;
-                const pctText = (Math.round(pct * 100) / 100).toString();
-                return `${pctText}%`;
-            }
-            return (level.label != null && level.label !== '') ? `${level.label}` : `${level.value}`;
-        };
+        const formatLevelText = (level, priceAtLevel) => BaseDrawing.formatFibLevelLabel(this.style, level.value, {
+            label: level.label,
+            price: priceAtLevel,
+            priceDecimals,
+        });
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
         const globalLevelsWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : null;
@@ -180,8 +175,7 @@ class FibonacciRetracementTool extends BaseDrawing {
             let centerGap = null;
             const labelFontSize = 11;
             if (showLevelValues) {
-                const baseText = formatLevelText(level);
-                finalText = showPrices ? `${baseText} (${priceAtLevel.toFixed(priceDecimals)})` : baseText;
+                finalText = formatLevelText(level, priceAtLevel);
                 labelPlacement = fibHorizontalSpanLabelPlacement(this.style, fibX1, fibX2);
                 centerGap = fibHorizontalCenterLabelGap(this.style, this.group, finalText, labelPlacement.x, labelFontSize, '600');
             }
@@ -369,9 +363,7 @@ class FibonacciExtensionTool extends BaseDrawing {
         const priceDecimals = this.getPriceDecimals(p1.y);
 
         const reverse = !!this.style.reverse;
-        const showPrices = this.style.showPrices !== false;
         const showLevelValues = this.style.levelsEnabled !== false;
-        const levelsLabelMode = (this.style.levelsLabelMode === 'percent' || this.style.levelsLabelMode === 'values') ? this.style.levelsLabelMode : 'values';
         const zonesEnabled = !!this.style.showZones;
         const zoneOpacity = Math.max(0, Math.min(1, (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity))) ? parseFloat(this.style.backgroundOpacity) : 0.08));
 
@@ -380,14 +372,11 @@ class FibonacciExtensionTool extends BaseDrawing {
             return p1.y + (priceDiff * (1 - levelValue));
         };
 
-        const formatLevelText = (level) => {
-            if (levelsLabelMode === 'percent') {
-                const pct = level.value * 100;
-                const pctText = (Math.round(pct * 100) / 100).toString();
-                return `${pctText}%`;
-            }
-            return (level.label != null && level.label !== '') ? `${level.label}` : `${level.value}`;
-        };
+        const formatLevelText = (level, priceAtLevel) => BaseDrawing.formatFibLevelLabel(this.style, level.value, {
+            label: level.label,
+            price: priceAtLevel,
+            priceDecimals,
+        });
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
         const globalLevelsWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : null;
@@ -447,8 +436,7 @@ class FibonacciExtensionTool extends BaseDrawing {
             let centerGap = null;
             const labelFontSize = 11;
             if (showLevelValues) {
-                const baseText = formatLevelText(level);
-                finalText = showPrices ? `${baseText} (${priceAtLevel.toFixed(priceDecimals)})` : baseText;
+                finalText = formatLevelText(level, priceAtLevel);
                 labelPlacement = fibHorizontalSpanLabelPlacement(this.style, fibX1, fibX2);
                 centerGap = fibHorizontalCenterLabelGap(this.style, this.group, finalText, labelPlacement.x, labelFontSize, '600');
             }
