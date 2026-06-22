@@ -19548,8 +19548,34 @@ class Chart {
         return typeof this._wheelBurstUntil === 'number' && performance.now() < this._wheelBurstUntil;
     }
 
+  /** Smooth replay tick animation (forming candle) — one paint per frame, lite overlays. */
+    _isReplaySmoothTickPlayback() {
+        const rs = this.replaySystem;
+        return !!(rs && rs.isPlaying && rs.animatingCandle && !rs.fastMode
+            && typeof rs.getPlaybackMode === 'function' && rs.getPlaybackMode() === 'tick');
+    }
+
+    _scheduleReplayTickRender() {
+        if (this._replayTickRenderRaf != null) return;
+        this._replayTickRenderRaf = requestAnimationFrame(() => {
+            this._replayTickRenderRaf = null;
+            this.renderPending = true;
+            this.render();
+        });
+    }
+
+    _flushReplayTickRender() {
+        if (this._replayTickRenderRaf != null) {
+            cancelAnimationFrame(this._replayTickRenderRaf);
+            this._replayTickRenderRaf = null;
+        }
+        this.renderPending = true;
+        this.render();
+    }
+
     /** Pan, inertia, wheel burst, axis drag, or panel resize — lightweight paint until interaction settles. */
     _isInteractionFastRender() {
+        if (this._isReplaySmoothTickPlayback()) return true;
         if (this._chartPanRenderLoopActive) return true;
         if (this._isChartViewPanning()) return true;
         if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass) return true;
@@ -19934,6 +19960,7 @@ class Chart {
      * Fully zoomed-out pan alone is smooth; this covers the transition zone.
      */
     _shouldUseInteractionLitePaint(visibleCount) {
+        if (this._isReplaySmoothTickPlayback()) return true;
         if (this._isZoomedOutPaint(visibleCount)) return true;
         const wheelOut = this._isWheelZoomBurst()
             && !this._wheelBurstFinalPass
@@ -20563,7 +20590,16 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
-        if (replayPlaying || inertialPan || panSyncBurst) {
+        if (replayPlaying) {
+            if (this._isReplaySmoothTickPlayback()) {
+                this._scheduleReplayTickRender();
+                return;
+            }
+            this.renderPending = false;
+            this.render();
+            return;
+        }
+        if (inertialPan || panSyncBurst) {
             this.renderPending = false;
             this.render();
             return;

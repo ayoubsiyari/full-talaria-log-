@@ -2842,6 +2842,73 @@ class ReplaySystem {
         }
     }
 
+    /** Smooth tick-by-tick candle animation (not fast-mode candle jumps). */
+    _isReplaySmoothTickAnim() {
+        return !!(this.isPlaying && this.animatingCandle && !this.fastMode
+            && typeof this.getPlaybackMode === 'function'
+            && this.getPlaybackMode() === 'tick');
+    }
+
+    /** Patch forming OHLC in-place — avoids slice + resample on every animation tick. */
+    _patchChartFormingCandle(chart, ac) {
+        if (!chart || !ac) return false;
+        const formTs = Number(ac.t);
+        if (!Number.isFinite(formTs)) return false;
+        const o = Number(ac.o != null ? ac.o : ac.open);
+        const h = Number(ac.h != null ? ac.h : ac.high);
+        const l = Number(ac.l != null ? ac.l : ac.low);
+        const c = Number(ac.c != null ? ac.c : ac.close);
+        const v = Number(ac.v != null ? ac.v : ac.volume) || 0;
+        if (![o, h, l, c].every(Number.isFinite)) return false;
+
+        const rd = chart.rawData;
+        if (!Array.isArray(rd) || !rd.length) return false;
+        const lastRaw = rd[rd.length - 1];
+        if (!lastRaw || Math.abs(Number(lastRaw.t) - formTs) >= 1000) return false;
+
+        lastRaw.o = o;
+        lastRaw.h = h;
+        lastRaw.l = l;
+        lastRaw.c = c;
+        lastRaw.v = v;
+
+        const dd = chart.data;
+        if (Array.isArray(dd) && dd.length > 0) {
+            const last = dd[dd.length - 1];
+            if (last) {
+                last.h = Math.max(Number(last.h), h);
+                last.l = Math.min(Number(last.l), l);
+                last.c = c;
+                last.v = v;
+            }
+        }
+        return true;
+    }
+
+    _scheduleChartReplayRender(chart) {
+        if (!chart) return;
+        if (typeof chart._scheduleReplayTickRender === 'function') {
+            chart._scheduleReplayTickRender();
+            return;
+        }
+        chart.renderPending = true;
+        chart.render();
+    }
+
+    _flushAllReplayTickRenders() {
+        const flush = (c) => {
+            if (c && typeof c._flushReplayTickRender === 'function') {
+                c._flushReplayTickRender();
+            }
+        };
+        flush(this.chart);
+        if (window.panelManager && Array.isArray(window.panelManager.panels)) {
+            window.panelManager.panels.forEach((panel) => {
+                flush(panel && panel.chartInstance);
+            });
+        }
+    }
+
     updateChartData(autoScroll = true) {
         if (!this.fullRawData || this.fullRawData.length === 0) {
             console.error('❌ No fullRawData available');
@@ -2941,11 +3008,18 @@ class ReplaySystem {
         }
         this._applyPlaybackViewportLock(this.chart);
         
-        this.chart.renderPending = true;
-        this.chart.render();
+        if (this.isPlaying && this._isReplaySmoothTickAnim()
+            && typeof this.chart._scheduleReplayTickRender === 'function') {
+            this.chart._scheduleReplayTickRender();
+        } else {
+            this.chart.renderPending = true;
+            this.chart.render();
+        }
 
-        if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
-            this.chart._syncReplayPlayheadCrosshairValues();
+        if (!this.isPlaying || (this.tickProgress || 0) % 8 === 0) {
+            if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
+                this.chart._syncReplayPlayheadCrosshairValues();
+            }
         }
 
         if (!this.isPlaying) {
@@ -4283,16 +4357,24 @@ class ReplaySystem {
             this.chart.constrainOffset();
         }
         this._applyPlaybackViewportLock(this.chart);
-        this.chart.renderPending = true;
-        this.chart.render();
+        if (this.isPlaying && typeof this.chart._scheduleReplayTickRender === 'function') {
+            this.chart._scheduleReplayTickRender();
+        } else {
+            this.chart.renderPending = true;
+            this.chart.render();
+        }
 
-        if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
-            this.chart._syncReplayPlayheadCrosshairValues();
+        if (!this.isPlaying || (this.tickProgress || 0) % 8 === 0) {
+            if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
+                this.chart._syncReplayPlayheadCrosshairValues();
+            }
         }
 
         // Same as updateChartData: floating PnL / SL-TP logic must track the latest candle.
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            this.chart.orderManager.updatePositions();
+            if (!this.isPlaying || (this.tickProgress || 0) % 12 === 0) {
+                this.chart.orderManager.updatePositions();
+            }
         }
 
         // Sync panels (throttle every 3rd update to keep fast mode responsive)
@@ -4708,12 +4790,14 @@ class ReplaySystem {
             this.syncPanelChartsWithAnimatedCandle(this.chart.rawData, detail.animatedCandle);
         }
 
-        if (this.tickProgress % 18 === 0) {
+        if (this.tickProgress % 24 === 0) {
             this._runReplayIndicatorRecalc();
         }
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            this.chart.orderManager.updatePositions();
+            if ((this.tickProgress || 0) % 12 === 0) {
+                this.chart.orderManager.updatePositions();
+            }
         }
 
         const tn = performance.now();
@@ -4805,16 +4889,20 @@ class ReplaySystem {
                         pc.manualCenterPrice = null;
                         pc.manualRange = null;
                     }
-                    pc.rawData = [...slicedRaw];
-                    pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
+                    if (!this._patchChartFormingCandle(pc, animatedCandle)) {
+                        pc.rawData = slicedRaw;
+                        pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
+                    }
                     appliedSlice = true;
                 } else if (hasOwnData) {
-                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
-                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
-                    pc.rawData = panelSlice;
-                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                    if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
-                        pc._trimLastDataBarToReplayPlayhead();
+                    if (!this._patchChartFormingCandle(pc, animatedCandle)) {
+                        const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
+                        const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                        pc.rawData = panelSlice;
+                        pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
+                        if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
+                            pc._trimLastDataBarToReplayPlayhead();
+                        }
                     }
                     appliedSlice = true;
                 }
@@ -4823,7 +4911,7 @@ class ReplaySystem {
                     return;
                 }
 
-                if (this.tickProgress % 18 === 0) {
+                if (this.tickProgress % 24 === 0) {
                     this._runReplayIndicatorRecalc(pc);
                 }
 
@@ -4836,7 +4924,7 @@ class ReplaySystem {
                     }
                 }
 
-                if (pc.render) pc.render();
+                this._scheduleChartReplayRender(pc);
             } catch (error) {
                 // Silent fail during animation to prevent lag
             }
@@ -4848,6 +4936,8 @@ class ReplaySystem {
      */
     completeTickAnimation() {
         this.stopTickAnimation();
+        this._cachedFormingTs = null;
+        this._cachedFormingTargetIdx = null;
         
         // ALWAYS advance by 1 raw candle for smooth animation on all TFs
         // The display timeframe only affects how data is shown, not playback
@@ -4968,6 +5058,8 @@ class ReplaySystem {
                 if (pc && pc !== this.chart) this._flushReplayIndicatorRecalc(pc);
             });
         }
+
+        this._flushAllReplayTickRenders();
 
         this._flushReplayStateToSession();
     }
@@ -5847,12 +5939,12 @@ class ReplaySystem {
         }
 
         if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
-        if (typeof chart.render === 'function') {
-            chart.renderPending = true;
-            chart.render();
-        }
+        this._scheduleChartReplayRender(chart);
         if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function') {
-            try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
+            const tp = this.tickProgress || 0;
+            if (!this.isPlaying || tp % 12 === 0) {
+                try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
+            }
         }
     }
 
@@ -5949,7 +6041,9 @@ class ReplaySystem {
         if (hasAnim) {
             const formTs = Number(anim.t);
             let targetIdx = -1;
-            if (typeof chart.findGoToTargetIndex === 'function') {
+            if (this._cachedFormingTs === formTs && Number.isFinite(this._cachedFormingTargetIdx)) {
+                targetIdx = this._cachedFormingTargetIdx;
+            } else if (typeof chart.findGoToTargetIndex === 'function') {
                 targetIdx = chart.findGoToTargetIndex(frd, formTs);
             }
             if (targetIdx < 0) {
@@ -5962,6 +6056,9 @@ class ReplaySystem {
                 }
             }
             if (targetIdx < 0) return false;
+
+            this._cachedFormingTs = formTs;
+            this._cachedFormingTargetIdx = targetIdx;
 
             const baseIdx = Math.max(0, targetIdx - 1);
             this.currentIndex = Math.max(this.sessionStartIndex || 0, baseIdx);
@@ -5982,12 +6079,28 @@ class ReplaySystem {
                 v: Number(anim.v) || 0,
             };
 
+            const tp = this.tickProgress || 0;
+            const pathTarget = (Array.isArray(this.fullRawData) && targetIdx >= 0 && this.fullRawData[targetIdx])
+                ? this.fullRawData[targetIdx]
+                : ((targetIdx >= 0 && frd[targetIdx]) ? frd[targetIdx] : null);
+
+            if (tp > 0 && this._patchChartFormingCandle(chart, animatedCandle)) {
+                if (tp % 8 === 0 && typeof chart.bumpDataVersion === 'function') {
+                    chart.bumpDataVersion();
+                }
+                if (this.autoScrollEnabled && !this._replayUserOwnsViewport(chart) && tp % 8 === 0) {
+                    if (chart.fitToView) chart.fitToView();
+                }
+                this._syncMirrorAnimatingCandleState(detail, anim, pathTarget);
+                this._finishMultichartMirrorRender(chart);
+                return true;
+            }
+
             const sliced = frd.slice(0, targetIdx);
             sliced.push(animatedCandle);
             chart.rawData = sliced;
 
-            const tp = this.tickProgress || 0;
-            if (chart.data && chart.data.length > 0 && tp > 1) {
+            if (chart.data && chart.data.length > 0 && tp > 0) {
                 const last = chart.data[chart.data.length - 1];
                 last.h = Math.max(last.h, animatedCandle.h);
                 last.l = Math.min(last.l, animatedCandle.l);
@@ -6007,9 +6120,6 @@ class ReplaySystem {
             if (this.autoScrollEnabled && !this._replayUserOwnsViewport(chart) && tp > 0 && tp % 8 === 0) {
                 if (chart.fitToView) chart.fitToView();
             }
-            const pathTarget = (Array.isArray(this.fullRawData) && targetIdx >= 0 && this.fullRawData[targetIdx])
-                ? this.fullRawData[targetIdx]
-                : ((targetIdx >= 0 && frd[targetIdx]) ? frd[targetIdx] : null);
             this._syncMirrorAnimatingCandleState(detail, anim, pathTarget);
         } else {
             const lastT = Number(frd[frd.length - 1]?.t);
