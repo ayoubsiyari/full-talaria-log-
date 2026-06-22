@@ -6919,10 +6919,16 @@ const KPI_CONFIG = {
   riskOvershootPct: 1.15,
   recoveryFactorGood: 3.0,
   shapeBands: { downsideHeavy: 1.2, upsideTilted: 1.6 },
-  concentrationWarn: 0.55,
+  concentrationWarn: 0.50,
   weeksBasis: "calendar",
   nTarget: 100,
+  minTradesForConfidence: 200,
+  profitConcentrationTopPct: 0.05,
+  profitRobustnessSecondTopPct: 0.10,
+  profitConcentrationThresholdPct: 50,
+  profitRobustnessFloorPct: 50,
   smoothnessGood: 0.9,
+  propNearMissUsedPct: 0.9,
 };
 const btDashNumber = (value) => {
   const n = Number(value);
@@ -7382,28 +7388,37 @@ function btDashComputeMetrics(session, filters = {}) {
     const mae = btDashNumber(trade.mae_r ?? trade.maeR ?? trade.mae);
     return mfe != null || mae != null;
   });
-  const capital = Math.max(1000, Number(session.capital) || 10000);
+  const propConfig = btDashPropConfig(session) || {};
+  const capital = Math.max(1000, Number(propConfig.capital ?? session.capital) || 10000);
   const goalConfig = btDashGoalConfig(session);
-  const propConfig = btDashPropConfig(session);
   let equity = capital;
   let peak = capital;
   let trough = capital;
   const equityPoints = [{ i: 0, value: equity }];
+  const rEquityPoints = [{ i: 0, value: 0 }];
   const drawdownPoints = [{ i: 0, value: 0 }];
   const dailyMap = new Map();
-  let grossWin = 0, grossLoss = 0, wins = 0, losses = 0, rSum = 0, maxDD = 0;
+  let grossWin = 0, grossLoss = 0, wins = 0, losses = 0, breakevens = 0, rSum = 0, maxDD = 0;
+  let maxDDPeakAtOnset = capital;
+  let maxDDTroughEquity = capital;
   rows.forEach((t, i) => {
     equity += t.pnl;
     peak = Math.max(peak, equity);
     trough = Math.min(trough, equity);
     const dd = peak - equity;
-    maxDD = Math.max(maxDD, dd);
+    if (dd > maxDD) {
+      maxDD = dd;
+      maxDDPeakAtOnset = peak;
+      maxDDTroughEquity = equity;
+    }
     equityPoints.push({ i: i + 1, value: equity });
     drawdownPoints.push({ i: i + 1, value: -dd });
     dailyMap.set(t.date, (dailyMap.get(t.date) || 0) + t.pnl);
     if (t.pnl > 0) { wins += 1; grossWin += t.pnl; }
     else if (t.pnl < 0) { losses += 1; grossLoss += Math.abs(t.pnl); }
+    else breakevens += 1;
     rSum += t.rMultiple;
+    rEquityPoints.push({ i: i + 1, value: rSum });
   });
   const totalPnl = rows.reduce((sum, t) => sum + t.pnl, 0);
   const avgPnl = rows.length ? totalPnl / rows.length : 0;
@@ -7420,6 +7435,13 @@ function btDashComputeMetrics(session, filters = {}) {
     { label: "2 to 3", v: rows.filter(t => t.rMultiple >= 2 && t.rMultiple < 3).length },
     { label: "> 3R", v: rows.filter(t => t.rMultiple >= 3).length },
   ];
+  const rMedianSeries = rows
+    .map(t => btDashNumber(t.rMultiple ?? t.actual_rr_net ?? t.actualRR))
+    .filter(value => value != null)
+    .sort((a, b) => a - b);
+  const rMedian = rMedianSeries.length
+    ? (rMedianSeries[Math.floor((rMedianSeries.length - 1) / 2)] + rMedianSeries[Math.ceil((rMedianSeries.length - 1) / 2)]) / 2
+    : 0;
   let curWin = 0, curLoss = 0, longestWin = 0, longestLoss = 0;
   rows.forEach(t => {
     if (t.pnl > 0) { curWin += 1; curLoss = 0; }
@@ -7437,7 +7459,10 @@ function btDashComputeMetrics(session, filters = {}) {
   const lastTradeDate = sortedRows[sortedRows.length - 1]?.date ? btDashDate(sortedRows[sortedRows.length - 1].date) : firstTradeDate;
   const rangeDays = firstTradeDate && lastTradeDate ? Math.max(1, Math.round((lastTradeDate - firstTradeDate) / 86400000) + 1) : 1;
   const weeksInRange = Math.max(1 / 7, rangeDays / 7);
-  const maxDDPct = capital ? (maxDD / capital) * 100 : 0;
+  const maxDDBase = maxDDPeakAtOnset > 0 ? maxDDPeakAtOnset : capital;
+  const maxDDWiped = maxDD > 0 && maxDDTroughEquity <= 0;
+  const maxDDPctRaw = maxDDBase ? (maxDD / maxDDBase) * 100 : 0;
+  const maxDDPct = maxDDWiped ? 100 : Math.max(0, Math.min(100, maxDDPctRaw));
   const annualizedReturnPct = rangeDays ? (Math.pow(Math.max(0.0001, 1 + totalPnl / capital), KPI_CONFIG.periodsPerYear / Math.max(1, rangeDays)) - 1) * 100 : null;
   const dailyReturnMap = new Map();
   let startOfDayEquity = capital;
@@ -7453,6 +7478,9 @@ function btDashComputeMetrics(session, filters = {}) {
     returnPct: row.startEquity ? (row.pnl / row.startEquity) * 100 : 0,
     returnRaw: row.startEquity ? row.pnl / row.startEquity : 0,
   }));
+  const dayGreenCount = dailyReturnRows.filter(day=>Number(day.pnl)>0).length;
+  const dayRedCount = dailyReturnRows.filter(day=>Number(day.pnl)<0).length;
+  const dayFlatCount = Math.max(0, dailyReturnRows.length - dayGreenCount - dayRedCount);
   const dailyReturnSeries = dailyReturnRows.map(row=>row.returnRaw);
   const riskAdjBasis = String(session.riskAdjBasis || session.risk_adj_basis || (session.continuousDailyEquity ? "daily" : KPI_CONFIG.riskAdjBasis)).toLowerCase() === "daily" ? "daily" : "per-trade";
   const tradeReturnSeries = sortedRows
@@ -7488,18 +7516,52 @@ function btDashComputeMetrics(session, filters = {}) {
   let dayPeak = capital;
   let underwaterStart = null;
   let longestUnderwaterDays = 0;
+  let underwaterDayCount = 0;
   dailyReturnRows.forEach((day, index) => {
     dayCloseEquity += Number(day.pnl) || 0;
     if (dayCloseEquity >= dayPeak) {
       if (underwaterStart != null) longestUnderwaterDays = Math.max(longestUnderwaterDays, index - underwaterStart + 1);
       dayPeak = dayCloseEquity;
       underwaterStart = null;
-    } else if (underwaterStart == null) underwaterStart = index;
+    } else {
+      underwaterDayCount += 1;
+      if (underwaterStart == null) underwaterStart = index;
+    }
   });
   if (underwaterStart != null) longestUnderwaterDays = Math.max(longestUnderwaterDays, dailyReturnRows.length - underwaterStart);
-  const recoveryFactor = maxDD > 0 ? Math.abs(totalPnl) / maxDD : null;
-  const top5Profit = rows.filter(t=>Number(t.pnl)>0).sort((a,b)=>(Number(b.pnl)||0)-(Number(a.pnl)||0)).slice(0,5).reduce((sum,t)=>sum+(Number(t.pnl)||0),0);
-  const top5ProfitShare = totalPnl > 0 ? top5Profit / Math.max(1, totalPnl) * 100 : null;
+  const timeUnderwaterPct = dailyReturnRows.length ? (underwaterDayCount / dailyReturnRows.length) * 100 : 0;
+  const recoveryFactor = maxDD > 0 ? totalPnl / maxDD : null;
+  const profitConcentrationTopPct = KPI_CONFIG.profitConcentrationTopPct ?? 0.05;
+  const profitRobustnessSecondTopPct = KPI_CONFIG.profitRobustnessSecondTopPct ?? 0.10;
+  const profitConcentrationThresholdPct = Math.max(0, Math.min(100, Number(KPI_CONFIG.profitConcentrationThresholdPct ?? ((KPI_CONFIG.concentrationWarn ?? 0.50) * 100)) || 50));
+  const profitRobustnessFloorPct = Math.max(0, Math.min(100, Number(KPI_CONFIG.profitRobustnessFloorPct ?? 50) || 50));
+  const profitConcentrationBaselinePct = Math.max(0, Math.min(100, profitRobustnessSecondTopPct * 100));
+  const sortedProfitRows = rows
+    .filter(t=>Number(t.pnl)>0)
+    .sort((a,b)=>(Number(b.pnl)||0)-(Number(a.pnl)||0));
+  const topProfitCountForPct = (pct) => {
+    if (!rows.length || !sortedProfitRows.length) return 0;
+    return Math.min(sortedProfitRows.length, Math.max(1, Math.ceil(rows.length * pct)));
+  };
+  const profitConcentrationTopN = topProfitCountForPct(profitConcentrationTopPct);
+  const profitRobustnessSecondTopN = topProfitCountForPct(profitRobustnessSecondTopPct);
+  const topProfitRows = sortedProfitRows.slice(0, profitConcentrationTopN);
+  const top10ProfitRows = sortedProfitRows.slice(0, profitRobustnessSecondTopN);
+  const top5Profit = topProfitRows.reduce((sum,t)=>sum+(Number(t.pnl)||0),0);
+  const top10Profit = top10ProfitRows.reduce((sum,t)=>sum+(Number(t.pnl)||0),0);
+  const grossProfitForConcentration = rows.reduce((sum,t)=>sum + Math.max(0, Number(t.pnl)||0), 0);
+  const top5ProfitRest = Math.max(0, grossProfitForConcentration - top5Profit);
+  const top5ProfitShare = grossProfitForConcentration > 0 ? top5Profit / grossProfitForConcentration * 100 : null;
+  const top10ProfitShare = grossProfitForConcentration > 0 ? top10Profit / grossProfitForConcentration * 100 : null;
+  const nextTop5To10Profit = Math.max(0, top10Profit - top5Profit);
+  const nextTop5To10ProfitShare = grossProfitForConcentration > 0 ? nextTop5To10Profit / grossProfitForConcentration * 100 : null;
+  const restAfterTop10Profit = Math.max(0, grossProfitForConcentration - top10Profit);
+  const restAfterTop10ProfitShare = grossProfitForConcentration > 0 ? restAfterTop10Profit / grossProfitForConcentration * 100 : null;
+  const netWithoutTop5Profit = totalPnl - top5Profit;
+  const netWithoutTop10Profit = totalPnl - top10Profit;
+  const profitRobustnessHoldPct = totalPnl > 0 ? Math.max(0, netWithoutTop10Profit) / Math.max(1, totalPnl) * 100 : null;
+  const profitConcentrationConcentrated = top10ProfitShare != null && top10ProfitShare >= profitConcentrationThresholdPct;
+  const profitRobustnessClearsFloor = profitRobustnessHoldPct != null && profitRobustnessHoldPct >= profitRobustnessFloorPct;
   const disciplineBreachRows = rows.map(t=>({trade:t, breach:btDashDisciplineBreach(t)}));
   const disciplineBreachCounts = disciplineBreachRows.reduce((acc,row)=>{
     acc.stopWidenings += row.breach.stopWidenings || 0;
@@ -7519,9 +7581,10 @@ function btDashComputeMetrics(session, filters = {}) {
   const journalStateRows = rows.map(t=>({trade:t, ...btDashJournalOutcome(t)}));
   const followedTrades = journalStateRows.filter(row=>row.state==="followed").map(row=>row.trade);
   const brokenTrades = journalStateRows.filter(row=>row.state==="violated").map(row=>row.trade);
+  const missedPlanTrades = journalStateRows.filter(row=>row.state==="missed").map(row=>row.trade);
   const notJournaledTrades = journalStateRows.filter(row=>row.state==="notJournaled").map(row=>row.trade);
   const avgRFor = list => list.length ? list.reduce((sum,t)=>sum+(Number(t.rMultiple)||0),0) / list.length : 0;
-  const journaledRuleTrades = followedTrades.length + brokenTrades.length;
+  const journaledRuleTrades = followedTrades.length + brokenTrades.length + missedPlanTrades.length;
   const ruleAdherence = journaledRuleTrades ? followedTrades.length / journaledRuleTrades * 100 : null;
   const ruleAdherenceCoverage = rows.length ? journaledRuleTrades / rows.length * 100 : null;
   const breakCostR = brokenTrades.length ? avgRFor(followedTrades) - avgRFor(brokenTrades) : 0;
@@ -7539,22 +7602,27 @@ function btDashComputeMetrics(session, filters = {}) {
   const payoff = avgLossPnl ? avgWinPnl / avgLossPnl : null;
   const breakevenWR = payoff ? 1 / (1 + payoff) * 100 : null;
   const winRateCushion = breakevenWR == null ? null : (rows.length ? (wins / rows.length * 100) : 0) - breakevenWR;
-  const equityValues = equityPoints.map(point=>Number(point.value)||0);
-  const xAvg = equityValues.length > 1 ? (equityValues.length - 1) / 2 : 0;
-  const yAvg = equityValues.length ? equityValues.reduce((sum,value)=>sum+value,0) / equityValues.length : 0;
-  let cov = 0, varX = 0, ssTot = 0, ssRes = 0;
-  equityValues.forEach((value,index) => {
-    cov += (index - xAvg) * (value - yAvg);
-    varX += Math.pow(index - xAvg, 2);
-  });
-  const slope = varX ? cov / varX : 0;
-  const intercept = yAvg - slope * xAvg;
-  equityValues.forEach((value,index) => {
-    const fit = intercept + slope * index;
-    ssTot += Math.pow(value - yAvg, 2);
-    ssRes += Math.pow(value - fit, 2);
-  });
-  const equitySmoothness = ssTot ? Math.max(0, Math.min(1, 1 - ssRes / ssTot)) : null;
+  const pathSmoothnessFor = (series) => {
+    const values = (series || []).map(point => Number(point?.value ?? point)).filter(Number.isFinite);
+    if (values.length < 3) return null;
+    const xAvg = (values.length - 1) / 2;
+    const yAvg = values.reduce((sum,value)=>sum+value,0) / values.length;
+    let cov = 0, varX = 0, ssTot = 0, ssRes = 0;
+    values.forEach((value,index) => {
+      cov += (index - xAvg) * (value - yAvg);
+      varX += Math.pow(index - xAvg, 2);
+    });
+    const slope = varX ? cov / varX : 0;
+    const intercept = yAvg - slope * xAvg;
+    values.forEach((value,index) => {
+      const fit = intercept + slope * index;
+      ssTot += Math.pow(value - yAvg, 2);
+      ssRes += Math.pow(value - fit, 2);
+    });
+    return ssTot ? Math.max(0, Math.min(1, 1 - ssRes / ssTot)) : null;
+  };
+  const equitySmoothness = pathSmoothnessFor(equityPoints);
+  const rEquitySmoothness = pathSmoothnessFor(rEquityPoints);
   let maxDDEpisodeStart = null;
   let maxDDEpisodeDuration = 0;
   let ddPeak = capital;
@@ -7574,8 +7642,93 @@ function btDashComputeMetrics(session, filters = {}) {
       }
     }
   });
+  const recoveryPeriods = [];
+  let recoveryEquity = capital;
+  let recoveryPeak = capital;
+  let activeRecovery = null;
+  dailyReturnRows.forEach((day,index) => {
+    recoveryEquity += Number(day.pnl) || 0;
+    if (recoveryEquity >= recoveryPeak) {
+      if (activeRecovery) {
+        recoveryPeriods.push({
+          startDate: activeRecovery.startDate,
+          endDate: day.date,
+          days: Math.max(1, index - activeRecovery.startIndex + 1),
+          depth: activeRecovery.depth,
+          recovered: true,
+        });
+        activeRecovery = null;
+      }
+      recoveryPeak = recoveryEquity;
+    } else {
+      if (!activeRecovery) {
+        activeRecovery = {
+          startIndex: index,
+          startDate: day.date,
+          peak: recoveryPeak,
+          depth: recoveryPeak - recoveryEquity,
+        };
+      }
+      activeRecovery.depth = Math.max(activeRecovery.depth, recoveryPeak - recoveryEquity);
+    }
+  });
+  const recoveredPeriods = recoveryPeriods.filter(period => period.recovered);
+  const avgRecoveryDays = recoveredPeriods.length
+    ? Math.round(recoveredPeriods.reduce((sum,period)=>sum + period.days,0) / recoveredPeriods.length)
+    : 0;
+  const longestRecoveryDays = recoveredPeriods.length
+    ? Math.max(...recoveredPeriods.map(period => period.days))
+    : 0;
+  const currentRecoveryDays = activeRecovery ? Math.max(1, dailyReturnRows.length - activeRecovery.startIndex) : 0;
+  const currentRecoveryState = activeRecovery ? `${currentRecoveryDays}d underwater` : "Recovered";
   const tradeFrequency = rows.length / weeksInRange;
-  const sampleConfidence = Math.min(100, rows.length / KPI_CONFIG.nTarget * 100);
+  const weekKeyFor = (value) => {
+    const raw = value instanceof Date ? value : new Date(typeof value === "string" ? value.replace(" ", "T") : value);
+    if (Number.isNaN(raw.getTime())) return null;
+    const monday = new Date(Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate()));
+    const day = monday.getUTCDay() || 7;
+    monday.setUTCDate(monday.getUTCDate() - day + 1);
+    return monday.toISOString().slice(0, 10);
+  };
+  const weeklyTradeMap = rows.reduce((acc, t) => {
+    const key = weekKeyFor(t.date ?? t.entryTime ?? t.entry_time ?? t.calendar ?? t.exitTime);
+    if (!key) return acc;
+    acc.set(key, (acc.get(key) || 0) + 1);
+    return acc;
+  }, new Map());
+  const weeklyTradeCounts = [...weeklyTradeMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([week, count]) => ({ week, count }));
+  const sortedWeeklyCounts = weeklyTradeCounts.map(row => row.count).sort((a, b) => a - b);
+  const quietestWeekTrades = sortedWeeklyCounts.length ? sortedWeeklyCounts[0] : 0;
+  const busiestWeekTrades = sortedWeeklyCounts.length ? sortedWeeklyCounts[sortedWeeklyCounts.length - 1] : 0;
+  const typicalWeekTrades = sortedWeeklyCounts.length
+    ? (sortedWeeklyCounts[Math.floor((sortedWeeklyCounts.length - 1) / 2)] + sortedWeeklyCounts[Math.ceil((sortedWeeklyCounts.length - 1) / 2)]) / 2
+    : 0;
+  const weeklyPnlMap = rows.reduce((acc, t) => {
+    const key = weekKeyFor(t.date ?? t.entryTime ?? t.entry_time ?? t.calendar ?? t.exitTime);
+    if (!key) return acc;
+    acc.set(key, (acc.get(key) || 0) + (Number(t.pnl) || 0));
+    return acc;
+  }, new Map());
+  const weeklyPnlRows = [...weeklyPnlMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([week, pnl]) => ({ week, pnl }));
+  const profitableWeeks = weeklyPnlRows.filter(row => Number(row.pnl) > 0).length;
+  const weekCount = weeklyPnlRows.length;
+  const durationAvg = rows.length ? Math.round(rows.reduce((sum, t) => sum + (Number(t.duration) || 0), 0) / rows.length) : 0;
+  const avgDurationFor = (list) => list.length ? Math.round(list.reduce((sum, t) => sum + (Number(t.duration) || 0), 0) / list.length) : 0;
+  const winHoldAvg = avgDurationFor(rows.filter(t => Number(t.pnl) > 0));
+  const lossHoldAvg = avgDurationFor(rows.filter(t => Number(t.pnl) < 0));
+  const sampleConfidenceTarget = KPI_CONFIG.minTradesForConfidence || KPI_CONFIG.nTarget;
+  const sampleConfidence = Math.min(100, rows.length / sampleConfidenceTarget * 100);
+  const expectancySampleCount = tradeReturnSeries.length;
+  const expectancyMeanForCi = expectancySampleCount
+    ? tradeReturnSeries.reduce((sum, value) => sum + value, 0) / expectancySampleCount
+    : 0;
+  const expectancyVariance = expectancySampleCount > 1
+    ? tradeReturnSeries.reduce((sum, value) => sum + Math.pow(value - expectancyMeanForCi, 2), 0) / (expectancySampleCount - 1)
+    : 0;
+  const expectancyCiHalf = expectancySampleCount > 1 ? 1.96 * Math.sqrt(expectancyVariance) / Math.sqrt(expectancySampleCount) : 0;
+  const expectancyCiLow = expectancySampleCount > 1 ? expectancyMeanForCi - expectancyCiHalf : expectancyMeanForCi;
+  const expectancyCiHigh = expectancySampleCount > 1 ? expectancyMeanForCi + expectancyCiHalf : expectancyMeanForCi;
+  const expectancyCiClearsZero = expectancySampleCount > 1 && expectancyCiLow > 0;
   const calmarAnnualized = maxDDPct > 0 && annualizedReturnPct != null ? annualizedReturnPct / maxDDPct : null;
   const plannedRows = rows.map(t=>{
     const entry = btDashNumber(t.entryPrice ?? t.entry);
@@ -7592,6 +7745,59 @@ function btDashComputeMetrics(session, filters = {}) {
   const avgActualRR = plannedRows.length ? plannedRows.reduce((sum,t)=>sum+(Number(t.actualRRNet)||0),0) / plannedRows.length : null;
   const planActualDriftR = avgPlannedRR != null && avgActualRR != null ? avgPlannedRR - avgActualRR : null;
   const demonAnalytics = btDashDemonAnalytics(rows, {session});
+  const riskConsistencyRows = rows.map(trade => {
+    const plannedPct = btDashNumber(trade.planned_risk_pct ?? trade.plannedRiskPct);
+    const actualPct = btDashNumber(trade.actual_risk_pct ?? trade.actualRiskPct);
+    const plannedR = btDashNumber(trade.planned_risk_r ?? trade.plannedRiskR);
+    const actualR = btDashNumber(trade.actual_risk_r ?? trade.actualRiskR);
+    const plannedComparable = plannedPct ?? plannedR;
+    const actualComparable = actualPct ?? actualR;
+    if (plannedComparable == null && actualComparable == null) return null;
+    return {
+      plannedPct,
+      actualPct,
+      plannedR,
+      actualR,
+      plannedComparable,
+      actualComparable,
+      resultR:btDashTradeActualR(trade) ?? btDashNumber(trade.rMultiple) ?? 0,
+      oversize:plannedComparable != null && actualComparable != null && actualComparable > plannedComparable * 2,
+    };
+  }).filter(Boolean);
+  const avgMetric = (list, selector) => {
+    const values = list.map(selector).filter(value => value != null && Number.isFinite(Number(value)));
+    return values.length ? values.reduce((sum,value)=>sum + Number(value),0) / values.length : null;
+  };
+  const medianMetric = (list, selector) => {
+    const values = list.map(selector).filter(value => value != null && Number.isFinite(Number(value))).sort((a,b)=>Number(a)-Number(b));
+    if (!values.length) return null;
+    const mid = Math.floor(values.length / 2);
+    return values.length % 2 ? Number(values[mid]) : (Number(values[mid - 1]) + Number(values[mid])) / 2;
+  };
+  const oversizeRiskRows = riskConsistencyRows.filter(row=>row.oversize);
+  const riskConsistencyStats = {
+    sample:riskConsistencyRows.length,
+    plannedPctAvg:avgMetric(riskConsistencyRows, row=>row.plannedPct),
+    actualPctAvg:avgMetric(riskConsistencyRows, row=>row.actualPct),
+    typicalActualPct:medianMetric(riskConsistencyRows, row=>row.actualPct),
+    maxActualPct:riskConsistencyRows.reduce((max,row)=>row.actualPct == null ? max : Math.max(max, Number(row.actualPct)), 0),
+    plannedRAvg:avgMetric(riskConsistencyRows, row=>row.plannedR),
+    actualRAvg:avgMetric(riskConsistencyRows, row=>row.actualR),
+    typicalActualR:medianMetric(riskConsistencyRows, row=>row.actualR),
+    maxActualR:riskConsistencyRows.reduce((max,row)=>row.actualR == null ? max : Math.max(max, Number(row.actualR)), 0),
+    oversizeCount:oversizeRiskRows.length,
+    onPlanCount:Math.max(0, riskConsistencyRows.length - oversizeRiskRows.length),
+    oversizeImpactR:+oversizeRiskRows.reduce((sum,row)=>sum + (Number(row.resultR) || 0),0).toFixed(2),
+  };
+  const patienceDemonTypes = new Set(["fomo-chased","late-hesitation","overtraded","revenge-trade","no-valid-setup"]);
+  const patienceDemonCount = (demonAnalytics.ranked || [])
+    .filter(row=>patienceDemonTypes.has(row.type))
+    .reduce((sum,row)=>sum + (Number(row.count) || 0),0);
+  const disciplineComponents = {
+    adherence:ruleAdherence ?? disciplineScore,
+    riskControl:riskConsistencyRows.length ? Math.max(0, Math.min(100, (riskConsistencyStats.onPlanCount / riskConsistencyRows.length) * 100)) : disciplineScore,
+    patience:rows.length ? Math.max(0, Math.min(100, 100 - (patienceDemonCount / rows.length) * 100)) : disciplineScore,
+  };
   const followedAvgR = avgRFor(followedTrades);
   const brokenAvgR = avgRFor(brokenTrades);
   const followedPnl = followedTrades.reduce((sum,t)=>sum+(Number(t.pnl)||0),0);
@@ -7618,10 +7824,203 @@ function btDashComputeMetrics(session, filters = {}) {
   const availableFavourableR = efficiencyRows.reduce((sum,row)=>sum+row.mfeR,0);
   const realisedFavourableR = efficiencyRows.reduce((sum,row)=>sum+Math.min(row.mfeR,row.realisedFavourableR),0);
   const captureRatio = availableFavourableR > 0 ? realisedFavourableR / availableFavourableR * 100 : null;
+  const avgAvailableFavourableR = efficiencyRows.length ? availableFavourableR / efficiencyRows.length : null;
+  const avgRealisedFavourableR = efficiencyRows.length ? realisedFavourableR / efficiencyRows.length : null;
   const missedRows = efficiencyRows.filter(row=>row.missedR != null);
   const missedMoveR = missedRows.length ? missedRows.reduce((sum,row)=>sum+row.missedR,0) / missedRows.length : null;
+  const missedMoveValues = missedRows.map(row => Number(row.missedR)).filter(Number.isFinite);
+  const missedMoveMax = missedMoveValues.length ? Math.max(...missedMoveValues) : 0;
+  const missedMoveStep = missedMoveMax <= 1 ? 0.25 : missedMoveMax <= 2 ? 0.5 : missedMoveMax <= 4 ? 1 : Math.max(1, Math.ceil(missedMoveMax / 5));
+  const missedMoveBucketCount = missedMoveValues.length ? Math.max(3, Math.min(6, Math.ceil(Math.max(missedMoveMax, missedMoveStep) / missedMoveStep))) : 0;
+  const missedMoveBuckets = Array.from({ length: missedMoveBucketCount }, (_, index) => {
+    const start = index * missedMoveStep;
+    const end = (index + 1) * missedMoveStep;
+    const isLast = index === missedMoveBucketCount - 1;
+    const count = missedMoveValues.filter(value => value >= start && (isLast ? value <= end + 1e-9 : value < end)).length;
+    return { start, end, count };
+  });
+  const missedMoveTypicalBucket = missedMoveBuckets.reduce((best, bucket) => bucket.count > (best?.count || 0) ? bucket : best, null);
+  const dollarPerRRows = rows.map(t => {
+    const r = btDashNumber(t.rMultiple ?? t.actual_rr_net ?? t.actualRR);
+    const pnl = btDashNumber(t.pnl);
+    return r != null && pnl != null && Math.abs(r) > 1e-9 ? { r, pnl } : null;
+  }).filter(Boolean);
+  const dollarPerR = dollarPerRRows.length
+    ? dollarPerRRows.reduce((sum,row)=>sum + Math.abs(row.pnl), 0) / Math.max(1e-9, dollarPerRRows.reduce((sum,row)=>sum + Math.abs(row.r), 0))
+    : 0;
+  const planOutcomePnlFor = (trade, {allowActual=false}={}) => {
+    const direct = [
+      trade?.plannedOutcomePnl,
+      trade?.planned_outcome_pnl,
+      trade?.planOutcomePnl,
+      trade?.plan_outcome_pnl,
+      trade?.ifFollowedPnl,
+      trade?.if_followed_pnl,
+      trade?.plannedPnl,
+      trade?.planned_pnl,
+      trade?.missedPlannedPnl,
+      trade?.missed_planned_pnl,
+      trade?.opportunityPnl,
+      trade?.opportunity_pnl,
+    ].map(btDashNumber).find(value => value != null);
+    if (direct != null) return direct;
+    const plannedR = btDashTradePlannedR(trade);
+    const riskMoney = btDashTradeRiskValue(trade) || dollarPerR;
+    if (plannedR != null && riskMoney > 0) return plannedR * riskMoney;
+    return allowActual ? (btDashNumber(trade?.pnl) ?? 0) : null;
+  };
+  const planOutcomeRFor = (trade, {allowActual=false}={}) => {
+    const direct = [
+      trade?.plannedOutcomeR,
+      trade?.planned_outcome_r,
+      trade?.planOutcomeR,
+      trade?.plan_outcome_r,
+      trade?.ifFollowedR,
+      trade?.if_followed_r,
+      trade?.plannedRRNet,
+      trade?.planned_rr_net,
+    ].map(btDashNumber).find(value => value != null);
+    if (direct != null) return direct;
+    const plannedR = btDashTradePlannedR(trade);
+    if (plannedR != null) return plannedR;
+    return allowActual ? (btDashTradeActualR(trade) ?? btDashNumber(trade?.rMultiple) ?? 0) : null;
+  };
+  const tradeActualPnl = trade => btDashNumber(trade?.pnl) ?? 0;
+  const tradeActualR = trade => btDashTradeActualR(trade) ?? btDashNumber(trade?.rMultiple) ?? 0;
+  const followedPlanRows = followedTrades.map(trade => ({
+    trade,
+    actualPnl: tradeActualPnl(trade),
+    actualR: tradeActualR(trade),
+  }));
+  const brokenPlanRows = brokenTrades.map(trade => ({
+    trade,
+    actualPnl: tradeActualPnl(trade),
+    actualR: tradeActualR(trade),
+    plannedPnl: planOutcomePnlFor(trade),
+    plannedR: planOutcomeRFor(trade),
+  }));
+  const missedPlanRows = missedPlanTrades.map(trade => ({
+    trade,
+    actualPnl: 0,
+    actualR: 0,
+    plannedPnl: planOutcomePnlFor(trade),
+    plannedR: planOutcomeRFor(trade),
+  }));
+  const planAdherenceMissingRows = [
+    ...brokenPlanRows.filter(row => row.plannedPnl == null || row.plannedR == null),
+    ...missedPlanRows.filter(row => row.plannedPnl == null || row.plannedR == null),
+  ];
+  const sumMetric = (list, key) => list.reduce((sum,row)=>sum + (Number(row[key]) || 0), 0);
+  const followedPlanPnl = sumMetric(followedPlanRows, "actualPnl");
+  const followedPlanR = sumMetric(followedPlanRows, "actualR");
+  const brokenActualPnl = sumMetric(brokenPlanRows, "actualPnl");
+  const brokenActualR = sumMetric(brokenPlanRows, "actualR");
+  const brokenPlannedPnl = sumMetric(brokenPlanRows, "plannedPnl");
+  const brokenPlannedR = sumMetric(brokenPlanRows, "plannedR");
+  const missedPlannedPnl = sumMetric(missedPlanRows, "plannedPnl");
+  const missedPlannedR = sumMetric(missedPlanRows, "plannedR");
+  const planAdherenceAvailable = journaledRuleTrades > 0 && !planAdherenceMissingRows.length;
+  const planAdherenceIfFollowedPnl = followedPlanPnl + brokenPlannedPnl + missedPlannedPnl;
+  const planAdherenceActualPnl = followedPlanPnl + brokenActualPnl;
+  const planAdherenceIfFollowedR = followedPlanR + brokenPlannedR + missedPlannedR;
+  const planAdherenceActualR = followedPlanR + brokenActualR;
+  const planAdherenceCostPnl = planAdherenceIfFollowedPnl - planAdherenceActualPnl;
+  const planAdherenceCostR = planAdherenceIfFollowedR - planAdherenceActualR;
+  const expectancyDollarsPerTrade = rows.length ? (rSum / rows.length) * dollarPerR : 0;
+  const realisedFavourableDollars = realisedFavourableR * dollarPerR;
+  const availableFavourableDollars = availableFavourableR * dollarPerR;
+  const avgRealisedFavourableDollars = avgRealisedFavourableR == null ? null : avgRealisedFavourableR * dollarPerR;
+  const avgAvailableFavourableDollars = avgAvailableFavourableR == null ? null : avgAvailableFavourableR * dollarPerR;
+  const missedMoveDollarsPerTrade = missedMoveR == null ? null : missedMoveR * dollarPerR;
   const returnPct = capital ? (totalPnl / capital) * 100 : 0;
   const goalProgressPct = goalConfig?.targetReturnPct ? Math.max(0, Math.min(999, returnPct / goalConfig.targetReturnPct * 100)) : null;
+  const propLimitMoney = pct => {
+    const n = btDashNumber(pct);
+    return n != null && n > 0 && capital > 0 ? capital * n / 100 : null;
+  };
+  const propDailyLimitMoney = propConfig?.dailyLossEnabled === false ? null : propLimitMoney(propConfig.dailyLossLimitPct);
+  const propMaxDDLimitMoney = propLimitMoney(propConfig.maxDDLimitPct);
+  const propActiveDailyLimitMoney = propDailyLimitMoney ?? propMaxDDLimitMoney;
+  const propNearMissUsedPct = KPI_CONFIG.propNearMissUsedPct ?? 0.9;
+  const propDailyBuckets = new Map();
+  sortedRows.forEach(trade => {
+    const key = String(trade.date || trade.entryDate || trade.entryTime || "").slice(0, 10) || "unknown";
+    const bucket = propDailyBuckets.get(key) || {date:key,trades:[],pnl:0};
+    bucket.trades.push(trade);
+    bucket.pnl += Number(trade.pnl) || 0;
+    propDailyBuckets.set(key, bucket);
+  });
+  const propDailyLimitRows = [...propDailyBuckets.values()].map(bucket => {
+    let dayCurve = 0;
+    let dayPeak = 0;
+    let worstFromOpen = 0;
+    let worstFromPeak = 0;
+    bucket.trades.forEach(trade => {
+      dayCurve += Number(trade.pnl) || 0;
+      dayPeak = Math.max(dayPeak, dayCurve);
+      worstFromOpen = Math.max(worstFromOpen, -dayCurve);
+      worstFromPeak = Math.max(worstFromPeak, dayPeak - dayCurve);
+    });
+    const worstLoss = Math.max(worstFromOpen, worstFromPeak, Math.max(0, -bucket.pnl));
+    const usedPct = propActiveDailyLimitMoney ? worstLoss / propActiveDailyLimitMoney : null;
+    return {...bucket, worstLoss, usedPct};
+  }).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const propWorstDailyUsedPct = propDailyLimitRows.reduce((max,row)=>row.usedPct == null ? max : Math.max(max, Number(row.usedPct)), null);
+  const propWorstOverallUsedPct = propMaxDDLimitMoney ? maxDD / propMaxDDLimitMoney : null;
+  const propWorstApproachUsedPct = [propWorstDailyUsedPct, propWorstOverallUsedPct].filter(value=>value != null && Number.isFinite(Number(value))).reduce((max,value)=>Math.max(max, Number(value)), null);
+  const propWorstApproachLabel = propWorstApproachUsedPct == null
+    ? "No prop limit configured"
+    : propWorstOverallUsedPct != null && propWorstOverallUsedPct >= (propWorstDailyUsedPct ?? -Infinity)
+      ? "Max drawdown"
+      : propDailyLimitMoney
+        ? "Daily loss"
+        : "Daily proxy";
+  const propNearMissCount = propDailyLimitRows.filter(row=>row.usedPct != null && row.usedPct >= propNearMissUsedPct).length
+    + (propWorstOverallUsedPct != null && propWorstOverallUsedPct >= propNearMissUsedPct ? 1 : 0);
+  const propRiskRows = rows.map(trade => {
+    const money = btDashTradeRiskValue(trade);
+    const pct = money > 0 && capital > 0 ? money / capital * 100 : btDashNumber(trade.actual_risk_pct ?? trade.actualRiskPct ?? trade.planned_risk_pct ?? trade.plannedRiskPct);
+    return {money:money > 0 ? money : null, pct:pct != null && pct > 0 ? pct : null};
+  });
+  const propTypicalRiskMoney = medianMetric(propRiskRows, row=>row.money);
+  const propTypicalRiskPct = medianMetric(propRiskRows, row=>row.pct) ?? (propTypicalRiskMoney != null && capital > 0 ? propTypicalRiskMoney / capital * 100 : null);
+  const propInstrumentKind = String(propConfig.instrumentKind || "").toLowerCase() === "futures" ? "futures" : "forex";
+  const propNativeUnit = propInstrumentKind === "futures" ? "money" : "percent";
+  const propDrawdownType = propConfig?.drawdownType === "trailing" ? "trailing" : "static";
+  const propNativeRiskValue = propNativeUnit === "money" ? propTypicalRiskMoney : propTypicalRiskPct;
+  const propDailyLossBudgetTrades = propDailyLimitMoney && propTypicalRiskMoney
+    ? Math.floor(propDailyLimitMoney / Math.max(1e-9, propTypicalRiskMoney))
+    : (propConfig?.dailyLossLimitPct && propTypicalRiskPct ? Math.floor(Number(propConfig.dailyLossLimitPct) / Math.max(1e-9, propTypicalRiskPct)) : null);
+  const propMaxLossBudgetTrades = propMaxDDLimitMoney && propTypicalRiskMoney
+    ? Math.floor(propMaxDDLimitMoney / Math.max(1e-9, propTypicalRiskMoney))
+    : (propConfig?.maxDDLimitPct && propTypicalRiskPct ? Math.floor(Number(propConfig.maxDDLimitPct) / Math.max(1e-9, propTypicalRiskPct)) : null);
+  const propRiskAnalytics = {
+    configured:!!propConfig?.configured,
+    nativeUnit:propNativeUnit,
+    nativeUnitLabel:propNativeUnit === "money" ? "$" : "%",
+    dailyLossLimitPct:btDashNumber(propConfig?.dailyLossLimitPct),
+    maxDDLimitPct:btDashNumber(propConfig?.maxDDLimitPct),
+    dailyLossLimitMoney:propDailyLimitMoney,
+    maxDDLimitMoney:propMaxDDLimitMoney,
+    hasDailyLimit:propDailyLimitMoney != null && propDailyLimitMoney > 0,
+    hasMaxDDLimit:propMaxDDLimitMoney != null && propMaxDDLimitMoney > 0,
+    dailyLimitRows:propDailyLimitRows,
+    worstDailyUsedPct:propWorstDailyUsedPct,
+    worstOverallUsedPct:propWorstOverallUsedPct,
+    worstApproachUsedPct:propWorstApproachUsedPct,
+    worstApproachLabel:propWorstApproachLabel,
+    nearMissCount:propNearMissCount,
+    nearMissThreshold:propNearMissUsedPct,
+    typicalRiskMoney:propTypicalRiskMoney,
+    typicalRiskPct:propTypicalRiskPct,
+    typicalRiskNativeValue:propNativeRiskValue,
+    dailyLossBudgetTrades:propDailyLossBudgetTrades,
+    maxLossBudgetTrades:propMaxLossBudgetTrades,
+    drawdownType:propDrawdownType,
+    maxDDBudgetLabel:propDrawdownType === "trailing" ? "Trailing DD" : "Max-DD limit",
+    maxDDBudgetDetail:propDrawdownType === "trailing" ? "from a new high" : "from starting balance",
+    maxDDBudgetNote:propDrawdownType === "trailing" ? "Budget resets at each new high." : "",
+  };
   return {
     allTrades,
     trades: rows,
@@ -7632,19 +8031,28 @@ function btDashComputeMetrics(session, filters = {}) {
     returnPct,
     goalConfig,
     propConfig,
+    propRiskAnalytics,
     goalProgressPct,
     tradeCount: rows.length,
     wins,
     losses,
+    breakevens,
     winRate: rows.length ? (wins / rows.length) * 100 : 0,
     grossWin,
     grossLoss,
     profitFactor: grossLoss ? grossWin / grossLoss : grossWin ? 9.99 : 0,
+    dollarPerR,
+    expectancyDollarsPerTrade,
     expectancyR: rows.length ? rSum / rows.length : 0,
     avgR: rows.length ? rSum / rows.length : 0,
+    rMedian,
     payoffRatio: losses ? (grossWin / Math.max(1, wins)) / (grossLoss / losses) : 0,
     maxDD,
     maxDDPct,
+    maxDDBase,
+    maxDDPeakAtOnset,
+    maxDDTroughEquity,
+    maxDDWiped,
     sharpe: sharpeAnnualized,
     sortino: sortinoAnnualized,
     shapeRatio,
@@ -7655,12 +8063,45 @@ function btDashComputeMetrics(session, filters = {}) {
     riskAdjustedLowConfidence: (riskAdjBasis === "daily" ? dailyReturnRows.length : tradeReturnSeries.length) < KPI_CONFIG.minObsForRiskAdj,
     tradesPerYear,
     recoveryFactor,
+    recoveryPeriods,
+    avgRecoveryDays,
+    longestRecoveryDays,
+    currentRecoveryDays,
+    currentRecoveryState,
+    isRecoveredNow: !activeRecovery,
     longestUnderwaterDays,
+    timeUnderwaterPct,
     maxDDEpisodeDuration,
-    dayWinRate: dailyReturnRows.length ? dailyReturnRows.filter(day=>day.pnl>0).length / dailyReturnRows.length * 100 : 0,
+    dayWinRate: dailyReturnRows.length ? dayGreenCount / dailyReturnRows.length * 100 : 0,
+    dayGreenCount,
+    dayRedCount,
+    dayFlatCount,
+    top5Profit,
+    top10Profit,
+    top5ProfitRest,
+    top10ProfitShare,
+    nextTop5To10Profit,
+    nextTop5To10ProfitShare,
+    restAfterTop10Profit,
+    restAfterTop10ProfitShare,
+    grossProfitForConcentration,
+    profitConcentrationTopN,
+    profitRobustnessSecondTopN,
+    profitConcentrationTopPct,
+    profitRobustnessSecondTopPct,
+    profitConcentrationThresholdPct,
+    profitConcentrationBaselinePct,
+    profitConcentrationConcentrated,
+    profitRobustnessFloorPct,
+    profitRobustnessHoldPct,
+    profitRobustnessClearsFloor,
     top5ProfitShare,
-    concentrationWarn: top5ProfitShare != null && top5ProfitShare / 100 > KPI_CONFIG.concentrationWarn,
+    netWithoutTop5Profit,
+    netWithoutTop10Profit,
+    profitRobust: profitRobustnessHoldPct != null ? profitRobustnessClearsFloor : netWithoutTop5Profit > 0,
+    concentrationWarn: profitConcentrationConcentrated,
     equitySmoothness,
+    rEquitySmoothness,
     disciplineScore,
     disciplineBreachCounts,
     disciplineBreachSummary,
@@ -7669,9 +8110,49 @@ function btDashComputeMetrics(session, filters = {}) {
     ruleAdherenceStates: {
       followed: followedTrades.length,
       violated: brokenTrades.length,
+      missed: missedPlanTrades.length,
       notJournaled: notJournaledTrades.length,
       journaled: journaledRuleTrades,
       total: rows.length,
+    },
+    planAdherence: {
+      available: planAdherenceAvailable,
+      missingReason: "Plan-adherence data not available - log missed trades and tag deviations",
+      missingCount: planAdherenceMissingRows.length,
+      sample: journaledRuleTrades,
+      followed: {
+        count: followedTrades.length,
+        pnl: followedPlanPnl,
+        r: followedPlanR,
+      },
+      outOfPlan: {
+        count: brokenTrades.length,
+        actualPnl: brokenActualPnl,
+        actualR: brokenActualR,
+        plannedPnl: brokenPlannedPnl,
+        plannedR: brokenPlannedR,
+        costPnl: brokenPlannedPnl - brokenActualPnl,
+        costR: brokenPlannedR - brokenActualR,
+      },
+      missed: {
+        count: missedPlanTrades.length,
+        plannedPnl: missedPlannedPnl,
+        plannedR: missedPlannedR,
+        costPnl: missedPlannedPnl,
+        costR: missedPlannedR,
+      },
+      ifFollowed: {
+        pnl: planAdherenceIfFollowedPnl,
+        r: planAdherenceIfFollowedR,
+      },
+      actual: {
+        pnl: planAdherenceActualPnl,
+        r: planAdherenceActualR,
+      },
+      cost: {
+        pnl: planAdherenceCostPnl,
+        r: planAdherenceCostR,
+      },
     },
     breakCostR,
     followedAvgR,
@@ -7689,7 +8170,23 @@ function btDashComputeMetrics(session, filters = {}) {
     winRateCushion,
     tradeFrequency,
     weeksInRange,
+    weeklyTradeCounts,
+    weeklyPnlRows,
+    profitableWeeks,
+    weekCount,
+    winHoldAvg,
+    lossHoldAvg,
+    quietestWeekTrades,
+    typicalWeekTrades,
+    busiestWeekTrades,
     sampleConfidence,
+    sampleConfidenceTarget,
+    sampleConfidenceReady: rows.length >= sampleConfidenceTarget,
+    expectancyCiLow,
+    expectancyCiHigh,
+    expectancyCiHalf,
+    expectancyCiClearsZero,
+    expectancySampleCount,
     annualizedReturnPct,
     calmarAnnualized,
     avgPlannedRR,
@@ -7698,17 +8195,30 @@ function btDashComputeMetrics(session, filters = {}) {
     planActualSample: plannedRows.length,
     planActualExcludedNoTp,
     demonAnalytics,
+    riskConsistencyStats,
+    disciplineComponents,
     currentStreak,
     currentStreakType,
     captureRatio,
     captureSample: efficiencyRows.length,
     realisedFavourableR,
     availableFavourableR,
+    realisedFavourableDollars,
+    availableFavourableDollars,
+    avgRealisedFavourableR,
+    avgAvailableFavourableR,
+    avgRealisedFavourableDollars,
+    avgAvailableFavourableDollars,
     missedMoveR,
+    missedMoveDollarsPerTrade,
     missedMoveSample: missedRows.length,
+    missedMoveBuckets,
+    missedMoveMax,
+    missedMoveTypicalBucket,
     calmar: maxDD ? totalPnl / maxDD : 0,
     ulcer: drawdownPoints.length ? Math.sqrt(drawdownPoints.reduce((sum, d) => sum + Math.pow((d.value / capital) * 100, 2), 0) / drawdownPoints.length) : 0,
     equityPoints,
+    rEquityPoints,
     drawdownPoints,
     rBuckets,
     heatmap,
@@ -7723,9 +8233,25 @@ function btDashComputeMetrics(session, filters = {}) {
     longestLoss,
     bestTrade: rows.reduce((best, t) => !best || t.pnl > best.pnl ? t : best, null),
     worstTrade: rows.reduce((worst, t) => !worst || t.pnl < worst.pnl ? t : worst, null),
-    durationAvg: rows.length ? Math.round(rows.reduce((sum, t) => sum + t.duration, 0) / rows.length) : 0,
+    durationAvg,
   };
 }
+const btDashPropSetupStatus = () => ({
+  state: "setup",
+  configured: false,
+  title: "Set up your challenge",
+  detail: "Challenge rules are missing. Add profit target, drawdown limits, and minimum trading days in the session settings.",
+  targetUsed: 0,
+  dailyUsed: 0,
+  ddUsed: 0,
+  minDaysUsed: 0,
+  rules: [
+    { rule: "Profit target", status: "Not set", used: 0, worst: "-", margin: "Add target" },
+    { rule: "Daily loss limit", status: "Not set", used: 0, worst: "-", margin: "Add limit" },
+    { rule: "Total drawdown", status: "Not set", used: 0, worst: "-", margin: "Add limit" },
+    { rule: "Minimum trading days", status: "Not set", used: 0, worst: "-", margin: "Optional" },
+  ],
+});
 function btDashPropStatus(session, metrics) {
   const mode = session.tradingMode || "";
   if (mode !== "prop" && mode !== "journal-prop") return null;
@@ -8499,11 +9025,23 @@ const TalariaV8b = () => {
     catch { return "overview"; }
   });
   const [dashRadarCompare, setDashRadarCompare] = useState("prior");
+  const [dashScoreCompareWindow, setDashScoreCompareWindow] = useState("30d");
+  const [dashScoreCompareOpen, setDashScoreCompareOpen] = useState(false);
   const [dashScoreBreakdownTab, setDashScoreBreakdownTab] = useState("linear");
   const [dashScoreModeTab, setDashScoreModeTab] = useState("strategy");
   const [dashScoreCardView, setDashScoreCardView] = useState("pie");
   const [dashScoreSlideDir, setDashScoreSlideDir] = useState(1);
   const [dashKpiPageIndex, setDashKpiPageIndex] = useState({});
+  const [dashKpiSlideDir, setDashKpiSlideDir] = useState({});
+  const [dashOverviewUnitMode, setDashOverviewUnitMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem("talaria_dashboard_unit_mode") || "r";
+      return ["r","money","percent"].includes(saved) ? saved : "r";
+    }
+    catch { return "r"; }
+  });
+  const [dashUnitMenuOpen, setDashUnitMenuOpen] = useState(false);
+  const dashUnitMenuRef = useRef(null);
   const [dashHoverInfo, setDashHoverInfo] = useState(null);
   const dashHoverInfoTimerRef = useRef(null);
   const dashHoverInfoDelayRef = useRef(null);
@@ -9043,6 +9581,19 @@ const TalariaV8b = () => {
   useEffect(() => {
     try { localStorage.setItem("talaria_dashboard_fresh_page", dashFreshPage); } catch {}
   }, [dashFreshPage]);
+  useEffect(() => {
+    try { localStorage.setItem("talaria_dashboard_unit_mode", dashOverviewUnitMode); } catch {}
+  }, [dashOverviewUnitMode]);
+  useEffect(() => {
+    if (!dashUnitMenuOpen) return;
+    const closeDashboardUnitMenu = (e) => {
+      const menu = dashUnitMenuRef.current;
+      if (menu && menu.contains(e.target)) return;
+      setDashUnitMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeDashboardUnitMenu, true);
+    return () => document.removeEventListener("pointerdown", closeDashboardUnitMenu, true);
+  }, [dashUnitMenuOpen]);
   useEffect(() => {
     if (!dashFreshNavOpen) return;
     const closeDashboardPageMenu = (e) => {
@@ -14926,14 +15477,117 @@ const TalariaV8b = () => {
             ? filters
             : {...filters, sourceKeys:activeDashboardSourceKeys};
           const metrics = btDashComputeMetrics(dsForDashboardMetrics, dashboardMetricFilters);
+          const dashboardCapabilitySourceItems = (() => {
+            if (dashboardAppliedSourceItems.length) return dashboardAppliedSourceItems.filter(Boolean);
+            return [{
+              key:`session:${ds.id}`,
+              kind:dashboardSourceKind,
+              label:ds.name || "Source",
+              typeLabel:dashboardSourceKind === "journal" ? "Journal" : "Backtest",
+              sourceTypeId:ds.sourceTypeId ?? ds.source_type_id ?? ds.sessionTypeId ?? ds.session_type_id ?? ds.typeId ?? ds.type_id ?? null,
+              sourceTypeCode:ds.sourceTypeCode ?? ds.source_type_code ?? ds.sessionTypeCode ?? ds.session_type_code ?? ds.typeCode ?? ds.type_code ?? null,
+              sourceType:ds.sourceType ?? ds.source_type ?? ds.sessionType ?? ds.session_type ?? ds.type ?? null,
+              mode:ds.mode ?? ds.tradingMode ?? ds.backtestMode ?? ds.sessionMode ?? null,
+              accountTypeKey:ds.accountTypeKey ?? ds.account_type_key ?? null,
+              accountType:ds.accountType ?? ds.account_type ?? null,
+              accountStatus:ds.accountStatus ?? ds.account_status ?? null,
+              isPropConstrained:btDashIsPropConstrainedSource(ds),
+              isLive:btDashIsLiveSource(ds),
+              propConfig:ds.propConfig || ds.challengeConfig || ds.propChallengeConfig || ds.challenge || ds.fundingChallenge || null,
+              sessions:[ds],
+              trades:metrics.trades || [],
+            }];
+          })();
+          const dashboardCapabilitySourceText = (source) => [
+            source?.kind,
+            source?.typeLabel,
+            source?.label,
+            source?.sourceTypeId,
+            source?.sourceTypeCode,
+            source?.source_type_code,
+            source?.sourceType,
+            source?.mode,
+            source?.accountTypeKey,
+            source?.account_type_key,
+            source?.accountType,
+            source?.accountStatus,
+            source?.propConfig?.challengeModel,
+            source?.propConfig?.phase,
+            ...(source?.sessions || []).flatMap(session => [
+              session?.sourceTypeId,
+              session?.source_type_id,
+              session?.sourceTypeCode,
+              session?.source_type_code,
+              session?.sessionTypeId,
+              session?.session_type_id,
+              session?.typeId,
+              session?.type_id,
+              session?.sourceType,
+              session?.source_type,
+              session?.sessionType,
+              session?.session_type,
+              session?.tradingMode,
+              session?.mode,
+              session?.backtestMode,
+              session?.sessionMode,
+              session?.accountMode,
+              session?.accountTypeKey,
+              session?.account_type_key,
+              session?.accountType,
+              session?.accountStatus,
+              session?.type,
+              session?.propFirm,
+              session?.firmName,
+              session?.challengeModel,
+              session?.propConfig?.challengeModel,
+              session?.challengeConfig?.challengeModel,
+            ]),
+          ].filter(Boolean).join(" ").toLowerCase();
+          const dashboardCapabilityIsJournal = (source) => {
+            const text = dashboardCapabilitySourceText(source);
+            return ["journalAccount","journalEntry","strategyJournal"].includes(source?.kind)
+              || btDashIsLiveSource(source)
+              || (source?.sessions || []).some(btDashIsLiveSource)
+              || text.includes("journal")
+              || text.includes("live-journal");
+          };
+          const dashboardCapabilityExplicitProp = (source) => {
+            const sourceTypeCode = btDashSourceTypeCode(source);
+            const accountTypeKey = String(source?.accountTypeKey || source?.account_type_key || source?.accountType || source?.account_type || "").toLowerCase();
+            if (sourceTypeCode === 3 || accountTypeKey === "personal" || source?.isPropConstrained === false) return false;
+            if (sourceTypeCode === 2 || sourceTypeCode === 4 || accountTypeKey === "prop" || source?.isPropConstrained === true || source?.isProp === true || source?.isPropFirm === true) return true;
+            return btDashIsPropConstrainedSource(source);
+          };
+          const dashboardCapabilityIsProp = (source) => {
+            if (["journalAccount","strategyJournal"].includes(source?.kind)) return dashboardCapabilityExplicitProp(source);
+            return dashboardCapabilityExplicitProp(source)
+              || (source?.sessions || []).some(dashboardCapabilityExplicitProp);
+          };
+          const dashboardCapabilityIsType3Personal = (source) => {
+            const sourceTypeCode = btDashSourceTypeCode(source);
+            const accountTypeKey = String(source?.accountTypeKey || source?.account_type_key || source?.accountType || source?.account_type || "").toLowerCase();
+            return sourceTypeCode === 3 || accountTypeKey === "personal" || source?.isPropConstrained === false;
+          };
+          const dashboardHasOnlyType3PersonalSources = dashboardCapabilitySourceItems.length > 0
+            && dashboardCapabilitySourceItems.every(source => dashboardCapabilityIsJournal(source) && dashboardCapabilityIsType3Personal(source))
+            && !dashboardCapabilitySourceItems.some(source => {
+              const sourceTypeCode = btDashSourceTypeCode(source);
+              const accountTypeKey = String(source?.accountTypeKey || source?.account_type_key || source?.accountType || source?.account_type || "").toLowerCase();
+              return sourceTypeCode === 2 || sourceTypeCode === 4 || accountTypeKey === "prop" || source?.isPropConstrained === true;
+            });
+          const dashboardSourceCapabilities = {
+            isLived:dashboardCapabilitySourceItems.some(dashboardCapabilityIsJournal),
+            isPropConstrained:dashboardCapabilitySourceItems.some(dashboardCapabilityIsProp),
+            sources:dashboardCapabilitySourceItems,
+          };
           const isPropJournalDash = ds.tradingMode === "journal-prop" || (ds.isJournalDashboard && ds.accountTypeKey === "prop");
-          const isPropD = ds.tradingMode === "prop" || isPropJournalDash;
+          const isPropD = dashboardHasOnlyType3PersonalSources ? false : (ds.tradingMode === "prop" || isPropJournalDash || dashboardSourceCapabilities.isPropConstrained === true);
           const accent = isPropJournalDash ? c.gold : ds.isJournalDashboard || ds.tradingMode === "journal" ? c.gn : isPropD ? c.gold : c.acL;
-          const propStatus = btDashPropStatus(ds, metrics);
-          const mc = btDashMonteCarlo(metrics, ds);
+          const propConfig = isPropD ? (metrics.propConfig || btDashPropConfig(ds)) : null;
+          const propStatus = isPropD ? (btDashPropStatus(ds, {...metrics, propConfig}) || btDashPropSetupStatus()) : btDashPropStatus(ds, metrics);
           const compareSession = sessions.find(s=>String(s.id)===String(dashCompareId) && String(s.id)!==String(ds.id));
           const compareMetrics = compareSession ? btDashComputeMetrics(compareSession, filters) : null;
-          const talaria = btDashTalariaScore(ds, metrics);
+          const talaria = btDashTalariaScore(ds, metrics, dashboardSourceCapabilities.isLived);
           const ruleAnalytics = btDashRuleAnalytics(metrics);
           const edgeInsights = btDashEdgeInsights(metrics);
           const behaviorTags = btDashBehaviorTags(metrics);
@@ -14941,16 +15595,18 @@ const TalariaV8b = () => {
           const recoveries = btDashDrawdownRecoveries(metrics);
           const dailyOutcomes = metrics.dailyRows.map(d=>({pnl:d.pnl}));
           const dayWinRate = metrics.dailyRows.length ? metrics.dailyRows.filter(d=>d.pnl>0).length/metrics.dailyRows.length*100 : 0;
-          const scoreLiveSourceKinds = ["journalAccount","journalEntry","strategyJournal"];
-          const dashboardIsLiveScoreMode = scoreLiveSourceKinds.includes(dashboardAppliedLibrarySeed?.kind)
-            || (dashboardAppliedSourceItems.length > 0 && dashboardAppliedSourceItems.every(item => scoreLiveSourceKinds.includes(item.kind) || String(item.typeLabel || "").toLowerCase().includes("journal")));
+          const dashboardIsLiveScoreMode = dashboardSourceCapabilities.isLived;
           const fmtMoney = (v) => `${v>=0?"+":""}$${Math.round(v||0).toLocaleString()}`;
           const fmtAbsMoney = (v) => `$${Math.round(Math.abs(v||0)).toLocaleString()}`;
           const fmtPct = (v, d=0) => `${Number(v||0).toFixed(d)}%`;
           const fmtNum = (v, d=2) => Number.isFinite(Number(v)) ? Number(v).toFixed(d) : "0.00";
+          const dashMoneyPercentBase = Math.max(1, Number(ds.capital) || 10000);
+          const dashPrivacyMask = "••••";
+          const fmtMoneyPct = (v, d=2) => `${Number(v||0)>=0?"+":""}${((Number(v||0) / dashMoneyPercentBase) * 100).toFixed(d)}%`;
+          const fmtAbsMoneyPct = (v, d=2) => `${((Math.abs(Number(v)||0) / dashMoneyPercentBase) * 100).toFixed(d)}%`;
           const fmtValue = (v, r=0) => {
-            if (dashValueMode === "privacy") return "***";
-            if (dashValueMode === "percentage") return `${v>=0?"+":""}${((v/(Number(ds.capital)||10000))*100).toFixed(2)}%`;
+            if (dashOverviewUnitMode === "percent") return fmtMoneyPct(v);
+            if (dashValueMode === "privacy") return dashPrivacyMask;
             return fmtMoney(v);
           };
           const fmtDate = (v) => {
@@ -15069,6 +15725,39 @@ const TalariaV8b = () => {
             const lastDate = rows[rows.length - 1]?.date ? btDashDate(rows[rows.length - 1].date) : firstDate;
             const spanDays = firstDate && lastDate ? Math.max(1, Math.round((lastDate - firstDate) / 86400000) + 1) : 1;
             const actualTradesPerWeek = n / Math.max(1, spanDays / 7);
+            const rValuesForRatio = rows.map(trade => Number(trade.rMultiple)).filter(Number.isFinite);
+            const winRValuesForRatio = rValuesForRatio.filter(value => value > 0);
+            const lossRValuesForRatio = rValuesForRatio.filter(value => value < 0).map(value => Math.abs(value));
+            const avgWinRForRatio = winRValuesForRatio.length ? winRValuesForRatio.reduce((sum,value)=>sum+value,0) / winRValuesForRatio.length : null;
+            const avgLossRForRatio = lossRValuesForRatio.length ? lossRValuesForRatio.reduce((sum,value)=>sum+value,0) / lossRValuesForRatio.length : null;
+            const avgRRForScore = avgWinRForRatio != null && avgLossRForRatio
+              ? avgWinRForRatio / avgLossRForRatio
+              : (Number.isFinite(Number(ds.avgRR)) ? Number(ds.avgRR) : null);
+            const sortedProfitRows = [...rows].filter(trade => Number(trade.pnl) > 0).sort((a,b)=>Number(b.pnl)-Number(a.pnl));
+            const top10ProfitCount = sortedProfitRows.length ? Math.max(1, Math.ceil(rows.length * 0.10)) : 0;
+            const top10ProfitForScore = sortedProfitRows.slice(0, top10ProfitCount).reduce((sum,trade)=>sum+(Number(trade.pnl)||0),0);
+            const profitRobustnessPctForScore = pnl > 0
+              ? Math.max(0, pnl - top10ProfitForScore) / Math.max(1, pnl) * 100
+              : (metrics.profitRobustnessHoldPct ?? null);
+            const sampleConfidenceTargetForScore = Number(metrics.sampleConfidenceTarget || SCORE_CONFIG.sampleConfidenceTarget || 200);
+            const sampleConfidencePctForScore = Math.min(100, n / Math.max(1, sampleConfidenceTargetForScore) * 100);
+            const captureNumerator = rows.reduce((sum,trade)=>{
+              const mfeR = btDashNumber(trade.mfe_r ?? trade.mfeR ?? trade.mfe);
+              const realisedR = btDashNumber(trade.rMultiple ?? trade.actual_rr_net ?? trade.actualRR);
+              return mfeR != null && mfeR > 0 && realisedR != null ? sum + Math.min(mfeR, Math.max(0, realisedR)) : sum;
+            }, 0);
+            const captureDenominator = rows.reduce((sum,trade)=>{
+              const mfeR = btDashNumber(trade.mfe_r ?? trade.mfeR ?? trade.mfe);
+              return mfeR != null && mfeR > 0 ? sum + mfeR : sum;
+            }, 0);
+            const planCapturePctForScore = captureDenominator > 0
+              ? captureNumerator / captureDenominator * 100
+              : (metrics.captureRatio ?? (executionEfficiency == null ? null : executionEfficiency * 100));
+            const rowDemonLeakR = rows.reduce((sum,trade)=>{
+              const direct = btDashNumber(trade.demonCostR ?? trade.demon_cost_r ?? trade.leakCostR ?? trade.leak_cost_r);
+              return sum + Math.abs(direct || 0);
+            }, 0);
+            const demonLeakCostRForScore = rowDemonLeakR || Math.abs(Number(metrics.demonAnalytics?.totalCostR) || 0);
             return {
               mode,
               tradingMode:ds.tradingMode === "prop" ? "prop" : "standard",
@@ -15081,13 +15770,20 @@ const TalariaV8b = () => {
               profitFactor:grossLoss ? grossWin / grossLoss : grossWin ? 9.99 : 0,
               winRate:n ? wins / n * 100 : null,
               expectancyR:n ? rSum / n : null,
+              avgRR:avgRRForScore,
               maxDrawdownPct:capital ? maxDD / capital * 100 : null,
+              sharpe:metrics.sharpe,
               sortino:metrics.sortino,
               dayWinRate:dailyRows.length ? dailyRows.filter(day=>Number(day.pnl)>0).length / dailyRows.length * 100 : null,
               equityR2,
               dailyReturnCV,
               ruleAdherencePct:n ? ruleFollowed / n * 100 : null,
               executionEfficiency,
+              planCapturePct:planCapturePctForScore,
+              demonLeakCostR:demonLeakCostRForScore,
+              profitRobustnessPct:profitRobustnessPctForScore,
+              sampleConfidencePct:sampleConfidencePctForScore,
+              sampleConfidenceTarget:sampleConfidenceTargetForScore,
               expectedTradesPerWeek:Math.max(1, Number(ds.expectedTradesPerWeek) || 8),
               actualTradesPerWeek,
               propTargetPct:ds.tradingMode === "prop" ? dashPdfPropTarget : null,
@@ -19582,7 +20278,7 @@ const TalariaV8b = () => {
               {id:"position-sizing", label:dashTxt("Position Sizing (Optimal F)","حجم الصفقة"), target:"position-sizing"},
               {id:"sequence-risk", label:dashTxt("Sequence Risk","مخاطر التسلسل"), target:"sequence"},
             ]},
-            {key:"prop-challenge", label:dashTxt("PROP CHALLENGE","تحدي التمويل"), phase:"PHASE 3", enabled:true, pages:[
+            {key:"prop-challenge", label:dashTxt("PROP CHALLENGE","تحدي التمويل"), phase:"PHASE 3", enabled:isPropD, pages:[
               {id:"challenge-configurator", label:dashTxt("Challenge Configurator","إعداد التحدي"), target:"prop-compliance"},
               {id:"rule-compliance", label:dashTxt("Rule Compliance & Utilization","الالتزام واستخدام القواعد"), target:"prop-compliance"},
               {id:"pass-probability", label:dashTxt("Pass Probability & Simulation","احتمال النجاح والمحاكاة"), target:"prop-pass"},
@@ -19594,18 +20290,14 @@ const TalariaV8b = () => {
               {id:"demon-catcher", label:dashTxt("Demon Catcher","صائد الأخطاء"), target:"behavioral"},
               {id:"plan-adherence-equity", label:dashTxt("Plan-Adherence Equity","منحنى الالتزام بالخطة"), target:"execution"},
             ]},
-            {key:"strategy-source", label:dashTxt("STRATEGY SOURCE","مصدر الاستراتيجية"), phase:"PHASE 3", enabled:true, pages:[
-              {id:"source-reconciliation", label:dashTxt("Source Reconciliation","مطابقة المصادر"), target:"comparison"},
-              {id:"source-attribution", label:dashTxt("Source Attribution Breakdown","تفصيل مساهمة المصادر"), target:"comparison"},
-            ]},
             {key:"export", label:dashTxt("EXPORT","التصدير"), phase:"PHASE 3", enabled:true, pages:[
               {id:"report-builder", label:dashTxt("Report Builder","منشئ التقرير"), target:"report-builder"},
-              {id:"comparison", label:dashTxt("Comparison View","عرض المقارنة"), target:"comparison"},
             ]},
           ];
-          const phaseDashboardPages = phaseDashboardGroups.flatMap(group => (group.pages||[]).map(page => ({...page, groupKey:group.key, groupLabel:group.label, groupEnabled:group.enabled})));
+          const visiblePhaseDashboardGroups = phaseDashboardGroups.filter(group => group.enabled !== false);
+          const phaseDashboardPages = visiblePhaseDashboardGroups.flatMap(group => (group.pages||[]).map(page => ({...page, groupKey:group.key, groupLabel:group.label, groupEnabled:group.enabled})));
           const activePhasePageMeta = phaseDashboardPages.find(page => page.id === dashPhaseComponent) || phaseDashboardPages[0];
-          const activePhaseGroup = phaseDashboardGroups.find(group => group.key === activePhasePageMeta?.groupKey) || phaseDashboardGroups[0];
+          const activePhaseGroup = visiblePhaseDashboardGroups.find(group => group.key === activePhasePageMeta?.groupKey) || visiblePhaseDashboardGroups[0];
           const phaseBreadcrumbTitle = activePhasePageMeta?.label || dashTxt("Talaria Score","درجة تالاريا");
           const phaseBreadcrumbGroup = activePhaseGroup?.label || dashTxt("ESSENTIALS","الأساسيات");
           const goPhaseDashboardPage = (page, group) => {
@@ -19624,7 +20316,7 @@ const TalariaV8b = () => {
                 <div style={{fontSize:11,fontWeight:900,color:c.tx,fontFamily:F,marginTop:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{phaseBreadcrumbGroup}</div>
               </div>
               <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"8px 0 12px"}}>
-                {phaseDashboardGroups.map(group => {
+                {visiblePhaseDashboardGroups.map(group => {
                   const isOpen = !!dashPhaseOpenGroups[group.key];
                   const groupActive = activePhasePageMeta?.groupKey === group.key;
                   const disabled = group.enabled === false;
@@ -19808,7 +20500,7 @@ const TalariaV8b = () => {
                   {kpi("Day Win Rate", fmtPct(dayWinRate,0), `${metrics.dailyRows.filter(d=>d.pnl>0).length} green days`, dayWinRate>=50?c.gn:c.rd, "daywin", <BtDotTrail items={dailyOutcomes.slice(-20)} c={c}/>, "performance-calendar")}
                   {kpi("Profit Factor", fmtNum(metrics.profitFactor,2), "Gross split", metrics.profitFactor>=1.3?c.gn:c.gold, "pf", <BtStackedRatioBar positive={metrics.grossWin} negative={metrics.grossLoss} c={c}/>, "r-multiple")}
                   {kpi("Avg R Multiple", `${fmtNum(metrics.avgR,2)}R`, "R outcome spread", metrics.avgR>=0?c.gn:c.rd, "avgr", <BtBoxPlotMini values={metrics.trades.map(t=>t.rMultiple)} c={c} color={metrics.avgR>=0?c.gn:c.rd}/>, "r-multiple")}
-                  {kpi("Max Drawdown", dashValueMode==="privacy"?"***":fmtAbsMoney(metrics.maxDD), `${fmtPct(metrics.maxDDPct,1)} of balance`, c.rd, "dd", <BtMiniLine points={metrics.drawdownPoints.slice(-31).map(p=>Math.abs(p.value))} c={c} color={c.rd} height={22} fill invert/>, "drawdown")}
+                  {kpi("Max Drawdown", dashValueMode==="privacy"?"***":fmtAbsMoney(metrics.maxDD), `${fmtPct(metrics.maxDDPct,1)} depth`, c.rd, "dd", <BtMiniLine points={metrics.drawdownPoints.slice(-31).map(p=>Math.abs(p.value))} c={c} color={c.rd} height={22} fill invert/>, "drawdown")}
                   {kpi("Trades / Avg Duration", metrics.tradeCount.toLocaleString(), `Avg ${metrics.durationAvg}m`, c.acL, "duration", <BtDistributionChip values={metrics.trades.map(t=>t.duration)} c={c} color={c.acL}/>, "trade-journal")}
                 </DashGrid>
               </DashSection>
@@ -19987,7 +20679,7 @@ const TalariaV8b = () => {
                   {card("Equity Path Simulation", <SubDeepContent id="monte-carlo"/>, 12, <span style={{fontSize:10,fontWeight:900,color:mc.passProbability>.5?c.gn:c.rd,fontFamily:F}}>Pass {fmtPct(mc.passProbability*100,0)}</span>, 430, "mc-paths", "monte-carlo")}
                   {card("Outcome Distribution", <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:18}}><div><div style={miniLabel}>End-equity distribution</div><BtBoxPlotMini values={mc.p50} c={c} color={c.acL}/><StatRow label="Median end equity" value={fmtAbsMoney(mc.p50[Math.floor(mc.p50.length*.75)]||Number(ds.capital)||0)} color={c.acL}/></div><div><div style={miniLabel}>Drawdown distribution</div><BtDistributionChip values={metrics.drawdownPoints.map(d=>Math.abs(d.value))} c={c} color={c.rd}/><StatRow label="P95 drawdown" value={fmtAbsMoney(metrics.maxDD*1.25)} color={c.rd}/></div></div>, 6, null, 240, "mc-outcomes")}
                   {card("Scenario Builder", <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>{[["Risk %","1.0%"],["Win Rate",fmtPct(metrics.winRate,0)],["Avg R",`${fmtNum(metrics.avgR,2)}R`],["Sizing","Fixed fractional"]].map(([l,v])=><StatRow key={l} label={l} value={v} color={c.acL}/>)}</div>, 6, <span style={{fontSize:9,fontWeight:900,color:c.tm,fontFamily:F}}>Worker-ready</span>, 240, "scenario")}
-                  {isPropD && card("Prop Firm Pass Probability", <div style={{display:"grid",gridTemplateColumns:"180px 1fr",gap:18,alignItems:"center"}}><BtGaugeRing value={mc.passProbability*100} size={150} c={c} color={mc.passProbability>.5?c.gn:c.rd} label="Pass"/><div>{propStatus?.rules.map(r=><StatRow key={r.rule} label={r.rule} value={r.status} color={r.status==="Fail"?c.rd:r.status==="Open"?c.gold:c.gn}/>)}</div></div>, 12, null, 260, "prop-pass", "monte-carlo")}
+                  {isPropD && card("Prop Firm Pass Probability", <div style={{display:"grid",gridTemplateColumns:"180px 1fr",gap:18,alignItems:"center"}}><BtGaugeRing value={mc.passProbability*100} size={150} c={c} color={mc.passProbability>.5?c.gn:c.rd} label="Pass"/><div>{propStatus?.rules.map(r=><StatRow key={r.rule} label={r.rule} value={r.status} color={r.status==="Fail"||r.status==="Breached"?c.rd:r.status==="Open"?c.gold:c.gn}/>)}</div></div>, 12, null, 260, "prop-pass", "monte-carlo")}
                 </>)}
                 {pageFooter("distributions", dashTxt("Distributions & Risk","التوزيعات والمخاطر"))}
               </>
@@ -20005,7 +20697,7 @@ const TalariaV8b = () => {
               decay: <>{commonHeader()}{advGrid(<>{card("Expectancy Over Time", <div><BtMiniLine points={metrics.trades.map((t,i)=>metrics.trades.slice(Math.max(0,i-24),i+1).reduce((s,x)=>s+x.rMultiple,0)/Math.max(1,Math.min(25,i+1)))} c={c} color={metrics.avgR>=0?c.gn:c.rd} height={220} fill/><StatRow label="Break-even line" value="0.00R" color={c.gold}/></div>,12,null,330,"expectancy-time")}{["Win Rate Stability","Profit Factor Stability","Sharpe Stability","Edge Half-Life Estimate"].map((title,i)=>card(title,<div><BtMiniLine points={Array.from({length:38},(_,x)=>50+Math.sin((x+i)/5)*12+(i===3?-x*.4:x*.1))} c={c} color={[c.gn,c.acL,c.gold,c.rd][i]} height={100} fill/><StatRow label="Current" value={i===3?"180 trades":fmtNum([metrics.winRate,metrics.profitFactor,metrics.sharpe,180][i],i===0?0:2)} color={[c.gn,c.acL,c.gold,c.rd][i]}/></div>,3,null,230,`stable-${i}`))}</>)}{pageFooter("sequence", dashTxt("Sequence Risk","مخاطر التسلسل"))}</>,
               sequence: <>{commonHeader()}{advGrid(<>{card("Random Reorder Distribution", <div><BtDistributionChip values={Array.from({length:80},(_,i)=>Math.abs(metrics.maxDD)*(0.55+(btDashHash(`${ds.id}:seq:${i}`)%80)/100))} c={c} color={c.rd}/><StatRow label="Actual max drawdown" value={fmtAbsMoney(metrics.maxDD)} color={c.rd}/></div>,12,null,260,"reorder")}{card("Path Dependency Simulation", <BtMiniLine points={[...metrics.trades].sort((a,b)=>a.pnl-b.pnl).slice(0,60).reduce((arr,t,i)=>[...arr,(arr[i-1]||Number(ds.capital)||10000)+t.pnl],[])} c={c} color={c.rd} height={150} fill/>,6,null,250,"pathdep")}{card("Bad Streak Probability", <div>{[3,5,7,10].map(n=><StatRow key={n} label={`P(${n} losses)`} value={fmtPct(Math.pow(metrics.losses/Math.max(1,metrics.tradeCount),n)*100,2)} color={n>=7?c.rd:c.gold}/>)}</div>,6,null,250,"badstreak")}</>)}{pageFooter("position-sizing", dashTxt("Position Sizing","حجم الصفقة"))}</>,
               "position-sizing": <>{commonHeader()}{advGrid(<>{card("Optimal F Curve", <svg width="100%" height={230} viewBox="0 0 640 180" preserveAspectRatio="none"><path d={Array.from({length:60},(_,i)=>`${i===0?"M":"L"}${i/59*640},${160-(Math.sin(i/12)*30+i*2-(i>38?(i-38)*4:0))}`).join(" ")} fill="none" stroke={c.gold} strokeWidth="2"/><line x1="170" x2="170" y1="20" y2="165" stroke={c.acL} strokeDasharray="4 5"/><line x1="280" x2="280" y1="20" y2="165" stroke={c.gn} strokeDasharray="4 5"/></svg>,12,null,300,"optimal-f")}{card("Drawdown Trade-off", <div><StatRow label="Half-Kelly growth" value="80%" color={c.gn}/><StatRow label="Half-Kelly drawdown" value="40%" color={c.gold}/><BtProgressBar value={80} marker={40} c={c} color={c.gn}/></div>,4,null,220,"dd-tradeoff")}{card("Size Variance Over Time", <BtMiniLine points={metrics.trades.map(t=>t.positionSize||1)} c={c} color={c.acL} height={130} fill/>,4,null,220,"size-var")}{card("Size-Performance Correlation", <svg width="100%" height={150} viewBox="0 0 240 140"><line x1="20" y1="120" x2="225" y2="120" stroke={c.brH}/><line x1="20" y1="20" x2="20" y2="120" stroke={c.brH}/>{metrics.trades.slice(-80).map(t=><circle key={t.id} cx={20+Math.min(1,(t.positionSize||1)/3)*200} cy={120-Math.min(1,(t.rMultiple+2)/5)*95} r={2.2} fill={t.pnl>=0?c.gn:c.rd} opacity=".75"/>)}</svg>,4,null,220,"size-corr")}</>)}{pageFooter("report-builder", dashTxt("Report Builder","منشئ التقرير"))}</>,
-              "prop-compliance": <>{commonHeader()}{advGrid(<>{propStatus && card("Rule Compliance Tracker", <div><div style={{display:"grid",gridTemplateColumns:"1.3fr .7fr .9fr .9fr .8fr",borderBottom:`1px solid ${c.brH}`}}>{["Rule","Status","Worst Day","Used","Margin"].map(h=><div key={h} style={{padding:"0 8px 8px",...miniLabel}}>{h}</div>)}</div>{propStatus.rules.map(r=><div key={r.rule} style={{display:"grid",gridTemplateColumns:"1.3fr .7fr .9fr .9fr .8fr",minHeight:42,alignItems:"center",borderBottom:`1px solid ${c.br}`}}><div style={{padding:"0 8px",fontSize:11,fontWeight:900,color:c.tx,fontFamily:F}}>{r.rule}</div><div style={{padding:"0 8px",fontSize:10,fontWeight:900,color:r.status==="Fail"?c.rd:r.status==="Open"?c.gold:c.gn,fontFamily:F}}>{r.status}</div><div style={{padding:"0 8px",fontSize:9,fontWeight:800,color:c.ts,fontFamily:F}}>{r.worst}</div><div style={{padding:"0 8px"}}><div style={{height:6,background:c.trk}}><div style={{height:"100%",width:`${Math.min(100,Math.max(3,r.used*100))}%`,background:r.status==="Fail"?c.rd:r.status==="Open"?c.gold:c.gn}}/></div></div><div style={{padding:"0 8px",fontSize:9,fontWeight:800,color:c.tm,fontFamily:F}}>{r.margin}</div></div>)}</div>,12,null,260,"prop-rules")}{card("Near-Miss Heatmap", <div style={{display:"grid",gridTemplateColumns:"repeat(18,1fr)",gap:4}}>{Array.from({length:72},(_,i)=><div key={i} style={{height:18,background:(btDashHash(`${ds.id}:near:${i}`)%10)>7?c.goldD:c.sf,border:`1px solid ${c.br}`}}/>)}</div>,7,null,220,"near-miss")}{card("Rule Sensitivity", <div><StatRow label="Daily limit -1%" value={propStatus?.dailyUsed>.75?"Warning":"Pass"} color={propStatus?.dailyUsed>.75?c.gold:c.gn}/><StatRow label="Max DD -1%" value={propStatus?.ddUsed>.75?"Warning":"Pass"} color={propStatus?.ddUsed>.75?c.gold:c.gn}/><StatRow label="Target +2%" value={propStatus?.targetUsed>.75?"Likely pass":"Open"} color={c.acL}/></div>,5,null,220,"sensitivity")}</>)}{pageFooter("prop-pass", dashTxt("Pass Probability","احتمالية النجاح"))}</>,
+              "prop-compliance": <>{commonHeader()}{advGrid(<>{propStatus && card("Rule Compliance Tracker", <div><div style={{display:"grid",gridTemplateColumns:"1.3fr .7fr .9fr .9fr .8fr",borderBottom:`1px solid ${c.brH}`}}>{["Rule","Status","Worst Day","Used","Margin"].map(h=><div key={h} style={{padding:"0 8px 8px",...miniLabel}}>{h}</div>)}</div>{propStatus.rules.map(r=><div key={r.rule} style={{display:"grid",gridTemplateColumns:"1.3fr .7fr .9fr .9fr .8fr",minHeight:42,alignItems:"center",borderBottom:`1px solid ${c.br}`}}><div style={{padding:"0 8px",fontSize:11,fontWeight:900,color:c.tx,fontFamily:F}}>{r.rule}</div><div style={{padding:"0 8px",fontSize:10,fontWeight:900,color:r.status==="Fail"||r.status==="Breached"?c.rd:r.status==="Open"?c.gold:c.gn,fontFamily:F}}>{r.status}</div><div style={{padding:"0 8px",fontSize:9,fontWeight:800,color:c.ts,fontFamily:F}}>{r.worst}</div><div style={{padding:"0 8px"}}><div style={{height:6,background:c.trk}}><div style={{height:"100%",width:`${Math.min(100,Math.max(3,r.used*100))}%`,background:r.status==="Fail"||r.status==="Breached"?c.rd:r.status==="Open"?c.gold:c.gn}}/></div></div><div style={{padding:"0 8px",fontSize:9,fontWeight:800,color:c.tm,fontFamily:F}}>{r.margin}</div></div>)}</div>,12,null,260,"prop-rules")}{card("Near-Miss Heatmap", <div style={{display:"grid",gridTemplateColumns:"repeat(18,1fr)",gap:4}}>{Array.from({length:72},(_,i)=><div key={i} style={{height:18,background:(btDashHash(`${ds.id}:near:${i}`)%10)>7?c.goldD:c.sf,border:`1px solid ${c.br}`}}/>)}</div>,7,null,220,"near-miss")}{card("Rule Sensitivity", <div><StatRow label="Daily limit -1%" value={propStatus?.dailyUsed>.75?"Warning":"Pass"} color={propStatus?.dailyUsed>.75?c.gold:c.gn}/><StatRow label="Max DD -1%" value={propStatus?.ddUsed>.75?"Warning":"Pass"} color={propStatus?.ddUsed>.75?c.gold:c.gn}/><StatRow label="Target +2%" value={propStatus?.targetUsed>.75?"Likely pass":"Open"} color={c.acL}/></div>,5,null,220,"sensitivity")}</>)}{pageFooter("prop-pass", dashTxt("Pass Probability","احتمالية النجاح"))}</>,
               "prop-pass": <>{commonHeader()}{advGrid(<>{card("Pass Probability", <div style={{display:"grid",gridTemplateColumns:"220px 1fr",gap:24,alignItems:"center"}}><BtGaugeRing value={mc.passProbability*100} size={190} c={c} color={mc.passProbability>.5?c.gn:c.rd} label="Pass"/><div>{["Daily loss","Total DD","Target miss","Min days"].map((x,i)=><StatRow key={x} label={x} value={fmtPct([propStatus?.dailyUsed,propStatus?.ddUsed,1-(propStatus?.targetUsed||0),1-(propStatus?.minDaysUsed||0)][i]*100||0,0)} color={[c.gold,c.rd,c.gn,c.acL][i]}/>)}</div></div>,12,null,310,"pass-prob")}{card("Recommendations", <div>{["Reducing daily risk by 20% improves survival headroom.","Avoid trading after daily loss utilization exceeds 70%.","Keep minimum-day pacing visible in session review."].map(x=><div key={x} style={{padding:"10px 0",borderBottom:`1px solid ${c.br}`,fontSize:11,fontWeight:800,color:c.ts,fontFamily:F}}>{x}</div>)}</div>,12,null,190,"prop-recs")}</>)}{pageFooter("prop-timeline", dashTxt("Rule Utilization Timeline","خط استخدام القواعد"))}</>,
               "prop-timeline": <>{commonHeader()}{advGrid(<>{card("Rule Utilization Timeline", <div style={{display:"grid",gap:14}}><RuleBar label="Daily loss budget used" used={propStatus?.dailyUsed||0} color={c.gold}/><RuleBar label="Total drawdown headroom" used={propStatus?.ddUsed||0} color={c.rd}/><RuleBar label="Distance to profit target" used={propStatus?.targetUsed||0} color={c.gn}/><BtMiniLine points={metrics.equityPoints.map(p=>p.value)} c={c} color={c.acL} height={150} fill/></div>,12,null,340,"rule-timeline")}{card("Days You Should Have Stopped Trading", <div>{metrics.dailyRows.filter(d=>Math.abs(d.pnl)>metrics.maxDD*.12).slice(0,8).map(d=><StatRow key={d.date} label={d.date} value={fmtValue(d.pnl)} color={d.pnl>=0?c.gn:c.rd}/>)}</div>,12,null,240,"stop-days")}</>)}{pageFooter("report-builder", dashTxt("Report Builder","منشئ التقرير"))}</>,
               "report-builder": <>{commonHeader(<>{btn("report-gen",dashTxt("Generate Report","إنشاء التقرير"),()=>exportDashboard())}</>)}{advGrid(<>{card("Report Templates", <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>{["Mentor Review","Prop Firm Application","Self-Review Weekly","Full Analysis","Custom"].map((x,i)=><div key={x} style={{height:74,display:"grid",placeItems:"center",background:i===3?c.acD:c.sf,border:`1px solid ${i===3?c.acB:c.br}`,fontSize:10,fontWeight:900,color:i===3?c.acL:c.ts,fontFamily:F,textAlign:"center"}}>{x}</div>)}</div>,12,null,150,"report-templates")}{card("Page Selector", <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{advPages.filter(p=>!p.badge||isPropD).map(p=><div key={p.id} style={{height:28,display:"flex",alignItems:"center",gap:8,fontSize:10,fontWeight:800,color:c.ts,fontFamily:F}}><span style={{width:10,height:10,transform:"rotate(45deg)",background:c.acL}}/>{p.label}</div>)}</div>,7,null,330,"page-selector")}{card("Preview Pane", <div style={{height:"100%",background:"#fff",color:"#09111f",padding:18,fontFamily:"Georgia,serif"}}><div style={{fontSize:18,fontWeight:900}}>Talaria Backtest Report</div><div style={{height:1,background:"#C9A84C",margin:"12px 0"}}/><div style={{fontSize:12,lineHeight:1.5}}>Selected pages will render here as an A4 report preview.</div></div>,5,null,330,"report-preview")}</>)}{pageFooter("comparison", dashTxt("Comparison View","عرض المقارنة"))}</>,
@@ -20033,7 +20725,7 @@ const TalariaV8b = () => {
           );
           const dashboardNavGroups = [
             {label:dashTxt("Dashboard","لوحة التحكم"), pages:[
-              {id:"overview",label:dashTxt("Overview","نظرة عامة"), question:dashTxt("How am I doing right now?","كيف أدائي الآن؟"), enabled:true},
+              {id:"overview",label:dashTxt("Snapshot","لمحة"), question:dashTxt("How am I doing right now?","كيف أدائي الآن؟"), enabled:true},
               {id:"performance",label:dashTxt("Performance","الأداء"), question:dashTxt("Is my account growing, and how risky is the ride?","هل الحساب ينمو وما حجم المخاطرة؟"), enabled:true},
               {id:"numbers",label:dashTxt("The Numbers","الأرقام"), question:dashTxt("What do my trades look like in aggregate?","كيف تبدو صفقاتي إجمالا؟"), enabled:true},
               {id:"trade-quality",label:dashTxt("Trade Quality","جودة الصفقة"), question:dashTxt("Am I entering, managing, and exiting well?","هل أدخل وأدير وأخرج بشكل جيد؟"), enabled:true},
@@ -20042,18 +20734,18 @@ const TalariaV8b = () => {
               {id:"journal",label:dashTxt("Journal","السجل"), question:dashTxt("Let me review my individual trades.","دعني أراجع صفقاتي الفردية."), enabled:true},
             ]},
             {label:dashTxt("Mode Pages","صفحات الوضع"), pages:[
-              {id:"prop-challenge",label:dashTxt("Prop Challenge","تحدي التمويل"), question:dashTxt("Can I pass a funded evaluation?","هل يمكنني اجتياز التقييم؟"), enabled:true},
-              {id:"live-discipline",label:dashTxt("Live Discipline","انضباط التداول الحي"), question:dashTxt("Am I trading my plan?","هل أتداول خطتي؟"), enabled:true},
-              {id:"strategy-sources",label:dashTxt("Strategy & Sources","الاستراتيجية والمصادر"), question:dashTxt("How do my sources compare, combine, and export?","كيف تقارن مصادري وتندمج وتصدر؟"), enabled:true},
+              {id:"prop-challenge",label:dashTxt("Prop Challenge","تحدي التمويل"), question:dashTxt("Can I pass a funded evaluation?","هل يمكنني اجتياز التقييم؟"), enabled:isPropD},
+              {id:"live-discipline",label:dashTxt("Live Discipline","انضباط التداول الحي"), question:dashTxt("Am I trading my plan?","هل أتداول خطتي؟"), enabled:dashboardSourceCapabilities.isLived},
             ]},
-          ];
+          ].map(group => ({...group, pages:group.pages.filter(page => page.enabled)})).filter(group => group.pages.length);
           const activeFreshPageMeta = dashboardNavGroups.flatMap(group=>group.pages).find(page=>page.id===dashFreshPage) || dashboardNavGroups[0].pages[0];
-          const activeFreshPageLabel = activeFreshPageMeta.label || dashTxt("Overview","نظرة عامة");
+          const activeFreshPageId = activeFreshPageMeta.id;
+          const activeFreshPageLabel = activeFreshPageMeta.label || dashTxt("Snapshot","لمحة");
           const DashboardPageIcon = ({id, size=14, color="currentColor"}) => {
             const common = {stroke:color, strokeWidth:1.8, strokeLinecap:"square", strokeLinejoin:"miter"};
             const dot = {fill:color};
             const icon = {
-              overview:<><rect x="2.5" y="2.5" width="4.2" height="4.2" {...common} fill="none"/><rect x="9.3" y="2.5" width="4.2" height="4.2" {...common} fill="none"/><rect x="2.5" y="9.3" width="4.2" height="4.2" {...common} fill="none"/><rect x="9.3" y="9.3" width="4.2" height="4.2" {...common} fill="none"/></>,
+              overview:<><path d="M3 5V3h2M11 3h2v2M13 11v2h-2M5 13H3v-2" {...common} fill="none"/><path d="M8 4.9l2.2 3.1L8 11.1 5.8 8 8 4.9z" {...common} fill="none"/><circle cx="8" cy="8" r=".9" {...dot}/></>,
               performance:<><path d="M2 11.8h12" {...common}/><path d="M3 10l2.4-2.7 2.1 1.3 3.7-5.2 1.8 1.7" {...common} fill="none"/></>,
               numbers:<><path d="M3.2 4h9.6M3.2 8h9.6M3.2 12h9.6" {...common}/><circle cx="2" cy="4" r=".7" {...dot}/><circle cx="2" cy="8" r=".7" {...dot}/><circle cx="2" cy="12" r=".7" {...dot}/></>,
               "trade-quality":<><path d="M8 2.2l4.8 2.1v3.6c0 3-1.9 5-4.8 6-2.9-1-4.8-3-4.8-6V4.3L8 2.2z" {...common} fill="none"/><path d="M5.8 8l1.4 1.4 3-3.2" {...common} fill="none"/></>,
@@ -20062,7 +20754,6 @@ const TalariaV8b = () => {
               journal:<><rect x="3" y="2.5" width="10" height="11" {...common} fill="none"/><path d="M5.2 5.3h5.6M5.2 8h5.6M5.2 10.7h3.8" {...common}/></>,
               "prop-challenge":<><path d="M8 2.2l5 2.2v3.5c0 2.9-2 4.9-5 5.9-3-1-5-3-5-5.9V4.4l5-2.2z" {...common} fill="none"/><path d="M6.1 8.2l1.2 1.3 2.8-3.1" {...common} fill="none"/></>,
               "live-discipline":<><path d="M2.6 8h2.1l1.3-3.2 2.2 6.3 1.4-3.1h3.8" {...common} fill="none"/><path d="M11.5 2.8l1.8 1.8-1.8 1.8" {...common} fill="none"/></>,
-              "strategy-sources":<><circle cx="4" cy="4" r="1.6" {...common} fill="none"/><circle cx="12" cy="4" r="1.6" {...common} fill="none"/><circle cx="8" cy="12" r="1.6" {...common} fill="none"/><path d="M5.2 5.1l1.8 5M10.8 5.1l-1.8 5M5.6 4h4.8" {...common} fill="none"/></>,
             }[id] || <><rect x="3" y="3" width="10" height="10" {...common} fill="none"/></>;
             return <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",flexShrink:0,color}}>{icon}</svg>;
           };
@@ -20097,14 +20788,14 @@ const TalariaV8b = () => {
                     <div key={group.label} style={{padding:"4px 0 6px"}}>
                       <div style={{height:22,padding:"0 10px",display:"flex",alignItems:"center",fontSize:7.8,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",boxSizing:"border-box"}}>{group.label}</div>
                       {group.pages.map((page) => {
-                        const active = page.enabled && page.id === dashFreshPage;
+                        const active = page.id === activeFreshPageId;
                         return (
-                          <button key={`${group.label}-${page.id}`} className={`tlr-dashboard-page-menu-item${active?" tlr-dashboard-page-menu-item-active":""}`} type="button" disabled={!page.enabled} role="menuitem" aria-current={active?"page":undefined}
+                          <button key={`${group.label}-${page.id}`} className={`tlr-dashboard-page-menu-item${active?" tlr-dashboard-page-menu-item-active":""}`} type="button" role="menuitem" aria-current={active?"page":undefined}
                             onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();selectFreshDashboardPage(page);}}
                             onClick={e=>e.preventDefault()}
-                            style={{position:"relative",width:"100%",height:30,padding:isDashRTL?"0 10px 0 12px":"0 12px 0 10px",display:"grid",gridTemplateColumns:isDashRTL?"minmax(0,1fr) 14px":"14px minmax(0,1fr)",alignItems:"center",columnGap:9,border:0,outline:"none",background:active?"rgba(38,67,247,0.15)":"transparent",color:active?c.acL:page.enabled?c.ts:c.tm,opacity:page.enabled?1:0.54,fontSize:8.9,fontWeight:active?900:850,letterSpacing:"0.035em",fontFamily:F,cursor:"default",textAlign:isDashRTL?"right":"left",textTransform:"uppercase",boxSizing:"border-box"}}>
+                            style={{position:"relative",width:"100%",height:30,padding:isDashRTL?"0 10px 0 12px":"0 12px 0 10px",display:"grid",gridTemplateColumns:isDashRTL?"minmax(0,1fr) 14px":"14px minmax(0,1fr)",alignItems:"center",columnGap:9,border:0,outline:"none",background:active?"rgba(38,67,247,0.15)":"transparent",color:active?c.acL:c.ts,opacity:1,fontSize:8.9,fontWeight:active?900:850,letterSpacing:"0.035em",fontFamily:F,cursor:"default",textAlign:isDashRTL?"right":"left",textTransform:"uppercase",boxSizing:"border-box"}}>
                             {active && <span style={{position:"absolute",left:isDashRTL?"auto":0,right:isDashRTL?0:"auto",top:8,bottom:8,width:1,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 7px ${c.acG}`}}/>}
-                            <DashboardPageIcon id={page.id} size={14} color={active?c.acL:page.enabled?c.ts:c.tm}/>
+                            <DashboardPageIcon id={page.id} size={14} color={active?c.acL:c.ts}/>
                             <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{page.label}</span>
                           </button>
                         );
@@ -21858,13 +22549,13 @@ const TalariaV8b = () => {
           };
           const renderFreshPerformanceSummary = () => {
             const scoreTierFor = (score) => {
-              if (score == null || !Number.isFinite(Number(score))) return {label:"INSUFFICIENT", short:"N/A", next:"DEVELOPING", nextAt:60, color:c.tm, bg:"rgba(170,178,198,0.08)", border:"rgba(170,178,198,0.22)"};
+              if (score == null || !Number.isFinite(Number(score))) return {label:"INSUFFICIENT", short:"N/A", next:"DEVELOPING", nextAt:40, color:c.tm, bg:"rgba(170,178,198,0.08)", border:"rgba(170,178,198,0.22)"};
               const value = Math.max(0, Math.min(100, Number(score)));
               if (value >= 90) return {label:"ELITE", short:"ELITE", next:null, nextAt:100, color:c.gn, bg:"rgba(0,212,161,0.13)", border:"rgba(0,212,161,0.45)"};
-              if (value >= 80) return {label:"STRONG", short:"STRONG", next:"ELITE", nextAt:90, color:c.gn, bg:"rgba(0,212,161,0.13)", border:"rgba(0,212,161,0.45)"};
-              if (value >= 70) return {label:"SOLID", short:"SOLID", next:"STRONG", nextAt:80, color:c.gold, bg:"rgba(201,168,76,0.13)", border:"rgba(201,168,76,0.45)"};
-              if (value >= 60) return {label:"DEVELOPING", short:"DEV", next:"SOLID", nextAt:70, color:"#FF8C42", bg:"rgba(255,140,66,0.13)", border:"rgba(255,140,66,0.45)"};
-              return {label:"WEAK", short:"WEAK", next:"DEVELOPING", nextAt:60, color:c.rd, bg:"rgba(255,80,104,0.13)", border:"rgba(255,80,104,0.45)"};
+              if (value >= 75) return {label:"STRONG", short:"STRONG", next:"ELITE", nextAt:90, color:c.gn, bg:"rgba(0,212,161,0.13)", border:"rgba(0,212,161,0.45)"};
+              if (value >= 55) return {label:"SOLID", short:"SOLID", next:"STRONG", nextAt:75, color:c.gold, bg:"rgba(201,168,76,0.13)", border:"rgba(201,168,76,0.45)"};
+              if (value >= 40) return {label:"DEVELOPING", short:"DEV", next:"SOLID", nextAt:55, color:"#FF8C42", bg:"rgba(255,140,66,0.13)", border:"rgba(255,140,66,0.45)"};
+              return {label:"FRAGILE", short:"FRAGILE", next:"DEVELOPING", nextAt:40, color:c.rd, bg:"rgba(255,80,104,0.13)", border:"rgba(255,80,104,0.45)"};
             };
             const clampScore = (value, fallback=0) => Number.isFinite(Number(value)) ? Math.max(0, Math.min(100, Number(value))) : fallback;
             const scoreDimMeta = {
@@ -21872,8 +22563,26 @@ const TalariaV8b = () => {
               edge:{label:"Edge", compact:"Edge"},
               risk:{label:"Risk", compact:"Risk"},
               consistency:{label:"Consistency", compact:"Consistency"},
-              frequency:{label:"Frequency", compact:"Frequency"},
+              robustness:{label:"Robustness", compact:"Robustness"},
               discipline:{label:"Discipline", compact:"Discipline"},
+              realism:{label:"Validity", compact:"Validity"},
+              regimeStability:{label:"Regime Stability", compact:"Regime"},
+            };
+            const scoreBandColors = {
+              elite:c.gn,
+              strong:c.gn,
+              solid:c.acL,
+              developing:c.gold,
+              fragile:c.rd,
+              unscored:c.tm,
+            };
+            const scoreBandColor = (bandName, fallback=c.tm) => scoreBandColors[String(bandName || "").toLowerCase()] || fallback;
+            const scoreValueColor = (value, fallback=c.tm) => {
+              if (value == null || !Number.isFinite(Number(value))) return fallback;
+              const numeric = Number(value);
+              if (numeric < 40) return c.rd;
+              if (numeric < 65) return c.gold;
+              return c.gn;
             };
             const scoreStateColor = (state, value=null) => {
               if (state === "unavailable") return c.tm;
@@ -21881,48 +22590,124 @@ const TalariaV8b = () => {
               return scoreTierFor(value).color;
             };
             const scoreDeltaFrom = (score, delta) => score == null || delta == null ? score : clampScore(Number(score) - Number(delta), 0);
-            const strategyAxes = DIM_KEYS.map(key => {
-              const state = talariaUnified.dimStates?.[key] || "active";
-              const raw = talariaUnified.dims?.[key];
-              const delta = talariaUnified.deltas?.dims?.[key] ?? 0;
+            const scoreIsLiveFromModule = talariaUnified.isLived === true;
+            const scoreTradeDateMs = (trade) => {
+              const raw = trade?.exitTime || trade?.exit_time || trade?.closedAt || trade?.entryTime || trade?.entry_time || trade?.date || trade?.calendar;
+              const parsed = Date.parse(raw || "");
+              return Number.isFinite(parsed) ? parsed : null;
+            };
+            const scoreDatedTrades = [...(metrics.trades || [])]
+              .map(trade => ({trade, ms:scoreTradeDateMs(trade)}))
+              .filter(row => row.ms != null)
+              .sort((a,b)=>a.ms-b.ms);
+            const scoreHistoryDays = scoreDatedTrades.length > 1
+              ? Math.max(0, Math.round((scoreDatedTrades[scoreDatedTrades.length - 1].ms - scoreDatedTrades[0].ms) / 86400000))
+              : 0;
+            const scoreCompareOptionsBase = [
+              {key:"7d", label:"7D", title:"7 days", days:7},
+              {key:"30d", label:"30D", title:"30 days", days:30},
+              {key:"90d", label:"90D", title:"90 days", days:90},
+              {key:"6m", label:"6M", title:"6 months", days:183},
+              {key:"1y", label:"1Y", title:"1 year", days:365},
+              {key:"5y", label:"5Y", title:"5 years", days:1825},
+            ];
+            const scoreBaselineForDays = (days) => {
+              if (!scoreDatedTrades.length) return null;
+              const endMs = scoreDatedTrades[scoreDatedTrades.length - 1].ms;
+              const cutoff = endMs - days * 86400000;
+              const priorRows = scoreDatedTrades.filter(row => row.ms < cutoff).map(row => row.trade);
+              if (priorRows.length < SCORE_CONFIG.minSampleForScore) return null;
+              const ref = computeTalariaScore(buildTalariaScoreContext(priorRows, "backtest"));
+              return computeTalariaScore(buildTalariaScoreContext(priorRows, scoreMode, ref.strat));
+            };
+            const scoreCompareOptions = scoreCompareOptionsBase.map(option => {
+              const baseline = scoreBaselineForDays(option.days);
+              const available = !!baseline && scoreHistoryDays >= option.days;
+              return {
+                ...option,
+                available,
+                baseline,
+                reason: available ? "" : `Needs ${option.title} plus prior sample`,
+              };
+            });
+            const scoreCompareDefault = scoreCompareOptions.find(option => option.key === "30d" && option.available)
+              || [...scoreCompareOptions].reverse().find(option => option.available)
+              || scoreCompareOptions[0];
+            const selectedScoreCompare = scoreCompareOptions.find(option => option.key === dashScoreCompareWindow && option.available) || scoreCompareDefault;
+            const scoreComparisonBaseline = selectedScoreCompare?.baseline || null;
+            const scoreAverage = (...values) => {
+              const valid = values.map(Number).filter(Number.isFinite);
+              return valid.length ? valid.reduce((sum,value)=>sum+value,0) / valid.length : null;
+            };
+            const scoreCostsModeled = Boolean(
+              ds?.realWorldCosts || ds?.realWorldCostsOn || ds?.costModel || ds?.costsModeled || ds?.commission || ds?.spread ||
+              Math.abs(Number(metrics?.costs ?? metrics?.totalCosts ?? metrics?.commission ?? metrics?.spreadCost ?? 0)) > 0
+            );
+            const scoreAxisValueFromDims = (displayKey, dims={}) => {
+              if (displayKey === "realism") return scoreAverage(dims.risk, dims.robustness);
+              if (displayKey === "regimeStability") return scoreAverage(dims.consistency, dims.robustness);
+              return dims[displayKey];
+            };
+            const backtestSixthAxis = scoreCostsModeled ? "realism" : "regimeStability";
+            const scoreAxisSpecs = DIM_KEYS.map(key => {
+              if (key === "discipline" && !scoreIsLiveFromModule) {
+                return {key:backtestSixthAxis, sourceKey:backtestSixthAxis};
+              }
+              return {key, sourceKey:key};
+            });
+            const strategyAxes = scoreAxisSpecs.map(({key, sourceKey}) => {
+              const state = scoreIsLiveFromModule || key !== "discipline"
+                ? (talariaUnified.dimStates?.[sourceKey] || "active")
+                : "unavailable";
+              const raw = scoreAxisValueFromDims(sourceKey, talariaUnified.dims || {});
+              const compareRaw = scoreComparisonBaseline ? scoreAxisValueFromDims(sourceKey, scoreComparisonBaseline.dims || {}) : null;
+              const fallbackDelta = sourceKey === "realism"
+                ? scoreAverage(talariaUnified.deltas?.dims?.risk, talariaUnified.deltas?.dims?.robustness)
+                : sourceKey === "regimeStability"
+                  ? scoreAverage(talariaUnified.deltas?.dims?.consistency, talariaUnified.deltas?.dims?.robustness)
+                  : talariaUnified.deltas?.dims?.[sourceKey];
+              const delta = raw != null && compareRaw != null ? Number(raw) - Number(compareRaw) : (fallbackDelta ?? 0);
               const meta = scoreDimMeta[key] || {label:key, compact:key};
               const active = state !== "unavailable" && raw != null;
+              const bandColor = scoreValueColor(raw, scoreBandColor(talariaUnified.dimBands?.[sourceKey], scoreStateColor(state, raw)));
               return {
                 key,
+                sourceKey,
                 label:meta.label,
                 compact:meta.compact,
                 current:active ? clampScore(raw) : 0,
                 raw,
-                prior:active ? scoreDeltaFrom(raw, delta) : 0,
+                prior:active ? (compareRaw != null ? clampScore(compareRaw) : scoreDeltaFrom(raw, delta)) : 0,
                 elite:90,
                 goal:80,
                 state,
                 available:active,
-                color:scoreStateColor(state, raw),
+                band:talariaUnified.dimBands?.[sourceKey] || "unscored",
+                color:active ? bandColor : c.tm,
                 delta:delta == null ? null : Math.round(delta),
               };
             });
             const strategyScore = {
               axes: strategyAxes,
-              weights: Object.fromEntries(DIM_KEYS.map(key => [key, SCORE_CONFIG.weights[key]?.strat || 0])),
+              weights: Object.fromEntries(strategyAxes.map(axis => [axis.key, SCORE_CONFIG.weights[axis.sourceKey]?.strat || 0])),
               composite: talariaUnified.strat == null ? null : clampScore(talariaUnified.strat),
-              compositePrior: scoreDeltaFrom(talariaUnified.strat, talariaUnified.deltas?.strat),
+              compositePrior: scoreComparisonBaseline?.strat == null ? scoreDeltaFrom(talariaUnified.strat, talariaUnified.deltas?.strat) : clampScore(scoreComparisonBaseline.strat),
               state:talariaUnified.stratState,
             };
             const tierInfo = scoreTierFor(strategyScore.composite);
-            const liveScoreMode = talariaUnified.primary === "exec";
             const executionScore = {
               ...dashboardExecutionScore,
               composite: talariaUnified.exec == null ? null : clampScore(talariaUnified.exec),
               prior: scoreDeltaFrom(talariaUnified.exec, talariaUnified.deltas?.exec),
               state:talariaUnified.execState,
             };
+            const liveScoreMode = scoreIsLiveFromModule;
             const executionTierInfo = scoreTierFor(executionScore.composite);
             const tierSegments = [
-              {label:"WEAK", min:0, max:60, color:c.rd},
-              {label:"DEV", min:60, max:70, color:"#FF8C42"},
-              {label:"SOLID", min:70, max:80, color:c.gold},
-              {label:"STRONG", min:80, max:90, color:c.gn},
+              {label:"FRAGILE", min:0, max:40, color:c.rd},
+              {label:"DEVELOPING", min:40, max:55, color:"#FF8C42"},
+              {label:"SOLID", min:55, max:75, color:c.gold},
+              {label:"STRONG", min:75, max:90, color:c.gn},
               {label:"ELITE", min:90, max:100, color:c.gn},
             ];
             const scoreDelta = strategyScore.composite == null || strategyScore.compositePrior == null ? null : Math.round(strategyScore.composite - strategyScore.compositePrior);
@@ -21932,39 +22717,47 @@ const TalariaV8b = () => {
               const v = Number(value) || 0;
               const sets = {
                 Profitability:["Weak edge","Developing edge","Positive edge","Strong edge","Elite edge"],
+                Edge:["Negative edge","Unproven edge","Positive edge","Strong edge","Elite edge"],
                 Risk:["High pressure","Loose risk","Acceptable","Controlled","Very controlled"],
                 Consistency:["Erratic","Variable","Stable enough","Consistent","Very consistent"],
+                Robustness:["Outlier-driven","Thin proof","Holds somewhat","Repeatable","Durable"],
                 Discipline:["Needs control","Improving","Mostly planned","Disciplined","Very disciplined"],
+                Validity:["Unmodeled","Thin costs","Plausible","Validated","Stress-tested"],
+                "Regime Stability":["Regime risk","Changing","Stable enough","Stable","Durable"],
               };
               const bucket = v >= 85 ? 4 : v >= 70 ? 3 : v >= 50 ? 2 : v >= 30 ? 1 : 0;
               return (sets[label] || sets.Profitability)[bucket];
             };
             const dashboardMetricInfo = {
               "Net P&L":"Total profit or loss after all filtered trades in the selected source.",
+              "Per-Trade Quality":"Shows how win contribution and loss drag combine into net expectancy in R with dollar context.",
               "Return %":"Net result as a percentage of starting balance.",
               "Profit Factor":"Gross profit divided by gross loss. Above 1.0 means wins outweigh losses.",
-              "Expectancy":"Average R gained or lost per trade after the current filters.",
+              "Expectancy":"Average R gained or lost per trade after the current filters, with the dollar-per-trade equivalent available from the Snapshot unit toggle.",
+              "Win Rate + RR":"Share of filtered trades that closed with a profit, read against payoff, breakeven, and raw outcome counts.",
               "Trade Win Rate":"Share of filtered trades that closed with a profit.",
               "Avg Win / Avg Loss":"Average winning trade compared with average losing trade.",
-              "Max Drawdown":"Largest peak-to-trough account drop during the selected period.",
+              "Drawdown":"Worst peak-to-trough loss, drawdown percent, longest underwater stretch, and underwater time in one read.",
+              "Max Drawdown":"Worst peak-to-trough loss, drawdown percent, longest underwater stretch, and underwater time in one read.",
               "Total Trades":"Number of trades included after source and filter selection.",
-              "Recovery Factor":"Net P&L divided by maximum drawdown. It asks how efficiently the system recovers from pressure.",
-              "Risk-Adjusted":"Sortino and Sharpe read return quality after volatility and downside pressure.",
+              "Recovery Factor":"Net P&L divided by maximum drawdown. It asks how many dollars were earned per $1 of worst drawdown.",
+              "Risk-Adjusted":"Sortino, Sharpe, and shape read return quality after volatility and downside pressure.",
+              "Risk of Ruin":"Estimated chance of reaching the selected drawdown threshold using the current win rate, average R, and risk-per-trade basis.",
               "Consistency":"Share of profitable trading days and whether profit depends on a few oversized winners.",
-              "Discipline":"Rule adherence when behavior data exists, otherwise cost drag from spreads and commissions.",
-              "Cost Drag":"Estimated trading costs as a share of gross performance before costs.",
-              "Time Underwater":"Longest time the equity curve stayed below its prior high.",
+              "Discipline":"Rule adherence and execution behavior when discipline data exists.",
+              "Time Underwater":"Drawdown combines time spent underwater with the worst peak-to-trough loss.",
               "Sortino":"Return quality after downside volatility is isolated.",
               "Sharpe":"Return quality compared with total volatility.",
               "Shape":"Relationship between downside-adjusted and total-volatility-adjusted returns.",
               "Calmar":"Annualized return compared with maximum drawdown.",
-              "Day Win Rate":"Share of trading days that ended profitable.",
+              "Day Win Rate":"Share of trading days that ended profitable, backed by chronological green, red, and flat day counts.",
               "Profit Concentration":"How much total profit depends on the largest winners.",
-              "Equity Smoothness":"How cleanly the equity curve follows a stable trend.",
+              "Equity Smoothness":"R-squared of the displayed path against a straight-line reference. Multi-source reads cumulative R.",
               "Rule Adherence":"Share of trades that followed the recorded rules.",
               "Discipline P&L":"P&L after excluding rule-broken trades from the discipline view.",
               "Plan-vs-Actual RR":"Difference between planned and realized reward-to-risk.",
               "Rule Tracking":"Explains whether backtest replay is tracking rules.",
+              "Trade Efficiency":"Where the average exit lands between entry and the favourable peak, in R or dollars depending on the Snapshot unit toggle.",
               "Trade Frequency":"How often trades appear over the selected date range.",
               "Sample Confidence":"How close the sample is to the configured evidence target.",
               "Goal Progress":"Progress toward the standard dashboard return goal.",
@@ -21976,31 +22769,35 @@ const TalariaV8b = () => {
               "Streaks":"Current sequence of winning or losing trades.",
             };
             const dashboardVisualInfo = {
-              "Net P&L":"Cumulative account balance after each trade, in chronological order.",
+              "Net P&L":"Shared-scale composition: won, lost, costs, and retained share.",
+              "Per-Trade Quality":"Expectancy build: wins add minus losses cost equals net expectancy, with R and dollar reads.",
               "Return %":"Progress toward the configured return or risk target.",
               "Profit Factor":"Win and loss pressure split around the center line.",
               "Expectancy":"R-multiple distribution. The gold marker shows the average.",
+              "Win Rate + RR":"Cushion bar with breakeven tick plus win, loss, and breakeven counts.",
               "Trade Win Rate":"Each tile is one trade in sequence. Green is win, red is loss.",
               "Avg Win / Avg Loss":"Average winning and losing money size split around center.",
-              "Max Drawdown":"Drawdown depth over the filtered trade sequence.",
+              "Drawdown":"Worst drawdown episode with support rows for depth, longest underwater stretch, and time underwater.",
+              "Max Drawdown":"Worst drawdown episode with support rows for depth, longest underwater stretch, and time underwater.",
               "Total Trades":"Trade activity density across the latest period.",
-              "Recovery Factor":"Progress toward a 3.0 recovery factor reference.",
-              "Risk-Adjusted":"Sortino and Sharpe shown as side-by-side bars.",
+              "Recovery Factor":"Two shared-scale bars: $1 of pain versus dollars earned per $1 of worst drawdown.",
+              "Risk-Adjusted":"Sortino and Sharpe bars with gold good/great ticks, plus a centered shape bar.",
+              "Risk of Ruin":"Probability range for a large drawdown at the current risk profile.",
               "Consistency":"Recent trading days: green is profitable, red is losing.",
-              "Discipline":"Followed versus broken rule share, or gross-to-net cost drag.",
-              "Cost Drag":"How much of gross performance is eaten by estimated costs.",
-              "Time Underwater":"Drawdown curve used to see recovery stretches.",
+              "Discipline":"Followed versus broken rule share and behavior quality.",
+              "Time Underwater":"Worst drawdown episode with support rows for depth, longest underwater stretch, and time underwater.",
               "Sortino":"Sortino and Sharpe bars for risk-adjusted return quality.",
               "Sharpe":"Sortino and Sharpe bars for risk-adjusted return quality.",
               "Shape":"Sortino and Sharpe bars used to classify return shape.",
               "Calmar":"Progress bar against a 1.0 Calmar reference.",
-              "Day Win Rate":"Recent trading day tiles.",
+              "Day Win Rate":"Chronological day cells with green, red, and flat day counts.",
               "Profit Concentration":"Recent trading day tiles with concentration context.",
-              "Equity Smoothness":"Progress against the smoothness reference.",
+              "Equity Smoothness":"Gold path compared with a dashed straight-line reference.",
               "Rule Adherence":"Followed versus broken rule share.",
               "Discipline P&L":"Followed versus broken rule share.",
               "Plan-vs-Actual RR":"R-multiple distribution for execution drift context.",
               "Rule Tracking":"Cost and rule placeholder when replay rules are not tracked.",
+              "Trade Efficiency":"Entry-to-peak track. Gold marks average exit; green marks average MFE peak.",
               "Trade Frequency":"Activity bars across the latest period.",
               "Sample Confidence":"Progress toward the evidence target.",
               "Goal Progress":"Progress toward the configured return goal.",
@@ -22013,7 +22810,7 @@ const TalariaV8b = () => {
             };
             const dashboardScoreTip = {
               title:"Talaria Score",
-              body:liveScoreMode ? `Live mode uses EXEC as the headline. STRAT stays ${talariaUnified.stratState === "inherited" ? "inherited until enough live trades re-prove the edge" : "available"} in the background.` : "Backtest mode uses STRAT as the headline. EXEC is unavailable until live journal execution data exists.",
+              body:"One headline score from the active source. The radar shows the six current score dimensions; the dropdown changes only the comparison baseline.",
             };
             const InfoTarget = ({tip, children, style=null}) => (
               <span className="tlr-dashboard-info-target" tabIndex={0} {...dashInfoHandlers(tip)} style={{display:"inline-flex",minWidth:0,outline:"none",...(style||{})}}>
@@ -22049,7 +22846,7 @@ const TalariaV8b = () => {
               const mix = (channel) => Math.round(channel + (255 - channel) * amount);
               return `rgb(${mix(parsed.r)},${mix(parsed.g)},${mix(parsed.b)})`;
             };
-            const ScoreDonut = ({size=165, score=strategyScore.composite, prior=strategyScore.compositePrior, tier=tierInfo, label="Composite"}) => {
+            const ScoreDonut = ({size=165, score=strategyScore.composite, prior=strategyScore.compositePrior, tier=tierInfo, label="Strategy"}) => {
               const cx = size / 2;
               const cy = size / 2;
               const arcStroke = 6;
@@ -22064,8 +22861,9 @@ const TalariaV8b = () => {
                 <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label="Talaria Score gauge" style={{display:"block"}}>
                   <circle cx={cx} cy={cy} r={r} fill="none" stroke={tier.color} strokeWidth={arcStroke} opacity=".08"/>
                   <circle className="tlr-dashboard-shape-hover" {...dashInfoHandlers(dashboardScoreTip, glowId)} tabIndex={0} cx={cx} cy={cy} r={r} fill="none" stroke={tier.color} strokeWidth={arcStroke} strokeLinecap="round" strokeDasharray={hasScore ? `${circ} ${circ}` : "4 10"} strokeDashoffset={hasScore ? offset : 0} transform={`rotate(-90 ${cx} ${cy})`} pointerEvents="stroke" style={{"--tlr-shape-glow":tier.color,filter:`drop-shadow(0 0 ${active?3:1.5}px ${tier.color}${active?"36":"18"})`,outline:"none",transition:"filter 90ms ease",opacity:hasScore?1:.72}}/>
-                  <text x="50%" y="48%" textAnchor="middle" dominantBaseline="middle" fill={tier.color} fontFamily={scoreFont} fontSize="38" fontWeight="800" style={{fontVariantNumeric:"tabular-nums",pointerEvents:"none"}}>{hasScore ? Math.round(value) : "-"}</text>
-                  <text x="50%" y="65%" textAnchor="middle" dominantBaseline="middle" fill={c.ts} fontFamily={scoreFont} fontSize="11" fontWeight="600" style={{pointerEvents:"none"}}>/100</text>
+                  <text x="50%" y={cy - 25} textAnchor="middle" dominantBaseline="middle" fill={c.tm} fontFamily={scoreFont} fontSize="8" fontWeight="850" letterSpacing=".08em" style={{pointerEvents:"none"}}>{String(label || "Strategy").toUpperCase()}</text>
+                  <text x="50%" y={cy} textAnchor="middle" dominantBaseline="middle" fill={tier.color} fontFamily={scoreFont} fontSize="36" fontWeight="800" style={{fontVariantNumeric:"tabular-nums",pointerEvents:"none"}}>{hasScore ? Math.round(value) : "-"}</text>
+                  <text x="50%" y={cy + 22} textAnchor="middle" dominantBaseline="middle" fill={c.ts} fontFamily={scoreFont} fontSize="11" fontWeight="600" style={{pointerEvents:"none"}}>/100</text>
                 </svg>
               );
             };
@@ -22094,13 +22892,13 @@ const TalariaV8b = () => {
                   {ring(strategyScore.composite, outerR, tierInfo.color, ringStroke, "strategy")}
                   {ring(executionScore.composite, innerR, executionTierInfo.color, ringStroke, "execution")}
                   <circle cx={cx} cy={cy} r={centerR} fill={c.sf} stroke={c.brH} strokeWidth=".65" opacity=".92"/>
-                  <text x="50%" y={cy - 18} textAnchor="middle" dominantBaseline="middle" fill={c.tm} fontFamily={scoreFont} fontSize="7" fontWeight="800" letterSpacing=".08em" style={{pointerEvents:"none"}}>EXECUTION</text>
-                  <text x="50%" y={cy + 3} textAnchor="middle" dominantBaseline="middle" fill={executionTierInfo.color} fontFamily={scoreFont} fontSize="30" fontWeight="850" style={{fontVariantNumeric:"tabular-nums",pointerEvents:"none"}}>{executionScore.composite == null ? "-" : Math.round(executionScore.composite)}</text>
-                  <text x="50%" y={cy + 20} textAnchor="middle" dominantBaseline="middle" fill={c.ts} fontFamily={scoreFont} fontSize="8.5" fontWeight="650" style={{pointerEvents:"none"}}>/100</text>
-                  <text x="50%" y={cy + 36} textAnchor="middle" dominantBaseline="middle" fontFamily={scoreFont} fontSize="6.8" fontWeight="850" style={{fontVariantNumeric:"tabular-nums",pointerEvents:"none"}}>
-                    <tspan fill={executionTierInfo.color}>EXEC {executionScore.composite == null ? "-" : Math.round(executionScore.composite)}</tspan>
-                    <tspan fill={c.ts}> / </tspan>
+                  <text x="50%" y={cy - 23} textAnchor="middle" dominantBaseline="middle" fill={c.tm} fontFamily={scoreFont} fontSize="7" fontWeight="800" letterSpacing=".08em" style={{pointerEvents:"none"}}>STRATEGY</text>
+                  <text x="50%" y={cy - 1} textAnchor="middle" dominantBaseline="middle" fill={tierInfo.color} fontFamily={scoreFont} fontSize="29" fontWeight="850" style={{fontVariantNumeric:"tabular-nums",pointerEvents:"none"}}>{strategyScore.composite == null ? "-" : Math.round(strategyScore.composite)}</text>
+                  <text x="50%" y={cy + 15} textAnchor="middle" dominantBaseline="middle" fill={c.ts} fontFamily={scoreFont} fontSize="8.5" fontWeight="650" style={{pointerEvents:"none"}}>/100</text>
+                  <text x="50%" y={cy + 33} textAnchor="middle" dominantBaseline="middle" fontFamily={scoreFont} fontSize="6.8" fontWeight="850" style={{fontVariantNumeric:"tabular-nums",pointerEvents:"none"}}>
                     <tspan fill={tierInfo.color}>STRAT {strategyScore.composite == null ? "-" : Math.round(strategyScore.composite)}</tspan>
+                    <tspan fill={c.ts}> / </tspan>
+                    <tspan fill={executionTierInfo.color}>EXEC {executionScore.composite == null ? "-" : Math.round(executionScore.composite)}</tspan>
                   </text>
                 </svg>
               );
@@ -22152,6 +22950,13 @@ const TalariaV8b = () => {
                 const p = point(index, value);
                 return `${p.x},${p.y}`;
               }).join(" ");
+              const hasPriorShape = axes.some(axis => axis.prior != null && Number.isFinite(Number(axis.prior)));
+              const priorPolygon = hasPriorShape ? axes.map((axis,index)=>{
+                const priorValue = axis.prior == null ? axis.current : axis.prior;
+                const value = Math.max(.08, Math.min(1, clampScore(priorValue) / 100));
+                const p = point(index, value);
+                return `${p.x},${p.y}`;
+              }).join(" ") : "";
               return (
                 <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label="Talaria Score radar" style={{display:"block"}}>
                   {[.2,.4,.6,.8,1].map(level=>{
@@ -22172,7 +22977,8 @@ const TalariaV8b = () => {
                       </g>
                     );
                   })}
-                  <polygon className="tlr-dashboard-shape-hover" {...dashInfoHandlers({title:"Radar score", body:"Six-axis strategy profile on a fixed 0-100 web."}, radarId)} tabIndex={0} points={polygon("current")} fill={radarFill} stroke={radarStroke} strokeWidth="1.35" pointerEvents="visiblePainted" style={{"--tlr-shape-glow":tierInfo.color,filter:`drop-shadow(0 0 ${radarActive?3:1.5}px ${tierInfo.color}${radarActive?"34":"18"})`,outline:"none",transition:"filter 90ms ease"}}/>
+                  {hasPriorShape && <polygon points={priorPolygon} fill={scoreColorAlpha(c.tx, .08)} stroke={c.tx} strokeWidth=".8" opacity=".34" vectorEffect="non-scaling-stroke"/>}
+                  <polygon className="tlr-dashboard-shape-hover" {...dashInfoHandlers({title:"Radar score", body:"Six active scoring dimensions. Faint shape is the comparison period."}, radarId)} tabIndex={0} points={polygon("current")} fill={radarFill} stroke={radarStroke} strokeWidth="1.35" pointerEvents="visiblePainted" style={{"--tlr-shape-glow":tierInfo.color,filter:`drop-shadow(0 0 ${radarActive?3:1.5}px ${tierInfo.color}${radarActive?"34":"18"})`,outline:"none",transition:"filter 90ms ease"}}/>
                   {axes.map((axis,index)=>{
                     const p = point(index, Math.max(.08, axis.current / 100));
                     const delta = Math.round(axis.current - axis.prior);
@@ -22186,100 +22992,68 @@ const TalariaV8b = () => {
             const ScoreTrendChart = ({size=165, width=size, height=size, compact=false}) => {
               const chartW = width;
               const chartH = height;
-              const sourceRows = (metrics.dailyRows && metrics.dailyRows.length)
-                ? metrics.dailyRows
-                : (metrics.trades || []).map((trade,index)=>({date:trade.date, label:trade.symbol || `Trade ${index + 1}`, pnl:trade.pnl, trades:1}));
-              const baseRows = sourceRows.length
-                ? sourceRows
-                : [{date:ds.startDate, label:"Period start", pnl:0}, {date:ds.endDate, label:"Now", pnl:metrics.totalPnl || 0}];
-              const rows = baseRows.length === 1 ? [baseRows[0], {...baseRows[0], label:"Now"}] : baseRows;
-              const engineTrendRows = (talariaUnifiedTrend || []).length >= 2 ? talariaUnifiedTrend : null;
-              let running = 0;
-              const cumulative = rows.map(row => {
-                running += Number(row.pnl) || 0;
-                return running;
-              });
-              const minCum = Math.min(...cumulative, 0);
-              const maxCum = Math.max(...cumulative, 1);
-              const cumSpan = Math.max(1, maxCum - minCum);
-              const startScore = clampScore(strategyScore.compositePrior, strategyScore.composite ?? 0);
-              const endScore = clampScore(strategyScore.composite, startScore);
-              const top = compact ? 7 : 14;
-              const bottom = compact ? 14 : 28;
-              const padX = compact ? 20 : 13;
-              const plotW = chartW - padX * 2;
-              const plotH = chartH - top - bottom;
-              const baseline = top + plotH;
-              const points = engineTrendRows ? engineTrendRows.map((row,index) => {
-                const value = clampScore(row.score, endScore);
-                return {
-                  row,
-                  value,
-                  x:padX + (engineTrendRows.length <= 1 ? 1 : index / (engineTrendRows.length - 1)) * plotW,
-                  y:top + (1 - value / 100) * plotH,
-                  label:row.date ? fmtDate(row.date) : `Point ${index + 1}`,
-                };
-              }) : rows.map((row,index) => {
-                const progress = rows.length <= 1 ? 1 : index / (rows.length - 1);
-                const base = startScore + (endScore - startScore) * progress;
-                const pressure = ((cumulative[index] - minCum) / cumSpan - .5) * 8;
-                const value = index === 0 ? startScore : index === rows.length - 1 ? endScore : clampScore(base + pressure);
-                return {
-                  row,
-                  value,
-                  x:padX + progress * plotW,
-                  y:top + (1 - value / 100) * plotH,
-                  label:row.date ? fmtDate(row.date) : row.label || `Point ${index + 1}`,
-                };
-              });
+              const moduleRows = (talariaUnifiedTrend || [])
+                .map((row,index)=>({row,index,value:clampScore(row.score, null), label:row.date ? fmtDate(row.date) : `Point ${index + 1}`}))
+                .filter(row=>row.value != null && Number.isFinite(Number(row.value)));
+              const fallbackRows = moduleRows.length >= 2
+                ? moduleRows
+                : [
+                  strategyScore.compositePrior == null ? null : {row:null,index:0,value:strategyScore.compositePrior,label:"Prior"},
+                  strategyScore.composite == null ? null : {row:null,index:1,value:strategyScore.composite,label:"Current"},
+                ].filter(Boolean);
+              const pointsSource = fallbackRows.length >= 2 ? fallbackRows : moduleRows;
+              const top = compact ? 16 : 18;
+              const bottom = compact ? 24 : 30;
+              const padX = compact ? 26 : 34;
+              const plotW = Math.max(1, chartW - padX * 2);
+              const plotH = Math.max(1, chartH - top - bottom);
+              const values = pointsSource.map(point=>point.value);
+              const rawMin = values.length ? Math.min(...values) : (strategyScore.composite ?? 0);
+              const rawMax = values.length ? Math.max(...values) : (strategyScore.composite ?? 0);
+              const paddedMin = Math.max(0, Math.floor(rawMin - Math.max(4, (rawMax - rawMin) * .18)));
+              const paddedMax = Math.min(100, Math.ceil(rawMax + Math.max(4, (rawMax - rawMin) * .18)));
+              const yMin = paddedMax <= paddedMin ? Math.max(0, paddedMin - 5) : paddedMin;
+              const yMax = paddedMax <= paddedMin ? Math.min(100, paddedMax + 5) : paddedMax;
+              const ySpan = Math.max(1, yMax - yMin);
+              const xFor = index => padX + (pointsSource.length <= 1 ? .5 : index / (pointsSource.length - 1)) * plotW;
+              const yFor = value => top + (1 - ((value - yMin) / ySpan)) * plotH;
+              const points = pointsSource.map((point,index)=>({...point,x:xFor(index),y:yFor(point.value)}));
               const linePath = points.map((point,index)=>`${index ? "L" : "M"}${point.x} ${point.y}`).join(" ");
+              const baseline = top + plotH;
               const areaPath = points.length ? `${linePath} L${points[points.length - 1].x} ${baseline} L${points[0].x} ${baseline} Z` : "";
-              const latest = points[points.length - 1] || {x:padX,y:baseline,value:endScore,label:"Now"};
+              const latest = points[points.length - 1] || {x:padX,y:baseline,value:strategyScore.composite ?? 0,label:"Current"};
               const first = points[0] || latest;
               const trendActive = scoreShapeActive("score-trend-line");
-              const compactGradientId = `score-trend-fill-${Math.round(startScore)}-${Math.round(endScore)}`;
+              const compactGradientId = `score-trend-fill-${Math.round(yMin)}-${Math.round(yMax)}-${Math.round(latest.value)}`;
+              const crossings = [40,55,75,90].filter(value => value > yMin && value < yMax);
               return (
                 <svg width={chartW} height={chartH} viewBox={`0 0 ${chartW} ${chartH}`} aria-label="Talaria Score trend" style={{display:"block"}}>
-                  {compact && (
-                    <defs>
-                      <linearGradient id={compactGradientId} x1="0" y1={top} x2="0" y2={baseline} gradientUnits="userSpaceOnUse">
-                        <stop offset="0%" stopColor={tierInfo.color} stopOpacity=".24"/>
-                        <stop offset="100%" stopColor={tierInfo.color} stopOpacity=".025"/>
-                      </linearGradient>
-                    </defs>
-                  )}
-                  {compact ? (
-                    <>
-                      {[.25,.5,.75].map(level => {
-                        const y = top + plotH * level;
-                        return <line key={`compact-score-grid-${level}`} x1={padX} x2={padX + plotW} y1={y} y2={y} stroke={c.brH} strokeWidth=".7" opacity=".34"/>;
-                      })}
-                      <line x1={padX} x2={padX} y1={top} y2={baseline} stroke={c.tm} strokeWidth=".85" opacity=".72"/>
-                      <line x1={padX} x2={padX + plotW} y1={baseline} y2={baseline} stroke={c.tm} strokeWidth=".85" opacity=".72"/>
-                      <path d={areaPath} fill={`url(#${compactGradientId})`}/>
-                    </>
-                  ) : (
-                    <>
-                      {tierSegments.map(segment => {
-                        const y = top + (1 - segment.max / 100) * plotH;
-                        const hgt = Math.max(1, ((segment.max - segment.min) / 100) * plotH);
-                        return <rect key={`trend-band-${segment.label}`} x={padX} y={y} width={plotW} height={hgt} fill={scoreColorAlpha(segment.color, .06)}/>;
-                      })}
-                      {tierSegments.slice(1).map(segment => {
-                        const y = top + (1 - segment.min / 100) * plotH;
-                        return <line key={`trend-sep-${segment.label}`} x1={padX} x2={padX + plotW} y1={y} y2={y} stroke={c.grid || c.brH} strokeWidth="1" opacity=".28"/>;
-                      })}
-                      <path d={areaPath} fill={scoreColorAlpha(tierInfo.color, .12)}/>
-                    </>
-                  )}
-                  {compact && <line x1={latest.x} x2={latest.x} y1={Math.max(top, latest.y - 8)} y2={baseline} stroke={tierInfo.color} strokeWidth=".8" opacity=".44"/>}
-                  {compact && first && <circle cx={first.x} cy={first.y} r="1.7" fill={c.sf} stroke={c.tm} strokeWidth=".8" opacity=".85"/>}
-                  <path className="tlr-dashboard-shape-hover" {...dashInfoHandlers({title:"Score trend", body:"Composite Talaria Score through the selected period."}, "score-trend-line")} tabIndex={0} d={linePath} fill="none" stroke={scoreColorMixLight(tierInfo.color, .22)} strokeWidth={compact ? "1.75" : "1.5"} strokeLinecap="square" strokeLinejoin="miter" pointerEvents="stroke" style={{outline:"none",filter:`drop-shadow(0 0 ${trendActive?3:1.5}px ${tierInfo.color}${trendActive?"34":"18"})`,transition:"filter 90ms ease"}}/>
+                  <defs>
+                    <linearGradient id={compactGradientId} x1="0" y1={top} x2="0" y2={baseline} gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stopColor={tierInfo.color} stopOpacity=".22"/>
+                      <stop offset="100%" stopColor={tierInfo.color} stopOpacity=".025"/>
+                    </linearGradient>
+                  </defs>
+                  <line x1={padX} x2={padX} y1={top} y2={baseline} stroke={c.tm} strokeWidth=".75" opacity=".7"/>
+                  <line x1={padX} x2={padX + plotW} y1={baseline} y2={baseline} stroke={c.tm} strokeWidth=".75" opacity=".7"/>
+                  {crossings.map(value => {
+                    const y = yFor(value);
+                    return (
+                      <g key={`score-crossing-${value}`}>
+                        <line x1={padX} x2={padX + plotW} y1={y} y2={y} stroke={c.brH} strokeWidth=".65" strokeDasharray="3 5" opacity=".45"/>
+                        <text x={padX + plotW + 4} y={y + 3} fill={c.tm} fontSize={compact ? "7" : "8"} fontWeight="800" fontFamily={scoreFont}>{value}</text>
+                      </g>
+                    );
+                  })}
+                  <path d={areaPath} fill={`url(#${compactGradientId})`}/>
+                  <path className="tlr-dashboard-shape-hover" {...dashInfoHandlers({title:"Score movement", body:"Talaria Score series from the scoring module."}, "score-trend-line")} tabIndex={0} d={linePath} fill="none" stroke={scoreColorMixLight(tierInfo.color, .22)} strokeWidth={compact ? "1.75" : "1.55"} strokeLinecap="square" strokeLinejoin="miter" pointerEvents="stroke" style={{outline:"none",filter:`drop-shadow(0 0 ${trendActive?3:1.5}px ${tierInfo.color}${trendActive?"34":"18"})`,transition:"filter 90ms ease"}}/>
                   {points.map((point,index) => {
                     const hitW = Math.max(8, plotW / Math.max(1, points.length));
                     return <rect key={`trend-hit-${index}`} {...dashInfoHandlers({title:point.label, body:`Score ${Math.round(point.value)}/100`}, `score-trend-${index}`)} tabIndex={0} x={Math.max(padX, point.x - hitW / 2)} y={top} width={hitW} height={plotH} fill="transparent" style={{outline:"none"}}/>;
                   })}
                   <circle cx={latest.x} cy={latest.y} r={compact ? "2.8" : "3.4"} fill={scoreColorMixLight(tierInfo.color, .62)} stroke={compact ? c.sf : tierInfo.color} strokeWidth={compact ? ".9" : "1"} style={{filter:`drop-shadow(0 0 4px ${tierInfo.color}50)`}}/>
+                  <text x={padX - 5} y={top + 3} textAnchor="end" fill={c.ts} fontSize={compact ? "7.8" : "8.5"} fontWeight="850" fontFamily={scoreFont} style={{fontVariantNumeric:"tabular-nums"}}>{Math.round(yMax)}</text>
+                  <text x={padX - 5} y={baseline + 3} textAnchor="end" fill={c.ts} fontSize={compact ? "7.8" : "8.5"} fontWeight="850" fontFamily={scoreFont} style={{fontVariantNumeric:"tabular-nums"}}>{Math.round(yMin)}</text>
                   {!compact && (
                     <>
                       <text x={padX} y={chartH - 4} textAnchor="start" fill={c.ts} fontSize="9" fontWeight="800" fontFamily={scoreFont} style={{fontVariantNumeric:"tabular-nums"}}>{Math.round(first.value)}</text>
@@ -22296,7 +23070,7 @@ const TalariaV8b = () => {
               const prior = clampScore(value - delta);
               return (
                 <button type="button" className="tlr-dashboard-score-row" onClick={(e)=>{e.stopPropagation();openDashSubWindow("sub-scores", item.label);}} style={{height:38,border:"none",background:"transparent",padding:"0 6px",display:"grid",gridTemplateColumns:"96px minmax(0,1fr) 30px",gap:10,alignItems:"center",fontFamily:F,cursor:"default",textAlign:"left",outline:"none"}}>
-                  <span style={{fontSize:10,fontWeight:700,color:c.tx,letterSpacing:"0.04em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.label}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:c.tx,letterSpacing:"0.04em",textTransform:"uppercase",whiteSpace:"normal",lineHeight:1.08,overflow:"visible"}}>{item.label}</span>
                   <span title={`${item.note}. Prior value ${Math.round(prior)}.`} style={{height:6,background:c.well||c.trk,border:`1px solid ${c.br}`,position:"relative",boxSizing:"border-box",display:"block"}}>
                     <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${value}%`,background:item.color}}/>
                     <span style={{position:"absolute",left:`${prior}%`,top:-4,bottom:-4,width:1,background:c.tx,opacity:.64}}/>
@@ -22305,23 +23079,35 @@ const TalariaV8b = () => {
                 </button>
               );
             };
-            const TierScaleBar = ({primary=strategyScore.composite, primaryTier=tierInfo, ghost=null}) => (
-              <div style={{padding:"4px 0 0",width:"100%"}}>
-                <div className="tlr-dashboard-shape-hover" {...dashInfoHandlers({title:"Score tiers", body:"Weak, Developing, Solid, Strong, and Elite. The needle shows the active score position."})} tabIndex={0} style={{"--tlr-shape-glow":primaryTier.color,height:7,position:"relative",border:`1px solid ${c.br}`,background:c.well||c.trk,boxShadow:"inset 0 1px 5px rgba(0,0,0,0.58)",boxSizing:"border-box",overflow:"visible",outline:"none"}}>
-                  {tierSegments.map(segment=>(
-                    <span key={segment.label} style={{position:"absolute",left:`${segment.min}%`,top:0,bottom:0,width:`${segment.max-segment.min}%`,background:segment.color,opacity:.08,borderRight:segment.max>=100?"none":`1px solid ${c.br}`,boxSizing:"border-box"}}/>
-                  ))}
-                  <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${Math.max(0,Math.min(100,primary))}%`,background:primaryTier.color,opacity:.18}}/>
-                  {ghost != null && <span style={{position:"absolute",left:`${Math.max(2,Math.min(98,ghost))}%`,top:-2,bottom:-2,width:1,background:tierInfo.color,opacity:.45}}/>}
-                  <span style={{position:"absolute",left:`${Math.max(2,Math.min(98,primary))}%`,top:-7,height:19,width:2,transform:"translateX(-50%)",background:primaryTier.color,boxShadow:`0 0 6px ${primaryTier.color}`}}/>
-                  <span style={{position:"absolute",left:`${Math.max(2,Math.min(98,primary))}%`,top:-10,width:8,height:8,transform:"translateX(-50%) rotate(45deg)",background:primaryTier.color,boxShadow:`0 0 6px ${primaryTier.color}`}}/>
+            const TierScaleRail = ({primary=strategyScore.composite, primaryTier=tierInfo}) => {
+              const primaryPct = Math.max(2, Math.min(98, Number(primary) || 0));
+              const primaryY = 100 - primaryPct;
+              const railHeight = 214;
+              return (
+                <div style={{width:88,height:236,position:"relative",display:"grid",alignItems:"center",justifyItems:"start",fontFamily:F,flexShrink:0}}>
+                  <div className="tlr-dashboard-shape-hover" {...dashInfoHandlers({title:"Score tiers", body:"Fragile at the bottom, Elite at the top. The needle shows the active score position."})} tabIndex={0} style={{"--tlr-shape-glow":primaryTier.color,width:10,height:railHeight,position:"relative",border:`1px solid ${c.br}`,background:c.well||c.trk,boxShadow:"inset 0 1px 5px rgba(0,0,0,0.58)",boxSizing:"border-box",overflow:"visible",outline:"none"}}>
+                    {tierSegments.map(segment=>{
+                      const active = primaryPct >= segment.min && (primaryPct < segment.max || segment.max >= 100);
+                      return (
+                        <React.Fragment key={segment.label}>
+                          <span style={{position:"absolute",left:0,right:0,top:`${100-segment.max}%`,height:`${segment.max-segment.min}%`,background:segment.color,opacity:active ? .96 : .46,borderBottom:"none",boxSizing:"border-box",boxShadow:active?`0 0 8px ${segment.color}66`:"none",transition:"opacity 150ms ease, box-shadow 150ms ease"}}/>
+                          {!active && (
+                            <span style={{position:"absolute",left:17,top:`${100-((segment.min+segment.max)/2)}%`,transform:"translateY(-50%)",fontSize:7.4,fontWeight:900,color:segment.color,opacity:.78,letterSpacing:"0.04em",textTransform:"uppercase",lineHeight:1,whiteSpace:"nowrap",pointerEvents:"none"}}>
+                              {segment.label}
+                            </span>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                    {tierSegments.slice(1).map(segment=>(
+                      <span key={`tier-separator-${segment.label}`} aria-hidden="true" style={{position:"absolute",left:1,right:1,top:`${100-segment.min}%`,height:1,background:"linear-gradient(90deg,transparent,rgba(232,238,255,0.62),transparent)",boxShadow:"0 1px 0 rgba(0,0,0,0.42)",transform:"translateY(-50%)",zIndex:3,pointerEvents:"none"}}/>
+                    ))}
+                    <span style={{position:"absolute",left:-7,right:-10,top:`${primaryY}%`,height:2,transform:"translateY(-50%)",background:primaryTier.color,boxShadow:`0 0 7px ${primaryTier.color}`,zIndex:4}}/>
+                    <span style={{position:"absolute",right:-11,top:`${primaryY}%`,width:7,height:7,transform:"translateY(-50%) rotate(45deg)",background:primaryTier.color,boxShadow:`0 0 7px ${primaryTier.color}`,zIndex:5}}/>
+                  </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:0,marginTop:7}}>
-                  {tierSegments.map(segment=><span key={`label-${segment.label}`} style={{fontSize:7,fontWeight:700,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F,textAlign:"center",whiteSpace:"nowrap"}}>{segment.label}</span>)}
-                </div>
-                <div style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,marginTop:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textAlign:"center"}}>{primaryTier.next ? `${Math.max(0, Math.ceil(primaryTier.nextAt - primary))} to ${primaryTier.next} ->` : "Highest tier reached."}</div>
-              </div>
-            );
+              );
+            };
             const TierBadgeLine = ({label, color, prefix=null}) => (
               <div style={{minWidth:prefix?72:78,textAlign:"center"}}>
                 {prefix && <div style={{fontSize:7,fontWeight:800,color:c.tm,letterSpacing:"0.09em",textTransform:"uppercase",fontFamily:F,lineHeight:1,marginBottom:3}}>{prefix}</div>}
@@ -22330,8 +23116,9 @@ const TalariaV8b = () => {
               </div>
             );
             const ScoreCardToggle = () => {
-              const views = ["pie","radar"];
-              const activeView = views.includes(dashScoreCardView) ? dashScoreCardView : "pie";
+              const views = ["ring","fingerprint","movement"];
+              const normalizedView = dashScoreCardView === "pie" ? "ring" : dashScoreCardView === "radar" ? "fingerprint" : dashScoreCardView;
+              const activeView = views.includes(normalizedView) ? normalizedView : "ring";
               const activeIndex = Math.max(0, views.indexOf(activeView));
               const move = (direction) => {
                 setDashScoreSlideDir(direction);
@@ -22404,7 +23191,7 @@ const TalariaV8b = () => {
                       </g>
                     );
                   })}
-                  <polygon points={comparePoly} fill="none" stroke={compareColor} strokeWidth="1.5" strokeDasharray="5 5"/>
+                  <polygon points={comparePoly} fill="none" stroke={compareColor} strokeWidth="1.5" opacity=".72"/>
                   <polygon points={currentPoly} fill="rgba(74,106,255,0.18)" stroke={c.acL} strokeWidth="1.5" style={{filter:`drop-shadow(0 0 4px ${c.acG})`}}/>
                   {axes.map((axis,index) => {
                     const p = point(index, Math.max(.08, axis.value / 100));
@@ -22428,7 +23215,7 @@ const TalariaV8b = () => {
               </div>
             );
             const RadarInsight = () => (
-              <div style={{fontSize:9,fontWeight:600,color:c.ts,fontFamily:F,lineHeight:1.35,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+              <div style={{fontSize:9,fontWeight:600,color:c.ts,fontFamily:F,lineHeight:1.35,whiteSpace:"normal",overflow:"visible"}}>
                 {activeRadarCompare === "prior" && (() => {
                   const rows = strategyScore.axes.map(axis=>({...axis, delta:Math.round(axis.current-axis.prior)}));
                   const up = [...rows].sort((a,b)=>b.delta-a.delta)[0];
@@ -22459,7 +23246,6 @@ const TalariaV8b = () => {
               "Talaria Score":"score-talaria",
               "Net P&L":"metric-net-pnl",
               "Return %":"metric-return",
-              "Cost Drag":"metric-cost-drag",
               "Profit Factor":"metric-profit-factor",
               "Expectancy":"metric-expectancy",
               "Win Rate + RR":"metric-win-rate",
@@ -22467,20 +23253,27 @@ const TalariaV8b = () => {
               "Trade Win Rate":"metric-win-rate",
               "Payoff":"metric-payoff",
               "Avg Win / Avg Loss":"metric-payoff",
-              "Max Drawdown":"metric-max-dd",
-              "Time Underwater":"metric-time-underwater",
+              "Drawdown":"metric-drawdown",
+              "Max Drawdown":"metric-drawdown",
+              "Time Underwater":"metric-drawdown",
               "Recovery Factor":"metric-recovery-factor",
               "Sortino":"metric-sortino",
               "Sharpe":"metric-sharpe",
               "Shape":"metric-shape",
               "Calmar":"metric-calmar",
-              "Risk-Adjusted":"metric-risk-adjusted",
+              "Risk-Adjusted":"metric-smoothness-risk-adjusted",
               "Consistency":"metric-consistency",
               "Day Win Rate":"metric-day-win-rate",
               "Profit Concentration":"metric-profit-concentration",
-              "Equity Smoothness":"metric-equity-smoothness",
+              "Profit Robustness":"metric-profit-robustness",
+              "Equity Smoothness":"metric-smoothness-risk-adjusted",
+              "Confidence Range":"metric-sample-confidence",
               "Discipline":"metric-discipline",
               "Discipline Score":"metric-discipline",
+              "Demons":"metric-live-demons",
+              "Score":"metric-live-discipline-score",
+              "Planned vs Actual":"metric-risk-consistency",
+              "Plan Adherence":"metric-risk-consistency",
               "Rule Adherence":"metric-rule-adherence",
               "Discipline P&L":"metric-discipline-pnl",
               "Plan-vs-Actual RR":"metric-plan-actual",
@@ -22493,7 +23286,6 @@ const TalariaV8b = () => {
               "Sample Confidence":"metric-sample-confidence",
               "Streaks & Records":"metric-streaks",
               "Current Streak":"metric-streaks",
-              "Longest Runs":"metric-streaks",
               "Best / Worst":"metric-streaks",
               "Prop Pressure":"metric-target-progress",
               "Goal Progress":"metric-goal-progress",
@@ -22529,18 +23321,21 @@ const TalariaV8b = () => {
                 </svg>
               </button>
             );
-            const SummaryCard = ({title, children, right=null, minHeight=120, style=null, onClick=null, titleDot=true, titleFontSize=11, titleLetterSpacing="0.06em", titleFull=false, titleLineMinWidth=78, onMouseLeave=null, resourceId=null}) => (
-              <section className="tlr-dashboard-summary-card" tabIndex={onClick?0:undefined} role={onClick?"button":undefined} onClick={onClick || undefined} onKeyDown={onClick?libraryKeyActivate(onClick):undefined} onMouseLeave={onMouseLeave || undefined} style={{position:"relative",minHeight,background:c.sf,border:`1px solid ${c.br}`,boxShadow:"inset 0 1px 3px rgba(0,0,0,0.3)",boxSizing:"border-box",padding:14,display:"flex",flexDirection:"column",gap:12,cursor:onClick?"default":"default",overflow:"hidden",...(style||{})}}>
+            const SummaryCard = ({title, children, right=null, titleExtra=null, minHeight=120, style=null, onClick=null, titleDot=true, titleFontSize=11, titleLetterSpacing="0.06em", titleFull=false, titleLineMinWidth=78, onMouseLeave=null, resourceId=null}) => (
+              <section className="tlr-dashboard-summary-card" onMouseLeave={onMouseLeave || undefined} style={{position:"relative",minHeight,background:c.sf,border:`1px solid ${c.br}`,boxShadow:"inset 0 1px 3px rgba(0,0,0,0.3)",boxSizing:"border-box",padding:14,display:"flex",flexDirection:"column",gap:12,cursor:"default",overflow:"visible",...(style||{})}}>
                 <span aria-hidden="true" style={{position:"absolute",left:0,right:0,top:0,height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 8px ${c.acG}`,pointerEvents:"none"}}/>
-                <div style={{height:24,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                <div style={{minHeight:24,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:titleDot?7:0,minWidth:0,flex:"1 1 auto"}}>
                     {titleDot && <span style={{width:5,height:5,transform:"rotate(45deg)",background:c.acL,boxShadow:`0 0 8px ${c.acG}`,flexShrink:0}}/>}
-                    <span style={{display:"inline-flex",flexDirection:"column",gap:4,minWidth:0,maxWidth:"100%"}}>
-                      <span style={{display:"inline-flex",alignItems:"center",gap:5,minWidth:0}}>
-                        <span style={{fontSize:titleFontSize,fontWeight:800,color:c.acL,letterSpacing:titleLetterSpacing,textTransform:"uppercase",fontFamily:titleDot?F:scoreFont,whiteSpace:"nowrap",overflow:titleFull?"visible":"hidden",textOverflow:titleFull?"clip":"ellipsis",minWidth:0,maxWidth:"100%"}}>{title}</span>
-                        <DashboardCardInfoButton articleId={resourceId || dashboardResourceIdFor(title)} label={title}/>
+                    <span style={{display:"inline-flex",alignItems:"flex-start",gap:8,minWidth:0,maxWidth:"100%",flexWrap:"wrap"}}>
+                      <span style={{display:"inline-flex",flexDirection:"column",gap:4,minWidth:0,maxWidth:"100%"}}>
+                        <span style={{display:"inline-flex",alignItems:"center",gap:6,minWidth:0,maxWidth:"100%",flexWrap:"wrap"}}>
+                          <span style={{fontSize:titleFontSize,fontWeight:800,color:c.acL,letterSpacing:titleLetterSpacing,textTransform:"uppercase",fontFamily:titleDot?F:scoreFont,whiteSpace:"normal",lineHeight:1.12,overflow:"visible",minWidth:0,maxWidth:"100%",overflowWrap:"normal",wordBreak:"normal"}}>{title}</span>
+                          <DashboardCardInfoButton articleId={resourceId || dashboardResourceIdFor(title)} label={title}/>
+                        </span>
+                        <span aria-hidden="true" style={{height:1,width:"100%",minWidth:titleLineMinWidth,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>
                       </span>
-                      <span aria-hidden="true" style={{height:1,width:"100%",minWidth:titleLineMinWidth,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>
+                      {titleExtra && <span style={{display:"inline-flex",alignItems:"center",height:18,flexShrink:0}}>{titleExtra}</span>}
                     </span>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
@@ -22552,16 +23347,18 @@ const TalariaV8b = () => {
             );
             const metricCard = ({label, value, sub, color, visual, target="trade-journal", minHeight=136, visualHeight=38, valueSize=22, dim=false}) => (
               <SummaryCard title={label} minHeight={minHeight} resourceId={dashboardResourceIdFor(label)} onClick={()=>openDashSubWindow(target, label)} style={{padding:12,gap:8,opacity:dim ? .72 : 1}}>
-                <div {...dashInfoHandlers({title:label, body:dashboardMetricInfo[label] || "Headline value calculated from the current source and filters.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{fontSize:valueSize,fontWeight:800,color,fontFamily:F,fontVariantNumeric:"tabular-nums",lineHeight:1.02,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minHeight:24,display:"flex",alignItems:"baseline",gap:8,outline:"none"}}>{value}</div>
-                <div style={{fontSize:8.5,fontWeight:650,color:c.ts,fontFamily:F,lineHeight:1.25,minHeight:20,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sub}</div>
-                <div {...dashInfoHandlers({title:`${label} visual`, body:dashboardVisualInfo[label] || "Mini visual for the metric trend or distribution.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{marginTop:"auto",height:visualHeight,display:"flex",alignItems:"center",minWidth:0,overflow:"hidden",outline:"none"}}>{visual}</div>
+                <div {...dashInfoHandlers({title:label, body:dashboardMetricInfo[label] || "Headline value calculated from the current source and filters."})} tabIndex={0} className="tlr-dashboard-info-target" style={{fontSize:valueSize,fontWeight:800,color,fontFamily:F,fontVariantNumeric:"tabular-nums",lineHeight:1.08,whiteSpace:"normal",overflow:"visible",minHeight:24,display:"flex",alignItems:"baseline",gap:8,outline:"none",flexWrap:"wrap"}}>{value}</div>
+                {sub ? <div style={{fontSize:9.3,fontWeight:650,color:c.ts,fontFamily:F,lineHeight:1.25,minHeight:20,whiteSpace:"normal",overflow:"visible"}}>{sub}</div> : null}
+                <div {...dashInfoHandlers({title:`${label} visual`, body:dashboardVisualInfo[label] || "Mini visual for the metric trend or distribution."})} tabIndex={0} className="tlr-dashboard-info-target" style={{marginTop:"auto",height:visualHeight,display:"flex",alignItems:"center",minWidth:0,overflow:"visible",outline:"none"}}>{visual}</div>
               </SummaryCard>
             );
             const values = (metrics.equityPoints||[]).map(p=>Number(p.value)||0);
             const miniClamp = (value, min=0, max=100) => Math.max(min, Math.min(max, Number(value) || 0));
-            const miniTrack = c.well || c.trk || "rgba(255,255,255,0.08)";
+            const miniTrack = "rgba(112,123,152,0.34)";
+            const miniTrackSoft = "rgba(112,123,152,0.14)";
+            const miniTrackInset = "none";
             const MiniEmpty = ({label="No data", height=42}) => (
-              <div style={{height,width:"100%",display:"grid",placeItems:"center",position:"relative",fontFamily:F,color:c.tm,fontSize:8,fontWeight:850,letterSpacing:"0.06em",textTransform:"uppercase"}}>
+              <div style={{height,width:"100%",display:"grid",placeItems:"center",position:"relative",fontFamily:F,color:c.tm,fontSize:9.2,fontWeight:850,letterSpacing:"0.035em",textTransform:"uppercase",lineHeight:1.15,textAlign:"center"}}>
                 <span aria-hidden="true" style={{position:"absolute",left:0,right:0,top:"50%",height:1,background:c.brH,opacity:.55}}/>
                 <span style={{position:"relative",background:c.sf,padding:"0 6px"}}>{label}</span>
               </div>
@@ -22600,11 +23397,11 @@ const TalariaV8b = () => {
               const pct = Math.max(0,Math.min(100,(Math.abs(value)/Math.max(1,goal))*100));
               return (
                 <div style={{width:"100%",fontFamily:F}}>
-                  <div style={{height:8,background:miniTrack,position:"relative",boxSizing:"border-box"}}>
+                  <div style={{height:8,background:miniTrack,boxShadow:miniTrackInset,position:"relative",boxSizing:"border-box"}}>
                     <div style={{position:"absolute",left:0,top:1,bottom:1,width:`${pct}%`,background:`linear-gradient(90deg,${c.gn},${c.gnD||"rgba(0,212,161,0.32)"})`}}/>
                     <span style={{position:"absolute",right:0,top:-4,bottom:-4,width:1,background:c.ts,opacity:.8}}/>
                   </div>
-                  <div style={{fontSize:8,fontWeight:800,color:c.tm,marginTop:4,fontVariantNumeric:"tabular-nums"}}>{fmtPct(value,1)} of {fmtPct(goal,0)}</div>
+                  <div style={{fontSize:9,fontWeight:800,color:c.tm,marginTop:5,fontVariantNumeric:"tabular-nums"}}>{fmtPct(value,1)} of {fmtPct(goal,0)}</div>
                 </div>
               );
             };
@@ -22615,12 +23412,12 @@ const TalariaV8b = () => {
               if (!pos && !neg) return <MiniEmpty label="No split" height={42}/>;
               return (
                 <div style={{width:"100%",fontFamily:F}}>
-                  <div style={{height,position:"relative",background:miniTrack,boxSizing:"border-box"}}>
+                  <div style={{height,position:"relative",background:miniTrack,boxShadow:miniTrackInset,boxSizing:"border-box"}}>
                     <span style={{position:"absolute",left:"50%",top:-4,bottom:-4,width:1,background:c.tx,opacity:.8,zIndex:2}}/>
-                    <span style={{position:"absolute",right:"50%",top:1,bottom:1,width:`${neg/max*48}%`,background:leftColor,boxShadow:`0 0 5px ${leftColor}44`}}/>
-                    <span style={{position:"absolute",left:"50%",top:1,bottom:1,width:`${pos/max*48}%`,background:rightColor,boxShadow:`0 0 5px ${rightColor}44`}}/>
+                    <span style={{position:"absolute",right:"50%",top:1,bottom:1,width:`${neg/max*48}%`,background:leftColor,boxShadow:"none"}}/>
+                    <span style={{position:"absolute",left:"50%",top:1,bottom:1,width:`${pos/max*48}%`,background:rightColor,boxShadow:"none"}}/>
                   </div>
-                  {(leftLabel || rightLabel) && <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:5,fontSize:7.6,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",minWidth:0}}><span style={{color:leftColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{leftLabel}</span><span style={{color:rightColor,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textAlign:"right"}}>{rightLabel}</span></div>}
+                  {(leftLabel || rightLabel) && <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:6,fontSize:8.6,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",minWidth:0}}><span style={{color:leftColor,whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{leftLabel}</span><span style={{color:rightColor,whiteSpace:"normal",lineHeight:1.05,overflow:"visible",textAlign:"right"}}>{rightLabel}</span></div>}
                 </div>
               );
             };
@@ -22632,16 +23429,16 @@ const TalariaV8b = () => {
               return (
                 <div style={{height:48,width:"100%",display:"grid",gridTemplateRows:"1fr 10px",gap:4,fontFamily:F}}>
                   <div style={{display:"flex",alignItems:"end",gap:2,position:"relative"}}>
-                    <span style={{position:"absolute",left:`${mean*100}%`,top:2,bottom:0,width:1,background:c.gold,boxShadow:`0 0 6px ${c.gold}66`,zIndex:2}}/>
+        <span style={{position:"absolute",left:`${mean*100}%`,top:2,bottom:0,width:1,background:c.gold,boxShadow:"none",zIndex:2}}/>
                     <span style={{position:"absolute",left:"42.85%",top:0,bottom:0,width:1,background:c.tx,opacity:.35}}/>
                     {buckets.map((bucket,index)=>{
                       const neg = index < 3;
                       const hgt = Math.max(4,(Number(bucket.v)||0)/max*34);
                       const color = neg ? c.rd : index === 3 ? c.gold : c.gn;
-                      return <div key={bucket.label} title={`${bucket.label}: ${bucket.v}`} style={{height:"100%",flex:1,display:"flex",alignItems:"end",background:"rgba(255,255,255,0.025)"}}><span style={{width:"100%",height:hgt,background:color,opacity:neg?.72:index===3?.68:.76,boxShadow:`0 0 5px ${color}33`}}/></div>;
+                      return <div key={bucket.label} title={`${bucket.label}: ${bucket.v}`} style={{height:"100%",flex:1,display:"flex",alignItems:"end",background:miniTrackSoft,boxShadow:miniTrackInset}}><span style={{width:"100%",height:hgt,background:color,opacity:neg?.72:index===3?.68:.76,boxShadow:"none"}}/></div>;
                     })}
                   </div>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:7.4,fontWeight:850,color:c.tm,letterSpacing:"0.04em",textTransform:"uppercase"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:8.4,fontWeight:850,color:c.tm,letterSpacing:"0.03em",textTransform:"uppercase"}}>
                     <span>-R</span><span>0</span><span>+R</span>
                   </div>
                 </div>
@@ -22662,20 +23459,39 @@ const TalariaV8b = () => {
             const WinRatePayoffMini = () => {
               if (!metrics.tradeCount) return <MiniEmpty label="No trades" height={44}/>;
               const winPct = miniClamp(metrics.winRate, 0, 100);
-              const lossPct = miniClamp(100 - winPct, 0, 100);
               const bePct = metrics.breakevenWR == null ? null : miniClamp(metrics.breakevenWR, 0, 100);
               const cushion = metrics.winRateCushion == null ? null : Number(metrics.winRateCushion) || 0;
+              const winCount = Number(metrics.wins) || 0;
+              const lossCount = Number(metrics.losses) || 0;
+              const breakevenCount = Number(metrics.breakevens) || Math.max(0, (Number(metrics.tradeCount) || 0) - winCount - lossCount);
+              const outcomeTotal = Math.max(1, winCount + lossCount + breakevenCount);
+              const outcomeWinPct = winCount / outcomeTotal * 100;
+              const outcomeLossPct = lossCount / outcomeTotal * 100;
+              const outcomeBePct = breakevenCount / outcomeTotal * 100;
+              const beLabelPct = bePct == null ? 0 : Math.max(8, Math.min(92, bePct));
               return (
                 <div style={{width:"100%",fontFamily:F}}>
-                  <div style={{height:10,background:miniTrack,position:"relative",overflow:"hidden"}}>
-                    <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${winPct}%`,background:c.gn,boxShadow:`0 0 5px ${c.gn}36`}}/>
-                    <span style={{position:"absolute",right:0,top:1,bottom:1,width:`${lossPct}%`,background:c.rd,opacity:.72}}/>
-                    {bePct != null && <span title={`Breakeven ${fmtPct(bePct,1)}`} style={{position:"absolute",left:`${bePct}%`,top:-4,bottom:-4,width:1,background:c.gold,boxShadow:`0 0 7px ${c.gold}66`,zIndex:2}}/>}
+                  <div aria-label="Win loss breakeven outcome counts" style={{height:22,position:"relative",marginTop:2}}>
+                    {bePct != null && (
+                      <span style={{position:"absolute",left:`${beLabelPct}%`,top:0,transform:"translateX(-50%)",fontSize:8.6,fontWeight:900,lineHeight:"9px",color:c.gold,fontVariantNumeric:"tabular-nums",textTransform:"uppercase",whiteSpace:"nowrap",pointerEvents:"none"}}>
+                        BE {fmtPct(bePct,0)}
+                      </span>
+                    )}
+                    <div style={{position:"absolute",left:0,right:0,bottom:0,height:8,background:miniTrack,boxShadow:miniTrackInset,overflow:"visible"}}>
+                      {winCount > 0 && <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${outcomeWinPct}%`,background:c.gn,boxShadow:"none"}}/>}
+                      {lossCount > 0 && <span style={{position:"absolute",left:`${outcomeWinPct}%`,top:0,bottom:0,width:`${outcomeLossPct}%`,background:c.rd,opacity:.72}}/>}
+                      {breakevenCount > 0 && <span style={{position:"absolute",left:`${outcomeWinPct + outcomeLossPct}%`,top:0,bottom:0,width:`${outcomeBePct}%`,background:c.gold,opacity:.78,boxShadow:"none"}}/>}
+                      {bePct != null && <span title={`Breakeven ${fmtPct(bePct,1)}`} style={{position:"absolute",left:`${bePct}%`,top:-4,bottom:-4,width:3,transform:"translateX(-1.5px)",background:c.gold,boxShadow:"none",zIndex:2}}/>}
+                    </div>
                   </div>
-                  <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:5,fontSize:7.6,fontWeight:850,color:c.tm,fontVariantNumeric:"tabular-nums",textTransform:"uppercase"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:6,fontSize:8.6,fontWeight:850,color:c.tm,fontVariantNumeric:"tabular-nums",textTransform:"uppercase"}}>
                     <span style={{color:c.gn}}>wins {fmtPct(winPct,0)}</span>
-                    <span style={{color:c.tm}}>BE {bePct == null ? "-" : fmtPct(bePct,0)}</span>
                     <span style={{color:cushion >= 0 ? c.gn : c.rd}}>{cushion >= 0 ? "+" : ""}{fmtPct(cushion,0)}</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5,marginTop:5,fontSize:8.4,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",textTransform:"uppercase"}}>
+                    <span style={{color:c.gn,whiteSpace:"nowrap"}}>W {winCount}</span>
+                    <span style={{color:c.rd,whiteSpace:"nowrap",textAlign:"center"}}>L {lossCount}</span>
+                    <span style={{color:c.gold,whiteSpace:"nowrap",textAlign:"right"}}>BE {breakevenCount}</span>
                   </div>
                 </div>
               );
@@ -22683,28 +23499,33 @@ const TalariaV8b = () => {
             const ExpectancyMini = () => {
               const buckets = metrics.rBuckets || [];
               const has = buckets.some(bucket=>Number(bucket.v)>0);
-              if (!has) return <MiniEmpty label="No R data" height={48}/>;
+              if (!has) return <MiniEmpty label="No R data" height={54}/>;
               const max = Math.max(1,...buckets.map(bucket=>Number(bucket.v)||0));
-              const mean = Math.max(0,Math.min(1,((metrics.avgR || 0) + 2.5) / 5.5));
+              const rToPct = (value) => Math.max(3, Math.min(97, ((Number(value)||0) + 3) / 7 * 100));
+              const meanR = Number(metrics.avgR) || 0;
+              const medianR = Number(metrics.rMedian) || 0;
+              const meanPct = rToPct(meanR);
+              const medianPct = rToPct(medianR);
+              const labelsOverlap = Math.abs(meanPct - medianPct) < 20;
               return (
-                <div style={{height:48,width:"100%",display:"grid",gridTemplateRows:"1fr 11px",gap:5,fontFamily:F}}>
-                  <div style={{position:"relative",display:"flex",alignItems:"end",gap:2}}>
-                    <span style={{position:"absolute",left:"42.85%",top:3,bottom:0,width:1,background:c.tx,opacity:.35}}/>
-                    <span style={{position:"absolute",left:`${mean*100}%`,top:1,bottom:-1,width:1,background:c.gold,boxShadow:`0 0 6px ${c.gold}66`,zIndex:3}}/>
+                <div style={{height:70,width:"100%",position:"relative",fontFamily:F,minWidth:0}}>
+                  <div style={{position:"absolute",left:0,right:0,top:labelsOverlap ? 13 : 4,bottom:16,display:"flex",alignItems:"end",gap:2}}>
+                    <span style={{position:"absolute",left:`${rToPct(0)}%`,top:0,bottom:0,width:1,background:c.tx,opacity:.26}}/>
+                    <span style={{position:"absolute",left:`${meanPct}%`,top:-1,bottom:-1,width:1,background:c.gold,boxShadow:"none",zIndex:4}}/>
+                    <span style={{position:"absolute",left:`${medianPct}%`,top:0,bottom:0,borderLeft:`1px dashed ${c.tx}`,opacity:.86,zIndex:3}}/>
                     {buckets.map((bucket,index)=>{
                       const value = Number(bucket.v)||0;
                       const neg = index < 3;
-                      const color = neg ? c.rd : index === 3 ? c.gold : c.gn;
+                      const color = neg ? c.rd : c.gn;
                       return (
-                        <span key={bucket.label} title={`${bucket.label}: ${value}`} style={{flex:1,height:"100%",display:"flex",alignItems:"end",background:"rgba(255,255,255,0.025)"}}>
-                          <span style={{width:"100%",height:`${Math.max(4,value/max*34)}px`,background:color,opacity:neg?.72:index===3?.62:.82}}/>
+                        <span key={bucket.label} title={`${bucket.label}: ${value}`} style={{flex:1,height:"100%",display:"flex",alignItems:"end"}}>
+                          <span style={{width:"100%",height:`${Math.max(7,value/max*(labelsOverlap ? 43 : 50))}px`,background:color,opacity:neg?.72:.82,boxShadow:"none"}}/>
                         </span>
                       );
                     })}
                   </div>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:7.4,fontWeight:850,color:c.tm,letterSpacing:"0.04em",textTransform:"uppercase"}}>
-                    <span>loss R</span><span style={{color:c.gold}}>mean</span><span>win R</span>
-                  </div>
+                  <span style={{position:"absolute",left:`${meanPct}%`,bottom:0,transform:"translateX(-50%)",fontSize:8.1,fontWeight:900,color:c.gold,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:"0.01em",zIndex:5}}>Mean {fmtNum(meanR,2)}R</span>
+                  <span style={{position:"absolute",left:`${medianPct}%`,top:labelsOverlap ? 0 : "auto",bottom:labelsOverlap ? "auto" : 0,transform:"translateX(-50%)",fontSize:8.1,fontWeight:900,color:c.tx,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",textTransform:"uppercase",letterSpacing:"0.01em",zIndex:5}}>Median {fmtNum(medianR,2)}R</span>
                 </div>
               );
             };
@@ -22715,11 +23536,11 @@ const TalariaV8b = () => {
               const max = Math.max(1, Math.abs(annual), drawdown);
               const row = (label,value,color) => (
                 <div style={{display:"grid",gridTemplateColumns:"56px 1fr 40px",alignItems:"center",gap:7,height:15}}>
-                  <span style={{fontSize:7.8,fontWeight:850,color:c.tm,letterSpacing:"0.05em",textTransform:"uppercase"}}>{label}</span>
-                  <span style={{height:5,background:miniTrack,position:"relative"}}>
-                    <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.min(100,Math.abs(value)/max*100)}%`,background:color,boxShadow:`0 0 5px ${color}44`}}/>
+        <span style={{fontSize:8.4,fontWeight:850,color:c.tm,letterSpacing:"0.04em",textTransform:"uppercase"}}>{label}</span>
+                  <span style={{height:5,background:miniTrack,boxShadow:miniTrackInset,position:"relative"}}>
+          <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.min(100,Math.abs(value)/max*100)}%`,background:color,boxShadow:"none"}}/>
                   </span>
-                  <span style={{fontSize:7.8,fontWeight:850,color,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmtPct(value,0)}</span>
+        <span style={{fontSize:8.4,fontWeight:850,color,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmtPct(value,0)}</span>
                 </div>
               );
               return <div style={{width:"100%",display:"grid",gap:4,fontFamily:F}}>{row("Return",annual,annual>=0?c.gn:c.rd)}{row("Max DD",drawdown,c.rd)}</div>;
@@ -22735,56 +23556,414 @@ const TalariaV8b = () => {
               const trough = linePts.reduce((best,p)=>p.y>best.y?p:best,{x:0,y:0});
               return <svg width="100%" height={44} viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="none" style={{display:"block"}}><line x1="0" x2={chartW} y1="5" y2="5" stroke={c.brH} opacity=".8"/><line x1="0" x2={chartW} y1={chartH-5} y2={chartH-5} stroke={c.brH} opacity=".24"/><path d={area} fill={c.rd} opacity=".22"/><path d={path} fill="none" stroke={c.rd} strokeWidth="1.7" strokeLinejoin="round"/><circle cx={trough.x} cy={trough.y} r="2.6" fill={c.rd} stroke={c.sf} strokeWidth="1"/></svg>;
             };
+            const DrawdownMergedMini = () => {
+              const raw = (metrics.drawdownPoints||[]).map((point,index)=>({index,value:Math.abs(Number(point.value)||0)}));
+              const active = raw.filter(point=>point.value > 0);
+              if (raw.length < 2 || !active.length) return <MiniEmpty label="No drawdown" height={76}/>;
+              const troughIndex = raw.reduce((best,point)=>point.value > raw[best].value ? point.index : best, 0);
+              let startIndex = troughIndex;
+              while (startIndex > 0 && raw[startIndex - 1]?.value > 0) startIndex -= 1;
+              let endIndex = troughIndex;
+              while (endIndex < raw.length - 1 && raw[endIndex + 1]?.value > 0) endIndex += 1;
+              const episode = raw.slice(startIndex, endIndex + 1);
+              const pts = episode.length >= 3 ? episode : raw.slice(-46);
+              const chartW = 260, chartH = 40;
+              const max = Math.max(1,...pts.map(point=>point.value));
+              const durationShare = raw.length > 1 ? Math.min(1, Math.max(0.28, pts.length / raw.length)) : 1;
+              const usedW = chartW * durationShare;
+              const xOffset = (chartW - usedW) / 2;
+              const linePts = pts.map((point,index)=>({
+                x:pts.length<=1 ? chartW/2 : xOffset + index/(pts.length-1)*usedW,
+                y:6 + (point.value/max)*(chartH-12),
+              }));
+              const path = linePts.map((p,i)=>`${i?"L":"M"}${p.x} ${p.y}`).join(" ");
+              const area = linePts.length ? `M ${linePts[0].x} 6 ${linePts.map(p=>`L ${p.x} ${p.y}`).join(" ")} L ${linePts[linePts.length-1].x} 6 Z` : "";
+              const trough = linePts.reduce((best,p)=>p.y>best.y?p:best,{x:0,y:0});
+              const supportRows = [
+                {label:"Depth", value:fmtPct(metrics.maxDDPct||0,1), color:c.rd},
+                {label:"Longest", value:`${metrics.longestUnderwaterDays || 0}d`, color:c.gold},
+                {label:"Time Underwater", value:fmtPct(metrics.timeUnderwaterPct || 0,0), color:c.gold},
+              ];
+              return (
+                <div style={{width:"100%",display:"grid",gridTemplateRows:"43px 1fr",gap:4,fontFamily:F,minWidth:0}}>
+                  <svg width="100%" height={43} viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="none" style={{display:"block",overflow:"visible"}}>
+                    <line x1="0" x2={chartW} y1="6" y2="6" stroke={c.brH} opacity=".82"/>
+                    <path d={area} fill={c.rd} opacity=".18"/>
+                    <path d={path} fill="none" stroke={c.rd} strokeWidth="1.8" strokeLinejoin="round"/>
+                    <line x1={trough.x} x2={trough.x} y1={Math.max(5,trough.y-8)} y2={Math.min(chartH-3,trough.y+7)} stroke={c.rd} strokeWidth="1.2" opacity=".95"/>
+                    <circle cx={trough.x} cy={trough.y} r="2.4" fill={c.rd} stroke={c.sf} strokeWidth="1"/>
+                  </svg>
+                  <div style={{display:"grid",gridTemplateColumns:"0.75fr 0.72fr 1.35fr",gap:6,alignItems:"start",minWidth:0}}>
+                    {supportRows.map(row => (
+                      <div key={row.label} style={{minWidth:0}}>
+      <div style={{fontSize:row.label==="Time Underwater"?7.4:8.4,fontWeight:850,color:c.tm,letterSpacing:"0.035em",textTransform:"uppercase",whiteSpace:"nowrap",lineHeight:1.05,overflow:"visible"}}>{row.label}</div>
+                        <div style={{fontSize:8.5,fontWeight:900,color:row.color,fontVariantNumeric:"tabular-nums",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{row.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            };
+            const PropBreachMarginMini = () => {
+              const prop = metrics.propRiskAnalytics || {};
+              const rows = (prop.dailyLimitRows || []).slice(-18);
+              const hasDaily = prop.hasDailyLimit && rows.length;
+              const maxScale = Math.max(
+                1.08,
+                ...rows.map(row=>Number(row.usedPct) || 0),
+                Number(prop.worstOverallUsedPct) || 0
+              );
+              const limitX = Math.min(100, 100 / maxScale * 100);
+              const nearMissLabel = `${prop.nearMissCount || 0} near miss${Number(prop.nearMissCount) === 1 ? "" : "es"}`;
+              const totalDdLabel = prop.worstOverallUsedPct == null ? "No max-DD limit" : `${fmtPct(Number(prop.worstOverallUsedPct) * 100,0)} of max-DD`;
+              if (!hasDaily && prop.worstOverallUsedPct == null) return <MiniEmpty label="No prop limits" height={74}/>;
+              return (
+                <div style={{height:74,width:"100%",display:"grid",gridTemplateRows:"40px 1fr",gap:6,fontFamily:F,minWidth:0}}>
+                  <div style={{position:"relative",height:40,display:"flex",alignItems:"end",gap:2,padding:"2px 0 0",borderBottom:`1px solid ${c.brH}`}}>
+                    <span style={{position:"absolute",left:`${limitX}%`,top:0,bottom:0,borderLeft:`1px dashed ${c.tx}`,opacity:.7}}/>
+                    {hasDaily ? rows.map((row,index) => {
+                      const used = Math.max(0, Number(row.usedPct) || 0);
+                      const height = Math.max(4, Math.min(36, used / maxScale * 36));
+                      const color = used >= 1 ? c.rd : used >= prop.nearMissThreshold ? c.gold : c.ac;
+                      return <span key={`${row.date}-${index}`} title={`${row.date}: ${fmtPct(used * 100,0)} of active limit`} style={{flex:"1 1 0",minWidth:3,height,background:color,opacity:.9,boxShadow:"none"}}/>;
+                    }) : (
+                      <span style={{height:Math.max(5, Math.min(36, (Number(prop.worstOverallUsedPct) || 0) / maxScale * 36)),width:"100%",background:(Number(prop.worstOverallUsedPct)||0)>=1?c.rd:c.gold,opacity:.88}}/>
+                    )}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,alignItems:"start",minWidth:0}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:8.2,fontWeight:900,color:c.tm,textTransform:"uppercase",letterSpacing:"0.03em",whiteSpace:"nowrap"}}>{hasDaily ? "Daily limit" : "Max-DD fallback"}</div>
+                      <div style={{fontSize:9.4,fontWeight:900,color:c.gold,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{nearMissLabel}</div>
+                    </div>
+                    <div style={{minWidth:0,textAlign:"right"}}>
+                      <div style={{fontSize:8.2,fontWeight:900,color:c.tm,textTransform:"uppercase",letterSpacing:"0.03em",whiteSpace:"nowrap"}}>Overall DD</div>
+                      <div style={{fontSize:9.4,fontWeight:900,color:c.rd,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{totalDdLabel}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            };
+            const PropLossBudgetMini = () => {
+              const prop = metrics.propRiskAnalytics || {};
+              const budgetCount = value => Number.isFinite(Number(value)) ? Math.max(0, Math.floor(Number(value))) : null;
+              const dailyBudget = budgetCount(prop.dailyLossBudgetTrades);
+              const maxBudget = budgetCount(prop.maxLossBudgetTrades);
+              const hasDaily = !!prop.hasDailyLimit && dailyBudget != null;
+              const isTrailing = prop.drawdownType === "trailing";
+              const maxLabel = prop.maxDDBudgetLabel || (isTrailing ? "Trailing DD" : "Max-DD limit");
+              const nativeRisk = prop.nativeUnit === "money"
+                ? (prop.typicalRiskMoney == null ? "-" : fmtAbsMoney(prop.typicalRiskMoney))
+                : (prop.typicalRiskPct == null ? "-" : fmtPct(prop.typicalRiskPct,2));
+              const nativeLimit = (pct, money) => prop.nativeUnit === "money"
+                ? (money == null ? "-" : fmtAbsMoney(money))
+                : (pct == null ? "-" : fmtPct(pct,2));
+              const headlineBudget = hasDaily ? dailyBudget : maxBudget;
+              if (headlineBudget == null) return <MiniEmpty label="No loss budget" height={82}/>;
+              const activeLimitLabel = hasDaily ? "Daily limit" : maxLabel;
+              const activeLimitValue = hasDaily
+                ? nativeLimit(prop.dailyLossLimitPct, prop.dailyLossLimitMoney)
+                : nativeLimit(prop.maxDDLimitPct, prop.maxDDLimitMoney);
+              const secondaryBudget = hasDaily && maxBudget != null && maxBudget !== headlineBudget
+                ? `${maxBudget} losers`
+                : null;
+              const supportRows = [
+                {label:"Risk/trade", value:nativeRisk, color:c.ts},
+                {label:hasDaily ? "Daily limit" : activeLimitLabel, value:activeLimitValue, color:c.gold},
+                {label:isTrailing ? "Trailing DD" : "Max DD", value:nativeLimit(prop.maxDDLimitPct, prop.maxDDLimitMoney), color:isTrailing ? c.gold : c.rd},
+                ...(secondaryBudget ? [{label:isTrailing ? "Trail budget" : "DD budget", value:secondaryBudget, color:c.rd}] : []),
+              ];
+              return (
+                <div style={{height:82,width:"100%",display:"grid",gridTemplateRows:"1fr auto",gap:6,fontFamily:F,minWidth:0}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,minWidth:0}}>
+                    {supportRows.slice(0,4).map(row => (
+                      <div key={row.label} style={{minWidth:0,display:"grid",alignContent:"center",gap:2,padding:"2px 0",borderBottom:`1px solid ${c.br}55`}}>
+                        <div style={{fontSize:7.4,fontWeight:900,color:c.tm,textTransform:"uppercase",letterSpacing:"0.025em",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>
+                          {row.label}
+                        </div>
+                        <div style={{fontSize:9.2,fontWeight:950,color:row.color,fontVariantNumeric:"tabular-nums",whiteSpace:"normal",lineHeight:1.05,overflow:"visible",wordBreak:"break-word"}}>
+                          {row.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:7.8,fontWeight:800,color:c.tm,lineHeight:1.12,whiteSpace:"normal",overflow:"visible"}}>
+                    {hasDaily ? "Uses daily limit first." : isTrailing ? "Uses trailing drawdown." : "Uses max drawdown."}
+                  </div>
+                </div>
+              );
+            };
             const FrequencyBars = () => {
               const rows = metrics.dailyRows?.length ? metrics.dailyRows.slice(-16) : (metrics.trades||[]).slice(-16).map((t,i)=>({date:i,pnl:t.pnl,trades:1}));
               const counts = rows.map(row=>Number(row.trades)||Math.max(1,Math.round(Math.abs(Number(row.pnl)||0)/Math.max(1,Math.abs(metrics.avgR||1)*80))));
               const max = Math.max(1,...counts);
               if (!counts.length) return <MiniEmpty label="No trades" height={44}/>;
-              return <div style={{height:44,width:"100%",display:"grid",gridTemplateColumns:"repeat(16,minmax(0,1fr))",gap:2,alignItems:"end"}}>{counts.map((count,index)=><span key={index} title={`${count} trades`} style={{height:38,background:"rgba(255,255,255,0.035)",display:"flex",alignItems:"end"}}><span style={{width:"100%",height:`${Math.max(5,count/max*36)}px`,background:c.acL,opacity:.72,boxShadow:`0 0 5px ${c.acG}`}}/></span>)}</div>;
+      return <div style={{height:44,width:"100%",display:"grid",gridTemplateColumns:"repeat(16,minmax(0,1fr))",gap:2,alignItems:"end"}}>{counts.map((count,index)=><span key={index} title={`${count} trades`} style={{height:38,background:miniTrackSoft,boxShadow:miniTrackInset,display:"flex",alignItems:"end"}}><span style={{width:"100%",height:`${Math.max(5,count/max*36)}px`,background:c.acL,opacity:.72,boxShadow:"none"}}/></span>)}</div>;
+            };
+            const formatKpiHoldDuration = (minutesValue) => {
+              const totalMinutes = Math.max(0, Math.round(Number(minutesValue)||0));
+              if (totalMinutes < 60) return `${totalMinutes}m`;
+              const days = Math.floor(totalMinutes / 1440);
+              const hours = Math.floor((totalMinutes % 1440) / 60);
+              const minutes = totalMinutes % 60;
+              if (days > 0) return `${days}d${hours ? ` ${hours}h` : ""}`;
+              return `${hours}h${minutes ? ` ${minutes}m` : ""}`;
+            };
+            const TotalTradesHoldBiasMini = () => {
+              if (!metrics.tradeCount) return <MiniEmpty label="No trades" height={52}/>;
+              const winHold = Math.max(0, Number(metrics.winHoldAvg) || 0);
+              const lossHold = Math.max(0, Number(metrics.lossHoldAvg) || 0);
+              const maxHold = Math.max(1, winHold, lossHold);
+              const lossLonger = lossHold > winHold;
+              const note = winHold || lossHold
+                ? lossLonger
+                  ? `Leak: losers held ${formatKpiHoldDuration(lossHold - winHold)} longer`
+                  : winHold > lossHold
+                    ? `Winners held ${formatKpiHoldDuration(winHold - lossHold)} longer`
+                    : "Winner and loser hold times match"
+                : "No winner/loser hold split";
+              const rows = [
+                {label:"Winners", count:metrics.wins || 0, value:winHold, color:c.gn},
+                {label:"Losers", count:metrics.losses || 0, value:lossHold, color:c.rd},
+              ];
+              return (
+                <div style={{width:"100%",display:"grid",gap:5,fontFamily:F,minWidth:0}}>
+                  {rows.map(row => (
+                    <div key={row.label} style={{display:"grid",gridTemplateColumns:"47px 1fr 44px",gap:6,alignItems:"center",minWidth:0}}>
+        <span style={{fontSize:8.4,fontWeight:850,color:c.tm,letterSpacing:"0.025em",textTransform:"uppercase",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{row.label}</span>
+                      <span title={`${row.label}: ${formatKpiHoldDuration(row.value)} average hold, n ${row.count}`} style={{height:7,background:miniTrack,boxShadow:miniTrackInset,position:"relative",minWidth:0}}>
+          <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${Math.max(0, row.value / maxHold * 100)}%`,background:row.color,boxShadow:"none"}}/>
+                      </span>
+        <span style={{fontSize:8.2,fontWeight:900,color:row.color,textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{formatKpiHoldDuration(row.value)}</span>
+                    </div>
+                  ))}
+      <div style={{fontSize:8.4,fontWeight:850,color:lossLonger?c.gold:c.ts,whiteSpace:"normal",lineHeight:1.12,overflow:"visible",textTransform:"uppercase",letterSpacing:"0.02em"}}>{note}</div>
+                </div>
+              );
+            };
+            const TradeFrequencyMini = () => {
+              const quiet = Number(metrics.quietestWeekTrades) || 0;
+              const typical = Number(metrics.typicalWeekTrades) || 0;
+              const busy = Number(metrics.busiestWeekTrades) || 0;
+              if (!metrics.weeklyTradeCounts?.length) return <MiniEmpty label="No weeks" height={48}/>;
+              const span = Math.max(1, busy - quiet);
+              const typicalPct = busy === quiet ? 50 : Math.max(2, Math.min(98, (typical - quiet) / span * 100));
+              const frequencyLabel = (label, value, color=c.tm, align="left") => (
+                <span style={{display:"grid",gap:2,justifyItems:align === "right" ? "end" : align === "center" ? "center" : "start",minWidth:0,lineHeight:1.05}}>
+                  <span style={{fontSize:7.5,fontWeight:900,color:c.tm,letterSpacing:"0.035em",whiteSpace:"nowrap"}}>{label}</span>
+                  <span style={{fontSize:8.2,fontWeight:950,color,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{value}</span>
+                </span>
+              );
+              return (
+                <div style={{height:52,width:"100%",display:"grid",gridTemplateRows:"28px 19px",gap:5,fontFamily:F,minWidth:0}}>
+                  <div style={{position:"relative",padding:"7px 0 0"}}>
+                    <div style={{position:"absolute",left:0,right:0,top:14,height:8,background:miniTrack,boxShadow:miniTrackInset}}>
+        <span style={{position:"absolute",left:0,top:1,bottom:1,right:0,background:`linear-gradient(90deg,${c.acL}22,${c.acL}88)`,boxShadow:"none"}}/>
+                      <span style={{position:"absolute",left:0,top:-4,bottom:-4,width:1,background:c.tm,opacity:.7}}/>
+        <span style={{position:"absolute",right:0,top:-4,bottom:-4,width:1,background:c.acL,boxShadow:"none"}}/>
+        <span title={`Typical ${fmtNum(typical,1)}/wk`} style={{position:"absolute",left:`${typicalPct}%`,top:-6,bottom:-6,width:2,transform:"translateX(-1px)",background:c.gold,boxShadow:"none",zIndex:2}}/>
+                      <span style={{position:"absolute",left:`${typicalPct}%`,top:-9,width:5,height:5,transform:"translateX(-2px)",background:c.gold,boxShadow:"none",zIndex:3}}/>
+                    </div>
+                  </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,textTransform:"uppercase",minWidth:0}}>
+                    {frequencyLabel("Quiet", fmtNum(quiet,0), c.tm, "left")}
+                    {frequencyLabel("Median wk", `${fmtNum(typical,1)}/wk`, c.gold, "center")}
+                    {frequencyLabel("Busy", fmtNum(busy,0), c.acL, "right")}
+                  </div>
+                </div>
+              );
+            };
+            const PerDollarBarsMini = ({ratio=0, firstLabel="$1 lost", secondLabel="Made back", secondColor=c.gn, caption=null, emptyLabel="No loss data"}) => {
+              const safeRatio = Number.isFinite(Number(ratio)) ? Math.max(0, Number(ratio)) : 0;
+              if (!safeRatio) return <MiniEmpty label={emptyLabel} height={50}/>;
+              const max = Math.max(1, safeRatio);
+              const rows = [
+                {label:firstLabel, value:"$1.00", width:Math.max(5, 100 / max), color:c.rd},
+                {label:secondLabel, value:`$${fmtNum(safeRatio,2)}`, width:Math.max(5, safeRatio / max * 100), color:secondColor},
+              ];
+              return (
+                <div style={{width:"100%",display:"grid",gap:4,fontFamily:F,minWidth:0}}>
+                  {rows.map(row => (
+                    <div key={row.label} style={{display:"grid",gridTemplateColumns:"52px 1fr 42px",gap:6,alignItems:"center",minWidth:0}}>
+        <span style={{fontSize:8.4,fontWeight:850,color:c.tm,letterSpacing:"0.025em",textTransform:"uppercase",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{row.label}</span>
+                      <span style={{height:6,background:miniTrack,boxShadow:miniTrackInset,position:"relative",minWidth:0}}>
+          <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${row.width}%`,background:row.color,boxShadow:"none"}}/>
+                      </span>
+        <span style={{fontSize:8.2,fontWeight:900,color:row.color,textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{row.value}</span>
+                    </div>
+                  ))}
+      {caption ? <div style={{fontSize:8.4,fontWeight:800,color:c.ts,whiteSpace:"normal",lineHeight:1.12,overflow:"visible",marginTop:1}}>{caption}</div> : null}
+                </div>
+              );
+            };
+            const ProfitFactorPerDollarMini = () => {
+              const pf = Math.max(0, Number(metrics.profitFactor) || 0);
+              return <PerDollarBarsMini ratio={pf} caption={`Every dollar at risk returns $${fmtNum(pf,2)}`} emptyLabel="No loss data"/>;
             };
             const RecoveryMini = () => {
-              const scaleMax = Math.max(4, Number(metrics.recoveryFactor || 0), KPI_CONFIG.recoveryFactorGood);
-              if (metrics.recoveryFactor == null) return <MiniEmpty label="No drawdown" height={42}/>;
-              const pct = metrics.recoveryFactor == null ? 0 : Math.max(0, Math.min(100, metrics.recoveryFactor / scaleMax * 100));
-              const tick = Math.max(0, Math.min(100, KPI_CONFIG.recoveryFactorGood / scaleMax * 100));
+              const rf = Number(metrics.recoveryFactor);
+              if (metrics.recoveryFactor == null || !Number.isFinite(rf)) return <MiniEmpty label="No drawdown" height={50}/>;
+              const earnedWidthValue = Math.max(0, rf);
+              const max = Math.max(1, earnedWidthValue);
+              const reference = KPI_CONFIG.recoveryFactorGood;
+              const overReference = rf >= reference;
+              const noteColor = rf < 0 ? c.rd : overReference ? c.gn : c.gold;
               return (
-                <div style={{width:"100%",fontFamily:F}}>
-                  <div style={{height:8,background:miniTrack,position:"relative",boxSizing:"border-box"}}>
-                    <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${pct}%`,background:metrics.recoveryFactor>=KPI_CONFIG.recoveryFactorGood?c.gn:c.gold,boxShadow:`0 0 6px ${(metrics.recoveryFactor>=KPI_CONFIG.recoveryFactorGood?c.gn:c.gold)}44`}}/>
-                    <span style={{position:"absolute",left:`${tick}%`,top:-4,bottom:-4,width:1,background:c.tx,opacity:.72}}/>
+                <div style={{width:"100%",display:"grid",gap:6,fontFamily:F,minWidth:0}}>
+                  <div style={{display:"grid",gap:4}}>
+                    {[
+                      {label:"$1 of pain", value:"$1.00", width:Math.max(5, 100 / max), color:c.rd},
+                      {label:rf >= 0 ? "Earned" : "Net result", value:`$${fmtNum(rf,2)}`, width:Math.max(5, earnedWidthValue / max * 100), color:rf < 0 ? c.rd : rf >= KPI_CONFIG.recoveryFactorGood ? c.gn : c.gold},
+                    ].map(row => (
+                      <div key={row.label} style={{display:"grid",gridTemplateColumns:"58px 1fr 42px",gap:6,alignItems:"center",minWidth:0}}>
+        <span style={{fontSize:8.4,fontWeight:850,color:c.tm,letterSpacing:"0.02em",textTransform:"uppercase",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{row.label}</span>
+                        <span style={{height:5,background:miniTrack,boxShadow:miniTrackInset,position:"relative",minWidth:0}}>
+          <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${row.width}%`,background:row.color,boxShadow:"none"}}/>
+                        </span>
+        <span style={{fontSize:8.1,fontWeight:900,color:row.color,textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{row.value}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:8,fontWeight:800,color:c.tm,fontVariantNumeric:"tabular-nums"}}>
-                    <span>0</span><span>ref {fmtNum(KPI_CONFIG.recoveryFactorGood,1)}</span><span>{fmtNum(scaleMax,1)}</span>
+    <div style={{fontSize:8.4,fontWeight:850,color:noteColor,letterSpacing:"0.01em",lineHeight:1.15,whiteSpace:"normal",overflow:"visible"}}>
+                    {rf < 0
+                      ? "Below 0: net loss against worst drawdown"
+                      : overReference
+                      ? `Above ${fmtNum(reference,1)} reference: profit outweighs worst pain`
+                      : `Below ${fmtNum(reference,1)} reference: drawdown still weighs on return`}
                   </div>
+                </div>
+              );
+            };
+            const smoothnessPathPoints = () => {
+              const equityPath = Array.isArray(metrics.equityPoints) ? metrics.equityPoints.map(point => Number(point.value)).filter(Number.isFinite) : [];
+              if (equityPath.length > 2) return equityPath;
+              return Array.isArray(metrics.trades)
+                ? metrics.trades.reduce((series, trade) => {
+                  const next = (series[series.length - 1] || 0) + (Number(trade?.rMultiple) || 0);
+                  series.push(next);
+                  return series;
+                }, [0])
+                : [];
+            };
+            const SmoothnessWiggleMini = () => {
+              const series = smoothnessPathPoints();
+              if (series.length < 3) return <MiniEmpty label="No path" height={58}/>;
+              const width = 260;
+              const height = 44;
+              const padX = 5;
+              const padY = 5;
+              const min = Math.min(...series, series[0], series[series.length - 1]);
+              const max = Math.max(...series, series[0], series[series.length - 1]);
+              const span = Math.max(1e-6, max - min);
+              const x = (index) => padX + (series.length <= 1 ? 0 : index / (series.length - 1)) * (width - padX * 2);
+              const y = (value) => padY + (1 - ((value - min) / span)) * (height - padY * 2);
+              const path = series.map((value,index)=>`${index ? "L" : "M"} ${x(index).toFixed(2)} ${y(value).toFixed(2)}`).join(" ");
+              const referencePath = `M ${padX} ${y(series[0]).toFixed(2)} L ${width - padX} ${y(series[series.length - 1]).toFixed(2)}`;
+              const caption = "Dashed = perfectly steady; gap = the wiggle";
+              return (
+                <div style={{width:"100%",display:"grid",gap:4,fontFamily:F,minWidth:0}}>
+                  <svg width="100%" height="47" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{display:"block",overflow:"visible"}}>
+                    <path d={referencePath} fill="none" stroke={c.ts} strokeWidth="1.2" strokeDasharray="4 4" opacity=".72"/>
+                    <path d={`M ${padX} ${height - padY} ${path.replace(/^M/, "L")} L ${width - padX} ${height - padY} Z`} fill={c.gold} opacity=".12"/>
+      <path d={path} fill="none" stroke={c.gold} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" style={{filter:"none"}}/>
+                    <circle cx={x(series.length - 1)} cy={y(series[series.length - 1])} r="2.4" fill={c.gold}/>
+                  </svg>
+      <div style={{fontSize:8.4,fontWeight:800,color:c.tm,letterSpacing:"0.02em",whiteSpace:"normal",lineHeight:1.12,overflow:"visible",textTransform:"uppercase"}}>{caption}</div>
                 </div>
               );
             };
             const RiskAdjustedMini = () => {
-              const normalize = (raw) => raw === Infinity ? {bar:3,label:"∞"} : Number.isFinite(Number(raw)) ? {bar:Math.max(0, Number(raw)),label:fmtNum(Math.max(0, Number(raw)),1)} : {bar:0,label:"-"};
+              const normalize = (raw) => raw === Infinity
+                ? {bar:3,label:"∞",raw:Infinity}
+                : Number.isFinite(Number(raw))
+                  ? {bar:Math.abs(Number(raw)),label:fmtNum(Number(raw),1),raw:Number(raw)}
+                  : {bar:0,label:"-",raw:null};
               const sortino = normalize(metrics.sortino);
               const sharpe = normalize(metrics.sharpe);
-              const shape = Number.isFinite(Number(metrics.shapeRatio)) ? {bar:Math.max(0, Number(metrics.shapeRatio)),label:metrics.shapeLabel} : {bar:0,label:"thin"};
-              const max = Math.max(1, sortino.bar, sharpe.bar, shape.bar, 3);
-              const row = (label,item,color) => (
-                <div style={{display:"grid",gridTemplateColumns:"42px 1fr 58px",gap:6,alignItems:"center",height:14}}>
-                  <span style={{fontSize:8,fontWeight:850,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase"}}>{label}</span>
-                  <span style={{height:5,background:miniTrack,position:"relative",overflow:"hidden"}}>
-                    <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.max(0,Math.min(100,item.bar/max*100))}%`,background:color,boxShadow:`0 0 5px ${color}55`}}/>
-                  </span>
-                  <span style={{fontSize:7.6,fontWeight:850,color, textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.label}</span>
+              const max = Math.max(2.4, sortino.bar, sharpe.bar, 3);
+              const tickPct = (value) => Math.max(0, Math.min(100, value / max * 100));
+              const row = (label,item,color) => {
+                const rowColor = item.raw != null && item.raw < 0 ? c.rd : color;
+                return (
+                  <div key={label} style={{display:"grid",gridTemplateColumns:"38px 1fr 42px",gap:6,alignItems:"center",height:13}}>
+          <span style={{fontSize:8,fontWeight:850,color:c.tm,letterSpacing:"0.04em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{label}</span>
+                    <span style={{height:6,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"hidden"}}>
+            <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${Math.max(0,Math.min(100,item.bar/max*100))}%`,background:rowColor,boxShadow:"none"}}/>
+            {[1,2].map(value => <span key={value} style={{position:"absolute",left:`${tickPct(value)}%`,top:-3,bottom:-3,width:1,background:c.gold,boxShadow:"none",opacity:.9}}/>)}
+                    </span>
+          <span style={{fontSize:8.4,fontWeight:900,color:rowColor, textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{item.label}</span>
+                  </div>
+                );
+              };
+              const shapeRaw = Number(metrics.shapeRatio);
+              const shapeLabel = metrics.shapeLabel || "thin";
+              const shapeTone = metrics.shapeTone || "thin";
+              const localShapeColor = shapeTone === "up" ? c.gn : shapeTone === "down" ? c.rd : c.gold;
+              const shapeLean = Number.isFinite(shapeRaw) ? Math.max(-1, Math.min(1, shapeRaw - 1)) : 0;
+              const shapeWidth = Math.min(48, Math.abs(shapeLean) * 42);
+              return (
+                <div style={{width:"100%",display:"grid",gap:3.5,fontFamily:F,minWidth:0}}>
+                  {row("Sort",sortino,c.gn)}
+                  {row("Sharp",sharpe,c.acL)}
+                  <div style={{display:"grid",gridTemplateColumns:"38px minmax(0,1fr) 68px",gap:6,alignItems:"center",minHeight:14}}>
+        <span style={{fontSize:8,fontWeight:850,color:c.tm,letterSpacing:"0.04em",textTransform:"uppercase",whiteSpace:"nowrap"}}>Shape</span>
+                    <span style={{height:6,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"hidden"}}>
+                      <span style={{position:"absolute",left:"50%",top:-3,bottom:-3,width:1,background:c.tm,opacity:.75}}/>
+                      {shapeWidth > 0 ? <span style={{
+                        position:"absolute",
+                        left:shapeLean >= 0 ? "50%" : `${50 - shapeWidth}%`,
+                        top:1,
+                        bottom:1,
+                        width:`${shapeWidth}%`,
+                        background:localShapeColor,
+              boxShadow:"none",
+                      }}/> : null}
+                    </span>
+        <span style={{fontSize:7.8,fontWeight:850,color:localShapeColor,textAlign:"right",whiteSpace:"nowrap",overflow:"visible",textOverflow:"clip",lineHeight:1.05}}>{shapeLabel}</span>
+                  </div>
+      <div style={{fontSize:7.4,fontWeight:800,color:c.tm,letterSpacing:"0.005em",whiteSpace:"normal",overflow:"visible",textOverflow:"clip",lineHeight:1.18}}>Gold ticks = good 1.0 / great 2.0 · centre = symmetric</div>
                 </div>
               );
-              return <div style={{width:"100%",display:"grid",gap:3,fontFamily:F}}>{row("Sort",sortino,c.gn)}{row("Sharp",sharpe,c.acL)}{row("Shape",shape,shapeColor)}</div>;
             };
             const DayStripMini = () => {
-              const days = (metrics.dailyReturnRows?.length ? metrics.dailyReturnRows : metrics.dailyRows || []).slice(-30);
+              const days = (metrics.dailyReturnRows?.length ? metrics.dailyReturnRows : metrics.dailyRows || []);
               if (!days.length) return <MiniEmpty label="No days" height={42}/>;
+              const greenDays = Number(metrics.dayGreenCount) || days.filter(day=>Number(day.pnl)>0).length;
+              const redDays = Number(metrics.dayRedCount) || days.filter(day=>Number(day.pnl)<0).length;
+              const flatDays = Number(metrics.dayFlatCount) || Math.max(0, days.length - greenDays - redDays);
+              const maxCells = 42;
+              const grouped = days.length > maxCells;
+              const dayCells = grouped
+                ? Array.from({length:maxCells},(_,index)=>{
+                  const start = Math.floor(index * days.length / maxCells);
+                  const end = Math.max(start + 1, Math.floor((index + 1) * days.length / maxCells));
+                  const slice = days.slice(start,end);
+                  const pnl = slice.reduce((total,day)=>total + (Number(day.pnl)||0),0);
+                  const first = slice[0]?.date || "start";
+                  const last = slice[slice.length - 1]?.date || first;
+                  return {
+                    key:`bucket-${index}-${first}-${last}`,
+                    pnl,
+                    label:`${first}${first !== last ? ` - ${last}` : ""}: ${slice.length} days, ${fmtValue(pnl,0)}`,
+                  };
+                })
+                : days.map((day,index)=>({
+                  key:`${day.date||"day"}-${index}`,
+                  pnl:Number(day.pnl)||0,
+                  label:day.date?`${day.date}: ${fmtValue(Number(day.pnl)||0,0)}`:"No day",
+                }));
               return (
-                <div style={{width:"100%",display:"grid",gridTemplateColumns:"repeat(15,1fr)",gap:2,alignContent:"center"}}>
-                  {days.map((day,index)=>{
-                    const pnl = Number(day.pnl)||0;
-                    return <span key={`${day.date||"day"}-${index}`} title={day.date?`${day.date}: ${fmtValue(pnl,0)}`:"No day"} style={{height:7,background:pnl>0?c.gn:pnl<0?c.rd:c.tm,opacity:pnl===0?.25:.78,boxShadow:pnl>0?`0 0 4px ${c.gn}40`:pnl<0?`0 0 4px ${c.rd}35`:"none"}}/>;
-                  })}
+                <div style={{width:"100%",fontFamily:F}}>
+                  <div title={grouped ? `${days.length} days grouped into ${maxCells} outcome buckets` : undefined} style={{width:"100%",display:"grid",gridTemplateColumns:"repeat(21,minmax(0,1fr))",gridAutoRows:6,gap:2,alignContent:"center",maxHeight:14,overflow:"hidden"}}>
+                    {dayCells.map((day)=>{
+                      const pnl = Number(day.pnl)||0;
+                      return <span key={day.key} title={day.label} style={{height:6,background:pnl>0?c.gn:pnl<0?c.rd:c.tm,opacity:pnl===0?.28:.78,boxShadow:pnl>0?`0 0 4px ${c.gn}40`:pnl<0?`0 0 4px ${c.rd}35`:"none"}}/>;
+                    })}
+                  </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5,marginTop:6,fontSize:8.2,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",textTransform:"uppercase"}}>
+                    <span style={{color:c.gn,whiteSpace:"nowrap"}}>green {greenDays}</span>
+                    <span style={{color:c.rd,whiteSpace:"nowrap",textAlign:"center"}}>red {redDays}</span>
+                    <span style={{color:c.tm,whiteSpace:"nowrap",textAlign:"right"}}>flat {flatDays}</span>
+                  </div>
                 </div>
               );
             };
@@ -22794,9 +23973,9 @@ const TalariaV8b = () => {
                 const pct = Math.max(0,Math.min(100,Number(metrics.costDragPct)||0));
                 return (
                   <div style={{width:"100%",fontFamily:F}}>
-                    <div style={{height:8,background:miniTrack,position:"relative",boxSizing:"border-box"}}>
+                    <div style={{height:8,background:miniTrack,boxShadow:miniTrackInset,position:"relative",boxSizing:"border-box"}}>
                       <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${100-pct}%`,background:c.gn,opacity:.76}}/>
-                      <span style={{position:"absolute",right:0,top:1,bottom:1,width:`${pct}%`,background:c.rd,boxShadow:`0 0 5px ${c.rd}35`}}/>
+        <span style={{position:"absolute",right:0,top:1,bottom:1,width:`${pct}%`,background:c.rd,boxShadow:"none"}}/>
                     </div>
                     <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:8,fontWeight:850,color:c.tm}}>
                       <span>gross</span><span>net</span>
@@ -22808,8 +23987,8 @@ const TalariaV8b = () => {
               const followedPct = metrics.ruleAdherence == null ? 0 : Math.max(0,Math.min(100,metrics.ruleAdherence));
               return (
                 <div style={{width:"100%",fontFamily:F}}>
-                  <div style={{height:8,background:miniTrack,position:"relative",boxSizing:"border-box"}}>
-                    <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${followedPct}%`,background:c.gn,boxShadow:`0 0 5px ${c.gn}40`}}/>
+                  <div style={{height:8,background:miniTrack,boxShadow:miniTrackInset,position:"relative",boxSizing:"border-box"}}>
+        <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${followedPct}%`,background:c.gn,boxShadow:"none"}}/>
                     <span style={{position:"absolute",left:`${followedPct}%`,right:0,top:1,bottom:1,background:c.rd,opacity:.68}}/>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:8,fontWeight:850,color:c.tm}}>
@@ -22823,24 +24002,199 @@ const TalariaV8b = () => {
             const avgWinLossRatio = avgLoss ? avgWin / avgLoss : 0;
             const kpiGoalPct = metrics.goalConfig?.targetReturnPct ?? null;
             const goalConfigured = kpiGoalPct != null && kpiGoalPct > 0;
-            const propConfigured = !!(propStatus && metrics.propConfig);
+            const propConfigured = !!(propStatus?.configured && propConfig?.configured !== false);
             const sortinoDisplay = metrics.sortino === Infinity ? "∞" : Number.isFinite(Number(metrics.sortino)) ? fmtNum(metrics.sortino,2) : "-";
             const sharpeDisplay = Number.isFinite(Number(metrics.sharpe)) ? fmtNum(metrics.sharpe,2) : "-";
             const shapeArrow = metrics.shapeTone === "up" ? "▲" : metrics.shapeTone === "down" ? "▼" : "→";
             const shapeColor = metrics.shapeTone === "up" ? c.gn : metrics.shapeTone === "down" ? c.gold : c.ts;
             const riskAdjustedDim = !!metrics.riskAdjustedLowConfidence;
             const riskAdjustedObsUnit = metrics.riskAdjustedBasis === "daily" ? "daily obs" : "trades";
-            const top5Text = metrics.top5ProfitShare == null ? "Top-5 share -" : `Top-5 trades = ${fmtPct(metrics.top5ProfitShare,0)} of profit`;
+            const riskAdjustedSharpeValue = Number(metrics.sharpe);
+            const riskAdjustedColor = !Number.isFinite(riskAdjustedSharpeValue)
+              ? c.tm
+              : riskAdjustedDim
+                ? c.gold
+                : riskAdjustedSharpeValue >= 0
+                  ? c.gn
+                  : c.rd;
+            const riskAdjustedSubline = `Sharpe ${sharpeDisplay} · ${riskAdjustedDim ? `low confidence (${metrics.riskAdjustedObs} ${riskAdjustedObsUnit})` : metrics.shapeLabel}`;
+            const profitConcentrationDisplayPct = metrics.top10ProfitShare == null ? null : Math.max(0, Math.min(100, Number(metrics.top10ProfitShare) || 0));
+            const profitRobustnessHoldPct = metrics.profitRobustnessHoldPct != null
+              ? metrics.profitRobustnessHoldPct
+              : Number(metrics.totalPnl) > 0
+                ? Math.max(0, Number(metrics.netWithoutTop10Profit) || 0) / Math.max(1, Number(metrics.totalPnl) || 0) * 100
+                : null;
+            const profitRobustnessGateTarget = Math.max(1, Number(metrics.sampleConfidenceTarget ?? KPI_CONFIG.nTarget ?? KPI_CONFIG.minTradesForConfidence) || 1);
+            const profitRobustnessGateCurrent = Math.max(0, Number(metrics.tradeCount) || 0);
+            const profitRobustnessGateMet = profitRobustnessGateCurrent >= profitRobustnessGateTarget;
+            const profitRobustnessHasValue = !!metrics.sampleConfidenceReady && profitRobustnessHoldPct != null;
+            const profitRobustnessGateText = profitRobustnessGateMet
+              ? `Needs positive profit sample · ${profitRobustnessGateCurrent.toLocaleString()} trades so far`
+              : `Needs ${profitRobustnessGateTarget.toLocaleString()} trades · ${profitRobustnessGateCurrent.toLocaleString()} so far`;
+            const profitConcentrationThresholdPct = Math.max(0, Math.min(100, Number(metrics.profitConcentrationThresholdPct ?? KPI_CONFIG.profitConcentrationThresholdPct) || 0));
+            const profitRobustnessFloorPct = Math.max(0, Math.min(100, Number(metrics.profitRobustnessFloorPct ?? KPI_CONFIG.profitRobustnessFloorPct) || 0));
+            const profitConcentrationTopPctLabel = Math.round((Number(metrics.profitRobustnessSecondTopPct ?? KPI_CONFIG.profitRobustnessSecondTopPct) || 0) * 100);
+            const profitConcentrationIsConcentrated = profitConcentrationDisplayPct != null && profitConcentrationDisplayPct >= profitConcentrationThresholdPct;
+            const profitConcentrationVerdict = profitConcentrationDisplayPct == null ? "-" : profitConcentrationIsConcentrated ? "Concentrated" : "Distributed";
+            const profitConcentrationColor = profitConcentrationDisplayPct == null ? c.tm : profitConcentrationIsConcentrated ? c.gold : c.gn;
+            const profitConcentrationSentence = profitConcentrationDisplayPct == null
+              ? "No profit sample yet."
+              : `Your top ${profitConcentrationTopPctLabel}% made ${fmtPct(profitConcentrationDisplayPct,0)} of profit - ${profitConcentrationIsConcentrated ? "over" : "under"} the ${fmtPct(profitConcentrationThresholdPct,0)} concentration line.`;
+            const profitRobustnessIsRobust = profitRobustnessHasValue && profitRobustnessHoldPct >= profitRobustnessFloorPct;
+            const profitRobustnessVerdict = !profitRobustnessHasValue ? "Needs sample" : profitRobustnessIsRobust ? "Robust" : "Fragile";
+            const profitRobustnessColor = !profitRobustnessHasValue ? c.gold : profitRobustnessIsRobust ? c.gn : c.gold;
+            const profitRobustnessSentence = !profitRobustnessHasValue
+              ? profitRobustnessGateText
+              : `${fmtPct(profitRobustnessHoldPct,0)} of your edge holds without your top ${profitConcentrationTopPctLabel}% - ${profitRobustnessIsRobust ? "above" : "below"} the ${fmtPct(profitRobustnessFloorPct,0)} floor.`;
             const costDragValue = metrics.costDragPct == null ? "-" : fmtPct(metrics.costDragPct,1);
-            const privacyMoney = (value, fallbackR=0) => dashValueMode === "privacy" ? "***" : fmtValue(value, fallbackR);
-            const privacyAbsMoney = (value) => dashValueMode === "privacy" ? "***" : fmtAbsMoney(value);
+            const privacyMoney = (value, fallbackR=0) => fmtValue(value, fallbackR);
+            const privacyAbsMoney = (value) => dashValueMode === "privacy" ? dashPrivacyMask : dashOverviewUnitMode === "percent" ? fmtAbsMoneyPct(value) : fmtAbsMoney(value);
+            const netPnlTrades = Array.isArray(metrics.trades) ? metrics.trades : [];
+            const netPnlUseR = dashOverviewUnitMode === "r";
+            const fmtSignedR = (value, digits=2) => `${Number(value || 0) >= 0 ? "+" : ""}${fmtNum(value || 0, digits)}R`;
+            const fmtAbsR = (value, digits=2) => `${fmtNum(Math.abs(Number(value) || 0), digits)}R`;
+            const netPnlMoney = (value) => {
+              if (dashValueMode === "privacy" && dashOverviewUnitMode !== "r") return dashPrivacyMask;
+              return dashOverviewUnitMode === "percent" ? fmtMoneyPct(value) : fmtMoney(Math.round(Number(value) || 0));
+            };
+            const netPnlAbsMoney = (value) => {
+              if (dashValueMode === "privacy" && dashOverviewUnitMode !== "r") return dashPrivacyMask;
+              return dashOverviewUnitMode === "percent" ? fmtAbsMoneyPct(value) : fmtAbsMoney(value);
+            };
+            const netPnlRStats = netPnlTrades.reduce((acc, trade) => {
+              const r = Number(trade?.rMultiple) || 0;
+              acc.net += r;
+              if (r > 0) {
+                acc.gross += r;
+                acc.wins += 1;
+              } else if (r < 0) {
+                acc.loss += Math.abs(r);
+                acc.losses += 1;
+              }
+              return acc;
+            }, {net:0,gross:0,loss:0,wins:0,losses:0});
+            netPnlRStats.cost = Math.max(0, netPnlRStats.gross - netPnlRStats.loss - netPnlRStats.net);
+            const netPnlDollarStats = {
+              net:Number(metrics.totalPnl) || 0,
+              gross:Math.max(0, Number(metrics.grossWin) || 0),
+              loss:Math.max(0, Number(metrics.grossLoss) || 0),
+              cost:Math.max(0, Number(metrics.costDragDollars) || 0),
+              wins:Number(metrics.wins) || 0,
+              losses:Number(metrics.losses) || 0,
+            };
+            const netPnlStats = netPnlUseR ? netPnlRStats : netPnlDollarStats;
+            const netPnlFormatSigned = (value) => netPnlUseR ? fmtSignedR(value) : netPnlMoney(value);
+            const netPnlFormatAbs = (value) => netPnlUseR ? fmtAbsR(value) : netPnlAbsMoney(value);
+            const netPnlHeadline = netPnlFormatSigned(netPnlStats.net);
+            const netPnlReturnPct = Number(metrics.returnPct) || 0;
+            const dashSignedDollar = (value) => dashValueMode === "privacy" ? dashPrivacyMask : fmtMoney(Math.round(Number(value) || 0));
+            const dashAbsDollar = (value) => dashValueMode === "privacy" ? dashPrivacyMask : fmtAbsMoney(Number(value) || 0);
+            const dashDollarBracket = (value, {abs=false}={}) => `(${abs ? dashAbsDollar(value) : dashSignedDollar(value)})`;
+            const netPnlReturnSuffix = "";
+            const netPnlReturnSuffixColor = dashOverviewUnitMode === "percent" ? ((Number(netPnlStats.net) || 0) >= 0 ? c.gn : c.rd) : netPnlReturnPct >= 0 ? c.gn : c.rd;
+            const netPnlGrossLabel = netPnlUseR ? fmtAbsR(netPnlStats.gross) : netPnlAbsMoney(netPnlStats.gross);
+            const netPnlNetIsPositive = (Number(netPnlStats.net) || 0) >= 0;
+            const netPnlRetainedPct = netPnlStats.gross > 0 ? (Math.abs(Number(netPnlStats.net) || 0) / netPnlStats.gross) * 100 : 0;
+            const netPnlSubText = netPnlNetIsPositive
+              ? `Retained ${fmtPct(netPnlRetainedPct,0)} of ${netPnlGrossLabel} won`
+              : `Losses outpaced ${netPnlGrossLabel} won`;
+            const netPnlAvgTradeValue = metrics.tradeCount ? (Number(metrics.totalPnl) || 0) / metrics.tradeCount : 0;
+            const netPnlAvgWinR = netPnlRStats.wins ? netPnlRStats.gross / netPnlRStats.wins : 0;
+            const netPnlAvgLossR = netPnlRStats.losses ? netPnlRStats.loss / netPnlRStats.losses : 0;
+            const netPnlTradeCount = Math.max(0, Number(metrics.tradeCount) || netPnlTrades.length || 0);
+            const netPnlWinsAddR = netPnlTradeCount ? netPnlRStats.gross / netPnlTradeCount : 0;
+            const netPnlLossesCostR = netPnlTradeCount ? netPnlRStats.loss / netPnlTradeCount : 0;
+            const netPnlExpectancyR = netPnlTradeCount ? netPnlRStats.net / netPnlTradeCount : (Number(metrics.expectancyR) || Number(metrics.avgR) || 0);
+            const dashOverviewRPrimary = dashOverviewUnitMode === "r";
+            const dashOverviewPercentPrimary = dashOverviewUnitMode === "percent";
+            const dashMoneyMasked = dashValueMode === "privacy" && !dashOverviewRPrimary;
+            const dashSignedMoney = (value) => dashMoneyMasked ? dashPrivacyMask : dashOverviewPercentPrimary ? fmtMoneyPct(value) : fmtMoney(Math.round(Number(value) || 0));
+            const dashAbsMoney = (value) => dashMoneyMasked ? dashPrivacyMask : dashOverviewPercentPrimary ? fmtAbsMoneyPct(value) : fmtAbsMoney(Number(value) || 0);
+            const dashUnsignedR = (value, digits=2) => `${fmtNum(Number(value) || 0, digits)}R`;
+            const dashMoneyToR = (value) => (Number(value) || 0) / Math.max(1e-9, Number(metrics.dollarPerR) || 0);
+            const dashMoneyMetricValue = (value, options={}) => dashDualValue(dashMoneyToR(value), value, options);
+            const dashDualValue = (rValue, moneyValue, {signedR=true, rDigits=2, moneySign=true}={}) => {
+              const hasR = rValue != null && Number.isFinite(Number(rValue));
+              const hasMoney = moneyValue != null && Number.isFinite(Number(moneyValue));
+              if (dashOverviewRPrimary) return hasR ? (signedR ? fmtSignedR(rValue, rDigits) : dashUnsignedR(rValue, rDigits)) : "-";
+              if (!hasMoney) return "-";
+              return moneySign ? dashSignedMoney(moneyValue) : dashAbsMoney(moneyValue);
+            };
+            const dashDualSuffix = (rValue, moneyValue, {signedR=true, rDigits=2, moneySign=true, approximate=true}={}) => {
+              return "";
+            };
+            const dashDualInline = (rValue, moneyValue, options={}) => `${dashDualValue(rValue, moneyValue, options)}${dashDualSuffix(rValue, moneyValue, {...options, approximate:false}) ? ` · ${dashDualSuffix(rValue, moneyValue, {...options, approximate:false})}` : ""}`;
+            const netPnlWinsAddDollars = netPnlTradeCount ? (Number(metrics.grossWin) || 0) / netPnlTradeCount : 0;
+            const netPnlLossesCostDollars = netPnlTradeCount ? (Number(metrics.grossLoss) || 0) / netPnlTradeCount : 0;
+            const netPnlExpectancyDollars = netPnlTradeCount ? (Number(metrics.totalPnl) || 0) / netPnlTradeCount : (Number(metrics.expectancyDollarsPerTrade) || 0);
+            const NetPnlCompositionMini = () => {
+              const rows = [
+                {id:"won", label:"Won", value:Math.max(0, Number(netPnlStats.gross) || 0), color:c.gn},
+                {id:"lost", label:"Lost", value:Math.max(0, Number(netPnlStats.loss) || 0), color:c.rd},
+                {id:"costs", label:"Costs", value:Math.max(0, Number(netPnlStats.cost) || 0), color:c.gold},
+              ].filter(row => row.value > 0.0001);
+              const max = Math.max(.0001, ...rows.map(row => row.value));
+              const net = Number(netPnlStats.net) || 0;
+              const netColor = net >= 0 ? c.gn : c.rd;
+              const retainedPct = netPnlStats.gross > 0 ? (Math.abs(net) / netPnlStats.gross) * 100 : 0;
+              if (!rows.length && Math.abs(net) <= 0.0001) return <MiniEmpty label="No P&L" height={42}/>;
+              const FlowRow = ({row}) => (
+                <div style={{display:"grid",gridTemplateColumns:"33px minmax(0,1fr) minmax(58px,auto)",alignItems:"center",gap:6,minWidth:0}}>
+        <span style={{fontSize:8.1,fontWeight:900,color:c.tm,letterSpacing:"0.035em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{row.label}</span>
+                  <span style={{height:7,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"hidden"}}>
+          <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${Math.min(100, row.value / max * 100)}%`,background:row.color,boxShadow:"none"}}/>
+                  </span>
+        <span style={{fontSize:8.2,fontWeight:900,color:row.color,fontVariantNumeric:"tabular-nums",textAlign:"right",whiteSpace:"nowrap",overflow:"visible"}}>{netPnlFormatAbs(row.value)}</span>
+                </div>
+              );
+              return (
+                <div style={{width:"100%",fontFamily:F,display:"grid",gap:4,minWidth:0}}>
+                  {rows.map(row => <FlowRow key={row.id} row={row}/>)}
+                  <div style={{height:1,background:`linear-gradient(90deg,transparent,${c.brH},transparent)`,opacity:.82,margin:"1px 0"}}/>
+                  <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,minWidth:0}}>
+      <span style={{fontSize:8.1,fontWeight:900,color:c.tm,letterSpacing:"0.035em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{net >= 0 ? "Kept share" : "Loss gap"}</span>
+                    <span style={{fontSize:8.8,fontWeight:950,color:netColor,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"visible"}}>{netPnlStats.gross > 0 ? fmtPct(retainedPct,0) : netPnlFormatSigned(net)}</span>
+                  </div>
+                </div>
+              );
+            };
+            const NetPnlQualityMini = () => {
+              const max = Math.max(.01, netPnlWinsAddR, netPnlLossesCostR, Math.abs(netPnlExpectancyR));
+              const buildRow = (label, value, moneyValue, color, sign=1) => {
+                const rText = sign < 0 ? `-${fmtAbsR(value)}` : fmtSignedR(value);
+                const moneyText = sign < 0 ? `-${dashAbsMoney(moneyValue)}` : dashSignedMoney(moneyValue);
+                const primary = dashOverviewRPrimary ? rText : moneyText;
+                return (
+                <div style={{display:"grid",gridTemplateColumns:"66px minmax(0,1fr) 58px",alignItems:"center",gap:6,minWidth:0}}>
+        <span style={{fontSize:8.2,fontWeight:900,color:c.tm,letterSpacing:"0.035em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{label}</span>
+                  <span style={{height:7,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"hidden"}}>
+          <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${Math.min(100, Math.abs(value) / max * 100)}%`,background:color,boxShadow:"none"}}/>
+                  </span>
+                  <span style={{fontSize:8.5,fontWeight:900,color,fontVariantNumeric:"tabular-nums",textAlign:"right",whiteSpace:"nowrap",minWidth:0}}>{primary}</span>
+                </div>
+              );};
+              return (
+                <div style={{width:"100%",display:"grid",gap:5,fontFamily:F}}>
+                  {buildRow("Wins add", netPnlWinsAddR, netPnlWinsAddDollars, c.gn, 1)}
+                  {buildRow("Losses cost", netPnlLossesCostR, netPnlLossesCostDollars, c.rd, -1)}
+                  <div style={{height:1,background:c.brH,opacity:.72,marginTop:1}}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,fontSize:8.4,fontWeight:900,color:c.tm,letterSpacing:"0.035em",textTransform:"uppercase",fontVariantNumeric:"tabular-nums"}}>
+                    <span>Net expectancy</span>
+                    <span style={{display:"flex",alignItems:"baseline",gap:5,fontSize:9,color:netPnlExpectancyR >= 0 ? c.gn : c.rd,whiteSpace:"nowrap"}}>
+                      <span>{dashDualValue(netPnlExpectancyR, netPnlExpectancyDollars)}</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            };
             const targetProgressPct = metrics.goalProgressPct;
             const pacePerWeek = metrics.weeksInRange ? metrics.returnPct / metrics.weeksInRange : 0;
             const weeksToTarget = goalConfigured && pacePerWeek > 0 && kpiGoalPct > metrics.returnPct ? (kpiGoalPct - metrics.returnPct) / pacePerWeek : null;
-            const propTargetPct = propConfigured && metrics.propConfig?.profitTargetPct != null ? Math.max(0, Math.min(999, propStatus.targetUsed * 100)) : null;
-            const propDailyHeadroom = propConfigured && metrics.propConfig?.dailyLossLimitPct != null ? Math.max(0, 100 - propStatus.dailyUsed * 100) : null;
-            const propDdHeadroom = propConfigured && metrics.propConfig?.maxDDLimitPct != null ? Math.max(0, 100 - propStatus.ddUsed * 100) : null;
-            const smoothnessPct = metrics.equitySmoothness == null ? null : metrics.equitySmoothness * 100;
+            const propTargetPct = propConfigured && propConfig?.profitTargetPct != null ? Math.max(0, Math.min(999, propStatus.targetUsed * 100)) : null;
+            const propDailyHeadroom = propConfigured && propConfig?.dailyLossLimitPct != null ? Math.max(0, 100 - propStatus.dailyUsed * 100) : null;
+            const propDdHeadroom = propConfigured && propConfig?.maxDDLimitPct != null ? Math.max(0, 100 - propStatus.ddUsed * 100) : null;
+            const smoothnessMetric = metrics.equitySmoothness;
+            const smoothnessPct = smoothnessMetric == null ? null : smoothnessMetric * 100;
             const planActualText = metrics.planActualDriftR == null
               ? `TP required · ${metrics.planActualExcludedNoTp || 0} excluded`
               : `${metrics.planActualDriftR >= 0 ? "-" : "+"}${fmtNum(Math.abs(metrics.planActualDriftR),2)}R drift · n ${metrics.planActualSample || 0}`;
@@ -22851,12 +24205,117 @@ const TalariaV8b = () => {
               const targetPct = target == null ? null : Math.max(0, Math.min(100, (Number(target)||0) / safeMax * 100));
               return (
                 <div style={{width:"100%",fontFamily:F}}>
-                  <div style={{height:8,background:miniTrack,position:"relative",boxSizing:"border-box"}}>
-                    <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${pct}%`,background:color,boxShadow:`0 0 5px ${color}42`}}/>
+                  <div style={{height:8,background:miniTrack,boxShadow:miniTrackInset,position:"relative",boxSizing:"border-box"}}>
+        <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${pct}%`,background:color,boxShadow:"none"}}/>
                     {targetPct != null && <span style={{position:"absolute",left:`${targetPct}%`,top:-4,bottom:-4,width:1,background:c.tx,opacity:.7}}/>}
-                    {Number(value) > safeMax && <span style={{position:"absolute",right:0,top:-2,bottom:-2,width:2,background:color,boxShadow:`0 0 6px ${color}`}}/>}
+        {Number(value) > safeMax && <span style={{position:"absolute",right:0,top:-2,bottom:-2,width:2,background:color,boxShadow:"none"}}/>}
                   </div>
                   {(labelLeft || labelRight) && <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:8,fontWeight:800,color:c.tm,fontVariantNumeric:"tabular-nums"}}><span>{labelLeft}</span><span>{labelRight}</span></div>}
+                </div>
+              );
+            };
+            const liveDemonRows = (metrics.demonAnalytics?.ranked || []).slice(0, 3);
+            const liveDemonTotalCostR = Number(metrics.demonAnalytics?.totalCostR) || liveDemonRows.reduce((sum,row)=>sum + (Number(row.costR)||0),0);
+            const fmtCostR = (value) => Number(value || 0) > 0 ? `-${fmtNum(value, Number(value) >= 10 ? 1 : 2)}R` : "0R";
+            const liveDisciplineValue = metrics.disciplineScore == null ? null : Math.round(metrics.disciplineScore);
+            const liveDisciplineColor = liveDisciplineValue == null ? c.tm : liveDisciplineValue >= 85 ? c.gn : liveDisciplineValue >= 70 ? c.gold : c.rd;
+            const riskStats = metrics.riskConsistencyStats || {};
+            const riskUnitMode = riskStats.actualPctAvg != null || riskStats.plannedPctAvg != null ? "pct" : "r";
+            const formatRiskValue = (value) => value == null || !Number.isFinite(Number(value)) ? "-" : riskUnitMode === "pct" ? fmtPct(value, 1) : `${fmtNum(value, 2)}R`;
+            const plannedRiskValue = riskUnitMode === "pct" ? riskStats.plannedPctAvg : riskStats.plannedRAvg;
+            const actualRiskValue = riskUnitMode === "pct" ? riskStats.actualPctAvg : riskStats.actualRAvg;
+            const typicalRiskValue = riskUnitMode === "pct" ? riskStats.typicalActualPct : riskStats.typicalActualR;
+            const maxRiskValue = riskUnitMode === "pct" ? riskStats.maxActualPct : riskStats.maxActualR;
+            const LiveDemonsMini = () => {
+              if (!liveDemonRows.length) return <MiniEmpty label="No demons" height={58}/>;
+              const maxCost = Math.max(.01, ...liveDemonRows.map(row => Number(row.costR) || 0));
+              return (
+                <div style={{width:"100%",display:"grid",gap:6,fontFamily:F,minWidth:0}}>
+                  {liveDemonRows.map((row,index)=>(
+                    <div key={row.type || row.label || index} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 34px 44px",alignItems:"center",gap:7,minWidth:0}}>
+                      <span style={{fontSize:8.6,fontWeight:900,color:c.ts,whiteSpace:"normal",lineHeight:1.05,overflow:"visible",textTransform:"uppercase"}}>{row.label || "Demon"}</span>
+                      <span style={{fontSize:8.2,fontWeight:900,color:c.tm,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{Number(row.count)||0}x</span>
+                      <span style={{fontSize:8.6,fontWeight:950,color:c.rd,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmtCostR(row.costR)}</span>
+                      <span style={{gridColumn:"1 / -1",height:4,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"hidden"}}>
+                        <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${Math.min(100, (Number(row.costR)||0) / maxCost * 100)}%`,background:index === 0 ? c.rd : c.gold,opacity:index===0?.9:.72}}/>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            };
+            const LiveDisciplineScoreMini = () => {
+              const comps = metrics.disciplineComponents || {};
+              const rows = [
+                ["Adherence", comps.adherence],
+                ["Risk control", comps.riskControl],
+                ["Patience", comps.patience],
+              ];
+              if (!rows.some(([,value])=>value != null)) return <MiniEmpty label="No discipline" height={58}/>;
+              return (
+                <div style={{width:"100%",display:"grid",gap:6,fontFamily:F}}>
+                  {rows.map(([label,value]) => {
+                    const safeValue = value == null ? 0 : Math.max(0, Math.min(100, Number(value) || 0));
+                    const color = safeValue >= 85 ? c.gn : safeValue >= 70 ? c.gold : c.rd;
+                    return (
+                      <div key={label} style={{display:"grid",gridTemplateColumns:"74px minmax(0,1fr) 32px",alignItems:"center",gap:7}}>
+                        <span style={{fontSize:8.4,fontWeight:900,color:c.tm,textTransform:"uppercase",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{label}</span>
+                        <span style={{height:6,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"hidden"}}>
+                          <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${safeValue}%`,background:color}}/>
+                        </span>
+                        <span style={{fontSize:8.6,fontWeight:950,color,fontVariantNumeric:"tabular-nums",textAlign:"right"}}>{fmtPct(safeValue,0)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            };
+            const planAdherence = metrics.planAdherence || {};
+            const formatPlanAdherenceValue = (node, options={}) => dashDualValue(node?.r, node?.pnl, options);
+            const planAdherenceCostColor = Number(planAdherence.cost?.pnl || 0) > 0 ? c.gold : c.gn;
+            const PlanAdherenceMini = () => {
+              if (!planAdherence.available) {
+                return (
+                  <div style={{width:"100%",minHeight:70,display:"grid",placeItems:"center",textAlign:"center",fontFamily:F,color:c.tm,fontSize:8.8,fontWeight:900,lineHeight:1.22,textTransform:"uppercase",letterSpacing:"0.035em"}}>
+                    Plan-adherence data not available<br/>Log missed trades and tag deviations
+                  </div>
+                );
+              }
+              const ifFollowedMoney = Number(planAdherence.ifFollowed?.pnl) || 0;
+              const actualMoney = Number(planAdherence.actual?.pnl) || 0;
+              const costMoney = Number(planAdherence.cost?.pnl) || 0;
+              const maxMoney = Math.max(1, Math.abs(ifFollowedMoney), Math.abs(actualMoney), Math.abs(costMoney));
+              const summaryRows = [
+                {label:"If followed", node:planAdherence.ifFollowed, color:c.gn, width:Math.abs(ifFollowedMoney) / maxMoney * 100},
+                {label:"Actual", node:planAdherence.actual, color:actualMoney >= 0 ? c.gn : c.rd, width:Math.abs(actualMoney) / maxMoney * 100},
+                {label:"Cost", node:{pnl:-Math.abs(costMoney), r:-Math.abs(Number(planAdherence.cost?.r) || 0)}, color:costMoney > 0 ? c.gold : c.tm, width:Math.abs(costMoney) / maxMoney * 100},
+              ];
+              const bucketRows = [
+                {label:"Plan", count:planAdherence.followed?.count || 0, color:c.gn},
+                {label:"Out", count:planAdherence.outOfPlan?.count || 0, color:c.rd},
+                {label:"Missed", count:planAdherence.missed?.count || 0, color:c.gold},
+              ];
+              return (
+                <div style={{width:"100%",display:"grid",gap:5,fontFamily:F,minWidth:0}}>
+                  {summaryRows.map(row=>(
+                    <div key={row.label} style={{display:"grid",gridTemplateColumns:"60px minmax(0,1fr) 58px",alignItems:"center",gap:6,minWidth:0}}>
+                      <span style={{fontSize:8.1,fontWeight:900,color:c.tm,textTransform:"uppercase",whiteSpace:"nowrap"}}>{row.label}</span>
+                      <span style={{height:6,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"hidden"}}>
+                        <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${Math.max(2,Math.min(100,row.width))}%`,background:row.color,opacity:.88}}/>
+                      </span>
+                      <span style={{fontSize:8.2,fontWeight:950,color:row.color,fontVariantNumeric:"tabular-nums",textAlign:"right",whiteSpace:"nowrap",overflow:"visible"}}>
+                        {formatPlanAdherenceValue(row.node)}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5,marginTop:1}}>
+                    {bucketRows.map(row=>(
+                      <div key={row.label} style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:4,minWidth:0}}>
+                        <span style={{fontSize:7.9,fontWeight:950,color:row.color,textTransform:"uppercase",whiteSpace:"nowrap"}}>{row.label}</span>
+                        <span style={{fontSize:8.1,fontWeight:950,color:c.ts,fontVariantNumeric:"tabular-nums"}}>{row.count}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             };
@@ -22864,27 +24323,127 @@ const TalariaV8b = () => {
               <CenterSplitBar positive={right} negative={left} height={8} leftLabel={leftLabel} rightLabel={rightLabel} leftColor={leftColor} rightColor={rightColor}/>
             );
             const KpiStreakMini = () => {
-              const sample = (metrics.trades||[]).slice(-18);
+              const sample = (metrics.trades||[]).slice(-24);
               if (!sample.length) return <MiniEmpty label="No trades" height={42}/>;
               return (
-                <div style={{width:"100%",display:"flex",alignItems:"center",gap:3}}>
-                  {sample.map((trade,index)=><span key={trade.id||index} style={{height:18,flex:1,background:trade.pnl>0?c.gn:trade.pnl<0?c.rd:c.tm,opacity:.34 + (index / Math.max(1,sample.length))*0.42}}/>)}
+                <div style={{width:"100%",display:"grid",gap:7,fontFamily:F,minWidth:0}}>
+                  <div aria-label="Recent chronological trade streak trail" style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1,sample.length)},minmax(0,1fr))`,gap:2,alignItems:"end",minHeight:18}}>
+                    {sample.map((trade,index)=>{
+                      const color = trade.pnl>0 ? c.gn : trade.pnl<0 ? c.rd : c.gold;
+    return <span key={trade.id||index} title={`${trade.symbol || "Trade"} ${fmtValue(trade.pnl,trade.rMultiple)}`} style={{height:18,width:"100%",background:color,opacity:.34 + (index / Math.max(1,sample.length))*0.42,boxShadow:"none"}}/>;
+                    })}
+                  </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6,fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",fontVariantNumeric:"tabular-nums",minWidth:0}}>
+                    <span style={{color:c.gn,whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>Longest {metrics.longestWin || 0}W</span>
+                    <span style={{color:c.rd,textAlign:"center",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{metrics.longestLoss || 0}L</span>
+                    <span style={{color:c.gold,textAlign:"right",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{metrics.profitableWeeks || 0}/{metrics.weekCount || 0} weeks</span>
+                  </div>
                 </div>
               );
             };
-            const TopShareMini = () => {
-              if (metrics.top5ProfitShare == null) return <MiniEmpty label="No profit" height={42}/>;
-              const share = miniClamp(metrics.top5ProfitShare, 0, 100);
-              const color = metrics.concentrationWarn ? c.gold : c.gn;
+            const VerdictThresholdBarMini = ({value, threshold, color, thresholdLabel=null, emptyLabel="No value"}) => {
+              if (value == null || !Number.isFinite(Number(value))) return <MiniEmpty label={emptyLabel} height={42}/>;
+              const safeValue = miniClamp(Number(value) || 0, 0, 100);
+              const safeThreshold = miniClamp(Number(threshold) || 0, 0, 100);
+              const labelPct = miniClamp(safeThreshold, 12, 88);
+              const labelTransform = safeThreshold <= 18 ? "translateX(0)" : safeThreshold >= 82 ? "translateX(-100%)" : "translateX(-50%)";
               return (
-                <div style={{width:"100%",fontFamily:F}}>
-                  <div style={{height:9,background:miniTrack,position:"relative",overflow:"hidden"}}>
-                    <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${share}%`,background:color,boxShadow:`0 0 5px ${color}42`}}/>
-                    <span style={{position:"absolute",left:`${share}%`,right:0,top:1,bottom:1,background:c.tm,opacity:.25}}/>
-                    <span style={{position:"absolute",left:`${KPI_CONFIG.concentrationWarn*100}%`,top:-4,bottom:-4,width:1,background:c.tx,opacity:.55}}/>
+                <div style={{width:"100%",fontFamily:F,display:"grid",gap:6,minWidth:0}}>
+                  <div style={{height:44,position:"relative",paddingTop:25}}>
+                    <span style={{position:"absolute",left:`${labelPct}%`,top:0,transform:labelTransform,fontSize:8.5,fontWeight:900,color:c.ts,textTransform:"uppercase",letterSpacing:"0.035em",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+                      {thresholdLabel || fmtPct(safeThreshold,0)}
+                    </span>
+                    <span style={{display:"block",height:7,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"visible"}}>
+                      <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${safeValue}%`,background:color,boxShadow:"none",transition:"width 160ms ease"}}/>
+                      <span style={{position:"absolute",left:`${safeThreshold}%`,top:-6,bottom:-6,width:1,background:c.tx,opacity:.72}}/>
+                    </span>
                   </div>
-                  <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:5,fontSize:7.5,fontWeight:850,color:c.tm,textTransform:"uppercase"}}>
-                    <span style={{color}}>top 5 {fmtPct(share,0)}</span><span>rest {fmtPct(Math.max(0,100-share),0)}</span>
+                </div>
+              );
+            };
+            const TopShareMini = () => (
+              <VerdictThresholdBarMini
+                value={profitConcentrationDisplayPct}
+                threshold={profitConcentrationThresholdPct}
+                color={profitConcentrationColor}
+                thresholdLabel={fmtPct(profitConcentrationThresholdPct,0)}
+                emptyLabel="No profit"
+              />
+            );
+            const ProfitRobustnessMini = () => (
+              <VerdictThresholdBarMini
+                value={profitRobustnessHasValue ? profitRobustnessHoldPct : null}
+                threshold={profitRobustnessFloorPct}
+                color={profitRobustnessColor}
+                thresholdLabel={fmtPct(profitRobustnessFloorPct,0)}
+                emptyLabel={profitRobustnessGateText}
+              />
+            );
+            const SampleConfidenceMini = () => {
+              const count = Number(metrics.tradeCount) || 0;
+              const target = Math.max(1, Number(metrics.sampleConfidenceTarget) || KPI_CONFIG.minTradesForConfidence || KPI_CONFIG.nTarget);
+              const roundScaleMax = (value) => {
+                const safeValue = Math.max(1, Number(value) || 1);
+                const magnitude = Math.pow(10, Math.floor(Math.log10(safeValue)));
+                const scaled = safeValue / magnitude;
+                const step = [1, 1.5, 2, 2.5, 5, 10].find(candidate => scaled <= candidate) || 10;
+                return step * magnitude;
+              };
+              const maxCount = roundScaleMax(Math.max(target * 2, count * 1.25, target + 1));
+              const pct = miniClamp((count / maxCount) * 100, 0, 100);
+              const targetPct = miniClamp((target / maxCount) * 100, 0, 100);
+              const ready = count >= target;
+              const color = ready ? c.gn : c.gold;
+              const tickLabelPct = miniClamp(targetPct, 16, 84);
+              return (
+                <div style={{width:"100%",fontFamily:F,minWidth:0,display:"grid",gap:6}}>
+                  <div style={{height:45,position:"relative",paddingTop:18}}>
+                    <span style={{position:"absolute",left:`${tickLabelPct}%`,top:0,transform:"translateX(-50%)",fontSize:8.4,fontWeight:900,color:c.ts,textTransform:"uppercase",letterSpacing:"0.035em",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{target.toLocaleString()} · trust line</span>
+                    <span style={{display:"block",height:8,background:miniTrack,boxShadow:miniTrackInset,position:"relative",overflow:"visible"}}>
+                      <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${pct}%`,background:color,boxShadow:"none"}}/>
+                      <span style={{position:"absolute",left:`${targetPct}%`,top:-9,bottom:-9,width:1,background:c.tx,opacity:.75}}/>
+                      <span style={{position:"absolute",left:`${pct}%`,top:"50%",width:7,height:7,transform:"translate(-50%,-50%)",background:color,boxShadow:"none"}}/>
+                    </span>
+                    <div style={{position:"absolute",left:0,right:0,bottom:0,display:"flex",justifyContent:"space-between",gap:8,fontSize:7.8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.04em",fontVariantNumeric:"tabular-nums"}}>
+                      <span>0</span>
+                      <span>scale {Math.round(maxCount).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            };
+            const ExpectancyConfidenceMini = () => {
+              const sample = Number(metrics.expectancySampleCount) || 0;
+              if (sample < 2) return <MiniEmpty label="Needs more trades" height={42}/>;
+              const low = Number(metrics.expectancyCiLow) || 0;
+              const high = Number(metrics.expectancyCiHigh) || 0;
+              const mean = Number(metrics.avgR) || 0;
+              const min = Math.min(low, mean, 0);
+              const max = Math.max(high, mean, 0);
+              const pad = Math.max(.1, (max - min) * .16);
+              const domainMin = min - pad;
+              const domainMax = max + pad;
+              const toPct = (value) => miniClamp(((value - domainMin) / Math.max(.0001, domainMax - domainMin)) * 100, 0, 100);
+              const lowPct = toPct(low);
+              const highPct = toPct(high);
+              const meanPct = toPct(mean);
+              const zeroPct = toPct(0);
+              const color = metrics.expectancyCiClearsZero ? c.gn : c.gold;
+              const ciMoney = (value) => (Number(value) || 0) * (Number(metrics.dollarPerR) || 0);
+              const ciLabel = (value, {signedR=true}={}) => dashDualValue(value, ciMoney(value), {signedR, rDigits:2});
+              return (
+                <div style={{width:"100%",fontFamily:F,minWidth:0}}>
+                  <div style={{height:28,position:"relative",paddingTop:10}}>
+                    <span style={{display:"block",height:8,background:miniTrack,boxShadow:miniTrackInset,position:"relative"}}>
+                      <span style={{position:"absolute",left:`${Math.min(lowPct,highPct)}%`,width:`${Math.max(1, Math.abs(highPct-lowPct))}%`,top:1,bottom:1,background:`${color}88`,boxShadow:"none"}}/>
+                      <span style={{position:"absolute",left:`${zeroPct}%`,top:-6,bottom:-6,width:1,background:c.tm,opacity:.65}}/>
+                      <span style={{position:"absolute",left:`${meanPct}%`,top:-4,bottom:-4,width:2,background:color,boxShadow:"none"}}/>
+                    </span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:8.2,fontWeight:850,color:c.tm,textTransform:"uppercase",fontVariantNumeric:"tabular-nums"}}>
+                    <span>{ciLabel(low)}</span>
+                    <span style={{color}}>mean {ciLabel(mean)}</span>
+                    <span>{ciLabel(high)}</span>
                   </div>
                 </div>
               );
@@ -22897,47 +24456,127 @@ const TalariaV8b = () => {
             const CaptureRatioMini = () => {
               if (metrics.captureRatio == null || !metrics.captureSample) return <MiniEmpty label="No MFE data" height={42}/>;
               const capture = miniClamp(metrics.captureRatio, 0, 100);
-              const color = capture >= 70 ? c.gn : capture >= 45 ? c.gold : c.rd;
+              const peakR = Number(metrics.avgAvailableFavourableR ?? (metrics.availableFavourableR / Math.max(1, metrics.captureSample))) || 0;
+              const exitR = Math.max(0, Number(metrics.avgRealisedFavourableR ?? (metrics.realisedFavourableR / Math.max(1, metrics.captureSample))) || 0);
+              const exitPct = peakR > 0 ? miniClamp(exitR / peakR * 100, 0, 100) : capture;
+              const exitLabelLane = (exitPct < 18 || exitPct > 82) ? "top" : "bottom";
+              const labelAlign = (left) => left <= 8 ? "translateX(0)" : left >= 92 ? "translateX(-100%)" : "translateX(-50%)";
+              const markerLabel = (left,color,lane="bottom") => ({
+                position:"absolute",
+                left:`${left}%`,
+                top:lane === "top" ? 0 : 29,
+                transform:labelAlign(left),
+                fontSize:8.4,
+                fontWeight:850,
+                color,
+                textTransform:"uppercase",
+                fontVariantNumeric:"tabular-nums",
+                whiteSpace:"nowrap",
+                textAlign:"center",
+                pointerEvents:"none",
+              });
               return (
                 <div style={{width:"100%",fontFamily:F}}>
-                  <div style={{height:9,background:miniTrack,position:"relative",overflow:"hidden"}}>
-                    <span style={{position:"absolute",left:0,top:1,bottom:1,width:`${capture}%`,background:color,boxShadow:`0 0 5px ${color}44`}}/>
-                    <span style={{position:"absolute",left:`${capture}%`,right:0,top:1,bottom:1,background:c.tm,opacity:.22}}/>
-                  </div>
-                  <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:7.5,fontWeight:850,color:c.tm,textTransform:"uppercase"}}>
-                    <span style={{color}}>captured</span><span>available MFE</span>
+                  <div style={{height:43,position:"relative",padding:"0 16px",boxSizing:"border-box"}}>
+                    <div style={{position:"relative",height:"100%"}}>
+                      <div style={{position:"absolute",left:0,right:0,top:13,height:10,background:miniTrack,boxShadow:miniTrackInset,boxSizing:"border-box"}}>
+                        <span style={{position:"absolute",left:0,top:2,bottom:2,width:`${exitPct}%`,background:c.gold,boxShadow:"none"}}/>
+                        <span style={{position:"absolute",left:`${exitPct}%`,right:0,top:2,bottom:2,background:c.tm,opacity:.22}}/>
+                        <span style={{position:"absolute",left:0,top:-3,bottom:-3,width:1,background:c.ts,opacity:.65}}/>
+                        <span style={{position:"absolute",left:`${exitPct}%`,top:-4,bottom:-4,width:1,background:c.gold,boxShadow:"none",zIndex:2}}/>
+                        <span style={{position:"absolute",right:0,top:-3,bottom:-3,width:1,background:c.gn,boxShadow:"none"}}/>
+                      </div>
+                      <span style={markerLabel(0,c.tm)}>entry 0</span>
+                      <span style={markerLabel(exitPct,c.gold,exitLabelLane)}>exit {fmtNum(exitR,2)}R</span>
+                      <span style={markerLabel(100,c.gn)}>peak {fmtNum(peakR,2)}R</span>
+                    </div>
                   </div>
                 </div>
               );
             };
             const MissedMoveMini = () => {
-              const misses = (metrics.trades||[]).slice(-18).map(t => {
-                const realised = Math.max(0, Number(t.rMultiple)||0);
-                const post = Array.isArray(t.post_exit_bar_high_r) ? t.post_exit_bar_high_r : Array.isArray(t.postExitBarHighR) ? t.postExitBarHighR : [];
-                const top = post.map(Number).filter(Number.isFinite).reduce((max,value)=>Math.max(max,value), null);
-                return top == null ? null : Math.max(0, top - realised);
-              }).filter(v=>v != null);
-              if (!misses.length) return <MiniEmpty label="No post-exit" height={42}/>;
-              const max = Math.max(.25,...misses);
+              const buckets = metrics.missedMoveBuckets || [];
+              const has = buckets.some(bucket => Number(bucket.count) > 0);
+              if (!has) return <MiniEmpty label="No post-exit" height={50}/>;
+              const maxCount = Math.max(1, ...buckets.map(bucket => Number(bucket.count) || 0));
+              const maxR = Math.max(0.25, Number(metrics.missedMoveMax) || buckets[buckets.length - 1]?.end || 0);
+              const meanR = Number(metrics.missedMoveR) || 0;
+              const meanPct = Math.max(4, Math.min(96, meanR / maxR * 100));
+              const typical = metrics.missedMoveTypicalBucket;
+              const typicalLabel = typical ? `Most ${fmtNum(typical.start,1)}-${fmtNum(typical.end,1)}R` : "No bucket";
+              const typicalMidR = typical ? ((Number(typical.start) || 0) + (Number(typical.end) || 0)) / 2 : meanR;
+              const typicalPct = Math.max(4, Math.min(96, typicalMidR / maxR * 100));
+              const labelsOverlap = Math.abs(meanPct - typicalPct) < 24;
               return (
-                <div style={{height:42,width:"100%",display:"grid",gridTemplateColumns:`repeat(${misses.length},1fr)`,gap:2,alignItems:"end"}}>
-                  {misses.map((value,index)=><span key={index} title={`${fmtNum(value,2)}R left`} style={{height:Math.max(4,value/max*36),background:value>.5?c.gold:c.tm,opacity:value>.5?.78:.35,boxShadow:value>.5?`0 0 5px ${c.gold}35`:"none"}}/>)}
+                <div style={{height:70,width:"100%",position:"relative",fontFamily:F,minWidth:0}}>
+                  <div style={{position:"absolute",left:0,right:0,top:labelsOverlap?13:4,bottom:16,display:"grid",gridTemplateColumns:`repeat(${buckets.length},minmax(0,1fr))`,gap:2,alignItems:"end"}}>
+                    {typical ? <span title={typicalLabel} style={{position:"absolute",left:`${typicalPct}%`,top:1,bottom:0,borderLeft:`1px dashed ${c.tx}`,opacity:.78,zIndex:2}}/> : null}
+                      <span title={`Mean ${fmtNum(meanR,2)}R`} style={{position:"absolute",left:`${meanPct}%`,top:0,bottom:0,borderLeft:`1px dashed ${c.tx}`,opacity:.92,boxShadow:"none",zIndex:3}}/>
+                    <span style={{position:"absolute",left:`${meanPct}%`,top:0,width:5,height:5,transform:"translate(-2px,-1px)",background:c.tx,boxShadow:"none",zIndex:4}}/>
+                    {buckets.map((bucket,index)=>{
+                      const count = Number(bucket.count) || 0;
+                      return (
+                        <span key={`${bucket.start}-${bucket.end}`} title={`${fmtNum(bucket.start,1)}-${fmtNum(bucket.end,1)}R: ${count}`} style={{height:"100%",display:"flex",alignItems:"end",minWidth:0}}>
+                          <span style={{height:Math.max(7,count / maxCount * (labelsOverlap ? 43 : 50)),width:"100%",background:c.gold,opacity:.76,boxShadow:"none"}}/>
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <span style={{position:"absolute",left:0,bottom:0,fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",fontVariantNumeric:"tabular-nums"}}>0R</span>
+                  <span style={{position:"absolute",right:0,bottom:0,fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",fontVariantNumeric:"tabular-nums"}}>{fmtNum(maxR,1)}R</span>
+                  <span style={{position:"absolute",left:`${meanPct}%`,bottom:0,transform:"translateX(-50%)",fontSize:8,fontWeight:850,color:c.gold,textTransform:"uppercase",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>Mean {fmtNum(meanR,2)}R</span>
+                  <span style={{position:"absolute",left:`${typicalPct}%`,top:labelsOverlap?0:"auto",bottom:labelsOverlap?"auto":0,transform:"translateX(-50%)",fontSize:8,fontWeight:850,color:c.tx,textTransform:"uppercase",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{typicalLabel}</span>
                 </div>
               );
             };
             const BestWorstMini = () => {
-              const bestR = Number(metrics.bestTrade?.rMultiple)||0;
-              const worstR = Number(metrics.worstTrade?.rMultiple)||0;
-              if (!metrics.bestTrade && !metrics.worstTrade) return <MiniEmpty label="No records" height={42}/>;
-              return <CenterSplitBar positive={Math.max(0,bestR)} negative={Math.abs(Math.min(0,worstR))} height={8} leftLabel={`${fmtNum(worstR,1)}R`} rightLabel={`+${fmtNum(bestR,1)}R`} leftColor={c.rd} rightColor={c.gn}/>;
+              const buckets = metrics.rBuckets || [];
+              const values = (metrics.trades||[]).map(t=>btDashNumber(t.rMultiple ?? t.actual_rr_net ?? t.actualRR)).filter(v=>v != null);
+              if (!values.length || !buckets.some(bucket=>Number(bucket.v)>0)) return <MiniEmpty label="No records" height={50}/>;
+              const bestRecordR = Math.max(...values);
+              const worstRecordR = Math.min(...values);
+              const maxBucket = Math.max(1,...buckets.map(bucket=>Number(bucket.v)||0));
+              const rToPct = (value) => Math.max(2, Math.min(98, ((Number(value)||0) + 3) / 7 * 100));
+              const worstPct = rToPct(worstRecordR);
+              const bestPct = rToPct(bestRecordR);
+              return (
+                <div style={{height:54,width:"100%",display:"grid",gridTemplateRows:"36px 12px",gap:5,fontFamily:F,minWidth:0}}>
+                  <div style={{position:"relative",height:36,display:"grid",gridTemplateColumns:`repeat(${buckets.length || 1},minmax(0,1fr))`,gap:2,alignItems:"end"}}>
+                    <span style={{position:"absolute",left:`${worstPct}%`,top:0,bottom:0,borderLeft:`1px dashed ${c.rd}`,opacity:.9,zIndex:3}}/>
+                    <span style={{position:"absolute",left:`${bestPct}%`,top:0,bottom:0,borderLeft:`1px dashed ${c.gn}`,opacity:.9,zIndex:3}}/>
+                    <span style={{position:"absolute",left:"42.85%",top:4,bottom:2,width:1,background:c.tx,opacity:.24,zIndex:2}}/>
+                    {buckets.map((bucket,index)=>{
+                      const isLoss = index < 3;
+                      const isFlat = index === 3;
+                      const color = isLoss ? c.rd : isFlat ? c.gold : c.gn;
+                      return (
+                        <span key={bucket.label || index} title={`${bucket.label}: ${bucket.v}`} style={{height:"100%",display:"flex",alignItems:"end",background:miniTrackSoft,boxShadow:miniTrackInset,minWidth:0}}>
+                          <span style={{width:"100%",height:Math.max(5,(Number(bucket.v)||0)/maxBucket*31),background:color,opacity:isFlat ? .58 : .76,boxShadow:"none"}}/>
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:8.3,fontWeight:850,textTransform:"uppercase",letterSpacing:"0.02em",fontVariantNumeric:"tabular-nums",minWidth:0}}>
+                    <span style={{color:c.rd,whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>Worst tail {fmtNum(worstRecordR,1)}R</span>
+                    <span style={{color:c.gn,whiteSpace:"normal",lineHeight:1.05,overflow:"visible",textAlign:"right"}}>Best tail +{fmtNum(bestRecordR,1)}R</span>
+                  </div>
+                </div>
+              );
             };
             const KpiPager = ({slotId, pages, activeIndex}) => {
               if (!pages || pages.length <= 1) return null;
               const activeDotColor = c.acL;
-              const setPage = (next) => {
-                setDashKpiPageIndex(prev => ({...prev, [slotId]:((next % pages.length) + pages.length) % pages.length}));
+              const setPage = (next, explicitDir = null) => {
+                const normalized = ((next % pages.length) + pages.length) % pages.length;
+                const rawDelta = ((normalized - activeIndex + pages.length) % pages.length);
+                const inferredDir = rawDelta === 0 ? 1 : rawDelta <= pages.length / 2 ? 1 : -1;
+                setDashKpiSlideDir(prev => ({...prev, [slotId]:explicitDir || inferredDir}));
+                setDashKpiPageIndex(prev => ({...prev, [slotId]:normalized}));
               };
-              const move = (delta) => setPage(activeIndex + (isDashRTL ? -delta : delta));
+              const move = (delta) => {
+                const signedDelta = isDashRTL ? -delta : delta;
+                setPage(activeIndex + signedDelta, signedDelta >= 0 ? 1 : -1);
+              };
               const Chevron = ({direction}) => (
                 <button type="button" aria-label={direction < 0 ? "Previous metric page" : "Next metric page"} className="tlr-dashboard-score-arrow" onClick={(e)=>{e.stopPropagation();move(direction);}} style={{width:16,height:16,border:"none",background:"transparent",color:c.tm,padding:0,display:"grid",placeItems:"center",cursor:"default",outline:"none"}}>
                   <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block"}}>
@@ -22959,20 +24598,28 @@ const TalariaV8b = () => {
                 </div>
               );
             };
+            const dashboardKpiCardHeight = 226;
+            const dashboardKpiCardGap = 12;
+            const dashboardScoreCardHeight = dashboardKpiCardHeight * 2 + dashboardKpiCardGap;
             const PagedMetricCard = ({slot}) => {
               const pages = (slot.pages || []).filter(Boolean);
               const safeIndex = Math.min(Math.max(0, dashKpiPageIndex[slot.id] || 0), Math.max(0, pages.length - 1));
               const page = pages[safeIndex] || pages[0];
               if (!page) return null;
+              const kpiCardHeight = dashboardKpiCardHeight;
               const titleLength = String(page.label || "").length;
               const titleFit = titleLength >= 20
-                ? {fontSize:7.8, letterSpacing:0, lineMin:58}
+                ? {fontSize:8.8, letterSpacing:0, lineMin:62}
                 : titleLength >= 17
-                  ? {fontSize:8.5, letterSpacing:0, lineMin:62}
+                  ? {fontSize:9.1, letterSpacing:0, lineMin:64}
                   : titleLength >= 14
                     ? {fontSize:9.3, letterSpacing:"0.015em", lineMin:66}
                     : {fontSize:10.4, letterSpacing:"0.035em", lineMin:70};
-              const move = (delta) => setDashKpiPageIndex(prev => ({...prev, [slot.id]:((safeIndex + (isDashRTL ? -delta : delta)) % pages.length + pages.length) % pages.length}));
+              const move = (delta) => {
+                const signedDelta = isDashRTL ? -delta : delta;
+                setDashKpiSlideDir(prev => ({...prev, [slot.id]:signedDelta >= 0 ? 1 : -1}));
+                setDashKpiPageIndex(prev => ({...prev, [slot.id]:((safeIndex + signedDelta) % pages.length + pages.length) % pages.length}));
+              };
               const onTouchStart = (e) => { e.currentTarget.dataset.tlrKpiTouchX = String(e.touches?.[0]?.clientX || 0); };
               const onTouchEnd = (e) => {
                 const startX = Number(e.currentTarget.dataset.tlrKpiTouchX || 0);
@@ -22980,13 +24627,37 @@ const TalariaV8b = () => {
                 const delta = endX - startX;
                 if (Math.abs(delta) > 34 && pages.length > 1) move(delta < 0 ? 1 : -1);
               };
+              const valueText = (typeof page.value === "string" || typeof page.value === "number") ? String(page.value) : "";
+              const valueFontSize = page.valueFontSize || (valueText.length >= 22 ? 16 : valueText.length >= 17 ? 18 : valueText.length >= 13 ? 20 : 22);
+              const subText = typeof page.sub === "string" ? page.sub : "";
+              const subFontSize = subText.length >= 58 ? 9.4 : subText.length >= 44 ? 9.7 : 10;
+              const visualHeight = Math.min(page.visualHeight || 62, page.sub ? 112 : 118);
+              const suffixText = page.valueSuffix ? String(page.valueSuffix) : "";
+              const signedSuffixColor = page.valueSuffixColor || (
+                /(^|\(|≈\s*)\s*\+/.test(suffixText) ? (page.color || c.gn) :
+                /(^|\(|≈\s*)\s*[-−]/.test(suffixText) ? (page.color || c.rd) :
+                c.ts
+              );
+              const slideDir = dashKpiSlideDir[slot.id];
+              const slideClass = slideDir == null ? "" : slideDir < 0 ? "tlr-dashboard-kpi-page-slide-left" : "tlr-dashboard-kpi-page-slide-right";
+              const clearSlideClass = () => {
+                setDashKpiSlideDir(prev => {
+                  if (prev[slot.id] == null) return prev;
+                  const next = {...prev};
+                  delete next[slot.id];
+                  return next;
+                });
+              };
               return (
-                <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{minWidth:0,height:"100%"}}>
-                  <SummaryCard title={page.label} titleDot={false} titleFull titleFontSize={titleFit.fontSize} titleLetterSpacing={titleFit.letterSpacing} titleLineMinWidth={titleFit.lineMin} minHeight={0} resourceId={page.resourceId || dashboardResourceIdFor(page.label)} right={<KpiPager slotId={slot.id} pages={pages} activeIndex={safeIndex}/>} onClick={()=>openDashSubWindow(page.target || "trade-journal", page.label)} style={{height:"100%",padding:14,gap:10,opacity:page.dim ? .72 : 1}}>
-                    <div style={{display:"flex",flexDirection:"column",gap:9,flex:1,minHeight:0}}>
-                      <div {...dashInfoHandlers({title:page.label, body:page.info || dashboardMetricInfo[page.label] || "Headline value calculated from the current source and filters.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{fontSize:22,fontWeight:800,color:page.color || c.acL,fontFamily:F,fontVariantNumeric:"tabular-nums",lineHeight:1.02,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minHeight:27,display:"flex",alignItems:"baseline",gap:8,outline:"none"}}>{page.value}</div>
-                      <div style={{fontSize:8.5,fontWeight:650,color:c.ts,fontFamily:F,lineHeight:1.25,minHeight:20,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{page.sub}</div>
-                      <div {...dashInfoHandlers({title:`${page.label} visual`, body:page.visualInfo || dashboardVisualInfo[page.label] || "Mini visual for the metric trend or distribution.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{marginTop:"auto",height:page.visualHeight || 56,display:"flex",alignItems:"center",minWidth:0,overflow:"hidden",outline:"none"}}>{page.visual}</div>
+                <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{minWidth:0,height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight}}>
+                  <SummaryCard title={page.label} titleDot={false} titleFull titleFontSize={titleFit.fontSize} titleLetterSpacing={titleFit.letterSpacing} titleLineMinWidth={titleFit.lineMin} minHeight={0} resourceId={page.resourceId || dashboardResourceIdFor(page.label)} right={<KpiPager slotId={slot.id} pages={pages} activeIndex={safeIndex}/>} onClick={()=>openDashSubWindow(page.target || "trade-journal", page.label)} style={{height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight,padding:14,gap:8,opacity:page.dim ? .72 : 1}}>
+                    <div key={`${slot.id}-${page.id || safeIndex}`} className={slideClass} onAnimationEnd={slideClass ? clearSlideClass : undefined} style={{display:"flex",flexDirection:"column",gap:8,flex:1,minHeight:0}}>
+                      <div {...dashInfoHandlers({title:page.label, body:page.info || dashboardMetricInfo[page.label] || "Headline value calculated from the current source and filters.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{fontSize:valueFontSize,fontWeight:800,color:page.color || c.acL,fontFamily:F,fontVariantNumeric:"tabular-nums",lineHeight:1.08,whiteSpace:"normal",overflow:"visible",minHeight:25,display:"flex",alignItems:"baseline",gap:8,outline:"none",flexWrap:"wrap"}}>
+                        <span style={{minWidth:0,overflow:"visible"}}>{page.value}</span>
+                        {page.valueSuffix ? <span style={{fontSize:valueFontSize > 19 ? 12 : 10.5,fontWeight:850,color:signedSuffixColor,letterSpacing:"0.02em",lineHeight:1,flexShrink:0}}>{page.valueSuffix}</span> : null}
+                      </div>
+                      {page.sub ? <div style={{fontSize:subFontSize,fontWeight:650,color:c.ts,fontFamily:F,lineHeight:1.22,minHeight:24,whiteSpace:"normal",overflow:"visible"}}>{page.sub}</div> : null}
+                      <div {...dashInfoHandlers({title:`${page.label} visual`, body:page.visualInfo || dashboardVisualInfo[page.label] || "Mini visual for the metric trend or distribution.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{marginTop:"auto",height:visualHeight,display:"flex",alignItems:"center",minWidth:0,overflow:"visible",outline:"none"}}>{page.visual}</div>
                     </div>
                   </SummaryCard>
                 </div>
@@ -22997,79 +24668,284 @@ const TalariaV8b = () => {
             const breakevenText = metrics.breakevenWR == null
               ? "breakeven -"
               : `breakeven ${fmtPct(metrics.breakevenWR,0)} · cushion ${metrics.winRateCushion >= 0 ? "+" : ""}${fmtNum(metrics.winRateCushion || 0,0)}pts`;
-            const bestR = Number(metrics.bestTrade?.rMultiple)||0;
-            const worstR = Number(metrics.worstTrade?.rMultiple)||0;
+            const expectancySampleLabel = Number(metrics.tradeCount) || 0;
+            const missedMoveSampleLabel = Number(metrics.missedMoveSampleCount ?? metrics.missedMoveSample ?? 0) || (metrics.missedMoveSample ? expectancySampleLabel : 0);
+            const rRecordRows = (metrics.trades||[]).map(trade => {
+              const r = btDashNumber(trade?.rMultiple ?? trade?.actual_rr_net ?? trade?.actualRR);
+              return r == null ? null : {trade, r, pnl:Number(trade?.pnl) || 0};
+            }).filter(Boolean);
+            const bestRRecord = rRecordRows.reduce((best,row)=>!best || row.r > best.r ? row : best, null);
+            const worstRRecord = rRecordRows.reduce((worst,row)=>!worst || row.r < worst.r ? row : worst, null);
+            const bestR = bestRRecord?.r ?? (Number(metrics.bestTrade?.rMultiple) || 0);
+            const worstR = worstRRecord?.r ?? (Number(metrics.worstTrade?.rMultiple) || 0);
+            const bestRMoney = bestRRecord ? bestRRecord.pnl : Number(metrics.bestTrade?.pnl) || 0;
+            const worstRMoney = worstRRecord ? worstRRecord.pnl : Number(metrics.worstTrade?.pnl) || 0;
+            const captureLeftR = metrics.avgAvailableFavourableR == null || metrics.avgRealisedFavourableR == null ? null : Math.max(0, Number(metrics.avgAvailableFavourableR) - Number(metrics.avgRealisedFavourableR));
+            const captureLeftDollars = captureLeftR == null ? null : captureLeftR * (Number(metrics.dollarPerR) || 0);
+            const expectancyCiMoneyValue = (rValue) => (Number(rValue) || 0) * (Number(metrics.dollarPerR) || 0);
+            const expectancyPage = {id:"metric-expectancy", label:"Expectancy", value:dashDualValue(metrics.avgR, metrics.expectancyDollarsPerTrade, {signedR:false}), sub:expectancySampleLabel ? `Average per trade · n ${expectancySampleLabel.toLocaleString()}` : "No R sample", color:metrics.avgR>=0?c.gn:c.rd, visual:<ExpectancyMini/>, visualHeight:74, target:"r-multiple"};
+            const tradeEfficiencySub = metrics.captureSample
+              ? `Left ${dashOverviewRPrimary ? dashUnsignedR(captureLeftR || 0,2) : dashAbsMoney(captureLeftDollars || 0)} · capture ${fmtPct(metrics.captureRatio || 0,0)}`
+              : "Needs MFE data";
+            const tradeEfficiencyPage = {id:"metric-capture-ratio", label:"Trade Efficiency", value:metrics.captureSample ? dashDualValue(metrics.avgRealisedFavourableR, metrics.avgRealisedFavourableDollars, {signedR:false, moneySign:false}) : "-", valueSuffix:metrics.captureSample ? dashDualSuffix(metrics.avgRealisedFavourableR, metrics.avgRealisedFavourableDollars, {signedR:false, moneySign:false}) : "", sub:tradeEfficiencySub, color:metrics.captureRatio == null ? c.tm : metrics.captureRatio>=70?c.gn:metrics.captureRatio>=45?c.gold:c.rd, visual:<CaptureRatioMini/>, target:"execution", dim:!metrics.captureSample};
+            const missedMovePage = {id:"metric-missed-move", label:"Missed Move", value:metrics.missedMoveR == null ? "-" : dashDualValue(metrics.missedMoveR, metrics.missedMoveDollarsPerTrade, {signedR:false, moneySign:false}), valueSuffix:metrics.missedMoveR == null ? "" : dashDualSuffix(metrics.missedMoveR, metrics.missedMoveDollarsPerTrade, {signedR:false, moneySign:false}), sub:metrics.missedMoveSample ? `Favourable move left / trade · n ${missedMoveSampleLabel.toLocaleString()}` : "Needs post-exit bars", color:metrics.missedMoveR == null ? c.tm : metrics.missedMoveR<=.35?c.gn:metrics.missedMoveR<=.8?c.gold:c.rd, visual:<MissedMoveMini/>, visualHeight:74, target:"execution", dim:!metrics.missedMoveSample};
+            const bestWorstValue = dashOverviewRPrimary
+              ? <><span style={{color:c.gn}}>{fmtSignedR(bestR,1)}</span> <span style={{color:c.tm}}> / </span><span style={{color:c.rd}}>{fmtSignedR(worstR,1)}</span></>
+              : <><span style={{color:c.gn}}>{dashSignedMoney(bestRMoney)}</span> <span style={{color:c.tm}}> / </span><span style={{color:c.rd}}>{dashSignedMoney(worstRMoney)}</span></>;
+            const bestWorstPage = {id:"metric-streaks-best-worst", label:"Best / Worst", value:bestWorstValue, sub:"best and worst trade result", color:Math.abs(bestR)>=Math.abs(worstR)?c.gn:c.gold, visual:<BestWorstMini/>, valueFontSize:13.2, target:"trade-journal", resourceId:"metric-streaks"};
+            const drawdownMoneyLabel = dashOverviewUnitMode === "percent"
+                ? fmtAbsMoneyPct(metrics.maxDD, 1)
+                : dashValueMode === "privacy" ? dashPrivacyMask : fmtAbsMoney(metrics.maxDD);
+            const drawdownHeadline = drawdownMoneyLabel;
+            const drawdownSubline = metrics.maxDDWiped
+              ? "Account reached zero; depth capped at 100%"
+              : "Worst decline / peak at onset";
+            const propRisk = metrics.propRiskAnalytics || {};
+            const propLossBudgetMain = propRisk.hasDailyLimit ? propRisk.dailyLossBudgetTrades : propRisk.maxLossBudgetTrades;
+            const propLossBudgetCount = propLossBudgetMain == null ? null : Math.max(0, Math.floor(Number(propLossBudgetMain)));
+            const propNativeRiskLabel = propRisk.nativeUnit === "money"
+              ? (propRisk.typicalRiskMoney == null ? "risk unavailable" : `${fmtAbsMoney(propRisk.typicalRiskMoney)} typical risk`)
+              : (propRisk.typicalRiskPct == null ? "risk unavailable" : `${fmtPct(propRisk.typicalRiskPct,2)} typical risk`);
+            const propLossBudgetSub = propRisk.hasDailyLimit
+              ? `Daily limit · ${propNativeRiskLabel}`
+              : propRisk.drawdownType === "trailing"
+                ? `Trailing DD · ${propNativeRiskLabel} · resets at new highs`
+                : `Max-DD limit · ${propNativeRiskLabel}`;
+            const propDrawdownPages = isPropD ? [
+              {id:"metric-prop-loss-budget", label:"Loss Budget", value:propLossBudgetCount == null ? "-" : `${propLossBudgetCount} losers`, sub:propLossBudgetSub, color:propLossBudgetCount == null ? c.tm : c.tx, visual:<PropLossBudgetMini/>, visualHeight:82, target:"prop-rules"},
+            ] : [];
+            const fmtProbabilityRange = (low, high, digits=0) => {
+              if (!Number.isFinite(Number(low)) || !Number.isFinite(Number(high))) return "-";
+              const safeLow = Math.max(0, Math.min(99, Number(low)));
+              const safeHigh = Math.max(safeLow, Math.min(99, Number(high)));
+              const shownLow = fmtPct(safeLow, digits);
+              const shownHigh = fmtPct(safeHigh, digits);
+              return shownLow === shownHigh ? shownLow : `${shownLow} - ${shownHigh}`;
+            };
+            const riskOfRuinThresholdPct = Number(SCORE_CONFIG?.ruinDrawdownThresholdPct ?? KPI_CONFIG?.ruinDrawdownThresholdPct ?? 50) || 50;
+            const riskOfRuinRiskPct = Math.max(0.05, Number(propRisk?.typicalRiskPct ?? ds?.riskPerTradePct ?? ds?.riskPct ?? ds?.riskVal ?? 1) || 1);
+            const riskOfRuinWinPct = Number(metrics.winRate);
+            const riskOfRuinAvgR = Number(metrics.avgR);
+            const riskOfRuinReady = Boolean(metrics.sampleConfidenceReady && metrics.tradeCount >= (metrics.sampleConfidenceTarget || KPI_CONFIG.nTarget || 100) && Number.isFinite(riskOfRuinWinPct) && Number.isFinite(riskOfRuinAvgR));
+            const riskOfRuinEstimatePct = (() => {
+              if (!riskOfRuinReady) return null;
+              const win = Math.max(1, Math.min(99, riskOfRuinWinPct)) / 100;
+              const edgePenalty = Math.exp(-Math.max(0, riskOfRuinAvgR) * 1.85);
+              const riskPressure = Math.max(0.08, riskOfRuinRiskPct / Math.max(1, riskOfRuinThresholdPct));
+              const drawdownPressure = Math.max(0.35, Math.min(2.2, (Number(metrics.maxDDPct) || 0) / Math.max(1, riskOfRuinThresholdPct) + 0.7));
+              const lossClusterPressure = Math.pow(1 - win, Math.max(3, Math.min(7, riskOfRuinThresholdPct / Math.max(5, riskOfRuinRiskPct * 8)))) * 100;
+              return Math.max(0.05, Math.min(99, (lossClusterPressure * 0.55 + (1 - win) * 100 * riskPressure * 1.45) * edgePenalty * drawdownPressure));
+            })();
+            const riskOfRuinLow = riskOfRuinEstimatePct == null ? null : Math.max(0.05, riskOfRuinEstimatePct * 0.72);
+            const riskOfRuinHigh = riskOfRuinEstimatePct == null ? null : Math.min(99, riskOfRuinEstimatePct * 1.34 + 0.45);
+            const riskOfRuinRange = riskOfRuinHigh != null && riskOfRuinHigh < 1 ? "<1%" : fmtProbabilityRange(riskOfRuinLow, riskOfRuinHigh, riskOfRuinHigh != null && riskOfRuinHigh < 10 ? 1 : 0);
+            const RiskOfRuinMini = () => {
+              if (!riskOfRuinReady) return <MiniEmpty label="Provisional - needs more trades" height={52}/>;
+              const pct = Math.max(0, Math.min(100, riskOfRuinHigh || 0));
+              const color = pct <= 5 ? c.gn : pct <= 15 ? c.gold : c.rd;
+              return (
+                <div style={{width:"100%",display:"grid",gap:8,fontFamily:F}}>
+                  <KpiProgressMini value={pct} max={100} color={color} target={15} labelLeft="low" labelRight="high"/>
+                  <div style={{fontSize:8.6,fontWeight:850,color:c.ts,lineHeight:1.18,whiteSpace:"normal",overflow:"visible"}}>
+                    from {fmtPct(riskOfRuinWinPct,0)} win · {fmtNum(riskOfRuinAvgR,2)}R · {fmtPct(riskOfRuinRiskPct,2)} risk
+                  </div>
+                </div>
+              );
+            };
+            const riskOfRuinPage = {
+              id:"metric-risk-of-ruin",
+              label:"Risk of Ruin",
+              value:riskOfRuinReady ? riskOfRuinRange : "Provisional",
+              sub:riskOfRuinReady ? `chance of a ${fmtPct(riskOfRuinThresholdPct,0)} drawdown at your current risk` : "needs more trades",
+              color:!riskOfRuinReady ? c.gold : (riskOfRuinHigh || 0) <= 5 ? c.gn : (riskOfRuinHigh || 0) <= 15 ? c.gold : c.rd,
+              visual:<RiskOfRuinMini/>,
+              visualHeight:64,
+              target:"drawdown",
+              dim:!riskOfRuinReady,
+            };
+            const streakDirection = metrics.currentStreakType === "W" ? "wins" : metrics.currentStreakType === "L" ? "losses" : "flat";
+            const streakCurrentText = metrics.currentStreak ? `${metrics.currentStreak} ${streakDirection}` : "-";
+            const StreaksSlideMini = () => {
+              const sample = (metrics.trades || []).slice(-15);
+              if (!sample.length) return <MiniEmpty label="No trades" height={46}/>;
+              return (
+                <div style={{width:"100%",display:"grid",gap:8,fontFamily:F}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6}}>
+                    {[
+                      ["Longest win", metrics.longestWin || 0, c.gn],
+                      ["Longest loss", metrics.longestLoss || 0, c.rd],
+                      ["Current", streakCurrentText, metrics.currentStreakType === "L" ? c.rd : metrics.currentStreakType === "W" ? c.gn : c.gold],
+                    ].map(([label,value,color]) => (
+                      <div key={label} style={{minWidth:0}}>
+                        <div style={{fontSize:7.8,fontWeight:900,color:c.tm,textTransform:"uppercase",letterSpacing:"0.045em",whiteSpace:"nowrap"}}>{label}</div>
+                        <div style={{fontSize:12,fontWeight:950,color,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",marginTop:3}}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.max(1, sample.length)}, minmax(0,1fr))`,gap:2,alignItems:"center"}}>
+                    {sample.map((trade,index) => {
+                      const win = (Number(trade?.pnl) || 0) >= 0;
+                      return <span key={trade?.id || index} title={win ? "Win" : "Loss"} style={{height:8,background:win ? c.gn : c.rd,opacity:.88}}/>;
+                    })}
+                  </div>
+                </div>
+              );
+            };
+            const streaksSlidePage = {
+              id:"metric-win-rate-streaks",
+              label:"Streaks",
+              value:streakCurrentText,
+              sub:metrics.currentStreak ? "current streak · ongoing" : "No active sequence",
+              color:metrics.currentStreakType === "L" ? c.rd : metrics.currentStreakType === "W" ? c.gn : c.gold,
+              visual:<StreaksSlideMini/>,
+              visualHeight:70,
+              target:"trade-journal",
+            };
             const kpiSlots = [
               {
                 id:"profit",
                 pages:[
-                  {id:"metric-net-pnl", label:"Net P&L", value:privacyMoney(metrics.totalPnl,metrics.avgR*metrics.tradeCount), sub:`Return ${fmtPct(metrics.returnPct,1)}${dashValueMode==="privacy" ? " · privacy" : ""}`, color:metrics.totalPnl>=0?c.gn:c.rd, visual:<SegmentSparkline points={values.slice(-50)} height={36}/>, target:"equity-curve"},
-                  {id:"metric-cost-drag", label:"Cost Drag", value:costDragValue, sub:dashValueMode==="privacy"?"fees & spread":`${privacyAbsMoney(metrics.costDragDollars || 0)} estimated cost`, color:(metrics.costDragPct||0)<=5?c.gn:c.gold, visual:<DisciplineMini ruleMode={false}/>, target:"execution"},
+                  {id:"metric-net-pnl", label:"Net P&L", value:netPnlHeadline, valueSuffix:netPnlReturnSuffix, valueSuffixColor:netPnlReturnSuffixColor, sub:netPnlSubText, color:(netPnlStats.net || 0)>=0?c.gn:c.rd, visual:<NetPnlCompositionMini/>, target:"equity-curve"},
+                  {id:"metric-net-pnl-quality", label:"Per-Trade Quality", value:dashDualValue(netPnlExpectancyR, netPnlExpectancyDollars), sub:"Net expectancy per trade", color:netPnlExpectancyR>=0?c.gn:c.rd, visual:<NetPnlQualityMini/>, visualInfo:dashboardVisualInfo["Per-Trade Quality"], target:"r-multiple", resourceId:"metric-net-pnl"},
                 ],
               },
               {
                 id:"edge",
                 pages:[
                   {id:"metric-win-rate", label:"Win Rate + RR", value:<>{fmtPct(metrics.winRate,0)} <span style={{color:c.tm}}>·</span> {payoffText}</>, sub:breakevenText, color:(metrics.winRateCushion ?? 0)>=0?c.gn:c.rd, visual:<WinRatePayoffMini/>, target:"trade-journal"},
-                  {id:"metric-profit-factor", label:"Profit Factor", value:fmtNum(metrics.profitFactor,2), sub:dashValueMode==="privacy"?"gross wins vs losses":`-${privacyAbsMoney(metrics.grossLoss)} vs +${privacyAbsMoney(metrics.grossWin)}`, color:metrics.profitFactor>=1?c.gn:c.rd, visual:<KpiRatioMini left={metrics.grossLoss} right={metrics.grossWin} leftLabel={dashValueMode==="privacy"?"loss":"-"+privacyAbsMoney(metrics.grossLoss)} rightLabel={dashValueMode==="privacy"?"win":"+"+privacyAbsMoney(metrics.grossWin)}/>, target:"r-multiple"},
-                  {id:"metric-expectancy", label:"Expectancy", value:`${fmtNum(metrics.avgR,2)}R`, sub:`Average R per trade · n ${metrics.tradeCount}`, color:metrics.avgR>=0?c.gn:c.rd, visual:<ExpectancyMini/>, target:"r-multiple"},
+                  streaksSlidePage,
+                  {id:"metric-profit-factor", label:"Profit Factor", value:fmtNum(metrics.profitFactor,2), sub:"made for every $1 lost", color:metrics.profitFactor>=1?c.gn:c.rd, visual:<ProfitFactorPerDollarMini/>, target:"r-multiple"},
+                  expectancyPage,
                 ],
               },
               {
                 id:"drawdown",
                 pages:[
-                  {id:"metric-max-dd", label:"Max Drawdown", value:dashValueMode==="privacy"?fmtPct(metrics.maxDDPct,1):fmtAbsMoney(metrics.maxDD), sub:`${fmtPct(metrics.maxDDPct,1)} of starting balance`, color:c.rd, visual:<DrawdownDepthMini/>, target:"drawdown"},
-                  {id:"metric-time-underwater", label:"Time Underwater", value:`${metrics.longestUnderwaterDays || 0}d`, sub:`Longest equity recovery stretch`, color:(metrics.longestUnderwaterDays||0)<=10?c.gn:c.gold, visual:<DrawdownDepthMini/>, target:"drawdown"},
-                  {id:"metric-recovery-factor", label:"Recovery Factor", value:metrics.recoveryFactor==null?"-":`${fmtNum(metrics.recoveryFactor,2)}x`, sub:`Max DD episode: ${metrics.maxDDEpisodeDuration || 0} days`, color:(metrics.recoveryFactor||0)>=KPI_CONFIG.recoveryFactorGood?c.gn:c.gold, visual:<RecoveryMini/>, target:"drawdown"},
+                  {id:"metric-drawdown", label:"Drawdown", value:drawdownHeadline, sub:drawdownSubline, color:c.rd, visual:<DrawdownMergedMini/>, visualHeight:76, target:"drawdown"},
+                  ...propDrawdownPages,
+                  {id:"metric-recovery-factor", label:"Recovery Factor", value:metrics.recoveryFactor==null?"-":`${fmtNum(metrics.recoveryFactor,2)}x`, sub:metrics.recoveryFactor==null?"No drawdown yet":Number(metrics.recoveryFactor) >= 0 ? `$${fmtNum(metrics.recoveryFactor,2)} of profit per $1 of worst drawdown` : `$${fmtNum(Math.abs(Number(metrics.recoveryFactor)),2)} lost per $1 of worst drawdown`, color:Number(metrics.recoveryFactor) < 0 ? c.rd : (metrics.recoveryFactor||0)>=KPI_CONFIG.recoveryFactorGood?c.gn:c.gold, visual:<RecoveryMini/>, target:"drawdown"},
                 ],
               },
               {
                 id:"risk-adjusted",
                 pages:[
-                  {id:"metric-risk-adjusted", label:"Risk-Adjusted", value:sortinoDisplay, sub:riskAdjustedDim?`Low confidence · ${metrics.riskAdjustedObs} ${riskAdjustedObsUnit}`:`Sharpe ${sharpeDisplay} · ${metrics.shapeLabel}`, color:riskAdjustedDim?c.gold:c.gn, visual:<RiskAdjustedMini/>, target:"r-multiple", dim:riskAdjustedDim},
-                  {id:"metric-calmar", label:"Calmar", value:metrics.calmarAnnualized==null?"-":`${fmtNum(metrics.calmarAnnualized,2)}x`, sub:`Annualized return ${fmtPct(metrics.annualizedReturnPct||0,0)} vs DD ${fmtPct(metrics.maxDDPct,1)}`, color:(metrics.calmarAnnualized||0)>=1?c.gn:c.gold, visual:<CalmarPairMini/>, target:"drawdown", dim:riskAdjustedDim},
+                  {id:"metric-equity-smoothness", label:"Equity Smoothness", value:smoothnessPct == null ? "-" : fmtPct(smoothnessPct,0), sub:"your path vs a straight line", color:c.gold, visual:<SmoothnessWiggleMini/>, visualHeight:70, target:"equity-curve", dim:metrics.tradeCount < KPI_CONFIG.minObsForRiskAdj, resourceId:"metric-smoothness-risk-adjusted"},
+                  {id:"metric-risk-adjusted", label:"Risk-Adjusted", value:sharpeDisplay, sub:riskAdjustedSubline, color:riskAdjustedColor, visual:<RiskAdjustedMini/>, visualHeight:70, target:"r-multiple", dim:riskAdjustedDim, resourceId:"metric-smoothness-risk-adjusted"},
+                  riskOfRuinPage,
                 ],
               },
               {
                 id:"consistency",
                 pages:[
                   {id:"metric-consistency", label:"Day Win Rate", value:fmtPct(metrics.dayWinRate,0), sub:`Profitable days in sample`, color:metrics.dayWinRate>=50?c.gn:c.gold, visual:<DayStripMini/>, target:"trade-journal", dim:metrics.tradeCount < KPI_CONFIG.minObsForRiskAdj},
-                  {id:"metric-profit-concentration", label:"Profit Concentration", value:metrics.top5ProfitShare == null ? "-" : fmtPct(metrics.top5ProfitShare,0), sub:top5Text, color:metrics.concentrationWarn?c.gold:c.gn, visual:<TopShareMini/>, target:"trade-journal", dim:metrics.tradeCount < KPI_CONFIG.minObsForRiskAdj},
-                  {id:"metric-equity-smoothness", label:"Equity Smoothness", value:smoothnessPct == null ? "-" : fmtPct(smoothnessPct,0), sub:`R² of equity path · ref ${fmtPct(KPI_CONFIG.smoothnessGood*100,0)}`, color:(smoothnessPct||0)>=(KPI_CONFIG.smoothnessGood*100)?c.gn:c.gold, visual:<KpiProgressMini value={smoothnessPct||0} max={100} color={(smoothnessPct||0)>=(KPI_CONFIG.smoothnessGood*100)?c.gn:c.gold} target={KPI_CONFIG.smoothnessGood*100} labelLeft="choppy" labelRight="smooth"/>, target:"equity-curve", dim:metrics.tradeCount < KPI_CONFIG.minObsForRiskAdj},
+                  {id:"metric-profit-concentration", label:"Profit Concentration", value:profitConcentrationVerdict, sub:profitConcentrationSentence, color:profitConcentrationColor, visual:<TopShareMini/>, visualHeight:48, target:"trade-journal", dim:metrics.tradeCount < KPI_CONFIG.minObsForRiskAdj},
+                  {id:"metric-profit-robustness", label:"Profit Robustness", value:profitRobustnessVerdict, sub:profitRobustnessSentence, color:profitRobustnessColor, visual:<ProfitRobustnessMini/>, visualHeight:48, target:"trade-journal", resourceId:"metric-profit-concentration", dim:!profitRobustnessHasValue},
                 ],
               },
               {
-                id:"discipline",
+                id:"live-discipline-layer",
                 pages: isLiveKpiMode ? [
-                  {id:"metric-discipline", label:"Discipline Score", value:metrics.disciplineScore == null ? "-" : fmtPct(metrics.disciplineScore,0), sub:metrics.disciplineBreachSummary, color:(metrics.disciplineScore??0)>=85?c.gn:(metrics.disciplineScore??0)>=70?c.gold:c.rd, visual:<KpiProgressMini value={metrics.disciplineScore||0} max={100} color={(metrics.disciplineScore??0)>=85?c.gn:(metrics.disciplineScore??0)>=70?c.gold:c.rd} labelLeft="breach" labelRight="clean"/>, target:"execution"},
-                  {id:"metric-rule-adherence", label:"Rule Adherence", value:metrics.ruleAdherence == null ? "-" : fmtPct(metrics.ruleAdherence,0), sub:metrics.ruleAdherenceStates ? `${metrics.ruleAdherenceStates.journaled}/${metrics.ruleAdherenceStates.total} journaled · ${fmtPct(metrics.ruleAdherenceCoverage||0,0)} coverage` : "No journaled rule data", color:metrics.ruleAdherence == null ? c.tm : metrics.ruleAdherence>=85?c.gn:c.gold, visual:<DisciplineMini ruleMode/>, target:"execution", dim:(metrics.ruleAdherenceCoverage||0)<50},
-                ] : [
-                  {id:"metric-capture-ratio", label:"Trade Efficiency", value:metrics.captureRatio == null ? "-" : fmtPct(metrics.captureRatio,0), sub:metrics.captureSample ? `${metrics.captureSample} trades with MFE data` : "Needs MFE data", color:metrics.captureRatio == null ? c.tm : metrics.captureRatio>=70?c.gn:metrics.captureRatio>=45?c.gold:c.rd, visual:<CaptureRatioMini/>, target:"execution", dim:!metrics.captureSample},
-                  {id:"metric-missed-move", label:"Missed Move", value:metrics.missedMoveR == null ? "-" : `${fmtNum(metrics.missedMoveR,2)}R`, sub:metrics.missedMoveSample ? `Average favourable move left · n ${metrics.missedMoveSample}` : "Needs post-exit bars", color:metrics.missedMoveR == null ? c.tm : metrics.missedMoveR<=.35?c.gn:metrics.missedMoveR<=.8?c.gold:c.rd, visual:<MissedMoveMini/>, target:"execution", dim:!metrics.missedMoveSample},
+                  {id:"metric-live-demons", label:"Demons", value:fmtCostR(liveDemonTotalCostR), sub:liveDemonRows.length ? "Top behavioral leaks by R cost" : "No demon leaks found", color:liveDemonTotalCostR > 0 ? c.rd : c.gn, visual:<LiveDemonsMini/>, visualHeight:78, target:"live-discipline", resourceId:"metric-live-demons"},
+                  {id:"metric-live-discipline-score", label:"Discipline", value:liveDisciplineValue == null ? "-" : `${liveDisciplineValue}`, sub:"Adherence · risk control · patience", color:liveDisciplineColor, visual:<LiveDisciplineScoreMini/>, visualHeight:70, target:"live-discipline", resourceId:"metric-live-discipline-score"},
+                ] : [],
+              },
+              {
+                id:"live-risk-consistency",
+                pages: isLiveKpiMode ? [
+                  {id:"metric-risk-consistency", label:"Planned vs Actual", value:planAdherence.available ? formatPlanAdherenceValue(planAdherence.ifFollowed) : "Needs data", sub:planAdherence.available ? `Actual ${formatPlanAdherenceValue(planAdherence.actual)} · cost ${formatPlanAdherenceValue({pnl:-Math.abs(Number(planAdherence.cost?.pnl)||0), r:-Math.abs(Number(planAdherence.cost?.r)||0)})}` : "Log missed trades and tag deviations", color:planAdherence.available ? planAdherenceCostColor : c.gold, visual:<PlanAdherenceMini/>, visualHeight:78, target:"live-discipline", resourceId:"metric-risk-consistency", dim:!planAdherence.available},
+                ] : [],
+              },
+              {
+                id:"discipline",
+                pages: isLiveKpiMode ? [] : [
+                  tradeEfficiencyPage,
+                  missedMovePage,
                 ],
               },
               {
                 id:"activity",
                 pages:[
-                  {id:"metric-total-trades", label:"Total Trades", value:metrics.tradeCount.toLocaleString(), sub:`Avg duration ${metrics.durationAvg}m`, color:metrics.tradeCount>=KPI_CONFIG.nTarget?c.gn:c.gold, visual:<FrequencyBars/>, target:"trade-journal"},
-                  {id:"metric-trade-frequency", label:"Trade Frequency", value:`${fmtNum(metrics.tradeFrequency,1)}/wk`, sub:`Across ${fmtNum(metrics.weeksInRange,1)} weeks`, color:metrics.tradeFrequency>0?c.acL:c.tm, visual:<FrequencyBars/>, target:"trade-journal"},
-                  {id:"metric-sample-confidence", label:"Sample Confidence", value:fmtPct(metrics.sampleConfidence,0), sub:`n target ${KPI_CONFIG.nTarget} trades`, color:metrics.sampleConfidence>=100?c.gn:metrics.sampleConfidence>=60?c.gold:c.rd, visual:<KpiProgressMini value={metrics.sampleConfidence} max={100} color={metrics.sampleConfidence>=100?c.gn:metrics.sampleConfidence>=60?c.gold:c.rd} target={100} labelLeft="thin" labelRight="ready"/>, target:"trade-journal"},
+                  {id:"metric-total-trades", label:"Total Trades", value:metrics.tradeCount.toLocaleString(), sub:"do you hold winners or losers longer?", color:metrics.tradeCount>=KPI_CONFIG.nTarget?c.gn:c.gold, visual:<TotalTradesHoldBiasMini/>, visualHeight:62, target:"trade-journal"},
+                  {id:"metric-sample-confidence", label:"Sample Confidence", value:metrics.tradeCount.toLocaleString(), sub:metrics.sampleConfidenceReady ? `trades · past the ${metrics.sampleConfidenceTarget} needed to trust the edge` : `of ${metrics.sampleConfidenceTarget} needed`, color:metrics.sampleConfidenceReady?c.gn:c.gold, visual:<SampleConfidenceMini/>, visualHeight:62, target:"trade-journal"},
+                  {id:"metric-expectancy-confidence", label:"Confidence Range", value:dashDualValue(metrics.avgR, expectancyCiMoneyValue(metrics.avgR), {signedR:false}), sub:"95% confidence range", color:metrics.expectancyCiClearsZero?c.gn:c.gold, visual:<ExpectancyConfidenceMini/>, visualHeight:62, target:"r-multiple", resourceId:"metric-sample-confidence", dim:(metrics.expectancySampleCount||0)<2},
                 ],
               },
               {
                 id:"pressure",
-                pages: ((ds.tradingMode||"") === "prop" || (ds.tradingMode||"") === "journal-prop") && propConfigured ? [
+                pages: isPropD ? [
                   {id:"metric-target-progress", label:"Prop Pressure", value:propTargetPct == null ? "-" : fmtPct(propTargetPct,0), sub:propTargetPct == null ? "Profit target not configured" : "Target progress", color:(propTargetPct||0)>=100?c.gn:c.gold, visual:propTargetPct == null ? <MiniEmpty label="No target"/> : <KpiProgressMini value={propTargetPct||0} max={100} color={(propTargetPct||0)>=100?c.gn:c.gold} target={100} labelLeft="0%" labelRight="target"/>, target:"prop-rules", dim:propTargetPct == null},
-                  {id:"metric-prop-headroom", label:"Daily-Loss Headroom", value:propDailyHeadroom == null ? "-" : fmtPct(propDailyHeadroom,0), sub:"Remaining daily loss room", color:(propDailyHeadroom||0)>35?c.gn:c.rd, visual:<KpiProgressMini value={propDailyHeadroom||0} max={100} color={(propDailyHeadroom||0)>35?c.gn:c.rd} labelLeft="risk" labelRight="room"/>, target:"prop-rules"},
-                  {id:"metric-prop-headroom-dd", label:"Max-DD Headroom", value:propDdHeadroom == null ? "-" : fmtPct(propDdHeadroom,0), sub:"Remaining total drawdown room", color:(propDdHeadroom||0)>35?c.gn:c.rd, visual:<KpiProgressMini value={propDdHeadroom||0} max={100} color={(propDdHeadroom||0)>35?c.gn:c.rd} labelLeft="risk" labelRight="room"/>, target:"prop-rules"},
-                  {id:"metric-prop-days", label:"Days Traded", value:propStatus?.minDaysUsed != null ? fmtPct(propStatus.minDaysUsed*100,0) : "-", sub:"Minimum days rule progress", color:(propStatus?.minDaysUsed||0)>=1?c.gn:c.gold, visual:<DayStripMini/>, target:"prop-rules"},
+                  {id:"metric-prop-headroom", label:"Daily-Loss Headroom", value:propDailyHeadroom == null ? "-" : fmtPct(propDailyHeadroom,0), sub:propDailyHeadroom == null ? "Daily loss limit not configured" : "Remaining daily loss room", color:propDailyHeadroom == null ? c.gold : (propDailyHeadroom||0)>35?c.gn:c.rd, visual:propDailyHeadroom == null ? <MiniEmpty label="No daily limit"/> : <KpiProgressMini value={propDailyHeadroom||0} max={100} color={(propDailyHeadroom||0)>35?c.gn:c.rd} labelLeft="risk" labelRight="room"/>, target:"prop-rules", dim:propDailyHeadroom == null},
+                  {id:"metric-prop-headroom-dd", label:"Max-DD Headroom", value:propDdHeadroom == null ? "-" : fmtPct(propDdHeadroom,0), sub:propDdHeadroom == null ? "Total drawdown limit not configured" : "Remaining total drawdown room", color:propDdHeadroom == null ? c.gold : (propDdHeadroom||0)>35?c.gn:c.rd, visual:propDdHeadroom == null ? <MiniEmpty label="No max DD"/> : <KpiProgressMini value={propDdHeadroom||0} max={100} color={(propDdHeadroom||0)>35?c.gn:c.rd} labelLeft="risk" labelRight="room"/>, target:"prop-rules", dim:propDdHeadroom == null},
+                  {id:"metric-prop-days", label:"Days Traded", value:propConfigured && propStatus?.minDaysUsed != null ? fmtPct(propStatus.minDaysUsed*100,0) : "-", sub:propConfigured && propConfig?.minDays != null ? "Minimum days rule progress" : "Minimum days rule not configured", color:(propStatus?.minDaysUsed||0)>=1?c.gn:c.gold, visual:propConfigured && propConfig?.minDays != null ? <DayStripMini/> : <MiniEmpty label="No minimum days"/>, target:"prop-rules", dim:!(propConfigured && propConfig?.minDays != null)},
                 ] : [
                   {id:"metric-streaks", label:"Streaks & Records", value:metrics.currentStreak ? `${metrics.currentStreak}${metrics.currentStreakType}` : "-", sub:`Current ${metrics.currentStreakType==="W"?"winning":metrics.currentStreakType==="L"?"losing":"flat"} streak`, color:metrics.currentStreakType==="W"?c.gn:metrics.currentStreakType==="L"?c.rd:c.tm, visual:<KpiStreakMini/>, target:"trade-journal"},
-                  {id:"metric-streaks-longest", label:"Longest Runs", value:`${metrics.longestWin}W / ${metrics.longestLoss}L`, sub:"Longest win and loss sequences", color:metrics.longestLoss <= metrics.longestWin ? c.gn : c.gold, visual:<KpiStreakMini/>, target:"trade-journal", resourceId:"metric-streaks"},
-                  {id:"metric-streaks-best-worst", label:"Best / Worst", value:<>{bestR>=0?"+":""}{fmtNum(bestR,1)}R <span style={{color:c.tm}}> / </span>{fmtNum(worstR,1)}R</>, sub:"Best and worst trade records", color:Math.abs(bestR)>=Math.abs(worstR)?c.gn:c.gold, visual:<BestWorstMini/>, target:"trade-journal", resourceId:"metric-streaks"},
                 ],
               },
             ];
+            const allKpiPages = kpiSlots.flatMap(slot => slot.pages || []);
+            const dashboardSourceSummaryRows = dashboardSourceCapabilities.sources.map((source, index) => {
+              const sourceTrades = Array.isArray(source.trades) ? source.trades : [];
+              const tradeCount = sourceTrades.length;
+              const pnl = sourceTrades.reduce((sum, trade) => sum + (Number(trade.pnl) || 0), 0);
+              const rSum = sourceTrades.reduce((sum, trade) => sum + (Number(trade.rMultiple) || 0), 0);
+              return {
+                index,
+                label:source.label || `Source ${index + 1}`,
+                kind:dashboardCapabilityIsJournal(source) ? "live" : "backtest",
+                tradeCount,
+                pnl,
+                avgR:tradeCount ? rSum / tradeCount : 0,
+              };
+            }).filter(source => source.tradeCount);
+            const dashboardSourceBacktestRows = dashboardSourceSummaryRows.filter(source => source.kind === "backtest");
+            const dashboardSourceLiveRows = dashboardSourceSummaryRows.filter(source => source.kind === "live");
+            const dashboardSourceStat = (rows) => {
+              const trades = rows.reduce((sum,row)=>sum+row.tradeCount,0);
+              const pnl = rows.reduce((sum,row)=>sum+row.pnl,0);
+              const r = rows.reduce((sum,row)=>sum+(row.avgR*row.tradeCount),0);
+              return {trades,pnl,avgR:trades ? r / trades : 0};
+            };
+            const dashboardBacktestSourceStat = dashboardSourceStat(dashboardSourceBacktestRows);
+            const dashboardLiveSourceStat = dashboardSourceStat(dashboardSourceLiveRows);
+            const dashboardSourceDeltaR = dashboardLiveSourceStat.trades && dashboardBacktestSourceStat.trades
+              ? dashboardLiveSourceStat.avgR - dashboardBacktestSourceStat.avgR
+              : null;
+            const overviewFallbackPages = {
+              "metric-capture-ratio": tradeEfficiencyPage,
+    "metric-missed-move": missedMovePage,
+              "metric-streaks": {id:"metric-streaks", label:"Streaks & Records", value:metrics.currentStreak ? `${metrics.currentStreak}${metrics.currentStreakType}` : "-", sub:`Current ${metrics.currentStreakType==="W"?"winning":metrics.currentStreakType==="L"?"losing":"flat"} streak`, color:metrics.currentStreakType==="W"?c.gn:metrics.currentStreakType==="L"?c.rd:c.tm, visual:<KpiStreakMini/>, target:"trade-journal"},
+              "metric-win-rate-streaks": streaksSlidePage,
+              "metric-risk-of-ruin": riskOfRuinPage,
+              "metric-streaks-best-worst": bestWorstPage,
+              "metric-trade-frequency": {id:"metric-trade-frequency", label:"Trade Frequency", value:`${fmtNum(metrics.tradeFrequency,1)}/wk`, sub:`Average per week · median ${fmtNum(metrics.typicalWeekTrades || 0,1)}/wk`, color:metrics.tradeFrequency>0?c.acL:c.tm, visual:<TradeFrequencyMini/>, target:"trade-journal"},
+            };
+            const overviewMetricPage = (id) => allKpiPages.find(page => page?.id === id) || overviewFallbackPages[id];
+            const liveDrawdownDisciplinePageIds = isLiveKpiMode
+              ? ["metric-risk-consistency"]
+              : [];
+            const liveExpectancyDisciplinePageIds = isLiveKpiMode
+              ? ["metric-live-demons"]
+              : [];
+            const overviewDrawdownPageIds = [
+              "metric-drawdown",
+              ...(isPropD ? ["metric-prop-loss-budget"] : []),
+              ...liveDrawdownDisciplinePageIds,
+            ];
+            const overviewCarouselSlots = [
+              {id:"overview-net-pnl", pages:["metric-net-pnl","metric-net-pnl-quality"].map(overviewMetricPage)},
+              {id:"overview-win-rr", pages:["metric-win-rate","metric-win-rate-streaks","metric-consistency","metric-capture-ratio"].map(overviewMetricPage)},
+              {id:"overview-profit-factor", pages:["metric-profit-factor","metric-recovery-factor","metric-streaks-best-worst"].map(overviewMetricPage)},
+              {id:"overview-expectancy", pages:[
+                "metric-expectancy",
+                "metric-missed-move",
+                "metric-trade-frequency",
+                ...liveExpectancyDisciplinePageIds,
+              ].map(overviewMetricPage)},
+              {id:"overview-max-dd", pages:overviewDrawdownPageIds.map(overviewMetricPage)},
+              {id:"overview-risk-adjusted", pages:["metric-equity-smoothness","metric-risk-adjusted","metric-risk-of-ruin"].map(overviewMetricPage)},
+              {id:"overview-concentration", pages:["metric-profit-concentration","metric-profit-robustness"].map(overviewMetricPage)},
+              {id:"overview-sample-confidence", pages:["metric-sample-confidence","metric-expectancy-confidence"].map(overviewMetricPage)},
+            ].map(slot => ({...slot, pages:slot.pages.filter(Boolean)}));
             const w = 760, h = 250, px = 28, py = 20;
             const minV = Math.min(...values, Number(ds.capital)||10000);
             const maxV = Math.max(...values, Number(ds.capital)||10000);
@@ -23097,8 +24973,8 @@ const TalariaV8b = () => {
             const tradeLine = (trade) => (
               <div key={trade.id} style={{minHeight:38,display:"grid",gridTemplateColumns:"minmax(0,1fr) 64px 82px",alignItems:"center",gap:10,borderBottom:`1px solid ${c.br}`,fontFamily:F}}>
                 <div style={{minWidth:0}}>
-                  <div style={{fontSize:10,fontWeight:900,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{trade.symbol}</div>
-                  <div style={{fontSize:8,fontWeight:800,color:c.tm,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:3}}>{trade.tag || dashTxt("Setup","إعداد")}</div>
+                  <div style={{fontSize:10,fontWeight:900,color:c.tx,whiteSpace:"normal",lineHeight:1.08,overflow:"visible"}}>{trade.symbol}</div>
+                  <div style={{fontSize:8.4,fontWeight:800,color:c.tm,whiteSpace:"normal",lineHeight:1.08,overflow:"visible",marginTop:3}}>{trade.tag || dashTxt("Setup","إعداد")}</div>
                 </div>
                 <div style={{fontSize:10,fontWeight:900,color:(trade.rMultiple||0)>=0?c.gn:c.rd,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmtNum(trade.rMultiple||0,2)}R</div>
                 <div style={{fontSize:10,fontWeight:900,color:(trade.pnl||0)>=0?c.gn:c.rd,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmtValue(trade.pnl, trade.rMultiple)}</div>
@@ -23108,9 +24984,11 @@ const TalariaV8b = () => {
               profitability:"Net return and profit factor carry this dimension.",
               consistency:"Profitable weeks and return stability across the sample.",
               risk:"Drawdown depth, recovery time, and worst-day pressure.",
-              frequency:"Trade count and opportunity rate after current filters.",
+              robustness:"Outlier dependence and whether the edge survives the trusted sample.",
               discipline:"Rule adherence across required, optional, and invalidation checks.",
               edge:"Expectancy, R distribution, and profit-factor durability.",
+              realism:"Backtest validity from modeled costs, risk pressure, and robustness.",
+              regimeStability:"Stability across changing market conditions when costs are not modeled.",
             };
             const scoreDimensionRows = strategyScore.axes.map(axis => {
               const value = axis.available ? clampScore(axis.raw) : null;
@@ -23126,25 +25004,30 @@ const TalariaV8b = () => {
                     : scoreDimensionNotes[axis.key] || `${axis.label} contribution to the composite score.`,
               };
             });
-            const scoreDimensionTableWidth = 232;
+            const scoreDimensionTableWidth = 216;
+            const scoreVisualColumnWidth = 174;
+            const scoreDimensionLabelFont = 9.4;
             const scoreDeltaLabel = (delta) => delta == null ? "-" : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta)}`;
             const ScoreDimensionRow = ({axis}) => {
               const rowId = `score-dim-${axis.key}`;
               const active = scoreShapeActive(rowId);
               const hasValue = axis.value != null && Number.isFinite(Number(axis.value));
+              const priorPct = hasValue ? Math.max(0, Math.min(100, Number(axis.prior) || 0)) : 0;
               return (
                 <div className="tlr-dashboard-info-target" tabIndex={0} {...dashInfoHandlers({title:axis.label, body:axis.note}, rowId)}
-                  style={{width:scoreDimensionTableWidth,height:25,display:"grid",gridTemplateColumns:"84px 64px 30px 33px",gap:7,alignItems:"center",outline:"none",fontFamily:scoreFont}}>
-                  <div style={{fontSize:10.5,fontWeight:650,color:hasValue?c.tx:c.tm,letterSpacing:"0.01em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",opacity:hasValue?1:.72}}>{axis.compact || axis.label}</div>
-                  <div style={{height:4,width:64,background:"rgba(170,178,198,0.34)",position:"relative",overflow:"hidden",boxSizing:"border-box"}}>
-                    <span style={{position:"absolute",left:0,top:0,height:4,width:hasValue?`${axis.value}%`:"0%",background:axis.color,filter:active&&hasValue?`drop-shadow(0 0 3px ${axis.color}40)`:"none",transition:"filter 90ms ease"}}/>
+                  style={{width:"100%",maxWidth:"100%",minWidth:0,height:22,display:"grid",gridTemplateColumns:"minmax(96px,118px) minmax(96px,1fr) 32px 42px",gap:8,alignItems:"center",outline:"none",fontFamily:scoreFont,boxSizing:"border-box"}}>
+                  <div style={{fontSize:scoreDimensionLabelFont,fontWeight:800,color:hasValue?c.tx:c.tm,letterSpacing:"0.01em",whiteSpace:"normal",lineHeight:1.05,overflow:"visible",opacity:hasValue?1:.72,minWidth:0}}>{axis.compact || axis.label}</div>
+                  <div style={{height:5,width:"100%",minWidth:0,background:"rgba(170,178,198,0.34)",position:"relative",overflow:"visible",boxSizing:"border-box"}}>
+                    <span style={{position:"absolute",left:0,top:0,height:5,width:hasValue?`${axis.value}%`:"0%",background:axis.color,filter:"none",transition:"width 160ms ease, background-color 160ms ease"}}/>
+                    {hasValue && <span title={`${selectedScoreCompare?.label || "30D"} comparison`} style={{position:"absolute",left:`${priorPct}%`,top:-4,bottom:-4,width:1,background:c.tx,opacity:.72,boxShadow:`0 0 4px ${c.tx}44`,transform:"translateX(-50%)"}}/>}
                   </div>
                   <div style={{fontSize:12,fontWeight:850,color:hasValue?axis.color:c.tm,fontVariantNumeric:"tabular-nums",textAlign:"right",lineHeight:1}}>{hasValue ? Math.round(axis.value) : "-"}</div>
-                  <div style={{fontSize:9.5,fontWeight:750,color:axis.delta == null ? c.tm : axis.delta>=0?c.gn:c.rd,fontVariantNumeric:"tabular-nums",textAlign:"right",lineHeight:1,opacity:.86}}>{scoreDeltaLabel(axis.delta)}</div>
+                  <div style={{fontSize:9,fontWeight:800,color:axis.delta == null ? c.tm : axis.delta>=0?c.gn:c.rd,fontVariantNumeric:"tabular-nums",textAlign:"right",lineHeight:1,opacity:.9,whiteSpace:"nowrap",overflow:"visible"}}>{scoreDeltaLabel(axis.delta)}</div>
                 </div>
               );
             };
-            const compactScoreCardView = dashScoreCardView === "radar" ? "radar" : "pie";
+            const compactScoreCardViewRaw = dashScoreCardView === "pie" ? "ring" : dashScoreCardView === "radar" ? "fingerprint" : dashScoreCardView;
+            const compactScoreCardView = ["ring","fingerprint","movement"].includes(compactScoreCardViewRaw) ? compactScoreCardViewRaw : "ring";
             const scoreTrendDayCount = (() => {
               const startMs = Date.parse(ds.startDate || "");
               const endMs = Date.parse(ds.endDate || "");
@@ -23155,64 +25038,516 @@ const TalariaV8b = () => {
             })();
             const scoreTrendDayLabel = `${scoreTrendDayCount} ${scoreTrendDayCount === 1 ? "DAY" : "DAYS"}`;
             const executionDelta = executionScore.composite == null || executionScore.prior == null ? null : Math.round(executionScore.composite - executionScore.prior);
+            const scoreSampleCount = Number(talariaUnified.sampleCount ?? talariaUnifiedContext.n ?? 0) || 0;
+            const scoreSampleTarget = Number(talariaUnified.sampleTarget ?? talariaUnifiedContext.sampleConfidenceTarget ?? SCORE_CONFIG.sampleConfidenceTarget) || SCORE_CONFIG.sampleConfidenceTarget;
+            const scoreGateCapped = talariaUnified.gateState?.capped === true;
+            const scoreGateProvisional = talariaUnified.gateState?.provisional === true;
+            const scoreLever = talariaUnified.biggestLever;
+            const scoreLeverLabel = scoreLever?.dim ? (scoreDimMeta[scoreLever.dim]?.label || scoreLever.dim) : "Weakest dimension";
+            const scoreLeverCopy = scoreLever?.fixText || "No dominant drag is currently reported by the scoring module.";
+            const scoreHeadline = `${talariaUnified.strategyTier || tierInfo.label} ${strategyScore.composite == null ? "-" : Math.round(strategyScore.composite)}`;
+            const scoreGapLine = liveScoreMode
+              ? strategyScore.composite != null && executionScore.composite != null && strategyScore.composite < executionScore.composite
+                ? `${scoreLeverLabel} is the gap`
+                : strategyScore.composite != null && executionScore.composite != null && executionScore.composite < strategyScore.composite
+                  ? "Discipline is leaking it"
+                  : "Strategy and execution are aligned"
+              : null;
+            const ScoreProvisionalHeaderTag = () => scoreGateProvisional ? (
+              <span style={{height:18,padding:"0 7px",border:`1px solid ${c.gold}66`,background:"rgba(201,168,76,0.08)",color:c.gold,fontSize:7.8,fontWeight:900,letterSpacing:"0.065em",textTransform:"uppercase",display:"inline-flex",alignItems:"center",fontFamily:scoreFont,whiteSpace:"nowrap",lineHeight:1}}>
+                Provisional · {scoreSampleCount} / {scoreSampleTarget}
+              </span>
+            ) : null;
+            const ScoreGateTags = () => scoreGateCapped ? (
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{height:20,padding:"0 7px",border:`1px solid ${c.rd}66`,background:"rgba(255,80,104,0.08)",color:c.rd,fontSize:8,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",display:"inline-flex",alignItems:"center",fontFamily:scoreFont}}>capped · net negative</span>
+              </div>
+            ) : null;
+            const ScoreCompareDropdown = () => (
+              <div style={{position:"relative",fontFamily:scoreFont}} onMouseLeave={()=>setDashScoreCompareOpen(false)}>
+                <button type="button" aria-label="Score comparison period" onClick={(e)=>{e.stopPropagation();setDashScoreCompareOpen(open=>!open);}} style={{height:28,minWidth:56,padding:"0 9px",display:"grid",gridTemplateColumns:"1fr 10px",alignItems:"center",gap:7,border:`1px solid ${dashScoreCompareOpen?c.acL:c.brH}`,background:dashScoreCompareOpen?"rgba(38,67,247,0.13)":c.sf,color:c.tx,fontFamily:scoreFont,cursor:"default",boxShadow:dashScoreCompareOpen?`inset 0 1px 0 rgba(255,255,255,0.04), 0 0 10px -7px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.035)",outline:"none"}}>
+                  <span style={{fontSize:10.4,fontWeight:900,color:c.tx,letterSpacing:"0.03em",textTransform:"uppercase",textAlign:"left",lineHeight:1}}>
+                    {selectedScoreCompare?.label || "30D"}
+                  </span>
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{display:"block",transform:dashScoreCompareOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 120ms ease"}}>
+                    <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter"/>
+                  </svg>
+                </button>
+                {dashScoreCompareOpen && (
+                  <div style={{position:"absolute",right:0,top:"calc(100% + 4px)",zIndex:20,width:136,border:`1px solid ${c.brH}`,borderTop:`2px solid ${c.acL}`,background:"rgba(8,11,22,0.98)",boxShadow:"0 14px 34px rgba(0,0,0,0.42)",padding:"4px 0"}}>
+                    {scoreCompareOptions.map(option=>{
+                      const active = option.key === selectedScoreCompare?.key;
+                      return (
+                        <button key={option.key} type="button" disabled={!option.available} onClick={(e)=>{e.stopPropagation(); if(option.available){setDashScoreCompareWindow(option.key); setDashScoreCompareOpen(false);}}} title={option.available ? option.title : option.reason}
+                          style={{height:28,width:"100%",padding:"0 10px",display:"grid",gridTemplateColumns:"38px 1fr",alignItems:"center",gap:7,border:"none",background:active?"rgba(38,67,247,0.14)":"transparent",color:option.available ? (active?c.acL:c.tx) : c.tm,fontFamily:scoreFont,cursor:option.available?"default":"not-allowed",opacity:option.available?1:.42,textAlign:"left",outline:"none",position:"relative"}}>
+                          {active && <span aria-hidden="true" style={{position:"absolute",left:0,top:5,bottom:5,width:1,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`}}/>}
+                          <span style={{fontSize:10,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase"}}>{option.label}</span>
+                          <span style={{fontSize:8,fontWeight:800,color:option.available?c.ts:c.tm,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{option.available ? option.title : option.reason}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+            const ScoreRadarHero = () => {
+              const axes = scoreDimensionRows;
+              const viewW = 308;
+              const viewH = 252;
+              const cx = 154;
+              const cy = 126;
+              const radius = 94;
+              const labelFont = scoreDimensionLabelFont * 1.49625;
+              const valueFont = axes.length > 5 ? 12 : 12.5;
+              const pointFor = (index, pct=1, extra=0) => {
+                const angle = -Math.PI / 2 + (index / Math.max(1, axes.length)) * Math.PI * 2;
+                const r = radius * pct + extra;
+                return {x:cx + Math.cos(angle) * r, y:cy + Math.sin(angle) * r, angle};
+              };
+              const polyFor = (pctResolver) => axes.map((axis,index) => {
+                const rawPct = typeof pctResolver === "function" ? pctResolver(axis,index) : pctResolver;
+                const p = pointFor(index, Math.max(.08, Math.min(1, Number(rawPct) || 0)));
+                return `${p.x},${p.y}`;
+              }).join(" ");
+              const currentPoly = polyFor(axis => (axis.value == null ? 0 : axis.value) / 100);
+              const fillId = `talaria-score-radar-fill-${axes.length}-${Math.round(strategyScore.composite || 0)}`;
+              return (
+                <svg width="100%" height="100%" viewBox={`0 0 ${viewW} ${viewH}`} preserveAspectRatio="xMidYMid meet" aria-label="Talaria Score radar fingerprint" style={{display:"block",maxWidth:"100%",maxHeight:"100%",overflow:"visible"}}>
+                  <defs>
+                    <radialGradient id={fillId} cx="50%" cy="48%" r="62%">
+                      <stop offset="0%" stopColor={tierInfo.color} stopOpacity=".34"/>
+                      <stop offset="68%" stopColor={tierInfo.color} stopOpacity=".18"/>
+                      <stop offset="100%" stopColor={tierInfo.color} stopOpacity=".05"/>
+                    </radialGradient>
+                  </defs>
+                  {[.2,.4,.6,.8,1].map(level => (
+                    <polygon key={`hero-grid-${level}`} points={polyFor(level)} fill="none" stroke={c.brH} strokeWidth={level === 1 ? "1.8" : ".82"} opacity={level === 1 ? .92 : .58} vectorEffect="non-scaling-stroke"/>
+                  ))}
+                  {axes.map((axis,index) => {
+                    const edge = pointFor(index, 1);
+                    return <line key={`hero-spoke-${axis.key}`} x1={cx} y1={cy} x2={edge.x} y2={edge.y} stroke={c.brH} strokeWidth=".82" opacity=".58" vectorEffect="non-scaling-stroke"/>;
+                  })}
+                  <polygon className="tlr-dashboard-shape-hover" {...dashInfoHandlers({title:"Score fingerprint", body:"Six active score dimensions from the Talaria scoring module."}, "score-radar-hero")} tabIndex={0} points={currentPoly} fill={`url(#${fillId})`} stroke={scoreColorMixLight(tierInfo.color, .18)} strokeWidth="2" strokeLinejoin="round" pointerEvents="visiblePainted" style={{"--tlr-shape-glow":tierInfo.color,filter:`drop-shadow(0 0 3px ${tierInfo.color}28)`,outline:"none"}}/>
+                  {axes.map((axis,index) => {
+                    const value = axis.value == null ? 0 : clampScore(axis.value);
+                    const dot = pointFor(index, Math.max(.08, value / 100));
+                    const edge = pointFor(index, 1);
+                    const labelText = axis.compact || axis.label;
+                    const labelGap = 20;
+                    const dirX = Math.cos(edge.angle);
+                    const dirY = Math.sin(edge.angle);
+                    const anchor = dirX > .32 ? "start" : dirX < -.32 ? "end" : "middle";
+                    const labelX = edge.x + dirX * labelGap;
+                    const labelY = Math.max(14, Math.min(viewH - 14, edge.y + dirY * labelGap));
+                    return (
+                      <g key={`hero-axis-${axis.key}`}>
+                        <circle cx={dot.x} cy={dot.y} r="3.1" fill={axis.color} stroke={c.sf} strokeWidth=".8" style={{filter:`drop-shadow(0 0 4px ${axis.color}55)`}}/>
+                        <text x={labelX} y={labelY} textAnchor={anchor} dominantBaseline="middle" fill={c.tx} fontFamily={scoreFont} fontSize={labelFont} fontWeight="900" letterSpacing="0" style={{pointerEvents:"none"}}>{labelText}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              );
+            };
+            const ScoreRingSlide = () => (
+              <div style={{height:"100%",display:"grid",gridTemplateRows:"minmax(0,1fr) auto",gap:10,opacity:scoreGateProvisional ? .75 : 1,minWidth:0,maxWidth:"100%",boxSizing:"border-box",overflow:"hidden"}}>
+                <div style={{minWidth:0,minHeight:0,display:"grid",gridTemplateColumns:"minmax(222px,0.9fr) minmax(206px,1.1fr)",gap:12,alignItems:"stretch",overflow:"visible"}}>
+                  <div style={{minWidth:0,display:"grid",gridTemplateRows:"auto auto minmax(0,1fr)",gap:10,alignContent:"start",overflow:"visible"}}>
+                    <ScoreGateTags/>
+                    <div style={{display:"grid",gridTemplateColumns:"88px minmax(0,1fr)",gap:13,alignItems:"center",minWidth:0,minHeight:238}}>
+                      <TierScaleRail primary={strategyScore.composite ?? 0} primaryTier={tierInfo} ghost={strategyScore.compositePrior}/>
+                      <div style={{display:"grid",gap:7,minWidth:0,alignContent:"center",overflow:"visible"}}>
+                        <div style={{fontSize:22,fontWeight:950,color:tierInfo.color,letterSpacing:"0.045em",textTransform:"uppercase",fontFamily:scoreFont,lineHeight:1.12,whiteSpace:"nowrap",overflow:"visible"}}>{talariaUnified.strategyTier || tierInfo.label}</div>
+                        <div style={{display:"flex",alignItems:"baseline",gap:5,flexWrap:"nowrap",whiteSpace:"nowrap",overflow:"visible"}}>
+                          <span style={{fontSize:36,fontWeight:950,color:tierInfo.color,fontFamily:scoreFont,fontVariantNumeric:"tabular-nums",lineHeight:1}}>{strategyScore.composite == null ? "-" : Math.round(strategyScore.composite)}</span>
+                          <span style={{fontSize:13,fontWeight:850,color:c.tx,fontFamily:scoreFont,lineHeight:1}}>/100</span>
+                        </div>
+                        <div style={{fontSize:10.5,fontWeight:850,color:scoreDelta == null ? c.tm : scoreDelta>=0?c.gn:c.rd,fontFamily:scoreFont,fontVariantNumeric:"tabular-nums",lineHeight:1.2,whiteSpace:"normal",overflow:"visible"}}>
+                          {scoreDeltaLabel(scoreDelta)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{minWidth:0,minHeight:0,display:"grid",placeItems:"center",overflow:"visible",padding:"0 4px",boxSizing:"border-box"}}>
+                    <ScoreRadarHero/>
+                  </div>
+                </div>
+                <div style={{minWidth:0,display:"grid",gap:3,alignContent:"end",padding:"0 3px 1px",boxSizing:"border-box",overflow:"visible"}}>
+                  {scoreDimensionRows.map(axis=><ScoreDimensionRow key={`score-ring-dim-${axis.key}`} axis={axis}/>)}
+                </div>
+              </div>
+            );
+            const ScoreFingerprintSlide = () => (
+              <div style={{height:"100%",display:"grid",gridTemplateColumns:"minmax(162px,1fr) 178px minmax(150px,0.9fr)",gap:18,alignItems:"center",opacity:scoreGateProvisional ? .78 : 1}}>
+                <div style={{display:"grid",gap:8,minWidth:0}}>
+                  <div style={{fontSize:22,fontWeight:900,color:tierInfo.color,fontFamily:scoreFont,fontVariantNumeric:"tabular-nums",lineHeight:1}}>
+                    {strategyScore.composite == null ? "-" : Math.round(strategyScore.composite)}
+                    <span style={{fontSize:10,fontWeight:850,color:c.ts,marginLeft:5}}>/100 STRATEGY</span>
+                  </div>
+                  <div style={{fontSize:10.5,fontWeight:700,color:c.ts,fontFamily:scoreFont,lineHeight:1.35,whiteSpace:"normal",overflow:"visible"}}>
+                    The shape shows the active dimension set. Dashed web is the healthy reference; faint shape is prior when available.
+                  </div>
+                  <ScoreGateTags/>
+                </div>
+                <div style={{display:"grid",placeItems:"center",overflow:"visible"}}>
+                  <MiniScoreRadar size={178}/>
+                </div>
+                <div style={{display:"grid",gap:6,alignContent:"center",minWidth:0}}>
+                  {scoreDimensionRows.slice(0, liveScoreMode ? 6 : 5).map(axis=>(
+                    <div key={`fingerprint-row-${axis.key}`} style={{display:"grid",gridTemplateColumns:"78px 1fr 28px",gap:7,alignItems:"center",minWidth:0}}>
+                      <span style={{fontSize:9.5,fontWeight:800,color:c.tx,fontFamily:scoreFont,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{axis.compact || axis.label}</span>
+                      <span style={{height:3,background:"rgba(170,178,198,0.28)",position:"relative",overflow:"hidden"}}><span style={{position:"absolute",left:0,top:0,bottom:0,width:`${axis.value ?? 0}%`,background:axis.color}}/></span>
+                      <span style={{fontSize:10,fontWeight:900,color:axis.color,fontVariantNumeric:"tabular-nums",fontFamily:scoreFont,textAlign:"right"}}>{axis.value == null ? "-" : Math.round(axis.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+            const ScoreMovementSlide = () => (
+              <div style={{height:"100%",display:"grid",gridTemplateRows:"auto minmax(0,1fr) auto",gap:8,opacity:scoreGateProvisional ? .78 : 1}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:20,fontWeight:900,color:tierInfo.color,fontFamily:scoreFont,fontVariantNumeric:"tabular-nums",lineHeight:1}}>
+                      {strategyScore.composite == null ? "-" : Math.round(strategyScore.composite)}
+                      <span style={{fontSize:10,fontWeight:850,color:c.ts,marginLeft:5}}>/100 NOW</span>
+                    </div>
+                    <div style={{fontSize:10.5,fontWeight:700,color:c.ts,fontFamily:scoreFont,lineHeight:1.35,marginTop:5}}>Score movement from the scoring module series · {scoreTrendDayLabel}</div>
+                  </div>
+                  <ScoreGateTags/>
+                </div>
+                <div style={{minHeight:0,display:"grid",placeItems:"center",overflow:"visible"}}>
+                  <ScoreTrendChart width={Math.max(260, scoreDimensionTableWidth + scoreVisualColumnWidth + 26)} height={214}/>
+                </div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,minWidth:0}}>
+                  <span style={{fontSize:8.5,fontWeight:900,color:c.tx,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:scoreFont,whiteSpace:"nowrap"}}>Score Movement</span>
+                </div>
+              </div>
+            );
             const CompactScoreCard = () => (
-              <SummaryCard title={dashTxt("Talaria Score","درجة تالاريا")} minHeight={398} right={<ScoreCardToggle/>} titleDot={false} onMouseLeave={hideDashboardInfo} style={{padding:16,gap:10}}>
-                <div style={{flex:1,display:"grid",gridTemplateColumns:`${scoreDimensionTableWidth}px 202px`,gridTemplateRows:"132px 166px",columnGap:18,rowGap:20,alignItems:"stretch",justifyContent:"space-between",minHeight:0,overflow:"visible"}}>
-                  <div style={{width:scoreDimensionTableWidth,height:"100%",display:"grid",alignContent:"center",justifyItems:"center",gap:8,textAlign:"center"}}>
-                    <div style={{fontSize:24,fontWeight:850,color:liveScoreMode?executionTierInfo.color:tierInfo.color,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:scoreFont,lineHeight:1,whiteSpace:"nowrap"}}>
-                      {liveScoreMode ? executionTierInfo.label : tierInfo.label}
-                    </div>
-                    <div style={{fontSize:10.5,fontWeight:700,color:liveScoreMode?c.ts:(scoreDelta>=0?c.gn:c.rd),fontFamily:scoreFont,fontVariantNumeric:"tabular-nums",lineHeight:1.35,whiteSpace:"nowrap"}}>
-                      {liveScoreMode
-                        ? <>Exec {scoreDeltaLabel(executionDelta)} · Strat {scoreDeltaLabel(scoreDelta)}</>
-                        : <>{scoreDeltaLabel(scoreDelta)} {dashTxt("vs prior period","مقارنة بالفترة السابقة")}</>}
-                    </div>
-                  </div>
-                  <div style={{width:202,height:"100%",display:"grid",placeItems:"center",overflow:"visible"}}>
-                    <div style={{display:"grid",placeItems:"center",width:180,height:132,overflow:"visible"}}>
-                      {compactScoreCardView === "radar"
-                        ? <MiniScoreRadar size={180}/>
-                        : liveScoreMode
-                          ? <DualScoreDonut size={162} stroke={6}/>
-                          : <ScoreDonut size={162}/>}
-                    </div>
-                  </div>
-                  <div style={{width:scoreDimensionTableWidth,height:"100%",display:"grid",gap:5,alignContent:"center",minWidth:0}}>
-                    {scoreDimensionRows.map(axis => <ScoreDimensionRow key={axis.key} axis={axis}/>)}
-                  </div>
-                  <div style={{width:202,height:"100%",display:"grid",gridTemplateRows:"124px 20px",gap:10,alignItems:"center",pointerEvents:"auto",fontFamily:scoreFont}}>
-                    <div style={{position:"relative",height:124,width:202,boxSizing:"border-box",overflow:"visible"}}>
-                      <span aria-hidden="true" style={{position:"absolute",left:0,right:0,bottom:4,textAlign:"center",fontSize:7,fontWeight:850,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:scoreFont,pointerEvents:"none"}}>{scoreTrendDayLabel}</span>
-                      <span aria-hidden="true" style={{position:"absolute",left:24,top:7,fontSize:7.8,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",fontFamily:scoreFont,pointerEvents:"none"}}>{strategyScore.compositePrior == null ? "-" : Math.round(strategyScore.compositePrior)}</span>
-                      <span aria-hidden="true" style={{position:"absolute",right:8,top:7,fontSize:7.8,fontWeight:850,color:tierInfo.color,fontVariantNumeric:"tabular-nums",fontFamily:scoreFont,pointerEvents:"none"}}>{strategyScore.composite == null ? "-" : Math.round(strategyScore.composite)}</span>
-                      <ScoreTrendChart width={200} height={120} compact/>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,minWidth:0}}>
-                      <span style={{fontSize:7.6,fontWeight:850,color:c.tx,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{dashTxt("Score Movement","حركة السكور")}</span>
-                    </div>
-                  </div>
+              <SummaryCard title={dashTxt("Talaria Score","درجة تالاريا")} minHeight={dashboardScoreCardHeight} titleDot={false} titleExtra={<ScoreProvisionalHeaderTag/>} right={<ScoreCompareDropdown/>} onMouseLeave={hideDashboardInfo} style={{height:dashboardScoreCardHeight,minHeight:dashboardScoreCardHeight,maxHeight:dashboardScoreCardHeight,padding:16,gap:10}}>
+                <div style={{flex:1,minHeight:0,overflow:"visible",fontFamily:scoreFont}}>
+                  <ScoreRingSlide/>
                 </div>
               </SummaryCard>
             );
+            const PropChallengeProgressSection = () => {
+              if (!isPropD) return null;
+              const sectionConfig = propConfig || { configured:false };
+              const sectionStatus = propStatus || btDashPropStatus(ds, {...metrics, propConfig:sectionConfig}) || btDashPropSetupStatus();
+              const configured = !!sectionConfig?.configured;
+              const rules = Array.isArray(sectionStatus?.rules) ? sectionStatus.rules : [];
+              const coreRuleNames = ["max drawdown", "trailing drawdown", "daily loss", "daily loss limit", "profit target", "min trading days"];
+              const coreRules = rules.filter(rule => coreRuleNames.some(name => String(rule?.rule || "").toLowerCase().includes(name)));
+              const limits = coreRules.filter(rule => rule?.kind === "limit");
+              const baseProgressRules = coreRules.filter(rule => rule?.kind === "target");
+              const breachedRule = rules.find(rule => rule?.status === "Breached");
+              const sourceTypeCode = btDashSourceTypeCode(ds);
+              const isLiveChallenge = dashboardSourceCapabilities.isLived === true;
+              const stepCount = Number(sectionStatus?.stepCount || sectionConfig?.stepCount || 1) > 1 ? 2 : 1;
+              const phaseNumber = Math.max(1, Math.min(3, Math.round(Number(sectionStatus?.phaseNumber || sectionConfig?.phaseNumber || 1))));
+              const phaseText = btDashTextLower(sectionStatus?.phaseLabel, sectionConfig?.phaseLabel, sectionConfig?.phase, sectionConfig?.challengeModel, ds?.phase, ds?.propStage, ds?.propStageKey);
+              const isFunded = phaseNumber === 3 || phaseText.includes("funded");
+              const breachDay = String(breachedRule?.worst || "").match(/\d{4}-\d{2}-\d{2}/)?.[0];
+              const activeNodeColor = isLiveChallenge ? c.acL : c.gold;
+              const statusColor = !configured ? c.gold : sectionStatus?.state === "failed" ? c.rd : isFunded ? c.gn : activeNodeColor;
+              const statusLabel = !configured
+                ? "SETUP NEEDED"
+                : sectionStatus?.state === "failed"
+                  ? (isLiveChallenge ? "ACCOUNT LOST" : "WOULD LOSE ACCOUNT")
+                  : isFunded
+                    ? (isLiveChallenge ? "FUNDED · ACTIVE" : "WOULD BE FUNDED")
+                    : (isLiveChallenge ? "ON TRACK" : "WOULD PASS");
+              const formatPercent = value => `${Math.max(0, Math.min(999, Math.round((Number(value) || 0) * 100)))}%`;
+              const formatMoneyAbs = value => `$${Math.abs(Math.round(Number(value) || 0)).toLocaleString()}`;
+              const instrumentLabel = sectionStatus?.instrumentClass || sectionConfig?.instrumentClass || "Forex";
+              const setupBadges = [
+                instrumentLabel,
+                `${stepCount}-step`,
+                isFunded ? "Funded" : (sectionStatus?.phaseLabel || sectionConfig?.phaseLabel || (stepCount > 1 ? `Phase ${phaseNumber}` : null)),
+              ].filter(Boolean);
+              const statusSubline = !configured
+                ? "Add challenge limits and targets in the source setup to activate rule tracking."
+                : isFunded
+                  ? sectionStatus?.state === "failed"
+                    ? `${breachedRule?.rule || "A funded rule"} ${isLiveChallenge ? "is breached" : "would lose the account"}${!isLiveChallenge && breachDay ? ` on ${breachDay}` : ""}.`
+                    : `${isLiveChallenge ? "Funded account is active" : "This source would stay funded"} while account limits remain intact.`
+                  : sectionStatus?.state === "failed"
+                    ? `${breachedRule?.rule || "A hard rule"} ${isLiveChallenge ? "is breached" : "would breach"}${!isLiveChallenge && breachDay ? ` on ${breachDay}` : ""}.`
+                    : sectionStatus?.state === "passed"
+                      ? `${isLiveChallenge ? "This source has passed" : "This source would pass"} the active rules with no breaches.`
+                      : `${isLiveChallenge ? "Live rules are intact" : "This source would pass under the selected sample"} while progress continues toward the target.`;
+              const targetRuleLabel = stepCount > 1 && !isFunded ? `Phase ${phaseNumber} target` : "Profit Target";
+              const progressRules = baseProgressRules.map(rule => String(rule?.rule || "").toLowerCase().includes("profit target")
+                ? {...rule, rule:targetRuleLabel, tag:stepCount > 1 ? `Phase ${phaseNumber}` : rule.tag, margin:stepCount > 1 && phaseNumber === 2 ? `Phase 1 done · ${rule.margin || ""}` : rule.margin}
+                : rule);
+              const ruleName = rule => String(rule?.rule || "").toLowerCase();
+              const dailyRule = coreRules.find(rule => ruleName(rule).includes("daily"));
+              const drawdownRule = coreRules.find(rule => ruleName(rule).includes("drawdown") && !ruleName(rule).includes("daily"));
+              const targetRule = progressRules.find(rule => ruleName(rule).includes("target"));
+              const minTradingDaysRule = progressRules.find(rule => ruleName(rule).includes("min trading"));
+              const fundedDrawdownRule = drawdownRule ? {...drawdownRule, rule:"Drawdown", tag:sectionConfig?.drawdownType === "trailing" ? "Trailing" : "Static"} : null;
+              const rawPayoutRows = [
+                ...(Array.isArray(ds?.payouts) ? ds.payouts : []),
+                ...(Array.isArray(ds?.payoutCertificates) ? ds.payoutCertificates : []),
+                ...(Array.isArray(ds?.certificates) ? ds.certificates.filter(item => btDashTextLower(item?.type, item?.kind).includes("payout")) : []),
+              ];
+              const payoutSplitPct = sectionConfig?.payoutSplitPct != null ? Number(sectionConfig.payoutSplitPct) : null;
+              const payoutRatio = payoutSplitPct != null ? Math.max(0, Math.min(1, payoutSplitPct / 100)) : 1;
+              const payoutMinAmount = sectionConfig?.payoutMinAmount != null ? Number(sectionConfig.payoutMinAmount) : null;
+              const payoutWindowDays = sectionConfig?.payoutWindowDays != null ? Number(sectionConfig.payoutWindowDays) : null;
+              const normalizePayoutDate = item => item?.date || item?.paidAt || item?.createdAt || item?.eligibleAt || item?.time || ds?.endDate;
+              const normalizePayoutAmount = item => Number(item?.amount ?? item?.payout ?? item?.netPayout ?? item?.value ?? 0) || 0;
+              const explicitPayoutLedger = rawPayoutRows.map((item, index) => ({
+                id:item?.id || `payout-${index}`,
+                date:normalizePayoutDate(item),
+                amount:normalizePayoutAmount(item),
+                certificate:item?.certificate || item?.certificateUrl || item?.file || item?.url || item?.href || null,
+              })).filter(item => item.amount > 0);
+              const simulatedPayoutLedger = (() => {
+                if (isLiveChallenge || !isFunded || !payoutMinAmount || !Array.isArray(metrics?.trades)) return [];
+                const rows = [...metrics.trades].sort((a,b) => new Date(a.exitTime || a.exit_time || a.date || a.calendar || ds?.startDate || 0) - new Date(b.exitTime || b.exit_time || b.date || b.calendar || ds?.startDate || 0));
+                const windowMs = (payoutWindowDays || 0) * 86400000;
+                let pool = 0;
+                let lastPayoutTime = 0;
+                let running = 0;
+                return rows.reduce((ledger, trade, index) => {
+                  pool += Math.max(0, Number(trade?.pnl) || 0);
+                  const rawDate = trade.exitTime || trade.exit_time || trade.date || trade.calendar || ds?.endDate;
+                  const time = rawDate ? new Date(rawDate).getTime() : Date.now();
+                  const eligibleByWindow = !windowMs || !lastPayoutTime || time - lastPayoutTime >= windowMs;
+                  const payoutAmount = pool * payoutRatio;
+                  if (eligibleByWindow && payoutAmount >= payoutMinAmount) {
+                    running += payoutAmount;
+                    ledger.push({id:`sim-payout-${index}`, date:rawDate, amount:payoutAmount, running});
+                    pool = 0;
+                    lastPayoutTime = time;
+                  }
+                  return ledger;
+                }, []);
+              })();
+              const payoutLedger = isLiveChallenge ? explicitPayoutLedger : simulatedPayoutLedger;
+              const payoutTotal = payoutLedger.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+              const lastPayoutDate = payoutLedger.length ? payoutLedger[payoutLedger.length - 1].date : ds?.startDate;
+              const endDate = ds?.endDate || metrics?.trades?.[metrics.trades.length - 1]?.date || new Date().toISOString();
+              const daysSinceLastPayout = lastPayoutDate && endDate ? Math.max(0, Math.round((new Date(endDate) - new Date(lastPayoutDate)) / 86400000)) : 0;
+              const payoutPool = Math.max(0, (Number(metrics?.totalPnl) || 0) - (payoutTotal / Math.max(0.01, payoutRatio)));
+              const payoutRules = isFunded ? [
+                {
+                  rule:"Next Payout",
+                  kind:"target",
+                  status:payoutMinAmount ? (payoutPool * payoutRatio >= payoutMinAmount ? "Pass" : "Open") : "Not set",
+                  tone:payoutMinAmount && payoutPool * payoutRatio >= payoutMinAmount ? "pass" : "open",
+                  tag:payoutSplitPct != null ? `${Math.round(payoutSplitPct)}% split` : null,
+                  used:payoutMinAmount ? Math.max(0, (payoutPool * payoutRatio) / payoutMinAmount) : 0,
+                  worst:payoutMinAmount ? `${fmtMoney(payoutPool * payoutRatio)} / ${formatMoneyAbs(payoutMinAmount)}` : "Add minimum payout",
+                  margin:payoutMinAmount ? `${formatMoneyAbs(Math.max(0, payoutMinAmount - payoutPool * payoutRatio))} left` : "Source setup",
+                },
+                {
+                  rule:"Payout Window",
+                  kind:"target",
+                  status:payoutWindowDays ? (daysSinceLastPayout >= payoutWindowDays ? "Pass" : "Open") : "Not set",
+                  tone:payoutWindowDays && daysSinceLastPayout >= payoutWindowDays ? "pass" : "open",
+                  used:payoutWindowDays ? Math.max(0, daysSinceLastPayout / payoutWindowDays) : 0,
+                  worst:payoutWindowDays ? `${daysSinceLastPayout} / ${payoutWindowDays} days` : "Add payout window",
+                  margin:payoutWindowDays ? (daysSinceLastPayout >= payoutWindowDays ? "Eligible" : `${Math.max(0, payoutWindowDays - daysSinceLastPayout)} days left`) : "Source setup",
+                },
+              ] : progressRules;
+              const PhaseStepper = () => {
+                const steps = stepCount > 1
+                  ? [
+                    {id:1, label:"Phase 1"},
+                    {id:2, label:"Phase 2"},
+                    {id:3, label:"Funded"},
+                  ]
+                  : [
+                    {id:1, label:"Challenge"},
+                    {id:3, label:"Funded"},
+                  ];
+                const activeIndex = isFunded ? steps.length - 1 : (stepCount > 1 ? Math.max(0, Math.min(steps.length - 1, phaseNumber - 1)) : 0);
+                return (
+                  <div style={{display:"flex",alignItems:"center",gap:0,flexWrap:"nowrap",justifyContent:"flex-start",minWidth:0,overflow:"visible"}}>
+                    {steps.map((step, index) => {
+                      const breached = sectionStatus?.state === "failed" && index === activeIndex;
+                      const complete = !breached && index < activeIndex;
+                      const active = !breached && index === activeIndex;
+                      const color = breached ? c.rd : complete ? c.gn : active ? activeNodeColor : c.tm;
+                      return (
+                        <React.Fragment key={step.id}>
+                          <span style={{display:"inline-flex",alignItems:"center",gap:7,minHeight:24,color,fontSize:8.5,fontWeight:900,letterSpacing:"0.055em",textTransform:"uppercase",whiteSpace:"nowrap"}}>
+                            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style={{display:"block",flex:"0 0 14px",overflow:"visible",filter:active?`drop-shadow(0 0 5px ${activeNodeColor}55)`:"none"}}>
+                              <circle cx="8" cy="8" r="6.2" fill={complete ? `${c.gn}24` : active ? `${activeNodeColor}18` : breached ? `${c.rd}18` : "rgba(255,255,255,0.01)"} stroke={color} strokeWidth="1.4" vectorEffect="non-scaling-stroke"/>
+                              {complete ? <path d="M4.7 8.1 7 10.25 11.35 5.65" fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="square" strokeLinejoin="miter" vectorEffect="non-scaling-stroke"/> : null}
+                              {breached ? <path d="M5.2 5.2 10.8 10.8M10.8 5.2 5.2 10.8" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="square" vectorEffect="non-scaling-stroke"/> : null}
+                              {!complete && active ? <circle cx="8" cy="8" r="2.15" fill={color}/> : null}
+                            </svg>
+                            <span>{step.label}</span>
+                          </span>
+                          {index < steps.length - 1 ? <span style={{width:34,height:1,background:index < activeIndex ? `${c.gn}70` : c.brH,margin:"0 8px",flexShrink:0}}/> : null}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                );
+              };
+              const RuleGroup = ({label, children}) => (
+                <div style={{display:"flex",flexDirection:"column",gap:9,minWidth:0}}>
+                  <div style={{display:"grid",gridTemplateColumns:"auto minmax(30px,1fr)",gap:10,alignItems:"center",minWidth:0}}>
+                    <div style={{fontSize:9.5,fontWeight:900,color:c.ts,textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"normal",lineHeight:1.1}}>{label}</div>
+                    <div aria-hidden="true" style={{height:1,background:"rgba(122,133,168,0.24)"}}/>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(218px,252px))",gap:10,alignItems:"stretch",justifyContent:"start"}}>{children}</div>
+                </div>
+              );
+              const PropRuleTile = ({rule}) => {
+                const isTarget = rule?.kind === "target";
+                const isBinary = rule?.kind === "binary";
+                const usedPct = Math.max(0, Math.min(100, (Number(rule?.used) || 0) * 100));
+                const tone = rule?.tone || (rule?.status === "Breached" ? "breached" : rule?.status === "Pass" ? "pass" : "open");
+                const tileColor = tone === "breached" ? c.rd : isTarget ? (usedPct >= 100 ? c.gn : c.gold) : tone === "pass" ? c.gn : c.gold;
+                const statusText = tone === "breached"
+                  ? "Breached"
+                  : isLiveChallenge
+                    ? (isTarget && usedPct >= 100 ? "Eligible" : tone === "pass" ? "OK" : "Open")
+                    : (isTarget ? (usedPct >= 100 ? "Pass" : "Open") : rule?.status === "Pass" ? "Pass" : rule?.status || "Open");
+                const fillWidth = isBinary ? 0 : Math.max(4, usedPct);
+                return (
+                  <div style={{width:"100%",minHeight:isBinary ? 78 : 104,display:"grid",gridTemplateRows:isBinary ? "auto auto" : "auto auto 9px",gap:10,padding:"13px 12px",background:"rgba(12,14,22,0.78)",border:`1px solid ${c.br}`,fontFamily:F,boxSizing:"border-box",minWidth:0}}>
+                    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:10,alignItems:"start",minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0,flexWrap:"wrap"}}>
+                        <span style={{fontSize:9.5,fontWeight:900,color:c.tx,textTransform:"uppercase",letterSpacing:"0.05em",whiteSpace:"normal",lineHeight:1.1,overflow:"visible"}}>{rule?.rule}</span>
+                        {rule?.tag ? <span style={{fontSize:7.5,fontWeight:900,color:tileColor,textTransform:"uppercase",letterSpacing:"0.06em",padding:"2px 5px",border:`1px solid ${tileColor}44`,background:`${tileColor}0d`,whiteSpace:"nowrap"}}>{rule.tag}</span> : null}
+                      </div>
+                      <span style={{fontSize:8.5,fontWeight:900,color:tileColor,textTransform:"uppercase",letterSpacing:"0.05em",padding:"2px 6px",border:`1px solid ${tileColor}50`,background:`${tileColor}10`,whiteSpace:"nowrap"}}>{statusText}</span>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:4,alignItems:"baseline",minWidth:0}}>
+                      <span style={{fontSize:10,fontWeight:900,color:c.tx,whiteSpace:"normal",lineHeight:1.18,overflow:"visible",fontVariantNumeric:"tabular-nums"}}>{rule?.worst || "-"}</span>
+                      <span style={{fontSize:8.8,fontWeight:800,color:c.ts,whiteSpace:"normal",lineHeight:1.2,overflow:"visible"}}>{rule?.margin || "-"}</span>
+                    </div>
+                    {!isBinary ? (
+                      <div aria-label={`${rule?.rule || "rule"} ${formatPercent(rule?.used)}`} style={{height:9,background:"rgba(150,158,180,0.22)",position:"relative",overflow:"hidden"}}>
+                        <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${fillWidth}%`,background:tileColor,opacity:.88,transition:"width 160ms ease"}}/>
+                        {isTarget ? <span style={{position:"absolute",right:0,top:-2,bottom:-2,width:1,background:"rgba(235,239,255,0.55)"}}/> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              };
+              const combinedPropRules = (isFunded
+                ? [
+                  fundedDrawdownRule ? {...fundedDrawdownRule, _propRuleGroup:"Funded"} : null,
+                  ...payoutRules.map(rule => ({...rule, _propRuleGroup:"Funded"})),
+                ]
+                : [
+                  dailyRule ? {...dailyRule, _propRuleGroup:"Challenge"} : null,
+                  drawdownRule ? {...drawdownRule, _propRuleGroup:"Challenge"} : null,
+                  targetRule ? {...targetRule, _propRuleGroup:"Challenge"} : null,
+                  minTradingDaysRule ? {...minTradingDaysRule, _propRuleGroup:"Challenge"} : null,
+                ]).filter(Boolean);
+              const PayoutPanel = () => {
+                if (!isFunded) return null;
+                const rows = payoutLedger.slice(-6);
+                return (
+                  <details style={{border:`1px solid ${c.br}`,background:"rgba(8,10,18,0.58)",fontFamily:F}}>
+                    <summary style={{listStyle:"none",minHeight:34,display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",alignItems:"center",gap:12,padding:"0 11px",cursor:"default"}}>
+                      <span style={{fontSize:9,fontWeight:950,color:c.tx,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"normal"}}>{isLiveChallenge ? "Payout Certificates" : "Would-be payout ledger"}</span>
+                      <span style={{fontSize:8.5,fontWeight:900,color:isLiveChallenge?c.gn:c.gold,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{fmtMoney(payoutTotal)} · {payoutLedger.length} payouts</span>
+                    </summary>
+                    <div style={{display:"grid",gap:0,borderTop:`1px solid ${c.br}`}}>
+                      {rows.length ? rows.map((row, index) => (
+                        <div key={row.id || index} style={{minHeight:32,display:"grid",gridTemplateColumns:"110px 110px minmax(0,1fr)",gap:12,alignItems:"center",padding:"0 11px",borderBottom:index < rows.length - 1 ? `1px solid ${c.br}` : "none"}}>
+                          <span style={{fontSize:8.5,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{fmtDate(row.date)}</span>
+                          <span style={{fontSize:9,fontWeight:950,color:c.gn,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{fmtMoney(row.amount)}</span>
+                          <span style={{fontSize:8.5,fontWeight:850,color:c.tm,whiteSpace:"normal",textAlign:"right"}}>
+                            {isLiveChallenge ? (row.certificate ? "Certificate linked" : "No certificate file") : "Simulated · no real certificate"}
+                          </span>
+                        </div>
+                      )) : (
+                        <div style={{minHeight:34,display:"flex",alignItems:"center",padding:"0 11px",fontSize:8.8,fontWeight:850,color:c.tm}}>
+                          {isLiveChallenge ? "No payout records stored yet." : "No would-be payouts reached the configured payout rules yet."}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                );
+              };
+              return (
+                <div style={{width:"100%",maxWidth:"none",alignSelf:"stretch",boxSizing:"border-box"}}>
+                  <SummaryCard
+                    title={dashTxt(isFunded ? "Funded Account" : "Challenge Rules", isFunded ? "حساب ممول" : "قواعد التحدي")}
+                    titleDot={false}
+                    minHeight={250}
+                    style={{width:"100%"}}
+                  >
+                    <div style={{display:"grid",gap:14,fontFamily:F,minWidth:0}}>
+                      <div style={{display:"grid",gridTemplateColumns:"minmax(220px,1fr) minmax(220px,auto)",gap:16,alignItems:"start",minWidth:0}}>
+                        <div style={{display:"grid",gap:5,minWidth:0}}>
+                          <div style={{fontSize:17,fontWeight:900,color:statusColor,letterSpacing:"0.04em",textTransform:"uppercase",whiteSpace:"normal",lineHeight:1.05,overflow:"visible"}}>{statusLabel}</div>
+                          <div style={{fontSize:9.5,fontWeight:780,color:c.ts,lineHeight:1.35,whiteSpace:"normal",overflow:"visible"}}>{statusSubline}</div>
+                        </div>
+                        <div style={{display:"grid",gap:7,justifyItems:"end",minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:7,flexWrap:"wrap",minWidth:0}}>
+                            {setupBadges.map((item, index) => (
+                              <span key={`${item}-${index}`} style={{fontSize:8.5,fontWeight:900,color:c.tx,textTransform:"uppercase",letterSpacing:"0.05em",padding:"5px 7px",border:`1px solid ${c.br}`,background:"rgba(255,255,255,0.014)",whiteSpace:"nowrap"}}>{item}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      {configured ? <PhaseStepper/> : null}
+                      {!configured ? (
+                        <div style={{padding:"10px 12px",border:`1px solid ${c.gold}55`,background:"rgba(224,169,59,0.055)",color:c.gold,fontSize:9.5,fontWeight:850,lineHeight:1.35,whiteSpace:"normal"}}>
+                          Add profit target, daily loss limit, max drawdown, and minimum trading days in the source setup so the dashboard can calculate challenge status.
+                        </div>
+                      ) : null}
+
+                      {configured ? (
+                        <>
+                          <div style={{display:"grid",gap:10,alignItems:"start",minWidth:0}}>
+                            <div style={{display:"grid",gridTemplateColumns:isFunded ? "repeat(3,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))",gap:10,alignItems:"stretch",justifyContent:"stretch",minWidth:0}}>
+                              {combinedPropRules.length ? combinedPropRules.map(rule => <PropRuleTile key={`${rule._propRuleGroup}-${rule.rule}`} rule={rule}/>) : (
+                                <div style={{gridColumn:"1 / -1",padding:"12px",border:`1px solid ${c.br}`,fontSize:9.5,fontWeight:850,color:c.tm}}>No active challenge rules found.</div>
+                              )}
+                            </div>
+                          </div>
+                          <PayoutPanel/>
+
+                          <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",paddingTop:2,fontSize:8.5,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                            {[["Ample headroom", c.gn], ["Getting close", c.gold], ["At/past limit", c.rd], ["Progress to target", c.gold]].map(([label, color]) => (
+                              <span key={label} style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                                <span style={{width:22,height:3,background:color,boxShadow:`0 0 8px ${color}55`}}/>
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  </SummaryCard>
+                </div>
+              );
+            };
             return (
               <div style={{display:"flex",flexDirection:"column",gap:22,animation:"tlrLoadFadeIn 0.1s ease"}}>
-                <div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:16}}>
-                  <div>
-                    <div style={{fontSize:8,fontWeight:900,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Overview","نظرة عامة")}</div>
-                    <h1 style={{margin:"5px 0 0",fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,letterSpacing:0,lineHeight:1}}>{dashTxt("Overview","نظرة عامة")}</h1>
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                  <div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:16}}>
+                    <div style={{display:"inline-flex",flexDirection:"column",alignItems:"flex-start"}}>
+                      <h1 style={{margin:0,fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,letterSpacing:0,lineHeight:1}}>{dashTxt("Snapshot","لمحة")}</h1>
+                      <div aria-hidden="true" style={{height:2,width:"100%",alignSelf:"stretch",marginTop:8,background:`linear-gradient(90deg,transparent,${c.acL} 46%,${c.acL} 54%,transparent)`,boxShadow:`0 0 9px ${c.acG}`}}/>
+                    </div>
+                    <DashboardEvidenceStrip/>
                   </div>
-                  <DashboardEvidenceStrip/>
+                  <div aria-hidden="true" style={{height:1,width:"100%",background:c.br,opacity:.95}}/>
                 </div>
 
                 <div>
-                  {sectionTitle(dashTxt("Overview","نظرة عامة"), dashTxt("Strategy health at a glance.","صحة الاستراتيجية في لمحة واحدة."))}
-                  <div style={{display:"grid",gridTemplateColumns:"4fr 8fr",gap:12,alignItems:"stretch"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"minmax(456px,1.18fr) minmax(0,3fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                     <CompactScoreCard/>
-                    <div style={{height:"100%",display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gridTemplateRows:"repeat(2,minmax(0,1fr))",gap:12,alignItems:"stretch"}}>
-                      {kpiSlots.map(slot => <PagedMetricCard key={slot.id} slot={slot}/>)}
+                    <div style={{height:dashboardScoreCardHeight,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gridTemplateRows:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                      {overviewCarouselSlots.map(slot => <PagedMetricCard key={slot.id} slot={slot}/>)}
                     </div>
                   </div>
                 </div>
+
+                <PropChallengeProgressSection/>
 
                 <div>
                   {sectionTitle(dashTxt("Equity Curve","منحنى الحساب"), dashTxt("Balance line with drawdown pressure underneath.","خط الرصيد مع ضغط السحب أسفله."))}
@@ -23244,7 +25579,7 @@ const TalariaV8b = () => {
                           <div key={item.label} style={{minHeight:50,display:"grid",gridTemplateColumns:"minmax(0,1fr) 84px 80px",alignItems:"center",gap:12,borderBottom:`1px solid ${c.br}`,fontFamily:F}}>
                             <div style={{minWidth:0}}>
                               <div style={{fontSize:8,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase"}}>{item.label}</div>
-                              <div style={{fontSize:12,fontWeight:900,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:4}}>{item.row.label}</div>
+                    <div style={{fontSize:12,fontWeight:900,color:c.tx,whiteSpace:"normal",lineHeight:1.08,overflow:"visible",marginTop:4}}>{item.row.label}</div>
                             </div>
                             <div style={{textAlign:"right",fontSize:10,fontWeight:900,color:item.row.pnl>=0?c.gn:c.rd,fontVariantNumeric:"tabular-nums"}}>{fmtValue(item.row.pnl, item.row.avgR)}</div>
                             <div style={{textAlign:"right",fontSize:8,fontWeight:900,color:c.tm,lineHeight:1.4}}>{item.row.trades} trades<br/>{fmtPct(item.row.winRate,0)} win</div>
@@ -23567,6 +25902,22 @@ const TalariaV8b = () => {
                     </div>
                   </Card>
                 </div>
+                <Card title={dashTxt("Periodic Returns","عوائد دورية")}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12}}>
+                    {periodTrail.slice(-4).map((row,index)=>{
+                      const tone = row.pnl >= 0 ? c.gn : c.rd;
+                      return (
+                        <div key={`${row.key || row.label}-${index}`} style={{minHeight:72,display:"grid",gridTemplateRows:"auto 1fr auto",gap:7,background:c.el,border:`1px solid ${c.br}`,padding:"10px 12px",fontFamily:F}}>
+                          <div style={{fontSize:9,fontWeight:900,color:c.tm,textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{row.label}</div>
+                          <div style={{fontSize:18,fontWeight:900,color:tone,fontVariantNumeric:"tabular-nums",alignSelf:"center"}}>{fmtValue(row.pnl,row.avgR)}</div>
+                          <div style={{height:4,background:c.trk}}>
+                            <div style={{height:"100%",width:`${Math.max(4,Math.min(100,Math.abs(row.pnl)/Math.max(1,...periodTrail.map(r=>Math.abs(r.pnl)))*100))}%`,background:tone}}/>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
               </div>
             );
           };
@@ -23642,7 +25993,7 @@ const TalariaV8b = () => {
             const longestRecovery = recoveredPeriods.length ? Math.max(...recoveredPeriods.map(period=>period.durationDays||0)) : 0;
             const currentDrawdown = ddSeries[ddSeries.length-1]?.drawdown || 0;
             const currentDrawdownPct = ddSeries[ddSeries.length-1]?.drawdownPct || 0;
-            const formatDepth = (depth, pct) => dashValueMode === "privacy" ? "***" : dashValueMode === "percentage" ? fmtPct(pct,1) : fmtAbsMoney(depth);
+            const formatDepth = (depth, pct) => dashOverviewUnitMode === "percent" ? fmtPct(pct,1) : dashValueMode === "privacy" ? dashPrivacyMask : fmtAbsMoney(depth);
             const chartW = 940, chartH = 330, padL = 56, padR = 24, padT = 28, padB = 42;
             const visibleSeries = ddSeries;
             const maxDepth = Math.max(1, ...visibleSeries.map(point=>Math.abs(Number(point.drawdown)||0)));
@@ -23916,10 +26267,11 @@ const TalariaV8b = () => {
                           );
                         })}
                       </div>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:10}}>
                         <StatCard label="Payoff Ratio" value={fmtNum(avgLossAbs ? avgWin / avgLossAbs : 0,2)} sub="Avg win divided by avg loss" color={avgWin>=avgLossAbs?c.gn:c.gold}/>
                         <StatCard label="Expectancy" value={`${fmtNum(metrics.avgR,2)}R`} sub="Average result per trade" color={metrics.avgR>=0?c.gn:c.rd}/>
                         <StatCard label="Win Needed" value={fmtPct(avgWin+avgLossAbs ? (avgLossAbs/(avgWin+avgLossAbs))*100 : 0,0)} sub="Break-even win rate" color={metrics.winRate >= (avgWin+avgLossAbs ? (avgLossAbs/(avgWin+avgLossAbs))*100 : 0) ? c.gn : c.rd}/>
+                        <StatCard label="Profit Factor" value={fmtNum(metrics.profitFactor,2)} sub="Gross profit divided by gross loss" color={metrics.profitFactor>=1.3?c.gn:c.gold}/>
                       </div>
                     </div>
                   </Card>
@@ -24004,7 +26356,6 @@ const TalariaV8b = () => {
               "strategy-health":"Strategy Health",
               "prop-challenge":"Prop Challenge",
               "live-discipline":"Live Discipline",
-              "strategy-source":"Strategy Source",
               "export-comparison":"Export & Comparison",
             };
             const pageTitle = titleByPage[pageId] || "Dashboard Page";
@@ -24162,30 +26513,52 @@ const TalariaV8b = () => {
             if (pageId === "breakdowns") {
               const rows = topSymbols.slice(0,10);
               const bubbleMax = Math.max(1,...rows.map(row=>row.trades));
+              const sampleRows = (input=[]) => (input || []).slice(0,7).map(row=>{
+                const n = Number(row.trades) || 0;
+                const muted = n > 0 && n < 20;
+                return {
+                  key:row.label,
+                  cells:[
+                    {value:row.label,color:muted?c.tm:c.tx},
+                    {value:n || "-",color:muted?c.gold:c.acL,align:"right"},
+                    {value:fmtPct(row.winRate||0,0),color:muted?c.tm:(row.winRate>=50?c.gn:c.rd),align:"right"},
+                    {value:fmtValue(row.pnl||0,row.avgR||0),color:muted?c.tm:((row.pnl||0)>=0?c.gn:c.rd),align:"right"},
+                  ]
+                };
+              });
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:18}}>
                   <PageHeader sub="Core Performance"/>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:14}}>
-                    <Card title="By Instrument"><BarList rows={metrics.bySymbol||[]} maxRows={7}/></Card>
-                    <Card title="By Session"><BarList rows={metrics.bySession||[]} maxRows={7}/></Card>
-                    <Card title="By Weekday"><BarList rows={metrics.byWeekday||[]} maxRows={7}/></Card>
+                    <Card title="By Instrument"><SimpleTable columns={["Instrument","n","Win","P&L"]} rows={sampleRows(metrics.bySymbol)}/></Card>
+                    <Card title="By Session"><SimpleTable columns={["Session","n","Win","P&L"]} rows={sampleRows(metrics.bySession)}/></Card>
+                    <Card title="By Weekday"><SimpleTable columns={["Day","n","Win","P&L"]} rows={sampleRows(metrics.byWeekday)}/></Card>
                   </div>
                   <Card title="Instrument Bubble Chart">
                     <svg width="100%" height={330} viewBox="0 0 760 260" preserveAspectRatio="none" style={{display:"block",background:c.el,border:`1px solid ${c.br}`}}>
                       <line x1="54" x2="730" y1="210" y2="210" stroke={c.brH}/>
                       <line x1="54" x2="54" y1="24" y2="210" stroke={c.brH}/>
-                      <text x="54" y="238" fill={c.tm} fontSize="9" fontWeight="900" fontFamily={F}>Expectancy</text>
-                      <text x="18" y="30" fill={c.tm} fontSize="9" fontWeight="900" fontFamily={F}>Win %</text>
+                      {[-2,-1,0,1,2,3].map(value=>{
+                        const x = 54 + Math.max(0,Math.min(1,(value+2)/5))*676;
+                        return <g key={`x-${value}`}><line x1={x} x2={x} y1="210" y2="216" stroke={c.brH}/><text x={x} y="231" textAnchor="middle" fill={c.tm} fontSize="8" fontWeight="900" fontFamily={F}>{value}R</text></g>;
+                      })}
+                      {[0,25,50,75,100].map(value=>{
+                        const y = 210 - Math.max(0,Math.min(1,value/100))*176;
+                        return <g key={`y-${value}`}><line x1="48" x2="54" y1={y} y2={y} stroke={c.brH}/><text x="42" y={y+3} textAnchor="end" fill={c.tm} fontSize="8" fontWeight="900" fontFamily={F}>{value}%</text></g>;
+                      })}
+                      <text x="392" y="252" fill={c.tm} fontSize="9" fontWeight="900" fontFamily={F} textAnchor="middle">Expectancy (R)</text>
+                      <text x="16" y="30" fill={c.tm} fontSize="9" fontWeight="900" fontFamily={F}>Win %</text>
                       {rows.map((row,index)=>{
                         const x = 54 + Math.max(0,Math.min(1,(row.avgR+2)/5))*676;
                         const y = 210 - Math.max(0,Math.min(1,row.winRate/100))*176;
                         const r = 6 + Math.sqrt(row.trades/bubbleMax)*18;
                         const color = row.pnl>=0?c.gn:c.rd;
-                        return <g key={row.label}><circle cx={x} cy={y} r={r} fill={`${color}44`} stroke={color} strokeWidth="1.4"/><text x={x} y={y+3} textAnchor="middle" fill={c.tx} fontSize="8" fontWeight="900" fontFamily={F}>{row.label}</text></g>;
+                        const muted = row.trades > 0 && row.trades < 20;
+                        return <g key={row.label}><circle cx={x} cy={y} r={r} fill={`${color}${muted?"18":"44"}`} stroke={muted?c.tm:color} strokeWidth="1.4"/><text x={x} y={y+3} textAnchor="middle" fill={muted?c.tm:c.tx} fontSize="8" fontWeight="900" fontFamily={F}>{row.label}</text><text x={x} y={y+r+12} textAnchor="middle" fill={muted?c.gold:c.tm} fontSize="7" fontWeight="900" fontFamily={F}>n {row.trades}</text></g>;
                       })}
                     </svg>
                   </Card>
-                  <SimpleTable columns={["Symbol","Trades","Win Rate","Avg R","P&L"]} rows={[...(metrics.bySymbol||[]),{label:"Total",trades:metrics.tradeCount,winRate:metrics.winRate,avgR:metrics.avgR,pnl:metrics.totalPnl}].map(row=>({key:row.label,cells:[{value:row.label,color:c.tx},{value:row.trades,align:"right"},{value:fmtPct(row.winRate,0),color:row.winRate>=50?c.gn:c.rd,align:"right"},{value:`${fmtNum(row.avgR,2)}R`,color:row.avgR>=0?c.gn:c.rd,align:"right"},{value:fmtValue(row.pnl,row.avgR),color:row.pnl>=0?c.gn:c.rd,align:"right"}]}))}/>
+                  <SimpleTable columns={["Symbol","n","Win Rate","Avg R","P&L"]} rows={[...(metrics.bySymbol||[]),{label:"Total",trades:metrics.tradeCount,winRate:metrics.winRate,avgR:metrics.avgR,pnl:metrics.totalPnl}].map(row=>{const muted = row.label !== "Total" && row.trades > 0 && row.trades < 20; return {key:row.label,cells:[{value:row.label,color:muted?c.tm:c.tx},{value:row.trades,align:"right",color:muted?c.gold:c.acL},{value:fmtPct(row.winRate,0),color:muted?c.tm:(row.winRate>=50?c.gn:c.rd),align:"right"},{value:`${fmtNum(row.avgR,2)}R`,color:muted?c.tm:(row.avgR>=0?c.gn:c.rd),align:"right"},{value:fmtValue(row.pnl,row.avgR),color:muted?c.tm:(row.pnl>=0?c.gn:c.rd),align:"right"}]};})}/>
                 </div>
               );
             }
@@ -24259,18 +26632,14 @@ const TalariaV8b = () => {
               const avgMae = Math.abs(avg(pathTrades,"mae"));
               const avgMfe = avg(pathTrades,"mfe");
               const capture = winners.length ? winners.reduce((sum,t)=>sum+(Math.abs(t.actualRR||0)/Math.max(.1,Math.abs(t.mfe||1))),0)/winners.length*100 : 0;
-              const durationRows = groupRows(t=>Math.min(6,Math.floor((Number(t.duration)||0)/60))+"h");
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:18}}>
                   <PageHeader sub="Trade Quality"/>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12}}>
                     <Metric label="Average Adverse" value={`${fmtNum(avgMae,2)}R`} sub="Movement against the trade" color={c.rd}/>
                     <Metric label="Average Favorable" value={`${fmtNum(avgMfe,2)}R`} sub="Movement in favor" color={c.gn}/>
                     <Metric label="Capture Ratio" value={fmtPct(capture,0)} sub="Captured favorable move" color={capture>=55?c.gn:c.gold}/>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <Card title="What-If Bars"><BarList rows={[{label:"Actual",pnl:metrics.totalPnl,avgR:metrics.avgR},{label:"Available During",pnl:pathTrades.reduce((s,t)=>s+Math.abs(t.mfe||0)*Math.max(1,Math.abs(t.pnl||0)/Math.max(.1,Math.abs(t.rMultiple||1))),0),avgR:avgMfe},{label:"Held Longer",pnl:pathTrades.reduce((s,t)=>s+Math.abs(t.mfe||0)*1.18*Math.max(1,Math.abs(t.pnl||0)/Math.max(.1,Math.abs(t.rMultiple||1))),0),avgR:avgMfe*1.18}]} maxRows={3}/></Card>
-                    <Card title="Duration Edge"><BarList rows={durationRows} maxRows={7}/></Card>
+                    <Metric label="Avg R" value={`${fmtNum(metrics.avgR,2)}R`} sub="Average result per trade" color={metrics.avgR>=0?c.gn:c.rd}/>
                   </div>
                   <Card title="Excursion Scatter">
                     <svg width="100%" height={300} viewBox="0 0 760 240" preserveAspectRatio="none" style={{display:"block",background:c.el,border:`1px solid ${c.br}`}}>
@@ -24285,6 +26654,7 @@ const TalariaV8b = () => {
             if (pageId === "what-if-simulator") {
               const stops = [0.5,1,1.5,2,2.5];
               const targets = [1,1.5,2,2.5,3,4];
+              const durationRows = groupRows(t=>Math.min(6,Math.floor((Number(t.duration)||0)/60))+"h");
               const sim = (stop,target) => {
                 const rs = pathTrades.map(t=>Math.abs(t.mfe||0)>=target ? target : Math.abs(t.mae||0)>=stop ? -stop : rForTrade(t));
                 return rs.length ? rs.reduce((s,r)=>s+r,0)/rs.length : 0;
@@ -24293,6 +26663,21 @@ const TalariaV8b = () => {
               const best = cells.sort((a,b)=>b.expectancy-a.expectancy)[0] || {stop:1,target:2,expectancy:0};
               let simEquity = capital;
               const simCurve = pathTrades.map(t=>{ const r = Math.abs(t.mfe||0)>=best.target ? best.target : Math.abs(t.mae||0)>=best.stop ? -best.stop : rForTrade(t); simEquity += r * (Math.abs(t.pnl||0)/Math.max(.2,Math.abs(t.rMultiple||1))); return simEquity; });
+              const rankedPnls = [...trades].map(pnlForTrade).sort((a,b)=>b-a);
+              const outlierRows = [1,3,5].filter(n=>n <= rankedPnls.length).map(n=>{
+                const bestRemoved = metrics.totalPnl - rankedPnls.slice(0,n).reduce((sum,value)=>sum+value,0);
+                const worstRemoved = metrics.totalPnl - rankedPnls.slice(-n).reduce((sum,value)=>sum+value,0);
+                const denom = Math.max(1, metrics.tradeCount - n);
+                return {
+                  key:`outliers-${n}`,
+                  cells:[
+                    {value:`Remove ${n}`,color:c.tx},
+                    {value:fmtValue(bestRemoved),color:bestRemoved>=0?c.gn:c.rd,align:"right"},
+                    {value:fmtNum(bestRemoved/denom/Math.max(1,Math.abs(metrics.avgLoss||1)),2)+"R",color:bestRemoved>=0?c.gn:c.rd,align:"right"},
+                    {value:fmtValue(worstRemoved),color:worstRemoved>=0?c.gn:c.rd,align:"right"},
+                  ]
+                };
+              });
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:18}}>
                   <PageHeader sub="Simulation"/>
@@ -24307,6 +26692,13 @@ const TalariaV8b = () => {
                     <Card title="Simulated vs Actual Equity"><BtMiniLine points={simCurve} c={c} color={c.gold} height={160} fill/><div style={{height:8}}/><BtMiniLine points={metrics.equityPoints.map(p=>p.value)} c={c} color={metrics.totalPnl>=0?c.gn:c.rd} height={120} fill/></Card>
                     <Card title="Planned vs Actual"><StatRow label="Best TP" value={`${best.target}R`} color={c.gn}/><StatRow label="Best SL" value={`${best.stop}R`} color={c.rd}/><StatRow label="Best expectancy" value={`${fmtNum(best.expectancy,2)}R`} color={best.expectancy>=0?c.gn:c.rd}/><StatRow label="Modified exits" value={trades.filter(t=>t.reason!=="Target").length} color={c.gold}/></Card>
                   </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <Card title="What-If Bars"><BarList rows={[{label:"Actual",pnl:metrics.totalPnl,avgR:metrics.avgR},{label:"Available During",pnl:pathTrades.reduce((s,t)=>s+Math.abs(t.mfe||0)*Math.max(1,Math.abs(t.pnl||0)/Math.max(.1,Math.abs(t.rMultiple||1))),0),avgR:avg(pathTrades,"mfe")},{label:"Held Longer",pnl:pathTrades.reduce((s,t)=>s+Math.abs(t.mfe||0)*1.18*Math.max(1,Math.abs(t.pnl||0)/Math.max(.1,Math.abs(t.rMultiple||1))),0),avgR:avg(pathTrades,"mfe")*1.18}]} maxRows={3}/></Card>
+                    <Card title="Duration Edge"><BarList rows={durationRows} maxRows={7}/></Card>
+                  </div>
+                  <Card title="Outlier Dependence" right={<div style={{fontSize:9,fontWeight:900,color:c.gold,fontFamily:F}}>Best / worst trade sensitivity</div>}>
+                    <SimpleTable columns={["Scenario","Net after best","Expectancy","Net after worst"]} rows={outlierRows}/>
+                  </Card>
                 </div>
               );
             }
@@ -24326,7 +26718,7 @@ const TalariaV8b = () => {
                     <Card title="Monte Carlo Paths"><svg width="100%" height={260} viewBox="0 0 720 210" preserveAspectRatio="none" style={{background:c.el,border:`1px solid ${c.br}`}}>{paths.map((path,index)=>{const min=Math.min(...path,capital),max=Math.max(...path,capital),range=Math.max(1,max-min);const d=path.map((v,i)=>`${i?"L":"M"}${20+(i/Math.max(1,path.length-1))*680},${190-(v-min)/range*165}`).join(" ");return <path key={index} d={d} fill="none" stroke={index===0?c.acL:c.tm} strokeWidth={index===0?2:1} opacity={index===0?.9:.25}/>})}</svg></Card>
                     <Card title="Outcome Distribution"><BarList rows={finalRows} maxRows={10}/></Card>
                   </div>
-                  <Card title="Correlation, Autocorrelation & Runs"><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}><Metric label="Win clustering" value={fmtNum(Math.abs(metrics.longestWin-metrics.longestLoss)/Math.max(1,metrics.tradeCount),2)} sub="Runs test proxy" color={c.gold}/><Metric label="Loss clustering" value={metrics.longestLoss} sub="Longest loss sequence" color={c.rd}/><Metric label="Independence" value={metrics.longestLoss<6?"Stable":"Watch"} sub="Sequence risk read" color={metrics.longestLoss<6?c.gn:c.gold}/></div></Card>
+                  <Card title="Correlation, Autocorrelation & Runs"><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12}}><Metric label="Win clustering" value={fmtNum(Math.abs(metrics.longestWin-metrics.longestLoss)/Math.max(1,metrics.tradeCount),2)} sub="Runs test proxy" color={c.gold}/><Metric label="Loss clustering" value={metrics.longestLoss} sub="Longest loss sequence" color={c.rd}/><Metric label="Independence" value={metrics.longestLoss<6?"Stable":"Watch"} sub="Sequence risk read" color={metrics.longestLoss<6?c.gn:c.gold}/><Metric label="Profit Factor" value={fmtNum(metrics.profitFactor,2)} sub="Return quality proxy" color={metrics.profitFactor>=1.3?c.gn:c.gold}/></div></Card>
                 </div>
               );
             }
@@ -24344,10 +26736,7 @@ const TalariaV8b = () => {
                       {pre.map(p=><React.Fragment key={p}><div style={{height:42,display:"flex",alignItems:"center",fontSize:9,fontWeight:900,color:c.gold}}>{p}</div>{post.map(q=>{const rows=trades.filter(t=>(t.preTags||[]).includes(p)&&(t.postTags||[]).includes(q));const ar=avg(rows,"rMultiple");const color=ar>=0?c.gn:c.rd;return <div key={q} title={`${rows.length} trades / ${fmtNum(ar,2)}R`} style={{height:42,display:"grid",placeItems:"center",background:rows.length?`${color}22`:c.el,border:`1px solid ${c.br}`,fontSize:10,fontWeight:900,color:rows.length?color:c.tm}}>{rows.length}</div>})}</React.Fragment>)}
                     </div>
                   </Card>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <Card title="Tag Performance Tables"><BarList rows={[...groupRows(t=>(t.preTags||[])[0]),...groupRows(t=>(t.postTags||[])[0])].slice(0,10)} maxRows={10}/></Card>
-                    <Card title="Behavioral Tilt"><BtMiniLine points={behavior.map(x=>x.value)} c={c} color={c.gold} height={190} fill/><StatRow label="Rule breaks" value={trades.filter(t=>!t.rulesFollowed).length} color={c.rd}/><StatRow label="Disciplined trades" value={trades.filter(t=>t.rulesFollowed).length} color={c.gn}/></Card>
-                  </div>
+                  <Card title="Tag Performance Tables"><BarList rows={[...groupRows(t=>(t.preTags||[])[0]),...groupRows(t=>(t.postTags||[])[0])].slice(0,10)} maxRows={10}/></Card>
                   <Card title="Edge Finder"><div style={{display:"grid",gap:8}}>{[metrics.byTag?.[0],metrics.bySymbol?.[0],metrics.bySession?.[0]].filter(Boolean).map(row=><div key={row.label} style={{borderBottom:`1px solid ${c.br}`,padding:"0 0 8px",fontSize:11,fontWeight:850,color:c.ts,fontFamily:F}}>When <span style={{color:c.acL,fontWeight:900}}>{row.label}</span> appears, this slice produced <span style={{color:row.pnl>=0?c.gn:c.rd,fontWeight:900}}>{fmtValue(row.pnl,row.avgR)}</span> across {row.trades} trades.</div>)}</div></Card>
                 </div>
               );
@@ -24399,7 +26788,30 @@ const TalariaV8b = () => {
                   <PageHeader sub="Special Modes"/>
                   <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:14}}>
                     <Card title="Discipline Score"><div style={{display:"grid",placeItems:"center"}}><BtGaugeRing value={score} size={180} c={c} color={score>=75?c.gn:score>=50?c.gold:c.rd} label="Discipline"/></div></Card>
-                    <Card title="Classification"><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}><Metric label="According to plan" value={followed} sub="Rules followed" color={c.gn}/><Metric label="Out of plan" value={out} sub="Rules broken" color={c.rd}/><Metric label="Missed trades" value={missed} sub="Estimated opportunity cost" color={c.gold}/></div></Card>
+                    <Card title="Classification"><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12}}><Metric label="According to plan" value={followed} sub="Rules followed" color={c.gn}/><Metric label="Out of plan" value={out} sub="Rules broken" color={c.rd}/><Metric label="Missed trades" value={missed} sub="Estimated opportunity cost" color={c.gold}/><Metric label="Discipline score" value={score} sub="Live execution quality" color={score>=75?c.gn:score>=50?c.gold:c.rd}/></div></Card>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <Card title="Execution & Rule Adherence"><BarList rows={[{label:"Rules followed",pnl:followed,avgR:1},{label:"Rules broken",pnl:-out,avgR:-1},{label:"Missed trades",pnl:-missed,avgR:-.7},{label:"Journaled trades",pnl:Math.round(metrics.tradeCount*.72),avgR:.4}]} maxRows={4}/></Card>
+                    <Card title="Planned vs Actual">
+                      {planAdherence.available ? (
+                        <>
+                          <BarList rows={[
+                            {label:"If followed plan",pnl:Number(planAdherence.ifFollowed?.pnl)||0,avgR:Number(planAdherence.ifFollowed?.r)||0},
+                            {label:"Actual result",pnl:Number(planAdherence.actual?.pnl)||0,avgR:Number(planAdherence.actual?.r)||0},
+                            {label:"Discipline cost",pnl:-Math.abs(Number(planAdherence.cost?.pnl)||0),avgR:-Math.abs(Number(planAdherence.cost?.r)||0)}
+                          ]} maxRows={3}/>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:12}}>
+                            <Metric label="According to plan" value={planAdherence.followed?.count || 0} sub={formatPlanAdherenceValue(planAdherence.followed?.actual)} color={c.gn}/>
+                            <Metric label="Out of plan" value={planAdherence.outOfPlan?.count || 0} sub={formatPlanAdherenceValue(planAdherence.outOfPlan?.actual)} color={c.rd}/>
+                            <Metric label="Missed trades" value={planAdherence.missed?.count || 0} sub={formatPlanAdherenceValue(planAdherence.missed?.planned)} color={c.gold}/>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{minHeight:118,display:"grid",placeItems:"center",fontFamily:F,fontSize:11,fontWeight:850,color:c.tm,textAlign:"center",lineHeight:1.45}}>
+                          {planAdherence.missingReason || "Plan-adherence data not available - log missed trades and tag deviations."}
+                        </div>
+                      )}
+                    </Card>
                   </div>
                   <Card title="Your Demons">
                     {demonRows.length ? (
@@ -24432,18 +26844,6 @@ const TalariaV8b = () => {
                     )}
                   </Card>
                   <Card title="Plan-Adherence Equity"><BtMiniLine points={metrics.equityPoints.map(p=>p.value)} c={c} color={c.acL} height={170} fill/><StatRow label="Deviation cost" value={fmtValue(-Math.abs(out*avg(trades,"pnl")*.24))} color={c.rd}/></Card>
-                </div>
-              );
-            }
-
-            if (pageId === "strategy-source") {
-              const sourceItems = (dashboardAppliedSourceItems?.length ? dashboardAppliedSourceItems : [{label:ds.name || "Current Source",typeLabel:"Backtest",trades,tradeCount:trades.length,pnl:metrics.totalPnl,sessions:[ds]}]);
-              const totalPnl = Math.max(1,Math.abs(sourceItems.reduce((sum,item)=>sum+(Number(item.pnl)||0),0)));
-              return (
-                <div style={{display:"flex",flexDirection:"column",gap:18}}>
-                  <PageHeader sub="Special Modes"/>
-                  <Card title="Source Reconciliation"><SimpleTable columns={["Source","Type","Trades","Date Range","Status"]} rows={sourceItems.map((item,index)=>({key:item.key||index,cells:[{value:item.label,color:c.tx},{value:item.typeLabel||"Source",color:c.acL},{value:item.tradeCount||item.trades?.length||0,align:"right"},{value:item.sessions?.[0] ? `${item.sessions[0].startDate || "-"} - ${item.sessions[0].endDate || "-"}` : "-",color:c.ts},{value:"Mapped",color:c.gn,align:"right"}]}))}/></Card>
-                  <Card title="Source Attribution"><div style={{display:"grid",gap:10}}>{sourceItems.map((item,index)=>{const pnl=Number(item.pnl)||0;return <div key={item.key||index} style={{display:"grid",gridTemplateColumns:"150px 1fr 80px",gap:10,alignItems:"center",fontFamily:F}}><div style={{fontSize:10,fontWeight:900,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.label}</div><div style={{height:8,background:c.trk}}><div style={{height:"100%",width:`${Math.max(2,Math.abs(pnl)/totalPnl*100)}%`,background:pnl>=0?c.gn:c.rd}}/></div><div style={{fontSize:10,fontWeight:900,color:pnl>=0?c.gn:c.rd,textAlign:"right"}}>{fmtValue(pnl)}</div></div>})}</div></Card>
                 </div>
               );
             }
@@ -24617,13 +27017,30 @@ const TalariaV8b = () => {
                 ))}
               </div>
             );
-            const MiniGrid = ({rows=5, cols=7, colorFn=null}) => (
-              <div style={{display:"grid",gridTemplateColumns:`repeat(${cols}, 1fr)`,gap:5}}>
-                {Array.from({length:rows*cols},(_,index)=>{
-                  const value = Math.sin(index*1.7) + Math.cos(index*.6);
-                  const color = colorFn ? colorFn(value,index) : value >= 0 ? c.gn : c.rd;
-                  return <div key={index} style={{height:34,display:"grid",placeItems:"center",background:`${color}${value>=0?"24":"20"}`,border:`1px solid ${c.br}`,fontSize:9,fontWeight:900,color,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{fmtNum(value,1)}</div>;
-                })}
+            const MiniGrid = ({rows=5, cols=7, colorFn=null, rowLabels=null, colLabels=null, legend=false}) => (
+              <div style={{display:"grid",gap:8}}>
+                {colLabels?.length ? <div style={{display:"grid",gridTemplateColumns:`${rowLabels?.length ? "56px " : ""}repeat(${cols}, 1fr)`,gap:5,fontFamily:F}}>
+                  {rowLabels?.length ? <div/> : null}
+                  {colLabels.slice(0,cols).map(label=><div key={label} style={{fontSize:8,fontWeight:900,color:c.tm,textAlign:"center",textTransform:"uppercase"}}>{label}</div>)}
+                </div> : null}
+                <div style={{display:"grid",gridTemplateColumns:`${rowLabels?.length ? "56px " : ""}repeat(${cols}, 1fr)`,gap:5}}>
+                {Array.from({length:rows},(_,rowIndex)=>(
+                  <React.Fragment key={`row-${rowIndex}`}>
+                    {rowLabels?.length ? <div style={{height:34,display:"grid",alignItems:"center",fontSize:8,fontWeight:900,color:c.tm,fontFamily:F,textTransform:"uppercase"}}>{rowLabels[rowIndex] || ""}</div> : null}
+                    {Array.from({length:cols},(_,colIndex)=>{
+                      const index = rowIndex*cols + colIndex;
+                      const value = Math.sin(index*1.7) + Math.cos(index*.6);
+                      const color = colorFn ? colorFn(value,index) : value >= 0 ? c.gn : c.rd;
+                      return <div key={index} style={{height:34,display:"grid",placeItems:"center",background:`${color}${value>=0?"24":"20"}`,border:`1px solid ${c.br}`,fontSize:9,fontWeight:900,color,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{fmtNum(value,1)}</div>;
+                    })}
+                  </React.Fragment>
+                ))}
+                </div>
+                {legend ? <div style={{display:"flex",gap:12,alignItems:"center",fontSize:8,fontWeight:900,color:c.tm,fontFamily:F,textTransform:"uppercase"}}>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}><i style={{width:10,height:6,background:c.gn,display:"inline-block"}}/> Better pass odds</span>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}><i style={{width:10,height:6,background:c.gold,display:"inline-block"}}/> Neutral</span>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5}}><i style={{width:10,height:6,background:c.rd,display:"inline-block"}}/> Failure risk</span>
+                </div> : null}
               </div>
             );
             const Scatter = ({mode="mae"}) => (
@@ -24653,25 +27070,45 @@ const TalariaV8b = () => {
                 ["End",metrics.endingBalance,c.acL,"Ending account balance after every adjustment."],
               ];
               const activeWaterfallStep = waterfallSteps.find(step=>step[0]===dashPdfWaterfallStep) || waterfallSteps[waterfallSteps.length-1];
+              const pdfSampleRows = (input=[]) => (input || []).slice(0,6).map(row=>{
+                const n = Number(row.trades) || 0;
+                const muted = n > 0 && n < 20;
+                return {key:row.label,cells:[
+                  {value:row.label,color:muted?c.tm:c.tx},
+                  {value:n || "-",color:muted?c.gold:c.acL,align:"right"},
+                  {value:fmtPct(row.winRate||0,0),color:muted?c.tm:((row.winRate||0)>=50?c.gn:c.rd),align:"right"},
+                  {value:fmtValue(row.pnl||0,row.avgR||0),color:muted?c.tm:((row.pnl||0)>=0?c.gn:c.rd),align:"right"},
+                ]};
+              });
               return (
-                <PdfCard title="Balance Waterfall">
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,alignItems:"end",height:190,fontFamily:F}}>
-                    {waterfallSteps.map(([label,value,color],index)=>{
-                      const active = activeWaterfallStep[0] === label;
-                      return (
-                      <button type="button" key={label} onClick={()=>setDashPdfWaterfallStep(label)} style={{display:"grid",gridTemplateRows:"1fr auto auto",gap:7,height:"100%",background:active?`${color}12`:"transparent",border:`1px solid ${active?`${color}66`:"transparent"}`,padding:6,cursor:"pointer",fontFamily:F,transition:"background 0.06s linear, border-color 0.06s linear"}}>
-                        <div style={{alignSelf:"end",height:`${Math.max(14,Math.min(150,Math.abs(Number(value)||0)/Math.max(1,Math.abs(metrics.grossWin||capital))*150))}px`,background:color,opacity:index===0||index===5?.5:.88,boxShadow:active?`0 0 14px ${color}55`:"none"}}/>
-                        <div style={{fontSize:10,fontWeight:900,color,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{index===0||index===5?fmtAbsMoney(value):fmtValue(value)}</div>
-                        <div style={{fontSize:8,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>{label}</div>
-                      </button>
-                    );})}
+                <>
+                  <PdfCard title="Balance Waterfall">
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,alignItems:"end",height:190,fontFamily:F}}>
+                      {waterfallSteps.map(([label,value,color],index)=>{
+                        const active = activeWaterfallStep[0] === label;
+                        return (
+                        <button type="button" key={label} onClick={()=>setDashPdfWaterfallStep(label)} style={{display:"grid",gridTemplateRows:"1fr auto auto",gap:7,height:"100%",background:active?`${color}12`:"transparent",border:`1px solid ${active?`${color}66`:"transparent"}`,padding:6,cursor:"pointer",fontFamily:F,transition:"background 0.06s linear, border-color 0.06s linear"}}>
+                          <div style={{alignSelf:"end",height:`${Math.max(14,Math.min(150,Math.abs(Number(value)||0)/Math.max(1,Math.abs(metrics.grossWin||capital))*150))}px`,background:color,opacity:index===0||index===5?.5:.88,boxShadow:active?`0 0 14px ${color}55`:"none"}}/>
+                          <div style={{fontSize:10,fontWeight:900,color,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{index===0||index===5?fmtAbsMoney(value):fmtValue(value)}</div>
+                          <div style={{fontSize:8,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",textAlign:"right"}}>{label}</div>
+                        </button>
+                      );})}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"160px 120px minmax(0,1fr)",gap:12,alignItems:"center",background:c.el,border:`1px solid ${c.br}`,padding:"10px 12px",fontFamily:F}}>
+                      <div style={{fontSize:9,fontWeight:900,color:activeWaterfallStep[2],letterSpacing:"0.07em",textTransform:"uppercase"}}>{activeWaterfallStep[0]}</div>
+                      <div style={{fontSize:14,fontWeight:900,color:activeWaterfallStep[2],fontVariantNumeric:"tabular-nums",textAlign:"right"}}>{activeWaterfallStep[0]==="Start"||activeWaterfallStep[0]==="End"?fmtAbsMoney(activeWaterfallStep[1]):fmtValue(activeWaterfallStep[1])}</div>
+                      <div style={{fontSize:10,fontWeight:800,color:c.ts,lineHeight:1.35}}>{activeWaterfallStep[3]}</div>
+                    </div>
+                  </PdfCard>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:14}}>
+                    <PdfCard title="By Instrument"><PdfTable columns={["Instrument","n","Win","P&L"]} rows={pdfSampleRows(metrics.bySymbol)}/></PdfCard>
+                    <PdfCard title="By Session"><PdfTable columns={["Session","n","Win","P&L"]} rows={pdfSampleRows(metrics.bySession)}/></PdfCard>
+                    <PdfCard title="By Weekday"><PdfTable columns={["Day","n","Win","P&L"]} rows={pdfSampleRows(metrics.byWeekday)}/></PdfCard>
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"160px 120px minmax(0,1fr)",gap:12,alignItems:"center",background:c.el,border:`1px solid ${c.br}`,padding:"10px 12px",fontFamily:F}}>
-                    <div style={{fontSize:9,fontWeight:900,color:activeWaterfallStep[2],letterSpacing:"0.07em",textTransform:"uppercase"}}>{activeWaterfallStep[0]}</div>
-                    <div style={{fontSize:14,fontWeight:900,color:activeWaterfallStep[2],fontVariantNumeric:"tabular-nums",textAlign:"right"}}>{activeWaterfallStep[0]==="Start"||activeWaterfallStep[0]==="End"?fmtAbsMoney(activeWaterfallStep[1]):fmtValue(activeWaterfallStep[1])}</div>
-                    <div style={{fontSize:10,fontWeight:800,color:c.ts,lineHeight:1.35}}>{activeWaterfallStep[3]}</div>
-                  </div>
-                </PdfCard>
+                  <PdfCard title="Per-Symbol Sample Table">
+                    <PdfTable columns={["Symbol","n","Win Rate","Avg R","P&L"]} rows={[...(metrics.bySymbol||[]),{label:"Total",trades:metrics.tradeCount,winRate:metrics.winRate,avgR:metrics.avgR,pnl:metrics.totalPnl}].map(row=>{const muted = row.label !== "Total" && row.trades > 0 && row.trades < 20; return {key:row.label,cells:[{value:row.label,color:muted?c.tm:c.tx},{value:row.trades,align:"right",color:muted?c.gold:c.acL},{value:fmtPct(row.winRate,0),color:muted?c.tm:(row.winRate>=50?c.gn:c.rd),align:"right"},{value:`${fmtNum(row.avgR,2)}R`,color:muted?c.tm:(row.avgR>=0?c.gn:c.rd),align:"right"},{value:fmtValue(row.pnl,row.avgR),color:muted?c.tm:(row.pnl>=0?c.gn:c.rd),align:"right"}]};})}/>
+                  </PdfCard>
+                </>
               );
             }
 
@@ -24734,15 +27171,7 @@ const TalariaV8b = () => {
                     </PdfCard>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <PdfCard title="Box Plots at Key Moments">
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8,height:190,alignItems:"end",fontFamily:F}}>
-                        {["MAE","MFE","Exit","P+10","P+25","P+50"].map((label,index)=><div key={label} style={{display:"grid",gridTemplateRows:"1fr auto",gap:7}}><div style={{height:60+index*12,alignSelf:"end",border:`1px solid ${index<2?c.gold:c.acL}`,background:index<2?`${c.gold}18`:`${c.acL}18`,position:"relative"}}><span style={{position:"absolute",left:"40%",top:"42%",width:9,height:9,transform:"rotate(45deg)",background:index<2?c.gold:c.acL}}/></div><div style={{fontSize:8,fontWeight:900,color:c.tm,textAlign:"center"}}>{label}</div></div>)}
-                      </div>
-                    </PdfCard>
-                    <PdfCard title="During vs Total MFE"><Scatter mode="during-total"/></PdfCard>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <PdfCard title="MAE vs MFE"><Scatter mode="mae"/></PdfCard>
+                    <PdfCard title="Excursion Scatter"><Scatter mode="mae"/></PdfCard>
                     <PdfCard title="MAE and MFE Distributions">
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                         <PdfBars rows={[.2,.4,.6,.8,1,1.2,1.6].map((x,i)=>({label:`${fmtNum(i?x-.2:0,1)}-${fmtNum(x,1)}R`,pnl:(i<3?1:-1)*(20-i*2),avgR:x}))} maxRows={7}/>
@@ -24772,11 +27201,29 @@ const TalariaV8b = () => {
               const simulatedImpact = metrics.totalPnl * modeMultiplier + (dashPdfTp - 2.4) * metrics.tradeCount * 18 - (dashPdfSl - .9) * metrics.tradeCount * 12;
               const tpMarker = `${Math.max(52,Math.min(92,50 + dashPdfTp/5*50))}%`;
               const slMarker = `${Math.max(8,Math.min(48,50 - dashPdfSl/2.5*50))}%`;
+              const rankedPnls = [...trades].map(pnlForTrade).sort((a,b)=>b-a);
+              const outlierRows = [1,3,5].filter(n=>n <= rankedPnls.length).map(n=>{
+                const bestRemoved = metrics.totalPnl - rankedPnls.slice(0,n).reduce((sum,value)=>sum+value,0);
+                const worstRemoved = metrics.totalPnl - rankedPnls.slice(-n).reduce((sum,value)=>sum+value,0);
+                const remaining = Math.max(1, metrics.tradeCount - n);
+                return {key:`outlier-${n}`,cells:[
+                  {value:`Remove ${n}`,color:c.tx},
+                  {value:fmtValue(bestRemoved),color:bestRemoved>=0?c.gn:c.rd,align:"right"},
+                  {value:`${fmtNum(bestRemoved/remaining/Math.max(1,Math.abs(metrics.avgLoss||1)),2)}R`,color:bestRemoved>=0?c.gn:c.rd,align:"right"},
+                  {value:fmtValue(worstRemoved),color:worstRemoved>=0?c.gn:c.rd,align:"right"},
+                ]};
+              });
               return (
                 <>
                   <PdfCard title="TP / SL Optimizer">
                     <div style={{display:"grid",gridTemplateColumns:"1fr 240px",gap:16,alignItems:"stretch"}}>
                       <div style={{display:"grid",gap:6,fontFamily:F}}>
+                        <div style={{display:"grid",gridTemplateColumns:"70px 1fr",gap:9,alignItems:"center"}}>
+                          <div style={{fontSize:8,fontWeight:900,color:c.tm,textTransform:"uppercase"}}>Trade</div>
+                          <div style={{position:"relative",height:16}}>
+                            {[["0%","Stop side"],["50%","Entry"],["100%","Target side"]].map(([left,label])=><span key={label} style={{position:"absolute",left,transform:left==="0%"?"none":left==="100%"?"translateX(-100%)":"translateX(-50%)",fontSize:8,fontWeight:900,color:c.tm,textTransform:"uppercase"}}>{label}</span>)}
+                          </div>
+                        </div>
                         {pathTrades.slice(0,16).map((trade,index)=>{
                           const fav = Math.min(100,Math.abs(trade.mfe||0)/4*100);
                           const adv = Math.min(100,Math.abs(trade.mae||0)/2.5*100);
@@ -24798,6 +27245,9 @@ const TalariaV8b = () => {
                       </div>
                     </div>
                   </PdfCard>
+                  <PdfCard title="Outlier Dependence" right={<span style={{fontSize:9,fontWeight:900,color:c.gold,fontFamily:F,textTransform:"uppercase"}}>best / worst N</span>}>
+                    <PdfTable columns={["Scenario","Net after best","Expectancy","Net after worst"]} rows={outlierRows}/>
+                  </PdfCard>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                     <PdfCard title="Simulation Modes">
                       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
@@ -24818,31 +27268,18 @@ const TalariaV8b = () => {
 
             if (pageKey === "edge-behavior") {
               const combos = ["HTF Bias + FVG + Discount","London + Sweep + MSS","Trend + Pullback + Entry","Range + OB + Rejection","NY AM + FVG + Momentum"];
-              const comboRows = combos.map((label,index)=>({label,pnl:metrics.totalPnl*(.19-index*.025),avgR:metrics.avgR-index*.05,confidence:Math.max(42,84-index*7)}));
+              const comboRows = combos.map((label,index)=>({label,n:Math.max(6,Math.round(metrics.tradeCount*(.22-index*.025))),pnl:metrics.totalPnl*(.19-index*.025),avgR:metrics.avgR-index*.05,confidence:Math.max(42,84-index*7)}));
               const activeCombo = comboRows[Math.min(dashPdfEdgeCombo,comboRows.length-1)] || comboRows[0];
               return (
                 <>
                   <PdfCard title="Variables Analysis - Top Combinations" right={<span style={{fontSize:9,fontWeight:900,color:c.acL,fontFamily:F,textTransform:"uppercase"}}>{activeCombo.confidence}% confidence</span>}>
                     <PdfBars rows={comboRows} maxRows={5} selectedLabel={activeCombo.label} onSelect={(row,index)=>setDashPdfEdgeCombo(index)}/>
                     <div style={{display:"grid",gridTemplateColumns:"1.2fr .8fr .8fr",gap:10,background:c.el,border:`1px solid ${c.br}`,padding:10,fontFamily:F}}>
-                      <div><div style={{fontSize:8,fontWeight:900,color:c.tm,textTransform:"uppercase"}}>Selected Pattern</div><div style={{fontSize:12,fontWeight:900,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{activeCombo.label}</div></div>
+                      <div><div style={{fontSize:8,fontWeight:900,color:c.tm,textTransform:"uppercase"}}>Selected Pattern</div><div style={{fontSize:12,fontWeight:900,color:activeCombo.n<20?c.tm:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{activeCombo.label} <span style={{color:activeCombo.n<20?c.gold:c.acL}}>n {activeCombo.n}</span></div></div>
                       <div><div style={{fontSize:8,fontWeight:900,color:c.tm,textTransform:"uppercase"}}>Net Effect</div><div style={{fontSize:12,fontWeight:900,color:activeCombo.pnl>=0?c.gn:c.rd,textAlign:"right"}}>{fmtValue(activeCombo.pnl,activeCombo.avgR)}</div></div>
                       <div><div style={{fontSize:8,fontWeight:900,color:c.tm,textTransform:"uppercase"}}>Avg R</div><div style={{fontSize:12,fontWeight:900,color:activeCombo.avgR>=0?c.gn:c.rd,textAlign:"right"}}>{fmtNum(activeCombo.avgR,2)}R</div></div>
                     </div>
                   </PdfCard>
-                  <PdfCard title="Trade Flow: Setup to Outcome to Tag">
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 80px 1fr 80px 1fr",gap:10,alignItems:"center"}}>
-                      <div style={{display:"grid",gap:8}}>{["FVG","OB","MSS"].map((x,i)=><FlowBox key={x} label={x} color={[c.acL,c.gold,c.gn][i]}/>)}</div>
-                      <div style={{height:1,background:c.brH}}/>
-                      <div style={{display:"grid",gap:10}}><FlowBox label="Win" color={c.gn}/><FlowBox label="Loss" color={c.rd}/></div>
-                      <div style={{height:1,background:c.brH}}/>
-                      <div style={{display:"grid",gap:8}}>{["Target","Early Exit","Stopped"].map((x,i)=><FlowBox key={x} label={x} color={[c.gn,c.gold,c.rd][i]}/>)}</div>
-                    </div>
-                  </PdfCard>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <PdfCard title="Execution & Rule Adherence"><PdfBars rows={[{label:"Rules followed",pnl:trades.filter(t=>t.rulesFollowed).length,avgR:1},{label:"Rules broken",pnl:-trades.filter(t=>!t.rulesFollowed).length,avgR:-1},{label:"Good entry quality",pnl:metrics.tradeCount*.62,avgR:.6},{label:"Poor exit quality",pnl:-metrics.tradeCount*.21,avgR:-.3}]} maxRows={4}/></PdfCard>
-                    <PdfCard title="Price Behavior & Market Regime"><MiniGrid rows={3} cols={3} colorFn={(value,index)=>index%4===0?c.gn:index%3===0?c.rd:c.gold}/></PdfCard>
-                  </div>
                 </>
               );
             }
@@ -24871,9 +27308,10 @@ const TalariaV8b = () => {
                       {["Phase 1","Phase 2"].map((phase,index)=><div key={phase} style={{background:c.el,border:`1px solid ${c.br}`,padding:12}}><div style={{fontSize:9,fontWeight:900,color:c.gold,fontFamily:F,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:10}}>{phase}</div><PdfTable columns={["Rule","Value"]} rows={[["Profit Target",index? `${Math.max(3,Math.round(dashPdfPropTarget*.62))}%`:`${dashPdfPropTarget}%`],["Daily Loss",`${Math.max(2,Math.round(dashPdfPropRisk*4))}%`],["Max DD",`${Math.max(5,Math.round(dashPdfPropRisk*8))}% trailing`],["Min Days","5"]].map(([a,b])=>({key:a,cells:[{value:a,color:c.ts},{value:b,color:c.tx,align:"right"}]}))}/></div>)}
                     </div>
                   </PdfCard>
-                  <div style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:14}}>
+                  <div style={{display:"grid",gridTemplateColumns:"240px 1fr 1fr",gap:14}}>
                     <PdfCard title="Pass Probability"><div style={{display:"grid",placeItems:"center"}}><BtGaugeRing value={propPassValue} size={170} c={c} color={propPassValue>=60?c.gn:c.rd} label="Pass"/></div></PdfCard>
-                    <PdfCard title="Variation Optimizer"><MiniGrid rows={6} cols={5} colorFn={(value,index)=>index%7===0?c.gn:index%5===0?c.rd:c.gold}/></PdfCard>
+                    <PdfCard title="Failure Modes"><PdfBars rows={[{label:"Daily loss hit",pnl:-Math.round(metrics.tradeCount*.07),avgR:-.7},{label:"Trailing DD breach",pnl:-Math.round(metrics.tradeCount*.05),avgR:-.5},{label:"Minimum days missed",pnl:-Math.round(metrics.tradeCount*.03),avgR:-.2},{label:"Over-risk sequence",pnl:-Math.round(metrics.tradeCount*.09),avgR:-.9}]} maxRows={4}/></PdfCard>
+                    <PdfCard title="Variation Optimizer"><MiniGrid rows={5} cols={5} rowLabels={["0.5%","0.8%","1.0%","1.2%","1.5%"]} colLabels={["4%","6%","8%","10%","12%"]} legend colorFn={(value,index)=>index%7===0?c.gn:index%5===0?c.rd:c.gold}/></PdfCard>
                   </div>
                   <PdfCard title="Daily Limit Optimization">
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
@@ -24890,102 +27328,37 @@ const TalariaV8b = () => {
               const activeDemon = demons[Math.min(dashPdfDemonFocus,demons.length-1)] || demons[0];
               const activeDemonCount = Math.max(1,8-Math.min(dashPdfDemonFocus,demons.length-1));
               return (
-                <PdfCard title="Demon Catcher - The Arena">
-                  <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr",gap:16}}>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,alignItems:"end",minHeight:230}}>
+                <>
+                  <PdfCard title="Classification">
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                      <PdfMetric label="According to Plan" value={dashboardExecutionScore.followed} sub="clean executions" color={c.gn} active/>
+                      <PdfMetric label="Out of Plan" value={dashboardExecutionScore.out} sub="execution leaks" color={c.rd}/>
+                      <PdfMetric label="Missed Trades" value={dashboardExecutionScore.missed} sub="missed planned entries" color={c.gold}/>
+                    </div>
+                  </PdfCard>
+                  <PdfCard title="Execution & Rule Adherence">
+                    <PdfBars rows={[{label:"Rules followed",pnl:dashboardExecutionScore.followed,avgR:1},{label:"Rules broken",pnl:-dashboardExecutionScore.out,avgR:-1},{label:"Missed trades",pnl:-dashboardExecutionScore.missed,avgR:-.7},{label:"Journal coverage",pnl:Math.round(metrics.tradeCount*.72),avgR:.4}]} maxRows={4}/>
+                  </PdfCard>
+                  <PdfCard title="Planned vs Actual">
+                    <PdfBars rows={planAdherence.available ? [
+                      {label:"If followed plan",pnl:Number(planAdherence.ifFollowed?.pnl)||0,avgR:Number(planAdherence.ifFollowed?.r)||0},
+                      {label:"Actual result",pnl:Number(planAdherence.actual?.pnl)||0,avgR:Number(planAdherence.actual?.r)||0},
+                      {label:"Discipline cost",pnl:-Math.abs(Number(planAdherence.cost?.pnl)||0),avgR:-Math.abs(Number(planAdherence.cost?.r)||0)}
+                    ] : [
+                      {label:"Needs missed-trade logs",pnl:0,avgR:0},
+                      {label:"Needs deviation tags",pnl:0,avgR:0}
+                    ]} maxRows={3}/>
+                  </PdfCard>
+                  <PdfCard title="Your Demons" right={<span style={{fontSize:9,fontWeight:900,color:c.gold,fontFamily:F,textTransform:"uppercase"}}>{activeDemonCount}x focus</span>}>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
                       {demons.map((label,index)=>{
                         const count = Math.max(1,8-index);
                         const color = index<2?c.rd:index<5?c.gold:c.gn;
                         const active = dashPdfDemonFocus === index;
-                        return <button type="button" key={label} onClick={()=>setDashPdfDemonFocus(index)} style={{minHeight:54+count*11,display:"grid",placeItems:"center",padding:8,background:active?`${color}2f`:`${color}${index<5?"22":"14"}`,border:`1px solid ${active?color:`${color}66`}`,boxShadow:active?`0 0 16px ${color}35, inset 0 -2px 0 ${color}`:"none",color,fontSize:10,fontWeight:900,fontFamily:F,textAlign:"center",boxSizing:"border-box",cursor:"pointer",transition:"background 0.06s linear, border-color 0.06s linear, box-shadow 0.06s linear"}}>{label}<br/><span style={{fontSize:18}}>x{count}</span></button>;
+                        return <button type="button" key={label} onClick={()=>setDashPdfDemonFocus(index)} style={{minHeight:58,display:"grid",gridTemplateRows:"1fr auto",alignItems:"center",padding:8,background:active?`${color}18`:c.el,border:`1px solid ${active?`${color}88`:c.br}`,boxShadow:active?`inset 0 -2px 0 ${color}`:"none",color:active?color:c.ts,fontSize:9,fontWeight:900,fontFamily:F,textAlign:"center",boxSizing:"border-box",cursor:"pointer",transition:"background 0.06s linear, border-color 0.06s linear, box-shadow 0.06s linear"}}><span>{label}</span><span style={{fontSize:13,color}}>x{count}</span></button>;
                       })}
-                    </div>
-                    <div style={{display:"grid",gap:10,alignContent:"start"}}>
-                      <PdfMetric label="Boss to Slay" value={activeDemon} sub={`${activeDemonCount} occurrences`} color={dashPdfDemonFocus<2?c.rd:dashPdfDemonFocus<5?c.gold:c.gn} active/>
-                      <div style={{background:c.el,border:`1px solid ${c.br}`,padding:12,fontFamily:F}}>
-                        <div style={{fontSize:8,fontWeight:900,color:c.tm,textTransform:"uppercase",marginBottom:8}}>Coach Note</div>
-                        <div style={{fontSize:11,fontWeight:800,color:c.ts,lineHeight:1.45}}>Focus the next review on this behavior and tag every related trade before changing the strategy rules.</div>
-                      </div>
-                      <PdfTable columns={["Stage","Status"]} rows={["Survival","Growth","Consistency","Profitability"].map((stage,index)=>({key:stage,cells:[{value:stage,color:c.tx},{value:index<2?"Active":"Locked",color:index<2?c.gn:c.tm,align:"right"}]}))}/>
-                    </div>
-                  </div>
-                </PdfCard>
-              );
-            }
-
-            if (pageKey === "strategy-sources") {
-              const liveJournalBoot = getV16JournalBoot();
-              const sourceItems = dashboardAppliedSourceItems?.length
-                ? dashboardAppliedSourceItems
-                : liveJournalBoot
-                  ? [
-                      {
-                        label: ds.name || dashTxt("Backtest","اختبار"),
-                        typeLabel: dashTxt("Backtest","اختبار"),
-                        tradeCount: trades.length,
-                        pnl: metrics.totalPnl,
-                      },
-                      ...liveJournalBoot.accounts.map(account => ({
-                        label: account.name,
-                        typeLabel: dashTxt("Journal","يومية"),
-                        tradeCount: account.trades,
-                        pnl: account.pnl,
-                      })),
-                    ].filter(item => Number(item.tradeCount) > 0)
-                  : [{label:ds.name || dashTxt("Current Source","المصدر الحالي"),typeLabel:dashTxt("Backtest","اختبار"),tradeCount:trades.length,pnl:metrics.totalPnl}];
-              const total = Math.max(1,sourceItems.reduce((sum,item)=>sum+Math.abs(Number(item.pnl)||0),0));
-              const sourceConflicts = [
-                ["Tag vocabulary","FVG / Fair Value Gap","Map to FVG","Keeps tag analytics consistent across sessions and journals."],
-                ["Instrument names","US30 / DJI","Map to US30","Prevents duplicate symbol buckets in source attribution."],
-                ["Account scale","10k / 50k","Normalize by R","Makes prop, backtest, and live sources comparable."],
-                ["Currency","USD / EUR","Convert to account currency","Keeps money views aligned with the active account."],
-                ["Date basis","Union / overlap","Use overlap for comparison","Avoids comparing a source outside the shared period."],
-              ];
-              const activeConflict = sourceConflicts[Math.min(dashPdfSourceConflict,sourceConflicts.length-1)] || sourceConflicts[0];
-              const reportPages = ["Overview","Performance","The Numbers","Trade Quality","Edge & Behavior"];
-              const toggleReportPage = (label) => setDashPdfReportSections(prev => {
-                const next = new Set(prev);
-                if (next.has(label)) next.delete(label);
-                else next.add(label);
-                return next;
-              });
-              return (
-                <>
-                  <PdfCard title="Source Reconciliation - Conflicts">
-                    <div style={{display:"grid",gap:7,fontFamily:F}}>
-                      {sourceConflicts.map(([conflict,current,resolution],index)=>{
-                        const active = index === dashPdfSourceConflict;
-                        return (
-                          <button type="button" key={conflict} onClick={()=>setDashPdfSourceConflict(index)} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,minHeight:36,alignItems:"center",background:active?c.acD:c.el,border:`1px solid ${active?c.acB:c.br}`,boxShadow:active?`inset 3px 0 0 ${c.acL}`:"none",padding:"0 10px",cursor:"pointer",transition:"background 0.06s linear, border-color 0.06s linear, box-shadow 0.06s linear"}}>
-                            <span style={{fontSize:10,fontWeight:900,color:c.tx,textAlign:"left",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{conflict}</span>
-                            <span style={{fontSize:10,fontWeight:900,color:c.gold,textAlign:"left",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{current}</span>
-                            <span style={{fontSize:10,fontWeight:900,color:c.gn,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{resolution}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"170px minmax(0,1fr)",gap:10,background:c.el,border:`1px solid ${c.br}`,padding:10,fontFamily:F}}>
-                      <div style={{fontSize:9,fontWeight:900,color:c.acL,textTransform:"uppercase"}}>{activeConflict[0]}</div>
-                      <div style={{fontSize:10,fontWeight:800,color:c.ts,lineHeight:1.35}}>{activeConflict[3]}</div>
                     </div>
                   </PdfCard>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <PdfCard title="Source Attribution Breakdown">
-                      <div style={{display:"grid",gap:10}}>{sourceItems.map((item,index)=>{const share=Math.abs(Number(item.pnl)||0)/total*100;return <div key={item.label || index} style={{display:"grid",gridTemplateColumns:"120px 1fr 54px",gap:10,alignItems:"center",fontFamily:F}}><div style={{fontSize:10,fontWeight:900,color:c.tx}}>{item.label}</div><div style={{height:8,background:c.trk}}><div style={{height:"100%",width:`${Math.max(3,share)}%`,background:[c.acL,c.gold,c.gn][index%3]}}/></div><div style={{fontSize:10,fontWeight:900,color:c.ts,textAlign:"right"}}>{fmtPct(share,0)}</div></div>})}</div>
-                    </PdfCard>
-                    <PdfCard title="Backtest vs Live"><BtMiniLine points={metrics.equityPoints.map(p=>p.value)} c={c} color={c.acL} height={110} fill/><BtMiniLine points={metrics.equityPoints.map((p,i)=>p.value-(i*metrics.avgR*8))} c={c} color={c.gn} height={110} fill/></PdfCard>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                    <PdfCard title="Comparison View"><PdfTable columns={["Metric","Source A","Source B","Delta"]} rows={[["Net P&L",metrics.totalPnl,compareMetrics?.totalPnl || metrics.totalPnl*.72],["Win Rate",metrics.winRate,compareMetrics?.winRate || metrics.winRate-4],["Max DD",metrics.maxDD,compareMetrics?.maxDD || metrics.maxDD*1.2],["Trades",metrics.tradeCount,compareMetrics?.tradeCount || Math.round(metrics.tradeCount*.64)]].map(([label,a,b])=>({key:label,cells:[{value:label,color:c.tx},{value:label==="Trades"?a:label.includes("Rate")?fmtPct(a,1):fmtValue(a),align:"right"},{value:label==="Trades"?b:label.includes("Rate")?fmtPct(b,1):fmtValue(b),align:"right"},{value:label==="Trades"?a-b:label.includes("Rate")?fmtPct(a-b,1):fmtValue(a-b),color:(a-b)>=0?c.gn:c.rd,align:"right"}]}))}/></PdfCard>
-                    <PdfCard title="Report Builder" right={<span style={{fontSize:9,fontWeight:900,color:c.acL,fontFamily:F,textTransform:"uppercase"}}>{dashPdfReportSections.size} pages</span>}>
-                      <div style={{display:"grid",gap:8,fontFamily:F}}>
-                        {reportPages.map(label=>{
-                          const active = dashPdfReportSections.has(label);
-                          return <button type="button" key={label} onClick={()=>toggleReportPage(label)} style={{height:36,display:"grid",gridTemplateColumns:"18px minmax(0,1fr) 80px",alignItems:"center",gap:10,background:active?c.acD:c.el,border:`1px solid ${active?c.acB:c.br}`,padding:"0 10px",cursor:"pointer",transition:"background 0.06s linear, border-color 0.06s linear"}}><span style={{width:10,height:10,transform:"rotate(45deg)",background:active?c.acL:"transparent",border:`1px solid ${active?c.acL:c.tm}`,boxShadow:active?`0 0 8px ${c.acG}`:"none"}}/><span style={{fontSize:10,fontWeight:900,color:active?c.tx:c.ts,textAlign:"left",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</span><span style={{fontSize:9,fontWeight:900,color:active?c.gn:c.tm,textAlign:"right",textTransform:"uppercase"}}>{active?"Included":"Hidden"}</span></button>;
-                        })}
-                      </div>
-                    </PdfCard>
-                  </div>
                 </>
               );
             }
@@ -25008,7 +27381,7 @@ const TalariaV8b = () => {
 
           const renderFreshDashboardPage = () => {
             const stack = (title, question, children) => (
-              <div key={dashFreshPage} style={{display:"flex",flexDirection:"column",gap:18,animation:"tlrLoadFadeIn 0.1s ease"}}>
+              <div key={activeFreshPageId} style={{display:"flex",flexDirection:"column",gap:18,animation:"tlrLoadFadeIn 0.1s ease"}}>
                 <div style={{minHeight:72,display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",alignItems:"end",gap:18,padding:"0 0 14px",borderBottom:`1px solid ${c.br}`,fontFamily:F}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:8,fontWeight:900,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{dashTxt("Talaria Dashboard","لوحة تالاريا")}</div>
@@ -25021,8 +27394,8 @@ const TalariaV8b = () => {
               </div>
             );
             const subPage = (id) => <div style={{display:"flex",flexDirection:"column",gap:18}}>{id === "win-loss-distribution" ? renderFreshWinLossDistribution() : id === "drawdown" ? renderFreshDrawdown() : id === "equity-returns" ? renderFreshEquityReturns() : renderFreshRemainingPage(id)}</div>;
-            if (dashFreshPage === "overview") return renderFreshPerformanceSummary();
-            if (dashFreshPage === "performance") return stack(
+            if (activeFreshPageId === "overview") return renderFreshPerformanceSummary();
+            if (activeFreshPageId === "performance") return stack(
               dashTxt("Performance","الأداء"),
               dashTxt("Is my account growing, and how risky is the ride?","هل الحساب ينمو وما حجم المخاطرة؟"),
               <>
@@ -25031,7 +27404,7 @@ const TalariaV8b = () => {
                 {subPage("streaks-consistency-risk-adjusted-metrics")}
               </>
             );
-            if (dashFreshPage === "numbers") return stack(
+            if (activeFreshPageId === "numbers") return stack(
               dashTxt("The Numbers","الأرقام"),
               dashTxt("What do my trades look like in aggregate, and when or where do they happen?","كيف تبدو الصفقات إجمالا ومتى وأين تحدث؟"),
               <>
@@ -25041,17 +27414,17 @@ const TalariaV8b = () => {
                 {subPage("breakdowns")}
               </>
             );
-            if (dashFreshPage === "trade-quality") return stack(
+            if (activeFreshPageId === "trade-quality") return stack(
               dashTxt("Trade Quality","جودة الصفقة"),
               dashTxt("Am I entering, managing, and exiting well?","هل أدخل وأدير وأخرج بشكل جيد؟"),
               <>{subPage("trade-quality-analysis-mae-mfe")}{renderPdfCompletionSections("trade-quality")}</>
             );
-            if (dashFreshPage === "what-if-lab") return stack(
+            if (activeFreshPageId === "what-if-lab") return stack(
               dashTxt("What-If Lab","مختبر ماذا لو"),
               dashTxt("What should I change, and would it actually help?","ما الذي يجب تغييره وهل سيساعد فعلا؟"),
               <>{subPage("what-if-simulator")}{renderPdfCompletionSections("what-if-lab")}</>
             );
-            if (dashFreshPage === "edge-behavior") return stack(
+            if (activeFreshPageId === "edge-behavior") return stack(
               dashTxt("Edge & Behavior","الميزة والسلوك"),
               dashTxt("Where does my edge come from, and what am I doing to sabotage it?","من أين تأتي ميزتي وما الذي يفسدها؟"),
               <>
@@ -25060,29 +27433,20 @@ const TalariaV8b = () => {
                 {subPage("strategy-health")}
               </>
             );
-            if (dashFreshPage === "journal") return stack(
+            if (activeFreshPageId === "journal") return stack(
               dashTxt("Journal","السجل"),
               dashTxt("Let me review my individual trades.","دعني أراجع صفقاتي الفردية."),
               <>{renderPdfCompletionSections("journal")}{subPage("trade-journal")}</>
             );
-            if (dashFreshPage === "prop-challenge") return stack(
+            if (activeFreshPageId === "prop-challenge") return stack(
               dashTxt("Prop Challenge","تحدي التمويل"),
               dashTxt("Can this strategy pass a funded-account evaluation?","هل يمكن لهذه الاستراتيجية اجتياز تقييم التمويل؟"),
               <>{renderPdfCompletionSections("prop-challenge")}{subPage("prop-challenge")}</>
             );
-            if (dashFreshPage === "live-discipline") return stack(
+            if (activeFreshPageId === "live-discipline") return stack(
               dashTxt("Live Discipline","انضباط التداول الحي"),
               dashTxt("Am I trading my plan?","هل أتداول خطتي؟"),
               <>{subPage("live-discipline")}{renderPdfCompletionSections("live-discipline")}</>
-            );
-            if (dashFreshPage === "strategy-sources") return stack(
-              dashTxt("Strategy & Sources","الاستراتيجية والمصادر"),
-              dashTxt("How do my backtest, prop, and live results compare and combine?","كيف تقارن نتائج الاختبار والتمويل والحساب الحي وتندمج؟"),
-              <>
-                {subPage("strategy-source")}
-                {renderPdfCompletionSections("strategy-sources")}
-                {subPage("export-comparison")}
-              </>
             );
             return renderFreshPerformanceSummary();
           };
@@ -33603,49 +35967,50 @@ const TalariaV8b = () => {
             ], code:"filteredTrades = trades.filter(dateRange).filter(scope).filter(tags);"},
           ];
           const metricDefs = [
-            ["metric-net-pnl","Net P&L","صافي الربح والخسارة","Total money made or lost after costs.","sum(wins) - sum(losses) - costs","Positive, smooth, and not dependent on one giant trade.","Large P&L can hide bad risk if drawdown is oversized.","Reduce avoidable costs, cut rule breaks, and remove low-quality setups."],
+            ["metric-net-pnl","Net P&L","صافي الربح والخسارة","The signed net result after gross wins, gross losses, and trading costs. The Composition face shows Won, Lost, Costs, and retained share on a shared scale, then flips to Per-Trade Quality from the same filtered trades. Per-Trade Quality can read R as primary with dollar context, or dollars as primary with R context, using the Snapshot R/$ toggle. For equity-path analysis, use the Account Balance panel or the Performance Equity Study.","grossWins - grossLosses - costs = netPnl; dollarPerR = sum(abs(pnl)) / sum(abs(R))","Positive, smooth, and supported by wins that clearly outpace losses and costs.","Large Net P&L can still hide too much loss flow, high costs, or weak per-trade expectancy.","Reduce avoidable costs, cut low-quality setups, and compare per-trade R with the dollar equivalent so the edge is clear in both units."],
             ["metric-return","Return %","العائد %","Net P&L as a percentage of starting capital.","netPnl / startingCapital * 100","Consistent positive return with acceptable drawdown.","High return with low trade count can be luck, not edge.","Keep sizing stable and compare return against drawdown."],
-            ["metric-profit-factor","Profit Factor","عامل الربح","Gross profits divided by gross losses.","grossProfit / abs(grossLoss)","Above 1.3 is workable; above 1.8 is strong if sample size is real.","PF can spike when losses are rare but catastrophic.","Control average loss and remove trades with poor expectancy."],
-            ["metric-expectancy","Expectancy","التوقع","Average expected result per trade.","(winRate * avgWin) - (lossRate * avgLoss)","Positive expectancy across enough trades and market regimes.","A good win rate can still have negative expectancy.","Improve reward-to-risk, reduce losers, or filter weak setups."],
-            ["metric-win-rate","Win Rate + RR","نسبة الفوز والعائد","Percentage of closed trades that are profitable, read together with payoff and breakeven win rate.","winningTrades / totalTrades * 100, plus avgWin / avgLoss","Healthy only when the win rate stays above the payoff breakeven line.","Win rate alone does not prove profitability.","Read the breakeven marker and improve either win rate or payoff."],
+            ["metric-profit-factor","Profit Factor","عامل الربح","How many dollars the strategy makes back for every $1 lost. The mini visual shows $1 lost in red and the amount made back in green on the same scale.","grossProfit / abs(grossLoss)","Above 1.3 is workable; above 1.8 is strong if sample size is real.","PF can spike when losses are rare but catastrophic, so always read it with drawdown and sample size.","Control average loss, remove trades with poor expectancy, and check that the green made-back bar is not driven by one outlier."],
+            ["metric-expectancy","Expectancy","التوقع","Average expected R per trade, read against the full R-outcome distribution and paired with the approximate dollar value per trade. The gold solid marker is mean expectancy; the white dashed marker is the median, or typical trade. The Snapshot R/$ toggle decides which unit is primary on the card.","avg(Trade.rMultiple) with median(Trade.rMultiple), R bucket counts, and expectancyDollarsPerTrade = avgR * dollarPerR","Positive mean expectancy with a median that is not deeply below zero means the edge is not carried only by outliers.","A good win rate can still hide weak expectancy, and a high mean can be distorted by one large winner.","Improve reward-to-risk, reduce avoidable losers, and compare mean against median before changing the system."],
+            ["metric-win-rate","Win Rate + RR","نسبة الفوز والعائد","Percentage of closed trades that are profitable, read together with payoff, the breakeven win-rate marker, cushion, and raw win/loss/breakeven counts.","winningTrades / totalTrades * 100, plus avgWin / avgLoss and breakeven count","Healthy only when the win rate stays above the payoff breakeven line and the raw outcome counts support it.","Win rate alone does not prove profitability, especially when breakeven trades or a small sample distort the ratio.","Read the breakeven marker, outcome counts, and payoff together before changing the strategy."],
             ["metric-payoff","Payoff","العائد مقابل الخسارة","Average winning trade divided by average losing trade.","avgWinningTrade / abs(avgLosingTrade)","Above 1.0 helps, above 2.0 gives room to win less than half the time.","A few big winners can distort the average.","Standardize exits and protect the winner profile."],
-            ["metric-max-dd","Max Drawdown","أكبر تراجع","Worst peak-to-trough equity decline in the selected sample.","max(previousPeak - currentEquity)","Small enough that the trader can continue executing calmly.","Low drawdown with tiny sample size says little.","Reduce risk per trade and avoid clustered correlated losses."],
-            ["metric-total-trades","Total Trades","عدد الصفقات","The number of trades included after source and filter selections.","count(filteredTrades)","Enough trades to judge the behavior being tested.","Too few trades makes all other metrics unstable.","Test more data or narrow the question before deciding."],
-            ["metric-recovery-factor","Recovery Factor","عامل التعافي","Net profit compared with maximum drawdown.","abs(netPnl) / maxDrawdown","Above 3.0 usually means reward is healthy relative to drawdown.","A high value can still be fragile when sample size is thin.","Reduce drawdown depth and improve recovery after equity dips."],
-            ["metric-risk-adjusted","Risk-Adjusted","العائد المعدل بالمخاطر","Sortino and Sharpe read return quality from the configured basis: per-trade R for backtests, daily only when continuous live equity exists.","mean(returnBasis) / deviation * annualizer","Positive Sortino with stable Sharpe shows cleaner return quality.","Thin samples make the number noisy, especially below the trade threshold.","Increase sample size and reduce downside-heavy trades."],
-            ["metric-consistency","Consistency","الثبات","Percentage of profitable trading days plus profit concentration.","greenDays / tradingDays","High day win rate with low top-5 dependence is healthier.","A few large winners can hide unstable average behavior.","Remove weak regimes and avoid depending on one big trade."],
+            ["metric-drawdown","Drawdown","السحب","Worst peak-to-trough equity decline, paired with drawdown percent, longest underwater stretch, and time spent below the prior equity high.","max(previousPeak - currentEquity), maxDD / startingCapital, underwaterDays / sampleDays","Small enough that the trader can continue executing calmly and recover without breaking rules.","A small dollar drawdown can still be dangerous when it keeps equity underwater for too long.","Reduce risk per trade, avoid clustered correlated losses, and compare drawdown against recovery duration and sizing."],
+            ["metric-total-trades","Total Trades","عدد الصفقات","Filtered trade count, led by whether winners or losers are being held longer. The default face answers hold-bias first; the activity face shows total trades, average duration, and the existing activity bars.","count(filteredTrades), avg(duration where pnl > 0), avg(duration where pnl < 0), avg(duration all trades)","Enough trades to judge behavior, with losers not held materially longer than winners.","A large count can still hide an exit leak if losing trades stay open longer than winning trades.","Review exit rules and holding behavior before increasing size; use the activity face to confirm the sample is broad enough."],
+            ["metric-recovery-factor","Recovery Factor","عامل التعافي","How many dollars were earned for every $1 of maximum drawdown. Recovery time belongs to the Drawdown card and the Performance Drawdown page.","netPnl / maxDrawdown","Above 3.0 usually means reward is healthy relative to the worst drawdown pain.","A high value can still be fragile if the equity path is volatile or the drawdown is still active, so read duration on the Drawdown card.","Reduce drawdown depth and increase clean net profit. Use the Drawdown card for recovery days, longest underwater stretch, and current underwater state."],
+            ["metric-smoothness-risk-adjusted","Smoothness + Risk-Adjusted","نعومة المسار والعائد المعدل بالمخاطر","A two-face card. Equity Smoothness asks how close the selected path is to a straight line using the selected source path. Risk-Adjusted flips to Sortino, Sharpe, and Shape against good/great benchmark ticks.","smoothness = R-squared(path vs straight line); sortino/sharpe = mean(returnBasis) / deviation * annualizer","Healthy when the gold path stays close to the dashed reference and Sortino/Sharpe both clear the benchmark ticks without a downside-heavy shape.","A smooth path can still be tiny or over-filtered, while a high Sortino can be noisy in thin samples.","Use this card to separate path quality from return quality: first check the wiggle, then flip to see whether the return was worth the volatility. Open Performance for the full risk-adjusted grid."],
+            ["metric-consistency","Day Win Rate","نسبة الأيام الرابحة","Percentage of trading days that closed profitable, shown with chronological green, red, and flat day cells plus day counts.","greenDays / tradingDays * 100","High day win rate is healthier when red days are not clustered and flat days are understood.","A few large green days can hide many weak or inactive days.","Review red-day clusters and compare against profit concentration before scaling."],
             ["metric-discipline","Discipline Score","درجة الانضباط","Objective discipline score from stop widening, trail overrides, and risk overshoots. It does not depend on journaling.","cleanTrades / totalTrades * 100","High score means the trade data shows few objective execution breaches.","It does not know whether a discretionary exception was justified.","Investigate the dominant breach type before changing strategy rules."],
-            ["metric-cost-drag","Cost Drag","ضغط التكاليف","Estimated fees and spreads as a share of gross performance.","costs / grossBeforeCosts","Lower is better, especially for scalping systems.","Ignoring costs can turn a good-looking edge into noise.","Use realistic spread, commission, and slippage assumptions."],
-            ["metric-time-underwater","Time Underwater","وقت تحت القمة","Longest period the equity curve stayed below its prior peak.","days since prior equity high until recovery","Shorter recovery periods are easier to execute through.","A shallow but long drawdown can still damage discipline.","Reduce clustered losses and avoid correlated entries."],
+            ["metric-live-demons","Demons","شياطين التداول","Live-only discipline card that ranks behavioral leaks from Demon Catcher by R cost. It shows the top demons, their frequency, and how much R they cost. The full behavioral analysis lives on the Live Discipline page.","group DemonCatcher events by demon type; sum(cost_R); sort by cost_R desc","Healthy when no repeated demon type is costing meaningful R.","Requires consistent live journaling and demon tagging; backtests do not show this card.","Open Live Discipline, fix the top leak first, and check whether the cost falls next period."],
+            ["metric-live-discipline-score","Discipline","الانضباط","Live-only discipline score combining plan adherence, risk control, and patience. It matches the Discipline dimension in Talaria Score.","weighted score from rule adherence, oversize risk control, and patience demon frequency","High score means the live account is executing the plan cleanly.","Missing journal data lowers confidence; it is not a backtest metric.","Use Live Discipline to inspect the weakest component before changing trade size."],
+            ["metric-risk-consistency","Planned vs Actual","الخطة مقابل الواقع","Compares what would have happened if the trader followed the plan against the actual result. It separates according-to-plan trades, out-of-plan trades, and missed trades.","plan review tag, missed-trade marker, planned outcome replay, actual P&L/R","Healthy when actual results stay close to the if-followed plan and discipline cost is low.","Missing missed-trade logs or deviation tags makes the metric unavailable.","Log missed trades and tag out-of-plan trades so the discipline cost is measurable."],
             ["metric-sortino","Sortino","سورتينو","Return quality adjusted for downside volatility only. Backtests use per-trade R by default.","mean(R) / downsideDeviation(R) * sqrt(tradesPerYear)","Positive and stable with enough trades.","Thin samples can make the ratio look better than reality.","Reduce downside-heavy trades and rule-broken losses."],
             ["metric-sharpe","Sharpe","شارب","Return quality adjusted for total volatility. Backtests use per-trade R by default.","mean(R) / standardDeviation(R) * sqrt(tradesPerYear)","Positive and stable across enough trades.","Upside volatility can penalize the ratio even when desirable.","Compare with Sortino to separate upside and downside movement."],
             ["metric-shape","Shape","شكل العائد","Relationship between Sortino and Sharpe.","sortino / sharpe","Balanced or upside-tilted shape is healthier.","A downside-heavy shape means losses dominate volatility.","Study losing days and tighten invalidation rules."],
             ["metric-calmar","Calmar","كالمار","Annualized return compared with maximum drawdown.","annualizedReturn / maxDrawdownPct","Above 1.0 is useful; higher is cleaner.","Annualization exaggerates short samples.","Use with sample confidence and drawdown duration."],
-            ["metric-day-win-rate","Day Win Rate","نسبة الأيام الرابحة","Percentage of trading days that closed profitable.","profitableDays / tradingDays * 100","Above 50% means more days are green than red, if the sample is broad enough.","A few large green days can hide many small bad days.","Compare with profit concentration and equity smoothness."],
-            ["metric-profit-concentration","Profit Concentration","تركيز الربح","Share of profit produced by the largest winning trades.","topFiveProfit / totalProfit","Lower concentration means the edge is more repeatable.","A strategy can look good because one trade carried it.","Test without outliers and improve ordinary setups."],
-            ["metric-equity-smoothness","Equity Smoothness","نعومة منحنى الرصيد","How closely equity follows a stable upward path.","R-squared of equity trend line","Closer to 90% is cleaner if return is positive.","Smoothness can hide tiny returns or over-filtered data.","Balance smoothness with return and sample size."],
+            ["metric-day-win-rate","Day Win Rate","نسبة الأيام الرابحة","Percentage of trading days that closed profitable. The mini visual shows every day in chronological order, then summarizes green, red, and flat counts.","greenDays / tradingDays * 100","Above 50% means more days are green than red, if the sample is broad enough.","A few large green days can hide many small bad days or flat inactive days.","Compare with profit concentration, equity smoothness, and the green/red/flat count row."],
+            ["metric-profit-concentration","Profit Concentration","تركيز الربح","Share of gross winning profit produced by the top 10% of winning trades. The paired robustness face removes that same top 10% from net P&L to show whether the edge survives without outliers.","top10PctWinningProfit / grossWinningProfit, plus netPnl - top10PctWinningProfit","Lower concentration means the edge is more repeatable, and positive net without the top 10% means the system is less outlier-dependent.","A strategy can look good because a small percentage of trades carried it; using fixed trade counts or net P&L as the denominator can distort small and large samples.","Improve ordinary setups, reduce dependence on rare outsized winners, and test the result without the top percentage winners."],
             ["metric-rule-adherence","Rule Adherence","الالتزام بالقواعد","Subjective adherence from journaled trades only. Unjournaled trades are excluded, not counted as violations.","followed / (followed + violated) * 100","Higher adherence with good coverage makes the result more repeatable.","Low coverage means the reading is incomplete, not necessarily bad.","Add the close-time rule outcome to improve coverage."],
             ["metric-discipline-pnl","Discipline P&L","ربح الانضباط","P&L after excluding rule-broken trades.","sum(pnl where rulesFollowed)","Positive discipline P&L means planned trading is paying.","Badly tagged rule data can mislead this metric.","Track rules consistently before trusting the result."],
             ["metric-plan-actual","Plan-vs-Actual RR","المخطط مقابل الفعلي","Difference between planned and realized reward-to-risk for trades that had a take-profit set.","plannedRR(from TP, entry, stop) - actualRRNet","Near zero or positive actual improvement is healthy.","Trades without a TP are excluded so optional targets do not pollute the reading.","Record entry, stop, and target before trade entry."],
             ["metric-rule-tracking","Rule Tracking","تتبع القواعد","Whether the selected source has enough rule data to score discipline directly.","replayTracksRules ? available : unavailable","Available rule tracking lets the discipline pages use actual behavior.","Unavailable tracking does not mean discipline is good or bad.","Enable rule capture during replay or live journaling."],
-            ["metric-capture-ratio","Trade Efficiency","كفاءة الصفقة","How much of the favourable move was actually captured before exit.","sum(realized favourable R) / sum(MFE R) * 100","Higher capture means exits are harvesting the available move.","Requires MFE data; thin MFE coverage should be treated as incomplete.","Review early exits and target placement when capture is low."],
-            ["metric-missed-move","Missed Move","الحركة الفائتة","Average favourable movement that appeared after exit.","avg(max(post_exit_bar_high_r) - realizedExitR)","Low missed move means exits are not leaving much clean opportunity behind.","Post-exit bars can exaggerate if they include unrelated later structure.","Compare by setup and timeframe before changing exits."],
-            ["metric-trade-frequency","Trade Frequency","تكرار الصفقات","Trades per calendar week in the selected period.","tradeCount / weeksInRange","Enough activity to judge the strategy without overtrading.","Very high frequency may increase cost drag.","Compare frequency with expectancy and cost drag."],
-            ["metric-sample-confidence","Sample Confidence","ثقة العينة","Progress toward the target trade count for evidence.","tradeCount / nTarget","100% means the sample meets the configured evidence target.","It does not prove edge by itself.","Keep testing across regimes and instruments."],
+            ["metric-capture-ratio","Trade Efficiency","كفاءة الصفقة","Where the average exit lands between entry and the average favourable peak. The track starts at Entry, marks Your Exit in gold, and ends at Peak from MFE. The card shows captured movement and movement left in R and dollars; the Snapshot R/$ toggle controls which unit is primary.","sum(realized favourable R) / sum(MFE R) * 100, with avg captured R, avg MFE R, captured dollars, and left-on-table dollars","Higher capture means exits are harvesting the available move instead of leaving clean favourable movement behind.","Requires MFE data; thin MFE coverage should be treated as incomplete.","Review early exits, target placement, and trailing rules when the gold exit marker sits too far from the peak."],
+            ["metric-missed-move","Missed Move","الحركة الفائتة","Average favourable movement left after exit. The gold histogram shows the distribution of movement left in R, the marker shows the mean, and the card also gives the dollar equivalent per trade. The Snapshot R/$ toggle controls which unit is primary.","avg(max(post_exit_bar_high_r) - realizedExitR), grouped into missed-move R buckets, plus missedMoveDollarsPerTrade","Lower values mean exits are not leaving much clean opportunity behind, while the bucket shape shows whether the issue is occasional or frequent.","Post-exit bars can exaggerate if they include unrelated later structure or if MFE coverage is thin.","Compare by setup, strategy, and timeframe before changing exits."],
+            ["metric-trade-frequency","Trade Frequency","تكرار الصفقات","Trades per calendar week in the selected period, shown as a quietest-to-busiest weekly range with the typical week marked in gold.","tradeCount / weeksInRange, plus quietest, median, and busiest weekly trade counts","Enough activity to judge the strategy without forcing trades; a stable typical week is easier to execute than bursty clusters.","Very high or very bursty frequency may increase discipline pressure.","Compare frequency with expectancy and day win rate before changing trade selection."],
+            ["metric-sample-confidence","Sample Confidence","ثقة العينة","Two-face evidence card: first checks whether the sample reached the configured evidence threshold, then shows the 95% confidence range around expectancy.","tradeCount / minTradesForConfidence; meanR ± 1.96 * stdevR / sqrt(n)","Best when the sample clears the threshold and the confidence band sits above breakeven 0R.","A sample can be large but inconclusive if the confidence range still crosses 0R.","Keep testing across regimes and instruments until the confidence band supports the edge."],
             ["metric-goal-progress","Goal Progress","تقدم الهدف","Progress toward a configured return target. If no target exists, the card shows raw return and asks for a target.","returnPct / goalConfig.targetReturnPct","At or above 100% means the configured target is reached.","Do not invent a denominator when a target is missing.","Set an account or session target before using progress."],
             ["metric-target-progress","Target Progress","تقدم هدف التمويل","Progress toward a prop-firm profit target.","propProfit / propTarget * 100","At or above 100% means the profit target is reached.","Target progress is fragile if drawdown headroom is almost gone.","Read with daily-loss and max-DD headroom."],
             ["metric-pace","Pace","الوتيرة","Current return pace and estimated time to goal.","returnPct / weeksInRange","Positive pace with controlled drawdown is healthy.","Early pace can be unstable with few trades.","Recalculate after each meaningful sample increase."],
-            ["metric-streaks","Streaks & Records","السلاسل والأرقام","Current streak, longest win/loss runs, and best/worst trade records.","latest consecutive outcomes + longest historical runs","Short losing streaks and balanced best/worst records are easier to execute through.","Long streaks can trigger revenge trading or overconfidence.","Use sizing rules and cooldowns."],
+            ["metric-streaks","Streaks & Records","السلاسل والأرقام","Current winning or losing streak, the recent trade trail leading into it, the longest win/loss runs, and how many weeks were profitable. The Best / Worst face shows the best and worst trade in both actual dollar P&L and R, using the recorded trade P&L rather than an estimated conversion.","latest consecutive trade outcomes + recent pnl trail + longest historical win/loss runs + profitableWeeks / weekCount + best/worst Trade.pnl and Trade.rMultiple","A current winning streak is useful only when the trail and weekly record show repeatable consistency, not one lucky burst.","Long losing runs and weak weekly consistency can create execution pressure even if headline P&L is positive.","Use sizing rules and cooldowns for long losing runs, then open Performance for the full streak trail and consistency analysis."],
             ["metric-prop-headroom","Daily-Loss Headroom","مساحة الخسارة اليومية","Remaining room before the prop daily-loss rule is breached.","100 - dailyLossUsedPct","More headroom gives the trader room to execute without hitting a daily rule.","Headroom can disappear quickly after correlated losses.","Reduce size when close to daily rule limits."],
             ["metric-prop-headroom-dd","Max-DD Headroom","مساحة السحب الكلي","Remaining room before the prop total drawdown limit is breached.","100 - totalDrawdownUsedPct","More headroom lowers challenge failure risk.","Passing profit target with tiny drawdown room is fragile.","Throttle risk after drawdown expands."],
             ["metric-prop-days","Days Traded","أيام التداول","Progress toward a prop minimum trading-days rule.","tradedDays / requiredDays","Complete when required days are reached.","Forcing trades just to fill days can damage expectancy.","Use small valid trades only when rules require activity."],
           ];
           const metricCardRows = [
-            ["Profit", ["metric-net-pnl","metric-cost-drag"]],
+            ["Profit", ["metric-net-pnl"]],
             ["Edge", ["metric-win-rate","metric-profit-factor","metric-expectancy"]],
-            ["Drawdown", ["metric-max-dd","metric-time-underwater","metric-recovery-factor"]],
-            ["Risk-Adjusted", ["metric-risk-adjusted","metric-calmar"]],
-            ["Consistency", ["metric-day-win-rate","metric-profit-concentration","metric-equity-smoothness"]],
+            ["Drawdown", ["metric-drawdown","metric-recovery-factor"]],
+            ["Risk-Adjusted", ["metric-smoothness-risk-adjusted","metric-calmar"]],
+            ["Consistency", ["metric-day-win-rate","metric-profit-concentration"]],
+            ["Live Discipline", ["metric-live-demons","metric-live-discipline-score","metric-risk-consistency"]],
             ["Discipline / Efficiency", ["metric-discipline","metric-rule-adherence","metric-capture-ratio","metric-missed-move"]],
             ["Activity", ["metric-total-trades","metric-trade-frequency","metric-sample-confidence"]],
             ["Streaks / Prop", ["metric-streaks","metric-target-progress","metric-prop-headroom","metric-prop-headroom-dd","metric-prop-days"]],
@@ -33655,79 +36020,105 @@ const TalariaV8b = () => {
             return acc;
           }, {});
           const metricVisualKind = {
-            "metric-net-pnl":"sparkline", "metric-return":"progress", "metric-cost-drag":"cost",
-            "metric-profit-factor":"split", "metric-expectancy":"histogram", "metric-win-rate":"tiles", "metric-payoff":"split",
-            "metric-max-dd":"drawdown", "metric-time-underwater":"drawdown", "metric-recovery-factor":"progress",
-            "metric-risk-adjusted":"riskbars", "metric-sortino":"riskbars", "metric-sharpe":"riskbars", "metric-shape":"riskbars", "metric-calmar":"pair",
-            "metric-day-win-rate":"tiles", "metric-profit-concentration":"progress", "metric-equity-smoothness":"progress",
-            "metric-discipline":"progress", "metric-rule-adherence":"cost", "metric-discipline-pnl":"cost", "metric-plan-actual":"split", "metric-rule-tracking":"status", "metric-capture-ratio":"capture", "metric-missed-move":"missed",
-            "metric-total-trades":"bars", "metric-trade-frequency":"bars", "metric-sample-confidence":"progress",
+            "metric-net-pnl":"gross-to-net composition", "metric-return":"progress",
+            "metric-profit-factor":"per-dollar bars", "metric-expectancy":"mean/median R distribution", "metric-win-rate":"cushion", "metric-payoff":"split",
+            "metric-drawdown":"worst drawdown episode", "metric-recovery-factor":"per-dollar recovery",
+            "metric-smoothness-risk-adjusted":"gold path + risk bars", "metric-risk-adjusted":"riskbars", "metric-sortino":"riskbars", "metric-sharpe":"riskbars", "metric-shape":"riskbars", "metric-calmar":"pair",
+            "metric-day-win-rate":"tiles", "metric-profit-concentration":"top-winner split", "metric-profit-robustness":"robustness bars", "metric-equity-smoothness":"progress",
+            "metric-live-demons":"demon cost ranking", "metric-live-discipline-score":"discipline component bars", "metric-risk-consistency":"plan adherence counterfactual bars",
+            "metric-discipline":"progress", "metric-rule-adherence":"cost", "metric-discipline-pnl":"cost", "metric-plan-actual":"split", "metric-rule-tracking":"status", "metric-capture-ratio":"capture", "metric-missed-move":"missed-move histogram",
+            "metric-total-trades":"hold-bias bars", "metric-trade-frequency":"weekly range", "metric-sample-confidence":"evidence threshold", "metric-expectancy-confidence":"confidence interval",
             "metric-goal-progress":"progress", "metric-target-progress":"progress", "metric-prop-headroom":"progress", "metric-prop-headroom-dd":"progress", "metric-prop-days":"tiles", "metric-pace":"sparkline", "metric-streaks":"streaks",
           };
           const metricFields = {
-            "metric-net-pnl":["Trade.pnl","Trade.cost / commissionCost","Session.startingBalance"],
+            "metric-net-pnl":["Trade.pnl","Trade.rMultiple","Trade.cost / fees / commissionCost","Session.startingBalance","Dollar per R","Per-trade R","Per-trade dollars"],
             "metric-return":["Trade.pnl","Session.startingBalance"],
-            "metric-cost-drag":["Trade.cost / fees / commissionCost","Session.commission","Trade.count"],
             "metric-profit-factor":["Trade.pnl > 0","Trade.pnl < 0"],
-            "metric-expectancy":["Trade.rMultiple","Trade.pnl","Trade.count"],
-            "metric-win-rate":["Trade.pnl","Trade.count"],
+            "metric-expectancy":["Trade.rMultiple","Trade.pnl","Trade.count","Mean R","Median R","R bucket counts","Dollar per R","Expectancy $ / trade"],
+            "metric-win-rate":["Trade.pnl","Trade.count","Winning trades","Losing trades","Breakeven trades","Payoff"],
             "metric-payoff":["Winning Trade.pnl","Losing Trade.pnl"],
-            "metric-max-dd":["Trade.pnl chronology","Session.startingBalance","Equity peak"],
-            "metric-time-underwater":["Daily equity close","Prior equity high","Trade.date"],
-            "metric-recovery-factor":["Net P&L","Max Drawdown"],
+            "metric-drawdown":["Trade.pnl chronology","Session.startingBalance","Equity peak","Daily equity close","Prop/account drawdown limit"],
+            "metric-recovery-factor":["Net P&L","Max Drawdown","Recovery factor reference"],
+            "metric-smoothness-risk-adjusted":["Equity points","Cumulative R points","Sortino","Sharpe","Shape ratio","Risk-adjusted basis"],
             "metric-risk-adjusted":["Trade.rMultiple","Sortino","Sharpe","Shape ratio","Risk-adjusted basis"],
             "metric-sortino":["Trade.rMultiple","Minimum acceptable return","Risk-adjusted basis","Trade dates"],
             "metric-sharpe":["Trade.rMultiple","Return standard deviation","Risk-adjusted basis","Trade dates"],
             "metric-shape":["Sortino","Sharpe"],
             "metric-calmar":["Annualized return","Max drawdown percent"],
-            "metric-day-win-rate":["Daily P&L","Trade.date"],
-            "metric-profit-concentration":["Top winning trades","Total profit"],
+            "metric-day-win-rate":["Daily P&L","Trade.date","Green days","Red days","Flat days"],
+            "metric-profit-concentration":["Top 10% winning trades","Gross winning profit","Concentration threshold"],
+            "metric-profit-robustness":["Net P&L","Top 10% winning trades","Net without top 10%","Robustness floor"],
             "metric-equity-smoothness":["Equity points","Linear trend fit"],
             "metric-discipline":["Trade.sl_modifications","Trade.trail_disabled_by_manual","Trade.actual_risk_r","Trade.planned_risk_pct"],
+            "metric-live-demons":["Demon.type","Demon.cost_R","Demon.cost_$","Trade.rMultiple","Journal source"],
+            "metric-live-discipline-score":["Trade.postTradeNotes.rule_outcome","Trade.actual_risk_pct","Trade.planned_risk_pct","Demon.type"],
+            "metric-risk-consistency":["Trade.plan_review","Trade.missed_trade","Trade.planned_outcome_pnl","Trade.planned_outcome_r","Trade.pnl","Trade.rMultiple"],
             "metric-rule-adherence":["Trade.postTradeNotes.reason","Trade.postTradeNotes.rule_outcome","Trade.count"],
             "metric-discipline-pnl":["Trade.rulesFollowed","Trade.pnl"],
             "metric-plan-actual":["Trade.entryPrice","Trade.stopLoss","Trade.takeProfit","Trade.actual_rr_net"],
             "metric-rule-tracking":["Session.replayTracksRules","Trade.rulesFollowed"],
-            "metric-capture-ratio":["Trade.mfe_r","Trade.rMultiple","Trade.actual_rr_net"],
-            "metric-missed-move":["Trade.post_exit_bar_high_r","Trade.rMultiple","Trade.exitTime"],
-            "metric-total-trades":["Filtered trades","Source selection","Dashboard filters"],
-            "metric-trade-frequency":["Trade.count","First trade date","Last trade date"],
-            "metric-sample-confidence":["Trade.count","KPI_CONFIG.nTarget"],
+            "metric-capture-ratio":["Trade.mfe_r","Trade.rMultiple","Trade.actual_rr_net","Average captured R","Average MFE R","Captured $","Left on table $","Dollar per R"],
+            "metric-missed-move":["Trade.post_exit_bar_high_r","Trade.rMultiple","Trade.pnl","Trade.exitTime","Missed move buckets","Mean missed move","Missed move $ / trade","Dollar per R","Typical missed bucket"],
+            "metric-total-trades":["Filtered trades","Trade.duration","Winning-trade duration","Losing-trade duration","Source selection","Dashboard filters"],
+            "metric-trade-frequency":["Trade.date","Weekly trade counts","Quietest week","Typical week","Busiest week"],
+            "metric-sample-confidence":["Trade.count","KPI_CONFIG.minTradesForConfidence","Trade.rMultiple","R standard deviation"],
+            "metric-expectancy-confidence":["Trade.rMultiple","Mean R","R standard deviation","Trade.count","Breakeven 0R"],
             "metric-goal-progress":["Return percent","goalConfig.targetReturnPct"],
             "metric-target-progress":["Prop target","Current prop profit"],
             "metric-prop-headroom":["Prop daily loss limit","Current daily drawdown"],
             "metric-prop-headroom-dd":["Prop total drawdown limit","Current max drawdown"],
             "metric-prop-days":["Traded days","Prop minimum days rule"],
             "metric-pace":["Return percent","Weeks in range","Target return"],
-            "metric-streaks":["Latest closed trades","Trade.pnl sequence"],
+            "metric-streaks":["Latest closed trades","Trade.pnl sequence","Trade.rMultiple sequence","Best/worst trade pnl","Best/worst trade R","Trade.date","Weekly P&L","Longest win streak","Longest loss streak","Profitable weeks"],
           };
           const metricExamples = {
+            "metric-smoothness-risk-adjusted":"Example: the selected source path is plotted against a dashed straight line, then flips to Sortino and Sharpe where gold ticks mark the 1.0 good and 2.0 great references.",
             "metric-sortino":"Example: average trade is +0.18R, downside deviation is 0.42R, and the sample implies 120 trades/year. 0.18 / 0.42 * sqrt(120) = 4.69.",
             "metric-sharpe":"Example: average trade is +0.18R, standard deviation is 0.74R, and the sample implies 120 trades/year. 0.18 / 0.74 * sqrt(120) = 2.66.",
             "metric-discipline":"Example: 200 closed trades include 3 stop-widenings and 1 trail override, so 196 clean trades / 200 = 98% discipline score.",
+            "metric-live-demons":"Example: FOMO appeared 5 times and cost 2.1R, while Oversized appeared 2 times and cost 1.4R. The card ranks FOMO first and points the deeper review to Live Discipline.",
+            "metric-live-discipline-score":"Example: adherence 88%, risk control 94%, and patience 81% combine into the live Discipline score shown in Talaria Score.",
+            "metric-risk-consistency":"Example: if-followed plan was +$1,600, actual was +$1,050, and missed trades cost $300 of opportunity. Discipline cost is $550.",
             "metric-rule-adherence":"Example: 140 trades are journaled, 126 followed plan and 14 deviated. Adherence is 126 / 140 = 90%; coverage is 140 / total trades.",
             "metric-plan-actual":"Example: entry 100, stop 99, target 102 gives planned 2R. If actual net result is 1.3R, drift is 0.7R behind plan.",
-            "metric-capture-ratio":"Example: trades offered 300R of total MFE and realized 204R of favourable movement, so capture ratio is 68%.",
-            "metric-missed-move":"Example: after exit, the next measured favourable high averaged 0.42R beyond realized exit. Missed move is 0.42R.",
+            "metric-win-rate":"Example: 124 wins, 76 losses, and 14 breakevens in 214 trades gives a 58% win rate. If payoff says breakeven is 32%, the cushion is +26 points.",
+            "metric-day-win-rate":"Example: 23 green days, 12 red days, and 3 flat days gives 23 / 38 = 61% day win rate. The day cells show whether red days are clustered.",
+            "metric-capture-ratio":"Example: trades offered 300R of total MFE and realized 204R of favourable movement, so capture ratio is 68%. If average exit is 0.68R and average peak is 1.00R, the gold marker sits about two-thirds toward Peak; the card also shows the captured and left-on-table dollar equivalents.",
+            "metric-expectancy":"Example: R outcomes average +0.81R while the median trade is +0.42R. If the selected source averages about $48 per R, the card can also show roughly +$39 per trade when the Snapshot unit toggle is switched to dollars.",
+            "metric-missed-move":"Example: after exit, the next measured favourable high averaged 0.83R beyond realized exit, and the largest bucket is 0.5-1.0R. If 1R is about $48, that is roughly $40 of favourable movement left per trade.",
+            "metric-trade-frequency":"Example: 214 trades across 12.6 weeks is 17.0 trades/week. If the quietest week is 9, typical is 16, and busiest is 28, the strategy is active but somewhat clustered.",
+            "metric-total-trades":"Example: 214 trades with winners held 4h 10m and losers held 6h 30m flags a hold leak because losers stay open longer than winners. Flip to Activity to read the same sample count and average duration.",
             "metric-goal-progress":"Example: return is 6% and the configured target is 10%, so progress is 60%. If no target is configured, no progress denominator is shown.",
             "metric-payoff":"Example: average win is $102 and average loss is $48. 102 / 48 = 2.13x. Breakeven win rate is about 32%.",
-            "metric-profit-factor":"Example: gross wins are $12,653 and gross losses are $4,313. 12,653 / 4,313 = 2.93.",
-            "metric-net-pnl":"Example: $12,653 in wins minus $4,313 in losses gives +$8,340 net P&L before any extra adjustments.",
-            "metric-max-dd":"Example: equity peaks at $52,000, drops to $50,067, then recovers. The max drawdown is $1,933.",
-            "metric-sample-confidence":`Example: ${KPI_CONFIG.nTarget} is the evidence target. 214 trades means the sample is capped at 100% confidence for this card.`,
-            "metric-recovery-factor":`Example: $8,340 net P&L divided by $1,933 max drawdown = 4.31, above the ${KPI_CONFIG.recoveryFactorGood.toFixed(1)} reference.`,
+            "metric-profit-factor":"Example: gross wins are $12,653 and gross losses are $4,313. 12,653 / 4,313 = 2.93, so every $1 lost was met by $2.93 made back.",
+            "metric-net-pnl":"Example: $12,653 won, $4,313 lost, and $0 costs leaves a positive headline result, while the Composition face shows the retained share of gross wins. In a drawdown state the same rows remain visible, but the retained-share readout becomes a loss gap. Per-Trade Quality can show the same expectancy in R or dollars using the Snapshot R/$ toggle.",
+            "metric-drawdown":"Example: equity peaks at $52,000, drops to $50,067, and spends 30% of the period below a prior high. Drawdown is $1,933 (3.9%), with the longest underwater stretch shown in days.",
+            "metric-profit-concentration":"Example: the top 10% of winning trades made $3,000 out of $12,653 gross winning profit, so concentration is 24%. The warning line is 50%, so the edge is not overly concentrated.",
+            "metric-profit-robustness":"Example: net P&L is $8,340. Removing the top 10% of winning trades leaves 64% of the edge, clearing the 50% robustness floor.",
+            "metric-sample-confidence":`Example: ${KPI_CONFIG.minTradesForConfidence} trades is the evidence target. 214 trades clears the threshold, but the confidence-range face still decides whether expectancy is statistically conclusive.`,
+            "metric-expectancy-confidence":"Example: average expectancy is +0.81R and the 95% range is +0.42R to +1.20R. Because the whole band is above 0R, the edge is more statistically credible.",
+            "metric-recovery-factor":`Example: $8,340 net P&L divided by $1,933 max drawdown = 4.31, above the ${KPI_CONFIG.recoveryFactorGood.toFixed(1)} reference. The card reads this as $4.31 earned for every $1 of worst drawdown pain; recovery duration is read on Drawdown.`,
+            "metric-streaks":"Example: current streak is 14W, longest runs are 30W and 40L, and 9 of 13 weeks are profitable. The Best / Worst face might show +3.2R · +$310 and -1.4R · -$120 so the largest outcomes are clear in both units.",
           };
           const metricBandsFor = (id) => {
             if (["metric-net-pnl","metric-return","metric-goal-progress","metric-target-progress","metric-pace"].includes(id)) return [["No universal band","Compare against goal, account size, prior period, and drawdown.","Blue/green when progress is constructive."]];
             if (id === "metric-profit-factor") return [["< 1.0","Losses exceed wins.","Red"],["1.0-1.3","Barely workable; inspect costs and outliers.","Gold"],["1.3-1.8","Usable edge if the sample is broad.","Blue/green"],["> 1.8","Strong, but check profit concentration.","Green"]];
+            if (id === "metric-recovery-factor") return [["< 1.0","Net profit is smaller than the worst drawdown pain.","Red"],[`1.0-${KPI_CONFIG.recoveryFactorGood.toFixed(1)}`,"Profit exceeds drawdown, but the recovery cushion is still developing.","Gold"],[`${KPI_CONFIG.recoveryFactorGood.toFixed(1)}+`,"Profit meaningfully outweighs the worst drawdown pain.","Green"]];
             if (id === "metric-payoff") return [["< 1.0","Average loser is larger than average winner.","Red"],["1.0-2.0","Needs a healthy win rate.","Gold"],["> 2.0","Winners are meaningfully larger than losers.","Green"]];
             if (id === "metric-discipline") return [["< 70%","Objective breaches are too common.","Red"],["70-84%","Usable but needs review.","Gold"],["85%+","Clean execution profile.","Green"]];
+            if (id === "metric-live-demons") return [["0R","No costly demon pattern is currently active.","Green"],["Small repeated cost","One leak is visible but contained.","Gold"],["Large repeated cost","A demon is materially draining R.","Red"]];
+            if (id === "metric-live-discipline-score") return [["< 70","Discipline is unstable.","Red"],["70-84","Usable but needs review.","Gold"],["85+","Clean live execution.","Green"]];
+            if (id === "metric-risk-consistency") return [["Low cost","Actual result is close to if-followed plan.","Green"],["Some cost","Out-of-plan or missed trades created measurable opportunity cost.","Gold"],["High cost","Discipline leaks dominate the plan-vs-actual gap.","Red"]];
             if (id === "metric-rule-adherence") return [["Low coverage","Treat the value as incomplete until more trades are journaled.","Gold"],["< 80%","Too many explicit deviations.","Red"],["80%+","Subjective adherence is healthy if coverage is acceptable.","Green"]];
             if (id === "metric-plan-actual") return [["Positive drift","Actual result is behind the planned R target.","Gold"],["Near zero","Execution matches plan.","Blue/green"],["Negative drift","Actual result exceeded plan.","Green"]];
+            if (id === "metric-smoothness-risk-adjusted") return [["Choppy path","Large gaps from the dashed reference mean uneven equity movement.","Gold"],["Good risk-adjusted return","Sortino and Sharpe clear the 1.0 tick with enough sample.","Blue/green"],["Great quality","Ratios approach or exceed the 2.0 tick without a downside-heavy shape.","Green"]];
             if (id === "metric-sortino" || id === "metric-sharpe") return [["Low sample","Dim below the configured trade threshold.","Gold"],["< 1","Weak risk-adjusted return.","Red"],["1-3","Readable, sample dependent.","Blue/green"],["> 3","Strong, verify sample and annualizer.","Green"]];
             if (id === "metric-calmar") return [["< 1","Return does not compensate drawdown well.","Gold"],["1-3","Useful drawdown-adjusted return.","Blue/green"],["> 3","Strong, verify annualization sample.","Green"]];
             if (id.includes("headroom")) return [["< 20%","Danger zone; rules are close.","Red"],["20-50%","Manage size carefully.","Gold"],["> 50%","Healthy room to execute.","Green"]];
+            if (id === "metric-profit-concentration") return [["Below line","Top 10% winners do not dominate gross profit.","Green"],["Above line","Top 10% winners carry too much profit.","Gold"],["Extreme share","Treat the edge as outlier-sensitive.","Red"]];
+            if (id === "metric-profit-robustness") return [["Below floor","Too little edge survives without the top 10%.","Gold/Red"],["Clears floor","The ordinary trade base still pays.","Green"]];
             if (id === "metric-sample-confidence") return [["< 60%","Thin evidence.","Gold"],["60-99%","Developing sample.","Blue"],["100%","Meets configured evidence target.","Green"]];
+            if (id === "metric-expectancy-confidence") return [["Band crosses 0R","Not conclusive yet.","Gold"],["Band above 0R","Expectancy has statistical support.","Green"],["Band below 0R","Negative edge is statistically visible.","Red"]];
             return [["Poor","Below the strategy's required standard or too thin to trust.","Red"],["Developing","Readable, but needs supporting metrics.","Gold"],["Healthy","Supports the current strategy thesis.","Blue/green"]];
           };
           const metricQuestionFor = (title) => ({
@@ -33785,13 +36176,13 @@ const TalariaV8b = () => {
               ["Weights",scoreWeightResourceLine],
               ["Trajectory","The score movement chart uses rolling windows from the same score engine, so improvement or decay is shown by the same rules as the headline card."],
             ]},
-            {id:"score-dimensions", section:"dashboard", group:"Performance Summary (Basic)", type:"article", tool:"dashboard", minutes:7, title:"The six dimensions explained", arTitle:"شرح الأبعاد الستة", desc:"Profitability, consistency, risk control, frequency, discipline, and edge.", arDesc:"الربحية، الثبات، التحكم بالمخاطر، التكرار، الانضباط، والميزة.", sections:[
-              ["Profitability","Uses return percentage in standard mode, or progress toward the prop target in prop mode."],
-              ["Edge","Uses expectancy R and profit factor. In live mode it stays inherited until the configured live sample threshold is reached."],
-              ["Risk","Uses drawdown percentage and downside-adjusted stability."],
-              ["Consistency","Uses equity smoothness, day win rate, and daily return variability. Low samples are marked unavailable."],
-              ["Frequency","In backtest mode it measures sample adequacy. In live mode it compares actual trade rate against expected trade rate."],
-              ["Discipline","In live mode it uses rule adherence and execution efficiency. In backtest mode it is unavailable unless the replay tracks rules."],
+            {id:"score-dimensions", section:"dashboard", group:"Performance Summary (Basic)", type:"article", tool:"dashboard", minutes:7, title:"The six dimensions explained", arTitle:"شرح الأبعاد الستة", desc:"Profitability, edge, risk control, consistency, robustness, and discipline.", arDesc:"الربحية، الميزة، التحكم بالمخاطر، الثبات، المتانة، والانضباط.", sections:[
+              ["Profitability","Uses net return quality and profit factor, so a high score needs both profit and efficient gross-win versus gross-loss structure."],
+              ["Edge","Uses expectancy R, win rate, and average reward-to-risk. Negative expectancy caps the Strategy Score at 49."],
+              ["Risk","Uses risk-adjusted return quality and drawdown depth. Deep drawdowns pull this dimension down even when returns are positive."],
+              ["Consistency","Uses equity smoothness and day win rate. Low samples are marked unavailable instead of being inflated."],
+              ["Robustness","Checks whether the edge survives without the top 10% winning trades and whether the sample is trusted."],
+              ["Discipline","Live-only execution read using plan capture, rule adherence, and demon leak cost. Backtests keep this unavailable."],
             ]},
             {id:"score-trajectory", section:"dashboard", group:"Performance Summary (Basic)", type:"article", tool:"dashboard", minutes:4, title:"Reading the trajectory sparkline", arTitle:"قراءة مسار السكور", desc:"Use the sparkline to see whether the system is improving, decaying, or unstable.", arDesc:"استخدم المسار لمعرفة هل النظام يتحسن أو يتدهور أو غير مستقر.", sections:[
               ["Trend matters","A rising trajectory suggests the trader is cleaning up execution or the market regime is fitting the strategy better."],
