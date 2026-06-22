@@ -17101,6 +17101,17 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
   }, [tool, groupSelected?.crosshair?.icon, groupSelected?.crosshair?.label]);
 
+  useEffect(() => {
+    const onDrawingLockChanged = () => {
+      try {
+        const live = getPrimarySelectedDrawingForActiveChart(null);
+        v9SyncQuickBarLockFromDrawing(live, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
+      } catch (_) {}
+    };
+    window.addEventListener("talaria-drawing-lock-changed", onDrawingLockChanged);
+    return () => window.removeEventListener("talaria-drawing-lock-changed", onDrawingLockChanged);
+  }, []);
+
   // Keep V9 left rail in sync when legacy drawing mode ends: (1) finalizeDrawing
   // clears the tool after a completed stroke; (2) clearTool runs in many paths
   // (cancel, panel switch, etc.). Without syncing, React can still show Trend Line
@@ -20484,6 +20495,8 @@ const TalariaV8bLive = () => {
       (tlSettOpen || txtSettOpen || vwapSettOpen || vpSettOpen || avSettOpen);
     const act = t.id === "pinbar"
       ? pinnedBarOpen
+      : t.id === "lock"
+        ? tlLocked && tlBarSelected
       : settingsPanelEditing
         ? t.id === "crosshair"
         : tool === t.id;
@@ -20559,6 +20572,10 @@ const TalariaV8bLive = () => {
               else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
               if (list.length) {
                 list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
+                try {
+                  const live = getPrimarySelectedDrawingForActiveChart(null);
+                  v9SyncQuickBarLockFromDrawing(live, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
+                } catch (_) {}
               } else if (typeof tb?.showNotification === "function") {
                 tb.showNotification("Select a drawing first");
               } else if (typeof ch?.showNotification === "function") {
@@ -28731,6 +28748,9 @@ const TalariaV8bLive = () => {
                 } catch (_) {}
                 if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
               });
+              try {
+                window.dispatchEvent(new CustomEvent("talaria-drawing-lock-changed", { detail: { locked: next } }));
+              } catch (_) {}
             } catch(_){}
           }}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}

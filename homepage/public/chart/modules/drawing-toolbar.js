@@ -1724,6 +1724,9 @@ class DrawingToolbar {
                 `;
                 
                 this.onUpdate(drawing);
+                try {
+                    window.dispatchEvent(new CustomEvent('talaria-drawing-lock-changed', { detail: { locked: !!drawing.locked } }));
+                } catch (_) {}
             });
         }
 

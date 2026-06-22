@@ -9015,6 +9015,11 @@ class DrawingToolsManager {
         
         this.saveDrawings();
         this.renderDrawing(drawing); // Re-render to apply lock state
+        try {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('talaria-drawing-lock-changed', { detail: { locked: !!drawing.locked } }));
+            }
+        } catch (_) {}
     }
     
     /**

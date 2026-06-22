@@ -2424,62 +2424,65 @@
     // ADR (Average Daily Range) - average of daily high-low over N completed sessions
     function calculateADR(data, period) {
         const p = Math.max(1, parseInt(period, 10) || 14);
-        const result = [];
-        if (!data || !data.length) return result;
+        if (!data || !data.length) return [];
 
+        const tzId = resolveChartWallTimezoneId();
+        const n = data.length;
+        const result = new Array(n);
+        const barDayIndex = new Array(n);
         const dailyRanges = [];
+
         let currentDay = null;
         let dayHigh = null;
         let dayLow = null;
+        let currentDayIndex = -1;
 
-        for (let i = 0; i < data.length; i++) {
-            const dayKey = adrDayKey(data[i].t);
-            if (!dayKey) continue;
+        for (let i = 0; i < n; i++) {
+            const ms = adrCandleTimeMs(data[i].t);
+            const dayKey = Number.isFinite(ms) ? dayKeyInTimezone(ms, tzId) : '';
+            if (!dayKey) {
+                barDayIndex[i] = -1;
+                continue;
+            }
 
             if (currentDay !== dayKey) {
                 if (currentDay !== null && dayHigh !== null && dayLow !== null) {
-                    dailyRanges.push({ range: dayHigh - dayLow });
+                    dailyRanges.push(dayHigh - dayLow);
                 }
                 currentDay = dayKey;
+                currentDayIndex++;
                 dayHigh = data[i].h;
                 dayLow = data[i].l;
             } else {
                 dayHigh = Math.max(dayHigh, data[i].h);
                 dayLow = Math.min(dayLow, data[i].l);
             }
+            barDayIndex[i] = currentDayIndex;
         }
         if (currentDay !== null && dayHigh !== null && dayLow !== null) {
-            dailyRanges.push({ range: dayHigh - dayLow });
+            dailyRanges.push(dayHigh - dayLow);
         }
 
-        currentDay = null;
-        let currentDayIndex = -1;
+        const prefix = new Array(dailyRanges.length + 1);
+        prefix[0] = 0;
+        for (let d = 0; d < dailyRanges.length; d++) {
+            prefix[d + 1] = prefix[d] + dailyRanges[d];
+        }
 
-        for (let i = 0; i < data.length; i++) {
-            const dayKey = adrDayKey(data[i].t);
-            if (!dayKey) {
-                result.push(null);
+        for (let i = 0; i < n; i++) {
+            const di = barDayIndex[i];
+            if (di < 0) {
+                result[i] = null;
                 continue;
             }
-
-            if (currentDay !== dayKey) {
-                currentDay = dayKey;
-                currentDayIndex++;
-            }
-
-            // Use completed prior sessions only (exclude the in-progress day).
-            const priorCount = currentDayIndex;
+            const priorCount = di;
             if (priorCount < 1) {
-                result.push(null);
+                result[i] = null;
                 continue;
             }
-
             const lookback = Math.min(p, priorCount);
-            let sum = 0;
-            for (let j = 0; j < lookback; j++) {
-                sum += dailyRanges[currentDayIndex - j - 1].range;
-            }
-            result.push(sum / lookback);
+            const sum = prefix[di] - prefix[di - lookback];
+            result[i] = sum / lookback;
         }
 
         return result;

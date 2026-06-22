@@ -2767,6 +2767,69 @@ class ReplaySystem {
      * Update chart data based on current replay position
      * @param {boolean} autoScroll - Whether to auto-scroll to latest candles (default: true)
      */
+
+    /** True when this replay frame should refresh indicators (throttled while playing). */
+    _shouldRecalcIndicatorsForReplay() {
+        const chart = this.chart;
+        if (!chart || !chart.indicators || !chart.indicators.active || !chart.indicators.active.length) {
+            return false;
+        }
+        if (this._tfSwitchSkipHeavyIndicators) return false;
+
+        const sliceLen = chart.rawData ? chart.rawData.length : 0;
+        if (sliceLen <= 0) return false;
+
+        const active = chart.indicators.active;
+        let hasAdr = false;
+        let hasHeavySync = false;
+        for (let i = 0; i < active.length; i++) {
+            const t = String(active[i].type || '').toLowerCase();
+            if (t === 'adr') hasAdr = true;
+            else if (t === 'sessions' || t === 'killzones' || t === 'ictkz' || t === 'vwap') hasHeavySync = true;
+        }
+
+        const maxFullRecalc = hasAdr ? 3000 : (hasHeavySync ? 6000 : 10000);
+        const stride = hasAdr ? 24 : 16;
+
+        if (sliceLen <= maxFullRecalc) {
+            if (!this.isPlaying) return true;
+            return this.currentIndex < 2000 || (this.currentIndex % stride === 0);
+        }
+        if (this.isPlaying) {
+            return this.currentIndex < 3000 || (this.currentIndex % stride === 0);
+        }
+        if (typeof this._isAtLastLoadedBar === 'function' && this._isAtLastLoadedBar()) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Indicator refresh during replay — async worker while playing; sync when paused/scrubbing. */
+    _runReplayIndicatorRecalc() {
+        const chart = this.chart;
+        if (!chart || !this._shouldRecalcIndicatorsForReplay()) return;
+
+        if (!this.isPlaying
+            && typeof chart._isChartViewPanning === 'function'
+            && chart._isChartViewPanning()
+            && typeof chart._deferIndicatorRecalcAfterZoomFill === 'function') {
+            chart._deferIndicatorRecalcAfterZoomFill(120);
+            return;
+        }
+
+        try {
+            if (this.isPlaying && typeof chart.recalculateIndicatorsAsync === 'function') {
+                chart.recalculateIndicatorsAsync();
+                return;
+            }
+            if (typeof chart.recalculateIndicators === 'function') {
+                chart.recalculateIndicators();
+            }
+        } catch (error) {
+            console.warn('⚠️ Error recalculating indicators:', error);
+        }
+    }
+
     updateChartData(autoScroll = true) {
         if (!this.fullRawData || this.fullRawData.length === 0) {
             console.error('❌ No fullRawData available');
@@ -2828,46 +2891,8 @@ class ReplaySystem {
             return;
         }
         
-        // Recalculate indicators — on 1m near session end, rawData can be 50k–100k bars;
-        // full recalc every frame freezes when pressing Play. Stride while playing; skip
-        // when paused on the last bar with a huge slice (Play at end is usually a no-op).
-        if (typeof this.chart.recalculateIndicators === 'function') {
-            try {
-                const sliceLen = this.chart.rawData.length;
-                const maxFullRecalc = 12000;
-                const stride = 20;
-                let runRecalc = sliceLen <= maxFullRecalc;
-                if (!runRecalc && this.isPlaying) {
-                    runRecalc = this.currentIndex < 4000
-                        || (this.currentIndex % stride === 0);
-                }
-                if (!runRecalc && !this.isPlaying && this._isAtLastLoadedBar()) {
-                    runRecalc = false;
-                }
-                if (this._tfSwitchSkipHeavyIndicators) {
-                    runRecalc = false;
-                }
-                // While the user is actively dragging the chart (manual backward
-                // pan loading history), a synchronous full indicator recalc over
-                // the whole loaded slice blocks the drag — the panning freezes /
-                // lags, worst when zoomed out where each load pulls a big chunk.
-                // Defer the recalc until the interaction settles; the new bars
-                // still render this frame, indicators catch up ~120ms after the
-                // drag stops. Playback (isPlaying) keeps its existing cadence.
-                if (runRecalc && !this.isPlaying
-                    && typeof this.chart._isChartViewPanning === 'function'
-                    && this.chart._isChartViewPanning()
-                    && typeof this.chart._deferIndicatorRecalcAfterZoomFill === 'function') {
-                    this.chart._deferIndicatorRecalcAfterZoomFill(120);
-                    runRecalc = false;
-                }
-                if (runRecalc) {
-                    this.chart.recalculateIndicators();
-                }
-            } catch (error) {
-                console.warn('⚠️ Error recalculating indicators:', error);
-            }
-        }
+        // Recalculate indicators — throttled during play; ADR/timezone types stay on main thread.
+        this._runReplayIndicatorRecalc();
         if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
             const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
             if (!panning) {
@@ -4221,14 +4246,8 @@ class ReplaySystem {
         }
         this._syncCompareOverlaysForReplay();
         
-        // Recalculate indicators
-        if (typeof this.chart.recalculateIndicators === 'function') {
-            try {
-                this.chart.recalculateIndicators();
-            } catch (error) {
-                // Silent fail for performance
-            }
-        }
+        // Fast replay used to sync-recalc every tick — major freeze source with ADR / many indicators.
+        this._runReplayIndicatorRecalc();
         
         // Auto-scroll if enabled
         if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this.userHasPanned) {
@@ -4679,8 +4698,8 @@ class ReplaySystem {
             this.syncPanelChartsWithAnimatedCandle(this.chart.rawData, detail.animatedCandle);
         }
 
-        if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
-            this.chart.recalculateAllIndicators();
+        if (this.tickProgress % 18 === 0) {
+            this._runReplayIndicatorRecalc();
         }
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
@@ -4731,14 +4750,8 @@ class ReplaySystem {
         }
         this._syncCompareOverlaysForReplay();
         
-        // Recalculate indicators
-        if (typeof this.chart.recalculateIndicators === 'function') {
-            try {
-                this.chart.recalculateIndicators();
-            } catch (error) {
-                console.warn('⚠️ Error recalculating indicators:', error);
-            }
-        }
+        // Recalculate indicators (throttled — same path as updateChartData / fast replay).
+        this._runReplayIndicatorRecalc();
         
         // Update slider
         this.updateSliderRange();
