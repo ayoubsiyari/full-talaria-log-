@@ -20870,9 +20870,9 @@ class Chart {
             }
 
             this.drawGrid();
-            if (!interactionLite) {
-                this.drawVolume(visible, panOpts);
-            }
+            // Volume stays visible during zoom/pan — it is cheap (LOD buckets) and hiding it
+            // looked like the indicator vanished while the legend still showed values.
+            this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
             if (!interactionLite) {
@@ -23317,24 +23317,26 @@ class Chart {
                 const v = Number(bar.v);
                 return Number.isFinite(v) ? v : 0;
             };
-        let volLodMax = 1;
-        if (volLod) {
-            for (let vi = 0; vi < volLod.length; vi++) {
-                const vs = volFromBar(volLod[vi]);
-                if (vs > volLodMax) volLodMax = vs;
-            }
+        // Always scale from the painted bars — wheel-burst freezes volumeScale.domain() for
+        // performance, which made bars vanish when zooming without LOD aggregation.
+        let maxVolVisible = 1;
+        const barsForMax = volLod || visible;
+        for (let vi = 0; vi < barsForMax.length; vi++) {
+            const vs = volFromBar(barsForMax[vi]);
+            if (vs > maxVolVisible) maxVolVisible = vs;
         }
-        const volScaleLod = volLod
-            ? d3.scaleLinear()
-                .domain([0, Math.max(1, volLodMax)])
-                .range(this.volumeScale.range())
-            : null;
+        const volRange = this.volumeScale && typeof this.volumeScale.range === 'function'
+            ? this.volumeScale.range()
+            : [volBandBottom, volBandTop];
+        const volScale = d3.scaleLinear()
+            .domain([0, Math.max(1, maxVolVisible)])
+            .range(volRange);
 
         const baseCw = Math.max(1, this.candleWidth || 6);
         const drawVolBar = (volVal, idx, bar, pixelX) => {
             const x = Number.isFinite(pixelX) ? pixelX : this.dataIndexToPixel(idx);
             if (x < m.l - 10 || x > this.w - m.r + 10) return;
-            const vs = volScaleLod || this.volumeScale;
+            const vs = volScale;
             const volumeY = vs(volVal);
             const volumeHeight = Math.max(1, volBandBottom - volumeY);
             let isGreen = true;
@@ -23413,7 +23415,7 @@ class Chart {
                 const x = this.dataIndexToPixel(dataIdx);
                 if (x < m.l - 10 || x > this.w - m.r + 10) continue;
                 
-                const y = this.volumeScale(maValue);
+                const y = volScale(maValue);
                 
                 if (!started) {
                     this.ctx.moveTo(x, y);
@@ -23494,10 +23496,18 @@ class Chart {
                 return { plotBottom: plotBottom, plotHeight: Math.max(1, plotBottom - m.t) };
             }).call(this);
 
-        // Clip to the price plot only — never paint candles into the price-axis margin.
+        // Clip to the price plot only — never paint candles into the price-axis margin
+        // or the bottom volume overlay strip (volume is drawn underneath).
         this.ctx.save();
         this.ctx.beginPath();
-        const plotClipH = Math.max(1, plotLayout.plotBottom - m.t);
+        let plotClipBottom = plotLayout.plotBottom;
+        const volOverlayH = plotLayout.volumeAreaHeight || 0;
+        if (volOverlayH > 0
+            && typeof this._isVolumeDisplayEnabled === 'function'
+            && this._isVolumeDisplayEnabled()) {
+            plotClipBottom -= volOverlayH;
+        }
+        const plotClipH = Math.max(1, plotClipBottom - m.t);
         this.ctx.rect(m.l, m.t, this.w - m.l - m.r, plotClipH);
         this.ctx.clip();
         

@@ -8,45 +8,271 @@ function injectAlertSystemStyles() {
     const style = document.createElement('style');
     style.id = 'alert-system-styles';
     style.textContent = `
-.alert-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100002}
-.alert-modal{background:#111a35;border:1px solid #363a45;border-radius:12px;width:420px;max-width:90vw;box-shadow:0 20px 50px rgba(0,0,0,.6)}
-.alert-modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #363a45}
-.alert-modal-header h3{font-size:18px;font-weight:600;color:#fff;margin:0}
-.alert-modal-close{width:32px;height:32px;border:none;background:transparent;color:#8f98ba;font-size:24px;cursor:default;display:flex;align-items:center;justify-content:center;border-radius:6px}
-.alert-modal-close:hover{background:rgba(239,68,68,.2);color:#ef4444}
-.alert-modal-body{padding:24px}
-.alert-form-group{margin-bottom:18px}
-.alert-form-group label{display:block;font-size:12px;font-weight:500;color:#8f98ba;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
-.alert-form-group input[type="text"],.alert-form-group input[type="number"],.alert-form-group select{width:100%;padding:12px 14px;background:#0d142b;border:1px solid #363a45;border-radius:6px;color:#fff;font-size:14px;outline:none;box-sizing:border-box}
-.alert-form-group input:focus,.alert-form-group select:focus{border-color:#2962ff}
-.alert-form-group input[readonly]{opacity:.6;cursor:not-allowed}
-.alert-color-picker{display:flex;align-items:center;gap:12px}
-.alert-color-picker input[type="color"]{width:44px;height:44px;padding:0;border:2px solid #363a45;border-radius:8px;cursor:default}
-.alert-color-presets{display:flex;gap:8px}
-.alert-color-preset{width:28px;height:28px;border:2px solid transparent;border-radius:6px;cursor:default}
-.alert-color-preset:hover{transform:scale(1.15);border-color:#fff}
-.alert-checkboxes{display:flex;gap:24px;flex-wrap:wrap}
-.alert-checkbox-label{display:flex!important;align-items:center;gap:8px;cursor:default;font-size:13px!important;text-transform:none!important;color:#d1d5db!important}
-.alert-checkbox-label input[type="checkbox"]{width:18px;height:18px;accent-color:#2962ff;margin:0}
-.alert-modal-footer{display:flex;justify-content:flex-end;gap:12px;padding:18px 24px;border-top:1px solid #363a45}
-.alert-modal-btn{padding:10px 20px;border:none;border-radius:6px;font-size:14px;font-weight:500;cursor:default}
-.alert-modal-btn.cancel{background:rgba(41,98,255,.12);color:#2962ff;border:1px solid rgba(41,98,255,.25)}
-.alert-modal-btn.cancel:hover{background:rgba(255,255,255,.05);color:#fff}
-.alert-modal-btn.primary{background:#2962ff;color:#fff}
-.alert-modal-btn.primary:hover{background:#1e53e5}
-.alert-context-menu{position:fixed;background:rgba(5,0,40,.98);border:1px solid #2a2e39;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:100001;min-width:160px;padding:6px 0}
-.alert-context-item{display:flex;align-items:center;gap:10px;padding:10px 14px;color:#d1d5db;font-size:13px;cursor:default}
-.alert-context-item:hover{background:rgba(41,98,255,.15);color:#fff}
-.alert-notification{position:fixed;top:20px;right:70px;max-width:320px;background:rgba(42,46,57,.95);border:1px solid #363a45;border-left:3px solid #f59e0b;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.35);z-index:100003;opacity:0;transform:translateX(12px);transition:all .25s ease;box-sizing:border-box}
-.alert-notification.show{opacity:1;transform:translateX(0)}
-.alert-notification-header{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08)}
-.alert-notification-icon{font-size:14px}
-.alert-notification-symbol{flex:1;font-weight:600;color:#fff;font-size:11px}
-.alert-notification-close{width:22px;height:22px;border:none;background:transparent;color:#9aa1b5;font-size:16px;cursor:default}
-.alert-notification-body{padding:8px 10px 10px}
-.alert-notification-message{font-size:12px;color:#d1d4dc;margin-bottom:6px}
-.alert-notification-price{font-size:11px;color:#9aa1b5}
-.alert-notification-price span:last-child{color:#f59e0b;font-weight:600}
+.alert-settings-popup.overlay-settings-popup,
+.alert-settings-popup {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 100050;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    font-family: 'Exo 2', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.alert-settings-content.overlay-settings-content,
+.alert-settings-content {
+    width: min(400px, 94vw);
+    max-height: 85vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-radius: 10px;
+    background: #0d0f18;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    font-family: inherit;
+    color: #d1d5db;
+}
+.alert-settings-content .overlay-settings-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: #0d0f18;
+}
+.alert-settings-content .overlay-settings-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e8eaef;
+    font-family: inherit;
+}
+.alert-settings-content .overlay-settings-close {
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    cursor: default;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.alert-settings-content .overlay-settings-close:hover {
+    color: #f3f4f6;
+    background: rgba(255, 255, 255, 0.06);
+}
+.alert-settings-content .overlay-settings-close svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+.alert-settings-body {
+    padding: 14px 18px 10px;
+    overflow-y: auto;
+    font-size: 13px;
+    font-family: inherit;
+}
+.alert-field {
+    margin-bottom: 12px;
+}
+.alert-field label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #9ca3af;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    font-family: inherit;
+}
+.alert-input,
+.alert-select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.35);
+    color: #e8eaef;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.alert-input:focus,
+.alert-select:focus {
+    border-color: rgba(74, 106, 255, 0.65);
+    box-shadow: 0 0 0 1px rgba(74, 106, 255, 0.25);
+}
+.alert-input[readonly] {
+    opacity: 0.72;
+    cursor: default;
+}
+.alert-input::placeholder { color: #6b7280; }
+.alert-color-picker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.alert-color-picker input[type="color"] {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    cursor: default;
+    background: transparent;
+}
+.alert-color-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.alert-color-preset {
+    width: 22px;
+    height: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    cursor: default;
+    padding: 0;
+}
+.alert-color-preset:hover,
+.alert-color-preset.is-active {
+    border-color: rgba(255, 255, 255, 0.55);
+    transform: scale(1.06);
+}
+.alert-checkboxes {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+.alert-checkbox-label {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px !important;
+    color: #d1d5db !important;
+    text-transform: none !important;
+    font-family: inherit !important;
+    cursor: default;
+}
+.alert-checkbox-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: #4a6aff;
+    margin: 0;
+}
+.alert-settings-content .overlay-settings-footer {
+    padding: 12px 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.alert-settings-content .overlay-btn-cancel,
+.alert-settings-content .overlay-btn-ok {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: default;
+    border: none;
+    font-family: inherit;
+}
+.alert-settings-content .overlay-btn-cancel {
+    background: rgba(255, 255, 255, 0.08);
+    color: #d1d5db;
+}
+.alert-settings-content .overlay-btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #f3f4f6;
+}
+.alert-settings-content .overlay-btn-ok {
+    background: rgba(74, 106, 255, 0.45);
+    color: #fff;
+}
+.alert-settings-content .overlay-btn-ok:hover {
+    background: rgba(74, 106, 255, 0.62);
+}
+body.light-mode .alert-settings-content {
+    background: #ffffff;
+    border-color: #d7dde8;
+    color: #111827;
+}
+body.light-mode .alert-settings-content .overlay-settings-header {
+    background: #ffffff;
+    border-bottom-color: #d7dde8;
+}
+body.light-mode .alert-settings-content .overlay-settings-title { color: #111827; }
+body.light-mode .alert-field label { color: #64748b; }
+body.light-mode .alert-input,
+body.light-mode .alert-select {
+    background: #f8fafc;
+    color: #111827;
+    border-color: #d7dde8;
+}
+body.light-mode .alert-checkbox-label { color: #334155 !important; }
+.alert-context-menu {
+    position: fixed;
+    min-width: 180px;
+    padding: 4px 0 6px;
+    background: #0A0C14;
+    border: 1px solid rgba(140, 160, 255, 0.12);
+    border-radius: 4px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.75);
+    z-index: 100001;
+    font-family: 'Exo 2', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    overflow: hidden;
+}
+.alert-context-menu::before {
+    content: '';
+    display: block;
+    height: 2px;
+    margin: 0 0 4px;
+    background: linear-gradient(90deg, #2643F7, #4A6AFF, #2643F7);
+}
+.alert-context-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    color: rgba(255, 255, 255, 0.92);
+    cursor: default;
+}
+.alert-context-item:hover {
+    background: rgba(41, 98, 255, 0.12);
+    color: #fff;
+}
+.alert-notification {
+    position: fixed;
+    top: 20px;
+    right: 70px;
+    max-width: 320px;
+    background: #0f1119;
+    border: 1px solid rgba(140, 160, 255, 0.12);
+    border-left: 3px solid #f59e0b;
+    border-radius: 4px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+    z-index: 100003;
+    opacity: 0;
+    transform: translateX(12px);
+    transition: all 0.25s ease;
+    box-sizing: border-box;
+    font-family: 'Exo 2', sans-serif;
+}
+.alert-notification.show { opacity: 1; transform: translateX(0); }
+.alert-notification-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.alert-notification-icon { font-size: 14px; }
+.alert-notification-symbol { flex: 1; font-weight: 600; color: #fff; font-size: 11px; }
+.alert-notification-close {
+    width: 22px; height: 22px; border: none; background: transparent;
+    color: #9aa1b5; font-size: 16px; cursor: default;
+}
+.alert-notification-body { padding: 8px 10px 10px; }
+.alert-notification-message { font-size: 12px; color: #d1d4dc; margin-bottom: 6px; }
+.alert-notification-price { font-size: 11px; color: #9aa1b5; }
+.alert-notification-price span:last-child { color: #f59e0b; font-weight: 600; }
 `;
     document.head.appendChild(style);
 }
@@ -1002,96 +1228,118 @@ class AlertSystem {
      * Show alert modal (create/edit)
      */
     showAlertModal(options) {
-        // Remove existing modal
-        document.querySelectorAll('.alert-modal-overlay').forEach(m => m.remove());
-        
+        document.querySelectorAll('.alert-settings-popup, .alert-modal-overlay').forEach(m => m.remove());
+
+        const symbol = this.getSymbolName();
+        const priceVal = options.price != null && options.price !== ''
+            ? this.formatPrice(options.price)
+            : '';
+        const esc = (s) => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/"/g, '&quot;');
+
         const modal = document.createElement('div');
-        modal.className = 'alert-modal-overlay';
+        modal.className = 'overlay-settings-popup alert-settings-popup open';
         modal.innerHTML = `
-            <div class="alert-modal">
-                <div class="alert-modal-header">
-                    <h3>${options.title}</h3>
-                    <button class="alert-modal-close">&times;</button>
+            <div class="overlay-settings-content alert-settings-content" role="dialog" aria-modal="true" aria-label="${esc(options.title)}">
+                <div class="overlay-settings-header">
+                    <span class="overlay-settings-title">${esc(options.title)}</span>
+                    <button type="button" class="overlay-settings-close alert-modal-close" aria-label="Close">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
                 </div>
-                <div class="alert-modal-body">
-                    <div class="alert-form-group">
-                        <label>Symbol</label>
-                        <input type="text" id="alertSymbol" value="${this.getSymbolName()}" readonly>
+                <div class="overlay-settings-body alert-settings-body">
+                    <div class="alert-field">
+                        <label for="alertSymbol">Symbol</label>
+                        <input type="text" class="alert-input" id="alertSymbol" value="${esc(symbol)}" readonly>
                     </div>
-                    <div class="alert-form-group">
-                        <label>Price</label>
-                        <input type="number" step="any" id="alertPrice" value="${options.price || ''}">
+                    <div class="alert-field">
+                        <label for="alertPrice">Price</label>
+                        <input type="number" step="any" class="alert-input" id="alertPrice" value="${esc(priceVal)}">
                     </div>
-                    <div class="alert-form-group">
-                        <label>Condition</label>
-                        <select id="alertCondition">
+                    <div class="alert-field">
+                        <label for="alertCondition">Condition</label>
+                        <select class="alert-select" id="alertCondition">
                             <option value="crossing" ${options.condition === 'crossing' ? 'selected' : ''}>Crossing</option>
-                            <option value="crossing_up" ${options.condition === 'crossing_up' ? 'selected' : ''}>Crossing Up</option>
-                            <option value="crossing_down" ${options.condition === 'crossing_down' ? 'selected' : ''}>Crossing Down</option>
-                            <option value="greater_than" ${options.condition === 'greater_than' ? 'selected' : ''}>Greater Than</option>
-                            <option value="less_than" ${options.condition === 'less_than' ? 'selected' : ''}>Less Than</option>
+                            <option value="crossing_up" ${options.condition === 'crossing_up' ? 'selected' : ''}>Crossing up</option>
+                            <option value="crossing_down" ${options.condition === 'crossing_down' ? 'selected' : ''}>Crossing down</option>
+                            <option value="greater_than" ${options.condition === 'greater_than' ? 'selected' : ''}>Greater than</option>
+                            <option value="less_than" ${options.condition === 'less_than' ? 'selected' : ''}>Less than</option>
                         </select>
                     </div>
-                    <div class="alert-form-group">
-                        <label>Trigger</label>
-                        <select id="alertExpiration">
+                    <div class="alert-field">
+                        <label for="alertExpiration">Trigger</label>
+                        <select class="alert-select" id="alertExpiration">
                             <option value="every_time" ${options.expiration === 'every_time' ? 'selected' : ''}>Every time</option>
                             <option value="once" ${options.expiration === 'once' ? 'selected' : ''}>Only once</option>
                             <option value="once_per_bar" ${options.expiration === 'once_per_bar' ? 'selected' : ''}>Once per bar</option>
                         </select>
                     </div>
-                    <div class="alert-form-group">
-                        <label>Message</label>
-                        <input type="text" id="alertMessage" value="${options.message || ''}" placeholder="Optional alert message">
+                    <div class="alert-field">
+                        <label for="alertMessage">Message</label>
+                        <input type="text" class="alert-input" id="alertMessage" value="${esc(options.message || '')}" placeholder="Optional alert message">
                     </div>
-                    <div class="alert-form-group">
-                        <label>Line Color</label>
+                    <div class="alert-field">
+                        <label>Line color</label>
                         <div class="alert-color-picker">
-                            <input type="color" id="alertColor" value="${options.color || '#ff9800'}">
+                            <input type="color" id="alertColor" value="${esc(options.color || '#ff9800')}">
                             <div class="alert-color-presets">
-                                <button class="alert-color-preset" data-color="#ff9800" style="background:#ff9800"></button>
-                                <button class="alert-color-preset" data-color="#f44336" style="background:#f44336"></button>
-                                <button class="alert-color-preset" data-color="#4caf50" style="background:#4caf50"></button>
-                                <button class="alert-color-preset" data-color="#2196f3" style="background:#2196f3"></button>
-                                <button class="alert-color-preset" data-color="#9c27b0" style="background:#9c27b0"></button>
+                                <button type="button" class="alert-color-preset${(options.color || '#ff9800') === '#ff9800' ? ' is-active' : ''}" data-color="#ff9800" style="background:#ff9800" aria-label="Orange"></button>
+                                <button type="button" class="alert-color-preset" data-color="#f44336" style="background:#f44336" aria-label="Red"></button>
+                                <button type="button" class="alert-color-preset" data-color="#4caf50" style="background:#4caf50" aria-label="Green"></button>
+                                <button type="button" class="alert-color-preset" data-color="#2196f3" style="background:#2196f3" aria-label="Blue"></button>
+                                <button type="button" class="alert-color-preset" data-color="#9c27b0" style="background:#9c27b0" aria-label="Purple"></button>
                             </div>
                         </div>
                     </div>
-                    <div class="alert-form-group alert-checkboxes">
+                    <div class="alert-field alert-checkboxes">
                         <label class="alert-checkbox-label">
-                            <input type="checkbox" class="tv-native-checkbox" id="alertShowPopup" ${options.showPopup ? 'checked' : ''}>
+                            <input type="checkbox" id="alertShowPopup" ${options.showPopup ? 'checked' : ''}>
                             Show popup
                         </label>
                         <label class="alert-checkbox-label">
-                            <input type="checkbox" class="tv-native-checkbox" id="alertPlaySound" ${options.playSound ? 'checked' : ''}>
+                            <input type="checkbox" id="alertPlaySound" ${options.playSound ? 'checked' : ''}>
                             Play sound
                         </label>
                     </div>
                 </div>
-                <div class="alert-modal-footer">
-                    <button class="alert-modal-btn cancel">Cancel</button>
-                    <button class="alert-modal-btn primary">${options.isEdit ? 'Update' : 'Create'}</button>
+                <div class="overlay-settings-footer">
+                    <button type="button" class="overlay-btn-cancel alert-modal-btn cancel">Cancel</button>
+                    <button type="button" class="overlay-btn-ok alert-modal-btn primary">${options.isEdit ? 'Update' : 'Create'}</button>
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(modal);
-        
-        // Color presets
+
+        const onKey = (e) => {
+            if (e.key === 'Escape') closeModal();
+        };
+        const closeModal = () => {
+            document.removeEventListener('keydown', onKey);
+            modal.remove();
+        };
+        document.addEventListener('keydown', onKey);
+
         modal.querySelectorAll('.alert-color-preset').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.getElementById('alertColor').value = btn.dataset.color;
+                const colorInput = document.getElementById('alertColor');
+                if (colorInput) colorInput.value = btn.dataset.color;
+                modal.querySelectorAll('.alert-color-preset').forEach(b => b.classList.remove('is-active'));
+                btn.classList.add('is-active');
             });
         });
-        
-        // Close handlers
-        modal.querySelector('.alert-modal-close').addEventListener('click', () => modal.remove());
-        modal.querySelector('.alert-modal-btn.cancel').addEventListener('click', () => modal.remove());
+
+        modal.querySelector('.alert-modal-close').addEventListener('click', closeModal);
+        modal.querySelector('.alert-modal-btn.cancel').addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.remove();
+            if (e.target === modal) closeModal();
         });
-        
-        // Submit handler
+
         modal.querySelector('.alert-modal-btn.primary').addEventListener('click', () => {
             const price = parseFloat(document.getElementById('alertPrice').value);
             const condition = document.getElementById('alertCondition').value;
@@ -1102,10 +1350,13 @@ class AlertSystem {
             const playSound = document.getElementById('alertPlaySound').checked;
             
             if (isNaN(price)) {
-                alert('Please enter a valid price');
+                if (this.chart && typeof this.chart.showNotification === 'function') {
+                    this.chart.showNotification('Please enter a valid price');
+                }
                 return;
             }
-            
+
+            document.removeEventListener('keydown', onKey);
             if (options.isEdit) {
                 this.updateAlert(options.alertId, {
                     price,

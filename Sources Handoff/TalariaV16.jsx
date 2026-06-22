@@ -8738,6 +8738,8 @@ const TalariaV8b = () => {
   const [stratPopup, setStratPopup] = useState(null);
   const [symPopup, setSymPopup] = useState(null);
   const [sessView, setSessView] = useState(() => (isV16Embedded() ? "dashboard" : "sessions"));
+  const [supportNavOpen, setSupportNavOpen] = useState(false);
+  const supportNavBtnRef = useRef(null);
   const [resourcesLang, setResourcesLang] = useState("en");
   const [resourcesTutorialMode, setResourcesTutorialMode] = useState(false);
   const [resourcesSearchOpen, setResourcesSearchOpen] = useState(false);
@@ -9675,6 +9677,21 @@ const TalariaV8b = () => {
     window.addEventListener("keydown", onResourcesShortcut);
     return () => window.removeEventListener("keydown", onResourcesShortcut);
   }, [sessView]);
+  useEffect(() => {
+    const onSupportChatChange = (e) => {
+      setSupportNavOpen(!!e?.detail?.open);
+    };
+    window.addEventListener("talaria-support-chat-change", onSupportChatChange);
+    return () => window.removeEventListener("talaria-support-chat-change", onSupportChatChange);
+  }, []);
+  useEffect(() => {
+    const el = supportNavBtnRef.current;
+    if (typeof window === "undefined") return undefined;
+    if (el) window.__TALARIA_SUPPORT_NAV_ANCHOR__ = el;
+    return () => {
+      if (window.__TALARIA_SUPPORT_NAV_ANCHOR__ === el) delete window.__TALARIA_SUPPORT_NAV_ANCHOR__;
+    };
+  });
   useEffect(() => {
     try { localStorage.setItem("talaria_backtest_dashboard_mode", dashMode); } catch {}
   }, [dashMode]);
@@ -12279,6 +12296,28 @@ const TalariaV8b = () => {
               );
             })}
             <div style={{flex:1}}/>
+            {(()=>{
+              const isSupportA = supportNavOpen;
+              const goSupportNav = () => {
+                const chartToggle = typeof window !== "undefined" ? window.__TALARIA_CHART_TOGGLE_SUPPORT__ : null;
+                if (typeof chartToggle === "function") {
+                  chartToggle();
+                  return;
+                }
+                openV16Profile("support");
+              };
+              return (
+              <div ref={supportNavBtnRef} className={`tlr-session-nav-item${isSupportA ? " tlr-session-nav-item-active" : ""}`} role="button" tabIndex={0}
+                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goSupportNav();}}
+                onClick={e=>e.preventDefault()}
+                onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goSupportNav();}}}
+                style={{width:"100%",height:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isSupportA?c.acD:"transparent",color:isSupportA?c.acL:c.ts}}>
+                {isSupportA&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H9l-5 4V4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><line x1="8" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="8" y1="12.5" x2="13" y2="12.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                <span style={{fontSize:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>Support</span>
+              </div>
+              );
+            })()}
             {(()=>{
               const isProfileA = sessView === "profile";
               const goProfileNav = () => {

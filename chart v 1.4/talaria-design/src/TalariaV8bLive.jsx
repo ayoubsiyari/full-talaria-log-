@@ -11670,6 +11670,7 @@ const TalariaV8bLive = () => {
   const [supportSending, setSupportSending] = useState(false);
   const [supportError, setSupportError] = useState(null);
   const supportBtnRef = useRef(null);
+  const supportSidebarBtnRef = useRef(null);
   const supportPopRef = useRef(null);
   const supportWsRef = useRef(null);
   const supportMsgEndRef = useRef(null);
@@ -11843,12 +11844,28 @@ const TalariaV8bLive = () => {
     setSupportSending(false);
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    window.__TALARIA_CHART_TOGGLE_SUPPORT__ = toggleSupportChat;
+    return () => { delete window.__TALARIA_CHART_TOGGLE_SUPPORT__; };
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.dispatchEvent(new CustomEvent("talaria-support-chat-change", { detail: { open: supportChatOpen } }));
+    } catch (_) {}
+  }, [supportChatOpen]);
+
   // click-away listener for support chat
   useEffect(() => {
     if (!supportChatOpen) return;
     const onDocDown = (e) => {
       const t = e.target;
       if (supportBtnRef.current && supportBtnRef.current.contains(t)) return;
+      if (supportSidebarBtnRef.current && supportSidebarBtnRef.current.contains(t)) return;
+      const navAnchor = typeof window !== "undefined" ? window.__TALARIA_SUPPORT_NAV_ANCHOR__ : null;
+      if (navAnchor && navAnchor.contains(t)) return;
       if (supportPopRef.current && supportPopRef.current.contains(t)) return;
       setSupportChatOpen(false);
     };
@@ -20188,6 +20205,14 @@ const TalariaV8bLive = () => {
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   closeWindowsRef.current = closeWindows;
+
+  const toggleSupportChat = () => {
+    closeWindows();
+    setSettingsOpen(false);
+    setRightPanel(null);
+    setOrderPanelOpen(false);
+    setSupportChatOpen((prev) => !prev);
+  };
 
   /** Multichart iframe tiles: ask parent to open Settings (full-viewport). Host: open locally. */
   const openV9SettingsModalRef = useRef((/** @type {{ fromLogo?: boolean }} */ _opts) => {});
@@ -29823,7 +29848,7 @@ const TalariaV8bLive = () => {
         <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:460,height:560,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"settings",startX:e.clientX,startY:e.clientY,ox:settingsPos.x,oy:settingsPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
-            <I n="settings" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8}}>Settings</span>
+            <I n="settings" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Settings</span>
             {/* template button */}
             <div style={{position:"relative"}} onMouseDown={e=>e.stopPropagation()}>
               <div onMouseEnter={()=>setSwHov("sett-tpl-hdr")} onMouseLeave={()=>setSwHov(null)}
@@ -31572,7 +31597,7 @@ const TalariaV8bLive = () => {
         <div style={{ flex: 1 }}/>
         {/* ── Support Chat button (left of Place Order) ── */}
         <button type="button" ref={supportBtnRef}
-          onClick={(e) => { e.stopPropagation(); closeWindows(); setSettingsOpen(false); setRightPanel(null); setOrderPanelOpen(false); setSupportChatOpen(prev => !prev); }}
+          onClick={(e) => { e.stopPropagation(); toggleSupportChat(); }}
           onMouseEnter={e=>{setHov("u-support");showTip("Support",e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
           style={{ width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", border:"none", cursor:"default", position:"relative", marginRight:12,
             background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="u-support" ? c.hv : "transparent", transition:"background 0.12s" }}>
@@ -31622,12 +31647,18 @@ const TalariaV8bLive = () => {
           </button>
         ))}
         {/* ─── Support Chat dropdown popover ─── */}
-        {supportChatOpen && supportBtnRef.current && createPortal(
+        {supportChatOpen && createPortal(
           (() => {
-            const btnR = supportBtnRef.current.getBoundingClientRect();
+            const navAnchor = typeof window !== "undefined" ? window.__TALARIA_SUPPORT_NAV_ANCHOR__ : null;
+            const anchorEl = supportBtnRef.current || supportSidebarBtnRef.current || navAnchor;
+            const btnR = anchorEl ? anchorEl.getBoundingClientRect() : null;
             const POP_W = 360, POP_H = 500;
-            const right = Math.max(8, window.innerWidth - btnR.right - 4);
-            const top = Math.round(btnR.bottom + 6);
+            const right = btnR
+              ? Math.max(8, window.innerWidth - btnR.right - 4)
+              : Math.max(8, window.innerWidth - 76);
+            const top = btnR
+              ? Math.round(btnR.bottom + 6)
+              : Math.max(8, window.innerHeight - Math.min(POP_H, window.innerHeight * 0.75) - 16);
             const catLabel = { bug: "Bug", error: "Error", other: "Other" };
             const fmtTime = (iso) => { if (!iso) return ""; try { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
             const supportOpenCount = supportThreads.filter(t => supportThreadIsOpen(t.status)).length;
@@ -31821,6 +31852,32 @@ const TalariaV8bLive = () => {
             t.id === "pinbar" && <div key={`sep-${t.id}`} style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>,
           ])}
           <div style={{ flex: 1 }}/>
+          {/* Support — same chat as top bar; also toggled from V16 nav via __TALARIA_CHART_TOGGLE_SUPPORT__ */}
+          <div
+            ref={supportSidebarBtnRef}
+            onClick={(e) => { e.stopPropagation(); toggleSupportChat(); }}
+            onMouseEnter={() => setHov("sb-support")} onMouseLeave={() => setHov(null)}
+            style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"center",
+              paddingLeft:0, paddingRight:0, boxSizing:"border-box", cursor:"default", position:"relative",
+              background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="sb-support" ? c.hv : "transparent",
+              transition:"background 0.12s" }}>
+            <I n="chat" s={16} cl={supportChatOpen ? c.acL : hov==="sb-support" ? c.tx : c.ts}/>
+            {supportUnread > 0 && (
+              <div style={{ position:"absolute", top:2, right:6, minWidth:12, height:12, borderRadius:6, background:"#e53935", color:"#fff", fontSize:8, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px", lineHeight:1, pointerEvents:"none" }}>
+                {supportUnread > 99 ? "99+" : supportUnread}
+              </div>
+            )}
+            {hov==="sb-support" && !supportChatOpen && (
+              <div style={{ position:"absolute", left:"calc(100% + 10px)", top:"50%", transform:"translateY(-50%)",
+                background:c.el, border:`1px solid ${c.brH}`, padding:"4px 10px", fontSize:12, fontWeight:600, fontFamily:F,
+                color:c.tx, whiteSpace:"nowrap", zIndex:100, boxShadow:"0 4px 16px rgba(0,0,0,0.6)",
+                borderLeft:`2px solid ${c.brH}`, pointerEvents:"none" }}>Support</div>
+            )}
+            {supportChatOpen && (
+              <div style={{ position:"absolute", left:3, top:"25%", bottom:"25%", width:1,
+                background:`linear-gradient(180deg,transparent,${c.acL},transparent)`, pointerEvents:"none", zIndex:2 }}/>
+            )}
+          </div>
           {/* Dark / Light mode toggle */}
           <div onClick={(e) => { e.stopPropagation(); setDarkMode(v => !v); }}
             onMouseEnter={() => setHov("sb-theme")} onMouseLeave={() => setHov(null)}
