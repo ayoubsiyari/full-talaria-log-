@@ -26268,8 +26268,9 @@ class Chart {
                     this.canvas.style.cursor = cursorStyle;
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = cursorStyle;
                 } else if (this.tool || (this.drawingManager && this.drawingManager.currentTool)) {
-                    this.canvas.style.cursor = 'crosshair';
-                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'crosshair';
+                    const placementCursor = this.getCurrentCursorStyle();
+                    this.canvas.style.cursor = placementCursor;
+                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = placementCursor;
                 } else {
                     // Check if hovering over a shape - if so, don't override the shape's cursor
                     const svgElement = e.target.closest('svg');

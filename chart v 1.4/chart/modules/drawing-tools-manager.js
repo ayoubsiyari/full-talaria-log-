@@ -2395,6 +2395,30 @@ class DrawingToolsManager {
         }
     }
 
+    /** Cursor for armed drawing tools — respects chart.js cursorType (cross / dot / arrow). */
+    _placementCursorStyle() {
+        if (this.chart && typeof this.chart.getCurrentCursorStyle === 'function') {
+            return this.chart.getCurrentCursorStyle();
+        }
+        return 'crosshair';
+    }
+
+    _applyChartPlacementCursor() {
+        const cursorStyle = this._placementCursorStyle();
+        if (this.svg) {
+            this.svg.style('cursor', cursorStyle);
+        }
+        if (this.chart?.canvas) {
+            this.chart.canvas.style.cursor = cursorStyle;
+        }
+        const chartWrapper = this.chart?.isPanel
+            ? this.chart.canvas?.parentElement
+            : (typeof document !== 'undefined' ? document.querySelector('.chart-wrapper') : null);
+        if (chartWrapper) {
+            chartWrapper.style.cursor = cursorStyle;
+        }
+    }
+
     /**
      * Set the current drawing tool
      */
@@ -2424,12 +2448,9 @@ class DrawingToolsManager {
         this.dragFirstTwoStart = null;
         this.dragFirstTwoStartScreen = null;
         
-        // Update cursor
-        this.svg.style('cursor', toolName ? 'crosshair' : 'default');
+        // Update cursor — honor cross / dot / arrow preference from chart.setCursorType
+        this._applyChartPlacementCursor();
         this.svg.style('pointer-events', toolName ? 'all' : 'none');
-        if (this.chart?.canvas) {
-            this.chart.canvas.style.cursor = toolName ? 'crosshair' : 'default';
-        }
         
         // Disable pointer events on all existing drawings when a tool is active
         if (toolName) {
@@ -2493,11 +2514,8 @@ class DrawingToolsManager {
             this.labelsGroup.style('pointer-events', 'none');
         }
         if (this.svg) {
-            this.svg.style('cursor', 'crosshair');
+            this._applyChartPlacementCursor();
             this.svg.style('pointer-events', 'all');
-        }
-        if (this.chart?.canvas) {
-            this.chart.canvas.style.cursor = 'crosshair';
         }
     }
 
@@ -4103,6 +4121,15 @@ class DrawingToolsManager {
      * Handle mouse move event
      */
     /**
+     * Ctrl/Meta key-up/down during handle resize re-applies magnet at a fixed pointer and
+     * jumps endpoints to OHLC. Magnet still applies when the mouse moves with Ctrl held.
+     */
+    _shouldSkipMagnetModifierRefresh(event) {
+        if (!event || (event.key !== 'Control' && event.key !== 'Meta')) return false;
+        return !!(this.isResizing || this.isCustomHandleDragging || this.isCustomHandleDrag);
+    }
+
+    /**
      * Re-run placement preview (and crosshair) at the last pointer position after a modifier
      * key changes (Ctrl magnet, Shift angle snap) without requiring mouse movement.
      */
@@ -4741,11 +4768,13 @@ class DrawingToolsManager {
         }
         
         if (event.key === 'Control' || event.key === 'Meta' || event.key === 'Shift') {
-            this._refreshPlacementPreviewFromLastPointer({
-                ctrlKey: event.ctrlKey,
-                metaKey: event.metaKey,
-                shiftKey: event.shiftKey
-            });
+            if (!this._shouldSkipMagnetModifierRefresh(event)) {
+                this._refreshPlacementPreviewFromLastPointer({
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    shiftKey: event.shiftKey
+                });
+            }
             if (this.chart && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
                 this.chart.refreshCrosshairFromLastPointer({
                     ctrlKey: event.ctrlKey,
@@ -4769,11 +4798,13 @@ class DrawingToolsManager {
         }
 
         if (event.key === 'Control' || event.key === 'Meta' || event.key === 'Shift') {
-            this._refreshPlacementPreviewFromLastPointer({
-                ctrlKey: event.ctrlKey,
-                metaKey: event.metaKey,
-                shiftKey: event.shiftKey
-            });
+            if (!this._shouldSkipMagnetModifierRefresh(event)) {
+                this._refreshPlacementPreviewFromLastPointer({
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    shiftKey: event.shiftKey
+                });
+            }
             if (this.chart && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
                 this.chart.refreshCrosshairFromLastPointer({
                     ctrlKey: event.ctrlKey,

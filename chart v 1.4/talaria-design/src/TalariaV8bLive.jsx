@@ -1714,14 +1714,13 @@ const V9_ICON_TO_CHART_CURSOR = {
   eraser: "eraser",
 };
 
-function v9ResolveChartCursorType(v9Tool, groupSelected) {
-  if (v9Tool !== "crosshair") return null;
+function v9ResolveChartCursorType(groupSelected) {
   const sub = groupSelected && groupSelected.crosshair;
   const icon = sub && sub.icon ? sub.icon : "crosshair";
   return V9_ICON_TO_CHART_CURSOR[icon] ?? "cross";
 }
 
-function v9ApplyChartCursorType(cursorType) {
+function v9ApplyChartCursorType(cursorType, { skipSync = false } = {}) {
   if (!cursorType || typeof window === "undefined") return;
   try {
     const ch =
@@ -1729,11 +1728,11 @@ function v9ApplyChartCursorType(cursorType) {
         ? window.getActiveChart()
         : window.chart;
     if (ch && typeof ch.setCursorType === "function") {
-      ch.setCursorType(cursorType);
+      ch.setCursorType(cursorType, skipSync);
       return;
     }
     if (window.chart && typeof window.chart.setCursorType === "function") {
-      window.chart.setCursorType(cursorType);
+      window.chart.setCursorType(cursorType, skipSync);
     }
   } catch (err) {
     console.warn("[V9 cursor bridge] setCursorType failed:", err);
@@ -17289,12 +17288,13 @@ const TalariaV8bLive = () => {
   }, [tool, groupSelected, layoutPanels.n]);
 
   // Cursor sub-tools (Cross / Dot / Arrow / Eraser) — chart.js owns cursorType;
-  // V9 only updates React state unless we call setCursorType here.
+  // re-apply whenever the rail cursor choice or active tool changes (skipSync when a draw tool is armed).
   useEffect(() => {
     if (editingDrawingRef.current) return;
-    if (tool !== "crosshair") return;
-    const cursorType = v9ResolveChartCursorType(tool, groupSelected);
+    if (tool === "trash") return;
+    const cursorType = v9ResolveChartCursorType(groupSelected);
     if (!cursorType) return;
+    const skipSync = tool !== "crosshair";
     let cancelled = false;
     let attempts = 0;
     const apply = () => {
@@ -17309,9 +17309,9 @@ const TalariaV8bLive = () => {
       }
       const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
       if (grid && typeof grid.runCommandIframes === "function") {
-        void grid.runCommandIframes("setChartCursorType", { cursorType }).catch(() => {});
+        void grid.runCommandIframes("setChartCursorType", { cursorType, skipSync }).catch(() => {});
       }
-      v9ApplyChartCursorType(cursorType);
+      v9ApplyChartCursorType(cursorType, { skipSync });
     };
     apply();
     return () => { cancelled = true; };

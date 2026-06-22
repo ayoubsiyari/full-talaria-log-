@@ -1164,10 +1164,11 @@
                 }
                 case 'setChartCursorType': {
                     var ct = args.cursorType ? String(args.cursorType) : 'cross';
+                    var skipSync = !!(args && args.skipSync);
                     if (typeof ch.setCursorType !== 'function') {
                         throw new Error('chart.setCursorType is not a function');
                     }
-                    ch.setCursorType(ct);
+                    ch.setCursorType(ct, skipSync);
                     return;
                 }
 
