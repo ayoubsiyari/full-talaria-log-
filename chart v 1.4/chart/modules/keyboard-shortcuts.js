@@ -49,6 +49,9 @@ class KeyboardShortcutsManager {
     saveCustomShortcuts() {
         try {
             userStorage.setItem('chart_custom_shortcuts', JSON.stringify(this.customShortcuts));
+            if (typeof window.saveKeyboardShortcuts === 'function') {
+                window.saveKeyboardShortcuts(this.customShortcuts);
+            }
         } catch (e) {
             console.warn('Failed to save custom shortcuts:', e);
         }
@@ -58,19 +61,8 @@ class KeyboardShortcutsManager {
      * Update a shortcut binding
      */
     updateShortcut(actionId, newKey) {
-        // Remove old binding if exists
-        for (const key of Object.keys(this.shortcuts)) {
-            if (this.shortcuts[key].id === actionId) {
-                delete this.shortcuts[key];
-                break;
-            }
-        }
-        
-        // Add new binding
         this.customShortcuts[actionId] = newKey;
         this.saveCustomShortcuts();
-        
-        // Rebuild shortcuts
         this.shortcuts = this.defineShortcuts();
     }
     
@@ -91,18 +83,102 @@ class KeyboardShortcutsManager {
         this.saveCustomShortcuts();
         this.shortcuts = this.defineShortcuts();
     }
+
+    /**
+     * Editable shortcut catalog (id → default binding + action).
+     * Multiple physical keys can share the same id in defineShortcuts().
+     */
+    getEditableShortcutCatalog() {
+        return {
+            moveLeft: { defaultKey: 'ArrowLeft', displayKey: '←', category: 'Navigation', description: 'Move chart left', action: () => this.moveChart(-1) },
+            moveRight: { defaultKey: 'ArrowRight', displayKey: '→', category: 'Navigation', description: 'Move chart right', action: () => this.moveChart(1) },
+            zoomIn: { defaultKey: '+', displayKey: '+', category: 'Zoom', description: 'Zoom in', action: () => this.zoomIn() },
+            zoomOut: { defaultKey: '-', displayKey: '-', category: 'Zoom', description: 'Zoom out', action: () => this.zoomOut() },
+            undo: { defaultKey: 'Ctrl+z', displayKey: 'Ctrl+Z', category: 'Edit', description: 'Undo', action: () => this.undo() },
+            redo: { defaultKey: 'Ctrl+y', displayKey: 'Ctrl+Y', category: 'Edit', description: 'Redo', action: () => this.redo() },
+            delete: { defaultKey: 'Delete', displayKey: 'Delete', category: 'Edit', description: 'Delete selected', action: () => this.deleteSelected() },
+            escape: { defaultKey: 'Escape', displayKey: 'Escape', category: 'Edit', description: 'Cancel / Deselect', action: () => this.cancelAction() },
+            openIndicators: { defaultKey: '/', displayKey: '/', category: 'Quick Actions', description: 'Open indicators', action: () => this.openIndicators() },
+            quickSearch: { defaultKey: 'Ctrl+k', displayKey: 'Ctrl+K', category: 'Quick Actions', description: 'Quick Search', action: () => this.openQuickSearch() },
+            saveLayout: { defaultKey: 'Ctrl+s', displayKey: 'Ctrl+S', category: 'Quick Actions', description: 'Save chart layout', action: () => this.saveChartLayout() },
+            loadLayout: { defaultKey: 'Ctrl+l', displayKey: 'Ctrl+L', category: 'Quick Actions', description: 'Load chart layout', action: () => this.loadChartLayout() },
+            snapshot: { defaultKey: 'Alt+s', displayKey: 'Alt+S', category: 'Chart', description: 'Take snapshot', action: () => this.takeSnapshot() },
+            resetChart: { defaultKey: 'Alt+r', displayKey: 'Alt+R', category: 'Chart', description: 'Reset chart', action: () => this.resetChart() },
+            goToDate: { defaultKey: 'Alt+g', displayKey: 'Alt+G', category: 'Chart', description: 'Go to date', action: () => this.goToDate() },
+            toggleMagnet: { defaultKey: 'm', displayKey: 'M', category: 'Drawing', description: 'Toggle magnet mode', action: () => this.toggleMagnetMode() },
+            playPause: { defaultKey: 'Space', displayKey: 'Space', category: 'Replay', description: 'Play/Pause replay', action: () => this.replayPlayPause() },
+            stepForward: { defaultKey: '.', displayKey: '.', category: 'Replay', description: 'Step forward', action: () => this.replayStepForward() },
+            stepBackward: { defaultKey: ',', displayKey: ',', category: 'Replay', description: 'Step backward', action: () => this.replayStepBackward() },
+            showHelp: { defaultKey: '?', displayKey: '?', category: 'Help', description: 'Show shortcuts help', action: () => this.showShortcutsHelp() }
+        };
+    }
+
+    normalizeShortcutKey(key) {
+        if (key === undefined || key === null) return '';
+        const arrowMap = { '←': 'ArrowLeft', '→': 'ArrowRight', '↑': 'ArrowUp', '↓': 'ArrowDown' };
+        const parts = String(key).trim().split('+').map((p) => p.trim()).filter(Boolean);
+        return parts.map((part, idx) => {
+            if (arrowMap[part]) return arrowMap[part];
+            if (part === 'Space' || part === ' ') return 'Space';
+            if (/^ctrl$/i.test(part)) return 'Ctrl';
+            if (/^alt$/i.test(part)) return 'Alt';
+            if (/^shift$/i.test(part)) return 'Shift';
+            if (/^meta$/i.test(part)) return 'Meta';
+            if (idx === parts.length - 1 && part.length === 1) return part.toLowerCase();
+            return part;
+        }).join('+');
+    }
+
+    formatShortcutKeyDisplay(key) {
+        const norm = this.normalizeShortcutKey(key);
+        if (!norm) return '';
+        const arrowMap = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' };
+        return norm.split('+').map((part, idx) => {
+            if (arrowMap[part]) return arrowMap[part];
+            if (part === 'Space') return 'Space';
+            if (idx === norm.split('+').length - 1 && part.length === 1) return part.toUpperCase();
+            return part;
+        }).join('+');
+    }
+
+    applyCustomShortcutOverrides(shortcuts) {
+        const catalog = this.getEditableShortcutCatalog();
+        for (const [id, def] of Object.entries(catalog)) {
+            const custom = this.customShortcuts[id];
+            if (!custom) continue;
+            for (const key of Object.keys(shortcuts)) {
+                if (shortcuts[key] && shortcuts[key].id === id) delete shortcuts[key];
+            }
+            const norm = this.normalizeShortcutKey(custom);
+            if (!norm) continue;
+            shortcuts[norm] = { id, action: def.action, description: def.description };
+        }
+        return shortcuts;
+    }
+
+    bindModalPointerActivate(el, fn) {
+        if (!el || typeof fn !== 'function') return;
+        el.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            fn(e);
+        });
+        el.addEventListener('click', (e) => e.stopPropagation());
+    }
     
     /**
      * Define all keyboard shortcuts
      */
     defineShortcuts() {
-        return {
+        const shortcuts = {
             // ===== BASIC NAVIGATION =====
             'ArrowLeft': {
+                id: 'moveLeft',
                 action: () => this.moveChart(-1),
                 description: 'Move chart 1 bar to the left'
             },
             'ArrowRight': {
+                id: 'moveRight',
                 action: () => this.moveChart(1),
                 description: 'Move chart 1 bar to the right'
             },
@@ -117,90 +193,110 @@ class KeyboardShortcutsManager {
             
             // ===== ZOOM =====
             'Ctrl+ArrowUp': {
+                id: 'zoomIn',
                 action: () => this.zoomIn(),
                 description: 'Zoom in'
             },
             'Ctrl+ArrowDown': {
+                id: 'zoomOut',
                 action: () => this.zoomOut(),
                 description: 'Zoom out'
             },
             '+': {
+                id: 'zoomIn',
                 action: () => this.zoomIn(),
                 description: 'Zoom in'
             },
             '=': {
+                id: 'zoomIn',
                 action: () => this.zoomIn(),
                 description: 'Zoom in'
             },
             '-': {
+                id: 'zoomOut',
                 action: () => this.zoomOut(),
                 description: 'Zoom out'
             },
             
             // ===== UNDO/REDO =====
             'Ctrl+z': {
+                id: 'undo',
                 action: () => this.undo(),
                 description: 'Undo'
             },
             'Ctrl+y': {
+                id: 'redo',
                 action: () => this.redo(),
                 description: 'Redo'
             },
             'Ctrl+Shift+z': {
+                id: 'redo',
                 action: () => this.redo(),
                 description: 'Redo (alternative)'
             },
             
             // ===== QUICK ACTIONS =====
             'Ctrl+k': {
+                id: 'quickSearch',
                 action: () => this.openQuickSearch(),
                 description: 'Open Quick Search'
             },
             '/': {
+                id: 'openIndicators',
                 action: () => this.openIndicators(),
                 description: 'Open indicators'
             },
             'Ctrl+l': {
+                id: 'loadLayout',
                 action: () => this.loadChartLayout(),
                 description: 'Load chart layout'
             },
             'Ctrl+s': {
+                id: 'saveLayout',
                 action: () => this.saveChartLayout(),
                 description: 'Save chart layout'
             },
             
             // ===== REPLAY CONTROLS =====
             'Space': {
+                id: 'playPause',
                 action: () => this.replayPlayPause(),
                 description: 'Play/Pause replay (or reset view if not in replay)'
             },
             'Shift+ArrowRight': {
+                id: 'stepForward',
                 action: () => this.replayStepForward(),
                 description: 'Step forward in replay'
             },
             'Shift+ArrowLeft': {
+                id: 'stepBackward',
                 action: () => this.replayStepBackward(),
                 description: 'Step backward in replay'
             },
             '.': {
+                id: 'stepForward',
                 action: () => this.replayStepForward(),
                 description: 'Step forward in replay (alternative)'
             },
             ',': {
+                id: 'stepBackward',
                 action: () => this.replayStepBackward(),
                 description: 'Step backward in replay (alternative)'
             },
             
             // ===== ALT SHORTCUTS =====
             'Alt+g': {
+                id: 'goToDate',
                 action: () => this.goToDate(),
                 description: 'Go to date'
             },
             'Alt+s': {
+                id: 'snapshot',
                 action: () => this.takeSnapshot(),
                 description: 'Take snapshot'
             },
             'Alt+r': {
+                id: 'resetChart',
                 action: () => this.resetChart(),
                 description: 'Reset chart'
             },
@@ -227,14 +323,17 @@ class KeyboardShortcutsManager {
             
             // ===== DRAWING TOOLS =====
             'Escape': {
+                id: 'escape',
                 action: () => this.cancelAction(),
                 description: 'Cancel current action / Deselect'
             },
             'Delete': {
+                id: 'delete',
                 action: () => this.deleteSelected(),
                 description: 'Delete selected drawing'
             },
             'Backspace': {
+                id: 'delete',
                 action: () => this.deleteSelected(),
                 description: 'Delete selected drawing'
             },
@@ -243,6 +342,7 @@ class KeyboardShortcutsManager {
                 description: 'Unlock all drawings'
             },
             'm': {
+                id: 'toggleMagnet',
                 action: () => this.toggleMagnetMode(),
                 description: 'Toggle magnet mode'
             },
@@ -263,14 +363,17 @@ class KeyboardShortcutsManager {
             
             // ===== HELP =====
             '?': {
+                id: 'showHelp',
                 action: () => this.showShortcutsHelp(),
                 description: 'Show keyboard shortcuts help'
             },
             'Shift+?': {
+                id: 'showHelp',
                 action: () => this.showShortcutsHelp(),
                 description: 'Show keyboard shortcuts help'
             }
         };
+        return this.applyCustomShortcutOverrides(shortcuts);
     }
     
     /**
@@ -323,6 +426,7 @@ class KeyboardShortcutsManager {
      */
     handleKeyDown(e) {
         if (!this.enabled) return;
+        if (this.isEditingShortcut) return;
         
         // Update modifiers
         this.modifiers.ctrl = e.ctrlKey || e.metaKey;
@@ -594,6 +698,10 @@ class KeyboardShortcutsManager {
     }
     
     openQuickSearch() {
+        if (document.querySelector('[data-v9-app]')) {
+            try { window.dispatchEvent(new CustomEvent('talaria-v9-open-quick-search', { bubbles: false })); } catch (_) {}
+            return;
+        }
         // Try to open file selector or symbol search
         const fileSelector = document.getElementById('fileSelector');
         if (fileSelector) {
@@ -604,7 +712,10 @@ class KeyboardShortcutsManager {
     }
     
     openIndicators() {
-        // Try clicking the indicators button
+        if (document.querySelector('[data-v9-app]')) {
+            try { window.dispatchEvent(new CustomEvent('talaria-v9-open-indicators', { bubbles: false })); } catch (_) {}
+            return;
+        }
         const indicatorsBtn = document.getElementById('indicatorsBtn');
         if (indicatorsBtn) {
             indicatorsBtn.click();
@@ -627,7 +738,10 @@ class KeyboardShortcutsManager {
     }
     
     goToDate() {
-        // Open Go To menu
+        if (document.querySelector('[data-v9-app]')) {
+            try { window.dispatchEvent(new CustomEvent('talaria-v9-open-goto', { bubbles: false })); } catch (_) {}
+            return;
+        }
         const goToToggle = document.getElementById('goToMenuToggle');
         const goToMenu = document.getElementById('goToMenu');
         
@@ -1131,11 +1245,10 @@ class KeyboardShortcutsManager {
         
         document.getElementById('closeShortcutsModal').onclick = () => modal.remove();
         
-        // Edit button handler
-        document.getElementById('editShortcutsBtn').onclick = () => {
+        this.bindModalPointerActivate(document.getElementById('editShortcutsBtn'), () => {
             modal.remove();
             this.showEditShortcutsModal();
-        };
+        });
         
         const handleEsc = (e) => {
             if (e.key === 'Escape') {
@@ -1207,7 +1320,7 @@ class KeyboardShortcutsManager {
                 </div>
             </div>
             <div style="padding: 16px; color: #787b86; font-size: 13px; border-bottom: 1px solid #2a2e39;">
-                Click on a shortcut to change it. Press the new key combination, then press Enter to confirm or Escape to cancel.
+                Click a shortcut row, press the new key combination to save, or Escape to cancel.
             </div>
             <div id="shortcutsList" style="padding: 20px; overflow-y: auto; max-height: calc(85vh - 160px);">
                 ${this.generateEditableShortcutsList()}
@@ -1222,16 +1335,15 @@ class KeyboardShortcutsManager {
             if (e.target === modal) modal.remove();
         };
         
-        document.getElementById('closeEditModal').onclick = () => modal.remove();
+        this.bindModalPointerActivate(document.getElementById('closeEditModal'), () => modal.remove());
         
-        // Reset all button
-        document.getElementById('resetAllShortcutsBtn').onclick = () => {
+        this.bindModalPointerActivate(document.getElementById('resetAllShortcutsBtn'), () => {
             if (confirm('Reset all shortcuts to defaults?')) {
                 this.resetAllShortcuts();
                 document.getElementById('shortcutsList').innerHTML = this.generateEditableShortcutsList();
                 this.bindShortcutEditHandlers();
             }
-        };
+        });
         
         // Bind edit handlers
         this.bindShortcutEditHandlers();
@@ -1249,28 +1361,13 @@ class KeyboardShortcutsManager {
      * Generate editable shortcuts list
      */
     generateEditableShortcutsList() {
-        const editableShortcuts = [
-            { id: 'moveLeft', action: 'Move chart left', defaultKey: '←', category: 'Navigation' },
-            { id: 'moveRight', action: 'Move chart right', defaultKey: '→', category: 'Navigation' },
-            { id: 'zoomIn', action: 'Zoom in', defaultKey: '+', category: 'Zoom' },
-            { id: 'zoomOut', action: 'Zoom out', defaultKey: '-', category: 'Zoom' },
-            { id: 'undo', action: 'Undo', defaultKey: 'Ctrl+Z', category: 'Edit' },
-            { id: 'redo', action: 'Redo', defaultKey: 'Ctrl+Y', category: 'Edit' },
-            { id: 'delete', action: 'Delete selected', defaultKey: 'Delete', category: 'Edit' },
-            { id: 'escape', action: 'Cancel / Deselect', defaultKey: 'Escape', category: 'Edit' },
-            { id: 'openIndicators', action: 'Open indicators', defaultKey: '/', category: 'Quick Actions' },
-            { id: 'quickSearch', action: 'Quick Search', defaultKey: 'Ctrl+K', category: 'Quick Actions' },
-            { id: 'saveLayout', action: 'Save chart layout', defaultKey: 'Ctrl+S', category: 'Quick Actions' },
-            { id: 'loadLayout', action: 'Load chart layout', defaultKey: 'Ctrl+L', category: 'Quick Actions' },
-            { id: 'snapshot', action: 'Take snapshot', defaultKey: 'Alt+S', category: 'Chart' },
-            { id: 'resetChart', action: 'Reset chart', defaultKey: 'Alt+R', category: 'Chart' },
-            { id: 'goToDate', action: 'Go to date', defaultKey: 'Alt+G', category: 'Chart' },
-            { id: 'toggleMagnet', action: 'Toggle magnet mode', defaultKey: 'M', category: 'Drawing' },
-            { id: 'playPause', action: 'Play/Pause replay', defaultKey: 'Space', category: 'Replay' },
-            { id: 'stepForward', action: 'Step forward', defaultKey: '.', category: 'Replay' },
-            { id: 'stepBackward', action: 'Step backward', defaultKey: ',', category: 'Replay' },
-            { id: 'showHelp', action: 'Show shortcuts help', defaultKey: '?', category: 'Help' }
-        ];
+        const catalog = this.getEditableShortcutCatalog();
+        const editableShortcuts = Object.entries(catalog).map(([id, def]) => ({
+            id,
+            action: def.description,
+            defaultKey: def.displayKey || def.defaultKey,
+            category: def.category
+        }));
         
         // Group by category
         const grouped = {};
@@ -1287,8 +1384,10 @@ class KeyboardShortcutsManager {
                 <div style="margin-bottom: 20px;">
                     <h3 style="color: var(--sp-accent); font-size: 13px; margin: 0 0 12px 0; font-weight: 600;">${category}</h3>
                     ${shortcuts.map(s => {
-                        const currentKey = this.customShortcuts[s.id] || s.defaultKey;
-                        const isCustom = this.customShortcuts[s.id] ? true : false;
+                        const currentKey = this.customShortcuts[s.id]
+                            ? this.formatShortcutKeyDisplay(this.customShortcuts[s.id])
+                            : s.defaultKey;
+                        const isCustom = !!this.customShortcuts[s.id];
                         return `
                             <div class="shortcut-edit-row" data-id="${s.id}" data-default="${s.defaultKey}" style="
                                 display: flex;
@@ -1341,20 +1440,20 @@ class KeyboardShortcutsManager {
         this.isEditingShortcut = false;
         
         document.querySelectorAll('.shortcut-edit-row').forEach(row => {
-            row.onclick = (e) => {
-                if (e.target.classList.contains('reset-shortcut-btn')) return;
+            this.bindModalPointerActivate(row, (e) => {
+                if (e.target.closest('.reset-shortcut-btn')) return;
                 this.startEditingShortcut(row);
-            };
+            });
         });
         
         document.querySelectorAll('.reset-shortcut-btn').forEach(btn => {
-            btn.onclick = (e) => {
+            this.bindModalPointerActivate(btn, (e) => {
                 e.stopPropagation();
                 const id = btn.dataset.id;
                 this.resetShortcut(id);
                 document.getElementById('shortcutsList').innerHTML = this.generateEditableShortcutsList();
                 this.bindShortcutEditHandlers();
-            };
+            });
         });
     }
     
@@ -1382,19 +1481,8 @@ class KeyboardShortcutsManager {
             e.stopPropagation();
             
             if (e.key === 'Escape') {
-                // Cancel editing
                 cleanup();
                 keyDisplay.textContent = originalKey;
-                return;
-            }
-            
-            if (e.key === 'Enter' && pressedKeys.length > 0) {
-                // Save the new shortcut
-                const newKey = pressedKeys.join('+');
-                this.updateShortcut(id, newKey);
-                cleanup();
-                document.getElementById('shortcutsList').innerHTML = this.generateEditableShortcutsList();
-                this.bindShortcutEditHandlers();
                 return;
             }
             
@@ -1404,20 +1492,22 @@ class KeyboardShortcutsManager {
             if (e.altKey) pressedKeys.push('Alt');
             if (e.shiftKey) pressedKeys.push('Shift');
             
-            // Add the main key
             if (!['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
                 let keyName = e.key;
-                // Format special keys
                 if (keyName === ' ') keyName = 'Space';
                 if (keyName === 'ArrowLeft') keyName = '←';
                 if (keyName === 'ArrowRight') keyName = '→';
                 if (keyName === 'ArrowUp') keyName = '↑';
                 if (keyName === 'ArrowDown') keyName = '↓';
                 pressedKeys.push(keyName.length === 1 ? keyName.toUpperCase() : keyName);
-            }
-            
-            if (pressedKeys.length > 0) {
-                keyDisplay.textContent = pressedKeys.join('+');
+                
+                const displayKey = pressedKeys.join('+');
+                keyDisplay.textContent = displayKey;
+                this.updateShortcut(id, displayKey);
+                cleanup();
+                document.getElementById('shortcutsList').innerHTML = this.generateEditableShortcutsList();
+                this.bindShortcutEditHandlers();
+                this.showNotification('Shortcut updated', 'mdi-keyboard');
             }
         };
         

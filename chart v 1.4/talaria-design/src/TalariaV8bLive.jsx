@@ -9941,6 +9941,45 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("talaria-v9-open-screenshot", onOpen);
   }, []);
 
+  // Keyboard shortcuts module → V9 Indicators panel (/)
+  useEffect(() => {
+    const onOpen = () => {
+      closeWindows();
+      setSettingsOpen(false);
+      setIndSelectedId(null);
+      setIndOpen(true);
+    };
+    window.addEventListener("talaria-v9-open-indicators", onOpen);
+    return () => window.removeEventListener("talaria-v9-open-indicators", onOpen);
+  }, []);
+
+  // Keyboard shortcuts module → V9 Go-To panel (Alt+G)
+  useEffect(() => {
+    const onOpen = () => {
+      closePopup(setReplayOpts, "replayOpts");
+      setGotoOpen(true);
+      setGotoTab("pinned");
+    };
+    window.addEventListener("talaria-v9-open-goto", onOpen);
+    return () => window.removeEventListener("talaria-v9-open-goto", onOpen);
+  }, []);
+
+  // Keyboard shortcuts module → V9 symbol quick search (Ctrl+K)
+  useEffect(() => {
+    const onOpen = () => {
+      closeWindows();
+      setSettingsOpen(false);
+      setSymbolSearch("");
+      setSymbolOpen(true);
+      setTimeout(() => {
+        const input = document.querySelector('[data-v9-app] input[placeholder="Search symbol…"]');
+        if (input && typeof input.focus === "function") input.focus();
+      }, 50);
+    };
+    window.addEventListener("talaria-v9-open-quick-search", onOpen);
+    return () => window.removeEventListener("talaria-v9-open-quick-search", onOpen);
+  }, []);
+
   // ─── SYNC SYMBOL FROM CHART.JS ───────────────────────────────────────────
   // chart.js fires 'chartDataLoaded' (with detail.symbol, detail.timeframe)
   // whenever a new backtest session / pair is loaded. chart.js stores the
