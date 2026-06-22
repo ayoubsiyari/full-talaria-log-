@@ -771,6 +771,40 @@ class CircleTool extends BaseDrawing {
         return this.group;
     }
 
+    createHandles(group, scales) {
+        super.createHandles(group, scales);
+        if (!group || group.empty()) return;
+        group.selectAll('.resize-handle-group[data-point-index="0"] .resize-handle, .resize-handle-group[data-point-index="0"] .resize-handle-hit')
+            .style('cursor', 'move');
+        group.selectAll('.resize-handle-group[data-point-index="1"] .resize-handle, .resize-handle-group[data-point-index="1"] .resize-handle-hit')
+            .style('cursor', 'nwse-resize');
+    }
+
+    /**
+     * Center handle (index 0) moves the whole circle; edge handle (index 1) resizes.
+     */
+    onPointHandleDrag(index, context = {}) {
+        const { point } = context;
+        if (!point || !Number.isFinite(index) || index < 0 || index >= this.points.length) {
+            return false;
+        }
+
+        if (index !== 0) return false;
+
+        const center = this.points[0];
+        const edge = this.points[1];
+        if (!center || !edge) return false;
+
+        const dx = point.x - center.x;
+        const dy = point.y - center.y;
+        if (dx === 0 && dy === 0) return true;
+
+        this.points[0] = { x: point.x, y: point.y };
+        this.points[1] = { x: edge.x + dx, y: edge.y + dy };
+        this.meta.updatedAt = Date.now();
+        return true;
+    }
+
     static fromJSON(data, chart = null) {
         const tool = new CircleTool(data.points, data.style);
         tool.id = data.id;

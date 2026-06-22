@@ -524,6 +524,68 @@ class DrawingToolsManager {
             || type === 'rotated-rectangle';
     }
 
+    /** True when pointer is inside a box shape fill (for locked-shape selection). */
+    _isPointInBoxShapeBody(drawing, mouseX, mouseY) {
+        if (!drawing || !this._isBoxShapeType(drawing.type) || !drawing.group) return false;
+        const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
+        if (!svgNode) return false;
+
+        let point = null;
+        const getPoint = () => {
+            if (!point) {
+                point = svgNode.createSVGPoint();
+                point.x = mouseX;
+                point.y = mouseY;
+            }
+            return point;
+        };
+
+        const fillNodes = drawing.group.selectAll('.shape-fill').nodes();
+        for (const el of fillNodes) {
+            if (!el) continue;
+            const opacity = el.style?.opacity ?? d3.select(el).style('opacity');
+            if (opacity === '0') continue;
+
+            if (typeof el.isPointInFill === 'function') {
+                try {
+                    if (el.isPointInFill(getPoint())) return true;
+                } catch (_) { /* ignore */ }
+            }
+
+            const tag = (el.tagName || '').toLowerCase();
+            if (tag === 'rect') {
+                const x = parseFloat(el.getAttribute('x'));
+                const y = parseFloat(el.getAttribute('y'));
+                const w = parseFloat(el.getAttribute('width'));
+                const h = parseFloat(el.getAttribute('height'));
+                if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0
+                    && mouseX >= x && mouseX <= (x + w) && mouseY >= y && mouseY <= (y + h)) {
+                    return true;
+                }
+            } else if (tag === 'circle') {
+                const cx = parseFloat(el.getAttribute('cx'));
+                const cy = parseFloat(el.getAttribute('cy'));
+                const r = parseFloat(el.getAttribute('r'));
+                if ([cx, cy, r].every(Number.isFinite) && r > 0) {
+                    const dx = mouseX - cx;
+                    const dy = mouseY - cy;
+                    if ((dx * dx) + (dy * dy) <= r * r) return true;
+                }
+            } else if (tag === 'ellipse') {
+                const cx = parseFloat(el.getAttribute('cx'));
+                const cy = parseFloat(el.getAttribute('cy'));
+                const rx = parseFloat(el.getAttribute('rx'));
+                const ry = parseFloat(el.getAttribute('ry'));
+                if ([cx, cy, rx, ry].every(Number.isFinite) && rx > 0 && ry > 0) {
+                    const ndx = (mouseX - cx) / rx;
+                    const ndy = (mouseY - cy) / ry;
+                    if ((ndx * ndx) + (ndy * ndy) <= 1) return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /**
      * Deselect when the pointer is on true chart background (no drawing stroke under cursor).
      * @returns {boolean} true when deselect ran
@@ -2308,6 +2370,17 @@ class DrawingToolsManager {
                     return;
                 }
 
+                if (best && best.locked && this._isBoxShapeType(best.type) && !this.currentTool) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    this.selectDrawing(best, false);
+                    suppressNextCanvasClick = true;
+                    return;
+                }
+
                 if (best && !best.locked && !this._isHorizontalAnchorToolType(best.type)) {
                     event.preventDefault();
                     event.stopPropagation();
@@ -3272,6 +3345,14 @@ class DrawingToolsManager {
                     event.stopPropagation();
                     this.selectDrawing(best, false);
                     this._startDirectMoveDrag(best, event);
+                    return;
+                }
+
+                // Locked box shapes: select on first click (fill or border), no drag.
+                if (best && best.locked && this._isBoxShapeType(best.type)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.selectDrawing(best, false);
                     return;
                 }
             }
@@ -6334,11 +6415,8 @@ class DrawingToolsManager {
         drawing.group.selectAll('.pin-center-hole')
             .style('pointer-events', 'none');
         
-        // Apply locked visual state
-        if (drawing.locked) {
-            drawing.group.classed('locked', true);
-            drawing.group.style('opacity', '0.7');
-        }
+        // Apply locked visual state (class only — never group opacity; it shifts fill/background color).
+        this._syncDrawingLockVisual(drawing);
         
         // Double-click detection - store on drawing object to persist across re-renders
         const DOUBLE_CLICK_DELAY = 400; // ms
@@ -6424,16 +6502,18 @@ class DrawingToolsManager {
             const [mouseX, mouseY] = self._eventCanvasLocalXY(event);
             
             // For shapes (rectangle, triangle, ellipse, circle), verify click is on stroke
-            const shapeTypes = ['rectangle', 'triangle', 'ellipse', 'circle'];
+            const shapeTypes = ['rectangle', 'triangle', 'ellipse', 'circle', 'rotated-rectangle'];
             if (shapeTypes.includes(drawing.type)) {
-                const isShapeBorderHit = targetSel.classed('shape-border-hit');
-                // Use the same geometric hit-test as hover/direct-drag so the hover zone matches selection.
-                const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
-                const clickedOnStroke = isShapeBorderHit || drawingsAtPoint.some(d => d && d.id === drawing.id);
-                
-                if (!clickedOnStroke) {
-                    // [debug removed]
-                    return; // Don't select - click was on fill area
+                const clickedOnBody = drawing.locked && self._isPointInBoxShapeBody(drawing, mouseX, mouseY);
+                if (!clickedOnBody) {
+                    const isShapeBorderHit = targetSel.classed('shape-border-hit');
+                    // Use the same geometric hit-test as hover/direct-drag so the hover zone matches selection.
+                    const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
+                    const clickedOnStroke = isShapeBorderHit || drawingsAtPoint.some(d => d && d.id === drawing.id);
+
+                    if (!clickedOnStroke) {
+                        return; // Don't select - click was on fill area (unlocked shapes are border-only)
+                    }
                 }
             }
 
@@ -7903,7 +7983,8 @@ class DrawingToolsManager {
                     }
                     const rrPriceHandle = (drawing.type === 'long-position' || drawing.type === 'short-position')
                         && !isNaN(index) && index >= 0 && index <= 2;
-                    d3.select(this).style('cursor', rrPriceHandle ? 'ns-resize' : 'ew-resize');
+                    const circleMoveHandle = drawing.type === 'circle' && index === 0;
+                    d3.select(this).style('cursor', rrPriceHandle ? 'ns-resize' : (circleMoveHandle ? 'move' : 'ew-resize'));
                 })
                 .on('drag', function(event) {
                     if (self._resizePointerSource === 'document') return;
@@ -8048,8 +8129,9 @@ class DrawingToolsManager {
         }
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
-        if (canvas) canvas.style.cursor = 'ew-resize';
-        this.svg.style('cursor', 'ew-resize');
+        const resizeCursor = (drawing.type === 'circle' && pointIndex === 0) ? 'move' : 'ew-resize';
+        if (canvas) canvas.style.cursor = resizeCursor;
+        this.svg.style('cursor', resizeCursor);
         this._captureShiftResizeAnchorPoints(drawing);
         // Capture state for undo
         if (this.history) {
@@ -9122,6 +9204,16 @@ class DrawingToolsManager {
     }
     
     /**
+     * Sync lock CSS class without altering fill/stroke colors (group opacity washes out backgrounds).
+     */
+    _syncDrawingLockVisual(drawing) {
+        if (!drawing || !drawing.group) return;
+        const locked = !!drawing.locked;
+        drawing.group.classed('locked', locked);
+        drawing.group.style('opacity', null);
+    }
+
+    /**
      * Set lock state on one drawing (does not persist — caller saves once).
      */
     setDrawingLock(drawing, locked) {
@@ -9129,10 +9221,7 @@ class DrawingToolsManager {
         const next = !!locked;
         if (!!drawing.locked === next) return;
         drawing.locked = next;
-        if (drawing.group) {
-            drawing.group.classed('locked', next);
-            drawing.group.style('opacity', next ? '0.7' : null);
-        }
+        this._syncDrawingLockVisual(drawing);
         this.renderDrawing(drawing);
     }
 
@@ -12151,6 +12240,14 @@ class DrawingToolsManager {
                 continue;
             }
 
+            // Locked box shapes: select from filled interior, not only thin border strokes.
+            if (!hitsById.has(drawing.id) && drawing.locked && this._isBoxShapeType(drawing.type)) {
+                if (this._isPointInBoxShapeBody(drawing, mouseX, mouseY)) {
+                    hitsById.set(drawing.id, { drawing, distance: 0, z });
+                    continue;
+                }
+            }
+
             // Special handling for tools that use isPointInside() (images, emojis, etc.)
             if (drawing.type === 'emoji' || drawing.type === 'image') {
                 // [debug removed]
@@ -13312,8 +13409,11 @@ class DrawingToolsManager {
                             hoveredDrawing.group.selectAll('.resize-handle').style('pointer-events', 'none');
                             hoveredDrawing.group.selectAll('.resize-handle-hit, .custom-handle')
                                 .style('pointer-events', 'all');
-                            hoveredDrawing.group.selectAll('.shape-border-hit')
-                                .style('pointer-events', 'none');
+                            // Keep border hit zones live for locked shapes (no canvas direct-drag fallback).
+                            if (!hoveredDrawing.locked) {
+                                hoveredDrawing.group.selectAll('.shape-border-hit')
+                                    .style('pointer-events', 'none');
+                            }
                             this._raiseResizeHandles(hoveredDrawing);
                         }
                     }

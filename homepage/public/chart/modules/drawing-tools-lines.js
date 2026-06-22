@@ -200,14 +200,96 @@ function patchTwoPointLineElements(group, x1, y1, x2, y2) {
     });
 }
 
-/** Extend / centered label split cannot be patched with a single segment — needs full re-render. */
+/** Extend lines cannot be patched with a single segment — needs full re-render. */
 function trendlineNeedsFullLivePatch(style, drawing) {
     if (!style) return true;
     if (style.extendLeft || style.extendRight) return true;
-    const hasText = drawing && drawing.text && String(drawing.text).trim();
-    const textVAlign = style.textVAlign || style.textPosition || 'top';
-    if (hasText && textVAlign === 'middle') return true;
     return false;
+}
+
+/** Remove on-shape text nodes (not resize handles) before live label sync. */
+function removeGroupTextNodes(group) {
+    if (!group || group.empty()) return;
+    group.selectAll('text').remove();
+}
+
+/** Recompute split-label anchor from current endpoints and redraw text during live drag. */
+function syncLiveLineTextLabel(tool, scales, screenPts) {
+    if (!tool?.group || tool.group.empty() || !tool.text || !String(tool.text).trim()) return;
+    if (!tool.points || tool.points.length < 2 || !scales) return;
+
+    let x1;
+    let y1;
+    let x2;
+    let y2;
+    if (screenPts && [screenPts.x1, screenPts.y1, screenPts.x2, screenPts.y2].every(Number.isFinite)) {
+        ({ x1, y1, x2, y2 } = screenPts);
+    } else {
+        const p1 = tool.points[0];
+        const p2 = tool.points[1];
+        x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        y1 = scales.yScale(p1.y);
+        x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        y2 = scales.yScale(p2.y);
+    }
+    if (![x1, y1, x2, y2].every(Number.isFinite)) return;
+
+    removeGroupTextNodes(tool.group);
+
+    const textVAlign = tool.style?.textVAlign || tool.style?.textPosition || 'top';
+    if (textVAlign === 'middle' && tool._splitInfo) {
+        const rawLX = x1 <= x2 ? x1 : x2;
+        const rawLY = x1 <= x2 ? y1 : y2;
+        const rawRX = x1 <= x2 ? x2 : x1;
+        const rawRY = x1 <= x2 ? y2 : y1;
+        const rawDX = rawRX - rawLX;
+        const rawDY = rawRY - rawLY;
+        const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
+        const ux = rawDX / rawLen;
+        const uy = rawDY / rawLen;
+        let angleDeg = Math.atan2(rawDY, rawDX) * (180 / Math.PI);
+        while (angleDeg > 180) angleDeg -= 360;
+        while (angleDeg < -180) angleDeg += 360;
+        if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+
+        const textHAlign = tool.style?.textHAlign || tool.style?.textAlign || 'center';
+        let textX;
+        let textY;
+        switch (textHAlign) {
+            case 'left':
+                textX = rawLX + ux * TEXT_EDGE_PADDING;
+                textY = rawLY + uy * TEXT_EDGE_PADDING;
+                break;
+            case 'right':
+                textX = rawRX - ux * TEXT_EDGE_PADDING;
+                textY = rawRY - uy * TEXT_EDGE_PADDING;
+                break;
+            default:
+                textX = (rawLX + rawRX) / 2;
+                textY = (rawLY + rawRY) / 2;
+        }
+        tool._splitInfo = { ...tool._splitInfo, textX, textY, angle: angleDeg };
+    } else if (textVAlign !== 'middle') {
+        tool._splitInfo = null;
+    }
+
+    if (typeof tool.renderTextLabel === 'function') {
+        tool.renderTextLabel({ x1, y1, x2, y2, scales });
+    }
+}
+
+/** Live patch with centered split label — rebuild line + text in place (keep handles). */
+function liveRenderTwoPointDrawingGeometry(tool, scales) {
+    if (!tool?.group || tool.group.empty() || !scales) return false;
+    const parent = tool.group.node()?.parentNode;
+    if (!parent || typeof tool.render !== 'function') return false;
+    tool.render(d3.select(parent), scales, { reuseGroup: true, skipHandles: true });
+    if (typeof tool.updateHandlePositions === 'function') {
+        tool.updateHandlePositions(scales);
+    }
+    return true;
 }
 
 function patchTrendlineArrowHeads(group, origX1, origY1, origX2, origY2, stroke, strokeWidth, scaleFactor, startStyle, endStyle) {
@@ -648,6 +730,13 @@ class TrendlineTool extends BaseDrawing {
         const y2 = scales.yScale(p2.y);
         if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
 
+        const hasText = this.text && String(this.text).trim();
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const shouldSplitLine = hasText && textVAlign === 'middle';
+        if (shouldSplitLine) {
+            return liveRenderTwoPointDrawingGeometry(this, scales);
+        }
+
         patchTwoPointLineElements(this.group, x1, y1, x2, y2);
 
         const startStyle = this.style.startStyle || 'normal';
@@ -667,6 +756,7 @@ class TrendlineTool extends BaseDrawing {
 
         this.group.selectAll('.trendline-info').remove();
         this.renderInfoBox(x1, y1, x2, y2, scales);
+        syncLiveLineTextLabel(this, scales, { x1, y1, x2, y2 });
 
         if (typeof this.updateHandlePositions === 'function') {
             this.updateHandlePositions(scales);
@@ -2153,9 +2243,15 @@ class RayTool extends BaseDrawing {
 
     _patchLiveTwoPointGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        const hasText = this.text && String(this.text).trim();
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        if (hasText && (textVAlign === 'middle' || this._splitInfo)) {
+            return liveRenderTwoPointDrawingGeometry(this, scales);
+        }
         const seg = computeRayScreenEndpoints(scales, this.points[0], this.points[1]);
         if (![seg.x1, seg.y1, seg.x2, seg.y2].every(Number.isFinite)) return false;
         patchTwoPointLineElements(this.group, seg.x1, seg.y1, seg.x2, seg.y2);
+        syncLiveLineTextLabel(this, scales, { x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
         this.updateHandlePositions(scales);
         return true;
     }
@@ -3005,9 +3101,15 @@ class ExtendedLineTool extends BaseDrawing {
 
     _patchLiveTwoPointGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        const hasText = this.text && String(this.text).trim();
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        if (hasText && (textVAlign === 'middle' || this._splitInfo)) {
+            return liveRenderTwoPointDrawingGeometry(this, scales);
+        }
         const seg = computeExtendedLineScreenEndpoints(scales, this.points[0], this.points[1]);
         if (![seg.x1, seg.y1, seg.x2, seg.y2].every(Number.isFinite)) return false;
         patchTwoPointLineElements(this.group, seg.x1, seg.y1, seg.x2, seg.y2);
+        syncLiveLineTextLabel(this, scales, { x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
         this.updateHandlePositions(scales);
         return true;
     }
