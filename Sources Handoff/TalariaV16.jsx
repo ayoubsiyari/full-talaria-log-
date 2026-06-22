@@ -6715,6 +6715,126 @@ const btDashTagsForSession = (session) => {
   tags.push(session.replayMode === "Tick" ? "Tick Replay" : "Candle Replay");
   return [...new Set(tags)].slice(0, 5);
 };
+const btDashSourceTypeCandidates = (source = {}) => [
+  source.sourceTypeId,
+  source.source_type_id,
+  source.sourceTypeCode,
+  source.source_type_code,
+  source.sessionTypeId,
+  source.session_type_id,
+  source.sessionTypeCode,
+  source.session_type_code,
+  source.typeId,
+  source.type_id,
+  source.typeCode,
+  source.type_code,
+  source.accountTypeId,
+  source.account_type_id,
+  source.accountTypeCode,
+  source.account_type_code,
+  source.kindId,
+  source.kind_id,
+  source.kindCode,
+  source.kind_code,
+  source.modeId,
+  source.mode_id,
+  source.backtestModeId,
+  source.backtest_mode_id,
+  source.accountModeId,
+  source.account_mode_id,
+  source.sourceType,
+  source.source_type,
+  source.sessionType,
+  source.session_type,
+  source.type,
+  source.kind,
+  source.mode,
+  source.tradingMode,
+  source.backtestMode,
+  source.sessionMode,
+  source.accountMode,
+  source.accountTypeKey,
+  source.account_type_key,
+  source.accountType,
+  source.accountStatus,
+  source.category,
+  source.subtype,
+  source.sourceKind,
+  source.label,
+  source.name,
+  source.propFirm,
+  source.firmName,
+  source.challengeModel,
+  source.program,
+  source.propConfig?.sourceTypeId,
+  source.propConfig?.sourceType,
+  source.propConfig?.mode,
+  source.propConfig?.accountType,
+  source.propConfig?.challengeModel,
+  source.challengeConfig?.sourceTypeId,
+  source.challengeConfig?.sourceType,
+  source.challengeConfig?.mode,
+  source.challengeConfig?.accountType,
+  source.challengeConfig?.challengeModel,
+  source.propChallengeConfig?.sourceTypeId,
+  source.propChallengeConfig?.sourceType,
+  source.propChallengeConfig?.mode,
+  source.propChallengeConfig?.accountType,
+  source.propChallengeConfig?.challengeModel,
+];
+const btDashSourceTypeTextCode = (value) => {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const text = String(value).trim().toLowerCase();
+  const directType = Number(text);
+  if (Number.isFinite(directType)) return directType;
+  const compact = text.replace(/[\s_-]+/g, "");
+  const explicit = text.match(/\b(?:type|source|mode|kind)\s*#?\s*([1-4])\b/) || compact.match(/(?:type|source|mode|kind)([1-4])/);
+  if (explicit?.[1]) return Number(explicit[1]);
+  const propish = /\b(prop|propfirm|funded|funding|challenge|evaluation|ftmo)\b/.test(text) || compact.includes("propfirm");
+  const liveish = /\b(live|journal|account|metatrader|tradingview|ctrader|interactive brokers)\b/.test(text);
+  const personal = /\b(personal|private)\b/.test(text);
+  const standard = /\b(standard|normal|regular)\b/.test(text) && /\b(backtest|session|mode)\b/.test(text);
+  if (propish && liveish) return 4;
+  if (propish) return 2;
+  if (personal || liveish) return 3;
+  if (standard) return 1;
+  return null;
+};
+const btDashSourceTypeCode = (source = {}) => {
+  for (const candidate of btDashSourceTypeCandidates(source)) {
+    const parsed = btDashSourceTypeTextCode(candidate);
+    if (parsed != null) return parsed;
+  }
+  return null;
+};
+const btDashSourceText = (source = {}) => [
+  ...btDashSourceTypeCandidates(source),
+  source.propConfig?.firmName,
+  source.propConfig?.phase,
+  source.challengeConfig?.firmName,
+  source.challengeConfig?.phase,
+  source.propChallengeConfig?.firmName,
+  source.propChallengeConfig?.phase,
+].filter(Boolean).join(" ").toLowerCase();
+const btDashHasObjectConfig = (value) => value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0;
+const btDashIsPropConstrainedSource = (source = {}) => {
+  const code = btDashSourceTypeCode(source);
+  const accountTypeKey = String(source.accountTypeKey ?? source.account_type_key ?? source.accountType ?? source.account_type ?? "").trim().toLowerCase();
+  if (code === 3 || accountTypeKey === "personal" || source.isPropConstrained === false) return false;
+  if (code === 2 || code === 4) return true;
+  if (source.isPropConstrained === true || source.isProp === true || source.isPropFirm === true || source.propFirm) return true;
+  if (btDashHasObjectConfig(source.propConfig) || btDashHasObjectConfig(source.challengeConfig) || btDashHasObjectConfig(source.propChallengeConfig)) return true;
+  const text = btDashSourceText(source);
+  return text.includes("prop") || text.includes("funded") || text.includes("challenge") || text.includes("ftmo") || text.includes("evaluation");
+};
+const btDashIsLiveSource = (source = {}) => {
+  const code = btDashSourceTypeCode(source);
+  if (code === 3 || code === 4) return true;
+  if (code === 1 || code === 2) return false;
+  if (source.isLive === true || source.isJournal === true || source.live === true || source.journal === true) return true;
+  const text = btDashSourceText(source);
+  return text.includes("journal") || text.includes("live-journal") || text.includes("live journal") || text.includes("live account") || text.includes("metatrader") || text.includes("tradingview") || text.includes("ctrader") || text.includes("interactive brokers");
+};
 const btDashSessionBucket = (idx) => ["Asia", "London", "New York", "Overlap"][idx % 4];
 const btDashTradesCache = new Map();
 function btDashBuildTrades(session) {
