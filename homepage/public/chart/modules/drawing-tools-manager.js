@@ -8924,9 +8924,20 @@ class DrawingToolsManager {
             );
             out.coordinateSystem = 'index';
         }
-        if (!Array.isArray(out.points) || out.points.length === 0 ||
-            !out.points.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) {
-            return null;
+        if (!Array.isArray(out.points) || out.points.length === 0) return null;
+        out.points = out.points.map((p) => {
+            if (!p || typeof p !== 'object') return null;
+            const x = Number(p.x);
+            const y = Number(p.price !== undefined ? p.price : p.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+            return { x, y };
+        }).filter(Boolean);
+        if (out.points.length === 0) return null;
+        if (this._isFreehandDrawingType(out.type) && Array.isArray(out.timestampPoints) && out.timestampPoints.length > 0) {
+            out.timestampPoints = out.timestampPoints.map((p) => ({
+                timestamp: Number(p.timestamp),
+                price: Number(p.price !== undefined ? p.price : p.y)
+            })).filter((p) => Number.isFinite(p.timestamp) && Number.isFinite(p.price));
         }
         return out;
     }
@@ -8966,15 +8977,8 @@ class DrawingToolsManager {
                 return false;
             }
 
-            const toolInfo = this.toolRegistry[clip.type];
-            if (!toolInfo) return false;
-
-            const newDrawing = toolInfo.class.fromJSON(clip, this.chart);
-            newDrawing.id = generateUUID();
-            newDrawing.timestampPoints = null;
-            newDrawing.coordinateSystem = 'index';
-
-            this._applyClonePointOffset(newDrawing);
+            const newDrawing = this._createDrawingFromClonePayload(clip);
+            if (!newDrawing) return false;
 
             this.addDrawing(newDrawing);
             // While brush/highlighter stay armed, addDrawing clears selection — do not re-select
@@ -9410,8 +9414,8 @@ class DrawingToolsManager {
         if (!drawing) return [];
         const pts = drawing.points;
         if (Array.isArray(pts) && pts.length > 0 &&
-            pts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) {
-            return pts.map(p => ({ x: p.x, y: p.y }));
+            pts.every(p => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))) {
+            return pts.map(p => ({ x: Number(p.x), y: Number(p.y) }));
         }
         if (Array.isArray(pts) && pts.length > 0 &&
             pts.every(p => p && Number.isFinite(p.timestamp)) &&
@@ -9473,6 +9477,9 @@ class DrawingToolsManager {
             },
             text: typeof drawing.text === 'string' ? drawing.text : ''
         };
+        if (this._isFreehandDrawingType(drawing.type) && Array.isArray(drawing.timestampPoints) && drawing.timestampPoints.length > 0) {
+            payload.timestampPoints = JSON.parse(JSON.stringify(drawing.timestampPoints));
+        }
         if (drawing.visibility) {
             payload.visibility = JSON.parse(JSON.stringify(drawing.visibility));
         }
@@ -9481,29 +9488,50 @@ class DrawingToolsManager {
         return payload;
     }
 
+    _createDrawingFromClonePayload(payload) {
+        if (!payload || !payload.type) return null;
+        const toolInfo = this.toolRegistry[payload.type];
+        if (!toolInfo) return null;
+
+        const data = JSON.parse(JSON.stringify(payload));
+        const newDrawing = toolInfo.class.fromJSON(data, this.chart);
+        newDrawing.id = generateUUID();
+        newDrawing.coordinateSystem = 'index';
+
+        if (this._isFreehandDrawingType(newDrawing.type) && Array.isArray(data.points) && data.points.length > 0) {
+            newDrawing.points = data.points.map((p) => ({
+                x: Number(p.x),
+                y: Number(p.price !== undefined ? p.price : p.y)
+            })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+            if (Array.isArray(data.timestampPoints) && data.timestampPoints.length > 0) {
+                newDrawing.timestampPoints = data.timestampPoints.map((p) => ({
+                    timestamp: Number(p.timestamp),
+                    price: Number(p.price !== undefined ? p.price : p.y)
+                })).filter((p) => Number.isFinite(p.timestamp) && Number.isFinite(p.price));
+            } else {
+                newDrawing.timestampPoints = null;
+            }
+        } else {
+            newDrawing.timestampPoints = null;
+        }
+
+        this._applyClonePointOffset(newDrawing);
+        return newDrawing;
+    }
+
     /**
      * Duplicate a drawing (Clone) - exact same position
      */
     duplicateDrawing(drawing) {
         try {
-            const toolInfo = this.toolRegistry[drawing.type];
-            if (!toolInfo) {
-                console.error('Unknown drawing type:', drawing.type);
-                return;
-            }
-
             const jsonData = this._buildDrawingClonePayload(drawing);
             if (!Array.isArray(jsonData.points) || jsonData.points.length === 0) {
                 console.error('Failed to clone drawing: no valid points');
                 return;
             }
 
-            const newDrawing = toolInfo.class.fromJSON(jsonData, this.chart);
-            newDrawing.id = generateUUID();
-            newDrawing.timestampPoints = null;
-            newDrawing.coordinateSystem = 'index';
-
-            this._applyClonePointOffset(newDrawing);
+            const newDrawing = this._createDrawingFromClonePayload(jsonData);
+            if (!newDrawing) return;
 
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing); // Select the new clone
@@ -13327,6 +13355,8 @@ class DrawingToolsManager {
                 strokeDasharray: '',
                 showPriceLabel: false,
                 showTimeLabel: false,
+                startStyle: 'normal',
+                endStyle: 'normal',
             };
         }
 
@@ -13550,8 +13580,8 @@ class DrawingToolsManager {
             };
         }
 
-        const endpointArrowDefaults = (toolType === 'trendline' || toolType === 'curve' || toolType === 'path')
-            ? { startStyle: 'normal', endStyle: 'arrow' }
+        const endpointArrowDefaults = (toolType === 'trendline' || toolType === 'curve' || toolType === 'path' || toolType === 'brush')
+            ? { startStyle: 'normal', endStyle: toolType === 'brush' ? 'normal' : 'arrow' }
             : {};
 
         return {

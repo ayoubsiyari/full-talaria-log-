@@ -493,8 +493,9 @@ class BaseDrawing {
         const startStyle = noEndpoints ? 'normal' : (this.style.startStyle || 'normal');
         const endStyle = noEndpoints ? 'normal' : (this.style.endStyle || 'normal');
         const pathOpacity = this.style.opacity != null ? this.style.opacity : 1;
+        const usePathMarkers = !noEndpoints && this.type !== 'brush' && this.type !== 'path';
 
-        if (!noEndpoints && (startStyle === 'arrow' || endStyle === 'arrow')) {
+        if (usePathMarkers && (startStyle === 'arrow' || endStyle === 'arrow')) {
             const svgRoot = container && container.node && container.node().ownerSVGElement
                 ? d3.select(container.node().ownerSVGElement)
                 : null;
@@ -530,13 +531,67 @@ class BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'move');
 
-        if (!noEndpoints && startStyle === 'arrow') {
+        if (usePathMarkers && startStyle === 'arrow') {
             path.attr('marker-start', `url(#arrow-start-${this.id})`);
         }
-        if (!noEndpoints && endStyle === 'arrow') {
+        if (usePathMarkers && endStyle === 'arrow') {
             path.attr('marker-end', `url(#arrow-end-${this.id})`);
         }
         return path;
+    }
+
+    /** Draw arrow polygons at freehand path ends (avoids SVG marker bowties on curved paths). */
+    _drawFreehandEndpointArrows(group, scales) {
+        if (!group || group.empty() || !scales || !Array.isArray(this.points) || this.points.length < 2) return;
+        const startStyle = this.style.startStyle || 'normal';
+        const endStyle = this.style.endStyle || 'normal';
+        if (startStyle !== 'arrow' && endStyle !== 'arrow') return;
+
+        const toPx = (p) => {
+            const x = scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p.x)
+                : scales.xScale(p.x);
+            const y = scales.yScale(p.y);
+            return { x, y };
+        };
+
+        const stroke = this.style.stroke || this.style.color || '#787b86';
+        const strokeWidth = this.style.strokeWidth != null ? this.style.strokeWidth : 2;
+        const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth) || 2);
+        const aLen = Math.max(8, scaledStrokeWidth * 5);
+        const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
+
+        const drawArrow = (tipX, tipY, fromX, fromY, className) => {
+            const adx = tipX - fromX;
+            const ady = tipY - fromY;
+            const alen = Math.sqrt(adx * adx + ady * ady) || 1;
+            const ux = adx / alen;
+            const uy = ady / alen;
+            const bx = tipX - ux * aLen;
+            const by = tipY - uy * aLen;
+            const points = `${tipX},${tipY} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`;
+            group.selectAll(`polygon.${className}`).remove();
+            group.append('polygon')
+                .attr('class', className)
+                .attr('points', points)
+                .attr('fill', stroke)
+                .style('pointer-events', 'none');
+        };
+
+        if (startStyle === 'arrow') {
+            const tip = toPx(this.points[0]);
+            const from = toPx(this.points[Math.min(1, this.points.length - 1)]);
+            if ([tip.x, tip.y, from.x, from.y].every(Number.isFinite)) {
+                drawArrow(tip.x, tip.y, from.x, from.y, 'freehand-arrow-start');
+            }
+        }
+        if (endStyle === 'arrow') {
+            const tip = toPx(this.points[this.points.length - 1]);
+            const from = toPx(this.points[Math.max(0, this.points.length - 2)]);
+            if ([tip.x, tip.y, from.x, from.y].every(Number.isFinite)) {
+                drawArrow(tip.x, tip.y, from.x, from.y, 'freehand-arrow-end');
+            }
+        }
     }
 
     /**
@@ -2001,9 +2056,17 @@ class BaseDrawing {
      * Note: Points will be in timestamp format here, conversion to indices happens in manager
      */
     static fromJSON(data, chart = null) {
-        // Subclass constructors take (points, style), NOT (type, points, style)
-        // The type is set internally by each subclass in super() call
-        const drawing = new this(data.points || [], data.style || {});
+        const rawPoints = Array.isArray(data.points) ? data.points : [];
+        const looksTimestamp = rawPoints.length > 0
+            && rawPoints.every((p) => p && Number.isFinite(p.timestamp));
+        const clonedPoints = looksTimestamp ? [] : rawPoints.map((p) => {
+            if (!p || typeof p !== 'object') return null;
+            const x = Number(p.x);
+            const y = Number(p.price !== undefined ? p.price : p.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+            return { x, y };
+        }).filter(Boolean);
+        const drawing = new this(clonedPoints, data.style || {});
         drawing.id = data.id;
         drawing.visible = data.visible !== undefined ? data.visible : true;
         drawing.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };

@@ -4996,6 +4996,39 @@ class Chart {
         return null;
     }
 
+    /**
+     * Replay playhead anchor for TF switch (TradingView parity): the bar at replay time
+     * and its current on-screen X *before* the switch — keep that pixel fixed on the new TF.
+     */
+    _getReplayPlayheadScreenAnchor() {
+        const replay = this.replaySystem;
+        if (!replay?.isActive || !Array.isArray(this.data) || this.data.length === 0) {
+            return null;
+        }
+        const playheadMs = this._getReplayPlayheadMs();
+        let idx = this.data.length - 1;
+        if (Number.isFinite(playheadMs)) {
+            for (let i = 0; i < this.data.length; i++) {
+                const t = this.data[i]?.t;
+                if (!Number.isFinite(t)) continue;
+                if (t <= playheadMs) idx = i;
+                else break;
+            }
+        }
+        const spacing = this.getCandleSpacing();
+        if (!Number.isFinite(spacing) || spacing <= 0) return null;
+        const bar = this.data[idx];
+        const anchorTs = Number.isFinite(playheadMs)
+            ? playheadMs
+            : (bar && Number.isFinite(bar.t) ? bar.t : null);
+        if (!Number.isFinite(anchorTs)) return null;
+        return {
+            anchorTs,
+            anchorScreenX: this.dataIndexToPixel(idx) + spacing / 2,
+            playheadIdx: idx,
+        };
+    }
+
     _getNativeRawStepMs() {
         const rs = this.replaySystem;
         if (rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length >= 2) {
@@ -19977,6 +20010,11 @@ class Chart {
         return false;
     }
 
+    /** Overlay MAs/lines stay visible during zoom/pan; only skip on replay tick animation (perf). */
+    _shouldSkipOverlayIndicatorsDuringLitePaint() {
+        return this._isReplaySmoothTickPlayback();
+    }
+
     _getCandleRenderMaxBuckets(visibleCount, plotPx, opts = {}) {
         if (!visibleCount) return 0;
         if (this._shouldUsePixelColumnCandleLod(visibleCount, plotPx)) {
@@ -20911,7 +20949,7 @@ class Chart {
             this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (!interactionLite) {
+            if (!interactionLite || !this._shouldSkipOverlayIndicatorsDuringLitePaint()) {
                 if (typeof this.drawIndicators === 'function') {
                     this.drawIndicators();
                 }
@@ -24651,8 +24689,12 @@ class Chart {
         let anchorScreenX = null;
         let anchorMode = 'center';
         const replay = this.replaySystem;
-        const userOwnsViewport = !!(replay && replay.isActive
-            && (replay.userHasPanned || !replay.autoScrollEnabled));
+        const replayActive = !!(replay && replay.isActive);
+        const userOwnsViewport = replayActive && (
+            replay.userHasPanned
+            || !replay.autoScrollEnabled
+            || (typeof replay._replayUserOwnsViewport === 'function' && replay._replayUserOwnsViewport(this))
+        );
 
         const vr = this._getViewportBarRange();
         const pixelWin = typeof this._getVisibleFetchWindowFromPixels === 'function'
@@ -24669,12 +24711,24 @@ class Chart {
         const centerScreenX = m.l + plotW / 2;
 
         if (userOwnsViewport) {
-            // Panned / manual zoom: keep the left edge pinned at the same screen X.
+            // Manual pan / scroll-back: pin the left edge at the same screen X.
             anchorMode = 'viewportLeft';
             anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
             anchorScreenX = leftScreenX;
+        } else if (replayActive) {
+            // TradingView replay follow: playhead stays at the same pixel (not screen center).
+            const ph = this._getReplayPlayheadScreenAnchor();
+            if (ph && Number.isFinite(ph.anchorTs) && Number.isFinite(ph.anchorScreenX)) {
+                anchorTs = ph.anchorTs;
+                anchorScreenX = ph.anchorScreenX;
+                anchorMode = 'playhead';
+            } else {
+                anchorTs = Number.isFinite(centerTs) ? centerTs : null;
+                anchorScreenX = centerScreenX;
+                anchorMode = 'center';
+            }
         } else {
-            // TradingView: keep the time at screen center on the same pixel.
+            // Live chart: keep the time at screen center on the same pixel.
             anchorTs = Number.isFinite(centerTs) ? centerTs : null;
             anchorScreenX = centerScreenX;
             anchorMode = 'center';
@@ -24715,6 +24769,7 @@ class Chart {
             anchorTs,
             anchorScreenX,
             candleWidth: this.candleWidth,
+            candleSpacing: spacing,
             offsetX: this.offsetX,
             autoScale: this.autoScale !== false,
             priceZoom: this.priceZoom,
@@ -24735,11 +24790,15 @@ class Chart {
      * fetch returned only the latest slice). Callers fall back to jumpToLatest() on
      * false so loading is never broken.
      */
-    /** TradingView parity: keep the exact captured candle width on TF switch. */
+    /** TradingView parity: keep the exact captured candle width (same bar size + count on screen). */
     _resolveTfSwitchTargetCandleWidth(vp) {
         if (!vp) return this.candleWidth;
         if (Number.isFinite(vp.candleWidth) && vp.candleWidth > 0) {
             return vp.candleWidth;
+        }
+        if (Number.isFinite(vp.candleSpacing) && vp.candleSpacing > 0
+            && typeof this._candleWidthForSpacing === 'function') {
+            return this._candleWidthForSpacing(vp.candleSpacing);
         }
         const m = this.margin;
         const plotW = Math.max(

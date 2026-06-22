@@ -4396,6 +4396,16 @@ class BrushTool extends BaseDrawing {
         // Brush should always be a continuous solid stroke (no dashed variants).
         this.style.dashArray = '';
         this.style.strokeDasharray = '';
+        this.ensureEndpointStyleDefaults();
+    }
+
+    ensureEndpointStyleDefaults() {
+        if (this.style.startStyle === undefined || this.style.startStyle === null) {
+            this.style.startStyle = 'normal';
+        }
+        if (this.style.endStyle === undefined || this.style.endStyle === null) {
+            this.style.endStyle = 'normal';
+        }
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -4405,6 +4415,7 @@ class BrushTool extends BaseDrawing {
 
         this._prepareRenderGroup(container, 'drawing brush', renderOpts);
         this._clearDrawingLabels(scales);
+        this.ensureEndpointStyleDefaults();
 
         // Use D3 line with curve smoothing for freehand feel
         const lineGenerator = d3.line()
@@ -4416,6 +4427,7 @@ class BrushTool extends BaseDrawing {
         const pathData = lineGenerator(this.points);
 
         this._appendStrokePathWithEndpoints(this.group, container, pathData, this.style.strokeWidth);
+        this._drawFreehandEndpointArrows(this.group, scales);
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
