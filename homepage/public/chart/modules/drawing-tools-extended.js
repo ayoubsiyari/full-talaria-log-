@@ -53,15 +53,7 @@ class HighlighterTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing highlighter', renderOpts);
         this._clearDrawingLabels(scales);
 
-        // Use D3 line with curve smoothing for freehand feel
-        const lineGenerator = d3.line()
-            .x(d => scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(d.x) : scales.xScale(d.x))
-            .y(d => scales.yScale(d.y))
-            .curve(d3.curveCatmullRom.alpha(0.5));
-
-        const pathData = lineGenerator(this.points);
-
+        const { pathData } = BaseDrawing.buildFreehandPathData(this.points, scales);
         this._appendStrokePathWithEndpoints(this.group, container, pathData, this.style.strokeWidth);
 
         // Always create handles (visibility controlled by opacity)

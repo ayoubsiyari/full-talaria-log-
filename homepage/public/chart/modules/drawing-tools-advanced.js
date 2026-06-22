@@ -4417,17 +4417,9 @@ class BrushTool extends BaseDrawing {
         this._clearDrawingLabels(scales);
         this.ensureEndpointStyleDefaults();
 
-        // Use D3 line with curve smoothing for freehand feel
-        const lineGenerator = d3.line()
-            .x(d => scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(d.x) : scales.xScale(d.x))
-            .y(d => scales.yScale(d.y))
-            .curve(d3.curveCatmullRom.alpha(0.5));
-
-        const pathData = lineGenerator(this.points);
-
-        this._appendStrokePathWithEndpoints(this.group, container, pathData, this.style.strokeWidth);
-        this._drawFreehandEndpointArrows(this.group, scales);
+        const { pathData } = BaseDrawing.buildFreehandPathData(this.points, scales);
+        const visiblePath = this._appendStrokePathWithEndpoints(this.group, container, pathData, this.style.strokeWidth);
+        this._drawFreehandEndpointArrows(this.group, scales, visiblePath);
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 

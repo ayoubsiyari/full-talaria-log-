@@ -9825,10 +9825,19 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
     
     if (y >= top && y <= bottom) {
         // Clicked in indicator panel - open settings for first indicator
-        if (indicators.length > 0 && typeof window.createIndicatorSettingsPanel === 'function') {
+        if (indicators.length > 0) {
             const indicator = indicators[0];
-            window.createIndicatorSettingsPanel(this, indicator.type, indicator);
-            return true;
+            if (this.v9DeleteIndicatorsMode && typeof this.removeIndicator === "function") {
+                this.removeIndicator(indicator.id);
+                if (typeof this.showNotification === "function") {
+                    this.showNotification("Indicator removed ✓");
+                }
+                return true;
+            }
+            if (typeof window.createIndicatorSettingsPanel === "function") {
+                window.createIndicatorSettingsPanel(this, indicator.type, indicator);
+                return true;
+            }
         }
     }
     return false;

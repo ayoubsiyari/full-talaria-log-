@@ -482,6 +482,64 @@ class BaseDrawing {
         return false;
     }
 
+    /** Drop consecutive duplicate/near-duplicate freehand samples (dense strokes + copy/paste). */
+    static sanitizeFreehandPoints(points) {
+        if (!Array.isArray(points) || points.length < 2) return points || [];
+        const out = [];
+        const minDistSq = 1e-10;
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            if (!p || typeof p !== 'object') continue;
+            const x = Number(p.x);
+            const y = Number(p.price !== undefined ? p.price : p.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+            if (out.length > 0) {
+                const prev = out[out.length - 1];
+                const dx = x - prev.x;
+                const dy = y - prev.y;
+                if (dx * dx + dy * dy < minDistSq) continue;
+            }
+            out.push({ x, y });
+        }
+        if (out.length < 2 && points.length >= 2) {
+            const first = points[0];
+            const last = points[points.length - 1];
+            out.length = 0;
+            out.push(
+                { x: Number(first.x), y: Number(first.price !== undefined ? first.price : first.y) },
+                { x: Number(last.x), y: Number(last.price !== undefined ? last.price : last.y) }
+            );
+        }
+        return out;
+    }
+
+    /** Virtual lead/tail points stabilize Catmull-Rom tangents and prevent endpoint loops. */
+    static padPointsForCatmullRom(points) {
+        if (!Array.isArray(points) || points.length < 2) return points || [];
+        if (points.length === 2) return points;
+        const p0 = points[0];
+        const p1 = points[1];
+        const pn = points[points.length - 1];
+        const pn1 = points[points.length - 2];
+        return [
+            { x: p0.x - (p1.x - p0.x) * 0.5, y: p0.y - (p1.y - p0.y) * 0.5 },
+            ...points,
+            { x: pn.x + (pn.x - pn1.x) * 0.5, y: pn.y + (pn.y - pn1.y) * 0.5 }
+        ];
+    }
+
+    static buildFreehandPathData(points, scales) {
+        const clean = BaseDrawing.sanitizeFreehandPoints(points);
+        const curvePts = BaseDrawing.padPointsForCatmullRom(clean);
+        const lineGenerator = d3.line()
+            .x((d) => (scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(d.x)
+                : scales.xScale(d.x)))
+            .y((d) => scales.yScale(d.y))
+            .curve(d3.curveCatmullRom.alpha(0.5));
+        return { pathData: lineGenerator(curvePts), renderPoints: clean };
+    }
+
     /**
      * Freehand path + optional arrow endpoints (ep1/ep2 → startStyle/endStyle).
      * Highlighter does not support endpoints.
@@ -541,7 +599,7 @@ class BaseDrawing {
     }
 
     /** Draw arrow polygons at freehand path ends (avoids SVG marker bowties on curved paths). */
-    _drawFreehandEndpointArrows(group, scales) {
+    _drawFreehandEndpointArrows(group, scales, visiblePath) {
         if (!group || group.empty() || !scales || !Array.isArray(this.points) || this.points.length < 2) return;
         const startStyle = this.style.startStyle || 'normal';
         const endStyle = this.style.endStyle || 'normal';
@@ -564,7 +622,8 @@ class BaseDrawing {
         const drawArrow = (tipX, tipY, fromX, fromY, className) => {
             const adx = tipX - fromX;
             const ady = tipY - fromY;
-            const alen = Math.sqrt(adx * adx + ady * ady) || 1;
+            const alen = Math.sqrt(adx * adx + ady * ady);
+            if (!Number.isFinite(alen) || alen < 0.5) return;
             const ux = adx / alen;
             const uy = ady / alen;
             const bx = tipX - ux * aLen;
@@ -578,18 +637,51 @@ class BaseDrawing {
                 .style('pointer-events', 'none');
         };
 
+        let pathNode = visiblePath && visiblePath.node ? visiblePath.node() : null;
+        if (!pathNode && group.select) {
+            const paths = group.selectAll('path');
+            paths.each(function eachPath() {
+                if (pathNode) return;
+                const sel = d3.select(this);
+                if (sel.attr('stroke') !== 'transparent') pathNode = this;
+            });
+        }
+
+        const sampleAlongPath = (atStart) => {
+            if (!pathNode || typeof pathNode.getTotalLength !== 'function') return null;
+            const len = pathNode.getTotalLength();
+            if (!Number.isFinite(len) || len < 1) return null;
+            const step = Math.min(Math.max(6, scaledStrokeWidth * 3), len * 0.15);
+            const tip = atStart ? pathNode.getPointAtLength(0) : pathNode.getPointAtLength(len);
+            const from = atStart
+                ? pathNode.getPointAtLength(Math.min(step, len * 0.5))
+                : pathNode.getPointAtLength(Math.max(0, len - step));
+            if (![tip.x, tip.y, from.x, from.y].every(Number.isFinite)) return null;
+            return { tip, from };
+        };
+
         if (startStyle === 'arrow') {
-            const tip = toPx(this.points[0]);
-            const from = toPx(this.points[Math.min(1, this.points.length - 1)]);
-            if ([tip.x, tip.y, from.x, from.y].every(Number.isFinite)) {
-                drawArrow(tip.x, tip.y, from.x, from.y, 'freehand-arrow-start');
+            const along = sampleAlongPath(true);
+            if (along) {
+                drawArrow(along.tip.x, along.tip.y, along.from.x, along.from.y, 'freehand-arrow-start');
+            } else {
+                const tip = toPx(this.points[0]);
+                const from = toPx(this.points[Math.min(1, this.points.length - 1)]);
+                if ([tip.x, tip.y, from.x, from.y].every(Number.isFinite)) {
+                    drawArrow(tip.x, tip.y, from.x, from.y, 'freehand-arrow-start');
+                }
             }
         }
         if (endStyle === 'arrow') {
-            const tip = toPx(this.points[this.points.length - 1]);
-            const from = toPx(this.points[Math.max(0, this.points.length - 2)]);
-            if ([tip.x, tip.y, from.x, from.y].every(Number.isFinite)) {
-                drawArrow(tip.x, tip.y, from.x, from.y, 'freehand-arrow-end');
+            const along = sampleAlongPath(false);
+            if (along) {
+                drawArrow(along.tip.x, along.tip.y, along.from.x, along.from.y, 'freehand-arrow-end');
+            } else {
+                const tip = toPx(this.points[this.points.length - 1]);
+                const from = toPx(this.points[Math.max(0, this.points.length - 2)]);
+                if ([tip.x, tip.y, from.x, from.y].every(Number.isFinite)) {
+                    drawArrow(tip.x, tip.y, from.x, from.y, 'freehand-arrow-end');
+                }
             }
         }
     }

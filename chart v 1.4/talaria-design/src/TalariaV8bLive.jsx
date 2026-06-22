@@ -16577,29 +16577,40 @@ const TalariaV8bLive = () => {
       : item.icon === "trashInd" ? "indicators"
       : item.icon === "trash" ? "both"
       : null;
+    const eraserOn = mode === "drawings" || mode === "both";
+    const indicatorsOn = mode === "indicators" || mode === "both";
     const applyOne = (chartInst) => {
       if (!chartInst) return;
       try {
         const dm = chartInst.drawingManager;
-        const eraserOn = mode === "drawings" || mode === "both";
-        if (dm) {
-          if (mode != null) {
-            if (typeof dm.setEraserMode === "function") {
-              dm.setEraserMode(eraserOn);
-              if (eraserOn && typeof dm.clearTool === "function") dm.clearTool();
-            } else {
-              dm.eraserMode = eraserOn;
-            }
-          } else if (chartInst.cursorType !== "eraser") {
+        chartInst.v9DeleteIndicatorsMode = !!indicatorsOn;
+        if (mode != null) {
+          if (eraserOn && typeof chartInst.setCursorType === "function") {
+            chartInst.setCursorType("eraser", true);
+          } else if (!eraserOn && typeof chartInst.setCursorType === "function") {
+            chartInst.setCursorType("cross", true);
+          } else if (dm) {
+            if (typeof dm.setEraserMode === "function") dm.setEraserMode(eraserOn);
+            else dm.eraserMode = eraserOn;
+          }
+        } else {
+          chartInst.v9DeleteIndicatorsMode = false;
+          if (chartInst.cursorType === "eraser" && typeof chartInst.setCursorType === "function") {
+            chartInst.setCursorType("cross", true);
+          } else if (dm && chartInst.cursorType !== "eraser") {
             if (typeof dm.setEraserMode === "function") dm.setEraserMode(false);
             else dm.eraserMode = false;
           }
         }
-        chartInst.v9DeleteIndicatorsMode = mode === "indicators" || mode === "both";
       } catch (_) {}
     };
     try {
       if (typeof window !== "undefined") window.v9DeleteMode = mode;
+      const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+      if (grid && typeof grid.runCommandIframes === "function") {
+        const cursorType = mode == null ? "cross" : eraserOn ? "eraser" : "cross";
+        void grid.runCommandIframes("setChartCursorType", { cursorType }).catch(() => {});
+      }
       const ch =
         typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
       applyOne(ch);
@@ -16918,6 +16929,9 @@ const TalariaV8bLive = () => {
 
     const apply = () => {
       if (cancelled) return;
+
+      // Delete submenu arms eraser / indicator-delete — not a drawing-tool id.
+      if (tool === "trash") return;
 
       // Phase 7.2.4 — multichart routing (two modes):
       //   • Toolbar / chartDataLoaded / panelSelected: BROADCAST the tool to

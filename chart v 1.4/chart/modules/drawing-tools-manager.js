@@ -5840,6 +5840,7 @@ class DrawingToolsManager {
 
         // Persist new drawings in timestamp space so timeframe switches keep them visible
         // (same behavior expected from original chart).
+        const fromClonePayload = !!drawing._fromClonePayload;
         if (
             drawing &&
             Array.isArray(drawing.points) &&
@@ -5863,7 +5864,10 @@ class DrawingToolsManager {
         }
         
         this.drawings.push(drawing);
-        this.renderDrawing(drawing);
+        this.renderDrawing(drawing, fromClonePayload ? { skipTimestampSync: true } : undefined);
+        if (fromClonePayload) {
+            delete drawing._fromClonePayload;
+        }
         this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
 
@@ -8933,6 +8937,9 @@ class DrawingToolsManager {
             return { x, y };
         }).filter(Boolean);
         if (out.points.length === 0) return null;
+        if (this._isFreehandDrawingType(out.type)) {
+            out.points = this._sanitizeFreehandClonePoints(out.points);
+        }
         if (this._isFreehandDrawingType(out.type) && Array.isArray(out.timestampPoints) && out.timestampPoints.length > 0) {
             out.timestampPoints = out.timestampPoints.map((p) => ({
                 timestamp: Number(p.timestamp),
@@ -9365,6 +9372,14 @@ class DrawingToolsManager {
         return type === 'brush' || type === 'highlighter' || type === 'path';
     }
 
+    _sanitizeFreehandClonePoints(points) {
+        if (!Array.isArray(points) || points.length === 0) return points;
+        if (typeof BaseDrawing !== 'undefined' && typeof BaseDrawing.sanitizeFreehandPoints === 'function') {
+            return BaseDrawing.sanitizeFreehandPoints(points);
+        }
+        return points;
+    }
+
     _applyClonePointOffset(drawing) {
         if (!drawing || !Array.isArray(drawing.points) || drawing.points.length === 0) return;
         const pts = drawing.points;
@@ -9463,7 +9478,10 @@ class DrawingToolsManager {
     }
 
     _buildDrawingClonePayload(drawing) {
-        const points = this._resolveDrawingIndexPoints(drawing);
+        let points = this._resolveDrawingIndexPoints(drawing);
+        if (this._isFreehandDrawingType(drawing.type)) {
+            points = this._sanitizeFreehandClonePoints(points);
+        }
         const payload = {
             type: drawing.type,
             points: JSON.parse(JSON.stringify(points)),
@@ -9499,10 +9517,12 @@ class DrawingToolsManager {
         newDrawing.coordinateSystem = 'index';
 
         if (this._isFreehandDrawingType(newDrawing.type) && Array.isArray(data.points) && data.points.length > 0) {
-            newDrawing.points = data.points.map((p) => ({
-                x: Number(p.x),
-                y: Number(p.price !== undefined ? p.price : p.y)
-            })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+            newDrawing.points = this._sanitizeFreehandClonePoints(
+                data.points.map((p) => ({
+                    x: Number(p.x),
+                    y: Number(p.price !== undefined ? p.price : p.y)
+                })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+            );
             if (Array.isArray(data.timestampPoints) && data.timestampPoints.length > 0) {
                 newDrawing.timestampPoints = data.timestampPoints.map((p) => ({
                     timestamp: Number(p.timestamp),
@@ -9516,6 +9536,11 @@ class DrawingToolsManager {
         }
 
         this._applyClonePointOffset(newDrawing);
+
+        if (this._isFreehandDrawingType(newDrawing.type) && Array.isArray(newDrawing.points) && newDrawing.points.length > 0) {
+            newDrawing.points = this._sanitizeFreehandClonePoints(newDrawing.points);
+            newDrawing._fromClonePayload = true;
+        }
         return newDrawing;
     }
 
