@@ -1218,7 +1218,7 @@ const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   crosshair: new Set(["crosshair", "cursorDot", "cursorArrow", "eraser"]),
   brush: new Set(["vwap", "volProfile", "anchoredVol"]),
   trash: new Set(["trash", "trashDraw", "trashInd"]),
-  eye: new Set(["eye", "eyeAll", "eyeInd", "eyePos", "eyeHide"]),
+  eye: new Set(["eye", "eyeAll", "eyeInd", "eyeHide"]),
   magnet: new Set(["magnet", "magnetOff", "magnetWeak", "magnetStrong"]),
 });
 
@@ -16485,7 +16485,7 @@ const TalariaV8bLive = () => {
     // Group 11 - Utilities
     [
       { id: "eye", icon: "eye", label: "Visibility", dd: [
-        {h:"VISIBILITY"},{icon:"eyeAll",label:"Hide Drawings"},{icon:"eyeInd",label:"Hide Indicators"},{icon:"eyePos",label:"Hide Positions"},{icon:"eyeHide",label:"Hide All"}
+        {h:"VISIBILITY"},{icon:"eyeAll",label:"Hide Drawings"},{icon:"eyeInd",label:"Hide Indicators"},{icon:"eyeHide",label:"Hide All"}
       ]},
       { id: "magnet", icon: "magnet", label: "Magnet", dd: [
         {h:"MAGNET STRENGTH"},{icon:"magnetOff",label:"Off"},{icon:"magnetWeak",label:"Weak"},{icon:"magnetStrong",label:"Strong"}
@@ -28960,7 +28960,6 @@ const TalariaV8bLive = () => {
                     if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
                       if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
                       else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
-                      else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
                       else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
                       setGroupSelected(p => v9SanitizeGroupSelected({ ...p, eye: item }));
                       closeDropdown();

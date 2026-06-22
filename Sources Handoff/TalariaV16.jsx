@@ -11459,7 +11459,7 @@ const TalariaV8b = () => {
     // Group 11 - Utilities
     [
       { id: "eye", icon: "eye", label: "Visibility", dd: [
-        {h:"VISIBILITY"},{icon:"eyeAll",label:"Hide Drawings"},{icon:"eyeInd",label:"Hide Indicators"},{icon:"eyePos",label:"Hide Positions"},{icon:"eyeHide",label:"Hide All"}
+        {h:"VISIBILITY"},{icon:"eyeAll",label:"Hide Drawings"},{icon:"eyeInd",label:"Hide Indicators"},{icon:"eyeHide",label:"Hide All"}
       ]},
       { id: "magnet", icon: "magnet", label: "Magnet", dd: [
         {h:"MAGNET STRENGTH"},{icon:"magnetOff",label:"Off"},{icon:"magnetWeak",label:"Weak"},{icon:"magnetStrong",label:"Strong"}
