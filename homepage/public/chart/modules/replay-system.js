@@ -5268,6 +5268,8 @@ class ReplaySystem {
         this.userHasPanned = true;
         if (this.chart && typeof this.chart._clearTfSwitchAnchorLock === 'function') {
             this.chart._clearTfSwitchAnchorLock();
+        } else if (this.chart && typeof this.chart._cancelTfSwitchHistoryFill === 'function') {
+            this.chart._cancelTfSwitchHistoryFill();
         }
 
         // Show visual indicator that auto-scroll is disabled

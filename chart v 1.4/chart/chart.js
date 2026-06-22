@@ -14746,8 +14746,11 @@ class Chart {
         }
 
         // Apply soft constraint with elastic resistance at boundaries.
-        // During TF-switch anchor lock, keep the playhead pixel fixed (allow empty left).
-        const preserveTfAnchor = !!(this._tfSwitchAnchorLock && this._chartViewRestored);
+        // During TF-switch anchor lock, keep the anchor pixel fixed (allow empty left).
+        // Stop once the user pans — otherwise drag fights the frozen anchor.
+        const preserveTfAnchor = !!(this._tfSwitchAnchorLock && this._chartViewRestored)
+            && !(this.replaySystem && this.replaySystem.userHasPanned)
+            && !(this.drag && this.drag.active && (this.drag.type === 'pan' || this.drag.type === 'timeAxis'));
         if (!preserveTfAnchor) {
         if (this.offsetX > maxOffset) {
             const overshoot = this.offsetX - maxOffset;
@@ -17378,6 +17381,7 @@ class Chart {
         // the live canvas, which must still hold the previous frame's pixels.
         try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
         try { this._captureTfSwitchViewport(); } catch (_vp) { /* ignore */ }
+        this._tfSwitchHistoryFillSeq = (this._tfSwitchHistoryFillSeq || 0) + 1;
         if (this._timeframeFetchAbort) {
             try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
         }
@@ -24551,6 +24555,11 @@ class Chart {
     _reapplyTfSwitchAnchorLock() {
         const lock = this._tfSwitchAnchorLock;
         if (!lock || !this.data || this.data.length === 0) return false;
+        const replay = this.replaySystem;
+        if (replay?.userHasPanned) return false;
+        if (this.drag?.active && (this.drag.type === 'pan' || this.drag.type === 'timeAxis')) {
+            return false;
+        }
         const m = this.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, (this.w - m.l - m.r) || lock.plotW || 0);
         const targetCandleWidth = Number.isFinite(lock.candleWidth) && lock.candleWidth > 0
@@ -24573,6 +24582,75 @@ class Chart {
         this._tfSwitchAnchorLock = null;
         this._tfSwitchVisibleBarCount = null;
         this._pendingTfSwitchVisibleBarCount = null;
+        this._cancelTfSwitchHistoryFill();
+    }
+
+    _cancelTfSwitchHistoryFill() {
+        this._tfSwitchHistoryFillSeq = (this._tfSwitchHistoryFillSeq || 0) + 1;
+    }
+
+    /**
+     * After TF restore: if no bars are visible (common on 1H→1m), re-center on
+     * playhead while keeping the captured candle width.
+     */
+    _ensureTfSwitchViewportShowsData(vp) {
+        if (!Array.isArray(this.data) || this.data.length === 0) return;
+        const replay = this.replaySystem;
+        const m = this.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, (this.w || 800) - m.l - m.r);
+        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
+        if (!(spacing > 0)) return;
+
+        const playheadInView = () => {
+            if (!replay?.isActive) return true;
+            const ts = Number.isFinite(replay.replayTimestamp)
+                ? replay.replayTimestamp
+                : (typeof this._captureReplayPlayheadMs === 'function'
+                    ? this._captureReplayPlayheadMs(replay)
+                    : null);
+            if (!Number.isFinite(ts)) return true;
+            const i0 = Math.max(0, -Math.floor((this.offsetX || 0) / spacing));
+            const vis = Math.ceil(plotW / spacing) + 2;
+            const i1 = Math.min(this.data.length - 1, i0 + vis);
+            const t0 = this.data[i0]?.t;
+            const t1 = this.data[i1]?.t;
+            if (!Number.isFinite(t0) || !Number.isFinite(t1)) return false;
+            const barMs = this._estimateTimeframeStepMs() || spacing;
+            return ts >= t0 - barMs && ts <= t1 + barMs;
+        };
+
+        if (this._countVisiblePlotBars() >= 3 && playheadInView()) return;
+
+        const cw = Number.isFinite(vp?.candleWidth) && vp.candleWidth > 0
+            ? vp.candleWidth
+            : this.candleWidth;
+        this._clampRestoredCandleWidth(cw);
+
+        const centerX = Number.isFinite(vp?.centerScreenX)
+            ? vp.centerScreenX
+            : (m.l + plotW / 2);
+        const phTs = replay?.isActive && typeof this._captureReplayPlayheadMs === 'function'
+            ? this._captureReplayPlayheadMs(replay)
+            : (Number.isFinite(vp?.anchorTs) ? vp.anchorTs : vp?.centerTs);
+
+        if (Number.isFinite(phTs)) {
+            this._restorePositionAtScreenX(phTs, cw, centerX, { skipConstrain: true });
+            if (this._countVisiblePlotBars() >= 3 && playheadInView()) {
+                if (this._tfSwitchAnchorLock) {
+                    this._tfSwitchAnchorLock.anchorTs = phTs;
+                    this._tfSwitchAnchorLock.anchorScreenX = centerX;
+                }
+                return;
+            }
+        }
+
+        if (replay?.isActive && typeof replay.syncReplayViewportToPlayhead === 'function') {
+            replay.syncReplayViewportToPlayhead(this, {
+                forceRecenter: true,
+                resetPriceScale: false,
+                render: false,
+            });
+        }
     }
 
     /**
@@ -24673,6 +24751,9 @@ class Chart {
 
         this._tfSwitchViewport = {
             centerTs: Number.isFinite(centerTs) ? centerTs : null,
+            centerScreenX: m.l + plotW / 2,
+            oldBarMs: barMs,
+            fromTimeframe: this.currentTimeframe,
             spanMs,
             visibleBarCount,
             plotW,
@@ -24779,7 +24860,22 @@ class Chart {
         }
 
         if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
-            this._commitTfSwitchAnchorLock(vp);
+            const replayActive = replay && replay.isActive;
+            const switchingToFiner = Number.isFinite(vp.oldBarMs) && newBarMs > 0
+                && vp.oldBarMs > newBarMs * 1.02;
+            let lockVp = vp;
+            // 1H→1m: pin visible center (not coarse playhead pixel) so the loaded
+            // fine-TF window stays on screen instead of an empty extrapolated range.
+            if (replayActive && switchingToFiner && Number.isFinite(vp.centerTs)) {
+                lockVp = {
+                    ...vp,
+                    anchorTs: vp.centerTs,
+                    anchorScreenX: Number.isFinite(vp.centerScreenX)
+                        ? vp.centerScreenX
+                        : (m.l + plotW / 2),
+                };
+            }
+            this._commitTfSwitchAnchorLock(lockVp);
         } else if (Number.isFinite(vp.centerTs)) {
             this._clampRestoredCandleWidth(targetCandleWidth);
             this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
@@ -24812,6 +24908,9 @@ class Chart {
      * Locks replay auto-follow when restore succeeds so follow-up sync does not recenter.
      */
     _finishTfSwitchViewportRestore() {
+        const vpSnap = this._tfSwitchViewport
+            ? { ...this._tfSwitchViewport }
+            : null;
         this._restoreOrJumpAfterTfSwitch();
         if (typeof this.resize === 'function') {
             try { this.resize(); } catch (_e) { /* ignore */ }
@@ -24819,8 +24918,11 @@ class Chart {
         if (this._tfSwitchAnchorLock) {
             this._reapplyTfSwitchAnchorLock();
         }
+        this._ensureTfSwitchViewportShowsData(vpSnap);
         if (typeof setTimeout === 'function') {
-            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(0), 0);
+            const fillSeq = (this._tfSwitchHistoryFillSeq || 0) + 1;
+            this._tfSwitchHistoryFillSeq = fillSeq;
+            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(0, fillSeq), 0);
         }
     }
 
@@ -24829,13 +24931,16 @@ class Chart {
      * keeps a backward buffer so previous data appears without a manual drag).
      * Retries while data keeps arriving and a left gap remains.
      */
-    _fillViewportHistoryAfterTfSwitch(attempt = 0) {
+    _fillViewportHistoryAfterTfSwitch(attempt = 0, fillSeq = null) {
+        if (fillSeq != null && fillSeq !== (this._tfSwitchHistoryFillSeq || 0)) return;
+        const replay = this.replaySystem;
+        if (replay?.userHasPanned || !this._tfSwitchAnchorLock) return;
         // Big-TF tiles pull many 1m chunks (shared-master design fetches at 1m),
         // so allow more iterations than a single coarse-TF fetch would need.
         if (attempt > 28) return;
         // Loaders bail while a switch is mid-flight — retry shortly.
         if (this._timeframeSwitching || this._pairSwitchLoading) {
-            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt), 60);
+            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt, fillSeq), 60);
             return;
         }
         if (!Array.isArray(this.data) || this.data.length === 0) return;
@@ -24847,7 +24952,6 @@ class Chart {
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
         if (leftIdx >= 6) return;
 
-        const replay = this.replaySystem;
         const measureLen = () => (replay && Array.isArray(replay.fullRawData))
             ? replay.fullRawData.length
             : (Array.isArray(this.data) ? this.data.length : 0);
@@ -24909,6 +25013,8 @@ class Chart {
         }
 
         setTimeout(() => {
+            if (fillSeq != null && fillSeq !== (this._tfSwitchHistoryFillSeq || 0)) return;
+            if (replay?.userHasPanned || !this._tfSwitchAnchorLock) return;
             const grew = measureLen() > beforeLen;
             if (grew && this._tfSwitchAnchorLock) {
                 try { this._reapplyTfSwitchAnchorLock(); } catch (_e) { /* ignore */ }
@@ -24916,7 +25022,7 @@ class Chart {
             // Keep going while data is arriving here OR a shared host fetch is in flight.
             const busy = this._panLoading || this._replayPanLoadTimer || (host && host._panLoading);
             if (!grew && !busy) return; // nothing more to load
-            this._fillViewportHistoryAfterTfSwitch(attempt + 1);
+            this._fillViewportHistoryAfterTfSwitch(attempt + 1, fillSeq);
         }, pollMs);
     }
 
