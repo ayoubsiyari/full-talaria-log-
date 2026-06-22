@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b12';
+const CHART_ENGINE_BUILD = '20260622b1';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -559,7 +559,12 @@ class Chart {
         
         // Backend API configuration
         this.apiUrl = window.CHART_API_URL || '/api';
-        this.tileManager = new TileManager(this.apiUrl, 150);
+        // Tile LRU: default 40 tiles (~2M bars max decoded). Override before chart.js loads:
+        // window.CHART_TILE_CACHE_MAX = 60
+        const _tileCacheMax = (typeof window !== 'undefined' && Number(window.CHART_TILE_CACHE_MAX) > 0)
+            ? Math.floor(Number(window.CHART_TILE_CACHE_MAX))
+            : 40;
+        this.tileManager = new TileManager(this.apiUrl, _tileCacheMax);
         this.currentFileId = null;
         /** Bumps on each server timeframe load so stale async responses are ignored. */
         this._timeframeLoadSeq = 0;
@@ -572,7 +577,8 @@ class Chart {
         this._RAW_DATA_CAP = 8000; // default; use _getRawDataCap() for timeframe-aware limit
         this._scalesDirty = true;
         this._panScalesCalculated = false;
-        this._REPLAY_RAW_CAP = 5000;
+        /** Replay master ring buffer — aligned with _getRawDataCap(); do not raise without typed-array storage. */
+        this._REPLAY_RAW_CAP = 8000;
         /**
          * Backtest: first GET /smart batch size (capped 5k–100k server-side).
          * Instruments may hold 10–15+ years of 1m bars on disk — that full series is never loaded at once.
@@ -581,7 +587,6 @@ class Chart {
          * Default kept moderate so first paint stays fast; viewport/replay loads more as needed.
          */
         this.BACKTEST_SMART_INITIAL_LIMIT = 800;
-        this._REPLAY_RAW_CAP = 120000;
         this.displaySeries = null;
         this.dataPipeline = null;
         this.viewportData = null;
@@ -2689,6 +2694,9 @@ class Chart {
         if (prevFid && this._btTfDataCache && typeof this._btTfDataCache.delete === 'function') {
             this._btTfDataCache.delete(prevFid);
         }
+        if (prevFid && this.tileManager && typeof this.tileManager.invalidate === 'function') {
+            this.tileManager.invalidate(prevFid);
+        }
         this._ensureReplayDataGeneration = (this._ensureReplayDataGeneration || 0) + 1;
         this._ensureReplayDataInflight = null;
     }
@@ -4594,12 +4602,18 @@ class Chart {
         const fid = String(fileId);
         if (!this._tfDataCache.has(fid)) this._tfDataCache.set(fid, new Map());
         const perFile = this._tfDataCache.get(fid);
+        const tfCacheCap = typeof this._getRawDataCap === 'function'
+            ? this._getRawDataCap()
+            : (this._RAW_DATA_CAP || 8000);
+        const rawForCache = this.rawData.length > tfCacheCap
+            ? this.rawData.slice(-tfCacheCap)
+            : this.rawData.slice();
         perFile.set(tf, {
             at: Date.now(),
-            rawData: this.rawData.slice(),
+            rawData: rawForCache,
             data: Array.isArray(this.data) && this.data.length
-                ? this.data.slice()
-                : this.resampleData(this.rawData, tf),
+                ? (this.data.length > tfCacheCap ? this.data.slice(-tfCacheCap) : this.data.slice())
+                : this.resampleData(rawForCache, tf),
             totalCandles: this.totalCandles,
             serverCursors: this._serverCursors ? { ...this._serverCursors } : null,
             nativeRawFetchTf: this._nativeRawFetchTf || tf,
@@ -18611,12 +18625,6 @@ class Chart {
                 if (uniqueNew.length === 0) return;
                 
                 if (isReplay) {
-                    // Keep backward pan history — cap only evicts far-ahead bars during forward prefetch.
-                    if (direction === 'forward'
-                        && this.dataPipeline
-                        && typeof this.dataPipeline.capReplayFullRawData === 'function') {
-                        merged = this.dataPipeline.capReplayFullRawData(merged, this.replaySystem);
-                    }
                     // Update replay system's master copy
                     this.replaySystem.fullRawData = merged;
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
@@ -18642,6 +18650,19 @@ class Chart {
                     } else if (replayTs != null) {
                         const newIdx = merged.findIndex(c => c.t >= replayTs);
                         if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
+                    }
+
+                    // Ring-buffer replay master (all pan directions) — flat RAM, playhead context preserved.
+                    if (this.dataPipeline && typeof this.dataPipeline.capReplayFullRawData === 'function') {
+                        const capped = this.dataPipeline.capReplayFullRawData(
+                            this.replaySystem.fullRawData,
+                            this.replaySystem
+                        );
+                        if (capped !== this.replaySystem.fullRawData) {
+                            this.replaySystem.fullRawData = capped;
+                            this.replaySystem.replayStartTimestamp = capped[0]?.t;
+                            this.replaySystem.replayEndTimestamp = capped[capped.length - 1]?.t;
+                        }
                     }
 
                     if (direction === 'backward' && uniqueNew.length > 0) {
@@ -31946,6 +31967,40 @@ async function _talariaInitializeChart() {
     const chartInstance = new Chart();
     window.chart = chartInstance;
     window.mainChart = chartInstance;
+
+    window.__talariaMemStats = function __talariaMemStats() {
+        const ch = window.chart;
+        if (!ch) return { error: 'no chart' };
+        const tm = ch.tileManager;
+        let tileBars = 0;
+        if (tm && tm._tileCache) {
+            tm._tileCache.forEach((candles) => {
+                if (Array.isArray(candles)) tileBars += candles.length;
+            });
+        }
+        const rs = ch.replaySystem;
+        let tfCacheEntries = 0;
+        if (ch._tfDataCache) {
+            ch._tfDataCache.forEach((perFile) => {
+                if (perFile && typeof perFile.size === 'number') tfCacheEntries += perFile.size;
+            });
+        }
+        return {
+            rawData: ch.rawData?.length || 0,
+            data: ch.data?.length || 0,
+            displaySeries: ch.displaySeries?.length || 0,
+            fullRawData: rs?.fullRawData?.length || 0,
+            tileCacheEntries: tm?._tileCache?.size || 0,
+            tileCacheBars: tileBars,
+            tileCacheMax: tm?.maxTiles || 0,
+            tfCacheFiles: ch._tfDataCache?.size || 0,
+            tfCacheEntries,
+            smartPrefetchEntries: ch._smartPrefetchCache?.size || 0,
+            currentTimeframe: ch.currentTimeframe,
+            isBacktestMode: !!ch.isBacktestMode,
+            replayActive: !!rs?.isActive,
+        };
+    };
     if (typeof CHART_ENGINE_BUILD === 'string') {
         console.info('[Talaria chart engine]', CHART_ENGINE_BUILD);
     }

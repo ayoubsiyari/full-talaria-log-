@@ -20753,7 +20753,7 @@ const TalariaV8b = () => {
               duration:{label:"Held", size:"minmax(58px,.5fr)", sortable:true},
               netPnl:{label:"Net P&L", size:"minmax(76px,.68fr)", sortable:true, align:"right"},
               rMultiple:{label:"R", size:"minmax(54px,.45fr)", sortable:true, align:"right"},
-              actualRisk:{label:"Actual R", size:"minmax(68px,.56fr)", sortable:true, align:"right"},
+              actualRisk:{label:"Planned RR", size:"minmax(72px,.58fr)", sortable:true, align:"right"},
               closeType:{label:"Close", size:"minmax(84px,.75fr)", sortable:true},
               entryPrice:{label:"Entry", size:"minmax(70px,.6fr)", sortable:true, align:"right"},
               exitPrice:{label:"Exit", size:"minmax(70px,.6fr)", sortable:true, align:"right"},
@@ -20849,7 +20849,7 @@ const TalariaV8b = () => {
               const excursion = derived?.excursion || {};
               const derivedPnl = ledgerFiniteNumber(currency.net) ?? pnl;
               const derivedR = ledgerFiniteNumber(calculated.rrValue) ?? rVal;
-              const derivedPlannedR = ledgerFiniteNumber(calculated.plannedRrValue) ?? Number(firstValue(t, ["plannedRR","planned_rr","rr"], NaN));
+              const derivedPlannedR = ledgerFiniteNumber(calculated.plannedRrValue) ?? btDashTradePlannedR(t) ?? Number(firstValue(t, ["plannedRR","planned_rr","rewardToRiskRatio"], NaN));
               const derivedRisk = ledgerFiniteNumber(currency.riskCurrency) != null ? Math.abs(ledgerFiniteNumber(currency.riskCurrency)) : Number(firstValue(t, ["riskAmount","risk_amount","riskPerTrade"], NaN));
               const derivedCost = derived ? Number(derived.costTotal || 0) : Number(firstValue(t, ["cost_friction_total","commission_total","commissionCost"], 0));
               const derivedStatus = derived ? (derived.closed ? "Closed" : "Open") : statusText;
@@ -20891,7 +20891,7 @@ const TalariaV8b = () => {
                   duration:derivedDuration,
                   netPnl:Number.isFinite(derivedPnl) ? derivedPnl : -Infinity,
                   rMultiple:Number.isFinite(derivedR) ? derivedR : -Infinity,
-                  actualRisk:Number.isFinite(derivedR) ? derivedR : Number(firstValue(t, ["actualRisk","actual_rr_net","actualRR"], NaN)),
+                  actualRisk:Number.isFinite(derivedPlannedR) ? derivedPlannedR : -Infinity,
                   closeType:derivedCloseType,
                   entryPrice:derivedEntry,
                   exitPrice:derivedExit,
@@ -20919,7 +20919,7 @@ const TalariaV8b = () => {
                   duration:{text:fmtDuration({...t, duration:derivedDuration}), raw:derivedDuration},
                   netPnl:{text:fmtSignedMoney(derivedPnl), color:Number.isFinite(derivedPnl) ? (derivedPnl>=0?c.gn:c.rd) : c.ts, raw:derivedPnl},
                   rMultiple:{text:Number.isFinite(derivedR) ? `${fmtNum(derivedR, 2)}R` : "-", color:Number.isFinite(derivedR) ? (derivedR>=0?c.gn:c.rd) : c.ts, raw:derivedR},
-                  actualRisk:{text:Number.isFinite(derivedR) ? `${fmtNum(derivedR, 2)}R` : "-", color:c.acL, raw:Number.isFinite(derivedR) ? derivedR : ""},
+                  actualRisk:{text:Number.isFinite(derivedPlannedR) ? `${fmtNum(derivedPlannedR, 2)}R` : "-", color:c.acL, raw:Number.isFinite(derivedPlannedR) ? derivedPlannedR : ""},
                   closeType:{text:derivedCloseType, raw:derivedCloseType},
                   entryPrice:{text:entryRows.length > 1 ? entrySummary : fmtPrice(derivedEntry), color:c.acL, raw:derivedEntry},
                   exitPrice:{text:exitRows.length > 1 ? exitSummary : fmtPrice(derivedExit), color:c.gold, raw:derivedExit},
@@ -21108,7 +21108,7 @@ const TalariaV8b = () => {
                 return null;
               };
               const plannedR = toNum(record.values.rr.raw) ?? toNum(firstValue(trade, ["plannedRR","planned_rr","rr","rewardToRiskRatio"], null)) ?? 2;
-              const actualR = toNum(record.values.rMultiple.raw) ?? toNum(record.values.actualRisk.raw) ?? toNum(firstValue(trade, ["actualRisk","actual_rr_net","actualRR","rMultiple"], null));
+              const actualR = toNum(record.values.rMultiple.raw) ?? toNum(firstValue(trade, ["actual_rr_net","actualRR","rMultiple"], null));
               const excursionRPair = parseRPair(record.values.mfeMaeR.raw, record.values.mfeMaeR.text);
               const mfeRRaw = excursionRPair?.mfe ?? firstUsableNumber(firstValue(trade, ["total_mfe_r","mfe_r"], null), firstValue(trade, ["total_mfe","mfe","mfe_points"], null));
               const maeRRaw = excursionRPair?.mae ?? firstUsableNumber(firstValue(trade, ["total_mae_r","mae_r"], null), firstValue(trade, ["total_mae","mae","mae_points"], null));
@@ -21595,7 +21595,7 @@ const TalariaV8b = () => {
                       <div role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>setDashTradesDrawer(null))} onKeyDown={libraryKeyActivate(()=>setDashTradesDrawer(null))} style={{width:28,height:28,display:"grid",placeItems:"center",color:c.tm,fontSize:20,cursor:"default"}}>×</div>
                     </div>
                     <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"0 14px 16px"}}>
-                      {sectionBlock("Result", [["Net P&L", drawerRecord.values.netPnl.text, drawerRecord.values.netPnl.color], ["R", drawerRecord.values.rMultiple.text, drawerRecord.values.rMultiple.color], ["Actual R", drawerRecord.values.actualRisk.text, c.acL], ["Close Type", drawerRecord.values.closeType.text], ["Status", drawerRecord.values.status.text, drawerRecord.values.status.color]])}
+                      {sectionBlock("Result", [["Net P&L", drawerRecord.values.netPnl.text, drawerRecord.values.netPnl.color], ["R", drawerRecord.values.rMultiple.text, drawerRecord.values.rMultiple.color], ["Planned RR", drawerRecord.values.actualRisk.text, c.acL], ["Close Type", drawerRecord.values.closeType.text], ["Status", drawerRecord.values.status.text, drawerRecord.values.status.color]])}
                       {sectionBlock("Prices", [["Entry", drawerRecord.values.entryPrice.text], ["Exit", drawerRecord.values.exitPrice.text], ["Stop Loss", drawerRecord.values.stopLoss.text, c.rd], ["Take Profit", drawerRecord.values.takeProfit.text, c.gold], ["Qty", drawerRecord.values.quantity.text]])}
                       {sectionBlock("Risk / R", [["Risk $", drawerRecord.values.riskAmount.text, c.rd], ["Original Risk", drawerRecord.values.originalRisk.text], ["RR", drawerRecord.values.rr.text, c.gn], ["Risk %", drawerRecord.values.plannedRisk.text], ["Costs", drawerRecord.values.costs.text, c.rd]])}
                       {sectionBlock("Excursion", [["MFE / MAE", drawerRecord.values.mfeMae.text], ["MFE R / MAE R", drawerRecord.values.mfeMaeR.text], ["Held", drawerRecord.values.duration.text], ["Calendar", drawerRecord.values.calendar.text], ["Partials", drawerRecord.values.partials.text], ["SL Mods", drawerRecord.values.slMods.text]])}
@@ -21613,7 +21613,7 @@ const TalariaV8b = () => {
             const tradeColumns = [
               ["tradeId","Trade ID","78px"],["symbol","Symbol","88px"],["direction","Side","78px"],["quantity","Qty","72px","right"],["status","Status","86px"],
               ["entryTime","Entry Time","140px"],["exitTime","Exit Time","140px"],["entryPrice","Entry","90px","right"],["exitPrice","Exit","90px","right"],["stopLoss","SL","90px","right"],["takeProfit","TP","90px","right"],["closeType","Close Type","104px"],
-              ["netPnl","Net P&L","100px","right"],["riskAmount","Risk $","96px","right"],["originalRisk","Orig Risk","96px","right"],["rMultiple","R","76px","right"],["rr","RR","76px","right"],["plannedRisk","Risk %","86px","right"],["actualRisk","Actual R","86px","right"],
+              ["netPnl","Net P&L","100px","right"],["riskAmount","Risk $","96px","right"],["originalRisk","Orig Risk","96px","right"],["rMultiple","R","76px","right"],["rr","RR","76px","right"],["plannedRisk","Risk %","86px","right"],["actualRisk","Planned RR","86px","right"],
               ["mfeMae","MFE / MAE","122px","right"],["mfeMaeR","MFE R / MAE R","134px","right"],["duration","Held","88px"],["calendar","Calendar","150px"],["costs","Costs","160px"],
               ["preNotes","Pre Notes","220px"],["postNotes","Post Notes","220px"],["preVars","Pre Variables","220px"],["postVars","Post Variables","220px"],
               ["partials","Partials","118px"],["slMods","SL Mods","118px"],["media","Media","128px"],["sessionId","Session ID","150px"],["savedAt","Saved","140px"],

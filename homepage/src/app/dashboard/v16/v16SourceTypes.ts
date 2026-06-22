@@ -106,6 +106,8 @@ export type ApiJournalEntry = {
   direction: string;
   entry_price?: number;
   exit_price?: number;
+  stop_loss?: number | null;
+  take_profit?: number | null;
   open_time?: string | null;
   close_time?: string | null;
   quantity?: number;

@@ -88,6 +88,20 @@ function connectionMatchesTrade(conn: ApiBrokerConnection, entry: ApiJournalEntr
   return source === broker || source.startsWith(broker) || broker.startsWith(source);
 }
 
+function computePlannedRrFromEntry(
+  entry: ApiJournalEntry,
+  extra: Record<string, unknown>
+): number | null {
+  const fromExtra = Number(extra.planned_rr ?? extra.plannedRR);
+  if (Number.isFinite(fromExtra) && fromExtra > 0) return fromExtra;
+  const entryPrice = Number(entry.entry_price);
+  const stop = Number(entry.stop_loss);
+  const tp = Number(entry.take_profit);
+  if (!Number.isFinite(entryPrice) || !Number.isFinite(stop) || !Number.isFinite(tp)) return null;
+  const risk = Math.abs(entryPrice - stop);
+  return risk > 0 ? Math.abs(tp - entryPrice) / risk : null;
+}
+
 export function mapLiveJournalEntryToV16Trade(
   entry: ApiJournalEntry,
   index: number,
@@ -104,6 +118,7 @@ export function mapLiveJournalEntryToV16Trade(
   const tradeId = `live-${entry.id}`;
   const extra = entry.extra_data;
   const extraObj = extra && typeof extra === "object" ? (extra as Record<string, unknown>) : {};
+  const plannedRR = computePlannedRrFromEntry(entry, extraObj);
   const planReviewKey = String(
     extraObj.plan_review ||
       extraObj.planReview ||
@@ -127,6 +142,13 @@ export function mapLiveJournalEntryToV16Trade(
     n: index + 1,
     date,
     closeTime: entry.close_time || entry.date || "",
+    entryPrice: entry.entry_price ?? null,
+    exitPrice: entry.exit_price ?? null,
+    stopLoss: entry.stop_loss ?? null,
+    takeProfit: entry.take_profit ?? null,
+    entryTime: entry.open_time || entry.date || "",
+    openTime: entry.open_time || entry.date || "",
+    quantity: entry.quantity ?? null,
     symbol: String(entry.symbol || "—").toUpperCase(),
     market,
     side,
@@ -138,7 +160,8 @@ export function mapLiveJournalEntryToV16Trade(
     pnl,
     mae: -Math.abs(rMultiple) * 0.5,
     mfe: Math.abs(rMultiple) * 0.8,
-    plannedRR: 2,
+    plannedRR: plannedRR ?? null,
+    planned_rr: plannedRR ?? null,
     actualRR: Math.abs(rMultiple),
     rulesFollowed,
     planReview: planReviewKey,

@@ -483,7 +483,12 @@
 
     function chartRawCap(chart) {
         const pipelineCap = REPLAY_RAW_CAP;
-        const base = chart._REPLAY_RAW_CAP || chart._RAW_DATA_CAP || 8000;
+        const tfCap = typeof chart._getRawDataCap === 'function'
+            ? chart._getRawDataCap()
+            : null;
+        const base = tfCap != null
+            ? tfCap
+            : (chart._REPLAY_RAW_CAP || chart._RAW_DATA_CAP || 8000);
         if (chart.isBacktestMode) return Math.min(base, pipelineCap);
         return base;
     }

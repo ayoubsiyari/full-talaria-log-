@@ -1088,7 +1088,7 @@
             if (myId !== calendarLoadId) return;
             var msg = (err && err.message) ? String(err.message) : 'Failed to load news';
             var low = msg.toLowerCase();
-            if (low.indexOf('marketaaux_api_token') === -1 &&
+            if (low.indexOf('marketaux') === -1 &&
                 low.indexOf('usage_limit') === -1 &&
                 low.indexOf('daily api limit') === -1 &&
                 low.indexOf('daily limit') === -1) {
