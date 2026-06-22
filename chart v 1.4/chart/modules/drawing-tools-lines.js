@@ -66,6 +66,7 @@ function appendTextLabel(group, text, config = {}) {
     }
     if (resolved.direction) {
         textEl.style('direction', resolved.direction);
+        textEl.attr('unicode-bidi', 'embed');
     }
 
     lines.forEach((line, index) => {

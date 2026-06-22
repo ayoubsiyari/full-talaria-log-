@@ -127,6 +127,29 @@ function v9DrawingTextHasArabicScript(text) {
   return V9_ARABIC_SCRIPT_RE.test(String(text || ""));
 }
 
+/** Plain editing surface for drawing text fields — never preview bold/italic/skew from chart style. */
+function v9DrawingSettingsTextareaStyle(text, { c, F, height = 68 } = {}) {
+  const arabic = v9DrawingTextHasArabicScript(text);
+  return {
+    width: "100%",
+    height,
+    background: "rgba(140,160,255,0.05)",
+    border: "1px solid rgba(140,160,255,0.2)",
+    color: c.tx,
+    fontSize: 13,
+    fontFamily: F,
+    fontStyle: "normal",
+    fontWeight: 400,
+    transform: "none",
+    padding: "6px 8px",
+    resize: "none",
+    outline: "none",
+    boxSizing: "border-box",
+    direction: arabic ? "rtl" : "ltr",
+    unicodeBidi: arabic ? "plaintext" : "normal",
+  };
+}
+
 function v9SnapWallClockTime(value, fallback = "09:30") {
   const m = String(value != null ? value : fallback).trim().match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return fallback;
@@ -22971,13 +22994,7 @@ const TalariaV8bLive = () => {
                     v9FlushTlStyleToChartTargets(live, cpFlushTlOpts());
                   }}
                   placeholder="Enter text..."
-                  style={{ width:"100%", height:68, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
-                           color:c.tx, fontSize:13, fontFamily:F, padding:"6px 8px", resize:"none",
-                           outline:"none", boxSizing:"border-box",
-                           direction:v9DrawingTextHasArabicScript(tlStyle.textContent)?"rtl":"ltr",
-                           fontStyle:tlStyle.textItalic&&!v9DrawingTextHasArabicScript(tlStyle.textContent)?"italic":"normal",
-                           transform:tlStyle.textItalic&&v9DrawingTextHasArabicScript(tlStyle.textContent)?"skewX(-12deg)":"none",
-                           fontWeight:tlStyle.textBold?700:400 }}/>
+                  style={v9DrawingSettingsTextareaStyle(tlStyle.textContent, { c, F })}/>
               </div>
               {!["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <><div style={{ fontSize:10, fontWeight:800, color:c.tm, letterSpacing:"0.08em", marginBottom:10 }}>ALIGNMENT</div>
               <div style={{ marginBottom:16 }}>
@@ -24862,10 +24879,7 @@ const TalariaV8bLive = () => {
                   <textarea value={txtStyle.content} onChange={e=>applyTxtContent(e.target.value)}
                     onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
                     placeholder="Enter text…"
-                    style={{width:"100%",height:68,resize:"none",background:"rgba(140,160,255,0.05)",
-                            border:"1px solid rgba(140,160,255,0.2)",outline:"none",color:c.tx,fontSize:13,fontFamily:F,
-                            padding:"6px 8px",boxSizing:"border-box",
-                            fontStyle:txtStyle.italic?"italic":"normal",fontWeight:txtStyle.bold?700:400}}/>
+                    style={v9DrawingSettingsTextareaStyle(txtStyle.content, { c, F })}/>
                 </div>}
               </div>}
               {/* Horizontal alignment */}
@@ -25078,10 +25092,7 @@ const TalariaV8bLive = () => {
                     <textarea value={txtStyle.content} onChange={e=>applyTxtContent(e.target.value)}
                       onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
                       placeholder="Enter text…"
-                      style={{width:"100%",height:68,resize:"none",background:"rgba(140,160,255,0.05)",
-                              border:"1px solid rgba(140,160,255,0.2)",outline:"none",color:c.tx,fontSize:13,fontFamily:F,
-                              padding:"6px 8px",boxSizing:"border-box",
-                              fontStyle:txtStyle.italic?"italic":"normal",fontWeight:txtStyle.bold?700:400}}/>
+                      style={v9DrawingSettingsTextareaStyle(txtStyle.content, { c, F })}/>
                   </div>
                   <div style={{padding:"8px 0"}}>
                     {TlChk(txtStyle.wrapText,"txtWrapChkPin","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}

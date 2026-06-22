@@ -9122,16 +9122,6 @@ class DrawingToolsManager {
     }
     
     /**
-     * Sync lock CSS class without altering fill/stroke colors (group opacity washes out backgrounds).
-     */
-    _syncDrawingLockVisual(drawing) {
-        if (!drawing || !drawing.group) return;
-        const locked = !!drawing.locked;
-        drawing.group.classed('locked', locked);
-        drawing.group.style('opacity', null);
-    }
-
-    /**
      * Set lock state on one drawing (does not persist — caller saves once).
      */
     setDrawingLock(drawing, locked) {
@@ -9139,7 +9129,10 @@ class DrawingToolsManager {
         const next = !!locked;
         if (!!drawing.locked === next) return;
         drawing.locked = next;
-        this._syncDrawingLockVisual(drawing);
+        if (drawing.group) {
+            drawing.group.classed('locked', next);
+            drawing.group.style('opacity', next ? '0.7' : null);
+        }
         this.renderDrawing(drawing);
     }
 

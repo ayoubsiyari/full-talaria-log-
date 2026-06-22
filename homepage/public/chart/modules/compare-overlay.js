@@ -1,0 +1,4478 @@
+/**
+ * Compare Overlay Module
+ * Allows overlaying multiple symbols on the same chart like TradingView
+ */
+
+const COMPARE_SETTINGS_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+</svg>`;
+
+const COMPARE_TRASH_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+    <line x1="10" y1="11" x2="10" y2="17"/>
+    <line x1="14" y1="11" x2="14" y2="17"/>
+</svg>`;
+
+class CompareOverlay {
+    constructor(chart) {
+        this.chart = chart;
+        this.scopeKey = chart && chart.isPanel
+            ? `panel_${chart.panelIndex != null ? chart.panelIndex : 'x'}`
+            : 'main';
+        this.overlays = []; // Array of overlay objects
+        this.colors = [
+            '#FF6B6B', // Red
+            '#4ECDC4', // Teal
+            '#FFE66D', // Yellow
+            '#95E1D3', // Mint
+            '#F38181', // Coral
+            '#AA96DA', // Purple
+            '#FCE38A', // Light Yellow
+            '#7FDBDA', // Cyan
+        ];
+        this.colorIndex = 0;
+        // Use same API URL as chart
+        this.apiUrl = chart.apiUrl || window.CHART_API_URL || '/api';
+        this.availableFiles = [];
+        
+        console.log('📊 CompareOverlay initialized with API:', this.apiUrl);
+        
+        this.init();
+    }
+
+    getMainChartBackground() {
+        const fromSettings = this.chart?.chartSettings?.backgroundColor;
+        if (fromSettings && fromSettings !== 'transparent') return fromSettings;
+        try {
+            const chartContainer = document.getElementById('chart-container');
+            const chartWrapper = document.getElementById('chartWrapper');
+            const canvasEl = this.chart && this.chart.canvas ? this.chart.canvas : null;
+            const candidates = [canvasEl, chartWrapper, chartContainer, document.body];
+            for (const el of candidates) {
+                if (!el) continue;
+                const bg = window.getComputedStyle(el).backgroundColor;
+                if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
+                    return bg;
+                }
+            }
+        } catch (_) {}
+        return '#131722';
+    }
+
+    getLinkedPaneThemeTokens() {
+        const scaleText = this.chart?.chartSettings?.scaleTextColor || '#787b86';
+        const scaleLine = this.chart?.chartSettings?.scaleLineColor || '#363a45';
+        const paneBg = this.getMainChartBackground();
+        return {
+            paneBg,
+            border: scaleLine,
+            legendBg: paneBg,
+            hoverBg: 'rgba(255,255,255,0.08)',
+            textPrimary: scaleText,
+            textSecondary: scaleText,
+            iconMuted: scaleText,
+            iconHover: scaleText
+        };
+    }
+
+    init() {
+        this.setupEventListeners();
+        this.setupYAxisDrag();
+        this.loadAvailableSymbols();
+    }
+    
+    setupYAxisDrag() {
+        const canvas = this.chart.canvas;
+        if (!canvas) return;
+        
+        this.dragState = {
+            isDragging: false,
+            overlayId: null,
+            dragType: null, // 'zoom' for Y-axis, 'move' for chart area
+            lastY: 0,
+            startY: 0,
+            hasMoved: false // Track if mouse moved (drag vs click)
+        };
+        
+        this.selectedOverlay = null; // Currently selected overlay
+        
+        // Mouse move - handle dragging
+        canvas.addEventListener('mousemove', (e) => {
+            if (this.overlays.length === 0) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const m = this.chart.margin;
+            
+            // Check if dragging
+            if (this.dragState.isDragging) {
+                const overlay = this.overlays.find(o => o.id === this.dragState.overlayId);
+                if (overlay && overlay.yScale) {
+                    const dy = e.clientY - this.dragState.lastY;
+                    
+                    // Check if mouse has moved enough to be considered a drag (not click)
+                    if (Math.abs(e.clientY - this.dragState.startY) > 3) {
+                        this.dragState.hasMoved = true;
+                    }
+                    
+                    // Only apply changes if actually dragging
+                    if (!this.dragState.hasMoved) return;
+                    
+                    const effectiveVolumeHeight = this.chart.chartSettings?.showVolume ? 
+                        (this.chart.h - m.t - m.b) * this.chart.volumeHeight : 0;
+                    const priceAreaHeight = (this.chart.h - m.t - m.b) - effectiveVolumeHeight;
+                    
+                    if (this.dragState.dragType === 'move') {
+                        // Drag from chart: Move overlay position vertically
+                        const oldDomain = overlay.yScale.domain();
+                        const priceRange = oldDomain[1] - oldDomain[0];
+                        const pricePerPixel = priceRange / priceAreaHeight;
+                        overlay.priceOffset += dy * pricePerPixel;
+                    } else {
+                        // Drag from Y-axis: Zoom
+                        const sensitivity = 0.005;
+                        const zoomFactor = 1 + dy * sensitivity;
+                        const newZoom = Math.max(0.5, Math.min(20, overlay.priceZoom * zoomFactor));
+                        
+                        const oldDomain = overlay.yScale.domain();
+                        const oldRange = oldDomain[1] - oldDomain[0];
+                        const newRange = oldRange * (overlay.priceZoom / newZoom);
+                        const rangeChange = newRange - oldRange;
+                        
+                        const mouseRatio = (my - m.t) / priceAreaHeight;
+                        overlay.priceOffset -= rangeChange * (0.5 - mouseRatio);
+                        overlay.priceZoom = newZoom;
+                    }
+                    
+                    this.dragState.lastY = e.clientY;
+                    this.chart.render();
+                }
+                return;
+            }
+            
+            // Check if hovering over any overlay Y-axis
+            const hoveredOverlay = this.getOverlayAtPosition(mx, my);
+            if (hoveredOverlay) {
+                canvas.style.cursor = 'ns-resize';
+            }
+        });
+        
+        // Mouse down - start drag
+        canvas.addEventListener('mousedown', (e) => {
+            if (this.overlays.length === 0) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            
+            // Check Y-axis first (for zoom or select)
+            const axisOverlay = this.getOverlayAtPosition(mx, my);
+            if (axisOverlay) {
+                this.dragState.isDragging = true;
+                this.dragState.overlayId = axisOverlay.id;
+                this.dragState.dragType = 'zoom';
+                this.dragState.lastY = e.clientY;
+                this.dragState.startY = e.clientY;
+                this.dragState.hasMoved = false;
+                canvas.style.cursor = 'ns-resize';
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            
+            // Check if clicking on selected overlay in chart area (for move)
+            if (this.selectedOverlay) {
+                const overlay = this.overlays.find(o => o.id === this.selectedOverlay);
+                if (overlay && overlay.visible) {
+                    const m = this.chart.margin;
+                    // Check if in chart area
+                    if (mx > m.l && mx < this.chart.w - m.r && my > m.t && my < this.chart.h - m.b) {
+                        this.dragState.isDragging = true;
+                        this.dragState.overlayId = this.selectedOverlay;
+                        this.dragState.dragType = 'move';
+                        this.dragState.lastY = e.clientY;
+                        canvas.style.cursor = 'grabbing';
+                        // Don't stop propagation - allow chart panning too
+                    }
+                }
+            }
+        });
+        
+        // Mouse up - end drag or handle click
+        const endDrag = () => {
+            if (this.dragState.isDragging) {
+                // If Y-axis and didn't move much, it was a click - toggle selection
+                if (this.dragState.dragType === 'zoom' && !this.dragState.hasMoved) {
+                    const overlayId = this.dragState.overlayId;
+                    if (this.selectedOverlay === overlayId) {
+                        this.selectedOverlay = null;
+                    } else {
+                        this.selectedOverlay = overlayId;
+                    }
+                    this.updateOverlayLegend();
+                }
+                
+                this.dragState.isDragging = false;
+                this.dragState.overlayId = null;
+                this.dragState.hasMoved = false;
+            }
+        };
+        
+        canvas.addEventListener('mouseup', endDrag);
+        canvas.addEventListener('mouseleave', endDrag);
+        
+        // Double-click to reset scale
+        canvas.addEventListener('dblclick', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            
+            const overlay = this.getOverlayAtPosition(mx, my);
+            if (overlay) {
+                overlay.priceZoom = 1.0;
+                overlay.priceOffset = 0;
+                this.chart.render();
+                this.renderActiveOverlays(); // Update UI
+            }
+        });
+    }
+    
+    getOverlayAtPosition(mx, my) {
+        const m = this.chart.margin;
+        const effectiveVolumeHeight = this.chart.chartSettings?.showVolume ? 
+            (this.chart.h - m.t - m.b) * this.chart.volumeHeight : 0;
+        const priceHeight = (this.chart.h - m.t - m.b) - effectiveVolumeHeight;
+        
+        // Check each visible overlay's Y-axis area (same width as main chart right axis)
+        const visibleOverlays = this.overlays.filter(o => o.visible);
+        const axisWidth = m.r; // Same as main chart
+        for (let i = 0; i < visibleOverlays.length; i++) {
+            const axisX = i * axisWidth;
+            
+            // Check if mouse is within this overlay's Y-axis area
+            if (mx >= axisX && mx <= axisX + axisWidth && 
+                my >= m.t && my <= m.t + priceHeight) {
+                return visibleOverlays[i];
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Normalize ticker / filename fragment for matching session symbols to /api/files rows.
+     * @param {string} s
+     * @returns {string}
+     */
+    _compareTickerKey(s) {
+        return String(s || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+    }
+
+    /**
+     * Bind compare modal DOM once the overlay exists (V9 injects modal after first chart init —
+     * the old "bind once globally" path often missed #compareModalClose, so X did nothing).
+     */
+    _bindCompareModalDomOnce() {
+        if (window.__compareModalDomBound) return;
+        const modalOverlay = document.getElementById('compareModalOverlay');
+        if (!modalOverlay) return;
+
+        const resolveOwner = () => {
+            const activeChart = (typeof window.getActiveChart === 'function')
+                ? window.getActiveChart()
+                : window.chart;
+            return (activeChart && activeChart.compareOverlay) || window.__activeCompareOverlayOwner || null;
+        };
+
+        const closeBtn = document.getElementById('compareModalClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const owner = window.__activeCompareOverlayOwner;
+                if (owner) owner.closeModal();
+            });
+        }
+
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                const owner = window.__activeCompareOverlayOwner;
+                if (owner) owner.closeModal();
+            }
+        });
+
+        const searchInput = document.getElementById('compareSearchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const owner = window.__activeCompareOverlayOwner || resolveOwner();
+                if (owner) owner.filterSymbols(e.target.value);
+            });
+        }
+
+        window.__compareModalDomBound = true;
+    }
+
+    setupEventListeners() {
+        // Bind global compare modal listeners once and route to active chart overlay.
+        if (!window.__compareOverlayGlobalHandlersBound) {
+            const resolveOwner = () => {
+                const activeChart = (typeof window.getActiveChart === 'function')
+                    ? window.getActiveChart()
+                    : window.chart;
+                return (activeChart && activeChart.compareOverlay) || window.__activeCompareOverlayOwner || null;
+            };
+
+            const compareBtn = document.getElementById('compareBtn');
+            if (compareBtn) {
+                compareBtn.addEventListener('click', () => {
+                    const owner = resolveOwner();
+                    if (owner) owner.openModal();
+                });
+            }
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const owner = window.__activeCompareOverlayOwner || resolveOwner();
+                    if (owner) {
+                        owner.closeModal();
+                        owner.closeSettingsPopup();
+                        owner.closePaneSettingsPopup();
+                    }
+                }
+            });
+
+            window.__compareOverlayGlobalHandlersBound = true;
+        }
+
+        this._bindCompareModalDomOnce();
+
+        // Initialize settings popup
+        this.initSettingsPopup();
+        
+        // Initialize pane settings popup
+        this.initPaneSettingsPopup();
+    }
+
+    getSessionSymbolFiles() {
+        let session = null;
+        try {
+            if (this.chart && this.chart.backtestingSession) {
+                session = this.chart.backtestingSession;
+            }
+            if (!session) {
+                session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
+            }
+        } catch (_) {
+            session = null;
+        }
+        if (!session || typeof session !== 'object') return [];
+
+        // Session wizard (BacktestNewSessionModal) stores view-only instruments here — these
+        // are the pairs users expect in "Add symbol to compare", not necessarily every `files` row.
+        const supporting = session.supporting_tickers || session.supportingTickers;
+        if (Array.isArray(supporting) && supporting.length > 0) {
+            return supporting
+                .map((t) => ({ name: String(t || '').trim() }))
+                .filter((row) => row.name);
+        }
+
+        if (Array.isArray(session.files) && session.files.length > 0) {
+            return session.files;
+        }
+        return [];
+    }
+
+    getCompareSourceFiles() {
+        const sessionFiles = this.getSessionSymbolFiles();
+        if (!Array.isArray(sessionFiles) || sessionFiles.length === 0) {
+            return this.availableFiles;
+        }
+
+        const symKey = (s) => this._compareTickerKey(s);
+
+        const byId = new Map();
+        const byName = new Map();
+        (this.availableFiles || []).forEach(file => {
+            byId.set(String(file.id), file);
+            const fname = String(file.original_name || file.name || '')
+                .replace(/\.(csv|CSV)$/, '')
+                .toUpperCase();
+            if (fname) {
+                byName.set(fname, file);
+                const firstSeg = fname.split('_')[0] || fname;
+                const k = symKey(firstSeg);
+                if (k && !byName.has(k)) byName.set(k, file);
+            }
+        });
+
+        const scoped = [];
+        const seen = new Set();
+        sessionFiles.forEach(sf => {
+            const sid = String(sf.id ?? sf.fileId ?? '');
+            const rawName = String(sf.name || sf.symbol || sf.ticker || '').replace(/\.(csv|CSV)$/, '');
+            const sname = symKey(rawName) || symKey(sf.name);
+            let match = null;
+            if (sid && byId.has(sid)) match = byId.get(sid);
+            else if (sname && byName.has(sname)) match = byName.get(sname);
+            else if (rawName && byName.has(rawName.toUpperCase())) match = byName.get(rawName.toUpperCase());
+            if (match && !seen.has(String(match.id))) {
+                seen.add(String(match.id));
+                scoped.push(match);
+            }
+        });
+
+        return scoped;
+    }
+
+    async loadAvailableSymbols() {
+        try {
+            console.log('📊 Loading available symbols from:', `${this.apiUrl}/files`);
+            const response = await fetch(`${this.apiUrl}/files`);
+            if (response.ok) {
+                const data = await response.json();
+                this.availableFiles = data.files || [];
+                console.log('📊 Available files for compare:', this.availableFiles.length);
+                this.renderSymbolsList();
+            } else {
+                console.warn('📊 Failed to load files:', response.status);
+            }
+        } catch (error) {
+            console.warn('📊 Could not load available symbols:', error);
+            this.availableFiles = [];
+        }
+    }
+    
+    openModal() {
+        console.log('📊 Opening compare modal');
+        this._bindCompareModalDomOnce();
+        window.__activeCompareOverlayOwner = this;
+        const modal = document.getElementById('compareModalOverlay');
+        if (modal) {
+            modal.classList.add('open');
+            console.log('📊 Modal opened, available files:', this.availableFiles.length);
+            this.renderSymbolsList();
+            this.renderActiveOverlays();
+            
+            // Focus search input
+            const searchInput = document.getElementById('compareSearchInput');
+            if (searchInput) {
+                searchInput.value = '';
+                searchInput.focus();
+            }
+        }
+        
+        // Update button state
+        const compareBtn = document.getElementById('compareBtn');
+        if (compareBtn && this.overlays.length > 0) {
+            compareBtn.classList.add('active');
+        }
+    }
+    
+    closeModal() {
+        const modal = document.getElementById('compareModalOverlay');
+        if (modal) {
+            modal.classList.remove('open');
+        }
+        if (window.__activeCompareOverlayOwner === this) {
+            window.__activeCompareOverlayOwner = null;
+        }
+    }
+    
+    openSettingsPopup(overlayId) {
+        const overlay = this.overlays.find(o => o.id === overlayId);
+        if (!overlay) return;
+        
+        this.editingOverlayId = overlayId;
+        
+        const popup = document.getElementById('overlaySettingsPopup');
+        if (!popup) return;
+        
+        // Set title
+        document.getElementById('overlaySettingsTitle').textContent = overlay.symbol;
+        
+        // Set values
+        document.getElementById('overlayStyleSelect').value = overlay.displayType;
+        
+        // Candle colors (swatches)
+        this.setSwatchColor('overlayBodyUp', overlay.bodyUpColor);
+        this.setSwatchColor('overlayBodyDown', overlay.bodyDownColor);
+        this.setSwatchColor('overlayBorderUp', overlay.borderUpColor);
+        this.setSwatchColor('overlayBorderDown', overlay.borderDownColor);
+        this.setSwatchColor('overlayWickUp', overlay.wickUpColor);
+        this.setSwatchColor('overlayWickDown', overlay.wickDownColor);
+        
+        // Checkboxes
+        document.getElementById('overlayShowBody').checked = overlay.showBody;
+        document.getElementById('overlayShowBorder').checked = overlay.showBorder;
+        document.getElementById('overlayShowWick').checked = overlay.showWick;
+        document.getElementById('overlayShowPriceLine').checked = overlay.showPriceLine;
+        
+        popup.classList.add('open');
+    }
+    
+    closeSettingsPopup() {
+        const popup = document.getElementById('overlaySettingsPopup');
+        if (popup) {
+            popup.classList.remove('open');
+        }
+        this.editingOverlayId = null;
+    }
+    
+    applySettings() {
+        const overlay = this.overlays.find(o => o.id === this.editingOverlayId);
+        if (!overlay) return;
+        
+        // Apply values
+        overlay.displayType = document.getElementById('overlayStyleSelect').value;
+        
+        // Candle colors (from swatches)
+        overlay.bodyUpColor = this.getSwatchColor('overlayBodyUp');
+        overlay.bodyDownColor = this.getSwatchColor('overlayBodyDown');
+        overlay.borderUpColor = this.getSwatchColor('overlayBorderUp');
+        overlay.borderDownColor = this.getSwatchColor('overlayBorderDown');
+        overlay.wickUpColor = this.getSwatchColor('overlayWickUp');
+        overlay.wickDownColor = this.getSwatchColor('overlayWickDown');
+        
+        // Checkboxes
+        overlay.showBody = document.getElementById('overlayShowBody').checked;
+        overlay.showBorder = document.getElementById('overlayShowBorder').checked;
+        overlay.showWick = document.getElementById('overlayShowWick').checked;
+        overlay.showPriceLine = document.getElementById('overlayShowPriceLine').checked;
+        
+        this.closeSettingsPopup();
+        this.chart.render();
+    }
+    
+    initSettingsPopup() {
+        // Close button
+        const closeBtn = document.getElementById('overlaySettingsClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.closeSettingsPopup());
+        }
+        
+        // Cancel button
+        const cancelBtn = document.getElementById('overlaySettingsCancel');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => this.closeSettingsPopup());
+        }
+        
+        // Ok button
+        const okBtn = document.getElementById('overlaySettingsOk');
+        if (okBtn) {
+            okBtn.addEventListener('click', () => this.applySettings());
+        }
+        
+        // Click outside to close
+        const popup = document.getElementById('overlaySettingsPopup');
+        if (popup) {
+            popup.addEventListener('click', (e) => {
+                if (e.target === popup) {
+                    this.closeSettingsPopup();
+                }
+            });
+        }
+        
+        // Initialize color palette
+        this.initColorPalette();
+    }
+    
+    initColorPalette() {
+        // Use the existing ColorPicker class from drawing tools
+        // Setup swatch click handlers to use it
+        document.querySelectorAll('.overlay-color-swatch').forEach(swatch => {
+            swatch.addEventListener('click', (e) => this.openColorPicker(e, swatch));
+        });
+    }
+    
+    openColorPicker(event, swatch) {
+        // Use colorPicker from drawing manager's toolbar
+        const picker = this.chart.drawingManager?.toolbar?.colorPicker;
+        if (picker) {
+            this.activeColorSwatch = swatch;
+            const currentColor = swatch.dataset.color || '#26a69a';
+            
+            // Get position from swatch element
+            const rect = swatch.getBoundingClientRect();
+            
+            // show(x, y, currentColor, callback, buttonElement)
+            picker.show(rect.left, rect.bottom, currentColor, (color) => {
+                if (this.activeColorSwatch) {
+                    this.activeColorSwatch.style.background = color;
+                    this.activeColorSwatch.dataset.color = color;
+                }
+            }, swatch);
+        } else {
+            console.warn('ColorPicker not available - path:', 
+                'drawingManager:', !!this.chart.drawingManager, 
+                'toolbar:', !!this.chart.drawingManager?.toolbar);
+        }
+    }
+    
+    setSwatchColor(id, color) {
+        const swatch = document.getElementById(id);
+        if (swatch) {
+            swatch.style.background = color;
+            swatch.dataset.color = color;
+        }
+    }
+    
+    getSwatchColor(id) {
+        const swatch = document.getElementById(id);
+        return swatch ? swatch.dataset.color : '#000000';
+    }
+    
+    filterSymbols(query) {
+        const listContainer = document.getElementById('compareSymbolsList');
+        if (!listContainer) return;
+        
+        const items = listContainer.querySelectorAll('.ssd-item[data-name]');
+        const lowerQuery = query.toLowerCase();
+        
+        items.forEach(item => {
+            const name = item.dataset.name?.toLowerCase() || '';
+            if (name.includes(lowerQuery) || lowerQuery === '') {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+    
+    renderSymbolsList() {
+        const listContainer = document.getElementById('compareSymbolsList');
+        const pillsContainer = document.getElementById('compareAddedPills');
+        if (!listContainer) return;
+        
+        listContainer.innerHTML = '';
+        
+        // Get current symbol info
+        const currentSymbol = this.chart.currentSymbol || 'CHART';
+        const currentFileId = this.chart.currentFileId;
+        const overlayedIds = this.overlays.map(o => o.fileId);
+        
+        // Render pills for added symbols (overlays and linked panes)
+        if (pillsContainer) {
+            pillsContainer.innerHTML = '';
+            
+            const hasAddedItems = this.overlays.length > 0 || (this.linkedPanes && this.linkedPanes.length > 0);
+            pillsContainer.style.display = hasAddedItems ? 'flex' : 'none';
+            
+            // Show overlays as pills
+            this.overlays.forEach(overlay => {
+                const pill = document.createElement('div');
+                pill.className = 'compare-added-pill';
+                pill.innerHTML = `
+                    <span class="pill-color" style="background: ${overlay.color}"></span>
+                    <span>${overlay.symbol}</span>
+                    <button class="pill-remove" data-id="${overlay.id}" title="Remove">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                `;
+                
+                pill.querySelector('.pill-remove').addEventListener('click', () => this.removeOverlay(overlay.id));
+                pillsContainer.appendChild(pill);
+            });
+            
+            // Show linked panes as pills
+            if (this.linkedPanes) {
+                this.linkedPanes.forEach(pane => {
+                    const pill = document.createElement('div');
+                    pill.className = 'compare-added-pill';
+                    pill.innerHTML = `
+                        <span class="pill-color" style="background: ${pane.color}"></span>
+                        <span>${pane.symbol}</span>
+                        <button class="pill-remove" data-pane-id="${pane.id}" title="Remove">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                    `;
+                    
+                    pill.querySelector('.pill-remove').addEventListener('click', () => this.removeLinkedPane(pane.id));
+                    pillsContainer.appendChild(pill);
+                });
+            }
+        }
+        
+        // Filter available symbols (not current, not overlayed, not in linked panes)
+        const linkedPaneIds = this.linkedPanes ? this.linkedPanes.map(p => p.fileId) : [];
+        const compareSourceFiles = this.getCompareSourceFiles();
+        const availableSymbols = compareSourceFiles.filter(file => {
+            return file.id !== currentFileId && 
+                   !overlayedIds.includes(file.id) && 
+                   !linkedPaneIds.includes(file.id);
+        });
+        
+        if (availableSymbols.length === 0) {
+            listContainer.innerHTML = '<div class="ssd-empty">No additional symbols available.</div>';
+            return;
+        }
+
+        const esc = (t) => String(t ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+
+        // Helper to extract clean symbol name from filename
+        const extractSymbolName = (filename) => {
+            if (!filename) return null;
+            // Remove extension
+            let name = filename.replace(/\.(csv|CSV)$/, '').toUpperCase();
+            // Try to extract symbol from patterns like "EURUSD_CANDLESTICK_1_M_BID_..."
+            const parts = name.split('_');
+            if (parts.length > 1) {
+                // First part is usually the symbol (EURUSD, GBPUSD, XAUUSD, etc.)
+                const firstPart = parts[0];
+                // Check if it looks like a currency pair (6 chars) or commodity (5-6 chars)
+                if (firstPart.length >= 5 && firstPart.length <= 7) {
+                    return firstPart;
+                }
+            }
+            // Fallback: if name is short enough, use it; otherwise truncate
+            return name.length > 12 ? name.substring(0, 12) : name;
+        };
+
+        const currencyToCountry = (ccy) => {
+            const map = {
+                USD: 'us', EUR: 'eu', GBP: 'gb', JPY: 'jp', AUD: 'au', NZD: 'nz',
+                CAD: 'ca', CHF: 'ch', SEK: 'se', NOK: 'no', DKK: 'dk', SGD: 'sg',
+                HKD: 'hk', CNY: 'cn', CNH: 'cn', INR: 'in', ZAR: 'za', MXN: 'mx',
+                BRL: 'br', TRY: 'tr', PLN: 'pl', HUF: 'hu', CZK: 'cz', RUB: 'ru',
+                KRW: 'kr', TWD: 'tw', THB: 'th', MYR: 'my', PHP: 'ph', IDR: 'id',
+                ILS: 'il', CLP: 'cl', COP: 'co', PEN: 'pe', ARS: 'ar', RON: 'ro',
+                BGN: 'bg', HRK: 'hr', ISK: 'is', RSD: 'rs', UAH: 'ua', KES: 'ke',
+                NGN: 'ng', EGP: 'eg', SAR: 'sa', AED: 'ae', QAR: 'qa', KWD: 'kw',
+                BHD: 'bh', OMR: 'om', JOD: 'jo', XAU: 'xau', XAG: 'xag'
+            };
+            return map[(ccy || '').toUpperCase()] || null;
+        };
+
+        /** Same visuals as chart symbol switcher when chart._buildPairFlagIcon is unavailable */
+        const pairFlagsFallback = (symbol) => {
+            const sym = String(symbol || '');
+            const clean = sym.replace(/[\s\-_\/\.]/g, '').toUpperCase();
+            if (clean.length >= 6) {
+                const base = clean.slice(0, 3);
+                const quote = clean.slice(3, 6);
+                const baseCC = currencyToCountry(base);
+                const quoteCC = currencyToCountry(quote);
+                if (baseCC && quoteCC && baseCC !== 'xau' && baseCC !== 'xag' && quoteCC !== 'xau' && quoteCC !== 'xag') {
+                    const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
+                    const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+                    return `<div class="ssd-pair-flags">
+            <img class="ssd-flag ssd-flag-base" src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" />
+            <img class="ssd-flag ssd-flag-quote" src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" />
+        </div>`;
+                }
+            }
+            const initials = clean.slice(0, 2).toUpperCase() || '•';
+            return `<div class="ssd-item-icon">${initials}</div>`;
+        };
+
+        const resolveFlagHtml = (symbolName) => {
+            const ch = this.chart;
+            if (ch && typeof ch._buildPairFlagIcon === 'function') {
+                try {
+                    return ch._buildPairFlagIcon(symbolName);
+                } catch (_) { /* use fallback */ }
+            }
+            return pairFlagsFallback(symbolName);
+        };
+
+        // Render available symbols with action buttons (ssd-item layout = symbol switcher)
+        availableSymbols.forEach((file) => {
+            const fullName = file.original_name?.replace(/\.(csv|CSV)$/, '').toUpperCase() || `FILE_${file.id}`;
+            const symbolName = extractSymbolName(file.original_name) || fullName;
+            const flagHtml = resolveFlagHtml(symbolName);
+            const isAdded = overlayedIds.includes(file.id) || linkedPaneIds.includes(file.id);
+
+            const item = document.createElement('div');
+            item.className = `ssd-item compare-ssd-item${isAdded ? ' added' : ''}`;
+            item.dataset.name = symbolName;
+            item.dataset.fileId = String(file.id);
+
+            const subLine = `${file.row_count != null ? Number(file.row_count).toLocaleString() : '?'} candles`;
+            item.innerHTML = `
+                ${flagHtml}
+                <div class="ssd-item-body">
+                    <div class="ssd-item-name">${esc(symbolName)}</div>
+                    <div class="ssd-item-sub">${subLine}</div>
+                </div>
+                <div class="compare-symbol-actions">
+                    <button type="button" class="compare-action-btn" data-mode="same-scale" data-file-id="${file.id}">Overlay</button>
+                </div>
+            `;
+
+            const btn = item.querySelector('.compare-action-btn');
+            if (btn) btn.dataset.symbol = symbolName;
+
+            item.querySelectorAll('.compare-action-btn').forEach((b) => {
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const mode = b.dataset.mode;
+                    const fileId = parseInt(b.dataset.fileId, 10);
+                    const symbol = b.dataset.symbol;
+                    this.addSymbolWithMode(fileId, symbol, mode);
+                });
+            });
+
+            listContainer.appendChild(item);
+        });
+    }
+    
+    async addSymbolWithMode(fileId, symbolName, mode) {
+        console.log(`📊 Adding symbol ${symbolName} with mode: ${mode}`);
+        if (mode === 'new-pane') {
+            if (typeof this.chart?.showNotification === 'function') {
+                this.chart.showNotification('New Pane is disabled. Use the multi-panel layout system instead.');
+            } else {
+                alert('New Pane is disabled. Use the multi-panel layout system instead.');
+            }
+            return;
+        }
+
+        // Close picker immediately and show temporary loading label near chart symbol.
+        this.closeModal();
+        this.startOverlayLoadingState(symbolName);
+
+        try {
+            switch (mode) {
+                case 'same-scale':
+                    // Add overlay on same chart with same scale
+                    await this.addOverlay(fileId, symbolName);
+                    break;
+                case 'new-scale':
+                    // Add overlay with separate Y-axis (for now same as overlay)
+                    await this.addOverlay(fileId, symbolName);
+                    break;
+            }
+        } finally {
+            this.stopOverlayLoadingState();
+        }
+    }
+
+    startOverlayLoadingState(symbolName) {
+        try {
+            this.stopOverlayLoadingState();
+
+            const host = (typeof this.chart._getPanelOverlayContainer === 'function')
+                ? this.chart._getPanelOverlayContainer()
+                : (this.chart?.canvas?.closest('.chart-panel') || document);
+            const symbolLine = host?.querySelector?.('.ohlc-symbol-line') || document.querySelector('.ohlc-symbol-line');
+            if (!symbolLine) return;
+
+            const badge = document.createElement('span');
+            badge.className = 'compare-overlay-loading-badge';
+            badge.style.cssText = [
+                'display:inline-flex',
+                'align-items:center',
+                'margin-left:10px',
+                'padding:2px 8px',
+                'border-radius:999px',
+                'font-size:11px',
+                'font-weight:600',
+                'letter-spacing:0.2px',
+                'color:#93c5fd',
+                'background:rgba(30,64,175,0.2)',
+                'border:1px solid rgba(96,165,250,0.35)'
+            ].join(';');
+            badge.textContent = `${symbolName} loading`;
+            symbolLine.appendChild(badge);
+
+            let dots = 0;
+            this._overlayLoadingEl = badge;
+            this._overlayLoadingTimer = setInterval(() => {
+                dots = (dots + 1) % 4;
+                if (this._overlayLoadingEl) {
+                    this._overlayLoadingEl.textContent = `${symbolName} loading${'.'.repeat(dots)}`;
+                }
+            }, 320);
+        } catch (_) {}
+    }
+
+    stopOverlayLoadingState() {
+        if (this._overlayLoadingTimer) {
+            clearInterval(this._overlayLoadingTimer);
+            this._overlayLoadingTimer = null;
+        }
+        if (this._overlayLoadingEl && this._overlayLoadingEl.parentNode) {
+            this._overlayLoadingEl.parentNode.removeChild(this._overlayLoadingEl);
+        }
+        this._overlayLoadingEl = null;
+    }
+    
+    async addLinkedPane(fileId, symbolName) {
+        console.log(`📊 Adding linked pane for ${symbolName} (fileId: ${fileId})`);
+        if (Array.isArray(this.linkedPanes) && this.linkedPanes.length > 0) {
+            if (typeof this.chart?.showNotification === 'function') {
+                this.chart.showNotification('Only one New Pane is allowed. Remove the current pane first.');
+            } else {
+                alert('Only one New Pane is allowed. Remove the current pane first.');
+            }
+            return;
+        }
+        
+        try {
+            // Use same endpoint as overlays
+            const url = `${this.apiUrl}/file/${fileId}?offset=0&limit=50000`;
+            console.log(`📊 Fetching from: ${url}`);
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.error(`Failed to fetch data for linked pane: ${response.status}`);
+                return;
+            }
+            
+            const result = await response.json();
+            console.log(`📊 Received ${result.total || 'unknown'} candles`);
+            
+            if (!result.data) {
+                console.error('No data for linked pane');
+                return;
+            }
+            
+            // Parse CSV data (same as overlay)
+            const rawData = this.parseCSVData(result.data);
+            console.log(`📊 Parsed ${rawData.length} candles`);
+            if (!Array.isArray(rawData) || rawData.length === 0) {
+                throw new Error('No valid candles parsed for selected symbol');
+            }
+            
+            // Initialize linked panes array if needed
+            if (!this.linkedPanes) {
+                this.linkedPanes = [];
+            }
+            
+            // Setup container first
+            this.setupLinkedPanesContainer();
+            
+            // Create linked pane object
+            const pane = {
+                id: Date.now(),
+                fileId: fileId,
+                symbol: symbolName,
+                color: this.colors[this.colorIndex % this.colors.length],
+                rawData: rawData,  // Use parsed data
+                rawFetchTf: null,
+                nativeBarMs: this._inferMedianBarPeriodMs(rawData),
+                data: [], // Will be resampled
+                visible: true,
+                height: '50%', // 50% of main chart height
+                yMin: 0,
+                yMax: 0,
+                priceZoom: 1.0,    // Y-axis zoom level
+                priceOffset: 0,    // Y-axis offset for panning
+                autoScale: true,   // Auto-fit to visible data
+                // Display settings
+                displayType: 'candles',
+                upColor: '#089981',
+                downColor: '#f23645',
+                showBody: true,
+                showBorder: true,
+                showWick: true,
+                showPriceLine: true
+            };
+            
+            this.colorIndex++;
+            
+            // Resample to match main chart timeframe
+            const tf = this.chart.currentTimeframe || '1m';
+            console.log(`📊 Resampling to timeframe: ${tf}`);
+            pane.data = this.resampleData(rawData, tf);  // Use same resample method as overlays
+            console.log(`📊 Resampled data: ${pane.data.length} candles`);
+            
+            // Calculate Y scale
+            this.calculateLinkedPaneScale(pane);
+            console.log(`📊 Y range: ${pane.yMin} - ${pane.yMax}`);
+            
+            this.linkedPanes.push(pane);
+            
+            // Update UI
+            console.log(`📊 Rendering linked panes (total: ${this.linkedPanes.length})`);
+            this.renderLinkedPanes();
+            this.renderSymbolsList();
+            this.closeModal();
+            
+            console.log(`✅ Linked pane added: ${symbolName} with ${pane.data.length} candles`);
+            
+        } catch (error) {
+            console.error('Error adding linked pane:', error);
+            alert(`Failed to add ${symbolName}: ${error.message}`);
+        }
+    }
+    
+    setupLinkedPanesContainer() {
+        // Create container for linked panes below main chart
+        const containerId = `linkedPanesContainer_${this.scopeKey}`;
+        let container = document.getElementById(containerId);
+        const paneBg = this.getMainChartBackground();
+        const chartContainer = (typeof this.chart._getPanelOverlayContainer === 'function')
+            ? this.chart._getPanelOverlayContainer()
+            : (this.chart?.canvas?.closest('.chart-panel') || document.getElementById('chart-container'));
+        if (!container) {
+            if (chartContainer) {
+                container = document.createElement('div');
+                container.id = containerId;
+                container.style.cssText = `
+                    position: absolute;
+                    bottom: 30px;
+                    left: 0;
+                    right: 0;
+                    background: ${paneBg};
+                    z-index: 100;
+                `;
+                chartContainer.appendChild(container);
+                console.log('📊 Linked panes container created in chart-container');
+            } else {
+                console.error('❌ Could not find chart-container for linked panes');
+            }
+        }
+        if (container) {
+            if (chartContainer && container.parentElement !== chartContainer) {
+                chartContainer.appendChild(container);
+            }
+            container.style.bottom = '30px';
+            container.style.background = paneBg;
+        }
+        
+        // Hook into main chart's render to sync linked panes
+        if (!this._linkedPaneHooked) {
+            this._linkedPaneHooked = true;
+            const originalRender = this.chart.render.bind(this.chart);
+            this.chart.render = () => {
+                originalRender();
+                this.renderLinkedPanes();
+            };
+            
+            // Hook into main chart's scroll/zoom
+            this.chart.canvas.addEventListener('wheel', () => {
+                setTimeout(() => this.renderLinkedPanes(), 0);
+            });
+            
+            // Hook into mouse drag
+            this.chart.canvas.addEventListener('mousemove', () => {
+                if (this.chart.movement?.isDragging) {
+                    this.renderLinkedPanes();
+                }
+            });
+        }
+    }
+    
+    
+    calculateLinkedPaneScale(pane) {
+        if (!pane.data || pane.data.length === 0) return;
+        
+        let min = Infinity;
+        let max = -Infinity;
+        
+        pane.data.forEach(d => {
+            if (d.close < min) min = d.close;
+            if (d.close > max) max = d.close;
+            if (d.high && d.high > max) max = d.high;
+            if (d.low && d.low < min) min = d.low;
+        });
+        
+        const padding = (max - min) * 0.1;
+        pane.yMin = min - padding;
+        pane.yMax = max + padding;
+    }
+    
+    renderLinkedPanes() {
+        if (!this.linkedPanes || this.linkedPanes.length === 0) return;
+
+        const containerId = `linkedPanesContainer_${this.scopeKey}`;
+        let container = document.getElementById(containerId);
+        if (!container) {
+            console.log('📊 No linked panes container, creating...');
+            this.setupLinkedPanesContainer();
+            return;
+        }
+        const expectedHost = (typeof this.chart._getPanelOverlayContainer === 'function')
+            ? this.chart._getPanelOverlayContainer()
+            : (this.chart?.canvas?.closest('.chart-panel') || document.getElementById('chart-container'));
+        if (expectedHost && container.parentElement !== expectedHost) {
+            expectedHost.appendChild(container);
+        }
+        const theme = this.getLinkedPaneThemeTokens();
+        const paneBg = theme.paneBg;
+        container.style.background = paneBg;
+        
+        // Get main chart dimensions for reference
+        const mainCanvas = this.chart.canvas;
+        const chartWidth = mainCanvas.width / (window.devicePixelRatio || 1);
+        
+        // Ensure canvases exist for each pane
+        this.linkedPanes.forEach((pane, index) => {
+            let wrapper = document.getElementById(`linkedPaneWrapper_${pane.id}`);
+            let canvas = document.getElementById(`linkedPane_${pane.id}`);
+            
+            if (!wrapper) {
+                // Create pane wrapper
+                wrapper = document.createElement('div');
+                wrapper.id = `linkedPaneWrapper_${pane.id}`;
+                wrapper.className = 'linked-pane-wrapper';
+                
+                // Calculate height - 50% of main chart
+                const mainChartHeight = this.chart.canvas.height / (window.devicePixelRatio || 1);
+                const paneHeight = typeof pane.height === 'string' && pane.height.endsWith('%') 
+                    ? Math.floor(mainChartHeight * parseInt(pane.height) / 100)
+                    : pane.height;
+                
+                wrapper.style.cssText = `
+                    position: relative;
+                    width: 100%;
+                    height: ${paneHeight}px;
+                    border-top: none;
+                    background: ${paneBg};
+                `;
+                
+                // Create canvas - set explicit size
+                canvas = document.createElement('canvas');
+                canvas.id = `linkedPane_${pane.id}`;
+                
+                // Get container width for canvas
+                const containerWidth = container.offsetWidth || this.chart.canvas.width / (window.devicePixelRatio || 1);
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = containerWidth * dpr;
+                canvas.height = paneHeight * dpr;
+                canvas.style.cssText = `
+                    display: block;
+                    width: 100%;
+                    height: ${paneHeight}px;
+                `;
+                
+                // Create legend bar (same style as overlay)
+                const legend = document.createElement('div');
+                legend.className = 'linked-pane-legend';
+                legend.id = `linkedPaneLegend_${pane.id}`;
+                legend.style.cssText = `
+                    position: absolute;
+                    top: 8px;
+                    left: ${(this.chart.margin?.l || 0) + 10}px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    z-index: 10;
+                    font-size: 12px;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    color: ${theme.textPrimary};
+                    background: ${theme.legendBg};
+                    padding: 4px 10px;
+                    border-radius: 4px;
+                    border: 1px solid ${theme.border};
+                `;
+                
+                const iconBtnStyle = `
+                    background: transparent;
+                    border: none;
+                    color: ${theme.iconMuted};
+                    cursor:default;
+                    padding: 2px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 3px;
+                    transition: color 0.15s, background 0.15s;
+                `;
+                
+                legend.innerHTML = `
+                    <span class="pane-color-indicator" style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: ${pane.color}; cursor:default;" title="Change color"></span>
+                    <span class="pane-symbol" style="font-weight: 600; color: ${pane.color};">${pane.symbol}</span>
+                    <button class="pane-visibility-btn" data-id="${pane.id}" title="Hide" style="${iconBtnStyle}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                    <button class="pane-settings-btn" data-id="${pane.id}" title="Settings" style="${iconBtnStyle}">
+                        ${COMPARE_SETTINGS_ICON_SVG}
+                    </button>
+                    <button class="pane-delete-btn" data-id="${pane.id}" title="Remove" style="${iconBtnStyle}">
+                        ${COMPARE_TRASH_ICON_SVG}
+                    </button>
+                    <span class="pane-ohlc" style="margin-left: 8px; color: ${theme.textSecondary};">
+                        <span style="color: ${theme.textSecondary};">O</span> <span class="pane-open" style="color: ${theme.textPrimary};">--</span>
+                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">H</span> <span class="pane-high" style="color: ${theme.textPrimary};">--</span>
+                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">L</span> <span class="pane-low" style="color: ${theme.textPrimary};">--</span>
+                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">C</span> <span class="pane-close" style="color: ${theme.textPrimary};">--</span>
+                    </span>
+                `;
+                
+                // Create SVG layer for drawings
+                const svgNS = 'http://www.w3.org/2000/svg';
+                const svg = document.createElementNS(svgNS, 'svg');
+                svg.id = `linkedPaneSvg_${pane.id}`;
+                svg.setAttribute('width', '100%');
+                svg.setAttribute('height', '100%');
+                svg.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    pointer-events: none;
+                    z-index: 5;
+                    overflow: visible;
+                `;
+                pane.svg = svg;
+                if (!pane.drawings) pane.drawings = [];
+
+                // Add the same resize line/handle style as multi-panel layout
+                const resizeHandle = document.createElement('div');
+                resizeHandle.className = 'panel-resize-handle horizontal';
+                resizeHandle.style.cssText = `
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    z-index: 210;
+                `;
+                wrapper.appendChild(resizeHandle);
+
+                // Drag-to-resize linked pane height (same row-resize feel as multi-panel)
+                resizeHandle.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const startY = e.clientY;
+                    const startHeight = wrapper.getBoundingClientRect().height;
+                    const minHeight = 120;
+                    const maxHeight = Math.max(minHeight, Math.floor((this.chart.h || 900) * 0.85));
+                    resizeHandle.classList.add('dragging');
+
+                    const onMove = (ev) => {
+                        const delta = ev.clientY - startY;
+                        const newHeight = Math.max(minHeight, Math.min(maxHeight, Math.round(startHeight - delta)));
+                        pane.height = `${newHeight}px`;
+                        wrapper.style.height = `${newHeight}px`;
+                        canvas.style.height = `${newHeight}px`;
+                        this.renderLinkedPanes();
+                    };
+                    const onUp = () => {
+                        resizeHandle.classList.remove('dragging');
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                    };
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                });
+                
+                wrapper.appendChild(canvas);
+                wrapper.appendChild(svg);
+                wrapper.appendChild(legend);
+                container.appendChild(wrapper);
+                
+                // Add hover effects
+                legend.querySelectorAll('button').forEach(btn => {
+                    btn.addEventListener('mouseenter', () => {
+                        btn.style.color = theme.iconHover;
+                        btn.style.background = theme.hoverBg;
+                    });
+                    btn.addEventListener('mouseleave', () => {
+                        btn.style.color = theme.iconMuted;
+                        btn.style.background = 'transparent';
+                    });
+                });
+                
+                // Visibility toggle
+                legend.querySelector('.pane-visibility-btn').addEventListener('click', () => {
+                    this.togglePaneVisibility(pane.id);
+                });
+                
+                // Settings button
+                legend.querySelector('.pane-settings-btn').addEventListener('click', () => {
+                    this.openPaneSettings(pane);
+                });
+                
+                // Delete button
+                legend.querySelector('.pane-delete-btn').addEventListener('click', () => {
+                    this.removeLinkedPane(pane.id);
+                });
+                
+                // Color indicator click - change color
+                legend.querySelector('.pane-color-indicator').addEventListener('click', () => {
+                    this.changePaneColor(pane);
+                });
+                
+                // Add price axis controls
+                this.setupPaneAxisControls(pane, canvas, wrapper);
+                
+                console.log(`📊 Created linked pane wrapper for ${pane.symbol}, canvas: ${canvas.width}x${canvas.height}`);
+            }
+            const legendEl = document.getElementById(`linkedPaneLegend_${pane.id}`);
+            if (legendEl) {
+                legendEl.style.background = theme.legendBg;
+                legendEl.style.color = theme.textPrimary;
+                legendEl.style.border = `1px solid ${theme.border}`;
+                legendEl.querySelectorAll('button').forEach((btn) => {
+                    btn.style.color = theme.iconMuted;
+                });
+                const ohlc = legendEl.querySelector('.pane-ohlc');
+                if (ohlc) {
+                    ohlc.style.color = theme.textSecondary;
+                    ohlc.querySelectorAll('span').forEach((sp) => {
+                        if (sp.classList.contains('pane-open') || sp.classList.contains('pane-high') || sp.classList.contains('pane-low') || sp.classList.contains('pane-close')) {
+                            sp.style.color = theme.textPrimary;
+                        } else {
+                            sp.style.color = theme.textSecondary;
+                        }
+                    });
+                }
+            }
+            wrapper.style.background = paneBg;
+            
+            // Update canvas size to match wrapper
+            const rect = wrapper.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                
+                // Render the pane data
+                this.drawLinkedPane(pane, canvas);
+            }
+        });
+    }
+    
+    drawLinkedPane(pane, canvas) {
+        if (!pane.visible || !pane.data || pane.data.length === 0) {
+            console.log(`📊 Pane skip: visible=${pane.visible}, data=${pane.data?.length}`);
+            return;
+        }
+        
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const width = canvas.width / dpr;
+        const height = canvas.height / dpr;
+        
+        // Clear canvas
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+        ctx.fillStyle = this.getMainChartBackground();
+        ctx.fillRect(0, 0, width, height);
+        
+        const mainChart = this.chart;
+        const axisBg = this.getMainChartBackground();
+        const csPane = mainChart.chartSettings || {};
+        const axisBorder = csPane.scaleLinesColor ?? csPane.scaleLineColor ?? '#363a45';
+        const axisText = mainChart.chartSettings?.scaleTextColor || '#787b86';
+        const axisCrosshairBg = mainChart.chartSettings?.scaleLineColor || '#363a45';
+        const axisCrosshairText = mainChart.chartSettings?.scaleTextColor || '#d1d4dc';
+        const margin = { t: 10, r: (mainChart.margin?.r || 60), b: 5, l: (mainChart.margin?.l || 0) };
+        const chartWidth = width - margin.l - margin.r;
+        const chartHeight = height - margin.t - margin.b;
+        
+        // Get main chart data and settings
+        const mainData = mainChart.data || [];
+        if (mainData.length === 0) return;
+        
+        const candleSpacing = mainChart.getCandleSpacing ? mainChart.getCandleSpacing() : (mainChart.candleWidth + 2);
+        
+        // Calculate visible range (same as overlay does)
+        const firstVisibleIndex = Math.floor(-mainChart.offsetX / candleSpacing);
+        const numVisibleCandles = Math.ceil(chartWidth / candleSpacing);
+        const startIdx = Math.max(0, firstVisibleIndex);
+        const endIdx = Math.min(mainData.length, firstVisibleIndex + numVisibleCandles + 2);
+        
+        // Get visible time range from main chart
+        const visibleStartTime = mainData[startIdx]?.t;
+        const visibleEndTime = mainData[Math.min(endIdx, mainData.length - 1)]?.t;
+        
+        if (!visibleStartTime || !visibleEndTime) {
+            console.log(`📊 Pane: No valid time range`);
+            return;
+        }
+        
+        // Filter pane data to visible time range (same as overlay)
+        const paneData = pane.data.filter(d => d.t >= visibleStartTime && d.t <= visibleEndTime);
+        
+        if (paneData.length < 2) {
+            console.log(`📊 Pane ${pane.symbol}: only ${paneData.length} candles in visible range`);
+            return;
+        }
+        
+        console.log(`📊 Pane ${pane.symbol}: ${paneData.length} candles in visible range`);
+        
+        // Calculate Y scale for this pane (its own price range)
+        let minPrice = Infinity, maxPrice = -Infinity;
+        paneData.forEach(d => {
+            const c = d.c !== undefined ? d.c : d.close;
+            if (c !== undefined && !isNaN(c)) {
+                if (c < minPrice) minPrice = c;
+                if (c > maxPrice) maxPrice = c;
+            }
+        });
+        
+        if (minPrice === Infinity || maxPrice === -Infinity) {
+            console.log(`📊 Pane: No valid price data`);
+            return;
+        }
+        
+        let priceRange = maxPrice - minPrice || 1;
+        const padding = priceRange * 0.1;
+        minPrice -= padding;
+        maxPrice += padding;
+        priceRange = maxPrice - minPrice;
+        
+        // Store base range for drag calculations (before zoom/offset)
+        pane.baseMin = minPrice;
+        pane.baseMax = maxPrice;
+        pane.baseRange = priceRange;
+        
+        // Apply zoom and offset if not in auto-scale mode
+        if (!pane.autoScale) {
+            const midPrice = (minPrice + maxPrice) / 2;
+            const zoomedRange = priceRange / pane.priceZoom;
+            minPrice = midPrice - zoomedRange / 2 - pane.priceOffset;
+            maxPrice = midPrice + zoomedRange / 2 - pane.priceOffset;
+            priceRange = zoomedRange;
+        }
+        
+        // Store current displayed range
+        pane.currentMin = minPrice;
+        pane.currentMax = maxPrice;
+        
+        // Y scale function
+        const yScale = (price) => {
+            return margin.t + chartHeight - ((price - minPrice) / priceRange) * chartHeight;
+        };
+        
+        // Y ticks/grid: use nice ticks like main chart (not fixed quartiles)
+        const numYTicks = Math.max(8, Math.min(15, Math.floor(chartHeight / 60)));
+        const yTicks = this.generateNiceTicks(minPrice, maxPrice, numYTicks);
+        const gridColor = mainChart.chartSettings?.gridColor || 'rgba(42, 46, 57, 0.6)';
+        ctx.strokeStyle = gridColor;
+        ctx.lineWidth = 1;
+        yTicks.forEach((price) => {
+            const y = yScale(price);
+            if (y < margin.t || y > height - margin.b) return;
+            ctx.beginPath();
+            ctx.moveTo(0, Math.floor(y) + 0.5);
+            ctx.lineTo(chartWidth, Math.floor(y) + 0.5);
+            ctx.stroke();
+        });
+        
+        // Vertical grid lines: reuse main chart time ticks when available for exact sync
+        ctx.strokeStyle = gridColor;
+        ctx.lineWidth = 1;
+        if (Array.isArray(mainChart._timeTicks) && mainChart._timeTicks.length > 0) {
+            mainChart._timeTicks.forEach((tick) => {
+                const x = tick.x;
+                if (x >= margin.l && x <= chartWidth) {
+                    ctx.beginPath();
+                    ctx.moveTo(Math.floor(x) + 0.5, margin.t);
+                    ctx.lineTo(Math.floor(x) + 0.5, height - margin.b);
+                    ctx.stroke();
+                }
+            });
+        } else {
+            const totalCandleWidth = candleSpacing;
+            const visibleCandles = Math.ceil(chartWidth / totalCandleWidth);
+            const gridInterval = Math.max(1, Math.floor(visibleCandles / 6));
+            for (let i = startIdx; i <= endIdx; i++) {
+                if (i % gridInterval !== 0) continue;
+                const x = mainChart.dataIndexToPixel
+                    ? mainChart.dataIndexToPixel(i)
+                    : margin.l + (i * totalCandleWidth) + mainChart.offsetX + mainChart.candleWidth / 2;
+                if (x >= margin.l && x <= chartWidth) {
+                    ctx.beginPath();
+                    ctx.moveTo(Math.floor(x) + 0.5, margin.t);
+                    ctx.lineTo(Math.floor(x) + 0.5, height - margin.b);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        // Get display settings
+        const displayType = pane.displayType || 'candles';
+        const upColor = pane.upColor || '#089981';
+        const downColor = pane.downColor || '#f23645';
+        const showBody = pane.showBody !== false;
+        const showBorder = pane.showBorder !== false;
+        const showWick = pane.showWick !== false;
+        
+        let lastY = 0;
+        let lastPrice = 0;
+        let pointCount = 0;
+        
+        // Build visible points with x positions; break runs on unmapped bars or
+        // backwards time index so line/area never draws a bogus diagonal across gaps.
+        const points = [];
+        let lastOkMain = -2;
+        let lastOkOverlayTime = null;
+        paneData.forEach((candle) => {
+            const closePrice = candle.c !== undefined ? candle.c : candle.close;
+            if (closePrice === undefined || isNaN(closePrice)) return;
+            
+            const mainIndex = this.findClosestIndex(mainData, candle.t, startIdx, endIdx);
+            if (mainIndex === -1) {
+                lastOkMain = -1;
+                return;
+            }
+            
+            const x = mainChart.dataIndexToPixel ? 
+                mainChart.dataIndexToPixel(mainIndex) : 
+                margin.l + (mainIndex * candleSpacing) + mainChart.offsetX + mainChart.candleWidth / 2;
+            
+            if (x < margin.l - 50 || x > chartWidth + margin.l + 50) return;
+            
+            const newSegment = lastOkMain === -1
+                || mainIndex < lastOkMain
+                || this._shouldBreakCompareLineSegment(
+                    lastOkMain === -1 ? null : lastOkMain,
+                    lastOkOverlayTime,
+                    mainIndex,
+                    candle.t,
+                    mainData
+                );
+            points.push({ candle, x, mainIndex, newSegment });
+            lastOkMain = mainIndex;
+            lastOkOverlayTime = candle.t;
+        });
+        
+        // Draw based on display type
+        if (displayType === 'line' || displayType === 'area') {
+            ctx.strokeStyle = pane.color;
+            ctx.lineWidth = 2;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            
+            const runs = [];
+            let run = [];
+            points.forEach((p) => {
+                if (p.newSegment && run.length) {
+                    runs.push(run);
+                    run = [];
+                }
+                run.push(p);
+            });
+            if (run.length) runs.push(run);
+            
+            runs.forEach((seg) => {
+                if (seg.length === 0) return;
+                const areaPath = [];
+                ctx.beginPath();
+                seg.forEach(({ candle, x }, si) => {
+                    const closePrice = candle.c !== undefined ? candle.c : candle.close;
+                    const y = yScale(closePrice);
+                    if (si === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                    areaPath.push({ x, y });
+                    lastY = y;
+                    lastPrice = closePrice;
+                    pointCount++;
+                });
+                ctx.stroke();
+                
+                if (displayType === 'area' && areaPath.length > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(areaPath[0].x, chartHeight + margin.t);
+                    areaPath.forEach((ap) => ctx.lineTo(ap.x, ap.y));
+                    ctx.lineTo(areaPath[areaPath.length - 1].x, chartHeight + margin.t);
+                    ctx.closePath();
+                    ctx.fillStyle = pane.color + '30';
+                    ctx.fill();
+                }
+            });
+        } else {
+            // Candles, Bars, Hollow, Heikin Ashi
+            const candleW = Math.max(1, mainChart.candleWidth * 0.8);
+            
+            points.forEach(({ candle, x }) => {
+                const o = candle.o !== undefined ? candle.o : candle.open;
+                const h = candle.h !== undefined ? candle.h : candle.high;
+                const l = candle.l !== undefined ? candle.l : candle.low;
+                const c = candle.c !== undefined ? candle.c : candle.close;
+                
+                if (o === undefined || h === undefined || l === undefined || c === undefined) return;
+                
+                const isUp = c >= o;
+                const color = isUp ? upColor : downColor;
+                
+                const yOpen = yScale(o);
+                const yHigh = yScale(h);
+                const yLow = yScale(l);
+                const yClose = yScale(c);
+                
+                const bodyTop = Math.min(yOpen, yClose);
+                const bodyBottom = Math.max(yOpen, yClose);
+                const bodyHeight = Math.max(1, bodyBottom - bodyTop);
+                
+                if (displayType === 'bars') {
+                    // OHLC Bars
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    // Vertical line (high to low)
+                    ctx.moveTo(x, yHigh);
+                    ctx.lineTo(x, yLow);
+                    // Open tick (left)
+                    ctx.moveTo(x - candleW / 2, yOpen);
+                    ctx.lineTo(x, yOpen);
+                    // Close tick (right)
+                    ctx.moveTo(x, yClose);
+                    ctx.lineTo(x + candleW / 2, yClose);
+                    ctx.stroke();
+                } else if (displayType === 'hollow') {
+                    // Hollow candles - up candles are hollow, down are filled
+                    if (showWick) {
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(x, yHigh);
+                        ctx.lineTo(x, bodyTop);
+                        ctx.moveTo(x, bodyBottom);
+                        ctx.lineTo(x, yLow);
+                        ctx.stroke();
+                    }
+                    
+                    if (showBody) {
+                        if (isUp) {
+                            // Hollow (stroke only)
+                            ctx.strokeStyle = color;
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(x - candleW / 2, bodyTop, candleW, bodyHeight);
+                        } else {
+                            // Filled
+                            ctx.fillStyle = color;
+                            ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyHeight);
+                        }
+                    }
+                } else {
+                    // Regular candles (default)
+                    if (showWick) {
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(x, yHigh);
+                        ctx.lineTo(x, yLow);
+                        ctx.stroke();
+                    }
+                    
+                    if (showBody) {
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyHeight);
+                    }
+                    
+                    if (showBorder) {
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(x - candleW / 2, bodyTop, candleW, bodyHeight);
+                    }
+                }
+                
+                lastY = yClose;
+                lastPrice = c;
+                pointCount++;
+            });
+        }
+        
+        console.log(`📊 Pane drew ${pointCount} ${displayType}, range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}`);
+        
+        // Same decimal rules as main price axis, but resolved for this pane's symbol
+        const decimals = typeof mainChart.getPriceDecimalsForSymbol === 'function'
+            ? mainChart.getPriceDecimalsForSymbol(pane.symbol, priceRange, { data: paneData })
+            : (typeof mainChart._decimalsFromPriceRangeHeuristic === 'function'
+                ? mainChart._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0))
+                : 5);
+        const scaleTextSize = mainChart.chartSettings?.scaleTextSize || 11;
+        const scaleFont = `${scaleTextSize}px Roboto`;
+        
+        // Draw Y-axis background first
+        ctx.fillStyle = axisBg;
+        ctx.fillRect(width - margin.r, 0, margin.r, height);
+        
+        // Draw Y-axis border using the same style model as main chart drawAxes()
+        const scaleLineColor = csPane.scaleLinesColor ?? csPane.scaleLineColor ?? '#e0e3eb';
+        const scaleLineWidth = Math.max(1, parseInt(csPane.scaleLineWidth, 10) || 2);
+        const scaleLinePattern = csPane.scaleLinePattern || 'solid';
+        if (scaleLinePattern === 'dashed') {
+            ctx.setLineDash([6, 4]);
+        } else if (scaleLinePattern === 'dotted') {
+            ctx.setLineDash([2, 4]);
+        } else {
+            ctx.setLineDash([]);
+        }
+        ctx.strokeStyle = scaleLineColor;
+        ctx.lineWidth = scaleLineWidth;
+        const axisBorderX = Math.floor(width - margin.r) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(axisBorderX, 0);
+        ctx.lineTo(axisBorderX, height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // Draw Y-axis labels
+        ctx.fillStyle = axisText;
+        ctx.font = scaleFont;
+        ctx.textAlign = 'center';
+        yTicks.forEach((price) => {
+            const y = yScale(price);
+            if (y < margin.t + 8 || y > height - margin.b - 8) return;
+            if (lastPrice > 0 && Math.abs(y - lastY) < 18) return;
+            if (!isNaN(price)) ctx.fillText(price.toFixed(decimals), width - margin.r / 2, y + 4);
+        });
+        
+        // Draw current price line and label
+        if (lastPrice > 0 && !isNaN(lastPrice)) {
+            const currentPriceLabelColor = mainChart.chartSettings?.priceLineColor || pane.color;
+            // Dashed line from chart to price axis
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = currentPriceLabelColor;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(width - margin.r, lastY);
+            ctx.lineTo(width, lastY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Price label background
+            ctx.fillStyle = currentPriceLabelColor;
+            ctx.fillRect(width - margin.r, lastY - 10, margin.r, 20);
+            
+            const pillBg = currentPriceLabelColor;
+            const pillText = typeof mainChart.isLightColor === 'function' && mainChart.isLightColor(pillBg)
+                ? '#111111'
+                : '#FFFFFF';
+            ctx.fillStyle = pillText;
+            ctx.font = `500 ${scaleTextSize}px Roboto`;
+            ctx.textAlign = 'center';
+            ctx.fillText(lastPrice.toFixed(decimals), width - margin.r / 2, lastY + 4);
+        }
+        
+        // Draw crosshair if active
+        if (pane.crosshair && pane.crosshair.x >= 0) {
+            const cx = pane.crosshair.x;
+            const cy = pane.crosshair.y;
+            const crossColor = mainChart.chartSettings?.crosshairColor || '#787b86';
+            const crossPattern = mainChart.chartSettings?.crosshairPattern || 'dashed';
+            const crossWidth = Math.max(1, parseInt(mainChart.chartSettings?.crosshairWidth, 10) || 2);
+            const cursorLabelBg = mainChart.chartSettings?.cursorLabelBgColor || axisCrosshairBg;
+            const cursorLabelText = mainChart.chartSettings?.cursorLabelTextColor || axisCrosshairText;
+            
+            ctx.save();
+            if (crossPattern === 'dashed') {
+                ctx.setLineDash([4, 4]);
+            } else if (crossPattern === 'dotted') {
+                ctx.setLineDash([2, 4]);
+            } else {
+                ctx.setLineDash([]);
+            }
+            ctx.strokeStyle = crossColor;
+            ctx.lineWidth = crossWidth;
+            
+            // Vertical line
+            if (cx >= margin.l && cx <= chartWidth) {
+                ctx.beginPath();
+                ctx.moveTo(cx + 0.5, margin.t);
+                ctx.lineTo(cx + 0.5, height - margin.b);
+                ctx.stroke();
+            }
+            
+            // Horizontal line
+            if (cy >= margin.t && cy <= height - margin.b) {
+                ctx.beginPath();
+                ctx.moveTo(margin.l, cy + 0.5);
+                ctx.lineTo(chartWidth, cy + 0.5);
+                ctx.stroke();
+                
+                // Price label on Y-axis for crosshair
+                const crosshairPrice = minPrice + (1 - (cy - margin.t) / chartHeight) * priceRange;
+                if (!isNaN(crosshairPrice)) {
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = cursorLabelBg;
+                    ctx.fillRect(width - margin.r, cy - 10, margin.r, 20);
+                    ctx.fillStyle = cursorLabelText;
+                    ctx.font = scaleFont;
+                    ctx.textAlign = 'center';
+                    ctx.fillText(crosshairPrice.toFixed(decimals), width - margin.r / 2, cy + 4);
+                }
+            }
+            
+            ctx.restore();
+        }
+        
+        // Update OHLC display with last visible candle
+        if (paneData.length > 0) {
+            const lastCandle = paneData[paneData.length - 1];
+            this.updatePaneOHLCDirect(pane, lastCandle);
+        }
+        
+        // Render drawings on the pane (they move with chart - drawn on canvas)
+        this.renderPaneDrawings(pane, ctx, margin, chartHeight, chartWidth, minPrice, priceRange, width, height);
+    }
+    
+    /**
+     * Render drawings on a pane - draws directly on canvas
+     * Called on every render so drawings move with chart
+     */
+    renderPaneDrawings(pane, ctx, margin, chartHeight, chartWidth, minPrice, priceRange, canvasWidth, canvasHeight) {
+        if (!pane.drawings || pane.drawings.length === 0) return;
+        
+        const mainChart = this.chart;
+        const spacing = 2;
+        const candleSpacing = mainChart.candleWidth + spacing;
+        
+        // Helper: convert price to Y pixel
+        const priceToY = (price) => {
+            return margin.t + chartHeight - ((price - minPrice) / priceRange) * chartHeight;
+        };
+        
+        // Helper: convert data index to X pixel  
+        const indexToX = (dataIndex) => {
+            return margin.l + (dataIndex * candleSpacing) + mainChart.offsetX + mainChart.candleWidth / 2;
+        };
+        
+        ctx.save();
+        
+        // Draw each drawing on canvas
+        pane.drawings.forEach(drawing => {
+            ctx.strokeStyle = drawing.color || '#2962ff';
+            ctx.fillStyle = (drawing.color || '#2962ff') + '30';
+            ctx.lineWidth = 2;
+            
+            if (drawing.type === 'horizontal') {
+                // Horizontal line at price level
+                const y = priceToY(drawing.price);
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvasWidth, y);
+                ctx.stroke();
+                
+                // Price label
+                ctx.fillStyle = drawing.color || '#2962ff';
+                ctx.fillRect(canvasWidth - margin.r, y - 10, margin.r, 20);
+                ctx.fillStyle = '#fff';
+                ctx.font = '11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(drawing.price.toFixed(2), canvasWidth - margin.r/2, y + 4);
+                
+            } else if (drawing.type === 'vertical') {
+                // Vertical line at data index
+                const x = indexToX(drawing.dataIndex);
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvasHeight);
+                ctx.stroke();
+                
+            } else if (drawing.type === 'trendline') {
+                // Trendline between two points
+                const x1 = indexToX(drawing.startIndex);
+                const y1 = priceToY(drawing.startPrice);
+                const x2 = indexToX(drawing.endIndex);
+                const y2 = priceToY(drawing.endPrice);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+                
+                // Draw end points
+                ctx.fillStyle = drawing.color || '#2962ff';
+                ctx.beginPath();
+                ctx.arc(x1, y1, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(x2, y2, 4, 0, Math.PI * 2);
+                ctx.fill();
+                
+            } else if (drawing.type === 'rectangle') {
+                // Rectangle between two points
+                const x1 = indexToX(drawing.startIndex);
+                const y1 = priceToY(drawing.startPrice);
+                const x2 = indexToX(drawing.endIndex);
+                const y2 = priceToY(drawing.endPrice);
+                const x = Math.min(x1, x2);
+                const y = Math.min(y1, y2);
+                const w = Math.abs(x2 - x1);
+                const h = Math.abs(y2 - y1);
+                
+                ctx.fillStyle = (drawing.color || '#2962ff') + '30';
+                ctx.fillRect(x, y, w, h);
+                ctx.strokeRect(x, y, w, h);
+            }
+        });
+        
+        ctx.restore();
+    }
+    
+    /**
+     * Update OHLC display directly with candle data
+     */
+    updatePaneOHLCDirect(pane, candle) {
+        if (!candle) return;
+        
+        const legend = document.getElementById(`linkedPaneLegend_${pane.id}`);
+        if (!legend) return;
+        
+        const formatPrice = (p) => {
+            if (p === undefined || p === null || isNaN(p)) return '--';
+            return p > 100 ? p.toFixed(2) : (p > 10 ? p.toFixed(3) : p.toFixed(5));
+        };
+        
+        const o = candle.o !== undefined ? candle.o : candle.open;
+        const h = candle.h !== undefined ? candle.h : candle.high;
+        const l = candle.l !== undefined ? candle.l : candle.low;
+        const c = candle.c !== undefined ? candle.c : candle.close;
+        
+        const openEl = legend.querySelector('.pane-open');
+        const highEl = legend.querySelector('.pane-high');
+        const lowEl = legend.querySelector('.pane-low');
+        const closeEl = legend.querySelector('.pane-close');
+        
+        if (openEl) openEl.textContent = formatPrice(o);
+        if (highEl) highEl.textContent = formatPrice(h);
+        if (lowEl) lowEl.textContent = formatPrice(l);
+        if (closeEl) closeEl.textContent = formatPrice(c);
+    }
+    
+    /**
+     * Setup price axis controls (same as overlay - drag Y-axis to zoom, drag chart to move)
+     */
+    setupPaneAxisControls(pane, canvas, wrapper) {
+        const priceAxisWidth = this.chart.margin?.r || 60;
+        const margin = { t: 10, r: priceAxisWidth, b: 5, l: (this.chart.margin?.l || 0) };
+        
+        const dragState = {
+            isDragging: false,
+            dragType: null, // 'zoom' for Y-axis, 'move' for chart area
+            lastY: 0,
+            startY: 0,
+            hasMoved: false
+        };
+        
+        // Check if mouse is over price axis
+        const isOverPriceAxis = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            return x >= rect.width - priceAxisWidth;
+        };
+        
+        // Check if mouse is over time axis
+        const isOverTimeAxis = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            return y >= rect.height - margin.b && x >= margin.l && x < rect.width - margin.r;
+        };
+        
+        // Check if mouse is in chart area
+        const isInChartArea = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            return x >= margin.l && x < rect.width - margin.r && y >= margin.t && y < rect.height - margin.b;
+        };
+        
+        // Check if drawing tool is active
+        const isDrawingToolActive = () => {
+            // Check both chart.tool and drawingManager.currentTool
+            const chartTool = this.chart.tool;
+            const managerTool = window.drawingManager?.currentTool || this.chart.drawingManager?.currentTool;
+            return (chartTool && chartTool !== 'pointer' && chartTool !== 'cursor') || 
+                   (managerTool && managerTool !== 'pointer' && managerTool !== 'cursor');
+        };
+        
+        // Get current active tool
+        const getCurrentTool = () => {
+            return window.drawingManager?.currentTool || 
+                   this.chart.drawingManager?.currentTool || 
+                   this.chart.tool;
+        };
+        
+        // Mouse move
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const my = e.clientY - rect.top;
+            const chartHeight = rect.height - margin.t - margin.b;
+            
+            if (dragState.isDragging) {
+                const dy = e.clientY - dragState.lastY;
+                
+                // Check if mouse has moved enough to be considered a drag
+                if (Math.abs(e.clientY - dragState.startY) > 3) {
+                    dragState.hasMoved = true;
+                }
+                
+                if (!dragState.hasMoved) return;
+                
+                pane.autoScale = false;
+                
+                // Get the current displayed price range (use stored values from last render)
+                const baseRange = pane.baseRange || (pane.yMax - pane.yMin) || 100;
+                const displayedRange = baseRange / pane.priceZoom;
+                
+                // Only handle Y-axis zoom here (chart area movement is handled by combinedDrag)
+                if (dragState.dragType === 'zoom') {
+                    // Drag from Y-axis: match main chart price-axis behavior
+                    const sensitivity = 0.002;
+                    const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
+                    const newZoom = Math.max(0.5, Math.min(20, pane.priceZoom * zoomFactor));
+                    
+                    const newRange = baseRange / newZoom;
+                    const rangeChange = newRange - displayedRange;
+                    
+                    // Zoom centered on mouse position
+                    const mouseRatio = (my - margin.t) / chartHeight;
+                    pane.priceOffset -= rangeChange * (0.5 - mouseRatio);
+                    pane.priceZoom = newZoom;
+                }
+                
+                dragState.lastY = e.clientY;
+                this.renderLinkedPanes();
+                return;
+            }
+            
+            // Update cursor based on position using CSS classes
+            canvas.classList.remove('cursor-price-axis', 'cursor-time-axis');
+            if (isDrawingToolActive()) {
+                canvas.style.cursor = 'crosshair';
+            } else if (isOverPriceAxis(e)) {
+                canvas.classList.add('cursor-price-axis');
+                canvas.style.cursor = 'ns-resize';
+            } else if (isOverTimeAxis(e)) {
+                canvas.classList.add('cursor-time-axis');
+                canvas.style.cursor = 'ew-resize';
+            }
+        });
+        
+        // Mouse down - start drag (price axis only, chart area handled by combinedDrag)
+        canvas.addEventListener('mousedown', (e) => {
+            if (isOverPriceAxis(e)) {
+                // Y-axis: zoom mode
+                dragState.isDragging = true;
+                dragState.dragType = 'zoom';
+                dragState.lastY = e.clientY;
+                dragState.startY = e.clientY;
+                dragState.hasMoved = false;
+                canvas.style.cursor = 'ns-resize';
+                e.preventDefault();
+            }
+            // Chart area drag is now handled by combinedDrag below
+        });
+        
+        // Mouse up - end drag
+        const endDrag = () => {
+            if (dragState.isDragging) {
+                dragState.isDragging = false;
+                dragState.dragType = null;
+                canvas.style.cursor = '';
+            }
+        };
+        document.addEventListener('mouseup', endDrag);
+        
+        // Double-click - reset to auto-scale
+        canvas.addEventListener('dblclick', (e) => {
+            if (isOverPriceAxis(e) || isInChartArea(e)) {
+                pane.autoScale = true;
+                pane.priceZoom = 1.0;
+                pane.priceOffset = 0;
+                this.renderLinkedPanes();
+            }
+        });
+        
+        // Right-click - show settings menu
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.showPaneContextMenu(pane, e.clientX, e.clientY);
+        });
+        
+        // Horizontal scroll - sync with main chart
+        canvas.addEventListener('wheel', (e) => {
+            if (isOverPriceAxis(e)) {
+                // Match main chart: wheel on price axis zooms vertical scale
+                e.preventDefault();
+                pane.autoScale = false;
+                const rect = canvas.getBoundingClientRect();
+                const my = e.clientY - rect.top;
+                const chartHeight = rect.height - margin.t - margin.b;
+                const baseRange = pane.baseRange || (pane.yMax - pane.yMin) || 100;
+                const displayedRange = baseRange / pane.priceZoom;
+                const sensitivity = 0.002;
+                const zoomFactor = Math.max(0.01, 1 - e.deltaY * sensitivity);
+                const newZoom = Math.max(0.5, Math.min(20, pane.priceZoom * zoomFactor));
+                const newRange = baseRange / newZoom;
+                const rangeChange = newRange - displayedRange;
+                const mouseRatio = (my - margin.t) / chartHeight;
+                pane.priceOffset -= rangeChange * (0.5 - mouseRatio);
+                pane.priceZoom = newZoom;
+                this.renderLinkedPanes();
+                return;
+            } else {
+                // Horizontal scroll in chart area - sync with main chart
+                e.preventDefault();
+                
+                // Use deltaX for horizontal scroll, or deltaY with shift key
+                const deltaX = e.shiftKey ? e.deltaY : e.deltaX;
+                const deltaY = e.shiftKey ? 0 : e.deltaY;
+                
+                if (Math.abs(deltaX) > Math.abs(deltaY) || e.shiftKey) {
+                    // Horizontal scroll - move main chart
+                    this.chart.offsetX -= deltaX;
+                    this.chart.constrainOffset();
+                    this.chart.render();
+                } else if (!isOverPriceAxis(e)) {
+                    // Vertical scroll on chart - zoom main chart (like main chart does)
+                    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                    const newWidth = Math.max(2, Math.min(50, this.chart.candleWidth * zoomFactor));
+                    this.chart.candleWidth = newWidth;
+                    this.chart.constrainOffset();
+                    this.chart.render();
+                }
+            }
+        }, { passive: false });
+        
+        // Free drag state - allows simultaneous horizontal and vertical movement
+        let freeDrag = { 
+            isDragging: false, 
+            lastX: 0,
+            lastY: 0
+        };
+        
+        // Crosshair state
+        let crosshairPos = { x: -1, y: -1 };
+        
+        // Drawing state for pane
+        let paneDrawing = {
+            active: false,
+            startX: 0,
+            startY: 0,
+            startPrice: 0,
+            startIndex: 0,
+            currentElement: null
+        };
+        
+        // Get data index and price from mouse position
+        const getDataFromMouse = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const chartHeight = rect.height - margin.t - margin.b;
+            const chartWidth = rect.width - margin.l - margin.r;
+            
+            // Price from Y
+            const price = pane.currentMax - ((my - margin.t) / chartHeight) * (pane.currentMax - pane.currentMin);
+            
+            // Index from X (use main chart's calculation)
+            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : (this.chart.candleWidth + 2);
+            const adjustedX = mx - margin.l - this.chart.offsetX;
+            const dataIndex = Math.round(adjustedX / candleSpacing);
+            
+            return { x: mx, y: my, price, dataIndex, chartHeight, chartWidth };
+        };
+        
+        // Override mousedown to capture starting position
+        canvas.addEventListener('mousedown', (e) => {
+            const toolActive = isDrawingToolActive();
+            const currentTool = getCurrentTool();
+            console.log('📊 Pane mousedown - toolActive:', toolActive, 'currentTool:', currentTool);
+            
+            // If drawing tool is active, start drawing on pane
+            if (toolActive) {
+                const data = getDataFromMouse(e);
+                paneDrawing.active = true;
+                paneDrawing.startX = data.x;
+                paneDrawing.startY = data.y;
+                paneDrawing.startPrice = data.price;
+                paneDrawing.startIndex = data.dataIndex;
+                
+                const tool = getCurrentTool();
+                const color = this.chart.drawingColor || window.drawingManager?.currentColor || '#2962ff';
+                
+                console.log('📊 Pane drawing - tool:', tool, 'color:', color);
+                
+                // Initialize pane drawings array if needed
+                if (!pane.drawings) pane.drawings = [];
+                
+                if (tool === 'horizontal') {
+                    // Horizontal line - one click, store data coordinates only
+                    const drawing = {
+                        type: 'horizontal',
+                        price: data.price,
+                        color: color
+                    };
+                    pane.drawings.push(drawing);
+                    console.log('📊 Added horizontal drawing to pane:', pane.id, 'total:', pane.drawings.length, drawing);
+                    
+                    // Done immediately for horizontal
+                    paneDrawing.active = false;
+                    if (window.drawingManager?.clearTool) window.drawingManager.clearTool();
+                    this.chart.tool = null;
+                    canvas.style.cursor = 'grab';
+                    // Force redraw of this pane's canvas
+                    this.chart.render();
+                    console.log('📊 Horizontal line drawn at price:', data.price);
+                    
+                } else if (tool === 'vertical') {
+                    // Vertical line - one click, store data coordinates only
+                    pane.drawings.push({
+                        type: 'vertical',
+                        dataIndex: data.dataIndex,
+                        color: color
+                    });
+                    
+                    // Done immediately for vertical
+                    paneDrawing.active = false;
+                    if (window.drawingManager?.clearTool) window.drawingManager.clearTool();
+                    this.chart.tool = null;
+                    canvas.style.cursor = 'grab';
+                    this.chart.render();
+                    console.log('📊 Vertical line drawn at index:', data.dataIndex);
+                    
+                } else if (tool === 'trendline') {
+                    // Trendline - need to track drag, store temp data
+                    paneDrawing.tool = 'trendline';
+                    paneDrawing.color = color;
+                    
+                } else if (tool === 'rectangle') {
+                    // Rectangle - need to track drag, store temp data
+                    paneDrawing.tool = 'rectangle';
+                    paneDrawing.color = color;
+                    
+                } else {
+                    // Unknown tool - log it
+                    console.log('📊 Pane: unhandled tool type:', tool);
+                    paneDrawing.active = false;
+                }
+                
+                e.preventDefault();
+                return;
+            }
+            
+            if (isInChartArea(e)) {
+                freeDrag.isDragging = true;
+                freeDrag.lastX = e.clientX;
+                freeDrag.lastY = e.clientY;
+                canvas.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+        });
+        
+        // Handle drawing preview during mouse move (for trendline/rectangle)
+        canvas.addEventListener('mousemove', (e) => {
+            if (paneDrawing.active && (paneDrawing.tool === 'trendline' || paneDrawing.tool === 'rectangle')) {
+                // Store current end position for preview
+                const data = getDataFromMouse(e);
+                paneDrawing.endX = data.x;
+                paneDrawing.endY = data.y;
+                paneDrawing.endPrice = data.price;
+                paneDrawing.endIndex = data.dataIndex;
+                // Trigger re-render for preview (optional - can add later)
+            }
+        });
+        
+        // Finish drawing on mouse up
+        canvas.addEventListener('mouseup', (e) => {
+            if (paneDrawing.active && (paneDrawing.tool === 'trendline' || paneDrawing.tool === 'rectangle')) {
+                const data = getDataFromMouse(e);
+                
+                // Initialize drawings array if needed
+                if (!pane.drawings) pane.drawings = [];
+                
+                // Store the drawing with data coordinates
+                pane.drawings.push({
+                    type: paneDrawing.tool,
+                    startPrice: paneDrawing.startPrice,
+                    endPrice: data.price,
+                    startIndex: paneDrawing.startIndex,
+                    endIndex: data.dataIndex,
+                    color: paneDrawing.color
+                });
+                
+                console.log('📊 Pane drawing finished:', paneDrawing.tool);
+                
+                paneDrawing.active = false;
+                paneDrawing.tool = null;
+                
+                // Reset tool (one-shot drawing)
+                if (window.drawingManager?.clearTool) {
+                    window.drawingManager.clearTool();
+                } else if (this.chart.drawingManager?.clearTool) {
+                    this.chart.drawingManager.clearTool();
+                }
+                this.chart.tool = null;
+                canvas.style.cursor = 'grab';
+                
+                // Re-render to show the drawing
+                this.chart.render();
+            }
+        });
+        
+        // Handle free movement - both horizontal AND vertical at same time
+        document.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            
+            // Update crosshair if mouse is over this pane
+            if (mx >= 0 && mx <= rect.width && my >= 0 && my <= rect.height) {
+                crosshairPos.x = mx;
+                crosshairPos.y = my;
+                pane.crosshair = { x: mx, y: my };
+                // Render to show crosshair
+                if (!freeDrag.isDragging) {
+                    this.renderLinkedPanes();
+                }
+            }
+            
+            if (!freeDrag.isDragging) return;
+            
+            // Calculate delta - same as main chart
+            const dx = e.clientX - freeDrag.lastX;
+            const dy = e.clientY - freeDrag.lastY;
+            
+            // Use main chart's movement sensitivity (default 1.0)
+            const sensitivity = this.chart.movement?.sensitivity || 1.0;
+            
+            // Horizontal movement - move main chart (both charts move together)
+            // Match exactly how main chart does it
+            if (dx !== 0) {
+                this.chart.offsetX += dx * sensitivity;
+                this.chart.constrainOffset();
+            }
+            
+            // Vertical movement - move pane only
+            // Inverted: drag down = chart goes up (show higher prices)
+            if (dy !== 0) {
+                pane.autoScale = false;
+                const chartHeight = rect.height - margin.t - margin.b;
+                const baseRange = pane.baseRange || (pane.yMax - pane.yMin) || 100;
+                const displayedRange = baseRange / pane.priceZoom;
+                const pricePerPixel = displayedRange / chartHeight;
+                pane.priceOffset += dy * pricePerPixel;
+            }
+            
+            // Update last position
+            freeDrag.lastX = e.clientX;
+            freeDrag.lastY = e.clientY;
+            
+            // Use scheduleRender like main chart does for smooth performance
+            if (dx !== 0 || dy !== 0) {
+                if (this.chart.scheduleRender) {
+                    this.chart.scheduleRender();
+                } else {
+                    this.chart.render();
+                }
+            }
+        });
+        
+        // Mouse leave - hide crosshair
+        canvas.addEventListener('mouseleave', () => {
+            pane.crosshair = null;
+            this.renderLinkedPanes();
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (freeDrag.isDragging) {
+                freeDrag.isDragging = false;
+                canvas.style.cursor = '';
+            }
+        });
+    }
+    
+    /**
+     * Show context menu for pane settings
+     */
+    showPaneContextMenu(pane, x, y) {
+        // Remove existing menu
+        const existing = document.getElementById('paneContextMenu');
+        if (existing) existing.remove();
+        
+        const menu = document.createElement('div');
+        menu.id = 'paneContextMenu';
+        menu.style.cssText = `
+            position: fixed;
+            left: ${x}px;
+            top: ${y}px;
+            background: #1e222d;
+            border: 1px solid #363a45;
+            border-radius: 4px;
+            padding: 4px 0;
+            z-index: 10000;
+            min-width: 150px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 13px;
+        `;
+        
+        const menuItems = [
+            { label: 'Reset Scale', action: () => {
+                pane.autoScale = true;
+                pane.priceZoom = 1.0;
+                pane.priceOffset = 0;
+                this.renderLinkedPanes();
+            }},
+            { label: pane.autoScale ? '✓ Auto Scale' : 'Auto Scale', action: () => {
+                pane.autoScale = !pane.autoScale;
+                if (pane.autoScale) {
+                    pane.priceZoom = 1.0;
+                    pane.priceOffset = 0;
+                }
+                this.renderLinkedPanes();
+            }},
+            { label: '─', divider: true },
+            { label: 'Settings...', action: () => this.openPaneSettings(pane) },
+            { label: '─', divider: true },
+            { label: 'Remove', action: () => this.removeLinkedPane(pane.id) }
+        ];
+        
+        menuItems.forEach(item => {
+            if (item.divider) {
+                const div = document.createElement('div');
+                div.style.cssText = 'height: 1px; background: #363a45; margin: 4px 0;';
+                menu.appendChild(div);
+            } else {
+                const btn = document.createElement('div');
+                btn.textContent = item.label;
+                btn.style.cssText = `
+                    padding: 8px 16px;
+                    cursor:default;
+                    color: #d1d4dc;
+                `;
+                btn.addEventListener('mouseenter', () => btn.style.background = '#2a2e39');
+                btn.addEventListener('mouseleave', () => btn.style.background = '');
+                btn.addEventListener('click', () => {
+                    menu.remove();
+                    item.action();
+                });
+                menu.appendChild(btn);
+            }
+        });
+        
+        document.body.appendChild(menu);
+        
+        // Close on click outside
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    }
+    
+    /**
+     * Toggle pane visibility
+     */
+    togglePaneVisibility(paneId) {
+        const pane = this.linkedPanes.find(p => p.id === paneId);
+        if (!pane) return;
+        
+        pane.visible = !pane.visible;
+        
+        // Update icon
+        const legend = document.getElementById(`linkedPaneLegend_${paneId}`);
+        if (legend) {
+            const btn = legend.querySelector('.pane-visibility-btn');
+            if (btn) {
+                if (pane.visible) {
+                    btn.innerHTML = `
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    `;
+                    btn.title = 'Hide';
+                } else {
+                    btn.innerHTML = `
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                    `;
+                    btn.title = 'Show';
+                }
+            }
+            
+            // Dim the legend when hidden
+            legend.style.opacity = pane.visible ? '1' : '0.5';
+        }
+        
+        this.renderLinkedPanes();
+    }
+    
+    /**
+     * Change pane color
+     */
+    changePaneColor(pane) {
+        // Cycle through colors
+        const currentIndex = this.colors.indexOf(pane.color);
+        const nextIndex = (currentIndex + 1) % this.colors.length;
+        pane.color = this.colors[nextIndex];
+        
+        // Update legend
+        const legend = document.getElementById(`linkedPaneLegend_${pane.id}`);
+        if (legend) {
+            const colorIndicator = legend.querySelector('.pane-color-indicator');
+            const symbolSpan = legend.querySelector('.pane-symbol');
+            if (colorIndicator) colorIndicator.style.background = pane.color;
+            if (symbolSpan) symbolSpan.style.color = pane.color;
+        }
+        
+        this.renderLinkedPanes();
+    }
+    
+    /**
+     * Update OHLC display for pane at given candle index
+     */
+    updatePaneOHLC(pane, candleIndex) {
+        if (!pane.data || candleIndex < 0 || candleIndex >= pane.data.length) return;
+        
+        const candle = pane.data[candleIndex];
+        if (!candle) return;
+        
+        const legend = document.getElementById(`linkedPaneLegend_${pane.id}`);
+        if (!legend) return;
+        
+        const formatPrice = (p) => {
+            if (p === undefined || p === null || isNaN(p)) return '--';
+            return p > 100 ? p.toFixed(2) : (p > 10 ? p.toFixed(3) : p.toFixed(5));
+        };
+        
+        const o = candle.o !== undefined ? candle.o : candle.open;
+        const h = candle.h !== undefined ? candle.h : candle.high;
+        const l = candle.l !== undefined ? candle.l : candle.low;
+        const c = candle.c !== undefined ? candle.c : candle.close;
+        
+        const openEl = legend.querySelector('.pane-open');
+        const highEl = legend.querySelector('.pane-high');
+        const lowEl = legend.querySelector('.pane-low');
+        const closeEl = legend.querySelector('.pane-close');
+        
+        if (openEl) openEl.textContent = formatPrice(o);
+        if (highEl) highEl.textContent = formatPrice(h);
+        if (lowEl) lowEl.textContent = formatPrice(l);
+        if (closeEl) closeEl.textContent = formatPrice(c);
+    }
+    
+    /**
+     * Open settings dialog for pane - uses existing newPaneSettingsPopup
+     */
+    openPaneSettings(pane) {
+        this.editingPaneId = pane.id;
+        
+        const popup = document.getElementById('newPaneSettingsPopup');
+        if (!popup) return;
+        
+        // Set title
+        document.getElementById('newPaneSettingsTitle').textContent = pane.symbol;
+        
+        // Set current values
+        document.getElementById('newPaneStyleSelect').value = pane.displayType || 'candles';
+        document.getElementById('newPaneShowBody').checked = pane.showBody !== false;
+        document.getElementById('newPaneShowBorder').checked = pane.showBorder !== false;
+        document.getElementById('newPaneShowWick').checked = pane.showWick !== false;
+        document.getElementById('newPaneShowPriceLine').checked = pane.showPriceLine !== false;
+        
+        // Set colors
+        const bodyUp = document.getElementById('newPaneBodyUp');
+        const bodyDown = document.getElementById('newPaneBodyDown');
+        const borderUp = document.getElementById('newPaneBorderUp');
+        const borderDown = document.getElementById('newPaneBorderDown');
+        const wickUp = document.getElementById('newPaneWickUp');
+        const wickDown = document.getElementById('newPaneWickDown');
+        
+        if (bodyUp) {
+            bodyUp.style.background = pane.upColor || '#089981';
+            bodyUp.dataset.color = pane.upColor || '#089981';
+        }
+        if (bodyDown) {
+            bodyDown.style.background = pane.downColor || '#f23645';
+            bodyDown.dataset.color = pane.downColor || '#f23645';
+        }
+        if (borderUp) {
+            borderUp.style.background = pane.upColor || '#089981';
+            borderUp.dataset.color = pane.upColor || '#089981';
+        }
+        if (borderDown) {
+            borderDown.style.background = pane.downColor || '#f23645';
+            borderDown.dataset.color = pane.downColor || '#f23645';
+        }
+        if (wickUp) {
+            wickUp.style.background = pane.upColor || '#089981';
+            wickUp.dataset.color = pane.upColor || '#089981';
+        }
+        if (wickDown) {
+            wickDown.style.background = pane.downColor || '#f23645';
+            wickDown.dataset.color = pane.downColor || '#f23645';
+        }
+        
+        popup.classList.add('open');
+    }
+    
+    /**
+     * Close pane settings popup
+     */
+    closePaneSettingsPopup() {
+        const popup = document.getElementById('newPaneSettingsPopup');
+        if (popup) {
+            popup.classList.remove('open');
+        }
+        this.editingPaneId = null;
+    }
+    
+    /**
+     * Apply pane settings from popup
+     */
+    applyPaneSettings() {
+        const pane = this.linkedPanes.find(p => p.id === this.editingPaneId);
+        if (!pane) return;
+        
+        // Get values
+        pane.displayType = document.getElementById('newPaneStyleSelect').value;
+        pane.showBody = document.getElementById('newPaneShowBody').checked;
+        pane.showBorder = document.getElementById('newPaneShowBorder').checked;
+        pane.showWick = document.getElementById('newPaneShowWick').checked;
+        pane.showPriceLine = document.getElementById('newPaneShowPriceLine').checked;
+        
+        // Get colors
+        pane.upColor = document.getElementById('newPaneBodyUp').dataset.color;
+        pane.downColor = document.getElementById('newPaneBodyDown').dataset.color;
+        
+        // Update legend color to match up color
+        pane.color = pane.upColor;
+        const legend = document.getElementById(`linkedPaneLegend_${pane.id}`);
+        if (legend) {
+            const colorIndicator = legend.querySelector('.pane-color-indicator');
+            const symbolSpan = legend.querySelector('.pane-symbol');
+            if (colorIndicator) colorIndicator.style.background = pane.color;
+            if (symbolSpan) symbolSpan.style.color = pane.color;
+        }
+        
+        this.closePaneSettingsPopup();
+        this.renderLinkedPanes();
+    }
+    
+    /**
+     * Initialize pane settings popup handlers
+     */
+    initPaneSettingsPopup() {
+        // Close button
+        const closeBtn = document.getElementById('newPaneSettingsClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.closePaneSettingsPopup());
+        }
+        
+        // Cancel button
+        const cancelBtn = document.getElementById('newPaneSettingsCancel');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => this.closePaneSettingsPopup());
+        }
+        
+        // Ok button
+        const okBtn = document.getElementById('newPaneSettingsOk');
+        if (okBtn) {
+            okBtn.addEventListener('click', () => this.applyPaneSettings());
+        }
+        
+        // Click outside to close
+        const popup = document.getElementById('newPaneSettingsPopup');
+        if (popup) {
+            popup.addEventListener('click', (e) => {
+                if (e.target === popup) {
+                    this.closePaneSettingsPopup();
+                }
+            });
+        }
+        
+        // Color swatches - use existing color picker
+        const colorSwatches = document.querySelectorAll('#newPaneSettingsPopup .overlay-color-swatch');
+        colorSwatches.forEach(swatch => {
+            swatch.addEventListener('click', () => {
+                if (window.colorPicker) {
+                    window.colorPicker.open(swatch.dataset.color, (newColor) => {
+                        swatch.style.background = newColor;
+                        swatch.dataset.color = newColor;
+                    }, swatch);
+                }
+            });
+        });
+    }
+    
+    removeLinkedPane(paneId) {
+        const index = this.linkedPanes.findIndex(p => p.id === paneId);
+        if (index !== -1) {
+            this.linkedPanes.splice(index, 1);
+            
+            // Remove DOM elements
+            const wrapper = document.getElementById(`linkedPaneWrapper_${paneId}`);
+            if (wrapper) wrapper.remove();
+            
+            this.renderSymbolsList();
+            this.updateLinkedPanesLegend();
+            
+            console.log(`📊 Linked pane removed: ${paneId}`);
+        }
+    }
+    
+    updateLinkedPanesLegend() {
+        // Update any legend displays if needed
+    }
+    
+    // Update linked panes when timeframe changes (legacy hook — same as refreshForTimeframe)
+    onTimeframeChange(newTimeframe) {
+        this.refreshForTimeframe(newTimeframe);
+    }
+    
+    renderActiveOverlays() {
+        const container = document.getElementById('compareOverlaysList');
+        const section = document.getElementById('compareActiveOverlays');
+        if (!container) return;
+        
+        if (this.overlays.length === 0) {
+            if (section) section.style.display = 'none';
+            container.innerHTML = '';
+            return;
+        }
+        
+        // Show the section when there are overlays
+        if (section) section.style.display = 'block';
+        container.innerHTML = '';
+        
+        this.overlays.forEach(overlay => {
+            const item = document.createElement('div');
+            item.className = 'compare-overlay-item';
+            item.innerHTML = `
+                <div class="compare-overlay-header">
+                    <div class="compare-overlay-color" style="background: ${overlay.color}"></div>
+                    <span class="compare-overlay-name">${overlay.symbol}</span>
+                    <button class="compare-overlay-toggle ${overlay.visible ? 'visible' : ''}" 
+                            data-id="${overlay.id}" title="Toggle visibility">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            ${overlay.visible 
+                                ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+                                : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+                            }
+                        </svg>
+                    </button>
+                    <button class="compare-overlay-remove" data-id="${overlay.id}" title="Remove">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            // Add event listeners
+            const toggleBtn = item.querySelector('.compare-overlay-toggle');
+            toggleBtn.addEventListener('click', () => this.toggleVisibility(overlay.id));
+            
+            const removeBtn = item.querySelector('.compare-overlay-remove');
+            removeBtn.addEventListener('click', () => this.removeOverlay(overlay.id));
+            
+            container.appendChild(item);
+        });
+    }
+
+    /**
+     * TF to request for compare /smart loads — align with primary replay raw stream
+     * (usually 1m) so overlay.rawData can be resampled to any chart TF. Using only
+     * chart.currentTimeframe here caused coarse raw (e.g. 1h) when the user was on
+     * 1h; switching to 5m then resampled that sparse series → gaps / wrong overlay.
+     */
+    _resolveOverlaySmartFetchTimeframe() {
+        const ch = this.chart;
+        if (!ch) return '1m';
+        const rs = ch.replaySystem;
+        if (rs && (rs.isActive || ch.isBacktestMode) && rs.rawTimeframe) {
+            return String(rs.rawTimeframe);
+        }
+        return String(ch.currentTimeframe || '1m');
+    }
+
+    _parseTimeframeMs(tfStr) {
+        const ch = this.chart;
+        if (!ch || typeof ch.parseTimeframe !== 'function') return NaN;
+        return ch.parseTimeframe(String(tfStr || '').toLowerCase().trim());
+    }
+
+    /**
+     * Median step between consecutive bar timestamps (ms) — used when rawFetchTf
+     * is unknown (legacy overlays / CSV) to decide if a finer chart TF needs refetch.
+     */
+    _inferMedianBarPeriodMs(bars) {
+        if (!Array.isArray(bars) || bars.length < 2) return NaN;
+        const maxI = Math.min(bars.length - 1, 300);
+        const diffs = [];
+        for (let i = 1; i <= maxI; i++) {
+            const d = Math.abs(Number(bars[i].t) - Number(bars[i - 1].t));
+            if (Number.isFinite(d) && d > 0) diffs.push(d);
+        }
+        if (!diffs.length) return NaN;
+        diffs.sort((a, b) => a - b);
+        return diffs[Math.floor(diffs.length / 2)];
+    }
+
+    /**
+     * Time span to load for compare symbols — align with primary chart (replay full history,
+     * current rawData, or visible resampled bars). Avoids /file/{id}?limit=50000 which only
+     * covers ~50k *intraday* rows (~weeks) while the main series uses /file/.../smart.
+     */
+    _resolveCompareWindowRange() {
+        const ch = this.chart;
+        if (!ch) return null;
+        const replay = ch.replaySystem;
+        if (replay && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const a = replay.fullRawData[0].t;
+            const b = replay.fullRawData[replay.fullRawData.length - 1].t;
+            if (Number.isFinite(a) && Number.isFinite(b) && b >= a) return { startTs: a, endTs: b };
+        }
+        if (ch.rawData && ch.rawData.length > 0) {
+            const a = ch.rawData[0].t;
+            const b = ch.rawData[ch.rawData.length - 1].t;
+            if (Number.isFinite(a) && Number.isFinite(b) && b >= a) return { startTs: a, endTs: b };
+        }
+        if (ch.data && ch.data.length > 0) {
+            const a = ch.data[0].t;
+            const b = ch.data[ch.data.length - 1].t;
+            if (Number.isFinite(a) && Number.isFinite(b) && b >= a) return { startTs: a, endTs: b };
+        }
+        return null;
+    }
+
+    _resolveCompareSession() {
+        const ch = this.chart;
+        if (ch && ch.backtestingSession) return ch.backtestingSession;
+        try {
+            if (typeof userStorage !== 'undefined' && userStorage && typeof userStorage.getItem === 'function') {
+                const raw = userStorage.getItem('backtestingSession');
+                if (raw) return JSON.parse(raw);
+            }
+        } catch (_) {}
+        return {};
+    }
+
+    /**
+     * Load OHLCV for an overlay via the same GET /file/{id}/smart path as the main chart.
+     * @param {string|number} fileId
+     * @param {string} [fetchTf] - API timeframe for this request; defaults to {@link #_resolveOverlaySmartFetchTimeframe}.
+     */
+    /**
+     * Reuse main chart TF cache when overlay fileId matches (avoids duplicate /smart fetch).
+     */
+    _getOverlayBarsFromChartTfCache(fileId, timeframe) {
+        const ch = this.chart;
+        if (!ch || typeof ch._getTfDataCache !== 'function') return null;
+        const entry = ch._getTfDataCache(fileId, timeframe);
+        if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return null;
+        return entry.rawData.slice();
+    }
+
+    async _fetchOverlayBarsViaSmart(fileId, fetchTf) {
+        const ch = this.chart;
+        const tf = fetchTf != null && String(fetchTf).trim() !== ''
+            ? String(fetchTf).trim()
+            : this._resolveOverlaySmartFetchTimeframe();
+        const cached = this._getOverlayBarsFromChartTfCache(fileId, tf);
+        if (cached && cached.length) {
+            return cached;
+        }
+        if (!ch || typeof ch._fetchSmartWindow !== 'function') return [];
+        const session = this._resolveCompareSession();
+        const windowRange = this._resolveCompareWindowRange();
+        const explicit = !!(windowRange && Number.isFinite(windowRange.startTs) && Number.isFinite(windowRange.endTs));
+        const smartOpts = explicit
+            ? { skipSessionDates: true, limit: 100000 }
+            : { limit: 100000 };
+        const anchor = explicit ? 'start' : 'end';
+        const rangeArg = explicit ? windowRange : null;
+        let result;
+        try {
+            result = await ch._fetchSmartWindow(fileId, tf, session, anchor, rangeArg, smartOpts);
+        } catch (e) {
+            console.warn('📊 Compare /smart fetch failed:', e && e.message ? e.message : e);
+            return [];
+        }
+        if (!result) return [];
+        if (typeof ch._smartResponseHasPayload === 'function' && !ch._smartResponseHasPayload(result)) return [];
+        if (Array.isArray(result.candles) && result.candles.length && typeof ch._normalizeCandlesFromApi === 'function') {
+            const rows = ch._normalizeCandlesFromApi(result.candles);
+            if (rows.length) return rows;
+        }
+        if (result.data && typeof result.data === 'string') {
+            return this.parseCSVData(result.data);
+        }
+        return [];
+    }
+
+    async _fetchOverlayBarsLegacyCsv(fileId) {
+        const response = await fetch(`${this.apiUrl}/file/${fileId}?offset=0&limit=50000`);
+        if (!response.ok) {
+            throw new Error(`Failed to load data: ${response.status}`);
+        }
+        const result = await response.json();
+        if (!result.data) {
+            throw new Error('No data in response');
+        }
+        const rawData = this.parseCSVData(result.data);
+        if (!Array.isArray(rawData) || rawData.length === 0) {
+            throw new Error('No valid candles parsed for selected symbol');
+        }
+        return rawData;
+    }
+    
+    async addOverlay(fileId, symbol) {
+        // Check if already added
+        if (this.overlays.find(o => o.fileId === fileId)) {
+            console.log('Symbol already added as overlay');
+            return;
+        }
+        
+        try {
+            console.log(`📊 Adding overlay: ${symbol} (fileId: ${fileId})`);
+            
+            const fetchTf = this._resolveOverlaySmartFetchTimeframe();
+            let rawData = await this._fetchOverlayBarsViaSmart(fileId, fetchTf);
+            let usedSmart = rawData.length > 0;
+            if (!rawData.length) {
+                console.warn('📊 Compare: /smart returned no rows; falling back to raw CSV slice (may truncate long intraday history)');
+                rawData = await this._fetchOverlayBarsLegacyCsv(fileId);
+                usedSmart = false;
+            }
+            console.log(`📊 Parsed ${rawData.length} overlay candles (smart or legacy)`);
+            if (!Array.isArray(rawData) || rawData.length === 0) {
+                throw new Error('No valid candles parsed for selected symbol');
+            }
+            
+            // Resample to match current timeframe
+            const resampledData = this.resampleData(rawData, this.chart.currentTimeframe);
+            console.log(`📊 Resampled to ${resampledData.length} candles`);
+            
+            const nativeBarMs = usedSmart
+                ? (this._parseTimeframeMs(fetchTf) || this._inferMedianBarPeriodMs(rawData))
+                : this._inferMedianBarPeriodMs(rawData);
+            
+            // Create overlay object with customization options
+            const baseColor = this.getNextColor();
+            const overlay = {
+                id: Date.now().toString(),
+                fileId: fileId,
+                symbol: symbol,
+                color: baseColor,
+                visible: true,
+                displayType: 'line',  // 'line' or 'candles'
+                lineWidth: 2,
+                opacity: 1.0,
+                priceZoom: 1.0,      // Vertical scale multiplier
+                priceOffset: 0,      // Vertical offset
+                showPriceLine: true,
+                /** API timeframe last used for rawData (when from /smart); null if legacy CSV only */
+                rawFetchTf: usedSmart ? fetchTf : null,
+                /** Typical spacing of bars in rawData (ms); used to refetch when chart TF goes finer */
+                nativeBarMs: Number.isFinite(nativeBarMs) ? nativeBarMs : NaN,
+                // Candle colors
+                bodyUpColor: '#26a69a',
+                bodyDownColor: '#ef5350',
+                borderUpColor: '#26a69a',
+                borderDownColor: '#ef5350',
+                wickUpColor: '#26a69a',
+                wickDownColor: '#ef5350',
+                showBody: true,
+                showBorder: true,
+                showWick: true,
+                rawData: rawData,
+                data: resampledData,
+                yScale: null // Will be calculated during render
+            };
+            
+            this.overlays.push(overlay);
+            
+            // Close the modal after adding
+            this.closeModal();
+            
+            // Update UI
+            this.updateCompareButton();
+            this.renderActiveOverlays();
+            this.renderSymbolsList();
+            this.updateLegend();
+            this.updateOverlayLegend();
+            
+            if (this.chart.replaySystem?.isActive) {
+                this._lastReplaySyncKey = null;
+                this.syncForReplay();
+            }
+
+            // Trigger chart re-render
+            this.chart.render();
+            
+            console.log(`✅ Overlay added: ${symbol} with ${resampledData.length} candles`);
+            
+        } catch (error) {
+            console.error('Failed to add overlay:', error);
+            alert(`Failed to add ${symbol}: ${error.message}`);
+        }
+    }
+    
+    parseCSVData(csvText) {
+        const data = [];
+        const lines = csvText.trim().split('\n').filter(line => line.trim().length > 0);
+        if (lines.length < 1) return data;
+        
+        // Detect header
+        const firstLine = lines[0].toLowerCase();
+        const hasHeader = firstLine.includes('open') || firstLine.includes('high') || 
+                         firstLine.includes('low') || firstLine.includes('close') ||
+                         firstLine.includes('ticker') || firstLine.includes('time');
+        
+        const dataStartIdx = hasHeader ? 1 : 0;
+        
+        // Detect separator
+        let separator = ',';
+        if (lines[dataStartIdx].split('\t').length > 4) separator = '\t';
+        else if (lines[dataStartIdx].split(';').length > 4) separator = ';';
+        else if (lines[dataStartIdx].split(/\s+/).length > 5) separator = /\s+/;
+        
+        // Find column indices
+        let timeIdx = -1, dateIdx = -1, openIdx = -1, highIdx = -1, lowIdx = -1, closeIdx = -1, volIdx = -1, tickerIdx = -1;
+        
+        if (hasHeader) {
+            const headers = lines[0].toLowerCase().split(separator).map(h => h.trim());
+            timeIdx = headers.findIndex(h => h.includes('time') && !h.includes('date'));
+            dateIdx = headers.findIndex(h => h.includes('date') || h.includes('dt') || h.includes('gmt'));
+            openIdx = headers.findIndex(h => h.includes('open'));
+            highIdx = headers.findIndex(h => h.includes('high'));
+            lowIdx = headers.findIndex(h => h.includes('low'));
+            closeIdx = headers.findIndex(h => h.includes('close'));
+            volIdx = headers.findIndex(h => h.includes('vol'));
+            tickerIdx = headers.findIndex(h => h.includes('ticker') || h.includes('symbol'));
+            
+            // If time column has date info, use it as dateIdx
+            if (timeIdx >= 0 && dateIdx < 0 && lines.length > dataStartIdx) {
+                const firstDataRow = lines[dataStartIdx].split(separator).map(c => c.trim());
+                const timeValue = firstDataRow[timeIdx];
+                if (timeValue && (timeValue.includes('.') || timeValue.includes('-') || timeValue.includes('/'))) {
+                    dateIdx = timeIdx;
+                    timeIdx = -1;
+                }
+            }
+        } else {
+            // No header - assume standard format
+            const firstCol = lines[0].split(separator)[0].trim();
+            const hasTicker = firstCol.length < 10 && /^[A-Z]+$/.test(firstCol);
+            
+            if (hasTicker) {
+                tickerIdx = 0; dateIdx = 1; timeIdx = 2;
+                openIdx = 3; highIdx = 4; lowIdx = 5; closeIdx = 6; volIdx = 7;
+            } else {
+                dateIdx = 0; openIdx = 1; highIdx = 2; lowIdx = 3; closeIdx = 4; volIdx = 5;
+            }
+        }
+        
+        console.log(`📊 CSV columns: date=${dateIdx}, time=${timeIdx}, OHLC=${openIdx},${highIdx},${lowIdx},${closeIdx}`);
+        
+        // Debug: show first data line
+        if (lines.length > dataStartIdx) {
+            console.log('📊 First data line:', lines[dataStartIdx]);
+            const testCols = lines[dataStartIdx].split(separator);
+            console.log('📊 Columns split:', testCols);
+            if (dateIdx >= 0) console.log('📊 Date value:', testCols[dateIdx]);
+            if (timeIdx >= 0) console.log('📊 Time value:', testCols[timeIdx]);
+        }
+        
+        // Parse data rows
+        for (let i = dataStartIdx; i < lines.length; i++) {
+            const cols = lines[i].split(separator).map(c => c.trim());
+            
+            // Parse timestamp
+            let timestamp = null;
+            if (dateIdx >= 0 && timeIdx >= 0 && timeIdx !== dateIdx) {
+                timestamp = this.parseDateTime(cols[dateIdx], cols[timeIdx]);
+            } else if (dateIdx >= 0) {
+                timestamp = this.parseDateTime(cols[dateIdx]);
+            } else if (timeIdx >= 0) {
+                const timeVal = cols[timeIdx];
+                if (/^\d+$/.test(timeVal)) {
+                    timestamp = parseInt(timeVal, 10);
+                    if (timestamp < 10000000000) timestamp *= 1000;
+                } else {
+                    timestamp = this.parseDateTime(timeVal);
+                }
+            }
+            
+            // Debug first few failures
+            if (!timestamp && i < dataStartIdx + 3) {
+                console.log('📊 Failed to parse date:', cols[dateIdx >= 0 ? dateIdx : (timeIdx >= 0 ? timeIdx : 0)]);
+            }
+            
+            if (!timestamp) continue;
+            
+            const open = parseFloat(cols[openIdx >= 0 ? openIdx : 1]);
+            const high = parseFloat(cols[highIdx >= 0 ? highIdx : 2]);
+            const low = parseFloat(cols[lowIdx >= 0 ? lowIdx : 3]);
+            const close = parseFloat(cols[closeIdx >= 0 ? closeIdx : 4]);
+            const volume = volIdx >= 0 ? parseFloat(cols[volIdx]) || 0 : 0;
+            
+            if (isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close)) continue;
+            
+            data.push({ t: timestamp, o: open, h: high, l: low, c: close, v: volume });
+        }
+        
+        // Sort by timestamp
+        data.sort((a, b) => a.t - b.t);
+        
+        return data;
+    }
+    
+    parseDateTime(dateStr, timeStr = null) {
+        if (!dateStr) return null;
+        
+        // Clean the string
+        dateStr = String(dateStr).trim();
+        if (timeStr != null && String(timeStr).trim() !== '') {
+            const merged = `${dateStr} ${String(timeStr).trim()}`;
+            const mergedParsed = this.parseDateTime(merged);
+            if (mergedParsed) return mergedParsed;
+        }
+        
+        // Handle YYYYMMDD HHMM format (e.g., "20180401 2104" or "20180401 210400")
+        const compactMatch = dateStr.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2})(\d{2})(\d{2})?$/);
+        if (compactMatch) {
+            const [, year, month, day, hour, minute, second = '0'] = compactMatch;
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second || 0)).getTime();
+        }
+        
+        // Handle YYYYMMDD only (no time)
+        const dateOnlyMatch = dateStr.match(/^(\d{4})(\d{2})(\d{2})$/);
+        if (dateOnlyMatch) {
+            const [, year, month, day] = dateOnlyMatch;
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day)).getTime();
+        }
+        
+        // Try parsing as Unix timestamp
+        if (/^\d+$/.test(dateStr)) {
+            const num = parseInt(dateStr);
+            return num > 1e12 ? num : num * 1000;
+        }
+        
+        // Handle DD.MM.YYYY HH:MM:SS.mmm format
+        const dotMatch = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})\s*(\d{2}):(\d{2}):?(\d{2})?/);
+        if (dotMatch) {
+            const [, day, month, year, hour, minute, second = '0'] = dotMatch;
+            return new Date(year, month - 1, day, hour, minute, parseInt(second)).getTime();
+        }
+        
+        // Handle YYYY-MM-DD or YYYY/MM/DD format
+        const isoMatch = dateStr.match(/(\d{4})[-\/](\d{2})[-\/](\d{2})\s*(\d{2})?:?(\d{2})?:?(\d{2})?/);
+        if (isoMatch) {
+            const [, year, month, day, hour = '0', minute = '0', second = '0'] = isoMatch;
+            return new Date(year, month - 1, day, parseInt(hour), parseInt(minute), parseInt(second)).getTime();
+        }
+        
+        // Fallback to Date.parse
+        const parsed = Date.parse(dateStr);
+        return isNaN(parsed) ? null : parsed;
+    }
+    
+    resampleData(rawData, timeframe) {
+        if (!rawData || rawData.length === 0) return [];
+        
+        // Use chart's resample function if available
+        if (this.chart.resampleData) {
+            return this.chart.resampleData(rawData, timeframe);
+        }
+        
+        // Fallback: return raw data if no resampling available
+        return rawData;
+    }
+    
+    removeOverlay(overlayId) {
+        const index = this.overlays.findIndex(o => o.id === overlayId);
+        if (index > -1) {
+            this.overlays.splice(index, 1);
+            this.updateCompareButton();
+            this.renderActiveOverlays();
+            this.renderSymbolsList();
+            this.updateLegend();
+            this.updateOverlayLegend();
+            this.chart.render();
+        }
+    }
+    
+    toggleVisibility(overlayId) {
+        const overlay = this.overlays.find(o => o.id === overlayId);
+        if (overlay) {
+            overlay.visible = !overlay.visible;
+            this.renderActiveOverlays();
+            this.updateLegend();
+            this.updateOverlayLegend();
+            this.chart.render();
+        }
+    }
+    
+    getNextColor() {
+        const color = this.colors[this.colorIndex % this.colors.length];
+        this.colorIndex++;
+        return color;
+    }
+    
+    updateCompareButton() {
+        const compareBtn = document.getElementById('compareBtn');
+        if (compareBtn) {
+            if (this.overlays.length > 0) {
+                compareBtn.classList.add('active');
+            } else {
+                compareBtn.classList.remove('active');
+            }
+        }
+    }
+    
+    updateLegend() {
+        // Old legend - just hide it, we use updateOverlayLegend now
+        const legend = document.getElementById('overlayLegend');
+        if (legend) legend.style.display = 'none';
+    }
+    
+    /**
+     * Build per-overlay left axis layout (width + domain) — matches main price axis styling.
+     */
+    _buildOverlayAxisLayouts() {
+        const chart = this.chart;
+        const visibleOverlays = this.overlays.filter(o => o.visible);
+        if (!visibleOverlays.length || !chart?.data?.length) {
+            return [];
+        }
+
+        const mainData = chart.data;
+        const candleSpacing = chart.getCandleSpacing();
+        const firstVisibleIndex = Math.floor(-chart.offsetX / candleSpacing);
+        const numVisibleCandles = Math.ceil(chart.w / candleSpacing);
+        const startIdx = Math.max(0, firstVisibleIndex);
+        const endIdx = Math.min(mainData.length, firstVisibleIndex + numVisibleCandles + 2);
+        const visibleStartTime = mainData[startIdx]?.t;
+        const visibleEndTime = mainData[Math.min(endIdx, mainData.length - 1)]?.t;
+        if (!visibleStartTime || !visibleEndTime) return [];
+
+        const m = chart.margin;
+        const plotLayout = typeof chart._getMainPricePlotLayout === 'function'
+            ? chart._getMainPricePlotLayout()
+            : null;
+        const priceHeight = plotLayout
+            ? plotLayout.plotHeight
+            : ((chart.h - m.t - m.b) - (chart.chartSettings?.showVolume ?
+                (chart.h - m.t - m.b) * chart.volumeHeight : 0));
+
+        let axisX = 0;
+        const layouts = [];
+        const numYTicks = Math.max(8, Math.min(15, Math.floor(priceHeight / 60)));
+
+        visibleOverlays.forEach((overlay) => {
+            const overlayData = overlay.data.filter(d =>
+                d.t >= visibleStartTime && d.t <= visibleEndTime
+            );
+            if (overlayData.length < 2) {
+                const fallbackW = typeof chart._measurePriceAxisStripWidth === 'function'
+                    ? chart._measurePriceAxisStripWidth(0, 1, numYTicks, overlay.symbol, { data: overlay.data, priceHeight })
+                    : Math.max(48, chart.margin.r || 48);
+                layouts.push({
+                    overlay,
+                    axisX,
+                    axisWidth: fallbackW,
+                    minPrice: 0,
+                    maxPrice: 1,
+                    priceHeight,
+                    yScale: null
+                });
+                axisX += fallbackW;
+                return;
+            }
+
+            let minPrice = Infinity;
+            let maxPrice = -Infinity;
+            overlayData.forEach(d => {
+                if (d.c < minPrice) minPrice = d.c;
+                if (d.c > maxPrice) maxPrice = d.c;
+            });
+            let priceRangeCalc = maxPrice - minPrice || 1;
+            const padding = priceRangeCalc * 0.1;
+            minPrice -= padding;
+            maxPrice += padding;
+            const midPrice = (minPrice + maxPrice) / 2;
+            priceRangeCalc = (maxPrice - minPrice) / overlay.priceZoom;
+            minPrice = midPrice - priceRangeCalc / 2 + overlay.priceOffset;
+            maxPrice = midPrice + priceRangeCalc / 2 + overlay.priceOffset;
+
+            let axisWidth = chart.margin.r || 48;
+            if (typeof chart._measurePriceAxisStripWidth === 'function') {
+                axisWidth = chart._measurePriceAxisStripWidth(
+                    minPrice, maxPrice, numYTicks, overlay.symbol,
+                    { data: overlay.data, priceHeight }
+                );
+            }
+
+            const yScale = (price) =>
+                m.t + priceHeight - ((price - minPrice) / (maxPrice - minPrice)) * priceHeight;
+
+            layouts.push({
+                overlay,
+                axisX,
+                axisWidth,
+                minPrice,
+                maxPrice,
+                priceHeight,
+                yScale
+            });
+            axisX += axisWidth;
+        });
+
+        return layouts;
+    }
+
+    /** Binary-search slice of sorted OHLC rows up to replay playhead (inclusive). */
+    _sliceRawToTimestamp(bars, maxT) {
+        if (!Array.isArray(bars) || !bars.length || !Number.isFinite(maxT)) return [];
+        let lo = 0;
+        let hi = bars.length - 1;
+        let end = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            const t = Number(bars[mid].t);
+            if (Number.isFinite(t) && t <= maxT) {
+                end = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return end < 0 ? [] : bars.slice(0, end + 1);
+    }
+
+    _buildReplaySyncKey() {
+        const ch = this.chart;
+        const rs = ch?.replaySystem;
+        if (!rs?.isActive || !Array.isArray(ch.rawData) || !ch.rawData.length) return 'live';
+        const maxT = ch.rawData[ch.rawData.length - 1].t;
+        const playhead = typeof ch._getReplayPlayheadMs === 'function'
+            ? ch._getReplayPlayheadMs()
+            : rs.replayTimestamp;
+        return `${rs.currentIndex}|${ch.currentTimeframe}|${maxT}|${playhead}`;
+    }
+
+    _trimOverlayDataToPlayhead(data) {
+        const ch = this.chart;
+        if (!Array.isArray(data) || !data.length) return data;
+        if (typeof ch._trimBarOhlcToReplayPlayhead !== 'function') return data;
+        const rs = ch.replaySystem;
+        if (!rs?.isActive) return data;
+        const tf = ch.currentTimeframe || '1m';
+        const tfMs = typeof ch.parseTimeframe === 'function' ? ch.parseTimeframe(tf) : null;
+        const lastIdx = data.length - 1;
+        const trimmed = ch._trimBarOhlcToReplayPlayhead(data[lastIdx], data, lastIdx, tfMs);
+        if (trimmed === data[lastIdx]) return data;
+        const out = data.slice();
+        out[lastIdx] = trimmed;
+        return out;
+    }
+
+    /**
+     * Keep compare overlay series aligned with replay playhead — slice rawData like
+     * replay-system does for the main chart, then resample + trim the forming bar.
+     */
+    syncForReplay() {
+        const ch = this.chart;
+        if (!ch || !this.overlays.length) return;
+
+        const rs = ch.replaySystem;
+        const inReplay = !!(rs && rs.isActive && Array.isArray(ch.rawData) && ch.rawData.length);
+        const syncKey = inReplay ? this._buildReplaySyncKey() : 'live';
+        if (this._lastReplaySyncKey === syncKey) return;
+        this._lastReplaySyncKey = syncKey;
+
+        const tf = ch.currentTimeframe || '1m';
+
+        for (const overlay of this.overlays) {
+            if (!overlay.rawData?.length) continue;
+
+            if (inReplay) {
+                const maxT = ch.rawData[ch.rawData.length - 1].t;
+                const rawSlice = this._sliceRawToTimestamp(overlay.rawData, maxT);
+                const base = rawSlice.length ? rawSlice : overlay.rawData.slice(0, 1);
+                overlay.data = this.resampleData(base, tf);
+                overlay.data = this._trimOverlayDataToPlayhead(overlay.data);
+            } else {
+                overlay.data = this.resampleData(overlay.rawData, tf);
+            }
+        }
+
+        try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+    }
+
+    /**
+     * Update chart left margin based on visible overlays
+     * Called before chart draws to ensure correct spacing
+     */
+    updateLeftMargin() {
+        const layouts = this._buildOverlayAxisLayouts();
+        this._overlayAxisLayouts = layouts;
+        this.chart.margin.l = layouts.reduce((sum, row) => sum + row.axisWidth, 0);
+    }
+
+    /** Freeze compare overlay Y domains while chart-panning (same pattern as separate panels). */
+    snapshotPanDomains() {
+        const chart = this.chart;
+        if (!chart) return;
+        chart._overlaySnapDomains = {};
+        this.overlays.forEach(function(overlay) {
+            if (!overlay || overlay.visible === false) return;
+            if (overlay.yScale && typeof overlay.yScale.domain === 'function') {
+                const d = overlay.yScale.domain();
+                if (d && d.length === 2 && Number.isFinite(d[0]) && Number.isFinite(d[1]) && d[1] > d[0]) {
+                    chart._overlaySnapDomains[overlay.id] = { min: d[0], max: d[1] };
+                }
+            }
+        });
+    }
+    
+    /**
+     * Called during chart render to draw overlays
+     */
+    drawOverlays() {
+        const visibleOverlays = this.overlays.filter(o => o.visible);
+        if (visibleOverlays.length === 0) {
+            // Reset left margin and logo position when no overlays
+            this.chart.margin.l = 0;
+            if (typeof document !== 'undefined'
+                && document.documentElement
+                && document.documentElement.classList.contains('multichart-embed')) {
+                return;
+            }
+            const chartBrand = document.querySelector('.chart-brand');
+            if (chartBrand) {
+                chartBrand.style.left = '0px';
+            }
+            return;
+        }
+        
+        const ctx = this.chart.ctx;
+        const m = this.chart.margin;
+        const chartWidth = this.chart.w - m.l - m.r;
+        const plotLayout = typeof this.chart._getMainPricePlotLayout === 'function'
+            ? this.chart._getMainPricePlotLayout()
+            : null;
+        const priceHeight = plotLayout
+            ? plotLayout.plotHeight
+            : ((this.chart.h - m.t - m.b) - (this.chart.chartSettings?.showVolume ?
+                (this.chart.h - m.t - m.b) * this.chart.volumeHeight : 0));
+        
+        // Get main chart's visible range
+        const mainData = this.chart.data;
+        if (!mainData || mainData.length === 0) return;
+        
+        const candleSpacing = this.chart.getCandleSpacing();
+        const firstVisibleIndex = Math.floor(-this.chart.offsetX / candleSpacing);
+        const numVisibleCandles = Math.ceil(this.chart.w / candleSpacing);
+        const startIdx = Math.max(0, firstVisibleIndex);
+        const endIdx = Math.min(mainData.length, firstVisibleIndex + numVisibleCandles + 2);
+        
+        // Get visible time range from main chart
+        const visibleStartTime = mainData[startIdx]?.t;
+        const visibleEndTime = mainData[Math.min(endIdx, mainData.length - 1)]?.t;
+        
+        if (!visibleStartTime || !visibleEndTime) return;
+        
+        // Debug: log time ranges once
+        if (!this._debugLogged) {
+            console.log('📊 Main chart time range:', new Date(visibleStartTime), 'to', new Date(visibleEndTime));
+            this.overlays.forEach(o => {
+                if (o.data.length > 0) {
+                    console.log(`📊 Overlay ${o.symbol} time range:`, new Date(o.data[0].t), 'to', new Date(o.data[o.data.length-1].t));
+                }
+            });
+            this._debugLogged = true;
+        }
+        
+        // Set clipping region to keep overlays within chart area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(m.l, m.t, chartWidth, priceHeight);
+        ctx.clip();
+        
+        visibleOverlays.forEach((overlay, overlayIndex) => {
+            // Filter overlay data to visible time range
+            const overlayData = overlay.data.filter(d => 
+                d.t >= visibleStartTime && d.t <= visibleEndTime
+            );
+            
+            if (overlayData.length < 2) {
+                console.log(`📊 Overlay ${overlay.symbol}: only ${overlayData.length} candles in visible range`);
+                return;
+            }
+            
+            let minPrice;
+            let maxPrice;
+            const snap = this.chart._overlaySnapDomains && this.chart._overlaySnapDomains[overlay.id];
+            const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
+            if (panning && snap && Number.isFinite(snap.min) && Number.isFinite(snap.max) && snap.max > snap.min) {
+                minPrice = snap.min;
+                maxPrice = snap.max;
+            } else {
+                // Calculate Y scale for this overlay from full OHLC range.
+                // Using close-only can distort/clip candle wicks on higher timeframes.
+                minPrice = Infinity;
+                maxPrice = -Infinity;
+                overlayData.forEach(d => {
+                    const lo = Number.isFinite(d.l) ? d.l : d.c;
+                    const hi = Number.isFinite(d.h) ? d.h : d.c;
+                    if (lo < minPrice) minPrice = lo;
+                    if (hi > maxPrice) maxPrice = hi;
+                });
+                
+                let priceRange = maxPrice - minPrice || 1;
+                const padding = priceRange * 0.1;
+                minPrice -= padding;
+                maxPrice += padding;
+                
+                // Apply zoom and offset
+                const midPrice = (minPrice + maxPrice) / 2;
+                priceRange = (maxPrice - minPrice) / overlay.priceZoom;
+                minPrice = midPrice - priceRange / 2 + overlay.priceOffset;
+                maxPrice = midPrice + priceRange / 2 + overlay.priceOffset;
+            }
+            
+            // Create Y scale for overlay
+            const overlayYScale = (price) => {
+                return m.t + priceHeight - ((price - minPrice) / (maxPrice - minPrice)) * priceHeight;
+            };
+            
+            // Store scale info on overlay for drag operations
+            overlay.yScale = {
+                domain: () => [minPrice, maxPrice],
+                range: () => [m.t + priceHeight, m.t]
+            };
+            
+            // Draw based on display type
+            ctx.save();
+            const baseOp = overlay.opacity != null ? overlay.opacity : 1;
+            ctx.globalAlpha = baseOp * (overlay.timeframeLoading ? 0.5 : 1);
+            
+            if (overlay.displayType === 'candles') {
+                // Draw as candles with customizable colors
+                const candleWidth = Math.max(1, this.chart.candleWidth * 0.6);
+                
+                overlayData.forEach((candle, i) => {
+                    const mainIndex = this.findClosestIndex(mainData, candle.t, startIdx, endIdx);
+                    if (mainIndex === -1) return;
+                    
+                    // Use chart's dataIndexToPixel for smooth movement (includes offsetX)
+                    const x = Math.round(this.chart.dataIndexToPixel(mainIndex));
+                    const yOpen = Math.round(overlayYScale(candle.o));
+                    const yClose = Math.round(overlayYScale(candle.c));
+                    const yHigh = Math.round(overlayYScale(candle.h));
+                    const yLow = Math.round(overlayYScale(candle.l));
+                    
+                    const isBullish = candle.c >= candle.o;
+                    const bodyLeft = Math.round(x - candleWidth / 2);
+                    const bodyWidthRound = Math.round(candleWidth);
+                    
+                    // Draw wick
+                    if (overlay.showWick) {
+                        ctx.strokeStyle = isBullish ? overlay.wickUpColor : overlay.wickDownColor;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(x, yHigh);
+                        ctx.lineTo(x, yLow);
+                        ctx.stroke();
+                    }
+                    
+                    // Draw body
+                    const bodyTop = Math.min(yOpen, yClose);
+                    const bodyHeight = Math.abs(yClose - yOpen) || 1;
+                    
+                    if (overlay.showBody) {
+                        if (isBullish) {
+                            // Bullish candle - fill with up color
+                            ctx.fillStyle = overlay.bodyUpColor;
+                            ctx.fillRect(bodyLeft, bodyTop, bodyWidthRound, bodyHeight);
+                            if (overlay.showBorder) {
+                                ctx.strokeStyle = overlay.borderUpColor;
+                                ctx.lineWidth = 1;
+                                ctx.strokeRect(bodyLeft + 0.5, bodyTop + 0.5, bodyWidthRound - 1, bodyHeight - 1);
+                            }
+                        } else {
+                            // Bearish candle - fill with down color
+                            ctx.fillStyle = overlay.bodyDownColor;
+                            ctx.fillRect(bodyLeft, bodyTop, bodyWidthRound, bodyHeight);
+                            if (overlay.showBorder) {
+                                ctx.strokeStyle = overlay.borderDownColor;
+                                ctx.lineWidth = 1;
+                                ctx.strokeRect(bodyLeft + 0.5, bodyTop + 0.5, bodyWidthRound - 1, bodyHeight - 1);
+                            }
+                        }
+                    }
+                });
+            } else {
+                // Draw as line — one stroke per contiguous segment so skipped mappings
+                // (findClosestIndex === -1) never connect with a diagonal across the gap.
+                ctx.strokeStyle = overlay.color;
+                ctx.lineWidth = overlay.lineWidth;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                
+                const mapped = [];
+                let lastMi = -2;
+                let lastOverlayTime = null;
+                overlayData.forEach((candle) => {
+                    const mainIndex = this.findClosestIndex(mainData, candle.t, startIdx, endIdx);
+                    if (mainIndex === -1) {
+                        lastMi = -1;
+                        lastOverlayTime = null;
+                        return;
+                    }
+                    const x = Math.round(this.chart.dataIndexToPixel(mainIndex));
+                    const y = Math.round(overlayYScale(candle.c));
+                    const breakSeg = lastMi === -1
+                        || mainIndex < lastMi
+                        || this._shouldBreakCompareLineSegment(
+                            lastMi === -1 ? null : lastMi,
+                            lastOverlayTime,
+                            mainIndex,
+                            candle.t,
+                            mainData
+                        );
+                    mapped.push({ x, y, breakSeg });
+                    lastMi = mainIndex;
+                    lastOverlayTime = candle.t;
+                });
+                
+                let seg = [];
+                const flush = () => {
+                    if (seg.length === 0) return;
+                    ctx.beginPath();
+                    ctx.moveTo(seg[0].x, seg[0].y);
+                    for (let s = 1; s < seg.length; s++) ctx.lineTo(seg[s].x, seg[s].y);
+                    ctx.stroke();
+                    seg = [];
+                };
+                mapped.forEach((pt) => {
+                    if (pt.breakSeg && seg.length) flush();
+                    seg.push(pt);
+                });
+                flush();
+            }
+            
+            ctx.restore();
+        });
+        
+        // Restore after clipping - now draw Y-axes OUTSIDE clip region
+        ctx.restore();
+        
+        // Draw overlay Y-axes and info after clipping is removed
+        const axisLayouts = this._overlayAxisLayouts && this._overlayAxisLayouts.length
+            ? this._overlayAxisLayouts
+            : this._buildOverlayAxisLayouts();
+        axisLayouts.forEach((layout) => {
+            if (!layout.yScale) return;
+            this.drawOverlayYAxis(layout);
+            this.drawOverlayInfo(layout.overlay, null, 0);
+        });
+    }
+    
+    /**
+     * Same 3-dot pulse as chart.js `_showTimeframeLoadingIndicator` (keyframes id shared).
+     */
+    _compareLegendLoadingDotsHtml() {
+        if (!document.getElementById('tf-loading-dots-style')) {
+            const styleEl = document.createElement('style');
+            styleEl.id = 'tf-loading-dots-style';
+            styleEl.textContent = '@keyframes tfLoadingDotPulse {'
+                + '0%,80%,100% { opacity: 0.25; transform: scale(0.7); }'
+                + '40% { opacity: 1; transform: scale(1.15); }'
+                + '}';
+            document.head.appendChild(styleEl);
+        }
+        const dotCss = [
+            'width:5px',
+            'height:5px',
+            'border-radius:50%',
+            'background:#9598a1',
+            'display:inline-block',
+            'animation:tfLoadingDotPulse 1.1s ease-in-out infinite'
+        ].join(';');
+        const label = '<span style="color:#787b86;font-size:11px;font-weight:500;margin-right:4px;white-space:nowrap">Updating</span>';
+        return label + '<span style="display:inline-flex;align-items:center;gap:4px;line-height:1" aria-label="Loading compare data">'
+            + '<span style="' + dotCss + ';animation-delay:0s"></span>'
+            + '<span style="' + dotCss + ';animation-delay:0.18s"></span>'
+            + '<span style="' + dotCss + ';animation-delay:0.36s"></span>'
+            + '</span>';
+    }
+
+    /**
+     * Called from chart.js when main timeframe data is committed and the freeze lifts.
+     * Refreshes compare legend so OHLC appears in lockstep with the main symbol row.
+     */
+    onMainChartTimeframeReady() {
+        try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+        const ch = this.chart;
+        if (ch && typeof ch.render === 'function') {
+            try { ch.render(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    _clearOverlayTimeframeLoadingFlags() {
+        this.overlays.forEach((o) => { o.timeframeLoading = false; });
+    }
+
+    /**
+     * Drop compare TF loading only after the main chart leaves `_timeframeSwitching`
+     * (render() is a no-op while frozen — clearing early made compare OHLC appear
+     * while the main row still showed loading dots).
+     */
+    _finishCompareTimeframeLoading(chart) {
+        const ch = chart || this.chart;
+        if (!ch) {
+            this._clearOverlayTimeframeLoadingFlags();
+            try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+            return;
+        }
+        const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+        const maxWaitMs = 90000;
+        const step = () => {
+            const timedOut = (typeof performance !== 'undefined' && performance.now)
+                ? (performance.now() - t0 > maxWaitMs)
+                : false;
+            if (ch._timeframeSwitching && !timedOut) {
+                requestAnimationFrame(step);
+                return;
+            }
+            this._clearOverlayTimeframeLoadingFlags();
+            try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+            try { if (typeof ch.render === 'function') ch.render(); } catch (_) { /* ignore */ }
+        };
+        requestAnimationFrame(step);
+    }
+
+    drawOverlayInfo(overlay, overlayData, index) {
+        // Use HTML overlay legend instead of canvas drawing
+        this.updateOverlayLegend();
+    }
+    
+    updateOverlayLegend() {
+        let legend = document.getElementById('overlayLegendContainer');
+        const panelHost = (typeof this.chart._getPanelOverlayContainer === 'function')
+            ? this.chart._getPanelOverlayContainer()
+            : (this.chart?.canvas?.closest('.chart-panel') || null);
+        const inlineHost = panelHost
+            ? panelHost.querySelector('.ohlc-indicators')
+            : document.getElementById('ohlcIndicators');
+        const currencyToCountry = (ccy) => {
+            const map = {
+                USD: 'us', EUR: 'eu', GBP: 'gb', JPY: 'jp', AUD: 'au', NZD: 'nz',
+                CAD: 'ca', CHF: 'ch', SEK: 'se', NOK: 'no', DKK: 'dk', SGD: 'sg',
+                HKD: 'hk', CNY: 'cn', CNH: 'cn', INR: 'in', ZAR: 'za', MXN: 'mx',
+                BRL: 'br', TRY: 'tr', PLN: 'pl', HUF: 'hu', CZK: 'cz', RUB: 'ru',
+                KRW: 'kr', TWD: 'tw', THB: 'th', MYR: 'my', PHP: 'ph', IDR: 'id',
+                ILS: 'il', CLP: 'cl', COP: 'co', PEN: 'pe', ARS: 'ar', RON: 'ro',
+                BGN: 'bg', HRK: 'hr', ISK: 'is', RSD: 'rs', UAH: 'ua', KES: 'ke',
+                NGN: 'ng', EGP: 'eg', SAR: 'sa', AED: 'ae', QAR: 'qa', KWD: 'kw',
+                BHD: 'bh', OMR: 'om', JOD: 'jo'
+            };
+            return map[(ccy || '').toUpperCase()] || null;
+        };
+        // ---------------------------------------------------------------
+        // Symbol-icon builder for the compare-overlay legend. Produces an
+        // 18-px circular asset-class badge for every ticker the platform
+        // knows about so the legend matches the chart header / dropdown:
+        //   FX pair  → two overlapping country flags (classic forex look)
+        //   crypto   → coin logo from CoinCap (orange gradient fallback)
+        //   futures  → blue gradient circle + root (ES, NQ, CL…)
+        //   stock    → green gradient circle + ticker (AAPL, MSFT…)
+        // ---------------------------------------------------------------
+        const detectAssetClass = (symbol) => {
+            try {
+                const MCE = (typeof window !== 'undefined') ? window.MarketCalculationEngine : null;
+                if (MCE && typeof MCE.detectMarketType === 'function') {
+                    const t = MCE.detectMarketType(symbol);
+                    if (t === 'forex')   return 'fx';
+                    if (t === 'crypto')  return 'crypto';
+                    if (t === 'futures') return 'futures';
+                    if (t === 'stocks')  return 'stock';
+                }
+            } catch (_) { /* fallthrough */ }
+            return null;
+        };
+        const singleCircle = (inner, gradient) => `
+            <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
+                <span style="position:absolute;left:5px;top:0;width:18px;height:18px;border-radius:50%;background:${gradient};border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:8px;letter-spacing:-0.3px;overflow:hidden">${inner}</span>
+            </span>
+        `;
+        const buildOverlayPairFlags = (symbol) => {
+            const raw = String(symbol || '');
+            const clean = raw.replace(/[\s\-_\/\.]/g, '').toUpperCase();
+            const cls = detectAssetClass(raw);
+
+            // Crypto: coin logo on CoinCap, gradient badge behind.
+            if (cls === 'crypto') {
+                const base = clean.replace(/USDT$|USDC$|BUSD$|DAI$|TUSD$|USD$|EUR$|GBP$|PERP$/i, '') || clean;
+                const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
+                const inner = `<span style="position:relative;z-index:1">${base.slice(0,3)}</span><img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;z-index:2" onerror="this.style.display='none'" />`;
+                return singleCircle(inner, 'linear-gradient(135deg,#f7931a,#ffb347)');
+            }
+            if (cls === 'futures') {
+                const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
+                return singleCircle(root, 'linear-gradient(135deg,#3b82f6,#6366f1)');
+            }
+            if (cls === 'stock') {
+                const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
+                return singleCircle(sym, 'linear-gradient(135deg,#10b981,#14b8a6)');
+            }
+
+            // FX pair path (unchanged): two overlapping country flags.
+            if (clean.length < 6) return '';
+            const base = clean.slice(0, 3);
+            const quote = clean.slice(3, 6);
+            const baseCC = currencyToCountry(base);
+            const quoteCC = currencyToCountry(quote);
+            if (!baseCC || !quoteCC) return '';
+            const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
+            const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+            return `
+                <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
+                    <img src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
+                    <img src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:10px;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
+                </span>
+            `;
+        };
+        
+        if (!legend) {
+            legend = document.createElement('div');
+            legend.id = 'overlayLegendContainer';
+            legend.className = 'overlay-legend-inline';
+        }
+
+        // Keep compare overlay symbols inside OHLC body so collapse/hide controls include them.
+        if (inlineHost) {
+            if (legend.parentElement !== inlineHost) inlineHost.appendChild(legend);
+            legend.style.cssText = `
+                position: static;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                margin-top: 2px;
+                z-index: 2;
+                pointer-events: auto;
+            `;
+            legend.dataset.inline = '1';
+        } else if (!legend.parentElement) {
+            // Fallback for unexpected layouts
+            legend.style.cssText = `
+                position: absolute;
+                top: 52px;
+                left: 10px;
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                z-index: 100;
+                pointer-events: auto;
+            `;
+            this.chart.canvas.parentElement.appendChild(legend);
+            legend.dataset.inline = '0';
+        }
+        
+        // Clear and rebuild
+        legend.innerHTML = '';
+        
+        // Show ALL overlays (not just visible ones) so we can toggle visibility
+        this.overlays.forEach((overlay, index) => {
+            const latestCandle = overlay.data && overlay.data.length
+                ? overlay.data[overlay.data.length - 1]
+                : null;
+            const showLoading = !!overlay.timeframeLoading || !latestCandle;
+            
+            let decimals = 5;
+            let isBullish = true;
+            let changeColor = '#26a69a';
+            if (!showLoading && latestCandle) {
+                decimals = typeof this.chart.getPriceDecimalsForSymbol === 'function'
+                    ? this.chart.getPriceDecimalsForSymbol(overlay.symbol, latestCandle.h - latestCandle.l, { data: overlay.data })
+                    : (typeof this.chart._decimalsFromPriceRangeHeuristic === 'function'
+                        ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(latestCandle.h - latestCandle.l) || 0))
+                        : 5);
+                isBullish = latestCandle.c >= latestCandle.o;
+                changeColor = isBullish ? '#26a69a' : '#ef5350';
+            }
+            const isHidden = !overlay.visible;
+            const pairFlags = buildOverlayPairFlags(overlay.symbol);
+            
+            const ohlcStatsHtml = showLoading
+                ? this._compareLegendLoadingDotsHtml()
+                : `
+                <span style="color: #787b86;">O</span>
+                <span style="color: ${changeColor};">${latestCandle.o.toFixed(decimals)}</span>
+                <span style="color: #787b86;">H</span>
+                <span style="color: ${changeColor};">${latestCandle.h.toFixed(decimals)}</span>
+                <span style="color: #787b86;">L</span>
+                <span style="color: ${changeColor};">${latestCandle.l.toFixed(decimals)}</span>
+                <span style="color: #787b86;">C</span>
+                <span style="color: ${changeColor};">${latestCandle.c.toFixed(decimals)}</span>
+            `;
+            
+            const row = document.createElement('div');
+            row.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-family: Roboto, sans-serif;
+                font-size: 12px;
+            `;
+            
+            const iconBtnStyle = `
+                background: none;
+                border: none;
+                color: #787b86;
+                cursor:default;
+                padding: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 4px;
+                transition: all 0.15s;
+            `;
+            
+            // Eye icon - different for visible/hidden
+            const eyeIcon = isHidden ? `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+            ` : `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+            `;
+            
+            const isSelected = this.selectedOverlay === overlay.id;
+            
+            row.innerHTML = `
+                <div class="overlay-legend-row" data-overlay-id="${overlay.id}" style="
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 2px 0;
+                    opacity: ${isHidden ? '0.5' : '1'};
+                    cursor:default;
+                ">
+                    ${pairFlags || `<span style="
+                        width: 10px;
+                        height: 10px;
+                        background: ${overlay.color};
+                        border-radius: 2px;
+                        ${isSelected ? 'box-shadow: 0 0 0 2px #2962ff;' : ''}
+                    "></span>`}
+                    <span style="color: ${overlay.color}; font-weight: 500;">${overlay.symbol}</span>
+                    ${isSelected ? '<span style="color: #2962ff; font-size: 10px;">↕</span>' : ''}
+                    <button class="overlay-visibility-btn" data-id="${overlay.id}" title="${isHidden ? 'Show' : 'Hide'}" style="${iconBtnStyle}">
+                        ${eyeIcon}
+                    </button>
+                    <button class="overlay-settings-btn" data-id="${overlay.id}" title="Settings" style="${iconBtnStyle}">
+                        ${COMPARE_SETTINGS_ICON_SVG}
+                    </button>
+                    <button class="overlay-delete-btn" data-id="${overlay.id}" title="Delete" style="${iconBtnStyle}">
+                        ${COMPARE_TRASH_ICON_SVG}
+                    </button>
+                </div>
+                ${ohlcStatsHtml}
+            `;
+            
+            // Add hover effects
+            row.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('mouseenter', () => btn.style.color = '#d1d4dc');
+                btn.addEventListener('mouseleave', () => btn.style.color = '#787b86');
+            });
+            
+            // Visibility button
+            const visibilityBtn = row.querySelector('.overlay-visibility-btn');
+            visibilityBtn.addEventListener('click', () => {
+                this.toggleVisibility(overlay.id);
+            });
+            
+            // Settings button - open settings popup
+            const settingsBtn = row.querySelector('.overlay-settings-btn');
+            settingsBtn.addEventListener('click', () => {
+                this.openSettingsPopup(overlay.id);
+            });
+            
+            // Delete button
+            const deleteBtn = row.querySelector('.overlay-delete-btn');
+            deleteBtn.addEventListener('click', () => {
+                this.removeOverlay(overlay.id);
+            });
+            
+            // Click on row to select/deselect for moving
+            const legendRow = row.querySelector('.overlay-legend-row');
+            legendRow.addEventListener('click', (e) => {
+                // Don't select if clicking a button
+                if (e.target.closest('button')) return;
+                
+                // Toggle selection
+                if (this.selectedOverlay === overlay.id) {
+                    this.selectedOverlay = null;
+                } else {
+                    this.selectedOverlay = overlay.id;
+                }
+                this.updateOverlayLegend();
+            });
+            
+            legend.appendChild(row);
+        });
+        
+        // Hide legend if no overlays at all
+        legend.style.display = this.overlays.length > 0 ? 'flex' : 'none';
+        
+        // Update positions to avoid overlap with Y-axes
+        this.updateInfoPositions();
+    }
+    
+    updateInfoPositions() {
+        const layouts = this._overlayAxisLayouts && this._overlayAxisLayouts.length
+            ? this._overlayAxisLayouts
+            : this._buildOverlayAxisLayouts();
+        const leftMargin = layouts.reduce((sum, row) => sum + row.axisWidth, 0);
+        const baseLeft = 10;
+        const leftOffset = baseLeft + leftMargin;
+
+        this.chart.margin.l = leftMargin;
+
+        const ohlcInfo = document.getElementById('ohlcInfo');
+        if (ohlcInfo) {
+            ohlcInfo.style.left = leftOffset + 'px';
+        }
+
+        const legend = document.getElementById('overlayLegendContainer');
+        if (legend && legend.dataset.inline !== '1') {
+            legend.style.left = leftOffset + 'px';
+        }
+
+        const chartBrand = document.querySelector('.chart-brand');
+        if (chartBrand
+            && !(typeof document !== 'undefined'
+                && document.documentElement
+                && document.documentElement.classList.contains('multichart-embed'))) {
+            chartBrand.style.left = leftMargin + 'px';
+        }
+    }
+    
+    /** Max bar spacing before compare line breaks (weekends, session holes, missing candles). */
+    _getCompareLineGapThresholdMs() {
+        const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
+        let tfMs = 60 * 1000;
+        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const parsed = this.chart.parseTimeframe(tfKey);
+            if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
+        } else {
+            tfMs = this.getTimeframeDuration(tfKey);
+        }
+        return tfMs * 1.51;
+    }
+
+    /**
+     * True when the next compare point must start a new polyline (no diagonal across a gap).
+     */
+    _shouldBreakCompareLineSegment(prevMainIndex, prevOverlayTime, mainIndex, overlayTime, mainData) {
+        if (prevMainIndex == null || prevMainIndex < 0) return false;
+        if (mainIndex < 0) return true;
+        if (mainIndex < prevMainIndex) return true;
+        if (mainIndex - prevMainIndex > 1) return true;
+
+        const gapMs = this._getCompareLineGapThresholdMs();
+
+        if (Number.isFinite(prevOverlayTime) && Number.isFinite(overlayTime)) {
+            if (overlayTime - prevOverlayTime > gapMs) return true;
+        }
+
+        if (mainData && prevMainIndex >= 0 && mainIndex > prevMainIndex) {
+            const t0 = mainData[prevMainIndex]?.t;
+            const t1 = mainData[mainIndex]?.t;
+            if (Number.isFinite(t0) && Number.isFinite(t1) && t1 - t0 > gapMs) return true;
+        }
+
+        return false;
+    }
+
+    findClosestIndex(data, timestamp, startIdx, endIdx) {
+        let closestIdx = -1;
+        let minDiff = Infinity;
+        
+        for (let i = startIdx; i < endIdx && i < data.length; i++) {
+            const diff = Math.abs(data[i].t - timestamp);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestIdx = i;
+            }
+        }
+        
+        // Only map when the overlay bar time is within ~half a main candle of a bar.
+        // Must use the same TF duration as chart.resampleData() (parseTimeframe), not a
+        // hard-coded map — unknown/custom TFs (e.g. 3m) defaulted to 1m here and caused
+        // mass rejections + stray diagonals across "gaps" when points were skipped.
+        const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
+        let tfMs = 60 * 1000;
+        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const parsed = this.chart.parseTimeframe(tfKey);
+            if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
+        } else {
+            tfMs = this.getTimeframeDuration(tfKey);
+        }
+        const maxDiff = tfMs / 2;
+        
+        return minDiff <= maxDiff ? closestIdx : -1;
+    }
+    
+    getTimeframeDuration(timeframe) {
+        const tf = String(timeframe || '').toLowerCase().trim();
+        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const ms = this.chart.parseTimeframe(tf);
+            if (Number.isFinite(ms) && ms > 0) return ms;
+        }
+        const durations = {
+            '1m': 60 * 1000,
+            '5m': 5 * 60 * 1000,
+            '15m': 15 * 60 * 1000,
+            '30m': 30 * 60 * 1000,
+            '1h': 60 * 60 * 1000,
+            '4h': 4 * 60 * 60 * 1000,
+            '1d': 24 * 60 * 60 * 1000,
+            '1w': 7 * 24 * 60 * 60 * 1000,
+            '1mo': 30 * 24 * 60 * 60 * 1000
+        };
+        return durations[tf] || 60 * 1000;
+    }
+    
+    drawOverlayYAxis(layout) {
+        const overlay = layout.overlay;
+        const minPrice = layout.minPrice;
+        const maxPrice = layout.maxPrice;
+        const priceHeight = layout.priceHeight;
+        const yScale = layout.yScale;
+        const axisX = layout.axisX;
+        const axisWidth = layout.axisWidth;
+
+        const ctx = this.chart.ctx;
+        const m = this.chart.margin;
+        const cs = this.chart.chartSettings || {};
+        const axisMidX = axisX + axisWidth / 2;
+
+        ctx.save();
+
+        ctx.fillStyle = cs.backgroundColor || '#131722';
+        ctx.fillRect(axisX, m.t, axisWidth, priceHeight);
+
+        const scaleLineColor = cs.scaleLinesColor ?? cs.scaleLineColor ?? '#e0e3eb';
+        const scaleLineWidth = Math.max(1, parseInt(cs.scaleLineWidth, 10) || 2);
+        const scaleLinePattern = cs.scaleLinePattern || 'solid';
+        const applyScaleLineStyle = () => {
+            ctx.strokeStyle = scaleLineColor;
+            ctx.lineWidth = scaleLineWidth;
+            if (scaleLinePattern === 'dashed') {
+                ctx.setLineDash([6, 4]);
+            } else if (scaleLinePattern === 'dotted') {
+                ctx.setLineDash([2, 4]);
+            } else {
+                ctx.setLineDash([]);
+            }
+        };
+
+        applyScaleLineStyle();
+        ctx.beginPath();
+        ctx.moveTo(axisX + axisWidth, m.t);
+        ctx.lineTo(axisX + axisWidth, m.t + priceHeight);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const numYTicks = Math.max(8, Math.min(15, Math.floor(priceHeight / 60)));
+        const priceRange = maxPrice - minPrice;
+        const decimals = typeof this.chart.getPriceDecimalsForSymbol === 'function'
+            ? this.chart.getPriceDecimalsForSymbol(overlay.symbol, priceRange, { data: overlay.data })
+            : (typeof this.chart._decimalsFromPriceRangeHeuristic === 'function'
+                ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0))
+                : 5);
+
+        const ticks = typeof this.chart._getYPriceTicksForDomain === 'function'
+            ? this.chart._getYPriceTicksForDomain(minPrice, maxPrice, numYTicks, overlay.symbol, { data: overlay.data })
+            : this.generateNiceTicks(minPrice, maxPrice, numYTicks);
+
+        const scaleTextSize = cs.scaleTextSize || 12;
+        const scaleFont = `${scaleTextSize}px Roboto`;
+        const axisTextColor = typeof this.chart.resolveAxisTextColor === 'function'
+            ? this.chart.resolveAxisTextColor(cs.scaleTextColor, cs.backgroundColor)
+            : (cs.scaleTextColor || '#787b86');
+
+        ctx.font = scaleFont;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+
+        ticks.forEach(price => {
+            const y = yScale(price);
+
+            if (y <= m.t + 8 || y >= m.t + priceHeight - 8) return;
+
+            applyScaleLineStyle();
+            ctx.beginPath();
+            ctx.moveTo(axisX + axisWidth - 5, y);
+            ctx.lineTo(axisX + axisWidth, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = axisTextColor;
+            ctx.font = scaleFont;
+            ctx.fillText(price.toFixed(decimals), axisMidX, y + 4);
+        });
+
+        if (overlay.showPriceLine) {
+            const latestCandle = overlay.data[overlay.data.length - 1];
+            if (latestCandle && yScale) {
+                const currentPrice = latestCandle.c;
+                const currentY = yScale(currentPrice);
+
+                if (currentY >= m.t && currentY <= m.t + priceHeight) {
+                    const priceStr = Number(currentPrice).toFixed(decimals);
+                    const bgColor = overlay.color || this.chart.chartSettings?.priceLineColor || '#787B86';
+                    const labelWidth = axisWidth - 4;
+                    const labelX = axisX + 2;
+                    const radius = 2;
+                    const priceHeightPx = 20;
+                    const labelY = currentY - priceHeightPx / 2;
+
+                    ctx.fillStyle = bgColor;
+                    ctx.beginPath();
+                    ctx.moveTo(labelX + radius, labelY);
+                    ctx.lineTo(labelX + labelWidth - radius, labelY);
+                    ctx.arcTo(labelX + labelWidth, labelY, labelX + labelWidth, labelY + radius, radius);
+                    ctx.lineTo(labelX + labelWidth, labelY + priceHeightPx - radius);
+                    ctx.arcTo(labelX + labelWidth, labelY + priceHeightPx, labelX + labelWidth - radius, labelY + priceHeightPx, radius);
+                    ctx.lineTo(labelX + radius, labelY + priceHeightPx);
+                    ctx.arcTo(labelX, labelY + priceHeightPx, labelX, labelY + priceHeightPx - radius, radius);
+                    ctx.lineTo(labelX, labelY + radius);
+                    ctx.arcTo(labelX, labelY, labelX + radius, labelY, radius);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    const labelTextColor = typeof this.chart.isLightColor === 'function' && this.chart.isLightColor(bgColor)
+                        ? '#111111'
+                        : '#FFFFFF';
+                    ctx.fillStyle = labelTextColor;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = `500 ${scaleTextSize}px Roboto`;
+                    ctx.fillText(priceStr, labelX + labelWidth / 2, labelY + priceHeightPx / 2);
+
+                    ctx.strokeStyle = overlay.color;
+                    ctx.globalAlpha = 0.4;
+                    ctx.setLineDash([4, 4]);
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(axisX + axisWidth, currentY);
+                    ctx.lineTo(this.chart.w - m.r, currentY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.globalAlpha = 1;
+                }
+            }
+        }
+
+        ctx.restore();
+    }
+    
+    generateNiceTicks(min, max, count) {
+        // Generate nice round tick values similar to d3.ticks
+        const range = max - min;
+        if (range <= 0) return [min];
+        
+        // Calculate step size for nice round numbers
+        const rawStep = range / count;
+        const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+        const residual = rawStep / magnitude;
+        
+        let niceStep;
+        if (residual >= 5) niceStep = 10 * magnitude;
+        else if (residual >= 2) niceStep = 5 * magnitude;
+        else if (residual >= 1) niceStep = 2 * magnitude;
+        else niceStep = magnitude;
+        
+        // Generate ticks
+        const ticks = [];
+        const start = Math.ceil(min / niceStep) * niceStep;
+        const end = Math.floor(max / niceStep) * niceStep;
+        
+        for (let tick = start; tick <= end; tick += niceStep) {
+            // Avoid floating point issues
+            const roundedTick = Math.round(tick * 1e10) / 1e10;
+            ticks.push(roundedTick);
+        }
+        
+        return ticks;
+    }
+    
+    darkenColor(color, factor) {
+        // Convert hex to RGB
+        let hex = color.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(c => c + c).join('');
+        }
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        
+        // Darken
+        const dr = Math.round(r * factor);
+        const dg = Math.round(g * factor);
+        const db = Math.round(b * factor);
+        
+        return `rgb(${dr}, ${dg}, ${db})`;
+    }
+    
+    formatPrice(price) {
+        if (!isFinite(price)) return '—';
+        const abs = Math.abs(price);
+        let decimals;
+        if (abs >= 1000) {
+            decimals = 2;
+        } else if (abs >= 1) {
+            decimals = 4;
+        } else {
+            decimals = 5;
+        }
+        return price.toFixed(decimals);
+    }
+    
+    /**
+     * Refresh overlays when timeframe changes. When switching to a **finer** TF than
+     * the data we have in rawData, re-fetch /smart at the new TF (same as primary chart
+     * refetch) — client-side resample cannot invent intrabar detail from coarse-only raw.
+     */
+    refreshForTimeframe(timeframe) {
+        const ch = this.chart;
+        if (!ch) return;
+        const parseMs = (tf) => this._parseTimeframeMs(tf);
+        const newMs = parseMs(timeframe);
+
+        // Keep compare rows visible with the same 3-dot loading affordance as the main OHLC bar.
+        this.overlays.forEach((overlay) => {
+            overlay.timeframeLoading = true;
+        });
+        this.updateOverlayLegend();
+
+        // Resample synchronously first so overlay.data matches the new chart TF immediately.
+        // If we only updated inside the async /smart refetch, main.data could already be on
+        // the new TF while overlay.data stayed on the old aggregation — findClosestIndex would
+        // miss and the compare line would not draw until the fetch finished (or never, if it failed).
+        for (const overlay of this.overlays) {
+            overlay.data = this.resampleData(overlay.rawData || [], timeframe);
+        }
+        this._lastReplaySyncKey = null;
+        this.syncForReplay();
+        if (Array.isArray(this.linkedPanes)) {
+            this.linkedPanes.forEach((pane) => {
+                pane.data = this.resampleData(pane.rawData || [], timeframe);
+                this.calculateLinkedPaneScale(pane);
+            });
+            this.renderLinkedPanes();
+        }
+        if (typeof ch.render === 'function') {
+            try { ch.render(); } catch (_) { /* ignore */ }
+        }
+
+        (async () => {
+            try {
+                // Wait until main chart finishes TF switch before hitting /smart (cache may already have bars).
+                const ch = this.chart;
+                if (ch && ch._timeframeSwitching) {
+                    await new Promise((resolve) => {
+                        const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+                        const step = () => {
+                            const timedOut = (typeof performance !== 'undefined' && performance.now)
+                                ? (performance.now() - t0 > 90000)
+                                : false;
+                            if (!ch._timeframeSwitching || timedOut) resolve();
+                            else requestAnimationFrame(step);
+                        };
+                        requestAnimationFrame(step);
+                    });
+                }
+                for (const overlay of this.overlays) {
+                    const nativeMs = Number.isFinite(overlay.nativeBarMs)
+                        ? overlay.nativeBarMs
+                        : (overlay.rawFetchTf ? parseMs(overlay.rawFetchTf) : this._inferMedianBarPeriodMs(overlay.rawData));
+                    const needRefetch = !!overlay.fileId
+                        && Number.isFinite(newMs)
+                        && Number.isFinite(nativeMs)
+                        && newMs < nativeMs * 0.92;
+                    if (needRefetch) {
+                        const cachedRows = this._getOverlayBarsFromChartTfCache(overlay.fileId, timeframe);
+                        let rows = cachedRows && cachedRows.length
+                            ? cachedRows
+                            : await this._fetchOverlayBarsViaSmart(overlay.fileId, timeframe);
+                        if (!rows.length) {
+                            try {
+                                rows = await this._fetchOverlayBarsLegacyCsv(overlay.fileId);
+                            } catch (_) {
+                                rows = [];
+                            }
+                        }
+                        if (Array.isArray(rows) && rows.length) {
+                            overlay.rawData = rows;
+                            overlay.rawFetchTf = timeframe;
+                            overlay.nativeBarMs = parseMs(timeframe) || this._inferMedianBarPeriodMs(rows);
+                            overlay.data = this.resampleData(overlay.rawData, timeframe);
+                        }
+                    }
+                }
+                if (Array.isArray(this.linkedPanes)) {
+                    for (const pane of this.linkedPanes) {
+                        const nativeMs = Number.isFinite(pane.nativeBarMs)
+                            ? pane.nativeBarMs
+                            : (pane.rawFetchTf ? parseMs(pane.rawFetchTf) : this._inferMedianBarPeriodMs(pane.rawData));
+                        const needRefetch = !!pane.fileId
+                            && Number.isFinite(newMs)
+                            && Number.isFinite(nativeMs)
+                            && newMs < nativeMs * 0.92;
+                        if (needRefetch) {
+                            const cachedPaneRows = this._getOverlayBarsFromChartTfCache(pane.fileId, timeframe);
+                            let rows = cachedPaneRows && cachedPaneRows.length
+                                ? cachedPaneRows
+                                : await this._fetchOverlayBarsViaSmart(pane.fileId, timeframe);
+                            if (!rows.length) {
+                                try {
+                                    rows = await this._fetchOverlayBarsLegacyCsv(pane.fileId);
+                                } catch (_) {
+                                    rows = [];
+                                }
+                            }
+                            if (Array.isArray(rows) && rows.length) {
+                                pane.rawData = rows;
+                                pane.rawFetchTf = timeframe;
+                                pane.nativeBarMs = parseMs(timeframe) || this._inferMedianBarPeriodMs(rows);
+                                pane.data = this.resampleData(pane.rawData, timeframe);
+                                this.calculateLinkedPaneScale(pane);
+                            }
+                        }
+                    }
+                    this.renderLinkedPanes();
+                }
+            } catch (e) {
+                console.warn('📊 refreshForTimeframe:', e && e.message ? e.message : e);
+            } finally {
+                this._finishCompareTimeframeLoading(ch);
+            }
+        })();
+    }
+    
+    /**
+     * Clear all overlays
+     */
+    clearAll() {
+        this.overlays = [];
+        this.colorIndex = 0;
+        this.updateCompareButton();
+        this.updateLegend();
+        this.chart.render();
+    }
+}
+
+// Export for use
+window.CompareOverlay = CompareOverlay;

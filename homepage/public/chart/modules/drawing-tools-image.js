@@ -1,0 +1,668 @@
+/**
+ * Drawing Tools - Image Module
+ * Provides a single-point drawing that renders uploaded images.
+ * Supports resizing via corner handles and scales with chart zoom.
+ */
+
+/** Default on-screen size (px) used to seed data-unit sizing — matches placeholder box, larger than legacy 100×100. */
+const IMAGE_TOOL_DEFAULT_WIDTH = 200;
+const IMAGE_TOOL_DEFAULT_HEIGHT = 150;
+
+class ImageTool extends BaseDrawing {
+    constructor(points = [], options = {}) {
+        const resolved = ImageTool.resolveOptions(options);
+        super('image', points, resolved);
+        this.requiredPoints = 1;
+        this.ensureDefaults();
+        this._dragStartSize = null;
+        this._dragStartCenter = null;
+    }
+
+    static resolveOptions(options = {}) {
+        const imageUrl = options.imageUrl || '';
+        const width = options.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        const height = options.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        const opacity = options.opacity != null ? options.opacity : 1;
+        const widthInDataUnits = options.widthInDataUnits || null;
+        const heightInDataUnits = options.heightInDataUnits || null;
+        const maintainAspectRatio = options.maintainAspectRatio === true;
+        const originalAspectRatio = options.originalAspectRatio || null;
+
+        return {
+            stroke: 'none',
+            strokeWidth: 0,
+            fill: 'none',
+            opacity,
+            imageUrl,
+            width,
+            height,
+            widthInDataUnits,
+            heightInDataUnits,
+            maintainAspectRatio,
+            originalAspectRatio
+        };
+    }
+
+    ensureDefaults() {
+        if (!this.style.imageUrl) this.style.imageUrl = '';
+        if (!this.style.width) this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+        if (!this.style.height) this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+        if (typeof this.style.opacity !== 'number') this.style.opacity = 1;
+        if (typeof this.style.maintainAspectRatio !== 'boolean') {
+            this.style.maintainAspectRatio = false;
+        }
+        // Free resize is the default — legacy drawings saved with aspect lock still stretch freely.
+        this.style.maintainAspectRatio = false;
+        if (!this.style.originalAspectRatio) this.style.originalAspectRatio = null;
+    }
+
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
+        if (this.points.length < 1) {
+            return;
+        }
+
+        const point = this.points[0];
+        const isPlaceholder = !this.style.imageUrl;
+
+        let x, y;
+        let width = this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        let height = this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+
+        if (isPlaceholder) {
+            // Position from anchor — placed at click position
+            x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x);
+            y = scales.yScale(point.y);
+            // Fixed pixel size — does not scale with zoom
+            width = IMAGE_TOOL_DEFAULT_WIDTH;
+            height = IMAGE_TOOL_DEFAULT_HEIGHT;
+            // Do NOT set widthInDataUnits — image render will initialise it after upload
+        } else {
+            x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x);
+            y = scales.yScale(point.y);
+
+            // Initialize size in data units on first render
+            if (!this.style.widthInDataUnits && scales.xScale && scales.yScale) {
+                const xDataAtOffset = scales.chart && scales.chart.pixelToDataIndex ?
+                    scales.chart.pixelToDataIndex(x + width) : scales.xScale.invert(x + width);
+                const yDataAtOffset = scales.yScale.invert(y + height);
+                this.style.widthInDataUnits = Math.abs(point.x - xDataAtOffset);
+                this.style.heightInDataUnits = Math.abs(point.y - yDataAtOffset);
+            }
+
+            // Calculate size from data units (scales with chart zoom)
+            if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
+                const x2 = point.x + this.style.widthInDataUnits;
+                const y2 = point.y - this.style.heightInDataUnits;
+                const x2Pixel = scales.chart && scales.chart.dataIndexToPixel ?
+                    scales.chart.dataIndexToPixel(x2) : scales.xScale(x2);
+                const y2Pixel = scales.yScale(y2);
+                width = Math.max(10, Math.min(1500, Math.abs(x2Pixel - x)));
+                height = Math.max(10, Math.min(1500, Math.abs(y2Pixel - y)));
+            }
+        }
+
+        this._screenX = x;
+        this._screenY = y;
+        this._scales = scales;
+
+        this._prepareRenderGroup(container, 'drawing image-tool', renderOpts);
+        this._clearDrawingLabels(scales);
+        // Match emoji tool: anchor at absolute pixel coords — group transform is only for drag offset.
+        this.group
+            .attr('transform', null)
+            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+
+        const halfW = width / 2;
+        const halfH = height / 2;
+        const left = x - halfW;
+        const top = y - halfH;
+
+        const borderWidth = width;
+        const borderHeight = height;
+        
+        // Detect aspect ratio from image if not already stored (metadata only — resize stays free).
+        if (this.style.imageUrl && !this.style.originalAspectRatio && !this._detectingAspectRatio) {
+            this._detectingAspectRatio = true;
+            const img = new Image();
+            img.onload = () => {
+                this.style.originalAspectRatio = img.width / img.height;
+                this._detectingAspectRatio = false;
+                if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                    this.chart.scheduleRender();
+                }
+            };
+            img.src = this.style.imageUrl;
+        }
+
+        // Selection box (absolute coords — same pattern as emoji-sticker)
+        this.group.append('rect')
+            .attr('class', 'image-selection-box')
+            .attr('x', x - borderWidth / 2)
+            .attr('y', y - borderHeight / 2)
+            .attr('width', borderWidth)
+            .attr('height', borderHeight)
+            .attr('fill', 'none')
+            .attr('stroke', '#2962ff')
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', '4,2')
+            .style('pointer-events', 'none')
+            .style('opacity', this.selected ? 1 : 0);
+
+        if (this.style.imageUrl) {
+            this.group.append('image')
+                .attr('class', 'image-content')
+                .attr('x', left)
+                .attr('y', top)
+                .attr('width', width)
+                .attr('height', height)
+                .attr('href', this.style.imageUrl)
+                .attr('preserveAspectRatio', 'none')
+                .style('opacity', this.style.opacity != null ? this.style.opacity : 1)
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
+        } else {
+            const placeholderRect = this.group.append('rect')
+                .attr('class', 'image-placeholder')
+                .attr('x', left)
+                .attr('y', top)
+                .attr('width', width)
+                .attr('height', height)
+                .attr('fill', 'rgba(120, 123, 134, 0.05)')
+                .attr('stroke', '#787b86')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', '4,4')
+                .style('pointer-events', 'all')
+                .style('cursor', 'pointer');
+
+            // Double-click on placeholder opens settings
+            const self = this;
+            placeholderRect.node().addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.editDrawing === 'function') {
+                    if (typeof manager.selectDrawing === 'function') manager.selectDrawing(self);
+                    manager.editDrawing(self, e.pageX, e.pageY);
+                }
+            });
+
+            // Upload button — adaptive to box dimensions
+            const btnW = Math.max(90, Math.min(width * 0.6, 150));
+            const btnH = Math.max(26, Math.min(height * 0.22, 38));
+            const btnFontSize = Math.max(10, Math.min(13, btnW * 0.09));
+            const iconSize = Math.max(10, Math.min(15, btnFontSize + 2));
+
+            const fo = this.group.append('foreignObject')
+                .attr('x', x - btnW / 2)
+                .attr('y', y - btnH / 2)
+                .attr('width', btnW)
+                .attr('height', btnH)
+                .style('pointer-events', 'all')
+                .style('overflow', 'visible');
+
+            const btnDiv = fo.append('xhtml:div')
+                .style('width', `${btnW}px`)
+                .style('height', `${btnH}px`)
+                .style('display', 'flex')
+                .style('align-items', 'center')
+                .style('justify-content', 'center')
+                .style('gap', '5px')
+                .style('background', 'rgba(41,98,255,0.15)')
+                .style('border', '1px solid rgba(41,98,255,0.5)')
+                .style('border-radius', '4px')
+                .style('color', '#6b8fff')
+                .style('font-size', `${btnFontSize}px`)
+                .style('font-family', 'Roboto, sans-serif')
+                .style('cursor', 'pointer')
+                .style('user-select', 'none')
+                .style('box-sizing', 'border-box')
+                .html(`<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Upload Image</span>`);
+
+            const btnNode = btnDiv.node();
+            // Use mousedown to trigger upload — the SVG manager intercepts mousedown
+            // and calls preventDefault which kills the subsequent click event.
+            // Stopping propagation here prevents the manager from ever seeing it.
+            let btnDownTime = 0;
+            btnNode.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                btnDownTime = Date.now();
+            }, true);
+            btnNode.addEventListener('mouseup', (e) => {
+                e.stopPropagation();
+                const elapsed = Date.now() - btnDownTime;
+                if (elapsed < 300 && !self._uploadDialogOpen) {
+                    self.triggerImageUpload();
+                }
+            }, true);
+            btnNode.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const manager = self.chart && self.chart.drawingManager;
+                if (manager && typeof manager.editDrawing === 'function') {
+                    if (typeof manager.selectDrawing === 'function') manager.selectDrawing(self);
+                    manager.editDrawing(self, e.pageX, e.pageY);
+                }
+            });
+            btnNode.addEventListener('mouseenter', function() {
+                this.style.background = 'rgba(41,98,255,0.3)';
+                this.style.borderColor = 'rgba(41,98,255,0.8)';
+                this.style.color = '#fff';
+            });
+            btnNode.addEventListener('mouseleave', function() {
+                this.style.background = 'rgba(41,98,255,0.15)';
+                this.style.borderColor = 'rgba(41,98,255,0.5)';
+                this.style.color = '#6b8fff';
+            });
+        }
+
+        this._currentWidth = width;
+        this._currentHeight = height;
+        this._borderWidth = borderWidth;
+        this._borderHeight = borderHeight;
+
+        if (!isPlaceholder) {
+            this.createBoxHandles(this.group, scales);
+        }
+
+        return this.group;
+    }
+
+    createBoxHandles(group, scales) {
+        const handleFill = 'transparent';
+        const handleStroke = '#2962FF';
+        const handleStrokeWidth = 2;
+        
+        group.selectAll('.resize-handle').remove();
+        group.selectAll('.resize-handle-hit').remove();
+        group.selectAll('.resize-handle-group').remove();
+        
+        if (this.points.length < 1) return;
+
+        const cx = this._screenX != null ? this._screenX : (
+            scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(this.points[0].x)
+                : scales.xScale(this.points[0].x)
+        );
+        const cy = this._screenY != null ? this._screenY : scales.yScale(this.points[0].y);
+
+        const width = this._currentWidth || this._borderWidth || this.style.width;
+        const height = this._currentHeight || this._borderHeight || this.style.height;
+        const handleRadius = (width < 8 || height < 8) ? 4 : 3;
+        const hitRadius = Math.max(14, handleRadius + 9);
+
+        const minX = cx - width / 2;
+        const maxX = cx + width / 2;
+        const minY = cy - height / 2;
+        const maxY = cy + height / 2;
+        const midX = cx;
+        const midY = cy;
+
+        const handlePositions = [
+            { x: minX, y: minY, cursor: 'nwse-resize', role: 'corner-tl' },
+            { x: maxX, y: minY, cursor: 'nesw-resize', role: 'corner-tr' },
+            { x: maxX, y: maxY, cursor: 'nwse-resize', role: 'corner-br' },
+            { x: minX, y: maxY, cursor: 'nesw-resize', role: 'corner-bl' },
+            { x: midX, y: minY, cursor: 'ns-resize', role: 'edge-top' },
+            { x: maxX, y: midY, cursor: 'ew-resize', role: 'edge-right' },
+            { x: midX, y: maxY, cursor: 'ns-resize', role: 'edge-bottom' },
+            { x: minX, y: midY, cursor: 'ew-resize', role: 'edge-left' }
+        ];
+        
+        this.handles = [];
+        
+        handlePositions.forEach((pos, index) => {
+            const handleGroup = group.append('g')
+                .attr('class', 'resize-handle-group')
+                .attr('data-handle-role', pos.role)
+                .attr('data-point-index', index);
+
+            handleGroup.append('circle')
+                .attr('class', 'resize-handle-hit')
+                .attr('cx', pos.x)
+                .attr('cy', pos.y)
+                .attr('r', hitRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('cursor', pos.cursor)
+                .style('pointer-events', 'all')
+                .style('opacity', 0)
+                .attr('data-handle-role', pos.role)
+                .attr('data-point-index', index);
+            
+            handleGroup.append('circle')
+                .attr('class', 'resize-handle')
+                .attr('cx', pos.x)
+                .attr('cy', pos.y)
+                .attr('r', handleRadius)
+                .attr('fill', handleFill)
+                .attr('stroke', handleStroke)
+                .attr('stroke-width', handleStrokeWidth)
+                .style('cursor', pos.cursor)
+                .style('pointer-events', 'none')
+                .style('opacity', this.selected ? 1 : 0)
+                .attr('data-handle-role', pos.role)
+                .attr('data-point-index', index);
+            
+            this.handles.push(handleGroup);
+        });
+
+        group.selectAll('.resize-handle-group').raise();
+    }
+
+    beginHandleDrag(handleRole, context = {}) {
+        this._dragStartWidthInDataUnits = this.style.widthInDataUnits || 0;
+        this._dragStartHeightInDataUnits = this.style.heightInDataUnits || 0;
+        this._dragStartCenter = { x: this._screenX, y: this._screenY };
+        this._dragStartCenterPx = { x: this._screenX || 0, y: this._screenY || 0 };
+        this._dragStartWidthPx = this._currentWidth || this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        this._dragStartHeightPx = this._currentHeight || this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        this._dragStartPoint = this.points && this.points[0] ? { x: this.points[0].x, y: this.points[0].y } : null;
+        const screenX = context.screen?.x || 0;
+        const screenY = context.screen?.y || 0;
+        this._dragStartPos = { x: screenX, y: screenY };
+    }
+
+    handleCustomHandleDrag(handleRole, context = {}) {
+        if (!handleRole || this._dragStartWidthInDataUnits == null) {
+            return false;
+        }
+        
+        const startX = this._dragStartPos?.x || 0;
+        const startY = this._dragStartPos?.y || 0;
+        const currentX = context.screen?.x || 0;
+        const currentY = context.screen?.y || 0;
+        
+        const dx = currentX - startX;
+        const dy = currentY - startY;
+
+        if (this._scales && this._scales.xScale && this._scales.yScale && this.points && this.points.length > 0) {
+            const chart = this._scales.chart;
+            const point = this.points[0];
+
+            const startWidthPx = this._dragStartWidthPx || IMAGE_TOOL_DEFAULT_WIDTH;
+            const startHeightPx = this._dragStartHeightPx || IMAGE_TOOL_DEFAULT_HEIGHT;
+            let newWidthPx = startWidthPx;
+            let newHeightPx = startHeightPx;
+
+            switch (handleRole) {
+                case 'corner-br':
+                    newWidthPx = startWidthPx + (dx * 2);
+                    newHeightPx = startHeightPx + (dy * 2);
+                    break;
+                case 'corner-tl':
+                    newWidthPx = startWidthPx - (dx * 2);
+                    newHeightPx = startHeightPx - (dy * 2);
+                    break;
+                case 'corner-tr':
+                    newWidthPx = startWidthPx + (dx * 2);
+                    newHeightPx = startHeightPx - (dy * 2);
+                    break;
+                case 'corner-bl':
+                    newWidthPx = startWidthPx - (dx * 2);
+                    newHeightPx = startHeightPx + (dy * 2);
+                    break;
+                case 'edge-top':
+                    newHeightPx = startHeightPx - (dy * 2);
+                    break;
+                case 'edge-bottom':
+                    newHeightPx = startHeightPx + (dy * 2);
+                    break;
+                case 'edge-left':
+                    newWidthPx = startWidthPx - (dx * 2);
+                    break;
+                case 'edge-right':
+                    newWidthPx = startWidthPx + (dx * 2);
+                    break;
+                default:
+                    return false;
+            }
+
+            newWidthPx = Math.max(10, Math.min(1500, newWidthPx));
+            newHeightPx = Math.max(10, Math.min(1500, newHeightPx));
+
+            // Convert pixel size to data units using the chart helpers
+            const startCenterPx = this._dragStartCenterPx || { x: this._screenX || 0, y: this._screenY || 0 };
+            const newCenterPx = { x: startCenterPx.x, y: startCenterPx.y };
+            const centerXData = point.x;
+            const centerYData = point.y;
+
+            const xAtOffset = chart && typeof chart.pixelToDataIndex === 'function'
+                ? chart.pixelToDataIndex(newCenterPx.x + newWidthPx)
+                : (typeof this._scales.xScale.invert === 'function' ? this._scales.xScale.invert(newCenterPx.x + newWidthPx) : (centerXData + 1));
+            this.style.widthInDataUnits = Math.max(0.0001, Math.abs(xAtOffset - centerXData));
+
+            const yAtOffset = this._scales.yScale.invert(newCenterPx.y + newHeightPx);
+            this.style.heightInDataUnits = Math.max(0.0001, Math.abs(centerYData - yAtOffset));
+        }
+        
+        this.meta.updatedAt = Date.now();
+        return true;
+    }
+
+    endHandleDrag(handleRole, context = {}) {
+        this._dragStartWidthInDataUnits = null;
+        this._dragStartHeightInDataUnits = null;
+        this._dragStartCenter = null;
+        this._dragStartCenterPx = null;
+        this._dragStartWidthPx = null;
+        this._dragStartHeightPx = null;
+        this._dragStartPoint = null;
+        this._dragStartPos = null;
+    }
+
+    isPointInside(x, y, scales) {
+        if (!this.points || this.points.length < 1) return false;
+
+        const point = this.points[0];
+        const cx = scales.chart && scales.chart.dataIndexToPixel ? 
+            scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
+        const cy = scales.yScale(point.y);
+        
+        let width = this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
+        let height = this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        
+        if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
+            const x1Pixel = cx;
+            const y1Pixel = cy;
+            const x2 = point.x + this.style.widthInDataUnits;
+            const y2 = point.y - this.style.heightInDataUnits;
+            const x2Pixel = scales.chart && scales.chart.dataIndexToPixel ? 
+                scales.chart.dataIndexToPixel(x2) : scales.xScale(x2);
+            const y2Pixel = scales.yScale(y2);
+            width = Math.abs(x2Pixel - x1Pixel);
+            height = Math.abs(y2Pixel - y1Pixel);
+            width = Math.max(10, Math.min(1000, width));
+            height = Math.max(10, Math.min(1000, height));
+        }
+
+        // Hit-test the full stretched image bounds.
+        const minX = cx - width / 2;
+        const maxX = cx + width / 2;
+        const minY = cy - height / 2;
+        const maxY = cy + height / 2;
+        
+        return x >= minX && x <= maxX && y >= minY && y <= maxY;
+    }
+
+    triggerImageUpload() {
+        if (this._uploadDialogOpen) {
+            return;
+        }
+
+        this._uploadDialogOpen = true;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.style.display = 'none';
+        document.body.appendChild(input);
+
+        let cleanedUp = false;
+        const cleanup = () => {
+            if (cleanedUp) {
+                return;
+            }
+            cleanedUp = true;
+            if (input.parentNode) {
+                input.parentNode.removeChild(input);
+            }
+            this._uploadDialogOpen = false;
+        };
+
+        // Some browsers do not reliably fire oncancel for file inputs.
+        // Reset dialog lock when window regains focus and no file was selected.
+        window.addEventListener('focus', () => {
+            setTimeout(() => {
+                if (!this._uploadDialogOpen) {
+                    return;
+                }
+                const hasSelectedFile = !!(input.files && input.files.length > 0);
+                if (!hasSelectedFile) {
+                    cleanup();
+                }
+            }, 350);
+        }, { once: true });
+        
+        input.onchange = (e) => {
+            const file = e.target && e.target.files ? e.target.files[0] : null;
+            if (!file) {
+                cleanup();
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const imageDataUrl = event && event.target ? event.target.result : '';
+                if (!imageDataUrl) {
+                    cleanup();
+                    return;
+                }
+
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        if (img.width > 0 && img.height > 0) {
+                            this.style.originalAspectRatio = img.width / img.height;
+                        } else {
+                            this.style.originalAspectRatio = null;
+                        }
+
+                        this.style.imageUrl = imageDataUrl;
+                        if (!this.style.widthInDataUnits) {
+                            this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+                            this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+                            this.style.widthInDataUnits = null;
+                            this.style.heightInDataUnits = null;
+                        }
+                        this.meta.updatedAt = Date.now();
+                        this._keepEmpty = false;
+                        this._notifyV9ImageChanged();
+
+                        const dm = this.chart && this.chart.drawingManager;
+                        if (dm && typeof dm.renderDrawing === 'function') {
+                            try {
+                                dm.renderDrawing(this);
+                            } catch (_) {}
+                        }
+                        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                            this.chart.scheduleRender();
+                        }
+                        if (dm && typeof dm.saveDrawings === 'function') {
+                            try {
+                                dm.saveDrawings();
+                            } catch (error) {
+                                console.warn('Image upload saved to canvas but failed to persist drawings:', error?.message || error);
+                            }
+                        }
+                    } finally {
+                        cleanup();
+                    }
+                };
+
+                img.onerror = () => {
+                    try {
+                        this.style.originalAspectRatio = null;
+                        this.style.imageUrl = imageDataUrl;
+                        if (!this.style.widthInDataUnits) {
+                            this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+                            this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+                            this.style.widthInDataUnits = null;
+                            this.style.heightInDataUnits = null;
+                        }
+                        this.meta.updatedAt = Date.now();
+                        this._keepEmpty = false;
+                        this._notifyV9ImageChanged();
+
+                        const dm = this.chart && this.chart.drawingManager;
+                        if (dm && typeof dm.renderDrawing === 'function') {
+                            try {
+                                dm.renderDrawing(this);
+                            } catch (_) {}
+                        }
+                        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                            this.chart.scheduleRender();
+                        }
+                        if (dm && typeof dm.saveDrawings === 'function') {
+                            try {
+                                dm.saveDrawings();
+                            } catch (error) {
+                                console.warn('Image upload fallback saved to canvas but failed to persist drawings:', error?.message || error);
+                            }
+                        }
+                    } finally {
+                        cleanup();
+                    }
+                };
+
+                img.src = imageDataUrl;
+            };
+
+            reader.onerror = () => {
+                cleanup();
+            };
+
+            reader.readAsDataURL(file);
+        };
+        
+        input.oncancel = () => {
+            cleanup();
+        };
+        
+        input.click();
+    }
+
+    _notifyV9ImageChanged() {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        try {
+            window.dispatchEvent(new CustomEvent('v9ImageDrawingChanged', {
+                detail: {
+                    id: this.id,
+                    imageUrl: this.style.imageUrl || '',
+                    opacity: this.style.opacity,
+                },
+            }));
+        } catch (_) {}
+    }
+
+    static fromJSON(data, chart) {
+        const tool = new ImageTool(data.points, data.style || {});
+        tool.style.maintainAspectRatio = false;
+        tool.id = data.id;
+        tool.visible = data.visible;
+        tool.meta = data.meta;
+        tool.chart = chart;
+        return tool;
+    }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ImageTool;
+}
