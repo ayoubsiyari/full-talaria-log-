@@ -12195,40 +12195,21 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        // Default levels like TradingView (excluding 0 and 1 which are always drawn as main lines)
-
+        // Default levels aligned with V9 (0/1 rails + inner levels; sorted by value)
         const baseColor = (drawing.style && drawing.style.stroke) || '#2962ff';
 
             const defaultLevels = [
-
-                { value: -0.25, color: '#1e3a5f', enabled: false },
-
+                { value: 0, color: baseColor, enabled: true },
                 { value: 0.25, color: '#1e3a5f', enabled: false },
-
-                { value: 0.5, color: baseColor, enabled: true },
-
+                { value: 0.5, color: baseColor, enabled: true, lineType: '5,5' },
                 { value: 0.75, color: '#1e3a5f', enabled: false },
-
-                { value: 1.25, color: '#1e3a5f', enabled: false }
-
+                { value: 1, color: baseColor, enabled: true }
             ];
 
-
-
-            // Filter out 0 and 1, then check if we need defaults
-
-            if (Array.isArray(drawing.levels)) {
-
-                drawing.levels = drawing.levels.filter(l => l.value !== 0 && l.value !== 1);
-
-            }
-
-            
-
             if (!Array.isArray(drawing.levels) || drawing.levels.length === 0) {
-
                 drawing.levels = defaultLevels.map(l => ({ ...l }));
-
+            } else {
+                drawing.levels = [...drawing.levels].sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
             }
 
 

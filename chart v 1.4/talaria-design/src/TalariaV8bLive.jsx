@@ -4692,23 +4692,46 @@ function v9DefaultParallelChannelChLines(strokeColor) {
   return [
     { on: true, value: "0", color: base, type: "solid", width: "2" },
     { on: false, value: "0.25", color: aux, type: "solid", width: "2" },
-    { on: true, value: "0.5", color: base, type: "dashed", width: "1" },
+    { on: true, value: "0.5", color: base, type: "dashed", width: "1", middle: true },
     { on: false, value: "0.75", color: aux, type: "solid", width: "2" },
     { on: true, value: "1", color: base, type: "solid", width: "2" },
   ].map((row) => ({ ...row }));
 }
 
+function v9ParallelChannelLevelSortKey(ln) {
+  const v = parseFloat(String(ln?.value ?? "").replace(/,/g, ""));
+  return Number.isFinite(v) ? v : 0;
+}
+
+/** Sort level rows by numeric value (stable) for consistent Input/Style ordering. */
+function v9SortParallelChannelChLines(chLines) {
+  if (!Array.isArray(chLines) || chLines.length < 2) {
+    return Array.isArray(chLines) ? chLines.map((row) => ({ ...row })) : [];
+  }
+  return chLines
+    .map((row, i) => ({ row: { ...row }, i }))
+    .sort((a, b) => {
+      const d = v9ParallelChannelLevelSortKey(a.row) - v9ParallelChannelLevelSortKey(b.row);
+      return d !== 0 ? d : a.i - b.i;
+    })
+    .map(({ row }) => row);
+}
+
 /** Panel-safe `chLines` — never empty for parallel-channel UI. */
 function v9ResolveParallelChannelChLines(tlStyle, drawing) {
+  let rows;
   if (Array.isArray(tlStyle?.chLines) && tlStyle.chLines.length > 0) {
-    return tlStyle.chLines;
+    rows = tlStyle.chLines;
+  } else {
+    const stroke = drawing?.style?.stroke || drawing?.style?.color || tlStyle?.lineColor;
+    if (Array.isArray(drawing?.levels) && drawing.levels.length > 0) {
+      const fromLv = v9ParallelLevelsToChLines(drawing.levels);
+      rows = fromLv && fromLv.length ? fromLv : v9DefaultParallelChannelChLines(stroke);
+    } else {
+      rows = v9DefaultParallelChannelChLines(stroke);
+    }
   }
-  const stroke = drawing?.style?.stroke || drawing?.style?.color || tlStyle?.lineColor;
-  if (Array.isArray(drawing?.levels) && drawing.levels.length > 0) {
-    const fromLv = v9ParallelLevelsToChLines(drawing.levels);
-    if (fromLv && fromLv.length) return fromLv;
-  }
-  return v9DefaultParallelChannelChLines(stroke);
+  return v9SortParallelChannelChLines(rows);
 }
 
 /** `drawing.levels` (parallel-channel) ↔ Settings panel `tlStyle.chLines`. */
@@ -4726,33 +4749,29 @@ function v9ParallelLevelsToChLines(levels) {
     const valueStr = Number.isFinite(numVal)
       ? (Number.isInteger(numVal) ? String(numVal) : numVal.toFixed(4).replace(/\.?0+$/, '') || '0')
       : String(lv.value ?? '0');
+    const isMiddle = Number.isFinite(numVal) && Math.abs(numVal - 0.5) < 0.0001;
     return {
       on: lv.enabled !== false,
       value: valueStr,
       color: lv.color || '#2962FF',
       type: lineType,
       width: w,
+      ...(isMiddle ? { middle: true } : {}),
     };
   });
 }
 
 function v9ParallelChannelMidLineRowIndex(chLines) {
   if (!Array.isArray(chLines) || !chLines.length) return -1;
-  const dashedIdx = chLines.findIndex((ln) => ln.type === "dashed");
-  if (dashedIdx >= 0) return dashedIdx;
-  const midValIdx = chLines.findIndex((ln) => {
-    const v = parseFloat(ln.value);
-    return (
-      Number.isFinite(v)
-      && v > V9_PARALLEL_CHANNEL_MIDDLE_MIN - 0.001
-      && v < V9_PARALLEL_CHANNEL_MIDDLE_MAX + 0.001
-      && Math.abs(v) > 0.001
-      && Math.abs(v - 1) > 0.001
-    );
+  const flagged = chLines.findIndex((ln) => ln && ln.middle === true);
+  if (flagged >= 0) return flagged;
+  const halfIdx = chLines.findIndex((ln) => {
+    const v = parseFloat(String(ln?.value ?? "").replace(/,/g, ""));
+    return Number.isFinite(v) && Math.abs(v - 0.5) < 0.0001;
   });
-  if (midValIdx >= 0) return midValIdx;
-  if (chLines.length === 3) return 1;
+  if (halfIdx >= 0) return halfIdx;
   if (chLines.length >= 5) return 2;
+  if (chLines.length === 3) return 1;
   return Math.floor(chLines.length / 2);
 }
 
@@ -4777,9 +4796,8 @@ function v9ParallelChannelStyleRowLabel(filteredIdx, filteredLen, ln) {
   if (Number.isFinite(v)) {
     if (Math.abs(v) < 0.0001) return "Lower";
     if (Math.abs(v - 1) < 0.0001) return "Upper";
+    return Number.isInteger(v) ? String(v) : String(v);
   }
-  if (filteredIdx === 0) return "Upper";
-  if (filteredIdx === filteredLen - 1) return "Lower";
   return v9ParallelChannelAuxLevelLabel(ln, filteredIdx);
 }
 
@@ -4840,12 +4858,13 @@ function v9SyncParallelChannelMidLineToChLines(tlStyle) {
     i === idx
       ? {
           ...ln,
+          middle: true,
           on: midOn,
           color: tlStyle.midLineColor || ln.color,
           type: tlStyle.midLineType || ln.type,
           width: tlStyle.midLineWidth || ln.width,
         }
-      : ln,
+      : { ...ln, middle: false },
   );
 }
 
@@ -4873,8 +4892,8 @@ function v9StepChannelLevelValue(raw, delta, step = 0.01) {
 
 function v9MaybeClampParallelChannelMiddleRowValue(chLines, idx, value, stKey) {
   if (stKey !== "chLines" || v9IsPartialChannelLevelValue(value)) return value;
-  const midIdx = v9ParallelChannelMidLineRowIndex(chLines);
-  if (idx !== midIdx) return value;
+  const isMiddle = chLines[idx]?.middle === true || idx === v9ParallelChannelMidLineRowIndex(chLines);
+  if (!isMiddle) return value;
   return v9ClampParallelChannelMiddleValue(value);
 }
 
@@ -4943,7 +4962,7 @@ function v9EnsureChLinesRows(s, stKey = "chLines", drawing = null) {
   const existing = Array.isArray(s[stKey]) ? s[stKey] : [];
   if (existing.length > 0) {
     if (stKey === "regLines") return v9NormalizeRegLines(existing);
-    return existing.map((row) => ({ ...row }));
+    return v9SortParallelChannelChLines(existing.map((row) => ({ ...row })));
   }
   if (stKey === "chLines") {
     return v9ResolveParallelChannelChLines(s, drawing).map((row) => ({ ...row }));
@@ -4958,16 +4977,23 @@ function v9PatchChLinesRowValue(s, idx, value, stKey = "chLines", drawing = null
   const base = v9EnsureChLinesRows(s, stKey, drawing);
   if (idx < 0 || idx >= base.length) return s;
   const nextVal = v9MaybeClampParallelChannelMiddleRowValue(base, idx, value, stKey);
-  base[idx] = { ...base[idx], value: nextVal };
+  const isMiddleRow = base[idx]?.middle === true || idx === v9ParallelChannelMidLineRowIndex(base);
+  base[idx] = {
+    ...base[idx],
+    value: nextVal,
+    ...(isMiddleRow && stKey === "chLines" ? { middle: true } : {}),
+  };
   if (stKey !== "chLines") return { ...s, [stKey]: base };
-  return { ...s, chLines: base, ...v9ParallelChannelMidLinePatchFromChLines(base) };
+  const sorted = v9SortParallelChannelChLines(base);
+  return { ...s, chLines: sorted, ...v9ParallelChannelMidLinePatchFromChLines(sorted) };
 }
 
 function v9ChLinesToParallelLevels(chLines) {
   if (!Array.isArray(chLines)) return [];
-  const midIdx = v9ParallelChannelMidLineRowIndex(chLines);
-  return chLines.map((ln, idx) => {
-    let t = parseFloat(ln.value);
+  const sorted = v9SortParallelChannelChLines(chLines);
+  const midIdx = v9ParallelChannelMidLineRowIndex(sorted);
+  const levels = sorted.map((ln, idx) => {
+    let t = parseFloat(String(ln.value).replace(/,/g, ""));
     if (idx === midIdx && Number.isFinite(t)) {
       t = parseFloat(v9ClampParallelChannelMiddleValue(t));
     }
@@ -4982,6 +5008,7 @@ function v9ChLinesToParallelLevels(chLines) {
       lineWidth: width,
     };
   });
+  return levels.sort((a, b) => a.value - b.value);
 }
 
 /** Regression channel: `d.style` (middle / upper / lower strokes) ↔ `tlStyle.regLines`. */
@@ -8537,17 +8564,44 @@ function railScreenshotSrcList(order, journal) {
   return clampScreenshotSlot(out);
 }
 
+function resolvedTradeScreenshotSlots(fromSt, order, journal) {
+  const removedPre = new Set((fromSt?.removedPre || []).filter(Boolean));
+  const removedPost = new Set((fromSt?.removedPost || []).filter(Boolean));
+  const pre = clampScreenshotSlot([...(fromSt?.pre || [])]);
+  const post = clampScreenshotSlot([...(fromSt?.post || [])]);
+  for (const src of railScreenshotSrcList(order, journal)) {
+    if (src && !pre.includes(src) && !removedPre.has(src)) pre.push(src);
+  }
+  if (
+    journal?.exitScreenshot &&
+    !post.includes(journal.exitScreenshot) &&
+    !removedPost.has(journal.exitScreenshot)
+  ) {
+    post.push(journal.exitScreenshot);
+  }
+  return { pre: clampScreenshotSlot(pre), post: clampScreenshotSlot(post) };
+}
+
+function removeTradeScreenshotFromSlot(prev, rowId, slot, index) {
+  const n = { ...prev };
+  const cur = { ...(n[rowId] || {}) };
+  const arr = [...(cur[slot] || [])];
+  const removedSrc = arr[index];
+  cur[slot] = clampScreenshotSlot(arr.filter((_, j) => j !== index));
+  if (removedSrc) {
+    const removedKey = slot === "pre" ? "removedPre" : "removedPost";
+    cur[removedKey] = [...new Set([...(cur[removedKey] || []), removedSrc])];
+  }
+  n[rowId] = cur;
+  return n;
+}
+
 function mergeTradeScreenshotState(prev, rowId, order, journal) {
   const ex = prev[rowId] || {};
-  const pre = clampScreenshotSlot([...(ex.pre || [])]);
-  const post = clampScreenshotSlot([...(ex.post || [])]);
-  for (const src of railScreenshotSrcList(order, journal)) {
-    if (!pre.includes(src)) pre.push(src);
+  const { pre: nextPre, post: nextPost } = resolvedTradeScreenshotSlots(ex, order, journal);
+  if (!nextPre.length && !nextPost.length && !ex.pre?.length && !ex.post?.length && !ex.removedPre?.length && !ex.removedPost?.length) {
+    return prev;
   }
-  if (journal?.exitScreenshot && !post.includes(journal.exitScreenshot)) post.push(journal.exitScreenshot);
-  const nextPre = clampScreenshotSlot(pre);
-  const nextPost = clampScreenshotSlot(post);
-  if (!nextPre.length && !nextPost.length && !ex.pre?.length && !ex.post?.length) return prev;
   return {
     ...prev,
     [rowId]: { ...ex, pre: nextPre, post: nextPost },
@@ -22236,19 +22290,17 @@ const TalariaV8bLive = () => {
                           tlStyle,
                           editDrawing,
                         );
-                    const lines = !isRegCh && tlSubTool.icon === "channel"
-                      ? rawLines.filter(
-                          (ln, idx) =>
-                            idx !== v9ParallelChannelMidLineRowIndex(rawLines) &&
-                            Math.abs(parseFloat(ln.value) - 0.5) >= 0.0001,
-                        )
+                    const parallelMidIdx = !isRegCh && tlSubTool.icon === "channel"
+                      ? v9ParallelChannelMidLineRowIndex(rawLines)
+                      : -1;
+                    const lines = parallelMidIdx >= 0
+                      ? rawLines.filter((_, idx) => idx !== parallelMidIdx)
                       : rawLines;
                     const stKey = isRegCh ? "regLines" : "chLines";
                     const cpKey = isRegCh ? "regLine" : "chLine";
                     const lineRowIndex = (displayIdx) => {
-                      if (isRegCh || tlSubTool.icon !== "channel") return displayIdx;
-                      const midIdx = v9ParallelChannelMidLineRowIndex(rawLines);
-                      return displayIdx < midIdx ? displayIdx : displayIdx + 1;
+                      if (isRegCh || tlSubTool.icon !== "channel" || parallelMidIdx < 0) return displayIdx;
+                      return displayIdx < parallelMidIdx ? displayIdx : displayIdx + 1;
                     };
                     return <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"end" }}>
                       {/* Column headers */}
@@ -22269,7 +22321,8 @@ const TalariaV8bLive = () => {
                               <div style={{ padding:"5px 0", alignSelf:"center" }}>
                                 {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, v9ParallelChannelStyleRowLabel(idx, lines.length, ln), ()=>setTlStyle(s=>{
                                   const nextLines = s.chLines.map((l,i)=>i===srcIdx?{...l,on:!l.on}:l);
-                                  return { ...s, chLines: nextLines, ...v9ParallelChannelMidLinePatchFromChLines(nextLines) };
+                                  const sorted = v9SortParallelChannelChLines(nextLines);
+                                  return { ...s, chLines: sorted, ...v9ParallelChannelMidLinePatchFromChLines(sorted) };
                                 }))}
                               </div>
                             ) : (
@@ -33626,13 +33679,8 @@ const TalariaV8bLive = () => {
                           const jRow=tid!=null&&Array.isArray(omRow?.tradeJournal)?omRow.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
                           const orderRow=tid!=null?(omRow?.pendingOrders?.find(o=>o.id===tid)||omRow?.openPositions?.find(o=>o.id===tid)||omRow?.closedPositions?.find(o=>o.id===tid)):null;
                           const fromSt=tradeScreenshots[r.id]||{};
-                          const pre=clampScreenshotSlot([...(fromSt.pre||[])]);
-                          const post=clampScreenshotSlot([...(fromSt.post||[])]);
-                          for(const src of railScreenshotSrcList(orderRow,jRow)){
-                            if(!pre.includes(src))pre.push(src);
-                          }
-                          if(jRow?.exitScreenshot&&!post.includes(jRow.exitScreenshot))post.push(jRow.exitScreenshot);
-                          const allSs=[...clampScreenshotSlot(pre),...clampScreenshotSlot(post)];
+                          const {pre,post}=resolvedTradeScreenshotSlots(fromSt,orderRow,jRow);
+                          const allSs=[...pre,...post];
                           return allSs.length>0?(
                           <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",maxWidth:148}}>
                             {allSs.slice(0,4).map((src,si)=>(
@@ -36942,6 +36990,10 @@ const TalariaV8bLive = () => {
                   order.railScreenshots=railList;
                   jv.railScreenshots=railList;
                   jv.entryScreenshot=tsShots.pre[tsShots.pre.length-1];
+                } else if(canEditPre){
+                  order.railScreenshots=[];
+                  jv.railScreenshots=[];
+                  jv.entryScreenshot=null;
                 }
                 jv.timestamp=Date.now();
                 order.journalEntry=jv;
@@ -36963,8 +37015,14 @@ const TalariaV8bLive = () => {
                 if(tsShots?.pre?.length){
                   patch.entryScreenshot=tsShots.pre[tsShots.pre.length-1];
                   patch.railScreenshots=railScreenshotsFromPreSlot(tsShots.pre);
+                } else if(canEditPre){
+                  patch.entryScreenshot=null;
+                  patch.railScreenshots=[];
                 }
-                if(tsShots?.post?.length)patch.exitScreenshot=tsShots.post[tsShots.post.length-1];
+                if(canEditPost){
+                  if(tsShots?.post?.length)patch.exitScreenshot=tsShots.post[tsShots.post.length-1];
+                  else patch.exitScreenshot=null;
+                }
                 om.upsertJournalEntry({...existing,...patch});
                 if(typeof om.persistJournal==="function")om.persistJournal();
               }
@@ -36973,6 +37031,11 @@ const TalariaV8bLive = () => {
           if(canEditPre)setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),pre:tradeCardPreTags}}));
           if(canEditPost)setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),post:tradeCardPostTags}}));
           setTradeNotes(prev=>({...prev,[r.id]:tradeCardNotes}));
+          setTradeScreenshots((prev)=>{
+            const cur=prev[r.id];
+            if(!cur)return prev;
+            return {...prev,[r.id]:{...cur,removedPre:[],removedPost:[]}};
+          });
           setTradeCard(null);
           setOmTradeRev(n=>n+1);
         };
@@ -37034,9 +37097,9 @@ const TalariaV8bLive = () => {
           }
         };
         return(
-        <div onClick={()=>setTradeCard(null)}
+        <div onClick={()=>setTradeCard(null)} onPointerDown={(e)=>{ if(e.target===e.currentTarget) setTradeCard(null); }}
           style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
-          <div onClick={e=>e.stopPropagation()}
+          <div onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
             style={{width:560,background:c.sf,border:`1px solid ${c.brH}`,
               boxShadow:`0 28px 70px rgba(0,0,0,0.8), 0 0 32px ${isLong?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"}`,
               display:"flex",flexDirection:"column",fontFamily:F,animation:"tlrPopIn 0.18s ease"}}>
@@ -37257,12 +37320,12 @@ const TalariaV8bLive = () => {
                           <img src={src} alt="" onError={journalScreenshotImgOnError} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                           <div className="tc-ss-overlay"
                             style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",gap:5,opacity:0,transition:"opacity 0.12s"}}>
-                            <div className="ss-view-btn" onClick={()=>setViewingScreenshot(src)}
+                            <div className="ss-view-btn" {...modalPointerActivate(()=>setViewingScreenshot(src))}
                               style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
                               <I n="eye" s={11} cl="rgba(255,255,255,0.85)"/>
                             </div>
                             {canEditSs&&(
-                            <div className="ss-del-btn" onClick={()=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[slot]=clampScreenshotSlot((cur[slot]||[]).filter((_,j)=>j!==ssi));n[r.id]=cur;return n;})}
+                            <div className="ss-del-btn" {...modalPointerActivate(()=>setTradeScreenshots(prev=>removeTradeScreenshotFromSlot(prev,r.id,slot,ssi)))}
                               style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.1)",cursor:"default",transition:"background 0.1s"}}>
                               <I n="x" s={11} cl="rgba(255,100,100,0.85)"/>
                             </div>

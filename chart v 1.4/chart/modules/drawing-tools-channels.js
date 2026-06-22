@@ -70,7 +70,7 @@ class ParallelChannelTool extends BaseDrawing {
         this.style.extendRight = style.extendRight || false;
         this.ensureTextDefaults();
         
-        // Initialize default levels (0/1 rails; middle adjustable between 0.25 and 0.75)
+        // Initialize default levels (0/1 rails; middle at 0.5 between 0.25 and 0.75)
         const baseColor = this.style.stroke;
         this.levels = [
             { value: 0, color: baseColor, enabled: true },
@@ -79,6 +79,17 @@ class ParallelChannelTool extends BaseDrawing {
             { value: 0.75, color: '#1e3a5f', enabled: false },
             { value: 1, color: baseColor, enabled: true }
         ];
+    }
+
+    /** Keep levels sorted by value so each row maps to one chart line. */
+    _normalizeLevels() {
+        if (!Array.isArray(this.levels)) {
+            this.levels = [];
+            return;
+        }
+        this.levels = this.levels
+            .filter((lv) => lv && Number.isFinite(parseFloat(lv.value)))
+            .sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
     }
 
     ensureTextDefaults() {
@@ -366,11 +377,12 @@ class ParallelChannelTool extends BaseDrawing {
                 return Number.isFinite(v) && Math.abs(v - t) < 1e-6;
             });
 
-            const levelList = Array.isArray(this.levels) ? this.levels : [];
+            this._normalizeLevels();
+            const sortedLevelList = this.levels;
 
             // Draw all levels from levels array (including 0 / 1 boundary rails when present)
-            if (levelList.length > 0) {
-                levelList.forEach(level => {
+            if (sortedLevelList.length > 0) {
+                sortedLevelList.forEach(level => {
                     const t = typeof level.value === 'number' ? level.value : parseFloat(level.value);
                     if (!Number.isFinite(t)) return;
 
@@ -414,8 +426,8 @@ class ParallelChannelTool extends BaseDrawing {
             }
 
             // Legacy drawings without explicit 0 / 1 rows — keep fixed boundary rails
-            if (!levelNear(0, levelList)) drawLevelLine(0, baseStroke, baseWidth, baseDash);
-            if (!levelNear(1, levelList)) drawLevelLine(1, baseStroke, baseWidth, baseDash);
+            if (!levelNear(0, sortedLevelList)) drawLevelLine(0, baseStroke, baseWidth, baseDash);
+            if (!levelNear(1, sortedLevelList)) drawLevelLine(1, baseStroke, baseWidth, baseDash);
 
             if (this.text && this.text.trim()) {
                 this.renderTextLabel(scales);
@@ -593,6 +605,7 @@ class ParallelChannelTool extends BaseDrawing {
         tool.meta = data.meta;
         tool.text = typeof data.text === 'string' ? data.text : '';
         tool.levels = Array.isArray(data.levels) ? data.levels : [];
+        tool._normalizeLevels();
         tool.chart = chart;
         if (data.locked !== undefined) tool.locked = !!data.locked;
         return tool;
