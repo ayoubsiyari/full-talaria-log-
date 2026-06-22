@@ -2659,6 +2659,11 @@ class ReplaySystem {
             this._viewportLockForPlayback = null;
             return;
         }
+        // Follow mode — never freeze viewport on Play (TF-switch drift is not user pan).
+        if (this.autoScrollEnabled && !this.userHasPanned) {
+            this._viewportLockForPlayback = null;
+            return;
+        }
         if (!this._replayUserOwnsViewport(chart)) {
             this._viewportLockForPlayback = null;
             return;
@@ -2703,6 +2708,25 @@ class ReplaySystem {
         chartInstance.autoScale = lock.autoScale;
         chartInstance.manualCenterPrice = lock.manualCenterPrice;
         chartInstance.manualRange = lock.manualRange;
+    }
+
+    /**
+     * Follow replay playhead when auto-scroll is on (clears TF-switch freeze first).
+     */
+    _followReplayPlayhead(chartInstance = this.chart, opts = {}) {
+        if (!this.isActive || !chartInstance) return false;
+        if (this.userHasPanned || !this.autoScrollEnabled) return false;
+        if (chartInstance._tfSwitchAnchorLock
+            && typeof chartInstance._clearTfSwitchAnchorLock === 'function') {
+            chartInstance._clearTfSwitchAnchorLock();
+        }
+        chartInstance._chartViewRestored = false;
+        return this.syncReplayViewportToPlayhead(chartInstance, {
+            forceRecenter: true,
+            resetPriceScale: opts.resetPriceScale != null ? opts.resetPriceScale : false,
+            render: opts.render != null ? opts.render : false,
+            centerPlayhead: opts.centerPlayhead,
+        });
     }
 
     /**
@@ -2872,20 +2896,12 @@ class ReplaySystem {
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
         if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
-            && !this._timeframeChanging) {
-            if (this.chart._tfSwitchAnchorLock) {
-                if (this.userHasPanned) {
-                    if (typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
-                        this.chart._reapplyTfSwitchAnchorLock();
-                    }
-                } else {
-                    if (typeof this.chart._clearTfSwitchAnchorLock === 'function') {
-                        this.chart._clearTfSwitchAnchorLock();
-                    }
-                    this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
-                }
+            && !this._timeframeChanging && !this.userHasPanned) {
+            if (this.chart._tfSwitchAnchorLock && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
+                // Manual pan after TF switch — keep frozen anchor only while user owns viewport.
+                this.chart._reapplyTfSwitchAnchorLock();
             } else {
-                this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
+                this._followReplayPlayhead(this.chart, { render: false });
             }
         }
         
@@ -3207,16 +3223,8 @@ class ReplaySystem {
         }
 
         // TF-switch anchor freeze is not user pan — release so follow tracks the playhead.
-        if (this.chart && this.chart._tfSwitchAnchorLock && !this.userHasPanned) {
-            if (typeof this.chart._clearTfSwitchAnchorLock === 'function') {
-                this.chart._clearTfSwitchAnchorLock();
-            }
-            if (this.autoScrollEnabled && typeof this.syncReplayViewportToPlayhead === 'function') {
-                this.syncReplayViewportToPlayhead(this.chart, {
-                    resetPriceScale: false,
-                    render: false,
-                });
-            }
+        if (this.chart && !this.userHasPanned) {
+            this._followReplayPlayhead(this.chart, { render: false });
         }
 
         this._capturePlaybackViewportLock();
@@ -4232,14 +4240,8 @@ class ReplaySystem {
         }
         
         // Auto-scroll if enabled
-        if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this._replayUserOwnsViewport(this.chart)) {
-            if (this.chart._tfSwitchAnchorLock && typeof this.chart._clearTfSwitchAnchorLock === 'function') {
-                this.chart._clearTfSwitchAnchorLock();
-            }
-            const autoScrollState = this.getReplayAutoScrollState(this.chart);
-            if (autoScrollState) {
-                this.chart.offsetX = autoScrollState.offsetX;
-            }
+        if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this.userHasPanned) {
+            this._followReplayPlayhead(this.chart, { render: false });
         }
         
         // Update UI
@@ -5271,19 +5273,10 @@ class ReplaySystem {
         if (chart && typeof chart._clearTfSwitchAnchorLock === 'function') {
             chart._clearTfSwitchAnchorLock();
         }
-        if (chart && typeof chart._isMultichartViewportJustReset === 'function'
-            && chart._isMultichartViewportJustReset()) {
-            if (this.isActive) {
-                this.updateChartData(true);
-            }
-            requestAnimationFrame(() => {
-                this.updateAutoScrollIndicator();
-            });
-            return;
-        }
-
-        // Reset zoom and scroll to latest candle (same as double-click on time axis).
-        if (chart && typeof chart.jumpToLatest === 'function') {
+        if (chart) chart._chartViewRestored = false;
+        if (this.isActive && typeof this._followReplayPlayhead === 'function') {
+            this._followReplayPlayhead(chart, { render: true });
+        } else if (chart && typeof chart.jumpToLatest === 'function') {
             chart.jumpToLatest();
         }
 

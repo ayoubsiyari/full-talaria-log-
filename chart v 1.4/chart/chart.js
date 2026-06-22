@@ -24850,12 +24850,9 @@ class Chart {
             if (this._tfSwitchAnchorLock && replay && replay.isActive
                 && replay.autoScrollEnabled && !replay.userHasPanned) {
                 this._clearTfSwitchAnchorLock();
-                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                if (typeof replay._followReplayPlayhead === 'function') {
                     try {
-                        replay.syncReplayViewportToPlayhead(this, {
-                            resetPriceScale: false,
-                            render: false,
-                        });
+                        replay._followReplayPlayhead(this, { render: false });
                     } catch (_sync) { /* ignore */ }
                 }
             }
@@ -24926,7 +24923,17 @@ class Chart {
         setTimeout(() => {
             const grew = measureLen() > beforeLen;
             if (grew && this._tfSwitchAnchorLock) {
-                try { this._reapplyTfSwitchAnchorLock(); } catch (_e) { /* ignore */ }
+                const replay = this.replaySystem;
+                if (replay?.isActive && replay.autoScrollEnabled && !replay.userHasPanned) {
+                    this._clearTfSwitchAnchorLock();
+                    if (typeof replay._followReplayPlayhead === 'function') {
+                        try {
+                            replay._followReplayPlayhead(this, { render: false });
+                        } catch (_sync) { /* ignore */ }
+                    }
+                } else {
+                    try { this._reapplyTfSwitchAnchorLock(); } catch (_e) { /* ignore */ }
+                }
             }
             // Keep going while data is arriving here OR a shared host fetch is in flight.
             const busy = this._panLoading || this._replayPanLoadTimer || (host && host._panLoading);
