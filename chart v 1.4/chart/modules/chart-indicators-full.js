@@ -2100,6 +2100,20 @@
         return null;
     }
 
+    /** Bar indices where VWAP anchor period resets — fixed scatter points (zoom-independent). */
+    function buildVwapAnchorBarIndices(data, anchorPeriod) {
+        if (!Array.isArray(data) || !data.length) return [];
+        const anchorKeys = buildVwapAnchorKeys(data, anchorPeriod);
+        const bars = [];
+        let prevKey = null;
+        for (let i = 0; i < data.length; i++) {
+            const key = anchorKeys ? anchorKeys[i] : vwapAnchorPeriodKey(data[i], anchorPeriod);
+            if (i === 0 || key !== prevKey) bars.push(i);
+            prevKey = key;
+        }
+        return bars;
+    }
+
     /** VWAP with anchored periods, optional std-dev / % bands, and plot offset. */
     function calculateVWAPIndicatorData(data, params) {
         params = params || {};
@@ -2124,12 +2138,9 @@
         let cumP2V = 0;
         let cumVol = 0;
         let prevKey = null;
-        const anchorBars = [];
+        const anchorBars = buildVwapAnchorBarIndices(data, params.anchorPeriod);
         for (let i = 0; i < n; i++) {
             const key = anchorKeys ? anchorKeys[i] : vwapAnchorPeriodKey(data[i], params.anchorPeriod);
-            if (i === 0 || key !== prevKey) {
-                anchorBars.push(i);
-            }
             if (prevKey !== null && key !== prevKey) {
                 cumPV = 0;
                 cumP2V = 0;
@@ -10685,12 +10696,14 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
     const vwapVal = function(arr, i) {
         return plotOffset ? seriesValueAtPlotOffset(arr, i, plotOffset) : arr[i];
     };
-    const anchorBars = Array.isArray(data.anchorBars) ? data.anchorBars : null;
+    const anchorBars = (Array.isArray(data.anchorBars) && data.anchorBars.length)
+        ? data.anchorBars
+        : buildVwapAnchorBarIndices(this.data, params.anchorPeriod || 'session');
     const drawVwapSeries = function(arr, lineStyle, color, width, dashStyle) {
         if (!arr) return;
         const plotStyle = this._normalizePlotStyle(lineStyle);
         const opts = Object.assign({ dashStyle: dashStyle || 'Solid' }, lineOpts);
-        if ((plotStyle === 'Circles' || plotStyle === 'Cross') && anchorBars && anchorBars.length) {
+        if ((plotStyle === 'Circles' || plotStyle === 'Cross') && anchorBars.length) {
             this._drawIndicatorScatterAtBarIndices(arr, anchorBars, color, width, startIndex, endIndex, lineStyle, opts);
         } else {
             this.drawLineIndicator(arr, color, width, startIndex, endIndex, lineStyle, opts);

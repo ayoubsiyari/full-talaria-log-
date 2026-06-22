@@ -944,6 +944,42 @@ class BaseDrawing {
         return true;
     }
 
+    /** Value / Percent / Value+price label text for fib family tools. */
+    static formatFibLevelLabel(style, value, options = {}) {
+        const {
+            price,
+            priceDecimals = 2,
+            label,
+            valueFormatter,
+        } = options;
+        const levelsLabelMode = (style.levelsLabelMode === 'percent' || style.levelsLabelMode === 'values')
+            ? style.levelsLabelMode
+            : 'values';
+        const showPrices = style.showPrices !== false;
+        if (levelsLabelMode === 'percent') {
+            const n = parseFloat(value);
+            if (!Number.isFinite(n)) return '';
+            const pct = n * 100;
+            const pctText = (Math.round(pct * 100) / 100).toString();
+            return `${pctText}%`;
+        }
+        let base;
+        if (typeof valueFormatter === 'function') {
+            base = valueFormatter(value);
+        } else if (label != null && label !== '') {
+            base = String(label);
+        } else {
+            const n = parseFloat(value);
+            if (!Number.isFinite(n)) base = String(value);
+            else base = (Math.round(n * 1000) / 1000).toString();
+        }
+        if (showPrices && price != null && Number.isFinite(Number(price))) {
+            const dec = Number.isFinite(priceDecimals) ? priceDecimals : 2;
+            return `${base} (${Number(price).toFixed(dec)})`;
+        }
+        return base;
+    }
+
     static patchTwoPointHorizontalFib(tool, scales) {
         if (!tool || !tool.group || tool.group.empty() || !scales) return false;
         if (!tool.group.select('line[data-fib-idx]').node()) return false;

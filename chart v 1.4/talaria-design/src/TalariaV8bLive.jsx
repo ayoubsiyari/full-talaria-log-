@@ -2316,9 +2316,8 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     );
     if (chartLevels.length) patch.levels = chartLevels;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
-    patch.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
-    patch.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
+    v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
     patch.extendLines = !!tlStyle.fibExtendLines;
   }
   if (legacyTool && v9IsFibTimeZoneType(legacyTool) && Array.isArray(tlStyle.fibTzLevels)) {
@@ -2340,6 +2339,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.trendLineDasharray = trendDashStr;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
+    v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
   }
   if (legacyTool && v9IsFibSpeedFanType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
     const chartLevels = v9TlFibSpeedFanLevelsToChart(
@@ -2361,6 +2361,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.trendLineDasharray = fanTrendDash;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
+    v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
   }
   if (legacyTool && v9IsTrendFibTimeType(legacyTool)) {
     const fibDashStr =
@@ -2396,6 +2397,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         : 0.12;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
+    v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
   }
   if (legacyTool && v9IsFibArcsType(legacyTool)) {
     const arcsTrendDash =
@@ -2439,6 +2441,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         : 0.12;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
+    v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
   }
   if (
     legacyTool === "gann-box" ||
@@ -5367,6 +5370,12 @@ function v9FibShowPricesFromLevelsMode(mode) {
   return String(mode || "Value") === "Value and Percent";
 }
 
+function v9SyncFibLevelsLabelModeToStyle(st, tlStyle) {
+  if (!st || !tlStyle) return;
+  st.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
+  st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
+}
+
 function v9FibLevelsModeChartToUi(ch, showPrices) {
   if (ch === "percent") return "Percent";
   if (showPrices !== false) return "Value and Percent";
@@ -5577,6 +5586,7 @@ function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineWidth = fanTrendW;
   st.trendLineDasharray = fanTrendDash;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
@@ -5800,6 +5810,7 @@ function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
       ? +tlStyle.fibBgOpacity
       : 0.12;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
@@ -5880,6 +5891,7 @@ function v9ApplyFibArcsFromTlStyle(d, tlStyle, widthFallback) {
 
   st.v9FibArcsFullCircle = !!tlStyle.fibArcsFullCircle;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
@@ -5934,6 +5946,7 @@ function v9ApplyFibWedgeFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
@@ -5971,6 +5984,7 @@ function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
   st.v9FibCirclesBackground = st.showZones;
   st.v9FibCirclesBgOpacity = st.backgroundOpacity;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
@@ -6164,9 +6178,8 @@ function v9ApplyFibChannelFromTlStyle(d, tlStyle, widthFallback) {
       ? +tlStyle.fibBgOpacity
       : 0.08;
   st.reverse = !!tlStyle.fibReverse;
-  st.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
+  v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
-  st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
   st.extendLines = !!tlStyle.fibExtendLines;
 }
@@ -6204,6 +6217,7 @@ function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
@@ -6600,9 +6614,8 @@ function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
       ? +tlStyle.fibBgOpacity
       : 0.08;
   st.reverse = !!tlStyle.fibReverse;
-  st.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
+  v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
-  st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
   st.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
   st.extendLines = !!tlStyle.fibExtendLines;
 }

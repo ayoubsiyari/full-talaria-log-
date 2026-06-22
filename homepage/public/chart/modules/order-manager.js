@@ -13116,15 +13116,21 @@ class OrderManager {
         }
         setTimeout(_resizeChartsAfterDrawer, 290);
 
+        const contextPrefill = this._pendingContextMenuOrderPrefill || null;
+        this._pendingContextMenuOrderPrefill = null;
+        const fromContextMenu = !!contextPrefill;
+
         // New order draft: drop multi-entry rows from the last session (preview was cleared on close).
         if (!this.editingPendingOrderId && !v9OrderRail) {
             this._resetMultiEntryStateForNewOrder();
 
-            // Default to market order for every new draft
-            this.orderType = 'market';
-            document.querySelectorAll('.order-type-btn').forEach(b => {
-                b.classList.toggle('active', b.dataset.type === 'market');
-            });
+            if (!fromContextMenu) {
+                // Default to market order for every new draft
+                this.orderType = 'market';
+                document.querySelectorAll('.order-type-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.type === 'market');
+                });
+            }
         }
 
         // Refresh header badge (symbol + market type) every time the drawer opens
@@ -13159,10 +13165,15 @@ class OrderManager {
         }
 
         const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
+        if (fromContextMenu) {
+            this._applyContextMenuOrderPrefill(contextPrefill);
+        }
         if (rrSelectedOpen && this._rrExecuteArmed) {
             // RR is the source — entry, SL, and TP all come from the tool (not live market only).
             this._syncRiskRewardDrawingToOpenOrderPanel(rrSelectedOpen);
-        } else if (!rrSelectedOpen) {
+        } else if (!rrSelectedOpen && !fromContextMenu) {
+            this.updateOrderPanelPrice();
+        } else if (!rrSelectedOpen && fromContextMenu && !(Number.isFinite(contextPrefill?.entryPrice) && contextPrefill.entryPrice > 0)) {
             this.updateOrderPanelPrice();
         }
 
@@ -13326,6 +13337,40 @@ class OrderManager {
         } else {
             this.toggleOrderPanel();
         }
+    }
+
+    /**
+     * Apply side / limit|stop / entry from chart right-click context menu.
+     * Must run before updateOrderPanelPrice() so market close does not overwrite cursor price.
+     */
+    _applyContextMenuOrderPrefill({ side = null, orderType = null, entryPrice = null } = {}) {
+        if (side === 'BUY' || side === 'SELL') {
+            this.orderSide = side;
+            const buyTab = document.getElementById('buyTab');
+            const sellTab = document.getElementById('sellTab');
+            if (buyTab) buyTab.classList.toggle('active', side === 'BUY');
+            if (sellTab) sellTab.classList.toggle('active', side === 'SELL');
+        }
+
+        if (orderType === 'market' || orderType === 'limit' || orderType === 'stop') {
+            this.orderType = orderType;
+            document.querySelectorAll('.order-type-btn').forEach((b) => {
+                b.classList.toggle('active', b.dataset.type === orderType);
+            });
+        }
+
+        if (Number.isFinite(entryPrice) && entryPrice > 0) {
+            const priceInput = document.getElementById('orderEntryPrice');
+            if (priceInput) {
+                priceInput.value = typeof this.formatPrice === 'function'
+                    ? this.formatPrice(entryPrice)
+                    : String(entryPrice);
+            }
+        }
+
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+        return true;
     }
 
     /**

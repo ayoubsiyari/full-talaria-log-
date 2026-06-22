@@ -29719,37 +29719,36 @@ class Chart {
             return;
         }
 
+        if (!orderType && Number.isFinite(entryPrice)) {
+            const currentPrice = this.resolveEffectiveCurrentPrice(this.data);
+            let effectiveSide = side;
+            if (!effectiveSide) {
+                const sellActive = document.getElementById('sellTab')?.classList.contains('active');
+                effectiveSide = sellActive ? 'SELL' : 'BUY';
+            }
+            if (effectiveSide === 'SELL') {
+                orderType = (Number.isFinite(currentPrice) && entryPrice < currentPrice) ? 'stop' : 'limit';
+            } else {
+                orderType = (Number.isFinite(currentPrice) && entryPrice > currentPrice) ? 'stop' : 'limit';
+            }
+        }
+
+        const panel = document.getElementById('orderPanel');
+        const wasOpen = !!panel?.classList.contains('visible')
+            || (typeof window !== 'undefined' && !!window.__talariaV9OrderRailOpen);
+
+        manager._pendingContextMenuOrderPrefill = { side, orderType, entryPrice };
+
         if (typeof manager.openOrderPanel === 'function') {
             manager.openOrderPanel();
         } else if (typeof manager.toggleOrderPanel === 'function') {
             manager.toggleOrderPanel();
         }
 
-        const applyPrefill = () => {
-            if (side === 'BUY') {
-                document.getElementById('buyTab')?.click();
-            } else if (side === 'SELL') {
-                document.getElementById('sellTab')?.click();
+        const finalizePrefill = () => {
+            if (typeof manager._applyContextMenuOrderPrefill === 'function') {
+                manager._applyContextMenuOrderPrefill({ side, orderType, entryPrice });
             }
-
-            if (orderType) {
-                const orderTypeBtn = document.querySelector(`.order-type-btn[data-type="${orderType}"]`);
-                if (orderTypeBtn && typeof orderTypeBtn.click === 'function') {
-                    orderTypeBtn.click();
-                } else {
-                    manager.orderType = orderType;
-                }
-            }
-
-            const entryInput = document.getElementById('orderEntryPrice');
-            if (entryInput && Number.isFinite(entryPrice)) {
-                const _eDec = this.getPriceDecimals(this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0);
-                entryInput.value = entryPrice.toFixed(_eDec);
-            }
-
-            manager.tpManuallyPositioned = false;
-            manager.slManuallyPositioned = false;
-
             manager.syncDefaultTargetsToEntry?.();
             manager.calculatePositionFromRisk?.();
             manager.calculateAdvancedRiskReward?.();
@@ -29757,7 +29756,10 @@ class Chart {
             manager.updatePreviewLines?.();
         };
 
-        requestAnimationFrame(() => requestAnimationFrame(applyPrefill));
+        if (wasOpen) {
+            manager._pendingContextMenuOrderPrefill = null;
+            finalizePrefill();
+        }
     }
 
     showTableViewFromContextMenu() {
