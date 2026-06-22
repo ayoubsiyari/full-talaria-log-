@@ -2124,8 +2124,12 @@
         let cumP2V = 0;
         let cumVol = 0;
         let prevKey = null;
+        const anchorBars = [];
         for (let i = 0; i < n; i++) {
             const key = anchorKeys ? anchorKeys[i] : vwapAnchorPeriodKey(data[i], params.anchorPeriod);
+            if (i === 0 || key !== prevKey) {
+                anchorBars.push(i);
+            }
             if (prevKey !== null && key !== prevKey) {
                 cumPV = 0;
                 cumP2V = 0;
@@ -2170,7 +2174,8 @@
             upper2: shiftLineSeries(upper2, offset),
             lower2: shiftLineSeries(lower2, offset),
             upper3: shiftLineSeries(upper3, offset),
-            lower3: shiftLineSeries(lower3, offset)
+            lower3: shiftLineSeries(lower3, offset),
+            anchorBars: anchorBars
         };
     }
 
@@ -10300,9 +10305,6 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     const drawStride = (Number.isFinite(spacing) && spacing > 0 && spacing < 1)
         ? Math.max(1, Math.floor(1 / spacing))
         : 1;
-    const scatterStride = (Number.isFinite(spacing) && spacing > 0 && spacing < 1)
-        ? Math.max(1, Math.floor(1 / spacing))
-        : Math.max(1, Math.round(spacing / 10));
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -10389,7 +10391,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     } else if (style === 'Cross') {
         const r = Math.max(2.5, lw * 1.5);
         ctx.beginPath();
-        for (let i = startIndex; i < endIndex; i += scatterStride) {
+        for (let i = startIndex; i < endIndex; i += drawStride) {
             const val = valueAt(i);
             if (val == null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);
@@ -10404,7 +10406,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     } else if (style === 'Circles') {
         const r = Math.max(2, lw * 1.1);
         ctx.beginPath();
-        for (let i = startIndex; i < endIndex; i += scatterStride) {
+        for (let i = startIndex; i < endIndex; i += drawStride) {
             const val = valueAt(i);
             if (val == null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);
@@ -10604,6 +10606,64 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
     }
 };
 
+/** Circles/Cross at fixed bar indices only — VWAP anchor points stay put when zooming. */
+Chart.prototype._drawIndicatorScatterAtBarIndices = function(series, barIndices, color, lineWidth, startIndex, endIndex, lineStyle, options) {
+    if (!series || !Array.isArray(barIndices) || !barIndices.length || !this.ctx) return;
+    options = options || {};
+    const style = this._normalizePlotStyle(lineStyle);
+    if (style !== 'Circles' && style !== 'Cross') return;
+    const lw = Number(lineWidth) || 2;
+    const plotOffset = Number(options.plotOffset) | 0;
+    const valueAt = plotOffset
+        ? function(i) { return seriesValueAtPlotOffset(series, i, plotOffset); }
+        : function(i) { return series[i]; };
+    const yAt = typeof options.yScale === 'function' ? options.yScale : function(v) { return this.yScale(v); }.bind(this);
+    const m = this.margin;
+    const inView = function(x) { return x >= m.l - 50 && x <= this.w - m.r + 50; }.bind(this);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    const lo = Math.max(0, startIndex | 0);
+    const hi = endIndex == null ? series.length : Math.min(series.length, endIndex | 0);
+    if (style === 'Cross') {
+        const r = Math.max(2.5, lw * 1.5);
+        ctx.beginPath();
+        for (let ai = 0; ai < barIndices.length; ai++) {
+            const i = barIndices[ai];
+            if (i < lo || i >= hi) continue;
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) continue;
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(val);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            ctx.moveTo(x - r, y);
+            ctx.lineTo(x + r, y);
+            ctx.moveTo(x, y - r);
+            ctx.lineTo(x, y + r);
+        }
+        ctx.stroke();
+    } else {
+        const r = Math.max(2, lw * 1.1);
+        ctx.beginPath();
+        for (let ai = 0; ai < barIndices.length; ai++) {
+            const i = barIndices[ai];
+            if (i < lo || i >= hi) continue;
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) continue;
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(val);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            ctx.moveTo(x + r, y);
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+        }
+        ctx.fill();
+    }
+    ctx.restore();
+};
+
 /** VWAP overlay — main line, band lines (1–3), optional fill between upper1/lower1. */
 Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, params) {
     if (!data || !Array.isArray(data.vwap)) return;
@@ -10625,12 +10685,23 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
     const vwapVal = function(arr, i) {
         return plotOffset ? seriesValueAtPlotOffset(arr, i, plotOffset) : arr[i];
     };
-    const drawBandPair = function(upperArr, lowerArr) {
+    const anchorBars = Array.isArray(data.anchorBars) ? data.anchorBars : null;
+    const drawVwapSeries = function(arr, lineStyle, color, width, dashStyle) {
+        if (!arr) return;
+        const plotStyle = this._normalizePlotStyle(lineStyle);
+        const opts = Object.assign({ dashStyle: dashStyle || 'Solid' }, lineOpts);
+        if ((plotStyle === 'Circles' || plotStyle === 'Cross') && anchorBars && anchorBars.length) {
+            this._drawIndicatorScatterAtBarIndices(arr, anchorBars, color, width, startIndex, endIndex, lineStyle, opts);
+        } else {
+            this.drawLineIndicator(arr, color, width, startIndex, endIndex, lineStyle, opts);
+        }
+    }.bind(this);
+    const drawBandPair = function(upperArr, lowerArr, upperStyleLocal, lowerStyleLocal) {
         if (style.showUpper1 !== false && upperArr) {
-            this.drawLineIndicator(upperArr, upperCol, upperW, startIndex, endIndex, upperStyle, Object.assign({ dashStyle: upperDash }, lineOpts));
+            drawVwapSeries(upperArr, upperStyleLocal || upperStyle, upperCol, upperW, upperDash);
         }
         if (style.showLower1 !== false && lowerArr) {
-            this.drawLineIndicator(lowerArr, lowerCol, lowerW, startIndex, endIndex, lowerStyle, Object.assign({ dashStyle: lowerDash }, lineOpts));
+            drawVwapSeries(lowerArr, lowerStyleLocal || lowerStyle, lowerCol, lowerW, lowerDash);
         }
     }.bind(this);
 
@@ -10675,14 +10746,12 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
     }
 
     if (style.showVwap !== false) {
-        this.drawLineIndicator(
+        drawVwapSeries(
             data.vwap,
+            legacyS,
             resolve(style.color, style.lineOpacity),
             legacyW,
-            startIndex,
-            endIndex,
-            legacyS,
-            Object.assign({ dashStyle: style.lineDashStyle || 'Solid' }, lineOpts)
+            style.lineDashStyle || 'Solid'
         );
     }
     if (params.band1Enabled !== false) {

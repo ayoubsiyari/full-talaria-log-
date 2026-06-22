@@ -2302,7 +2302,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         ? +tlStyle.fibBgOpacity
         : 0.08;
     patch.reverse = !!tlStyle.fibReverse;
-    patch.showPrices = tlStyle.fibPrices !== false;
+    patch.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     patch.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
@@ -2318,7 +2318,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     patch.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
-    patch.showPrices = tlStyle.fibPrices !== false;
+    patch.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
     patch.extendLines = !!tlStyle.fibExtendLines;
   }
   if (legacyTool && v9IsFibTimeZoneType(legacyTool) && Array.isArray(tlStyle.fibTzLevels)) {
@@ -5363,8 +5363,13 @@ function v9FibLevelsModeUiToChart(mode) {
   return "values";
 }
 
-function v9FibLevelsModeChartToUi(ch) {
+function v9FibShowPricesFromLevelsMode(mode) {
+  return String(mode || "Value") === "Value and Percent";
+}
+
+function v9FibLevelsModeChartToUi(ch, showPrices) {
   if (ch === "percent") return "Percent";
+  if (showPrices !== false) return "Value and Percent";
   return "Value";
 }
 
@@ -6159,7 +6164,7 @@ function v9ApplyFibChannelFromTlStyle(d, tlStyle, widthFallback) {
       ? +tlStyle.fibBgOpacity
       : 0.08;
   st.reverse = !!tlStyle.fibReverse;
-  st.showPrices = tlStyle.fibPrices !== false;
+  st.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
@@ -6595,7 +6600,7 @@ function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
       ? +tlStyle.fibBgOpacity
       : 0.08;
   st.reverse = !!tlStyle.fibReverse;
-  st.showPrices = tlStyle.fibPrices !== false;
+  st.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
   st.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
@@ -7359,9 +7364,11 @@ function v9TlStylePatchFromDrawing(d) {
                 ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
                 : 0.08,
             fibReverse: !!s.reverse,
-            fibPrices: s.showPrices !== false,
+            fibPrices: v9FibShowPricesFromLevelsMode(
+              v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices),
+            ),
             fibLevelsOn: s.levelsEnabled !== false,
-            fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode),
+            fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices),
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
             fibExtendLines: !!s.extendLines,
           };
@@ -7498,9 +7505,11 @@ function v9TlStylePatchFromDrawing(d) {
                 ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
                 : 0.08,
             fibReverse: !!s.reverse,
-            fibPrices: s.showPrices !== false,
+            fibPrices: v9FibShowPricesFromLevelsMode(
+              v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices),
+            ),
             fibLevelsOn: s.levelsEnabled !== false,
-            fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode),
+            fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices),
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
             fibExtendLines: !!s.extendLines,
           };
@@ -19977,11 +19986,35 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Fib Show Prices — syncs with Level values mode (Value ↔ Value and Percent). */
+  const applyTlFibPricesToggle = useCallback(() => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const mode = s.fibLevelsMode || "Value";
+        const nextPrices = !(s.fibPrices !== false);
+        let fibLevelsMode = mode;
+        if (mode !== "Percent") {
+          fibLevelsMode = nextPrices ? "Value and Percent" : "Value";
+        }
+        const next = { ...s, fibPrices: nextPrices, fibLevelsMode };
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
   /** Fib level values mode (Value / Percent / …) — immediate chart sync. */
   const applyTlFibLevelsMode = useCallback((fibLevelsMode) => {
     flushSync(() => {
       setTlStyle((s) => {
-        const next = { ...s, fibLevelsMode };
+        const next = {
+          ...s,
+          fibLevelsMode,
+          fibPrices: v9FibShowPricesFromLevelsMode(fibLevelsMode),
+        };
         v9FlushTlStyleToChartTargets(next, {
           editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
           resolveLegacyTool,
@@ -22729,7 +22762,7 @@ const TalariaV8bLive = () => {
                       })()}
                       {/* Prices */}
                       {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
-                        {TlChk(tlStyle.fibPrices,"tlchk-fibPrices","Show Prices",()=>setTlStyle(s=>({...s,fibPrices:!s.fibPrices})))}
+                        {TlChk(tlStyle.fibPrices,"tlchk-fibPrices","Show Prices",applyTlFibPricesToggle)}
                       </div>}
                       {/* Level values */}
                       {(() => {
