@@ -143,6 +143,21 @@ export function resolveGlobalTradeId(
   return { globalId: `${sessionId}:${sessionLocalId}`, sessionLocalId, chartTradeId };
 }
 
+function resolvePlannedRrFromRow(row: Record<string, unknown>): number | null {
+  for (const key of ["plannedRRAtEntry", "planned_rr", "plannedRR", "rewardToRiskRatio"] as const) {
+    const n = Number(row[key]);
+    if (Number.isFinite(n) && n > 0 && n < 50) return n;
+  }
+  const entry = Number(row.entryPrice ?? row.entry ?? row.openPrice ?? row.array_base_price);
+  const stop = Number(row.initial_sl ?? row.stopLoss ?? row.planned_sl);
+  const tp = Number(row.initial_takeProfit ?? row.takeProfit ?? row.target);
+  if (Number.isFinite(entry) && Number.isFinite(stop) && Number.isFinite(tp)) {
+    const risk = Math.abs(entry - stop);
+    if (risk > 0) return Math.abs(tp - entry) / risk;
+  }
+  return null;
+}
+
 /** Map chart API journal row → trade shape expected by TalariaV16 dashboard math. */
 export function mapJournalRowToV16Trade(
   row: Record<string, unknown>,
@@ -158,13 +173,14 @@ export function mapJournalRowToV16Trade(
   const rRaw =
     row.rMultiple ??
     row.r_multiple ??
+    row.actual_rr_net ??
+    row.actualRR ??
     row.rr ??
     row.R ??
-    row.rewardToRiskRatio ??
-    row.actual_rr_net ??
     0;
   const rMultiple = Number(rRaw);
   const r = Number.isFinite(rMultiple) ? rMultiple : 0;
+  const plannedRR = resolvePlannedRrFromRow(row);
   const tag =
     String(row.tag || row.setup || row.strategy || "").trim() ||
     sessionConfigStrategyName(session) ||
@@ -214,7 +230,9 @@ export function mapJournalRowToV16Trade(
       row.mfe ??
       row.mfe_r ??
       (Number.isFinite(mfe) && mfe !== 0 ? mfe : Math.abs(r) * 0.8),
-    plannedRR: Number(row.plannedRR ?? row.planned_rr ?? row.tp ?? 2) || 2,
+    plannedRR,
+    planned_rr: plannedRR,
+    plannedRRAtEntry: row.plannedRRAtEntry ?? plannedRR,
     actualRR: row.actualRR ?? Math.abs(r),
     rulesFollowed: row.rulesFollowed ?? true,
     preTags,

@@ -92,7 +92,7 @@ function computePlannedRrFromEntry(
   entry: ApiJournalEntry,
   extra: Record<string, unknown>
 ): number | null {
-  const fromExtra = Number(extra.planned_rr ?? extra.plannedRR);
+  const fromExtra = Number(extra.plannedRRAtEntry ?? extra.planned_rr ?? extra.plannedRR);
   if (Number.isFinite(fromExtra) && fromExtra > 0) return fromExtra;
   const entryPrice = Number(entry.entry_price);
   const stop = Number(entry.stop_loss);

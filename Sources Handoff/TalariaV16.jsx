@@ -7074,11 +7074,15 @@ const btDashTradeActualR = trade => {
   return raw != null ? raw : null;
 };
 const btDashTradePlannedR = trade => {
+  const frozen = btDashNumber(trade?.plannedRRAtEntry ?? trade?.planned_rr_at_entry);
+  if (frozen != null) return Math.abs(frozen);
   const direct = btDashNumber(trade?.plannedRR ?? trade?.planned_rr ?? trade?.plannedRRComputed);
-  if (direct != null) return Math.abs(direct);
-  const entry = btDashNumber(trade?.entryPrice ?? trade?.entry);
-  const stop = btDashNumber(trade?.stopLoss ?? trade?.planned_sl ?? trade?.stop);
-  const tp = btDashNumber(trade?.takeProfit ?? trade?.targetPrice ?? trade?.target ?? trade?.tp);
+  if (direct != null && direct > 0 && direct < 50) return Math.abs(direct);
+  const ratio = btDashNumber(trade?.rewardToRiskRatio);
+  if (ratio != null && ratio > 0 && ratio < 50) return Math.abs(ratio);
+  const entry = btDashNumber(trade?.array_base_price ?? trade?.entryPrice ?? trade?.entry ?? trade?.openPrice);
+  const stop = btDashNumber(trade?.initial_sl ?? trade?.initialStopLoss ?? trade?.planned_sl ?? trade?.stopLoss ?? trade?.stop);
+  const tp = btDashNumber(trade?.initial_takeProfit ?? trade?.takeProfit ?? trade?.targetPrice ?? trade?.target);
   if (entry == null || stop == null || tp == null) return null;
   const risk = Math.abs(entry - stop);
   return risk > 0 ? Math.abs(tp - entry) / risk : null;
@@ -20187,7 +20191,7 @@ const TalariaV8b = () => {
             "pnl_currency_net", "netPnl", "pnl", "pnl_dollars_net", "realizedPnL", "realized_pnl",
             "rMultiple", "rr", "actual_rr_net", "actualRR", "actualRisk", "rewardToRiskRatio",
             "riskAmount", "risk_amount", "riskPerTrade", "originalRisk", "planned_risk_amount", "riskAmount",
-            "plannedRisk", "riskPct", "risk_pct", "plannedRR", "planned_rr",
+            "plannedRisk", "riskPct", "risk_pct", "plannedRR", "planned_rr", "plannedRRAtEntry",
             "duration", "durationMinutes", "timeHeldMinutes", "dur",
             "closeType", "exit_reason", "reason", "hitType",
             "mfe", "mae", "mfe_r", "mae_r", "total_mfe_r", "total_mae_r", "total_mfe", "total_mae",
@@ -20560,8 +20564,8 @@ const TalariaV8b = () => {
               exits:["partial_exits","exits","actual_exits","exitRows","partialCloses"],
             };
             const fallbackPriceKeys = {
-              entries:["entryPrice","entry","openPrice"],
-              targets:["takeProfit","targetPrice","target","tp"],
+              entries:["entryPrice","entry","openPrice","array_base_price"],
+              targets:["initial_takeProfit","takeProfit","targetPrice","target","tp"],
               exits:["exitPrice","exit","closePrice"],
             };
             const fmtQtyCompact = (value) => {
@@ -20704,7 +20708,7 @@ const TalariaV8b = () => {
                 exitTime:exitTime || "",
                 exitTimingEnabled:!!(exitDate && exitTime && exitRows.length),
                 unit:firstValue(trade, ["unit","sizeUnit","quantityUnit"], spec.unit || ""),
-                stopLoss:ledgerInputText(firstValue(trade, ["stopLoss","planned_sl","sl"], "")),
+                stopLoss:ledgerInputText(firstValue(trade, ["initial_sl","initialStopLoss","stopLoss","planned_sl","sl"], "")),
                 commission:ledgerInputText(commissionSourceValue),
                 spread:ledgerInputText(spreadSourceValue),
                 slippage:ledgerInputText(slippageSourceValue),
@@ -20849,7 +20853,7 @@ const TalariaV8b = () => {
               const excursion = derived?.excursion || {};
               const derivedPnl = ledgerFiniteNumber(currency.net) ?? pnl;
               const derivedR = ledgerFiniteNumber(calculated.rrValue) ?? rVal;
-              const derivedPlannedR = ledgerFiniteNumber(calculated.plannedRrValue) ?? btDashTradePlannedR(t) ?? Number(firstValue(t, ["plannedRR","planned_rr","rewardToRiskRatio"], NaN));
+              const derivedPlannedR = btDashTradePlannedR(t) ?? ledgerFiniteNumber(calculated.plannedRrValue) ?? Number(firstValue(t, ["plannedRR","planned_rr","rewardToRiskRatio"], NaN));
               const derivedRisk = ledgerFiniteNumber(currency.riskCurrency) != null ? Math.abs(ledgerFiniteNumber(currency.riskCurrency)) : Number(firstValue(t, ["riskAmount","risk_amount","riskPerTrade"], NaN));
               const derivedCost = derived ? Number(derived.costTotal || 0) : Number(firstValue(t, ["cost_friction_total","commission_total","commissionCost"], 0));
               const derivedStatus = derived ? (derived.closed ? "Closed" : "Open") : statusText;
@@ -25917,7 +25921,7 @@ const TalariaV8b = () => {
           const buildDashAddTradeSourceResultSnapshot = (trade, draft) => {
             const actualR = dashFirstFiniteNumber(trade?.actualRisk, trade?.actual_rr_net, trade?.actualRR, trade?.rMultiple, trade?.rr);
             const net = dashFirstFiniteNumber(trade?.pnl_currency_net, trade?.netPnl, trade?.net_pnl, trade?.pnl, trade?.pnl_currency_gross);
-            const plannedR = dashFirstFiniteNumber(trade?.plannedRR, trade?.planned_rr, trade?.rewardToRiskRatio, trade?.rr);
+            const plannedR = dashFirstFiniteNumber(trade?.plannedRRAtEntry, trade?.plannedRR, trade?.planned_rr, trade?.rewardToRiskRatio);
             const explicitRisk = dashFirstFiniteNumber(trade?.riskAmount, trade?.risk_amount, trade?.riskPerTrade, trade?.originalRisk, trade?.planned_risk_amount);
             const riskAmount = explicitRisk ?? (actualR != null && Math.abs(actualR) > 0.000001 && net != null ? Math.abs(net / actualR) : null);
             const plannedNet = dashFirstFiniteNumber(trade?.planned_pnl_net, trade?.plannedNetPnl, trade?.target_pnl, trade?.expected_pnl)
