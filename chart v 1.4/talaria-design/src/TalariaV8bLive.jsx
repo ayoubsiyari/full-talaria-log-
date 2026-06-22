@@ -11670,7 +11670,6 @@ const TalariaV8bLive = () => {
   const [supportSending, setSupportSending] = useState(false);
   const [supportError, setSupportError] = useState(null);
   const supportBtnRef = useRef(null);
-  const supportSidebarBtnRef = useRef(null);
   const supportPopRef = useRef(null);
   const supportWsRef = useRef(null);
   const supportMsgEndRef = useRef(null);
@@ -11863,7 +11862,6 @@ const TalariaV8bLive = () => {
     const onDocDown = (e) => {
       const t = e.target;
       if (supportBtnRef.current && supportBtnRef.current.contains(t)) return;
-      if (supportSidebarBtnRef.current && supportSidebarBtnRef.current.contains(t)) return;
       const navAnchor = typeof window !== "undefined" ? window.__TALARIA_SUPPORT_NAV_ANCHOR__ : null;
       if (navAnchor && navAnchor.contains(t)) return;
       if (supportPopRef.current && supportPopRef.current.contains(t)) return;
@@ -31650,15 +31648,18 @@ const TalariaV8bLive = () => {
         {supportChatOpen && createPortal(
           (() => {
             const navAnchor = typeof window !== "undefined" ? window.__TALARIA_SUPPORT_NAV_ANCHOR__ : null;
-            const anchorEl = supportBtnRef.current || supportSidebarBtnRef.current || navAnchor;
+            const anchorEl = supportBtnRef.current || navAnchor;
             const btnR = anchorEl ? anchorEl.getBoundingClientRect() : null;
             const POP_W = 360, POP_H = 500;
-            const right = btnR
-              ? Math.max(8, window.innerWidth - btnR.right - 4)
-              : Math.max(8, window.innerWidth - 76);
-            const top = btnR
-              ? Math.round(btnR.bottom + 6)
-              : Math.max(8, window.innerHeight - Math.min(POP_H, window.innerHeight * 0.75) - 16);
+            const maxPopH = Math.min(POP_H, window.innerHeight * 0.75);
+            let right = Math.max(8, window.innerWidth - 76);
+            let top = Math.max(8, window.innerHeight - maxPopH - 16);
+            if (btnR) {
+              right = Math.max(8, window.innerWidth - btnR.right - 4);
+              const below = Math.round(btnR.bottom + 6);
+              const above = Math.round(btnR.top - maxPopH - 6);
+              top = below + maxPopH <= window.innerHeight - 8 ? below : Math.max(8, above);
+            }
             const catLabel = { bug: "Bug", error: "Error", other: "Other" };
             const fmtTime = (iso) => { if (!iso) return ""; try { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
             const supportOpenCount = supportThreads.filter(t => supportThreadIsOpen(t.status)).length;
@@ -31852,32 +31853,6 @@ const TalariaV8bLive = () => {
             t.id === "pinbar" && <div key={`sep-${t.id}`} style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>,
           ])}
           <div style={{ flex: 1 }}/>
-          {/* Support — same chat as top bar; also toggled from V16 nav via __TALARIA_CHART_TOGGLE_SUPPORT__ */}
-          <div
-            ref={supportSidebarBtnRef}
-            onClick={(e) => { e.stopPropagation(); toggleSupportChat(); }}
-            onMouseEnter={() => setHov("sb-support")} onMouseLeave={() => setHov(null)}
-            style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"center",
-              paddingLeft:0, paddingRight:0, boxSizing:"border-box", cursor:"default", position:"relative",
-              background: supportChatOpen ? "rgba(74,106,255,0.10)" : hov==="sb-support" ? c.hv : "transparent",
-              transition:"background 0.12s" }}>
-            <I n="chat" s={16} cl={supportChatOpen ? c.acL : hov==="sb-support" ? c.tx : c.ts}/>
-            {supportUnread > 0 && (
-              <div style={{ position:"absolute", top:2, right:6, minWidth:12, height:12, borderRadius:6, background:"#e53935", color:"#fff", fontSize:8, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px", lineHeight:1, pointerEvents:"none" }}>
-                {supportUnread > 99 ? "99+" : supportUnread}
-              </div>
-            )}
-            {hov==="sb-support" && !supportChatOpen && (
-              <div style={{ position:"absolute", left:"calc(100% + 10px)", top:"50%", transform:"translateY(-50%)",
-                background:c.el, border:`1px solid ${c.brH}`, padding:"4px 10px", fontSize:12, fontWeight:600, fontFamily:F,
-                color:c.tx, whiteSpace:"nowrap", zIndex:100, boxShadow:"0 4px 16px rgba(0,0,0,0.6)",
-                borderLeft:`2px solid ${c.brH}`, pointerEvents:"none" }}>Support</div>
-            )}
-            {supportChatOpen && (
-              <div style={{ position:"absolute", left:3, top:"25%", bottom:"25%", width:1,
-                background:`linear-gradient(180deg,transparent,${c.acL},transparent)`, pointerEvents:"none", zIndex:2 }}/>
-            )}
-          </div>
           {/* Dark / Light mode toggle */}
           <div onClick={(e) => { e.stopPropagation(); setDarkMode(v => !v); }}
             onMouseEnter={() => setHov("sb-theme")} onMouseLeave={() => setHov(null)}
