@@ -565,8 +565,46 @@ class BaseDrawing {
             if (typeof this.updateHandlePositions === 'function') {
                 this.updateHandlePositions(scales);
             }
+            this._patchLiveInlinePriceLabel(scales);
         }
         return patched;
+    }
+
+    /** Move the optional on-chart price badge during live handle resize (no full SVG rebuild). */
+    _patchLiveInlinePriceLabel(scales) {
+        if (this.style?.showPriceLabel === false) return;
+        if (!this.group || this.group.empty() || !scales?.yScale || !scales?.xScale) return;
+        const labelGroup = this.group.select('.price-label');
+        if (labelGroup.empty()) return;
+        const point = this.points?.[0];
+        if (!point || !Number.isFinite(point.y)) return;
+        const y = scales.yScale(point.y);
+        if (!Number.isFinite(y)) return;
+        const chart = scales.chart || this.chart;
+        let decimals = 5;
+        if (chart && typeof chart.getPriceDecimals === 'function') {
+            const dom = chart.yScale?.domain?.();
+            const range = Array.isArray(dom) && dom.length === 2 ? Math.abs(dom[1] - dom[0]) : 0;
+            const d = chart.getPriceDecimals(range);
+            if (Number.isFinite(d) && d >= 0) decimals = d;
+        }
+        const formattedPrice = point.y.toFixed(decimals);
+        const xRange = scales.xScale.range();
+        const labelX = xRange[1] - 5;
+        const texts = labelGroup.selectAll('text');
+        texts.attr('y', y);
+        const textNode = texts.node();
+        if (!textNode) return;
+        texts.text(formattedPrice);
+        const bbox = textNode.getBBox();
+        const padding = 6;
+        const rectWidth = bbox.width + padding * 2;
+        const rectHeight = 20;
+        labelGroup.select('rect')
+            .attr('x', labelX - rectWidth)
+            .attr('y', y - rectHeight / 2)
+            .attr('width', rectWidth);
+        texts.attr('x', labelX - rectWidth / 2);
     }
 
     /** Remove bare `.resize-handle` / hit circles (horizontal line, vertical line, …). */

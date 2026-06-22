@@ -16540,6 +16540,46 @@ const TalariaV8bLive = () => {
     } catch (_) {}
   }, []);
 
+  const applyV9DeleteMode = useCallback((item) => {
+    const mode =
+      !item ? null
+      : item.icon === "trashDraw" ? "drawings"
+      : item.icon === "trashInd" ? "indicators"
+      : item.icon === "trash" ? "both"
+      : null;
+    const applyOne = (chartInst) => {
+      if (!chartInst) return;
+      try {
+        const dm = chartInst.drawingManager;
+        const eraserOn = mode === "drawings" || mode === "both";
+        if (dm) {
+          if (mode != null) {
+            if (typeof dm.setEraserMode === "function") {
+              dm.setEraserMode(eraserOn);
+              if (eraserOn && typeof dm.clearTool === "function") dm.clearTool();
+            } else {
+              dm.eraserMode = eraserOn;
+            }
+          } else if (chartInst.cursorType !== "eraser") {
+            if (typeof dm.setEraserMode === "function") dm.setEraserMode(false);
+            else dm.eraserMode = false;
+          }
+        }
+        chartInst.v9DeleteIndicatorsMode = mode === "indicators" || mode === "both";
+      } catch (_) {}
+    };
+    try {
+      if (typeof window !== "undefined") window.v9DeleteMode = mode;
+      const ch =
+        typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+      applyOne(ch);
+      const pm = typeof window !== "undefined" ? window.panelManager : null;
+      if (pm && Array.isArray(pm.panels)) {
+        pm.panels.forEach((p) => applyOne(p && p.chartInstance));
+      }
+    } catch (_) {}
+  }, []);
+
   useEffect(() => {
     const syncMagnetUiFromChart = () => {
       try {
@@ -16565,6 +16605,22 @@ const TalariaV8bLive = () => {
       window.removeEventListener("panelSelected", syncMagnetUiFromChart);
     };
   }, []);
+
+  useEffect(() => {
+    if (editingDrawingRef.current) return;
+    if (tool === "trash") {
+      applyV9DeleteMode(groupSelected.trash || null);
+      return;
+    }
+    if (groupSelected.trash) {
+      setGroupSelected((p) => {
+        const next = { ...p };
+        delete next.trash;
+        return v9SanitizeGroupSelected(next);
+      });
+    }
+    applyV9DeleteMode(null);
+  }, [tool, groupSelected?.trash?.icon, groupSelected?.trash?.label, applyV9DeleteMode]);
 
   // Mock price/time labels removed: chart.js renders the real axes directly
   // on the canvas (right edge for price, bottom for time). V9 used to render
@@ -28868,7 +28924,7 @@ const TalariaV8bLive = () => {
               const firstNonHeader = items.findIndex(x => !x.h);
               const isSelected = groupSelected[activeKey]
                 ? groupSelected[activeKey].label === item.label
-                : i === firstNonHeader;
+                : (["eye", "magnet", "trash"].includes(activeKey) ? false : i === firstNonHeader);
               const isPinned = toolPinned.includes(item.label);
               const rowHov = hov===`dd-${i}` || hov===`ddpin-${i}`;
               return (
@@ -28897,16 +28953,23 @@ const TalariaV8bLive = () => {
                       return;
                     }
                     if (activeKey === "trash") {
-                      let clearAction = null;
-                      if (item.icon === "trashDraw") clearAction = "drawings";
-                      else if (item.icon === "trashInd") clearAction = "indicators";
-                      else if (item.icon === "trash") clearAction = "both";
-                      if (!clearAction || !v9ClearObjectsOnAllPanels(clearAction)) {
-                        if (clearAction === "drawings") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
-                        else if (clearAction === "indicators") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
-                        else if (clearAction === "both") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
+                      const already = groupSelected.trash?.icon === item.icon;
+                      if (already) {
+                        setGroupSelected((p) => {
+                          const next = { ...p };
+                          delete next.trash;
+                          return v9SanitizeGroupSelected(next);
+                        });
+                        v9UserExplicitToolRef.current = true;
+                        setTool("crosshair");
+                        applyV9DeleteMode(null);
+                        closeDropdown();
+                        return;
                       }
-                      setGroupSelected(p => v9SanitizeGroupSelected({ ...p, trash: item }));
+                      setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, trash: item }));
+                      v9UserExplicitToolRef.current = true;
+                      setTool("trash");
+                      applyV9DeleteMode(item);
                       closeDropdown();
                       return;
                     }

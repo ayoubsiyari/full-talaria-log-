@@ -592,6 +592,7 @@ class DrawingToolsManager {
                         && this._supportsLiveHandleGeometryPatch(stillTracked)
                         && typeof stillTracked.patchLiveHandleResize === 'function'
                         && stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex)) {
+                        this._refreshAxisHighlightsDuringHandleEdit(stillTracked);
                         return;
                     }
                     this._skipHandleSetup = true;
@@ -631,6 +632,7 @@ class DrawingToolsManager {
                         if (this._supportsLiveHandleGeometryPatch(stillTracked)
                             && typeof stillTracked.patchLiveHandleResize === 'function'
                             && stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex)) {
+                            this._refreshAxisHighlightsDuringHandleEdit(stillTracked);
                             return;
                         }
                         this.renderDrawing(stillTracked, this._getFullHandleEditRenderOpts(stillTracked));
@@ -2750,6 +2752,15 @@ class DrawingToolsManager {
         this._axisHighlightDragRaf.set(key, rafId);
     }
 
+    /** Keep Y-axis endpoint labels in sync while resizing via blue handles. */
+    _refreshAxisHighlightsDuringHandleEdit(drawing, pointsOverride) {
+        if (!drawing || !drawing.selected) return;
+        if (typeof drawing.showAxisHighlights !== 'function') return;
+        const pts = Array.isArray(pointsOverride) ? pointsOverride : drawing.points;
+        if (!Array.isArray(pts) || pts.length === 0) return;
+        this._scheduleAxisHighlightsDuringDrag(drawing, pts);
+    }
+
     _clearAxisHighlightDragState() {
         if (this._axisHighlightDragRaf) {
             this._axisHighlightDragRaf.forEach((rafId) => cancelAnimationFrame(rafId));
@@ -4178,7 +4189,7 @@ class DrawingToolsManager {
         if (this._supportsLiveHandleGeometryPatch(resizeDrawing)
             && typeof resizeDrawing.patchLiveHandleResize === 'function'
             && resizeDrawing.patchLiveHandleResize(scales, this.resizingPointIndex)) {
-            // Simple line tools: geometry + handles patched in place (no SVG rebuild).
+            this._refreshAxisHighlightsDuringHandleEdit(resizeDrawing);
         } else {
             // Path, polyline, curve, etc.: full live re-render each frame (f619ece pattern).
             this._skipHandleSetup = true;
@@ -4187,9 +4198,7 @@ class DrawingToolsManager {
                 : { skipInteraction: true, liveRender: true, skipTimestampSync: true };
             this.renderDrawing(resizeDrawing, renderOpts);
             this._skipHandleSetup = false;
-            if (resizeDrawing.selected && typeof resizeDrawing.showAxisHighlights === 'function') {
-                resizeDrawing.showAxisHighlights();
-            }
+            this._refreshAxisHighlightsDuringHandleEdit(resizeDrawing);
         }
         this._broadcastLiveEditUpdate(resizeDrawing);
     }
@@ -6044,8 +6053,11 @@ class DrawingToolsManager {
             if (drawing.selected) {
                 const hasDragTransform = !!(drawing.group && drawing.group.attr('transform'));
                 const skipAxisDuringMove = this._isDrawingGeometryMoveActive() && hasDragTransform;
-                const skipAxisDuringHandleEdit = this._isLiveHandleEditing() && this.resizingDrawing === drawing;
-                if (!skipAxisDuringMove && !skipAxisDuringHandleEdit) {
+                const duringHandleEdit = this._isLiveHandleEditing()
+                    && (this.resizingDrawing === drawing || this.customHandleDrawing === drawing);
+                if (duringHandleEdit) {
+                    this._refreshAxisHighlightsDuringHandleEdit(drawing);
+                } else if (!skipAxisDuringMove) {
                     drawing.showAxisHighlights({ live: liveRender });
                 }
             } else if (typeof drawing.hideAxisHighlights === 'function') {
@@ -8026,6 +8038,7 @@ class DrawingToolsManager {
         this.resizeBeforeState = null;
         this._resizePointerSource = null;
         this._clearShiftResizeAnchorPoints();
+        this._clearAxisHighlightDragState();
         this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
@@ -8158,6 +8171,7 @@ class DrawingToolsManager {
         this.customHandleBeforeState = null;
         this._customHandlePointerSource = null;
         this._clearShiftResizeAnchorPoints();
+        this._clearAxisHighlightDragState();
         this._endDrawingLiveInteraction();
 
         if (drawing?.group && !drawing.group.empty()) {
