@@ -2366,28 +2366,73 @@ function talariaPickFiniteSeriesValue(arr, barIdx) {
     return null;
 }
 
+function talariaIndicatorPlotOffset(indicator) {
+    if (!indicator || !indicator.params) return 0;
+    const off = Number(indicator.params.offset);
+    return Number.isFinite(off) ? (off | 0) : 0;
+}
+
+function talariaSeriesValueAtBar(arr, barIdx, plotOffset) {
+    if (typeof window.talariaSeriesValueAtPlotOffset === 'function') {
+        return window.talariaSeriesValueAtPlotOffset(arr, barIdx, plotOffset);
+    }
+    const src = barIdx - (Number(plotOffset) | 0);
+    if (!Array.isArray(arr) || src < 0 || src >= arr.length) return null;
+    const v = arr[src];
+    if (v === null || v === undefined || isNaN(v) || !Number.isFinite(Number(v))) return null;
+    return Number(v);
+}
+
+function talariaOverlayIndicatorDecimals(chart) {
+    if (typeof chart.getPriceDecimals === 'function' && chart.yScale && chart.yScale.domain) {
+        const dom = chart.yScale.domain();
+        if (dom && dom.length === 2) {
+            return chart.getPriceDecimals(Math.abs(dom[1] - dom[0]));
+        }
+    }
+    return 4;
+}
+
 /** Same value tokens as chart-indicators-full.js updateOHLCIndicators (panel MACD bar). */
 function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
     const valuesStore = chart.indicators && chart.indicators.data ? chart.indicators.data[indicator.id] : null;
     if (!valuesStore) return [];
     const out = [];
     const barIdx = talariaCrosshairBarIndex(chart);
-    const pushToken = function(val, color, decimals) {
+    const plotOff = talariaIndicatorPlotOffset(indicator);
+    const decimals = talariaOverlayIndicatorDecimals(chart);
+    const pushToken = function(val, color, dec) {
         if (!Number.isFinite(val)) return;
         out.push({
-            text: Number(val).toFixed(decimals),
+            text: Number(val).toFixed(dec != null ? dec : decimals),
             color: color || '#9ca3af'
         });
     };
+    const readSeries = function(arr, color, dec) {
+        if (!Array.isArray(arr)) return;
+        const val = talariaSeriesValueAtBar(arr, barIdx, plotOff);
+        if (val !== null) pushToken(val, color, dec);
+    };
     if (Array.isArray(valuesStore)) {
-        const val = talariaPickFiniteSeriesValue(valuesStore, barIdx);
-        if (val !== null) pushToken(val, indicator.style && indicator.style.color, 4);
+        readSeries(valuesStore, indicator.style && indicator.style.color, decimals);
         return out;
     }
     if (typeof valuesStore === 'object') {
+        if (Array.isArray(valuesStore.line)) {
+            readSeries(valuesStore.line, indicator.style && indicator.style.color, decimals);
+            if (out.length > 0) return out;
+        }
+        if (Array.isArray(valuesStore.vwap)) {
+            readSeries(valuesStore.vwap, indicator.style && indicator.style.color, decimals);
+            if (out.length > 0) return out;
+        }
+        if (Array.isArray(valuesStore.ma)) {
+            readSeries(valuesStore.ma, indicator.style && (indicator.style.smoothColor || indicator.style.color), decimals);
+            if (out.length > 0) return out;
+        }
         if (Array.isArray(valuesStore.macd) && Array.isArray(valuesStore.signal)) {
-            const m = talariaPickFiniteSeriesValue(valuesStore.macd, barIdx);
-            const s = talariaPickFiniteSeriesValue(valuesStore.signal, barIdx);
+            const m = talariaSeriesValueAtBar(valuesStore.macd, barIdx, plotOff);
+            const s = talariaSeriesValueAtBar(valuesStore.signal, barIdx, plotOff);
             if (m !== null) pushToken(m, indicator.style && indicator.style.macdColor, 4);
             if (s !== null) pushToken(s, indicator.style && indicator.style.signalColor, 4);
             if (out.length > 0) return out;
@@ -2396,10 +2441,10 @@ function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
         keys.forEach(function(k) {
             const arr = valuesStore[k];
             if (!Array.isArray(arr)) return;
-            const val = talariaPickFiniteSeriesValue(arr, barIdx);
+            const val = talariaSeriesValueAtBar(arr, barIdx, plotOff);
             if (val === null) return;
             const colorKey = k + 'Color';
-            pushToken(val, indicator.style && indicator.style[colorKey], k === 'cci' ? 2 : 4);
+            pushToken(val, indicator.style && indicator.style[colorKey], k === 'cci' ? 2 : decimals);
         });
         if (out.length > 0) return out;
     }
@@ -5850,3 +5895,4 @@ window.talariaSyncOhlcLegendChevron = talariaSyncOhlcLegendChevron;
 window.talariaOhlcLegendCollapseBlocked = talariaOhlcLegendCollapseBlocked;
 window.talariaChartForOhlcPanel = talariaChartForOhlcPanel;
 window.talariaCrosshairBarIndex = talariaCrosshairBarIndex;
+window.talariaFormatOverlayIndicatorValueTokens = talariaFormatOverlayIndicatorValueTokens;

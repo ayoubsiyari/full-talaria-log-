@@ -7819,6 +7819,27 @@
         return u !== 'd' && u !== 'w' && u !== 'M';
     };
 
+    Chart.prototype._indicatorPlotOffset = function(indicator) {
+        if (!indicator || !indicator.params) return 0;
+        const off = Number(indicator.params.offset);
+        return Number.isFinite(off) ? (off | 0) : 0;
+    };
+
+    Chart.prototype._indicatorSeriesLength = function(data) {
+        if (Array.isArray(data)) return data.length;
+        if (!data || typeof data !== 'object') return 0;
+        const sample = data.line || data.vwap || data.upper || data.middle || data.lower;
+        return Array.isArray(sample) ? sample.length : 0;
+    };
+
+    /** Extend draw range so positive plot offset can paint into future bars. */
+    Chart.prototype._indicatorDrawEndIndex = function(data, baseEnd, plotOffset) {
+        const off = Math.max(0, Number(plotOffset) | 0);
+        if (!off) return baseEnd;
+        const seriesLen = this._indicatorSeriesLength(data) || (this.data ? this.data.length : 0);
+        return Math.max(baseEnd, Math.min(seriesLen + off, baseEnd + off));
+    };
+
     Chart.prototype.drawIndicators = function() {
         if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
             return;
@@ -7861,17 +7882,21 @@
             const data = this.indicators.data[indicator.id];
             if (!data) continue;
 
+            const plotOffset = this._indicatorPlotOffset(indicator);
+            const drawEnd = this._indicatorDrawEndIndex(data, endIndex, plotOffset);
+            const lineDrawOpts = { plotOffset: plotOffset };
+
             const indType = String(indicator.type || '').toLowerCase();
 
             // Draw based on type
             if (indicator.type === 'vwap') {
-                this.drawVwapIndicator(data, indicator.style, startIndex, endIndex, indicator.params);
+                this.drawVwapIndicator(data, indicator.style, startIndex, drawEnd, indicator.params);
             } else if (indicator.type === 'bb' || indicator.type === 'bollinger') {
-                this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+                this.drawBollingerBands(data, indicator.style, startIndex, drawEnd, plotOffset);
             } else if (indicator.type === 'envelope' || indicator.type === 'smaenvelope') {
-                this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+                this.drawBollingerBands(data, indicator.style, startIndex, drawEnd, plotOffset);
             } else if (indicator.type === 'donchian' || indicator.type === 'keltner') {
-                this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+                this.drawBollingerBands(data, indicator.style, startIndex, drawEnd, plotOffset);
             } else if (indicator.type === 'psar') {
                 this.drawParabolicSAR(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'sessions') {
@@ -7883,7 +7908,7 @@
             } else if (indicator.type === 'openingrange') {
                 this.drawOpeningRange(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'ictpd' || indicator.type === 'ictasian' || indicator.type === 'ictote' || indicator.type === 'ictsesspd') {
-                this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+                this.drawBollingerBands(data, indicator.style, startIndex, drawEnd, plotOffset);
             } else if (indicator.type === 'ictliquidity' || indicator.isLiquidityEq) {
                 this.drawLiquidityEqLines(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'ictfvg' || indicator.isIctFvg) {
@@ -7907,9 +7932,9 @@
                         indicator.style.color,
                         indicator.style.lineWidth,
                         startIndex,
-                        endIndex,
+                        drawEnd,
                         indicator.style.lineStyle,
-                        { dashStyle: indicator.style.lineDashStyle || 'Solid' }
+                        Object.assign({ dashStyle: indicator.style.lineDashStyle || 'Solid' }, lineDrawOpts)
                     );
                 }
             } else if (indType === 'tema') {
@@ -7919,9 +7944,9 @@
                         indicator.style.color,
                         indicator.style.lineWidth,
                         startIndex,
-                        endIndex,
+                        drawEnd,
                         indicator.style.lineStyle,
-                        { dashStyle: indicator.style.lineDashStyle || 'Solid' }
+                        Object.assign({ dashStyle: indicator.style.lineDashStyle || 'Solid' }, lineDrawOpts)
                     );
                 }
             } else if (indType === 'hma') {
@@ -7931,9 +7956,9 @@
                         indicator.style.color,
                         indicator.style.lineWidth,
                         startIndex,
-                        endIndex,
+                        drawEnd,
                         indicator.style.lineStyle,
-                        { dashStyle: indicator.style.lineDashStyle || 'Solid' }
+                        Object.assign({ dashStyle: indicator.style.lineDashStyle || 'Solid' }, lineDrawOpts)
                     );
                 }
             } else if (indType === 'wma') {
@@ -7945,16 +7970,16 @@
                             indicator.style.color,
                             indicator.style.lineWidth,
                             startIndex,
-                            endIndex,
+                            drawEnd,
                             indicator.style.lineStyle,
-                            { dashStyle: indicator.style.lineDashStyle || 'Solid' }
+                            Object.assign({ dashStyle: indicator.style.lineDashStyle || 'Solid' }, lineDrawOpts)
                         );
                     }
                 }
             } else if (indType === 'sma' || indType === 'ema') {
-                this.drawSmoothedMaOverlay(data, indicator, startIndex, endIndex);
+                this.drawSmoothedMaOverlay(data, indicator, startIndex, drawEnd);
             } else {
-                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
+                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, drawEnd, indicator.style.lineStyle, lineDrawOpts);
             }
 
             if (indicator.id === this.selectedOverlayIndicatorId && isSelectableOverlayLineIndicator(indicator)) {
@@ -7995,6 +8020,8 @@
         if (!data) return;
         const st = indicator.style || {};
         const pr = indicator.params || {};
+        const plotOffset = this._indicatorPlotOffset(indicator);
+        const lineOpts = { plotOffset: plotOffset };
         const pack = Array.isArray(data) ? { line: data } : data;
         const smoothColor = st.smoothColor || '#787b86';
         const smoothW = st.smoothLineWidth != null ? st.smoothLineWidth : 1;
@@ -8010,13 +8037,13 @@
         }
         if (showSmoothOverlay) {
             if (pack.bbUpper) {
-                this.drawLineIndicator(pack.bbUpper, smoothColor, smoothW, startIndex, endIndex, smoothStyle, { dashStyle: smoothDash });
+                this.drawLineIndicator(pack.bbUpper, smoothColor, smoothW, startIndex, endIndex, smoothStyle, Object.assign({ dashStyle: smoothDash }, lineOpts));
             }
             if (pack.bbLower) {
-                this.drawLineIndicator(pack.bbLower, smoothColor, smoothW, startIndex, endIndex, smoothStyle, { dashStyle: smoothDash });
+                this.drawLineIndicator(pack.bbLower, smoothColor, smoothW, startIndex, endIndex, smoothStyle, Object.assign({ dashStyle: smoothDash }, lineOpts));
             }
             if (pack.ma) {
-                this.drawLineIndicator(pack.ma, smoothColor, smoothW, startIndex, endIndex, smoothStyle, { dashStyle: smoothDash });
+                this.drawLineIndicator(pack.ma, smoothColor, smoothW, startIndex, endIndex, smoothStyle, Object.assign({ dashStyle: smoothDash }, lineOpts));
             }
         }
         if (st.showLine !== false && pack.line) {
@@ -8027,7 +8054,7 @@
                 startIndex,
                 endIndex,
                 st.lineStyle || 'Line',
-                { dashStyle: st.lineDashStyle || 'Solid' }
+                Object.assign({ dashStyle: st.lineDashStyle || 'Solid' }, lineOpts)
             );
         }
     };
@@ -10328,9 +10355,10 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     } else if (style === 'Histogram' || style === 'Columns') {
         const half = function(i) { return this._plotBarWidthPx(i, lw) / 2; }.bind(this);
         for (let i = startIndex; i < endIndex; i += drawStride) {
-            if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);
-            const y = yAt(data[i]);
+            const y = yAt(val);
             if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             const w = half(i) * 2;
             const top = Math.min(y, baselineY);
@@ -10347,9 +10375,10 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         const r = Math.max(2.5, lw * 1.5);
         ctx.beginPath();
         for (let i = startIndex; i < endIndex; i += drawStride) {
-            if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);
-            const y = yAt(data[i]);
+            const y = yAt(val);
             if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             ctx.moveTo(x - r, y);
             ctx.lineTo(x + r, y);
@@ -10361,9 +10390,10 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         const r = Math.max(2, lw * 1.1);
         ctx.beginPath();
         for (let i = startIndex; i < endIndex; i += drawStride) {
-            if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);
-            const y = yAt(data[i]);
+            const y = yAt(val);
             if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             ctx.moveTo(x + r, y);
             ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -10389,12 +10419,13 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         };
         let seg = [];
         for (let i = startIndex; i < endIndex; i += drawStride) {
-            if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) {
                 if (breakOnNull && seg.length) { drawAreaSegment(seg); seg = []; }
                 continue;
             }
             const x = this.dataIndexToPixel(i);
-            const y = yAt(data[i]);
+            const y = yAt(val);
             if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             seg.push({ x: x, y: y });
         }
@@ -10403,9 +10434,10 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         ctx.setLineDash([]);
         let started = false;
         for (let i = startIndex; i < endIndex; i++) {
-            if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);
-            const y = yAt(data[i]);
+            const y = yAt(val);
             if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; }
             else ctx.lineTo(x, y);
@@ -10463,10 +10495,14 @@ Chart.prototype.drawOpeningRange = function(bands, style, startIndex, endIndex) 
     this.drawBollingerBands(bands, drawStyle, startIndex, endIndex);
 };
 
-Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endIndex = bands.upper.length) {
+Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endIndex = bands.upper.length, plotOffset = 0) {
     const ctx = this.ctx;
     const m = this.margin;
     style = style || {};
+    const off = (Number(plotOffset) | 0) || 0;
+    const bandVal = function(arr, i) {
+        return off ? seriesValueAtPlotOffset(arr, i, off) : arr[i];
+    };
 
     const fillRgba = bollingerFillRgba(style);
     if (fillRgba) {
@@ -10475,10 +10511,11 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
 
         let pathStarted = false;
         for (let i = startIndex; i < endIndex; i++) {
-            if (bands.upper[i] === null) continue;
+            const upperVal = bandVal(bands.upper, i);
+            if (upperVal === null || upperVal === undefined || isNaN(upperVal)) continue;
 
             const x = this.dataIndexToPixel(i);
-            const y = this.yScale(bands.upper[i]);
+            const y = this.yScale(upperVal);
 
             if (x < m.l - 50 || x > this.w - m.r + 50) continue;
 
@@ -10491,11 +10528,12 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
         }
 
         for (let i = Math.min(endIndex - 1, bands.lower.length - 1); i >= startIndex; i--) {
-            if (bands.lower[i] === null) continue;
+            const lowerVal = bandVal(bands.lower, i);
+            if (lowerVal === null || lowerVal === undefined || isNaN(lowerVal)) continue;
             if (!pathStarted) continue;
 
             const x = this.dataIndexToPixel(i);
-            const y = this.yScale(bands.lower[i]);
+            const y = this.yScale(lowerVal);
 
             if (x < m.l - 50 || x > this.w - m.r + 50) continue;
 
@@ -10514,6 +10552,8 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
     const middleColor = style.middleColor;
     const lowerColor = style.lowerColor;
 
+    const bandLineOpts = { plotOffset: off };
+
     if (style.showUpper !== false) {
         this.drawLineIndicator(
             bands.upper,
@@ -10522,7 +10562,7 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
             startIndex,
             endIndex,
             style.upperLineStyle || legacyS,
-            { dashStyle: style.upperLineDashStyle || 'Solid' }
+            Object.assign({ dashStyle: style.upperLineDashStyle || 'Solid' }, bandLineOpts)
         );
     }
     if (style.showMiddle !== false) {
@@ -10533,7 +10573,7 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
             startIndex,
             endIndex,
             style.middleLineStyle || legacyS,
-            { dashStyle: style.middleLineDashStyle || 'Solid' }
+            Object.assign({ dashStyle: style.middleLineDashStyle || 'Solid' }, bandLineOpts)
         );
     }
     if (style.showLower !== false) {
@@ -10544,7 +10584,7 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
             startIndex,
             endIndex,
             style.lowerLineStyle || legacyS,
-            { dashStyle: style.lowerLineDashStyle || 'Solid' }
+            Object.assign({ dashStyle: style.lowerLineDashStyle || 'Solid' }, bandLineOpts)
         );
     }
 };
@@ -10554,6 +10594,8 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
     if (!data || !Array.isArray(data.vwap)) return;
     style = style || {};
     params = params || {};
+    const plotOffset = params.offset != null ? (Number(params.offset) | 0) : 0;
+    const lineOpts = { plotOffset: plotOffset };
     const resolve = this._resolveIndicatorBandLineColor.bind(this);
     const legacyW = style.lineWidth != null ? style.lineWidth : 2;
     const legacyS = style.lineStyle || 'Line';
@@ -10565,12 +10607,15 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
     const lowerStyle = style.lowerLineStyle || legacyS;
     const upperDash = style.upperLineDashStyle || 'Solid';
     const lowerDash = style.lowerLineDashStyle || 'Solid';
+    const vwapVal = function(arr, i) {
+        return plotOffset ? seriesValueAtPlotOffset(arr, i, plotOffset) : arr[i];
+    };
     const drawBandPair = function(upperArr, lowerArr) {
         if (style.showUpper1 !== false && upperArr) {
-            this.drawLineIndicator(upperArr, upperCol, upperW, startIndex, endIndex, upperStyle, { dashStyle: upperDash });
+            this.drawLineIndicator(upperArr, upperCol, upperW, startIndex, endIndex, upperStyle, Object.assign({ dashStyle: upperDash }, lineOpts));
         }
         if (style.showLower1 !== false && lowerArr) {
-            this.drawLineIndicator(lowerArr, lowerCol, lowerW, startIndex, endIndex, lowerStyle, { dashStyle: lowerDash });
+            this.drawLineIndicator(lowerArr, lowerCol, lowerW, startIndex, endIndex, lowerStyle, Object.assign({ dashStyle: lowerDash }, lineOpts));
         }
     }.bind(this);
 
@@ -10587,9 +10632,10 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
             ctx.beginPath();
             let pathStarted = false;
             for (let i = startIndex; i < endIndex; i++) {
-                if (data.upper1[i] == null) continue;
+                const uv = vwapVal(data.upper1, i);
+                if (uv == null || isNaN(uv)) continue;
                 const x = this.dataIndexToPixel(i);
-                const y = this.yScale(data.upper1[i]);
+                const y = this.yScale(uv);
                 if (x < m.l - 50 || x > this.w - m.r + 50) continue;
                 if (!pathStarted) {
                     ctx.moveTo(x, y);
@@ -10599,9 +10645,10 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
                 }
             }
             for (let i = Math.min(endIndex - 1, data.lower1.length - 1); i >= startIndex; i--) {
-                if (data.lower1[i] == null || !pathStarted) continue;
+                const lv = vwapVal(data.lower1, i);
+                if (lv == null || isNaN(lv) || !pathStarted) continue;
                 const x = this.dataIndexToPixel(i);
-                const y = this.yScale(data.lower1[i]);
+                const y = this.yScale(lv);
                 if (x < m.l - 50 || x > this.w - m.r + 50) continue;
                 ctx.lineTo(x, y);
             }
@@ -10620,7 +10667,7 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, 
             startIndex,
             endIndex,
             legacyS,
-            { dashStyle: style.lineDashStyle || 'Solid' }
+            Object.assign({ dashStyle: style.lineDashStyle || 'Solid' }, lineOpts)
         );
     }
     if (params.band1Enabled !== false) {
@@ -14477,6 +14524,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const bandData = this.indicators.data[indicator.id];
             if (bandData && (Array.isArray(bandData.upper) || Array.isArray(bandData.middle) || Array.isArray(bandData.lower))) {
                 const st = indicator.style || {};
+                const plotOff = this._indicatorPlotOffset(indicator);
+                const barIdx = typeof this._getCrosshairBarIndex === 'function' && this._getCrosshairBarIndex() >= 0
+                    ? this._getCrosshairBarIndex()
+                    : (this.data ? this.data.length - 1 : 0);
                 const bandDefs = [
                     { arr: bandData.upper, show: st.showUpper !== false, color: st.upperColor || '#2962ff' },
                     { arr: bandData.middle, show: st.showMiddle !== false, color: st.middleColor || '#787b86' },
@@ -14484,10 +14535,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 ];
                 bandDefs.forEach(function(b) {
                     if (!b.show || !b.arr) return;
-                    let val = null;
-                    for (let i = b.arr.length - 1; i >= 0; i--) {
-                        if (Number.isFinite(b.arr[i])) { val = b.arr[i]; break; }
-                    }
+                    const val = seriesValueAtPlotOffset(b.arr, barIdx, plotOff);
                     if (!Number.isFinite(val)) return;
                     const y = this.yScale(val);
                     if (!Number.isFinite(y) || y < m.t || y > maxY) return;
@@ -14502,13 +14550,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const lineArr = Array.isArray(data) ? data : (data && Array.isArray(data.line) ? data.line : null);
             if (!lineArr) return;
 
-            let val = null;
-            for (let i = lineArr.length - 1; i >= 0; i--) {
-                if (Number.isFinite(lineArr[i])) {
-                    val = lineArr[i];
-                    break;
-                }
-            }
+            const plotOff = this._indicatorPlotOffset(indicator);
+            const barIdx = typeof this._getCrosshairBarIndex === 'function' && this._getCrosshairBarIndex() >= 0
+                ? this._getCrosshairBarIndex()
+                : (this.data ? this.data.length - 1 : lineArr.length - 1);
+            const val = seriesValueAtPlotOffset(lineArr, barIdx, plotOff);
             if (!Number.isFinite(val)) return;
 
             const y = this.yScale(val);
@@ -14583,6 +14629,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
     // Mark as loaded
     window.INDICATORS_MODULE_LOADED = true;
+    global.talariaSeriesValueAtPlotOffset = seriesValueAtPlotOffset;
     
     } // End of attachIndicatorMethods
     
