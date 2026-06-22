@@ -16524,16 +16524,13 @@ const TalariaV8bLive = () => {
     onClick: (e) => e.stopPropagation(),
   });
 
-  /** Style/thickness dropdown trigger — guard panel backdrop; stop press propagation without pointerdown activate. */
+  /** Style/thickness dropdown trigger — pointerdown so one press opens inside modals. */
   const tlStyleDropTrigger = (dropKey, beforeToggle) => ({
     "data-tl-style-drop": "1",
-    onPointerDown: (e) => e.stopPropagation(),
-    onMouseDown: (e) => e.stopPropagation(),
-    onClick: (e) => {
-      e.stopPropagation();
+    ...modalPointerActivate((e) => {
       if (beforeToggle) beforeToggle(e);
       setTlStyleDrop((prev) => (prev === dropKey ? null : dropKey));
-    },
+    }),
   });
 
   /** Style/thickness dropdown menu item — apply on pointerdown for immediate chart sync. */
@@ -19600,6 +19597,16 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Line endpoint style (dot vs arrow) — immediate chart sync for path / trend line / curve. */
+  const applyTlEndpointStyle = useCallback((which, style) => {
+    if (which !== "ep1" && which !== "ep2") return;
+    flushSync(() => setTlStyle((s) => ({ ...s, [which]: style })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Range Tool border dash — immediate chart sync (settings Style tab). */
   const applyTlBorderType = useCallback((borderType) => {
     flushSync(() => setTlStyle((s) => {
@@ -21968,7 +21975,7 @@ const TalariaV8bLive = () => {
                                         ?<><circle cx="2" cy="5" r="2" fill={isAi?c.acL:c.ts}/><line x1="4" y1="5" x2="18" y2="5" stroke={isAi?c.acL:c.ts} strokeWidth="1.5"/></>
                                         :<><line x1="0" y1="5" x2="14" y2="5" stroke={isAi?c.acL:c.ts} strokeWidth="1.5"/><circle cx="16" cy="5" r="2" fill={isAi?c.acL:c.ts}/></>}</svg>;
                                   return (
-                                    <div key={v} onClick={()=>{setTlStyle(s=>({...s,[k]:v}));setTlStyleDrop(null);}}
+                                    <div key={v} {...tlStyleDropPick(() => applyTlEndpointStyle(k, v))}
                                       onMouseEnter={()=>setHov(`tl-ep-${k}-${v}`)} onMouseLeave={()=>setHov(null)}
                                       style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                                background:isAi?c.acD:isHi?c.hv:"transparent", transition:"background 0.1s" }}>
