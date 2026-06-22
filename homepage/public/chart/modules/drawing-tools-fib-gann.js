@@ -335,7 +335,7 @@ class FibTimeZoneTool extends BaseDrawing {
         const getXFromIndex = (xIdx) => scales.chart?.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(xIdx) : scales.xScale(xIdx);
         const getY = (p) => scales.yScale(p.y);
-        const chartHeight = scales.chart?.h || 500;
+        const { plotTop, plotBottom } = fibChartPlotVerticalSpan(scales);
         const chartWidth = scales.chart?.w || 2000;
 
         const showLevelValues = this.style.levelsEnabled !== false;
@@ -405,8 +405,8 @@ class FibTimeZoneTool extends BaseDrawing {
                 this.group.append('line')
                     .attr('class', 'fib-level-hit fib-tz-vertical')
                     .attr('data-fib-tz', fib)
-                    .attr('x1', x).attr('y1', 0)
-                    .attr('x2', x).attr('y2', chartHeight)
+                    .attr('x1', x).attr('y1', plotTop)
+                    .attr('x2', x).attr('y2', plotBottom)
                     .attr('stroke', 'rgba(255,255,255,0.001)')
                     .attr('stroke-width', hitWidth)
                     .attr('stroke-dasharray', '')
@@ -420,11 +420,11 @@ class FibTimeZoneTool extends BaseDrawing {
                 const tzLabelFontSize = 10;
                 if (showLevelValues) {
                     labelText = BaseDrawing.formatFibLevelLabel(this.style, fibN);
-                    lp = fibVerticalSpanLabelPlacement(this.style, x, 0, chartHeight);
+                    lp = fibVerticalSpanLabelPlacement(this.style, x, plotTop, plotBottom);
                     vGap = fibVerticalCenterLabelGap(this.style, this.group, labelText, lp.y, tzLabelFontSize, '600');
                 }
 
-                appendFibVerticalLineWithCenterGap(this.group, x, 0, chartHeight, vGap, {
+                appendFibVerticalLineWithCenterGap(this.group, x, plotTop, plotBottom, vGap, {
                     class: 'fib-tz-vertical',
                     'data-fib-tz': fib,
                     stroke: color,
@@ -824,7 +824,7 @@ class TrendFibTimeTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing trend-fib-time', renderOpts);
         this._clearDrawingLabels(scales);
 
-        const chartHeight = scales.chart?.h || 500;
+        const { plotTop, plotBottom } = fibChartPlotVerticalSpan(scales);
         const getXFromIndex = (idx) => scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(idx) : scales.xScale(idx);
         const getY = (p) => scales.yScale(p.y);
         const anchorStrokeWidth = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
@@ -930,9 +930,9 @@ class TrendFibTimeTool extends BaseDrawing {
 
                     this.group.insert('rect', ':first-child')
                         .attr('x', xLeft)
-                        .attr('y', 0)
+                        .attr('y', plotTop)
                         .attr('width', width)
-                        .attr('height', chartHeight)
+                        .attr('height', Math.max(1, plotBottom - plotTop))
                         .attr('fill', enabledLevels[i].color)
                         .attr('opacity', bgOpacity)
                         .style('pointer-events', 'none');
@@ -955,8 +955,8 @@ class TrendFibTimeTool extends BaseDrawing {
 
                 this.group.append('line')
                     .attr('class', 'fib-level-hit')
-                    .attr('x1', x).attr('y1', 0)
-                    .attr('x2', x).attr('y2', chartHeight)
+                    .attr('x1', x).attr('y1', plotTop)
+                    .attr('x2', x).attr('y2', plotBottom)
                     .attr('stroke', 'rgba(255,255,255,0.001)')
                     .attr('stroke-width', hitWidth)
                     .attr('stroke-dasharray', '')
@@ -970,11 +970,11 @@ class TrendFibTimeTool extends BaseDrawing {
                 const tftLabelFontSize = 10;
                 if (showLevelValues) {
                     tftLabelText = BaseDrawing.formatFibLevelLabel(this.style, level);
-                    tftLp = fibVerticalSpanLabelPlacement(this.style, x, 0, chartHeight);
+                    tftLp = fibVerticalSpanLabelPlacement(this.style, x, plotTop, plotBottom);
                     tftGap = fibVerticalCenterLabelGap(this.style, this.group, tftLabelText, tftLp.y, tftLabelFontSize, '600');
                 }
 
-                appendFibVerticalLineWithCenterGap(this.group, x, 0, chartHeight, tftGap, {
+                appendFibVerticalLineWithCenterGap(this.group, x, plotTop, plotBottom, tftGap, {
                     stroke: lvl.color,
                     'stroke-width': scaledWidth,
                     'stroke-dasharray': lineType || 'none',

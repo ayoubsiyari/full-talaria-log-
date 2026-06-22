@@ -2439,7 +2439,9 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         ? +tlStyle.fibBgOpacity
         : 0.12;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
-    patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
+    if (v9FibLegacyTypeHasLevelPosition(legacyTool)) {
+      patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
+    }
     v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
   }
   if (
@@ -5387,6 +5389,14 @@ function v9FibExtendFromChartStyle(s) {
   return { extendLeft: false, extendRight: false };
 }
 
+function v9FibLegacyTypeHasLevelPosition(t) {
+  return !v9IsFibCirclesType(t) && !v9IsFibArcsType(t) && !v9IsFibWedgeType(t);
+}
+
+function v9FibToolIconHasLevelPosition(icon) {
+  return icon !== "fibCircles" && icon !== "fibArcs" && icon !== "fibWedge";
+}
+
 function v9FibToolIconHasExtend(icon) {
   return icon !== "fibFan" && icon !== "fibTime" && icon !== "fibTimeZone" && icon !== "fibArcs" && icon !== "fibWedge";
 }
@@ -5913,7 +5923,6 @@ function v9ApplyFibArcsFromTlStyle(d, tlStyle, widthFallback) {
   st.v9FibArcsFullCircle = !!tlStyle.fibArcsFullCircle;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
-  v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
 function v9IsFibWedgeType(t) {
@@ -5968,7 +5977,6 @@ function v9ApplyFibWedgeFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineDasharray = trendDashStr;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
-  v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
 /** Fib Circles: ratio rings + annulus background zones (`showZones` / `backgroundOpacity`). */
@@ -6006,7 +6014,6 @@ function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
   st.v9FibCirclesBgOpacity = st.backgroundOpacity;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
-  v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
 function v9FibTlLevelsMatchLegacyType(legacyType, fibLevels) {
@@ -6510,7 +6517,6 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("fibLineType");
     line("fibBackground");
     line("fibBgOpacity");
-    line("fibLevelPosition");
     line("lineColor");
     line("lineWidth");
     line("lineType");
@@ -6526,7 +6532,6 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("fibArcsTrendType");
     line("fibArcsTrendWidth");
     line("fibArcsFullCircle");
-    line("fibLevelPosition");
     line("lineColor");
     line("lineWidth");
     line("lineType");
@@ -6541,7 +6546,6 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("fibWedgeTrendLine");
     line("fibWedgeTrendType");
     line("fibWedgeTrendWidth");
-    line("fibLevelPosition");
     line("lineColor");
     line("lineWidth");
     line("lineType");
@@ -7482,7 +7486,6 @@ function v9TlStylePatchFromDrawing(d) {
             fibBackground: bgOn,
             fibBgOpacity: bgOp,
             fibLevelsOn: s.levelsEnabled !== false,
-            fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
             ...(() => {
               const fibLevelsMode = v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices);
               return {
@@ -7516,7 +7519,6 @@ function v9TlStylePatchFromDrawing(d) {
             fibArcsTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
             fibArcsFullCircle: !!s.v9FibArcsFullCircle,
             fibLevelsOn: s.levelsEnabled !== false,
-            fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
             ...(() => {
               const fibLevelsMode = v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices);
               return {
@@ -7549,7 +7551,6 @@ function v9TlStylePatchFromDrawing(d) {
             fibWedgeTrendType,
             fibWedgeTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
             fibLevelsOn: s.levelsEnabled !== false,
-            fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
           };
         })()
       : {}),
@@ -22887,8 +22888,8 @@ const TalariaV8bLive = () => {
                       })()}
                     </>;
                   })()}
-                  {/* Level position — all fibonacci tools */}
-                  {isFibTool && (() => {
+                  {/* Level position — fib tools except Fib Circles (labels follow trend ray) */}
+                  {isFibTool && v9FibToolIconHasLevelPosition(tlSubTool.icon) && (() => {
                     const dk = "fibLevelPosition";
                     const verticalLevels = v9FibLevelPositionUsesVerticalAxis(tlSubTool.icon);
                     const options = verticalLevels ? ["Top", "Middle", "Bottom"] : ["Left", "Center", "Right"];

@@ -825,40 +825,29 @@ class AnchoredVWAPTool extends BaseDrawing {
                 .attr('opacity', 0.9)
                 .style('pointer-events', 'none');
 
-            const markerSpacingPx = 95;
+            const markerBarStride = 24;
             const markerRadius = 3;
             const appendGuideMarkers = (points, markerGroupClass) => {
                 if (!Array.isArray(points) || points.length <= 1) return;
 
                 const markerPoints = [];
-                let lastMarkerX = Number.isFinite(anchorX)
-                    ? anchorX
-                    : (Number.isFinite(points[0]?.x) ? points[0].x : Number.NEGATIVE_INFINITY);
-
-                for (let i = 1; i < points.length; i++) {
+                for (let i = 0; i < points.length; i++) {
                     const point = points[i];
                     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
-
-                    const isLastPoint = i === points.length - 1;
-                    if ((point.x - lastMarkerX) >= markerSpacingPx || isLastPoint) {
+                    const isAnchor = i === 0;
+                    const isLast = i === points.length - 1;
+                    if (isAnchor || isLast || (i % markerBarStride === 0)) {
                         markerPoints.push(point);
-                        lastMarkerX = point.x;
                     }
                 }
 
                 if (markerPoints.length === 0) return;
 
-                const reducedMarkerPoints = markerPoints.filter((_, idx) => (
-                    idx % 2 === 0 || idx === markerPoints.length - 1
-                ));
-
-                if (reducedMarkerPoints.length === 0) return;
-
                 this.group.append('g')
                     .attr('class', markerGroupClass)
                     .attr('opacity', this.selected ? 1 : 0)
                     .selectAll('circle')
-                    .data(reducedMarkerPoints)
+                    .data(markerPoints)
                     .enter()
                     .append('circle')
                     .attr('class', 'anchored-vwap-line-point')

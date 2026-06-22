@@ -20850,10 +20850,8 @@ class Chart {
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (!interactionLite) {
-                if (typeof this.drawIndicators === 'function') {
-                    this.drawIndicators();
-                }
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
             }
             // Separate panels + legend must stay painted during lite pan — canvas is cleared each frame.
             if (typeof this.renderSeparatePanelIndicators === 'function') {

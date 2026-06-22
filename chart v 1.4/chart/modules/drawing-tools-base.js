@@ -26,7 +26,31 @@ const DRAWING_TEXT_ITALIC_SKEW_DEG = -12;
 function normalizeFibLevelsLabelPosition(style) {
     const raw = style && style.levelsLabelPosition;
     const pos = String(raw || 'right').trim().toLowerCase();
-    return (pos === 'left' || pos === 'center' || pos === 'right') ? pos : 'right';
+    if (pos === 'left' || pos === 'top') return 'left';
+    if (pos === 'center' || pos === 'middle') return 'center';
+    if (pos === 'right' || pos === 'bottom') return 'right';
+    return 'right';
+}
+
+/** Price-plot vertical span in pixels (excludes time/price axis margins). */
+function fibChartPlotVerticalSpan(scales) {
+    const yRange = scales?.yScale?.range?.();
+    if (Array.isArray(yRange) && yRange.length >= 2 && Number.isFinite(yRange[0]) && Number.isFinite(yRange[1])) {
+        return {
+            plotTop: Math.min(yRange[0], yRange[1]),
+            plotBottom: Math.max(yRange[0], yRange[1]),
+        };
+    }
+    const chart = scales?.chart;
+    if (chart && chart.margin && Number.isFinite(chart.h)) {
+        const m = chart.margin;
+        return {
+            plotTop: m.t || 0,
+            plotBottom: chart.h - (m.b || 0),
+        };
+    }
+    const h = chart?.h || 500;
+    return { plotTop: 0, plotBottom: h };
 }
 
 /** Horizontal span: label at left edge, center, or right edge of [spanMinX, spanMaxX]. */
@@ -1047,7 +1071,7 @@ class BaseDrawing {
         const y1 = BaseDrawing.fibPriceToPixel(scales, tool.points[0].y);
         const x2 = BaseDrawing.fibIndexToPixel(scales, xIndex2);
         const y2 = BaseDrawing.fibPriceToPixel(scales, tool.points[1].y);
-        const chartHeight = scales.chart?.h || 500;
+        const { plotTop, plotBottom } = fibChartPlotVerticalSpan(scales);
         if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
 
         const group = tool.group;
@@ -1062,8 +1086,8 @@ class BaseDrawing {
             const x = BaseDrawing.fibIndexToPixel(scales, xIndex);
             if (!Number.isFinite(x)) return;
             d3.select(this)
-                .attr('x1', x).attr('y1', 0)
-                .attr('x2', x).attr('y2', chartHeight);
+                .attr('x1', x).attr('y1', plotTop)
+                .attr('x2', x).attr('y2', plotBottom);
         });
 
         group.selectAll('.fib-tz-label').each(function () {
@@ -1072,7 +1096,12 @@ class BaseDrawing {
             const xIndex = xIndex1 + (baseDx * fibN);
             const x = BaseDrawing.fibIndexToPixel(scales, xIndex);
             if (!Number.isFinite(x)) return;
-            d3.select(this).attr('x', x + 3);
+            const lp = fibVerticalSpanLabelPlacement(tool.style, x, plotTop, plotBottom);
+            const label = d3.select(this);
+            label.attr('x', lp.x);
+            label.attr('y', lp.y);
+            if (lp.dominantBaseline) label.attr('dominant-baseline', lp.dominantBaseline);
+            else label.attr('dominant-baseline', null);
         });
 
         const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;
