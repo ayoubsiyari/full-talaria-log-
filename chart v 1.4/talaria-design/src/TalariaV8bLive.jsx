@@ -33489,6 +33489,12 @@ const TalariaV8bLive = () => {
                       boxShadow:`0 0 6px ${c.acG}`}}/>
                   </div>
                   );})()}
+                  {st && st.warning ? (
+                    <div style={{padding:"6px 10px",flexShrink:0,fontSize:10,lineHeight:1.35,color:"#f59e0b",
+                      borderBottom:`1px solid ${c.br}`,background:"rgba(245,158,11,0.08)"}}>
+                      {st.warning}
+                    </div>
+                  ) : null}
                   {/* News list */}
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto"}}>
                     {filtered.length===0

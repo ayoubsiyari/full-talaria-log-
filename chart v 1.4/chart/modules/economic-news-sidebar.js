@@ -14,6 +14,7 @@
         loadedRangeKey: null,
         loading: false,
         error: null,
+        warning: null,
         countdownTimer: null,
         replayDayReloadTimer: null,
         /** User filters: impact toggles, optional chart-pair-only, optional country subset. */
@@ -174,83 +175,48 @@
         return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 23, 59, 59, 999).getTime();
     }
 
-    /** Marketaux API caps each request window (server-side); chunk long chart ranges. */
-    var HISTORICAL_NEWS_CHUNK_MS = 31 * 86400000;
-
-    /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
-    var MAX_CALENDAR_FETCH_DAYS = 120;
+    /** Max calendar/news fetch window (days) — keep small to conserve Marketaux free tier. */
+    var MAX_CALENDAR_FETCH_DAYS = 14;
     var lastFetchFinishedAt = 0;
-    var FETCH_COOLDOWN_MS = 60000;
-    /** In-memory chunk cache — avoids repeat Marketaux calls when panning the same range. */
-    var newsChunkCache = {};
+    var FETCH_COOLDOWN_MS = 120000;
+    /** In-memory response cache keyed by unix from|to (symbol-agnostic). */
+    var newsRangeCache = {};
+    var newsFetchInflight = {};
 
-    /** Always fetch through at least this many days after reference "now" so the Upcoming tab can show a full week. */
-    var UPCOMING_NEWS_DAYS_AHEAD = 7;
-
-    /**
-     * Extend `toStr` (YYYY-MM-DD) so calendar data includes reference-now + UPCOMING_NEWS_DAYS_AHEAD.
-     * Finnhub range is inclusive; string compare is valid for ISO dates.
-     */
-    function ensureUpcomingWeekHorizon(range) {
-        var refMs = referenceNowMs();
-        if (!Number.isFinite(refMs)) refMs = Date.now();
-        var minEndStr = isoDateLocal(refMs + UPCOMING_NEWS_DAYS_AHEAD * 86400000);
-        var toStr = range.toStr;
-        if (toStr < minEndStr) {
-            toStr = minEndStr;
-        }
-        return { fromStr: range.fromStr, toStr: toStr, rangeKey: range.fromStr + '|' + toStr };
-    }
-
+    /** News fetch range: visible chart window (±1 day), capped — no future-week extension. */
     function getCalendarFetchRange() {
         var ch = mainChart();
-        if (!ch || !ch.data || ch.data.length === 0) {
-            var d = isoDateLocal(referenceNowMs());
-            return ensureUpcomingWeekHorizon({ fromStr: d, toStr: d, rangeKey: d + '|' + d });
-        }
-        var data = ch.data;
-        var t0 = data[0].t;
-        var t1 = data[data.length - 1].t;
-        var minT = Math.min(t0, t1);
-        var maxT = Math.max(t0, t1);
-        var spanDays = Math.max(1, Math.ceil((maxT - minT) / 86400000) + 1);
+        var refMs = referenceNowMs();
+        if (!Number.isFinite(refMs)) refMs = Date.now();
+        var maxSpanMs = MAX_CALENDAR_FETCH_DAYS * 86400000;
+        var minT = refMs - Math.floor(maxSpanMs / 2);
+        var maxT = refMs + Math.floor(maxSpanMs / 2);
 
-        if (spanDays <= MAX_CALENDAR_FETCH_DAYS) {
-            var fs = isoDateLocal(minT);
-            var ts = isoDateLocal(maxT);
-            return ensureUpcomingWeekHorizon({ fromStr: fs, toStr: ts, rangeKey: fs + '|' + ts });
+        if (ch && ch.data && ch.data.length > 0) {
+            var data = ch.data;
+            var m = ch.margin || { l: 0, r: 0 };
+            var w = ch.w;
+            var startIdx = 0;
+            var endIdx = data.length;
+            if (typeof ch.pixelToDataIndex === 'function' && Number.isFinite(w) && w > 0) {
+                startIdx = Math.max(0, Math.floor(ch.pixelToDataIndex(m.l)) - 4);
+                endIdx = Math.min(data.length, Math.ceil(ch.pixelToDataIndex(w - m.r)) + 4);
+            }
+            var i0 = Math.min(Math.max(0, startIdx), data.length - 1);
+            var i1 = Math.max(i0, Math.min(data.length - 1, Math.max(0, endIdx - 1)));
+            var v0 = data[i0].t;
+            var v1 = data[i1].t;
+            minT = Math.min(v0, v1) - 86400000;
+            maxT = Math.max(v0, v1) + 86400000;
+            if (maxT - minT > maxSpanMs) {
+                minT = refMs - Math.floor(maxSpanMs / 2);
+                maxT = refMs + Math.floor(maxSpanMs / 2);
+            }
         }
 
-        var m = ch.margin || { l: 0, r: 0 };
-        var w = ch.w;
-        var edgeBuf = 8;
-        var startIdx = 0;
-        var endIdx = data.length;
-        if (typeof ch.pixelToDataIndex === 'function' && Number.isFinite(w) && w > 0) {
-            var plotRight = w - m.r;
-            startIdx = Math.max(0, Math.floor(ch.pixelToDataIndex(m.l)) - edgeBuf);
-            endIdx = Math.min(data.length, Math.ceil(ch.pixelToDataIndex(plotRight)) + edgeBuf);
-        } else {
-            var refMs = referenceNowMs();
-            if (!Number.isFinite(refMs)) refMs = data[Math.floor(data.length / 2)].t;
-            var padMs = Math.floor(MAX_CALENDAR_FETCH_DAYS / 2) * 86400000;
-            minT = Math.max(minT, refMs - padMs);
-            maxT = Math.min(maxT, refMs + padMs);
-            var fsWin = isoDateLocal(minT);
-            var tsWin = isoDateLocal(maxT);
-            return ensureUpcomingWeekHorizon({ fromStr: fsWin, toStr: tsWin, rangeKey: fsWin + '|' + tsWin });
-        }
-        var i0 = Math.min(Math.max(0, startIdx), data.length - 1);
-        var i1 = Math.max(i0, Math.min(data.length - 1, Math.max(0, endIdx - 1)));
-        var minTV = data[i0].t;
-        var maxTV = data[i1].t;
-        minT = Math.min(minTV, maxTV);
-        maxT = Math.max(minTV, maxTV);
-        minT -= 86400000;
-        maxT += 86400000;
-        var fsVis = isoDateLocal(minT);
-        var tsVis = isoDateLocal(maxT);
-        return ensureUpcomingWeekHorizon({ fromStr: fsVis, toStr: tsVis, rangeKey: fsVis + '|' + tsVis });
+        var fs = isoDateLocal(minT);
+        var ts = isoDateLocal(maxT);
+        return { fromStr: fs, toStr: ts, rangeKey: fs + '|' + ts };
     }
 
     function newsPanelIsActive() {
@@ -1006,63 +972,85 @@
         return 'HTTP ' + status;
     }
 
-    async function fetchHistoricalNewsChunks(fromStr, toStr, symbol) {
+    async function fetchHistoricalNewsOnce(fromStr, toStr) {
         var startMs = dateStrToMsStart(fromStr);
         var endMs = dateStrToMsEnd(toStr);
         if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
-            return [];
+            return { items: [], limit_reached: false, message: null };
         }
-        var sym = symbol ? String(symbol).replace(/[^a-zA-Z]/g, '').toUpperCase() : '';
-        var all = [];
-        var seen = {};
-        var cursor = startMs;
-        while (cursor <= endMs) {
-            var chunkEnd = Math.min(cursor + HISTORICAL_NEWS_CHUNK_MS - 1, endMs);
-            var fromSec = Math.floor(cursor / 1000);
-            var toSec = Math.floor(chunkEnd / 1000);
-            var cacheKey = fromSec + '|' + toSec + '|' + sym;
-            if (newsChunkCache[cacheKey]) {
-                var cachedChunk = newsChunkCache[cacheKey];
-                for (var ci = 0; ci < cachedChunk.length; ci++) {
-                    var cit = cachedChunk[ci];
-                    var csk = String(cit.id || cit.url || cit.headline || ci);
-                    if (!seen[csk]) {
-                        seen[csk] = true;
-                        all.push(cit);
+        var fromSec = Math.floor(startMs / 1000);
+        var toSec = Math.floor(endMs / 1000);
+        var rangeKey = fromSec + '|' + toSec;
+        if (newsRangeCache[rangeKey]) {
+            return newsRangeCache[rangeKey];
+        }
+        if (newsFetchInflight[rangeKey]) {
+            return newsFetchInflight[rangeKey];
+        }
+        var url = '/api/news/historical?from=' + encodeURIComponent(String(fromSec)) +
+            '&to=' + encodeURIComponent(String(toSec)) + '&limit=50';
+        var p = fetch(url, { method: 'GET', credentials: 'include' })
+            .then(function (r) {
+                return r.json().then(function (j) {
+                    if (!r.ok) {
+                        throw new Error(detailFromJson(j, r.status));
                     }
-                }
-                cursor = chunkEnd + 1;
-                continue;
-            }
-            var url = '/api/news/historical?from=' + encodeURIComponent(String(fromSec)) +
-                '&to=' + encodeURIComponent(String(toSec)) + '&limit=50';
-            if (sym) url += '&symbol=' + encodeURIComponent(sym);
-            var r = await fetch(url, { method: 'GET', credentials: 'include' });
-            var j = await r.json().catch(function () { return {}; });
-            if (!r.ok) {
-                throw new Error(detailFromJson(j, r.status));
-            }
-            var items = (j && j.items) || [];
-            newsChunkCache[cacheKey] = items.slice();
-            for (var i = 0; i < items.length; i++) {
-                var it = items[i];
-                if (!it || typeof it !== 'object') continue;
-                var sk = String(it.id || it.url || it.headline || i);
-                if (seen[sk]) continue;
-                seen[sk] = true;
-                all.push(it);
-            }
-            cursor = chunkEnd + 1;
+                    return {
+                        items: (j && j.items) || [],
+                        limit_reached: !!(j && j.limit_reached),
+                        message: (j && j.message) ? String(j.message) : null,
+                        cached: !!(j && j.cached)
+                    };
+                });
+            })
+            .then(function (payload) {
+                newsRangeCache[rangeKey] = payload;
+                return payload;
+            })
+            .finally(function () {
+                delete newsFetchInflight[rangeKey];
+            });
+        newsFetchInflight[rangeKey] = p;
+        return p;
+    }
+
+    function buildDemoNewsHeadlines(fromStr, toStr, symbol) {
+        var pair = parseForexPair(symbol || getCurrentChartSymbol());
+        var label = pair ? (pair.base + '/' + pair.quote) : 'FX';
+        var compact = pair ? (pair.base + pair.quote) : 'EURUSD';
+        var midMs = Math.floor((dateStrToMsStart(fromStr) + dateStrToMsEnd(toStr)) / 2);
+        if (!Number.isFinite(midMs)) midMs = referenceNowMs();
+        var templates = [
+            'FX focus: ' + label + ' positioning into the session',
+            'Rate expectations drive ' + label + ' as data crosses the tape',
+            'Central bank rhetoric keeps ' + label + ' two-way',
+            'Cross-asset moves spill into ' + compact + ' spot'
+        ];
+        var out = [];
+        for (var i = 0; i < templates.length; i++) {
+            var ts = midMs + (i - 1) * 3600000;
+            out.push({
+                id: 'demo-' + fromStr + '-' + i,
+                datetime: Math.floor(ts / 1000),
+                headline: templates[i],
+                summary: 'Demo headline — Marketaux daily limit reached or no headlines in range.',
+                source: 'Talaria (demo)',
+                url: '',
+                related: compact,
+                demo: true
+            });
         }
-        return all;
+        return out;
     }
 
     async function loadCalendar(force) {
         if (state.loading && !force) return;
+        if (!newsPanelIsActive()) return;
         if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
         var myId = ++calendarLoadId;
         state.loading = true;
         state.error = null;
+        state.warning = null;
         render();
 
         try {
@@ -1070,16 +1058,26 @@
             var fromStr = rng.fromStr;
             var toStr = rng.toStr;
             var symbol = getCurrentChartSymbol();
-            var articles = await fetchHistoricalNewsChunks(fromStr, toStr, symbol);
+            var payload = await fetchHistoricalNewsOnce(fromStr, toStr);
+            var articles = payload.items || [];
+            if (!articles.length && payload.limit_reached) {
+                state.warning = payload.message || 'Marketaux daily limit reached. Showing demo headlines.';
+                articles = buildDemoNewsHeadlines(fromStr, toStr, symbol);
+            } else if (payload.message && !articles.length) {
+                state.warning = payload.message;
+            }
             var out = [];
             for (var i = 0; i < articles.length; i++) {
                 var n = normalizeNewsArticle(articles[i], symbol);
-                if (n) out.push(n);
+                if (n) {
+                    if (articles[i].demo) n.demo = true;
+                    out.push(n);
+                }
             }
             out.sort(function (a, b) { return a.t - b.t; });
             if (myId !== calendarLoadId) return;
             state.events = out;
-            state.dataSource = 'marketaux';
+            state.dataSource = payload.limit_reached && out.length && out[0].demo ? 'demo' : 'marketaux';
             mergeIntoChartMarkerCache(out);
             pruneChartMarkerCache();
             state.loaded = true;
@@ -1095,6 +1093,23 @@
                 msg += ' Add MARKETAUX_API_TOKEN to chart/.env (free key at marketaux.com) and restart the chart API.';
             }
             state.error = msg;
+            if (low.indexOf('daily api limit') !== -1 || low.indexOf('usage_limit') !== -1) {
+                var rngErr = getCalendarFetchRange();
+                state.warning = msg;
+                state.error = null;
+                var demoErr = buildDemoNewsHeadlines(rngErr.fromStr, rngErr.toStr, getCurrentChartSymbol());
+                var demoOut = [];
+                for (var di = 0; di < demoErr.length; di++) {
+                    var dn = normalizeNewsArticle(demoErr[di], getCurrentChartSymbol());
+                    if (dn) { dn.demo = true; demoOut.push(dn); }
+                }
+                if (demoOut.length) {
+                    state.events = demoOut;
+                    state.dataSource = 'demo';
+                    state.loaded = true;
+                    state.loadedRangeKey = rngErr.rangeKey;
+                }
+            }
             if (!state.events || state.events.length === 0) {
                 state.loaded = false;
                 state.loadedRangeKey = null;
@@ -1366,6 +1381,7 @@
         state.replayDayReloadTimer = setTimeout(function () {
             state.replayDayReloadTimer = null;
             requestChartMarkerRedraw();
+            if (!newsPanelIsActive()) return;
             var rng = getCalendarFetchRange();
             if (state.loaded && state.loadedRangeKey === rng.rangeKey) {
                 if (newsPanelIsActive()) {
@@ -1385,8 +1401,12 @@
             requestChartMarkerRedraw();
             return;
         }
+        if (!newsPanelIsActive()) {
+            requestChartMarkerRedraw();
+            return;
+        }
         var rng = getCalendarFetchRange();
-        // Load calendar for the chart bar range even when News is closed so time-axis markers work immediately.
+        // Fetch only while News panel is open (saves Marketaux free-tier quota).
         if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
             loadCalendar();
             return;
@@ -1416,6 +1436,7 @@
     window.__economicCalendarNotifyChartRender = function (chart) {
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
+        if (!newsPanelIsActive()) return;
         if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
         calendarPanDebounceTimer = setTimeout(function () {
             calendarPanDebounceTimer = null;
@@ -1445,6 +1466,7 @@
             return {
                 loading: state.loading,
                 error: state.error,
+                warning: state.warning,
                 tab: state.tab,
                 query: state.query,
                 loaded: state.loaded,
