@@ -24538,7 +24538,6 @@ class Chart {
         if (!Number.isFinite(firstTs) || !Number.isFinite(lastTs)) return anchorTs;
         const barMs = this._estimateTimeframeStepMs() || 60_000;
         if (anchorTs > lastTs + barMs * 0.5) return lastTs;
-        if (anchorTs < firstTs - barMs * 0.5) return firstTs;
         return anchorTs;
     }
 
@@ -24547,11 +24546,8 @@ class Chart {
         const pin = this._tfSwitchViewportPin;
         if (!pin || !this.data || this.data.length === 0) return false;
         const replay = this.replaySystem;
-        // Pin is pause-only: during follow-mode playback the chart must scroll with replay.
+        // During playback the chart must follow the playhead — pin is cleared on play().
         if (replay?.isPlaying) return false;
-        if (replay?.isActive && replay.autoScrollEnabled && !replay.userHasPanned) {
-            return false;
-        }
         const anchorTs = this._clampReplayTfSwitchAnchorTs(pin.anchorTs);
         this._restorePositionAtScreenX(
             anchorTs,
