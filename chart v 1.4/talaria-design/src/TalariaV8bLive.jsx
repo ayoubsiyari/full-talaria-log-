@@ -33244,7 +33244,7 @@ const TalariaV8bLive = () => {
                 };
               });
               const allCntOn = ECON_CAL_COUNTRIES.every((co) => newsCntSel[co]);
-              if (st && st.loading) {
+              if (st && st.loading && !st.bulkCached) {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                     <div style={{ padding: "40px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Loading news…</div>

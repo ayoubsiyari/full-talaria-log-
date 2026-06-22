@@ -24845,19 +24845,7 @@ class Chart {
         const m = this.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, this.w - m.l - m.r);
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
-        if (leftIdx >= 6) {
-            const replay = this.replaySystem;
-            if (this._tfSwitchAnchorLock && replay && replay.isActive
-                && replay.autoScrollEnabled && !replay.userHasPanned) {
-                this._clearTfSwitchAnchorLock();
-                if (typeof replay._followReplayPlayhead === 'function') {
-                    try {
-                        replay._followReplayPlayhead(this, { render: false });
-                    } catch (_sync) { /* ignore */ }
-                }
-            }
-            return;
-        }
+        if (leftIdx >= 6) return;
 
         const replay = this.replaySystem;
         const measureLen = () => (replay && Array.isArray(replay.fullRawData))
@@ -24923,17 +24911,7 @@ class Chart {
         setTimeout(() => {
             const grew = measureLen() > beforeLen;
             if (grew && this._tfSwitchAnchorLock) {
-                const replay = this.replaySystem;
-                if (replay?.isActive && replay.autoScrollEnabled && !replay.userHasPanned) {
-                    this._clearTfSwitchAnchorLock();
-                    if (typeof replay._followReplayPlayhead === 'function') {
-                        try {
-                            replay._followReplayPlayhead(this, { render: false });
-                        } catch (_sync) { /* ignore */ }
-                    }
-                } else {
-                    try { this._reapplyTfSwitchAnchorLock(); } catch (_e) { /* ignore */ }
-                }
+                try { this._reapplyTfSwitchAnchorLock(); } catch (_e) { /* ignore */ }
             }
             // Keep going while data is arriving here OR a shared host fetch is in flight.
             const busy = this._panLoading || this._replayPanLoadTimer || (host && host._panLoading);

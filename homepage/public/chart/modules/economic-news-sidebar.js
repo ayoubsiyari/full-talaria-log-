@@ -175,48 +175,89 @@
         return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 23, 59, 59, 999).getTime();
     }
 
-    /** Max calendar/news fetch window (days) — keep small to conserve Marketaux free tier. */
-    var MAX_CALENDAR_FETCH_DAYS = 14;
+    /** One Marketaux request per bulk window (server max 31 days). Pan/zoom filters from this cache. */
+    var BULK_NEWS_MAX_DAYS = 31;
     var lastFetchFinishedAt = 0;
     var FETCH_COOLDOWN_MS = 120000;
-    /** In-memory response cache keyed by unix from|to (symbol-agnostic). */
+    /** API response cache keyed by unix from|to (symbol-agnostic). */
     var newsRangeCache = {};
     var newsFetchInflight = {};
+    /** All headlines for the current symbol + bulk date window — survives pan/zoom without refetch. */
+    var bulkNewsStore = {
+        symbolKey: '',
+        rangeKey: '',
+        fromMs: 0,
+        toMs: 0,
+        events: []
+    };
 
-    /** News fetch range: visible chart window (±1 day), capped — no future-week extension. */
-    function getCalendarFetchRange() {
+    function bulkSymbolKey() {
+        return getCurrentChartSymbol() || '__none__';
+    }
+
+    /** Stable bulk fetch window: up to 31 days centered on chart "now", or full dataset if shorter. */
+    function getBulkNewsRange() {
         var ch = mainChart();
         var refMs = referenceNowMs();
         if (!Number.isFinite(refMs)) refMs = Date.now();
-        var maxSpanMs = MAX_CALENDAR_FETCH_DAYS * 86400000;
-        var minT = refMs - Math.floor(maxSpanMs / 2);
-        var maxT = refMs + Math.floor(maxSpanMs / 2);
+        var maxSpanMs = BULK_NEWS_MAX_DAYS * 86400000;
+        var halfSpan = Math.floor(maxSpanMs / 2);
+        var minT = refMs - halfSpan;
+        var maxT = refMs + halfSpan;
 
         if (ch && ch.data && ch.data.length > 0) {
-            var data = ch.data;
-            var m = ch.margin || { l: 0, r: 0 };
-            var w = ch.w;
-            var startIdx = 0;
-            var endIdx = data.length;
-            if (typeof ch.pixelToDataIndex === 'function' && Number.isFinite(w) && w > 0) {
-                startIdx = Math.max(0, Math.floor(ch.pixelToDataIndex(m.l)) - 4);
-                endIdx = Math.min(data.length, Math.ceil(ch.pixelToDataIndex(w - m.r)) + 4);
-            }
-            var i0 = Math.min(Math.max(0, startIdx), data.length - 1);
-            var i1 = Math.max(i0, Math.min(data.length - 1, Math.max(0, endIdx - 1)));
-            var v0 = data[i0].t;
-            var v1 = data[i1].t;
-            minT = Math.min(v0, v1) - 86400000;
-            maxT = Math.max(v0, v1) + 86400000;
-            if (maxT - minT > maxSpanMs) {
-                minT = refMs - Math.floor(maxSpanMs / 2);
-                maxT = refMs + Math.floor(maxSpanMs / 2);
+            var t0 = ch.data[0].t;
+            var t1 = ch.data[ch.data.length - 1].t;
+            var dataMin = Math.min(t0, t1);
+            var dataMax = Math.max(t0, t1);
+            if (dataMax - dataMin <= maxSpanMs) {
+                minT = dataMin - 86400000;
+                maxT = dataMax + 86400000;
             }
         }
 
         var fs = isoDateLocal(minT);
         var ts = isoDateLocal(maxT);
-        return { fromStr: fs, toStr: ts, rangeKey: fs + '|' + ts };
+        return {
+            fromStr: fs,
+            toStr: ts,
+            fromMs: minT,
+            toMs: maxT,
+            rangeKey: 'bulk:' + fs + '|' + ts
+        };
+    }
+
+    function bulkCoversReference() {
+        if (!bulkNewsStore.events.length) return false;
+        if (bulkNewsStore.symbolKey !== bulkSymbolKey()) return false;
+        var ref = referenceNowMs();
+        if (!Number.isFinite(ref)) return true;
+        var edgePad = 3 * 86400000;
+        return ref >= (bulkNewsStore.fromMs + edgePad) && ref <= (bulkNewsStore.toMs - edgePad);
+    }
+
+    function syncStateFromBulk() {
+        if (!bulkNewsStore.events.length) return;
+        state.events = bulkNewsStore.events;
+        state.loaded = true;
+        state.loadedRangeKey = bulkNewsStore.rangeKey;
+        state.dataSource = bulkNewsStore.dataSource || 'marketaux';
+        if (bulkNewsStore.warning) state.warning = bulkNewsStore.warning;
+    }
+
+    function clearBulkNewsStore() {
+        bulkNewsStore = {
+            symbolKey: '',
+            rangeKey: '',
+            fromMs: 0,
+            toMs: 0,
+            events: []
+        };
+    }
+
+    /** @deprecated use getBulkNewsRange — kept for loading labels */
+    function getCalendarFetchRange() {
+        return getBulkNewsRange();
     }
 
     function newsPanelIsActive() {
@@ -893,8 +934,8 @@
     function render() {
         var hasRoots = allNewsItemRoots().length > 0;
 
-        if (state.loading) {
-            var rng = getCalendarFetchRange();
+        if (state.loading && !bulkNewsStore.events.length) {
+            var rng = getBulkNewsRange();
             var loadLabel = rng.fromStr === rng.toStr
                 ? escapeHtml(rng.fromStr)
                 : escapeHtml(rng.fromStr) + ' – ' + escapeHtml(rng.toStr);
@@ -1046,25 +1087,43 @@
     async function loadCalendar(force) {
         if (state.loading && !force) return;
         if (!newsPanelIsActive()) return;
-        if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
+
+        var symKey = bulkSymbolKey();
+        if (!force && bulkNewsStore.events.length && bulkCoversReference()) {
+            syncStateFromBulk();
+            render();
+            startCountdownLoop();
+            requestChartMarkerRedraw();
+            return;
+        }
+        if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) {
+            if (bulkNewsStore.events.length) {
+                syncStateFromBulk();
+                render();
+            }
+            return;
+        }
+
         var myId = ++calendarLoadId;
-        state.loading = true;
+        var isFirstLoad = !bulkNewsStore.events.length;
+        state.loading = isFirstLoad;
         state.error = null;
-        state.warning = null;
+        if (isFirstLoad) state.warning = null;
         render();
 
         try {
-            var rng = getCalendarFetchRange();
+            var rng = getBulkNewsRange();
             var fromStr = rng.fromStr;
             var toStr = rng.toStr;
             var symbol = getCurrentChartSymbol();
             var payload = await fetchHistoricalNewsOnce(fromStr, toStr);
             var articles = payload.items || [];
+            var warningMsg = null;
             if (!articles.length && payload.limit_reached) {
-                state.warning = payload.message || 'Marketaux daily limit reached. Showing demo headlines.';
+                warningMsg = payload.message || 'Marketaux daily limit reached. Showing demo headlines.';
                 articles = buildDemoNewsHeadlines(fromStr, toStr, symbol);
             } else if (payload.message && !articles.length) {
-                state.warning = payload.message;
+                warningMsg = payload.message;
             }
             var out = [];
             for (var i = 0; i < articles.length; i++) {
@@ -1076,8 +1135,19 @@
             }
             out.sort(function (a, b) { return a.t - b.t; });
             if (myId !== calendarLoadId) return;
+
+            bulkNewsStore = {
+                symbolKey: symKey,
+                rangeKey: rng.rangeKey,
+                fromMs: rng.fromMs,
+                toMs: rng.toMs,
+                events: out,
+                dataSource: payload.limit_reached && out.length && out[0].demo ? 'demo' : 'marketaux',
+                warning: warningMsg
+            };
             state.events = out;
-            state.dataSource = payload.limit_reached && out.length && out[0].demo ? 'demo' : 'marketaux';
+            state.dataSource = bulkNewsStore.dataSource;
+            state.warning = warningMsg;
             mergeIntoChartMarkerCache(out);
             pruneChartMarkerCache();
             state.loaded = true;
@@ -1094,7 +1164,7 @@
             }
             state.error = msg;
             if (low.indexOf('daily api limit') !== -1 || low.indexOf('usage_limit') !== -1) {
-                var rngErr = getCalendarFetchRange();
+                var rngErr = getBulkNewsRange();
                 state.warning = msg;
                 state.error = null;
                 var demoErr = buildDemoNewsHeadlines(rngErr.fromStr, rngErr.toStr, getCurrentChartSymbol());
@@ -1104,10 +1174,20 @@
                     if (dn) { dn.demo = true; demoOut.push(dn); }
                 }
                 if (demoOut.length) {
+                    bulkNewsStore = {
+                        symbolKey: symKey,
+                        rangeKey: rngErr.rangeKey,
+                        fromMs: rngErr.fromMs,
+                        toMs: rngErr.toMs,
+                        events: demoOut,
+                        dataSource: 'demo',
+                        warning: msg
+                    };
                     state.events = demoOut;
                     state.dataSource = 'demo';
                     state.loaded = true;
                     state.loadedRangeKey = rngErr.rangeKey;
+                    mergeIntoChartMarkerCache(demoOut);
                 }
             }
             if (!state.events || state.events.length === 0) {
@@ -1354,7 +1434,14 @@
         bindNewsSearchInputs();
         bindNewsFilters();
         syncFilterControlsToDom();
-        var rng = getCalendarFetchRange();
+        var rng = getBulkNewsRange();
+        if (bulkNewsStore.events.length && bulkCoversReference()) {
+            syncStateFromBulk();
+            render();
+            startCountdownLoop();
+            requestChartMarkerRedraw();
+            return;
+        }
         if (!state.loaded || state.loadedRangeKey !== rng.rangeKey) {
             loadCalendar();
         } else {
@@ -1367,6 +1454,7 @@
     window.refreshEconomicNewsSidebar = function () {
         state.loaded = false;
         state.loadedRangeKey = null;
+        clearBulkNewsStore();
         clearChartMarkerCache();
         loadCalendar(true);
     };
@@ -1380,19 +1468,14 @@
         if (state.replayDayReloadTimer) clearTimeout(state.replayDayReloadTimer);
         state.replayDayReloadTimer = setTimeout(function () {
             state.replayDayReloadTimer = null;
+            syncStateFromBulk();
+            render();
+            startCountdownLoop();
             requestChartMarkerRedraw();
             if (!newsPanelIsActive()) return;
-            var rng = getCalendarFetchRange();
-            if (state.loaded && state.loadedRangeKey === rng.rangeKey) {
-                if (newsPanelIsActive()) {
-                    render();
-                    startCountdownLoop();
-                }
-                return;
+            if (!bulkCoversReference() && !state.loading) {
+                loadCalendar(true);
             }
-            state.loaded = false;
-            state.loadedRangeKey = null;
-            loadCalendar(true);
         }, 400);
     });
 
@@ -1401,21 +1484,17 @@
             requestChartMarkerRedraw();
             return;
         }
-        if (!newsPanelIsActive()) {
-            requestChartMarkerRedraw();
-            return;
-        }
-        var rng = getCalendarFetchRange();
-        // Fetch only while News panel is open (saves Marketaux free-tier quota).
-        if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
-            loadCalendar();
-            return;
-        }
-        if (newsPanelIsActive() && state.loaded) {
-            render();
-            startCountdownLoop();
-        }
+        syncStateFromBulk();
+        render();
         requestChartMarkerRedraw();
+        if (!newsPanelIsActive()) return;
+        if (bulkNewsStore.events.length && bulkCoversReference()) {
+            startCountdownLoop();
+            return;
+        }
+        if (!state.loading) {
+            loadCalendar();
+        }
     }
 
     window.addEventListener('chartDataLoaded', function () {
@@ -1432,26 +1511,30 @@
         }, 0);
     }
 
-    /** Called from chart.js render after pan/zoom — reload Finnhub range when visible dates change (long histories). */
+    /** Pan/zoom: redraw from bulk cache — no API unless chart "now" leaves the bulk window. */
     window.__economicCalendarNotifyChartRender = function (chart) {
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
-        if (!newsPanelIsActive()) return;
         if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
         calendarPanDebounceTimer = setTimeout(function () {
             calendarPanDebounceTimer = null;
             try {
-                var rng = getCalendarFetchRange();
-                if (state.loading) return;
-                if (state.loaded && state.loadedRangeKey === rng.rangeKey) return;
-                // Skip reload if new range is within the already-loaded range
-                if (state.loaded && state.loadedRangeKey) {
-                    var parts = state.loadedRangeKey.split('|');
-                    if (parts.length === 2 && rng.fromStr >= parts[0] && rng.toStr <= parts[1]) return;
+                if (bulkNewsStore.events.length && bulkNewsStore.symbolKey !== bulkSymbolKey()) {
+                    clearBulkNewsStore();
+                    clearChartMarkerCache();
+                    if (newsPanelIsActive()) loadCalendar(true);
+                    return;
                 }
-                loadCalendar();
+                syncStateFromBulk();
+                render();
+                startCountdownLoop();
+                requestChartMarkerRedraw();
+                requestMultichartNewsMarkerRedraw();
+                if (newsPanelIsActive() && !bulkCoversReference() && !state.loading) {
+                    loadCalendar(true);
+                }
             } catch (err) {}
-        }, 350);
+        }, 150);
     };
 
     /**
@@ -1470,7 +1553,8 @@
                 tab: state.tab,
                 query: state.query,
                 loaded: state.loaded,
-                eventCount: state.events ? state.events.length : 0,
+                eventCount: bulkNewsStore.events.length || (state.events ? state.events.length : 0),
+                bulkCached: bulkNewsStore.events.length > 0,
                 dataSource: state.dataSource || '',
                 filters: {
                     impactHigh: state.filters.impactHigh,

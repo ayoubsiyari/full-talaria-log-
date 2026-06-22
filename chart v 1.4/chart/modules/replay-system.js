@@ -2894,14 +2894,19 @@ class ReplaySystem {
             }
         }
         
-        // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
+        // Auto-scroll: TF-switch anchor freeze while paused; follow playhead only during playback.
         if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
             && !this._timeframeChanging && !this.userHasPanned) {
-            if (this.chart._tfSwitchAnchorLock && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
-                // Manual pan after TF switch — keep frozen anchor only while user owns viewport.
-                this.chart._reapplyTfSwitchAnchorLock();
-            } else {
+            if (this.chart._tfSwitchAnchorLock) {
+                if (this.isPlaying) {
+                    this._followReplayPlayhead(this.chart, { render: false });
+                } else if (typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
+                    this.chart._reapplyTfSwitchAnchorLock();
+                }
+            } else if (this.isPlaying) {
                 this._followReplayPlayhead(this.chart, { render: false });
+            } else {
+                this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
             }
         }
         
@@ -4239,9 +4244,17 @@ class ReplaySystem {
             }
         }
         
-        // Auto-scroll if enabled
+        // Auto-scroll if enabled (preserve TF anchor while paused; follow only when playing).
         if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this.userHasPanned) {
-            this._followReplayPlayhead(this.chart, { render: false });
+            if (this.chart._tfSwitchAnchorLock) {
+                if (this.isPlaying) {
+                    this._followReplayPlayhead(this.chart, { render: false });
+                } else if (typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
+                    this.chart._reapplyTfSwitchAnchorLock();
+                }
+            } else if (this.isPlaying) {
+                this._followReplayPlayhead(this.chart, { render: false });
+            }
         }
         
         // Update UI
