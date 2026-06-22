@@ -14189,6 +14189,7 @@ class Chart {
      */
     _scheduleViewportEmptyRecovery() {
         if (this._viewportEmptyRecoverPending) return;
+        if (this._timeframeSwitching || this._tfSwitchAnchorLock) return;
         if (this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
             const until = this._multichartViewportSettleUntil;
             if (Number.isFinite(until) && performance.now() < until) {
@@ -24590,66 +24591,46 @@ class Chart {
     }
 
     /**
-     * After TF restore: if no bars are visible (common on 1H→1m), re-center on
-     * playhead while keeping the captured candle width.
+     * Last resort after TF switch: only when zero bars render — nudge using captured
+     * center/left anchor at the same candle width (never jump to playhead follow).
      */
     _ensureTfSwitchViewportShowsData(vp) {
-        if (!Array.isArray(this.data) || this.data.length === 0) return;
-        const replay = this.replaySystem;
-        const m = this.margin || { l: 60, r: 60 };
-        const plotW = Math.max(1, (this.w || 800) - m.l - m.r);
-        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
-        if (!(spacing > 0)) return;
+        if (!vp || !Array.isArray(this.data) || this.data.length === 0) return;
+        if (this._countVisiblePlotBars() > 0) return;
 
-        const playheadInView = () => {
-            if (!replay?.isActive) return true;
-            const ts = Number.isFinite(replay.replayTimestamp)
-                ? replay.replayTimestamp
-                : (typeof this._captureReplayPlayheadMs === 'function'
-                    ? this._captureReplayPlayheadMs(replay)
-                    : null);
-            if (!Number.isFinite(ts)) return true;
-            const i0 = Math.max(0, -Math.floor((this.offsetX || 0) / spacing));
-            const vis = Math.ceil(plotW / spacing) + 2;
-            const i1 = Math.min(this.data.length - 1, i0 + vis);
-            const t0 = this.data[i0]?.t;
-            const t1 = this.data[i1]?.t;
-            if (!Number.isFinite(t0) || !Number.isFinite(t1)) return false;
-            const barMs = this._estimateTimeframeStepMs() || spacing;
-            return ts >= t0 - barMs && ts <= t1 + barMs;
-        };
-
-        if (this._countVisiblePlotBars() >= 3 && playheadInView()) return;
-
-        const cw = Number.isFinite(vp?.candleWidth) && vp.candleWidth > 0
+        const cw = Number.isFinite(vp.candleWidth) && vp.candleWidth > 0
             ? vp.candleWidth
             : this.candleWidth;
         this._clampRestoredCandleWidth(cw);
 
-        const centerX = Number.isFinite(vp?.centerScreenX)
+        const m = this.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, (this.w || 800) - m.l - m.r);
+        const centerX = Number.isFinite(vp.centerScreenX)
             ? vp.centerScreenX
             : (m.l + plotW / 2);
-        const phTs = replay?.isActive && typeof this._captureReplayPlayheadMs === 'function'
-            ? this._captureReplayPlayheadMs(replay)
-            : (Number.isFinite(vp?.anchorTs) ? vp.anchorTs : vp?.centerTs);
+        const barMs = this._estimateTimeframeStepMs() || 60000;
+        const inRange = (ts) => {
+            if (!Number.isFinite(ts) || !this.data.length) return false;
+            const idx = this._findClosestBarIndexForTimestamp(ts);
+            const bar = this.data[idx];
+            return bar && Number.isFinite(bar.t) && Math.abs(bar.t - ts) <= barMs * 3;
+        };
 
-        if (Number.isFinite(phTs)) {
-            this._restorePositionAtScreenX(phTs, cw, centerX, { skipConstrain: true });
-            if (this._countVisiblePlotBars() >= 3 && playheadInView()) {
+        const candidates = [
+            { ts: vp.centerTs, x: centerX },
+            { ts: vp.leftTs, x: Number.isFinite(vp.leftScreenX) ? vp.leftScreenX + cw / 2 : centerX },
+            { ts: vp.anchorTs, x: Number.isFinite(vp.anchorScreenX) ? vp.anchorScreenX : centerX },
+        ];
+        for (const c of candidates) {
+            if (!inRange(c.ts)) continue;
+            this._restorePositionAtScreenX(c.ts, cw, c.x, { skipConstrain: true });
+            if (this._countVisiblePlotBars() > 0) {
                 if (this._tfSwitchAnchorLock) {
-                    this._tfSwitchAnchorLock.anchorTs = phTs;
-                    this._tfSwitchAnchorLock.anchorScreenX = centerX;
+                    this._tfSwitchAnchorLock.anchorTs = c.ts;
+                    this._tfSwitchAnchorLock.anchorScreenX = c.x;
                 }
                 return;
             }
-        }
-
-        if (replay?.isActive && typeof replay.syncReplayViewportToPlayhead === 'function') {
-            replay.syncReplayViewportToPlayhead(this, {
-                forceRecenter: true,
-                resetPriceScale: false,
-                render: false,
-            });
         }
     }
 
@@ -24716,34 +24697,29 @@ class Chart {
         this._pendingTfSwitchVisibleBarCount = visibleBarCount;
         const viewportLeftIdx = vr.first;
         const leftScreenX = this.dataIndexToPixel(viewportLeftIdx);
-
-        // TF switch always pins the playhead / last bar at the same screen pixel —
-        // never the left viewport edge (that caused candles to jump far left on
-        // higher TFs when the loaded window is shorter than the visible range).
         const spacing = this.getCandleSpacing();
-        let anchorIdx = Math.max(0, this.data.length - 1);
-        anchorMode = 'playhead';
-        if (replay && replay.isActive) {
-            anchorTs = this._captureReplayPlayheadMs(replay);
-            const idxFromTs = this._findClosestBarIndexForTimestamp(anchorTs);
-            if (Number.isFinite(idxFromTs)) anchorIdx = idxFromTs;
-        }
-        const anchorBar = this.data[anchorIdx];
-        if (anchorBar && Number.isFinite(anchorBar.t)) {
-            anchorTs = anchorBar.t;
-        }
-        anchorScreenX = this.dataIndexToPixel(anchorIdx) + spacing / 2;
+        const centerScreenX = m.l + plotW / 2;
 
+        // TradingView parity: whatever time is at screen center stays at that pixel.
+        let anchorTs = Number.isFinite(centerTs) ? centerTs : null;
+        let anchorScreenX = centerScreenX;
+        let anchorMode = 'center';
+        if (!Number.isFinite(anchorTs)) {
+            const leftBar = this.data[Math.max(0, Math.floor(vr.first))];
+            if (leftBar && Number.isFinite(leftBar.t)) {
+                anchorTs = leftBar.t;
+                anchorScreenX = leftScreenX + spacing / 2;
+                anchorMode = 'viewportLeft';
+            }
+        }
         if (!Number.isFinite(anchorTs)) {
             const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
             const rightBar = this.data[rightBarIdx];
-            if (rightBar && Number.isFinite(rightBar.t)) anchorTs = rightBar.t;
-            anchorMode = 'playhead';
-        }
-        if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX)) {
-            const anchorIdx = this._findClosestBarIndexForTimestamp(anchorTs);
-            const spacing = this.getCandleSpacing();
-            anchorScreenX = this.dataIndexToPixel(anchorIdx) + spacing / 2;
+            if (rightBar && Number.isFinite(rightBar.t)) {
+                anchorTs = rightBar.t;
+                anchorScreenX = this.dataIndexToPixel(rightBarIdx) + spacing / 2;
+                anchorMode = 'viewportRight';
+            }
         }
 
         const leftTs = this.estimateTimestampForDataIndex(vr.first);
@@ -24817,13 +24793,27 @@ class Chart {
         };
 
         const anchorCheckTs = Number.isFinite(vp.anchorTs) ? vp.anchorTs : vp.centerTs;
+        let restoreVp = vp;
         let hasAnchor = tsMapsToLoadedBar(anchorCheckTs)
             || tsMapsToLoadedBar(vp.centerTs)
             || tsMapsToLoadedBar(vp.leftTs);
-        if (!hasAnchor && Number.isFinite(vp.visibleBarCount) && this.data.length > 0) {
-            // Bar-count restore: anchor to closest loaded bar even when the exact
-            // wall-clock timestamp is outside the freshly fetched slice.
-            hasAnchor = true;
+        if (!hasAnchor && this.data.length > 0) {
+            const pickTs = Number.isFinite(vp.centerTs) ? vp.centerTs
+                : (Number.isFinite(anchorCheckTs) ? anchorCheckTs : vp.leftTs);
+            if (Number.isFinite(pickTs)) {
+                const idx = this._findClosestBarIndexForTimestamp(pickTs);
+                const bar = this.data[idx];
+                if (bar && Number.isFinite(bar.t)) {
+                    restoreVp = {
+                        ...vp,
+                        anchorTs: bar.t,
+                        anchorScreenX: Number.isFinite(vp.centerScreenX)
+                            ? vp.centerScreenX
+                            : vp.anchorScreenX,
+                    };
+                    hasAnchor = true;
+                }
+            }
         }
         if (!hasAnchor) return false;
 
@@ -24859,26 +24849,11 @@ class Chart {
             }
         }
 
-        if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
-            const replayActive = replay && replay.isActive;
-            const switchingToFiner = Number.isFinite(vp.oldBarMs) && newBarMs > 0
-                && vp.oldBarMs > newBarMs * 1.02;
-            let lockVp = vp;
-            // 1H→1m: pin visible center (not coarse playhead pixel) so the loaded
-            // fine-TF window stays on screen instead of an empty extrapolated range.
-            if (replayActive && switchingToFiner && Number.isFinite(vp.centerTs)) {
-                lockVp = {
-                    ...vp,
-                    anchorTs: vp.centerTs,
-                    anchorScreenX: Number.isFinite(vp.centerScreenX)
-                        ? vp.centerScreenX
-                        : (m.l + plotW / 2),
-                };
-            }
-            this._commitTfSwitchAnchorLock(lockVp);
-        } else if (Number.isFinite(vp.centerTs)) {
+        if (Number.isFinite(restoreVp.anchorScreenX) && Number.isFinite(restoreVp.anchorTs)) {
+            this._commitTfSwitchAnchorLock(restoreVp);
+        } else if (Number.isFinite(restoreVp.centerTs)) {
             this._clampRestoredCandleWidth(targetCandleWidth);
-            this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
+            this._restorePositionToTimestamp(restoreVp.centerTs, targetCandleWidth);
             this._syncZoomLevelIndexFromCandleWidth();
         } else {
             return false;
@@ -24911,10 +24886,10 @@ class Chart {
         const vpSnap = this._tfSwitchViewport
             ? { ...this._tfSwitchViewport }
             : null;
-        this._restoreOrJumpAfterTfSwitch();
         if (typeof this.resize === 'function') {
             try { this.resize(); } catch (_e) { /* ignore */ }
         }
+        this._restoreOrJumpAfterTfSwitch();
         if (this._tfSwitchAnchorLock) {
             this._reapplyTfSwitchAnchorLock();
         }

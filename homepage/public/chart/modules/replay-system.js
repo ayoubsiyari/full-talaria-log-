@@ -2905,8 +2905,6 @@ class ReplaySystem {
                 }
             } else if (this.isPlaying) {
                 this._followReplayPlayhead(this.chart, { render: false });
-            } else {
-                this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
             }
         }
         
