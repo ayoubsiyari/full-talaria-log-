@@ -15125,7 +15125,12 @@ const TalariaV8b = () => {
           const dashboardValidSourceFilterKeys = dashboardHasSourceFilter
             ? [...new Set((Array.isArray(dashSourceFilterKeys) ? dashSourceFilterKeys : []).map(String).filter(key=>dashboardAppliedSourceKeySet.has(key)))]
             : [];
-          const ds = dashStrategySource || dsFromAppliedJournal || dashboardSessionPool.find(s=>String(s.id)===String(dashSessId)) || dashboardSessionPool[0];
+          const appliedLibrarySession = (() => {
+            const sel = dashLibraryAppliedSelection || dashLibraryAppliedSelectionRef.current;
+            if (sel?.kind !== "session") return null;
+            return dashboardSessionPool.find(s => String(s.id) === String(sel.sessionId || sel.id)) || null;
+          })();
+          const ds = dashStrategySource || dsFromAppliedJournal || appliedLibrarySession || dashboardSessionPool.find(s=>String(s.id)===String(dashSessId)) || dashboardSessionPool[0];
           const dashboardSourceKind = dashStrategySource
             ? "strategy"
             : (ds?.isJournalDashboard || ds?.statusKind === "journal" || ds?.liveAccountId ? "journal" : "session");
