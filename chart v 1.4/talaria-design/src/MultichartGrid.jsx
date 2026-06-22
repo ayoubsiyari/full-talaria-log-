@@ -4392,6 +4392,42 @@ export default function MultichartGrid({
             }
         }
 
+        /** Plot bounds in parent viewport coords for V9 quick-bar clamp (excludes price/time axes). */
+        function getPanelPlotBoundsForDrawingManager(dm, zz, barW, barH) {
+            const Z = zz || 1;
+            const pad = 8;
+            const bw = barW || 0;
+            const bh = barH || 0;
+            let marginR = 60;
+            let marginB = 30;
+            try {
+                const ch = dm && dm.chart;
+                if (ch && ch.margin) {
+                    if (typeof ch.margin.r === "number" && ch.margin.r > 0) marginR = ch.margin.r;
+                    if (typeof ch.margin.b === "number" && ch.margin.b > 0) marginB = ch.margin.b;
+                }
+            } catch (_) {}
+            let r = null;
+            const frame = findPanelFrameForDrawingManager(dm);
+            if (frame) {
+                try { r = frame.getBoundingClientRect(); } catch (_) {}
+            } else {
+                try {
+                    const ch = dm && dm.chart;
+                    const wrap = ch && ch.canvas && ch.canvas.parentElement;
+                    const el = wrap || document.getElementById("chartWrapper") || document.getElementById("chart-container");
+                    if (el) r = el.getBoundingClientRect();
+                } catch (_) {}
+            }
+            if (!r) return null;
+            return {
+                minX: r.left / Z + pad,
+                minY: r.top / Z + pad,
+                maxX: (r.right - marginR) / Z - bw - pad,
+                maxY: (r.bottom - marginB) / Z - bh - pad,
+            };
+        }
+
         const prevGetActiveChart = typeof window.getActiveChart === "function"
             ? window.getActiveChart
             : null;
@@ -4426,6 +4462,7 @@ export default function MultichartGrid({
             getActiveChart: getActiveChartForMultichart,
             enumerateCharts: enumerateMultichartCharts,
             mapToolbarClientToParent,
+            getPanelPlotBoundsForDrawingManager,
             enumerateDrawingManagers: enumerateMultichartDrawingManagers,
             hostPanelId: HOST_PANEL_ID,
         };

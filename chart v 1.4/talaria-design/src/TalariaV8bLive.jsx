@@ -667,26 +667,50 @@ function v9PortalFloatingUi(node) {
   return createPortal(portaled, target);
 }
 
-/** Drag clamp rect for portaled floating UI — full multichart chart slot, not one tile. */
+function v9GetChartPlotMarginR() {
+  try {
+    const ch =
+      typeof window !== "undefined" && typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : typeof window !== "undefined"
+          ? window.chart
+          : null;
+    const m = ch && ch.margin;
+    if (m && typeof m.r === "number" && m.r > 0) return m.r;
+  } catch (_) {}
+  return 60;
+}
+
+/** Drag clamp rect for portaled floating UI — stay inside chart plot, not over price/time axes. */
 function v9FloatingUiDragBounds(zz, barW, barH, panelW = 0) {
   const shell = v9MultichartShellWindow() || (typeof window !== "undefined" ? window : null);
   const Z = zz || 1;
-  let minX = 0;
-  let minY = 0;
-  let maxX = ((shell && shell.innerWidth) || 1920) / Z - (barW || 0) - (panelW || 0);
-  let maxY = ((shell && shell.innerHeight) || 1080) / Z - (barH || 0);
+  const pad = 8;
+  const bw = barW || 0;
+  const bh = barH || 0;
+  let minX = pad;
+  let minY = pad;
+  let maxX = ((shell && shell.innerWidth) || 1920) / Z - bw - pad;
+  let maxY = ((shell && shell.innerHeight) || 1080) / Z - bh - pad;
+  if (panelW > 0) {
+    maxX = Math.min(maxX, shell.innerWidth / Z - bw - panelW - pad);
+  }
   try {
-    if (shell && shell.__multichartGrid) {
-      const el = shell.document.getElementById("chart-container");
-      if (el) {
-        const r = el.getBoundingClientRect();
-        minX = r.left / Z;
-        minY = r.top / Z;
-        maxX = r.right / Z - (barW || 0);
-        maxY = r.bottom / Z - (barH || 0);
-        if (panelW > 0) {
-          maxX = Math.min(maxX, shell.innerWidth / Z - (barW || 0) - panelW);
-        }
+    const doc = shell && shell.document ? shell.document : document;
+    const marginR = v9GetChartPlotMarginR();
+    const marginB = 30;
+    const el =
+      doc.getElementById("chartWrapper") ||
+      doc.querySelector(".chart-wrapper") ||
+      doc.getElementById("chart-container");
+    if (el) {
+      const r = el.getBoundingClientRect();
+      minX = Math.max(minX, r.left / Z + pad);
+      minY = Math.max(minY, r.top / Z + pad);
+      maxX = Math.min(maxX, (r.right - marginR) / Z - bw - pad);
+      maxY = Math.min(maxY, (r.bottom - marginB) / Z - bh - pad);
+      if (panelW > 0) {
+        maxX = Math.min(maxX, shell.innerWidth / Z - bw - panelW - pad);
       }
     }
   } catch (_) {}
@@ -3863,7 +3887,7 @@ function v9ShouldSkipLegacyDrawingToolbarShow() {
 }
 
 /** Move V9 tlBar/txtBar near the shape when drawing-tools-manager calls toolbar.show(x, y). */
-function v9SyncQuickBarPosFromToolbarShow(br, x, y, drawingType) {
+function v9SyncQuickBarPosFromToolbarShow(br, x, y, drawingType, dm) {
   if (!br || typeof br.setTlBarPos !== "function") return;
   if (typeof x !== "number" || typeof y !== "number" || Number.isNaN(x) || Number.isNaN(y)) return;
   const dt = drawingType || "";
@@ -3874,16 +3898,19 @@ function v9SyncQuickBarPosFromToolbarShow(br, x, y, drawingType) {
     return;
   }
   const zz = br.Z || 1;
-  let vpW = 1920;
-  try {
-    const w = v9MultichartShellWindow();
-    vpW = ((w && w.innerWidth) || 1920) / zz;
-  } catch (_) {}
   const barW = 340;
   const barH = 36;
-  const pad = 8;
-  const left = Math.max(pad, Math.min(x / zz - barW / 2, vpW - barW - pad));
-  const top = Math.max(pad, y / zz - barH - 14);
+  let bounds = v9FloatingUiDragBounds(zz, barW, barH, 0);
+  try {
+    const grid = v9MultichartGridApi();
+    if (grid && dm && typeof grid.getPanelPlotBoundsForDrawingManager === "function") {
+      const plot = grid.getPanelPlotBoundsForDrawingManager(dm, zz, barW, barH);
+      if (plot) bounds = plot;
+    }
+  } catch (_) {}
+  let left = x / zz - barW / 2;
+  const top = Math.max(bounds.minY, Math.min(y / zz - barH - 14, bounds.maxY));
+  left = Math.max(bounds.minX, Math.min(left, bounds.maxX));
   br.setTlBarPos({ x: left, y: top });
 }
 
@@ -3903,7 +3930,7 @@ function v9MapToolbarClientToParent(dm, x, y) {
 
 function v9SyncQuickBarPosFromDrawingManagerShow(br, dm, x, y, drawingType) {
   const mapped = v9MapToolbarClientToParent(dm, x, y);
-  v9SyncQuickBarPosFromToolbarShow(br, mapped.x, mapped.y, drawingType);
+  v9SyncQuickBarPosFromToolbarShow(br, mapped.x, mapped.y, drawingType, dm);
 }
 
 /** Rail groups where each chart.js `drawing.type` has its own settings (never fib fan ← fib retracement). */
@@ -14042,14 +14069,17 @@ const TalariaV8bLive = () => {
   // Push both floating bars out of the right panel the instant it opens
   useEffect(() => {
     const panelW = (rightPanel || orderPanelOpen) ? 336 : 0;
-    const vpW = window.innerWidth / Z;
     if (tlBarRef.current) {
       const barW = tlBarRef.current.getBoundingClientRect().width / Z;
-      setTlBarPos(p => ({ ...p, x: Math.min(p.x, vpW - panelW - barW) }));
+      const barH = tlBarRef.current.getBoundingClientRect().height / Z;
+      const { maxX } = v9FloatingUiDragBounds(Z, barW, barH, panelW);
+      setTlBarPos(p => ({ ...p, x: Math.min(p.x, maxX) }));
     }
     if (pinnedBarRef.current) {
       const barW = pinnedBarRef.current.getBoundingClientRect().width / Z;
-      setPinnedBarPos(p => ({ ...p, x: Math.min(p.x, vpW - panelW - barW) }));
+      const barH = pinnedBarRef.current.getBoundingClientRect().height / Z;
+      const { maxX } = v9FloatingUiDragBounds(Z, barW, barH, panelW);
+      setPinnedBarPos(p => ({ ...p, x: Math.min(p.x, maxX) }));
     }
   }, [rightPanel, orderPanelOpen]);
 
