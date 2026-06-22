@@ -6835,6 +6835,7 @@ const btDashIsLiveSource = (source = {}) => {
   const text = btDashSourceText(source);
   return text.includes("journal") || text.includes("live-journal") || text.includes("live journal") || text.includes("live account") || text.includes("metatrader") || text.includes("tradingview") || text.includes("ctrader") || text.includes("interactive brokers");
 };
+const btDashTextLower = (...values) => values.filter(value => value != null).map(value => String(value)).join(" ").toLowerCase();
 const btDashSessionBucket = (idx) => ["Asia", "London", "New York", "Overlap"][idx % 4];
 const btDashTradesCache = new Map();
 function btDashBuildTrades(session) {
