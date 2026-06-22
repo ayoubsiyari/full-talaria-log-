@@ -25947,9 +25947,10 @@ const TalariaV8b = () => {
             setDashAddTradeScreenshots({pre:[], post:[]});
             setDashAddTradeScreenshotSlot("pre");
             setDashAddTradeExcursionOpen(false);
+            let pinnedLiveJournalAccount = null;
             if (isDashLiveJournalAddTradeSource(source)) {
               const accountId = source.id || String(source.key || "").replace(/^journalAccount:/, "");
-              const account = resolveLiveJournalAccountTarget(
+              pinnedLiveJournalAccount = resolveLiveJournalAccountTarget(
                 boot?.accounts?.find((a) => String(a.id) === String(accountId) || String(a.liveAccountId) === String(source.liveAccountId)) || {
                   id: accountId,
                   name: source.label,
@@ -25957,19 +25958,20 @@ const TalariaV8b = () => {
                   profileId: source.profileId,
                   isLiveJournalAccount: true,
                   accountTypeKey: source.accountTypeKey,
+                  market: source.market,
                 },
                 boot
               );
               const librarySel = makeDashAddTradePinnedLibrarySelection(source, boot) || {
                 kind:"journalAccount",
-                id: account?.id || accountId,
+                id: pinnedLiveJournalAccount?.id || accountId,
                 label: resolveDashLiveJournalAddTradeLabel(source, boot),
-                liveAccountId: source.liveAccountId ?? account?.liveAccountId ?? null,
-                profileId: source.profileId ?? account?.profileId ?? null,
-                accountTypeKey: source.accountTypeKey || account?.accountTypeKey,
+                liveAccountId: source.liveAccountId ?? pinnedLiveJournalAccount?.liveAccountId ?? null,
+                profileId: source.profileId ?? pinnedLiveJournalAccount?.profileId ?? null,
+                accountTypeKey: source.accountTypeKey || pinnedLiveJournalAccount?.accountTypeKey,
               };
               flushSync(() => {
-                if (account) applyEmbeddedJournalSelection(account);
+                if (pinnedLiveJournalAccount) applyEmbeddedJournalSelection(pinnedLiveJournalAccount);
                 else {
                   setDashStrategyId(null);
                   setDashSessId(null);
@@ -25990,16 +25992,16 @@ const TalariaV8b = () => {
               let journalMarket = null;
               if (isDashLiveJournalAddTradeSource(enriched)) {
                 journalMarket = resolveDashLiveJournalMarket(enriched, bootRef)
-                  || String(account?.market || enriched.market || source?.market || "").trim()
+                  || String(pinnedLiveJournalAccount?.market || enriched.market || source?.market || "").trim()
                   || null;
                 nextSource = {
                   ...enriched,
                   label: resolveDashLiveJournalAddTradeLabel(enriched, bootRef),
-                  market: journalMarket || enriched.market || account?.market || source?.market || null,
+                  market: journalMarket || enriched.market || pinnedLiveJournalAccount?.market || source?.market || null,
                   markets: journalMarket ? [journalMarket] : enriched.markets,
                   assetClasses: journalMarket ? [journalMarket] : enriched.assetClasses,
                   isLiveJournalAccount: true,
-                  accountTypeKey: enriched.accountTypeKey || account?.accountTypeKey || source?.accountTypeKey,
+                  accountTypeKey: enriched.accountTypeKey || pinnedLiveJournalAccount?.accountTypeKey || source?.accountTypeKey,
                 };
               }
               let draft = buildDashAddTradeDraft(nextSource);
@@ -29450,6 +29452,7 @@ const TalariaV8b = () => {
                 const marketPickerField = (label, field, options, props={}) => {
                   const normalizedOptions = [...new Set((options.length ? options : [selectedTradeMarket]).map(value => String(value || "").trim()).filter(Boolean))];
                   const selected = normalizedOptions.find(market => String(market).toLowerCase() === String(dashAddTradeDraft[field] || selectedTradeMarket).toLowerCase()) || normalizedOptions[0] || "Futures";
+                  const marketLocked = addTradeIsLiveJournalSource && normalizedOptions.length <= 1;
                   const chooseMarket = market => {
                     updateDashAddTradeDraft(field, market);
                     setDashAddTradeMarketOpen(false);
@@ -29458,9 +29461,9 @@ const TalariaV8b = () => {
                   return (
                     <div data-add-trade-drop="1" style={{minWidth:0,display:"flex",flexDirection:"column",gap:5,position:"relative"}}>
                       {fieldLabel(label, {...props, align:"center"})}
-                      <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-expanded={dashAddTradeMarketOpen}
-                        onPointerDown={libraryPointerActivate(()=>{setDashAddTradeCalendar(null);setDashAddTradeTimeMenu(null);setDashAddTradeSymbolOpen(false);setDashAddTradeTradeMenuOpen(null);setDashAddTradeExcursionOpen(false);setDashAddTradeMarketOpen(prev=>!prev);})}
-                        onKeyDown={libraryKeyActivate(()=>{setDashAddTradeCalendar(null);setDashAddTradeTimeMenu(null);setDashAddTradeSymbolOpen(false);setDashAddTradeTradeMenuOpen(null);setDashAddTradeExcursionOpen(false);setDashAddTradeMarketOpen(prev=>!prev);})}
+                      <div className={marketLocked ? undefined : "tlr-library-action tlr-add-trade-soft-action"} role={marketLocked ? undefined : "button"} tabIndex={marketLocked ? -1 : 0} aria-expanded={marketLocked ? undefined : dashAddTradeMarketOpen}
+                        onPointerDown={marketLocked ? undefined : libraryPointerActivate(()=>{setDashAddTradeCalendar(null);setDashAddTradeTimeMenu(null);setDashAddTradeSymbolOpen(false);setDashAddTradeTradeMenuOpen(null);setDashAddTradeExcursionOpen(false);setDashAddTradeMarketOpen(prev=>!prev);})}
+                        onKeyDown={marketLocked ? undefined : libraryKeyActivate(()=>{setDashAddTradeCalendar(null);setDashAddTradeTimeMenu(null);setDashAddTradeSymbolOpen(false);setDashAddTradeTradeMenuOpen(null);setDashAddTradeExcursionOpen(false);setDashAddTradeMarketOpen(prev=>!prev);})}
                         style={{
                           ...inputStyle,
                           ...addTradeTimingInputStyle,
@@ -29470,15 +29473,19 @@ const TalariaV8b = () => {
                           justifyContent:"space-between",
                           gap:8,
                           padding:"0 8px",
-                          borderColor:dashAddTradeMarketOpen?c.acB:c.brH,
-                          boxShadow:dashAddTradeMarketOpen?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(74,106,255,0.10)`:addTradeTimingFieldShadow,
+                          borderColor:marketLocked ? c.brH : dashAddTradeMarketOpen?c.acB:c.brH,
+                          boxShadow:marketLocked ? addTradeTimingFieldShadow : dashAddTradeMarketOpen?`inset 0 -1px 0 ${c.acL}, 0 0 0 1px rgba(74,106,255,0.10)`:addTradeTimingFieldShadow,
+                          cursor: marketLocked ? "default" : undefined,
+                          opacity: marketLocked ? 0.92 : 1,
                         }}>
                         <span style={{minWidth:0,fontSize:11.2,fontWeight:850,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",letterSpacing:"0.01em",textTransform:"none"}}>{selected}</span>
+                        {!marketLocked ? (
                         <svg width={9} height={9} viewBox="0 0 10 10" aria-hidden="true" style={{display:"block",flexShrink:0,color:c.tm}}>
                           <path d={dashAddTradeMarketOpen ? "M2 6.4 5 3.4 8 6.4" : "M2 3.6 5 6.6 8 3.6"} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="square" strokeLinejoin="miter"/>
                         </svg>
+                        ) : null}
                       </div>
-                      {dashAddTradeMarketOpen && (
+                      {!marketLocked && dashAddTradeMarketOpen && (
                         <div onPointerDown={e=>e.stopPropagation()} style={{position:"absolute",left:0,top:50,width:"100%",zIndex:5,background:c.sf,border:`1px solid ${c.brH}`,borderTop:`2px solid ${c.acL}`,boxShadow:"0 14px 28px rgba(0,0,0,0.64)",boxSizing:"border-box",overflow:"hidden",padding:0}}>
                           {normalizedOptions.map((market, index) => {
                             const active = String(market).toLowerCase() === String(selected).toLowerCase();
