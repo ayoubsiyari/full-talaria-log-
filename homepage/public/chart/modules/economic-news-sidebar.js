@@ -14,7 +14,6 @@
         loadedRangeKey: null,
         loading: false,
         error: null,
-        warning: null,
         countdownTimer: null,
         replayDayReloadTimer: null,
         /** User filters: impact toggles, optional chart-pair-only, optional country subset. */
@@ -175,89 +174,83 @@
         return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 23, 59, 59, 999).getTime();
     }
 
-    /** One Marketaux request per bulk window (server max 31 days). Pan/zoom filters from this cache. */
-    var BULK_NEWS_MAX_DAYS = 31;
+    /** Marketaux API caps each request window (server-side); chunk long chart ranges. */
+    var HISTORICAL_NEWS_CHUNK_MS = 31 * 86400000;
+
+    /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
+    var MAX_CALENDAR_FETCH_DAYS = 120;
     var lastFetchFinishedAt = 0;
-    var FETCH_COOLDOWN_MS = 120000;
-    /** API response cache keyed by unix from|to (symbol-agnostic). */
-    var newsRangeCache = {};
-    var newsFetchInflight = {};
-    /** All headlines for the current symbol + bulk date window — survives pan/zoom without refetch. */
-    var bulkNewsStore = {
-        symbolKey: '',
-        rangeKey: '',
-        fromMs: 0,
-        toMs: 0,
-        events: []
-    };
+    var FETCH_COOLDOWN_MS = 60000;
+    /** In-memory chunk cache — avoids repeat Marketaux calls when panning the same range. */
+    var newsChunkCache = {};
 
-    function bulkSymbolKey() {
-        return getCurrentChartSymbol() || '__none__';
-    }
+    /** Always fetch through at least this many days after reference "now" so the Upcoming tab can show a full week. */
+    var UPCOMING_NEWS_DAYS_AHEAD = 7;
 
-    /** Stable bulk fetch window: up to 31 days centered on chart "now", or full dataset if shorter. */
-    function getBulkNewsRange() {
-        var ch = mainChart();
+    /**
+     * Extend `toStr` (YYYY-MM-DD) so calendar data includes reference-now + UPCOMING_NEWS_DAYS_AHEAD.
+     * Finnhub range is inclusive; string compare is valid for ISO dates.
+     */
+    function ensureUpcomingWeekHorizon(range) {
         var refMs = referenceNowMs();
         if (!Number.isFinite(refMs)) refMs = Date.now();
-        var maxSpanMs = BULK_NEWS_MAX_DAYS * 86400000;
-        var halfSpan = Math.floor(maxSpanMs / 2);
-        var minT = refMs - halfSpan;
-        var maxT = refMs + halfSpan;
+        var minEndStr = isoDateLocal(refMs + UPCOMING_NEWS_DAYS_AHEAD * 86400000);
+        var toStr = range.toStr;
+        if (toStr < minEndStr) {
+            toStr = minEndStr;
+        }
+        return { fromStr: range.fromStr, toStr: toStr, rangeKey: range.fromStr + '|' + toStr };
+    }
 
-        if (ch && ch.data && ch.data.length > 0) {
-            var t0 = ch.data[0].t;
-            var t1 = ch.data[ch.data.length - 1].t;
-            var dataMin = Math.min(t0, t1);
-            var dataMax = Math.max(t0, t1);
-            if (dataMax - dataMin <= maxSpanMs) {
-                minT = dataMin - 86400000;
-                maxT = dataMax + 86400000;
-            }
+    function getCalendarFetchRange() {
+        var ch = mainChart();
+        if (!ch || !ch.data || ch.data.length === 0) {
+            var d = isoDateLocal(referenceNowMs());
+            return ensureUpcomingWeekHorizon({ fromStr: d, toStr: d, rangeKey: d + '|' + d });
+        }
+        var data = ch.data;
+        var t0 = data[0].t;
+        var t1 = data[data.length - 1].t;
+        var minT = Math.min(t0, t1);
+        var maxT = Math.max(t0, t1);
+        var spanDays = Math.max(1, Math.ceil((maxT - minT) / 86400000) + 1);
+
+        if (spanDays <= MAX_CALENDAR_FETCH_DAYS) {
+            var fs = isoDateLocal(minT);
+            var ts = isoDateLocal(maxT);
+            return ensureUpcomingWeekHorizon({ fromStr: fs, toStr: ts, rangeKey: fs + '|' + ts });
         }
 
-        var fs = isoDateLocal(minT);
-        var ts = isoDateLocal(maxT);
-        return {
-            fromStr: fs,
-            toStr: ts,
-            fromMs: minT,
-            toMs: maxT,
-            rangeKey: 'bulk:' + fs + '|' + ts
-        };
-    }
-
-    function bulkCoversReference() {
-        if (!bulkNewsStore.events.length) return false;
-        if (bulkNewsStore.symbolKey !== bulkSymbolKey()) return false;
-        var ref = referenceNowMs();
-        if (!Number.isFinite(ref)) return true;
-        var edgePad = 3 * 86400000;
-        return ref >= (bulkNewsStore.fromMs + edgePad) && ref <= (bulkNewsStore.toMs - edgePad);
-    }
-
-    function syncStateFromBulk() {
-        if (!bulkNewsStore.events.length) return;
-        state.events = bulkNewsStore.events;
-        state.loaded = true;
-        state.loadedRangeKey = bulkNewsStore.rangeKey;
-        state.dataSource = bulkNewsStore.dataSource || 'marketaux';
-        if (bulkNewsStore.warning) state.warning = bulkNewsStore.warning;
-    }
-
-    function clearBulkNewsStore() {
-        bulkNewsStore = {
-            symbolKey: '',
-            rangeKey: '',
-            fromMs: 0,
-            toMs: 0,
-            events: []
-        };
-    }
-
-    /** @deprecated use getBulkNewsRange — kept for loading labels */
-    function getCalendarFetchRange() {
-        return getBulkNewsRange();
+        var m = ch.margin || { l: 0, r: 0 };
+        var w = ch.w;
+        var edgeBuf = 8;
+        var startIdx = 0;
+        var endIdx = data.length;
+        if (typeof ch.pixelToDataIndex === 'function' && Number.isFinite(w) && w > 0) {
+            var plotRight = w - m.r;
+            startIdx = Math.max(0, Math.floor(ch.pixelToDataIndex(m.l)) - edgeBuf);
+            endIdx = Math.min(data.length, Math.ceil(ch.pixelToDataIndex(plotRight)) + edgeBuf);
+        } else {
+            var refMs = referenceNowMs();
+            if (!Number.isFinite(refMs)) refMs = data[Math.floor(data.length / 2)].t;
+            var padMs = Math.floor(MAX_CALENDAR_FETCH_DAYS / 2) * 86400000;
+            minT = Math.max(minT, refMs - padMs);
+            maxT = Math.min(maxT, refMs + padMs);
+            var fsWin = isoDateLocal(minT);
+            var tsWin = isoDateLocal(maxT);
+            return ensureUpcomingWeekHorizon({ fromStr: fsWin, toStr: tsWin, rangeKey: fsWin + '|' + tsWin });
+        }
+        var i0 = Math.min(Math.max(0, startIdx), data.length - 1);
+        var i1 = Math.max(i0, Math.min(data.length - 1, Math.max(0, endIdx - 1)));
+        var minTV = data[i0].t;
+        var maxTV = data[i1].t;
+        minT = Math.min(minTV, maxTV);
+        maxT = Math.max(minTV, maxTV);
+        minT -= 86400000;
+        maxT += 86400000;
+        var fsVis = isoDateLocal(minT);
+        var tsVis = isoDateLocal(maxT);
+        return ensureUpcomingWeekHorizon({ fromStr: fsVis, toStr: tsVis, rangeKey: fsVis + '|' + tsVis });
     }
 
     function newsPanelIsActive() {
@@ -934,8 +927,8 @@
     function render() {
         var hasRoots = allNewsItemRoots().length > 0;
 
-        if (state.loading && !bulkNewsStore.events.length) {
-            var rng = getBulkNewsRange();
+        if (state.loading) {
+            var rng = getCalendarFetchRange();
             var loadLabel = rng.fromStr === rng.toStr
                 ? escapeHtml(rng.fromStr)
                 : escapeHtml(rng.fromStr) + ' – ' + escapeHtml(rng.toStr);
@@ -1013,141 +1006,80 @@
         return 'HTTP ' + status;
     }
 
-    async function fetchHistoricalNewsOnce(fromStr, toStr) {
+    async function fetchHistoricalNewsChunks(fromStr, toStr, symbol) {
         var startMs = dateStrToMsStart(fromStr);
         var endMs = dateStrToMsEnd(toStr);
         if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
-            return { items: [], limit_reached: false, message: null };
+            return [];
         }
-        var fromSec = Math.floor(startMs / 1000);
-        var toSec = Math.floor(endMs / 1000);
-        var rangeKey = fromSec + '|' + toSec;
-        if (newsRangeCache[rangeKey]) {
-            return newsRangeCache[rangeKey];
-        }
-        if (newsFetchInflight[rangeKey]) {
-            return newsFetchInflight[rangeKey];
-        }
-        var url = '/api/news/historical?from=' + encodeURIComponent(String(fromSec)) +
-            '&to=' + encodeURIComponent(String(toSec)) + '&limit=50';
-        var p = fetch(url, { method: 'GET', credentials: 'include' })
-            .then(function (r) {
-                return r.json().then(function (j) {
-                    if (!r.ok) {
-                        throw new Error(detailFromJson(j, r.status));
+        var sym = symbol ? String(symbol).replace(/[^a-zA-Z]/g, '').toUpperCase() : '';
+        var all = [];
+        var seen = {};
+        var cursor = startMs;
+        while (cursor <= endMs) {
+            var chunkEnd = Math.min(cursor + HISTORICAL_NEWS_CHUNK_MS - 1, endMs);
+            var fromSec = Math.floor(cursor / 1000);
+            var toSec = Math.floor(chunkEnd / 1000);
+            var cacheKey = fromSec + '|' + toSec + '|' + sym;
+            if (newsChunkCache[cacheKey]) {
+                var cachedChunk = newsChunkCache[cacheKey];
+                for (var ci = 0; ci < cachedChunk.length; ci++) {
+                    var cit = cachedChunk[ci];
+                    var csk = String(cit.id || cit.url || cit.headline || ci);
+                    if (!seen[csk]) {
+                        seen[csk] = true;
+                        all.push(cit);
                     }
-                    return {
-                        items: (j && j.items) || [],
-                        limit_reached: !!(j && j.limit_reached),
-                        message: (j && j.message) ? String(j.message) : null,
-                        cached: !!(j && j.cached)
-                    };
-                });
-            })
-            .then(function (payload) {
-                newsRangeCache[rangeKey] = payload;
-                return payload;
-            })
-            .finally(function () {
-                delete newsFetchInflight[rangeKey];
-            });
-        newsFetchInflight[rangeKey] = p;
-        return p;
-    }
-
-    function buildDemoNewsHeadlines(fromStr, toStr, symbol) {
-        var pair = parseForexPair(symbol || getCurrentChartSymbol());
-        var label = pair ? (pair.base + '/' + pair.quote) : 'FX';
-        var compact = pair ? (pair.base + pair.quote) : 'EURUSD';
-        var midMs = Math.floor((dateStrToMsStart(fromStr) + dateStrToMsEnd(toStr)) / 2);
-        if (!Number.isFinite(midMs)) midMs = referenceNowMs();
-        var templates = [
-            'FX focus: ' + label + ' positioning into the session',
-            'Rate expectations drive ' + label + ' as data crosses the tape',
-            'Central bank rhetoric keeps ' + label + ' two-way',
-            'Cross-asset moves spill into ' + compact + ' spot'
-        ];
-        var out = [];
-        for (var i = 0; i < templates.length; i++) {
-            var ts = midMs + (i - 1) * 3600000;
-            out.push({
-                id: 'demo-' + fromStr + '-' + i,
-                datetime: Math.floor(ts / 1000),
-                headline: templates[i],
-                summary: 'Demo headline — Marketaux daily limit reached or no headlines in range.',
-                source: 'Talaria (demo)',
-                url: '',
-                related: compact,
-                demo: true
-            });
+                }
+                cursor = chunkEnd + 1;
+                continue;
+            }
+            var url = '/api/news/historical?from=' + encodeURIComponent(String(fromSec)) +
+                '&to=' + encodeURIComponent(String(toSec)) + '&limit=50';
+            if (sym) url += '&symbol=' + encodeURIComponent(sym);
+            var r = await fetch(url, { method: 'GET', credentials: 'include' });
+            var j = await r.json().catch(function () { return {}; });
+            if (!r.ok) {
+                throw new Error(detailFromJson(j, r.status));
+            }
+            var items = (j && j.items) || [];
+            newsChunkCache[cacheKey] = items.slice();
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                if (!it || typeof it !== 'object') continue;
+                var sk = String(it.id || it.url || it.headline || i);
+                if (seen[sk]) continue;
+                seen[sk] = true;
+                all.push(it);
+            }
+            cursor = chunkEnd + 1;
         }
-        return out;
+        return all;
     }
 
     async function loadCalendar(force) {
         if (state.loading && !force) return;
-        if (!newsPanelIsActive()) return;
-
-        var symKey = bulkSymbolKey();
-        if (!force && bulkNewsStore.events.length && bulkCoversReference()) {
-            syncStateFromBulk();
-            render();
-            startCountdownLoop();
-            requestChartMarkerRedraw();
-            return;
-        }
-        if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) {
-            if (bulkNewsStore.events.length) {
-                syncStateFromBulk();
-                render();
-            }
-            return;
-        }
-
+        if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
         var myId = ++calendarLoadId;
-        var isFirstLoad = !bulkNewsStore.events.length;
-        state.loading = isFirstLoad;
+        state.loading = true;
         state.error = null;
-        if (isFirstLoad) state.warning = null;
         render();
 
         try {
-            var rng = getBulkNewsRange();
+            var rng = getCalendarFetchRange();
             var fromStr = rng.fromStr;
             var toStr = rng.toStr;
             var symbol = getCurrentChartSymbol();
-            var payload = await fetchHistoricalNewsOnce(fromStr, toStr);
-            var articles = payload.items || [];
-            var warningMsg = null;
-            if (!articles.length && payload.limit_reached) {
-                warningMsg = payload.message || 'Marketaux daily limit reached. Showing demo headlines.';
-                articles = buildDemoNewsHeadlines(fromStr, toStr, symbol);
-            } else if (payload.message && !articles.length) {
-                warningMsg = payload.message;
-            }
+            var articles = await fetchHistoricalNewsChunks(fromStr, toStr, symbol);
             var out = [];
             for (var i = 0; i < articles.length; i++) {
                 var n = normalizeNewsArticle(articles[i], symbol);
-                if (n) {
-                    if (articles[i].demo) n.demo = true;
-                    out.push(n);
-                }
+                if (n) out.push(n);
             }
             out.sort(function (a, b) { return a.t - b.t; });
             if (myId !== calendarLoadId) return;
-
-            bulkNewsStore = {
-                symbolKey: symKey,
-                rangeKey: rng.rangeKey,
-                fromMs: rng.fromMs,
-                toMs: rng.toMs,
-                events: out,
-                dataSource: payload.limit_reached && out.length && out[0].demo ? 'demo' : 'marketaux',
-                warning: warningMsg
-            };
             state.events = out;
-            state.dataSource = bulkNewsStore.dataSource;
-            state.warning = warningMsg;
+            state.dataSource = 'marketaux';
             mergeIntoChartMarkerCache(out);
             pruneChartMarkerCache();
             state.loaded = true;
@@ -1163,33 +1095,6 @@
                 msg += ' Add MARKETAUX_API_TOKEN to chart/.env (free key at marketaux.com) and restart the chart API.';
             }
             state.error = msg;
-            if (low.indexOf('daily api limit') !== -1 || low.indexOf('usage_limit') !== -1) {
-                var rngErr = getBulkNewsRange();
-                state.warning = msg;
-                state.error = null;
-                var demoErr = buildDemoNewsHeadlines(rngErr.fromStr, rngErr.toStr, getCurrentChartSymbol());
-                var demoOut = [];
-                for (var di = 0; di < demoErr.length; di++) {
-                    var dn = normalizeNewsArticle(demoErr[di], getCurrentChartSymbol());
-                    if (dn) { dn.demo = true; demoOut.push(dn); }
-                }
-                if (demoOut.length) {
-                    bulkNewsStore = {
-                        symbolKey: symKey,
-                        rangeKey: rngErr.rangeKey,
-                        fromMs: rngErr.fromMs,
-                        toMs: rngErr.toMs,
-                        events: demoOut,
-                        dataSource: 'demo',
-                        warning: msg
-                    };
-                    state.events = demoOut;
-                    state.dataSource = 'demo';
-                    state.loaded = true;
-                    state.loadedRangeKey = rngErr.rangeKey;
-                    mergeIntoChartMarkerCache(demoOut);
-                }
-            }
             if (!state.events || state.events.length === 0) {
                 state.loaded = false;
                 state.loadedRangeKey = null;
@@ -1434,14 +1339,7 @@
         bindNewsSearchInputs();
         bindNewsFilters();
         syncFilterControlsToDom();
-        var rng = getBulkNewsRange();
-        if (bulkNewsStore.events.length && bulkCoversReference()) {
-            syncStateFromBulk();
-            render();
-            startCountdownLoop();
-            requestChartMarkerRedraw();
-            return;
-        }
+        var rng = getCalendarFetchRange();
         if (!state.loaded || state.loadedRangeKey !== rng.rangeKey) {
             loadCalendar();
         } else {
@@ -1454,7 +1352,6 @@
     window.refreshEconomicNewsSidebar = function () {
         state.loaded = false;
         state.loadedRangeKey = null;
-        clearBulkNewsStore();
         clearChartMarkerCache();
         loadCalendar(true);
     };
@@ -1468,14 +1365,18 @@
         if (state.replayDayReloadTimer) clearTimeout(state.replayDayReloadTimer);
         state.replayDayReloadTimer = setTimeout(function () {
             state.replayDayReloadTimer = null;
-            syncStateFromBulk();
-            render();
-            startCountdownLoop();
             requestChartMarkerRedraw();
-            if (!newsPanelIsActive()) return;
-            if (!bulkCoversReference() && !state.loading) {
-                loadCalendar(true);
+            var rng = getCalendarFetchRange();
+            if (state.loaded && state.loadedRangeKey === rng.rangeKey) {
+                if (newsPanelIsActive()) {
+                    render();
+                    startCountdownLoop();
+                }
+                return;
             }
+            state.loaded = false;
+            state.loadedRangeKey = null;
+            loadCalendar(true);
         }, 400);
     });
 
@@ -1484,17 +1385,17 @@
             requestChartMarkerRedraw();
             return;
         }
-        syncStateFromBulk();
-        render();
-        requestChartMarkerRedraw();
-        if (!newsPanelIsActive()) return;
-        if (bulkNewsStore.events.length && bulkCoversReference()) {
-            startCountdownLoop();
+        var rng = getCalendarFetchRange();
+        // Load calendar for the chart bar range even when News is closed so time-axis markers work immediately.
+        if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
+            loadCalendar();
             return;
         }
-        if (!state.loading) {
-            loadCalendar();
+        if (newsPanelIsActive() && state.loaded) {
+            render();
+            startCountdownLoop();
         }
+        requestChartMarkerRedraw();
     }
 
     window.addEventListener('chartDataLoaded', function () {
@@ -1511,7 +1412,7 @@
         }, 0);
     }
 
-    /** Pan/zoom: redraw from bulk cache — no API unless chart "now" leaves the bulk window. */
+    /** Called from chart.js render after pan/zoom — reload Finnhub range when visible dates change (long histories). */
     window.__economicCalendarNotifyChartRender = function (chart) {
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
@@ -1519,22 +1420,17 @@
         calendarPanDebounceTimer = setTimeout(function () {
             calendarPanDebounceTimer = null;
             try {
-                if (bulkNewsStore.events.length && bulkNewsStore.symbolKey !== bulkSymbolKey()) {
-                    clearBulkNewsStore();
-                    clearChartMarkerCache();
-                    if (newsPanelIsActive()) loadCalendar(true);
-                    return;
+                var rng = getCalendarFetchRange();
+                if (state.loading) return;
+                if (state.loaded && state.loadedRangeKey === rng.rangeKey) return;
+                // Skip reload if new range is within the already-loaded range
+                if (state.loaded && state.loadedRangeKey) {
+                    var parts = state.loadedRangeKey.split('|');
+                    if (parts.length === 2 && rng.fromStr >= parts[0] && rng.toStr <= parts[1]) return;
                 }
-                syncStateFromBulk();
-                render();
-                startCountdownLoop();
-                requestChartMarkerRedraw();
-                requestMultichartNewsMarkerRedraw();
-                if (newsPanelIsActive() && !bulkCoversReference() && !state.loading) {
-                    loadCalendar(true);
-                }
+                loadCalendar();
             } catch (err) {}
-        }, 150);
+        }, 350);
     };
 
     /**
@@ -1549,12 +1445,10 @@
             return {
                 loading: state.loading,
                 error: state.error,
-                warning: state.warning,
                 tab: state.tab,
                 query: state.query,
                 loaded: state.loaded,
-                eventCount: bulkNewsStore.events.length || (state.events ? state.events.length : 0),
-                bulkCached: bulkNewsStore.events.length > 0,
+                eventCount: state.events ? state.events.length : 0,
                 dataSource: state.dataSource || '',
                 filters: {
                     impactHigh: state.filters.impactHigh,

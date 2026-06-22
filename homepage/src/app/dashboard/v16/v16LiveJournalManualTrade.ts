@@ -178,9 +178,8 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
       custom_strategy: !!(trade.strategyTypeDescription || trade.strategy_type),
       strategy_default_discretion: !!(trade.strategyDefaultDiscretion ?? setup === "Discretion"),
       strategy_assignment: trade.strategy_assignment ?? (setup === "Discretion" ? "discretion" : null),
-      planned_rr: trade.planned_rr ?? trade.plannedRR ?? trade.plannedRRAtEntry ?? null,
-      plannedRR: trade.planned_rr ?? trade.plannedRR ?? trade.plannedRRAtEntry ?? null,
-      plannedRRAtEntry: trade.plannedRRAtEntry ?? trade.planned_rr ?? trade.plannedRR ?? null,
+      planned_rr: trade.planned_rr ?? trade.plannedRR ?? null,
+      plannedRR: trade.planned_rr ?? trade.plannedRR ?? null,
     },
   };
 }

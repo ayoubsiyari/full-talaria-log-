@@ -9063,8 +9063,9 @@ def _news_hist_cache_ttl_sec() -> int:
         return 86400
 
 
-def _news_hist_cache_key(from_: int, to: int, limit: int, page: int) -> str:
-    return f"{from_}|{to}|{limit}|{page}"
+def _news_hist_cache_key(from_: int, to: int, symbol: str, limit: int, page: int) -> str:
+    sym = re.sub(r"[^a-zA-Z]", "", (symbol or "")).upper()
+    return f"{from_}|{to}|{sym}|{limit}|{page}"
 
 
 def _news_hist_cache_get(key: str) -> dict | None:
@@ -9175,48 +9176,60 @@ def api_news_historical(
     published_before = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
     sym_clean = re.sub(r"[^a-zA-Z]", "", (symbol or "")).upper()
 
-    cache_key = _news_hist_cache_key(from_, to, limit, page)
+    cache_key = _news_hist_cache_key(from_, to, sym_clean, limit, page)
     cached = _news_hist_cache_get(cache_key)
     if cached:
         out = dict(cached)
         out["cached"] = True
         return out
 
-    search = (
-        _forex_symbol_search_query(sym_clean)
-        if sym_clean
-        else _forex_symbol_search_query("", broad=True)
-    )
+    search_candidates = [
+        _forex_symbol_search_query(sym_clean),
+        _forex_symbol_search_query(sym_clean, broad=True) if sym_clean else None,
+        _forex_symbol_search_query("", broad=True),
+    ]
 
     data: list[dict] = []
     meta: dict = {}
-    limit_reached = False
-    limit_message = ""
-    try:
-        chunk, chunk_meta = _marketaux_fetch_news(
-            token,
-            published_after=published_after,
-            published_before=published_before,
-            search=search,
-            limit=limit,
-            page=page,
-        )
-        if chunk_meta.get("found"):
-            meta = chunk_meta
-        data = [a for a in chunk if isinstance(a, dict)]
-    except HTTPException as exc:
-        if exc.status_code == 503 and "daily API limit" in str(exc.detail):
-            limit_reached = True
-            limit_message = str(exc.detail)
-            stale = _news_hist_cache_get(cache_key)
-            if stale:
-                out = dict(stale)
-                out["cached"] = True
-                out["message"] = limit_message
-                out["limit_reached"] = True
-                return out
-        else:
+    seen_uuids: set[str] = set()
+    last_err: HTTPException | None = None
+    for search in search_candidates:
+        if not search or data:
+            break
+        try:
+            chunk, chunk_meta = _marketaux_fetch_news(
+                token,
+                published_after=published_after,
+                published_before=published_before,
+                search=search,
+                limit=limit,
+                page=page,
+            )
+        except HTTPException as exc:
+            last_err = exc
+            if exc.status_code == 503 and "daily API limit" in str(exc.detail):
+                break
             raise
+        if chunk_meta.get("found") and not meta:
+            meta = chunk_meta
+        for article in chunk:
+            if not isinstance(article, dict):
+                continue
+            uid = str(article.get("uuid") or article.get("url") or "")
+            if uid and uid in seen_uuids:
+                continue
+            if uid:
+                seen_uuids.add(uid)
+            data.append(article)
+
+    if not data and last_err is not None:
+        stale = _news_hist_cache_get(cache_key)
+        if stale:
+            out = dict(stale)
+            out["cached"] = True
+            out["message"] = str(last_err.detail)
+            return out
+        raise last_err
 
     items = [_normalize_marketaux_article(a, symbol or "") for a in data[:limit]]
     items.sort(key=lambda x: x.get("datetime") or 0, reverse=True)
@@ -9228,16 +9241,9 @@ def api_news_historical(
         "source": "marketaux",
         "meta": meta,
         "cached": False,
-        "limit_reached": limit_reached,
     }
-    if limit_message:
-        payload["message"] = limit_message
     if items:
         _news_hist_cache_set(cache_key, payload)
-    elif limit_reached:
-        payload["message"] = limit_message or (
-            "Marketaux daily API limit reached. Try again tomorrow or upgrade at marketaux.com."
-        )
     return payload
 
 
