@@ -2659,7 +2659,8 @@ class ReplaySystem {
             this._viewportLockForPlayback = null;
             return;
         }
-        if (chart._tfSwitchViewportPin && !this.userHasPanned) {
+        // Follow mode: chart must scroll with the playhead — never freeze the viewport.
+        if (!this.userHasPanned && this.autoScrollEnabled) {
             this._viewportLockForPlayback = null;
             return;
         }
@@ -2877,7 +2878,11 @@ class ReplaySystem {
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
         if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
             && !this._timeframeChanging) {
-            this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
+            this.syncReplayViewportToPlayhead(this.chart, {
+                resetPriceScale: false,
+                render: false,
+                forceRecenter: !this.userHasPanned,
+            });
         }
         
         // Update UI elements
@@ -3197,7 +3202,7 @@ class ReplaySystem {
         }
 
         // TF-switch viewport pin is pause-only — release follow mode on Play.
-        if (this.chart?._tfSwitchViewportPin && !this.userHasPanned) {
+        if (!this.userHasPanned) {
             if (typeof this.chart._clearTfSwitchViewportPin === 'function') {
                 this.chart._clearTfSwitchViewportPin();
             }
@@ -3208,6 +3213,7 @@ class ReplaySystem {
                 this.syncReplayViewportToPlayhead(this.chart, {
                     resetPriceScale: false,
                     render: false,
+                    forceRecenter: true,
                 });
             }
         }
@@ -4225,7 +4231,13 @@ class ReplaySystem {
         }
         
         // Auto-scroll if enabled
-        if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this._replayUserOwnsViewport(this.chart)) {
+        if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this.userHasPanned) {
+            const autoScrollState = this.getReplayAutoScrollState(this.chart);
+            if (autoScrollState) {
+                this.chart.offsetX = autoScrollState.offsetX;
+            }
+        } else if (this.autoScrollEnabled && !this._viewportLockForPlayback
+            && !this._replayUserOwnsViewport(this.chart)) {
             const autoScrollState = this.getReplayAutoScrollState(this.chart);
             if (autoScrollState) {
                 this.chart.offsetX = autoScrollState.offsetX;
@@ -5255,6 +5267,9 @@ class ReplaySystem {
     enableAutoScroll() {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
+        if (this.chart && typeof this.chart._clearTfSwitchViewportPin === 'function') {
+            this.chart._clearTfSwitchViewportPin();
+        }
         this._viewportLockForPlayback = null;
 
         const chart = this.chart;
