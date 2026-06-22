@@ -8,6 +8,7 @@ import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 import { useV16LiveBootstrap } from "./useV16LiveBootstrap";
 import { normalizeV16DashboardView } from "./v16DashboardRoutes";
 import { V16ProfilePortal } from "./V16ProfilePortal";
+import { V16SupportChatPopover } from "./V16SupportChatPopover";
 
 const TalariaV16 = dynamic(() => import("talaria-handoff/TalariaV16.jsx"), {
   ssr: false,
@@ -126,6 +127,7 @@ export default function TalariaV16Dashboard() {
         </div>
       ) : null}
       <V16ProfilePortal active={profileActive} />
+      <V16SupportChatPopover />
       <TalariaV16 key="v16-embedded" />
     </div>
   );

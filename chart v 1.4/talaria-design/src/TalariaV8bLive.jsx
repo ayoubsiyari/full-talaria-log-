@@ -11845,8 +11845,13 @@ const TalariaV8bLive = () => {
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
+    const v16Fallback = window.__TALARIA_TOGGLE_SUPPORT__;
     window.__TALARIA_CHART_TOGGLE_SUPPORT__ = toggleSupportChat;
-    return () => { delete window.__TALARIA_CHART_TOGGLE_SUPPORT__; };
+    window.__TALARIA_TOGGLE_SUPPORT__ = toggleSupportChat;
+    return () => {
+      delete window.__TALARIA_CHART_TOGGLE_SUPPORT__;
+      window.__TALARIA_TOGGLE_SUPPORT__ = v16Fallback;
+    };
   });
 
   useEffect(() => {

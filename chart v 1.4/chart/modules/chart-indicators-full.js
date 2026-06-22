@@ -1130,17 +1130,16 @@
         return result;
     }
 
+    /** Value drawn at bar `barIndex` when plot is shifted right by `plotOffset` bars (TradingView-style). */
+    function seriesValueAtPlotOffset(arr, barIndex, plotOffset) {
+        const src = barIndex - (Number(plotOffset) | 0);
+        if (!arr || src < 0 || src >= arr.length) return null;
+        return arr[src];
+    }
+
+    /** Offset is applied at draw time (see drawLineIndicator plotOffset) — do not mutate series. */
     function shiftLineSeries(line, offset) {
-        offset = offset | 0;
-        if (!offset || !line || !line.length) return line;
-        const n = line.length;
-        const out = new Array(n);
-        for (let i = 0; i < n; i++) out[i] = null;
-        for (let i = 0; i < n; i++) {
-            const src = i - offset;
-            if (src >= 0 && src < n) out[i] = line[src];
-        }
-        return out;
+        return line;
     }
 
     function rollingVwmaOnSeries(data, series, period) {
@@ -4064,24 +4063,9 @@
         return out;
     }
 
+  /** Offset is applied at draw time — band arrays stay aligned to bar indices. */
     function shiftBandSeries(bands, offset) {
-        offset = offset | 0;
-        if (!offset) return bands;
-        const n = bands.upper.length;
-        const shiftArr = function(arr) {
-            const out = new Array(n);
-            for (let i = 0; i < n; i++) out[i] = null;
-            for (let i = 0; i < n; i++) {
-                const src = i - offset;
-                if (src >= 0 && src < n) out[i] = arr[src];
-            }
-            return out;
-        };
-        return {
-            upper: shiftArr(bands.upper),
-            lower: shiftArr(bands.lower),
-            middle: shiftArr(bands.middle)
-        };
+        return bands;
     }
 
     function calculateDonchian(data, period, offset) {
@@ -4934,9 +4918,7 @@
     }
 
     function rviSeriesAtPlotOffset(arr, barIndex, plotOffset) {
-        const src = barIndex - (Number(plotOffset) | 0);
-        if (!arr || src < 0 || src >= arr.length) return null;
-        return arr[src];
+        return seriesValueAtPlotOffset(arr, barIndex, plotOffset);
     }
 
     /** Elder Ray — bull power (H−EMA), bear power (L−EMA). */
@@ -10249,6 +10231,10 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     const style = this._normalizePlotStyle(lineStyle);
     const lw = Number(lineWidth) || 2;
     const dashStyleOpt = options.dashStyle;
+    const plotOffset = Number(options.plotOffset) | 0;
+    const valueAt = plotOffset
+        ? function(i) { return seriesValueAtPlotOffset(data, i, plotOffset); }
+        : function(i) { return data[i]; };
     const dashForLine = function (plotStyle) {
         if (plotStyle === 'Dashed' || plotStyle === 'Dotted' || plotStyle === 'Dashdot') return plotStyle;
         if (dashStyleOpt) return dashStyleOpt === 'Solid' ? 'Line' : dashStyleOpt;
@@ -10292,12 +10278,13 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         ctx.setLineDash(this._lineDashForStyle(dashForLine(style === 'Line with breaks' ? 'Line' : style)));
         let started = false;
         for (let i = startIndex; i < endIndex; i += drawStride) {
-            if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) {
                 if (breakOnNull && started) { flushLine(); started = false; }
                 continue;
             }
             const x = this.dataIndexToPixel(i);
-            const y = yAt(data[i]);
+            const y = yAt(val);
             if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; }
             else ctx.lineTo(x, y);
@@ -10310,12 +10297,13 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         let started = false;
         const diamonds = [];
         for (let i = startIndex; i < endIndex; i += drawStride) {
-            if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
+            const val = valueAt(i);
+            if (val == null || val === undefined || isNaN(val)) {
                 if (breakOnNull && started) { flushLine(); started = false; prev = null; }
                 continue;
             }
             const x = this.dataIndexToPixel(i);
-            const y = yAt(data[i]);
+            const y = yAt(val);
             if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             if (!prev) {
                 ctx.moveTo(x, y);

@@ -12299,12 +12299,13 @@ const TalariaV8b = () => {
             {(()=>{
               const isSupportA = supportNavOpen;
               const goSupportNav = () => {
-                const chartToggle = typeof window !== "undefined" ? window.__TALARIA_CHART_TOGGLE_SUPPORT__ : null;
-                if (typeof chartToggle === "function") {
-                  chartToggle();
-                  return;
+                const toggle =
+                  typeof window !== "undefined"
+                    ? window.__TALARIA_TOGGLE_SUPPORT__ || window.__TALARIA_CHART_TOGGLE_SUPPORT__
+                    : null;
+                if (typeof toggle === "function") {
+                  toggle();
                 }
-                openV16Profile("support");
               };
               return (
               <div ref={supportNavBtnRef} className={`tlr-session-nav-item${isSupportA ? " tlr-session-nav-item-active" : ""}`} role="button" tabIndex={0}

@@ -84,6 +84,12 @@ declare global {
     __TALARIA_OPEN_STRATEGY_BUILDER__?: () => void;
     /** Open dashboard profile/settings from embedded V16 chrome. */
     __TALARIA_V16_OPEN_PROFILE__?: (tab?: string) => void;
+    /** Toggle chart-style support ticket dropdown (V16 shell or chart). */
+    __TALARIA_TOGGLE_SUPPORT__?: () => void;
+    /** Chart-mounted support toggle (same UI as top-bar chat button). */
+    __TALARIA_CHART_TOGGLE_SUPPORT__?: () => void;
+    /** Left nav Support button anchor for popover positioning. */
+    __TALARIA_SUPPORT_NAV_ANCHOR__?: HTMLElement;
   }
 }
 
