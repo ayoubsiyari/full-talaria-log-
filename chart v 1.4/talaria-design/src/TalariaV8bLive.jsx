@@ -8019,7 +8019,13 @@ function v9SaveDrawingTemplateToStorage(name, drawing) {
     opacity: styleSnapshot.opacity !== undefined ? styleSnapshot.opacity : (actualDrawing.style && actualDrawing.style.opacity),
   };
   templates.push(newTemplate);
-  us.setItem(tb.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
+  if (typeof window.saveDrawingToolTemplatesForType === 'function') {
+    window.saveDrawingToolTemplatesForType(actualDrawing.type, templates);
+  } else if (typeof tb._persistDrawingToolTemplates === 'function') {
+    tb._persistDrawingToolTemplates(actualDrawing.type, templates);
+  } else {
+    us.setItem(tb.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
+  }
   window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', { detail: { toolType: actualDrawing.type } }));
   if (typeof tb.showNotification === 'function') tb.showNotification(`Template "${name.trim()}" saved!`);
   return true;
@@ -8736,6 +8742,38 @@ function railScreenshotsFromPreSlot(preArr) {
     dataUrl,
     name: `pre-${i + 1}`,
   }));
+}
+
+/** Trade-card notes from session journal, order rail journal, or local React override. */
+function resolveTradeNotesFromSources(journal, order) {
+  const candidates = [
+    journal?.v9TradeNotes,
+    order?.journalEntry?.v9TradeNotes,
+    journal?.postTradeNotes?.reason,
+    journal?.preTradeNotes?.reason,
+    order?.journalEntry?.postTradeNotes?.reason,
+    order?.journalEntry?.preTradeNotes?.reason,
+  ];
+  for (const raw of candidates) {
+    const text = typeof raw === "string" ? raw.trim() : "";
+    if (text) return text;
+  }
+  return "";
+}
+
+function resolveTradeNotesForRow(rowId, omId, localNotes, om) {
+  const local = typeof localNotes?.[rowId] === "string" ? localNotes[rowId].trim() : "";
+  if (local) return local;
+  if (!om || omId == null) return "";
+  const j = Array.isArray(om.tradeJournal)
+    ? om.tradeJournal.find((t) => Number(t.tradeId ?? t.id) === Number(omId))
+    : null;
+  const order =
+    om.pendingOrders?.find((o) => o.id === omId) ||
+    om.openPositions?.find((o) => o.id === omId) ||
+    om.closedPositions?.find((o) => o.id === omId) ||
+    null;
+  return resolveTradeNotesFromSources(j, order);
 }
 
 async function fetchJournalEndpoint(path, init = {}) {
@@ -9990,12 +10028,11 @@ const TalariaV8bLive = () => {
             om?.pendingOrders?.find((o) => o.id === tid) ||
             om?.openPositions?.find((o) => o.id === tid) ||
             om?.closedPositions?.find((o) => o.id === tid);
-          const noteFallback = j?.v9TradeNotes || order?.journalEntry?.v9TradeNotes || order?.journalEntry?.preTradeNotes?.reason || "";
-          const notesMap = tradeNotesRef.current;
+          const noteFallback = resolveTradeNotesForRow(r.id, tid, tradeNotesRef.current, om);
           setTradeCard(r);
           setTradeCardPreTags([...r.preTags]);
           setTradeCardPostTags([...r.postTags]);
-          setTradeCardNotes(notesMap[r.id] || noteFallback || "");
+          setTradeCardNotes(noteFallback);
           setTradeScreenshots((prev) => mergeTradeScreenshotState(prev, r.id, order, j));
           setOmTradeRev((n) => n + 1);
           return;
@@ -17224,13 +17261,15 @@ const TalariaV8bLive = () => {
       const d = getSelectedDrawingForTemplate();
       const { tb } = v9ResolveDrawingToolbarForDrawing(d);
       if (!tb || typeof tb.getSavedTemplates !== "function") return [];
-      const toolType = (d && d.type) || resolveLegacyTool();
+      const toolType = (d && d.type)
+        || (tlBarSelected && tlBarDrawingGroup === "text" && tlBarSelectedType)
+        || resolveLegacyTool();
       if (!toolType) return [];
       return tb.getSavedTemplates(toolType) || [];
     } catch (_) {
       return [];
     }
-  }, [tlTemplatesRev, tool, groupSelected, tlBarSelected, tlBarSelectedType, tlSettOpen, txtSettOpen, getSelectedDrawingForTemplate]);
+  }, [tlTemplatesRev, tool, groupSelected, tlBarSelected, tlBarSelectedType, tlBarDrawingGroup, tlSettOpen, txtSettOpen, getSelectedDrawingForTemplate]);
 
   useEffect(() => {
     const bump = () => setTlTemplatesRev((n) => n + 1);
@@ -26691,7 +26730,11 @@ const TalariaV8bLive = () => {
           });
         }
         const inTabForFlex = inputFlexExclude.size
-          ? inTab.filter((p) => !inputFlexExclude.has(p.id))
+          ? inTab.filter((p) => {
+              if (inputFlexExclude.has(p.id)) return false;
+              if (inputLayout && (/LineDashStyle$/i.test(String(p.id)) || p.id === "lineDashStyle")) return false;
+              return true;
+            })
           : inTab;
         const inputStyleGrid = inputLayout?.sections?.length ? renderIndicatorStyleGrid(inputLayout) : null;
         const styleLayoutMeta = (() => {
@@ -26966,8 +27009,8 @@ const TalariaV8bLive = () => {
               </div>
             ) : indSettTab === "input" && inTab.length > 0 ? (
               <div style={{ width: "100%", boxSizing: "border-box" }}>
-                {renderIndicatorFlexSettings(inTabForFlex)}
                 {inputStyleGrid}
+                {renderIndicatorFlexSettings(inTabForFlex)}
               </div>
             ) : inTab.length === 0 ? (
               <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>
@@ -33704,18 +33747,16 @@ const TalariaV8bLive = () => {
                     const openCard=()=>{
                       const om=typeof window!=="undefined"?window.chart?.orderManager:null;
                       const tid=r.omId;
-                      let noteFallback="";
                       let j=null;
                       let order=null;
                       if(om&&tid!=null){
                         j=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid)):null;
                         order=om.pendingOrders?.find(o=>o.id===tid)||om.openPositions?.find(o=>o.id===tid)||om.closedPositions?.find(o=>o.id===tid);
-                        noteFallback=j?.v9TradeNotes||order?.journalEntry?.v9TradeNotes||order?.journalEntry?.preTradeNotes?.reason||"";
                       }
                       setTradeCard(r);
                       setTradeCardPreTags([...r.preTags]);
                       setTradeCardPostTags([...r.postTags]);
-                      setTradeCardNotes(tradeNotes[r.id]||noteFallback||"");
+                      setTradeCardNotes(resolveTradeNotesForRow(r.id, tid, tradeNotes, om));
                       setTradeScreenshots((prev)=>mergeTradeScreenshotState(prev,r.id,order,j));
                     };
                     const isActive=r.status==="open"||r.status==="pending";
@@ -33847,14 +33888,17 @@ const TalariaV8bLive = () => {
                           });
                         })()}
                       </div>
-                      {/* Notes cell */}
+                      {/* Notes cell — local edits + persisted session journal */}
                       <div style={{overflow:"hidden",minWidth:0}} onClick={e=>e.stopPropagation()}>
-                        {tradeNotes[r.id] ? (
+                        {(()=>{
+                          const omRow=typeof window!=="undefined"?window.chart?.orderManager:null;
+                          const noteText=resolveTradeNotesForRow(r.id,r.omId,tradeNotes,omRow);
+                          return noteText?(
                           <span style={{fontSize:9,color:c.ts,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",display:"block"}}
-                            title={tradeNotes[r.id]}>{tradeNotes[r.id]}</span>
-                        ) : (
+                            title={noteText}>{noteText}</span>
+                        ):(
                           <span style={{fontSize:9,color:c.tm,fontStyle:"italic"}}>—</span>
-                        )}
+                        );})()}
                       </div>
                       {/* Screenshots cell — merge React state with persisted session journal URLs */}
                       <div style={{overflow:"hidden",minWidth:0}} onClick={e=>e.stopPropagation()}>
@@ -37169,6 +37213,9 @@ const TalariaV8bLive = () => {
                   jv.preTradeNotes={...(jv.preTradeNotes||{}),tags:tradeCardPreTags.join(", ")};
                 }
                 jv.v9TradeNotes=tradeCardNotes;
+                if(tradeCardNotes.trim()){
+                  jv.preTradeNotes={...(jv.preTradeNotes||{}),reason:tradeCardNotes.trim()};
+                }
                 const tsShots=tradeScreenshots[r.id];
                 if(tsShots?.pre?.length){
                   const railList=railScreenshotsFromPreSlot(tsShots.pre);
@@ -37187,6 +37234,18 @@ const TalariaV8bLive = () => {
               if(r.status==="closed"){
                 const existing=Array.isArray(om.tradeJournal)?om.tradeJournal.find(t=>Number(t.tradeId??t.id)===Number(tid))||{}:{};
                 const patch={tradeId:tid,id:tid,v9TradeNotes:tradeCardNotes};
+                const noteTrim=tradeCardNotes.trim();
+                if(noteTrim){
+                  patch.postTradeNotes={
+                    ...(typeof existing.postTradeNotes==="object"?existing.postTradeNotes:{}),
+                    reason:noteTrim,
+                  };
+                } else {
+                  patch.postTradeNotes={
+                    ...(typeof existing.postTradeNotes==="object"?existing.postTradeNotes:{}),
+                    reason:"",
+                  };
+                }
                 // PRE is frozen once closed — only POST edits persist here.
                 if(canEditPost){
                   patch.v9PostTradeTags=[...tradeCardPostTags];
@@ -37209,6 +37268,13 @@ const TalariaV8bLive = () => {
                   else patch.exitScreenshot=null;
                 }
                 om.upsertJournalEntry({...existing,...patch});
+                if(order){
+                  order.journalEntry={
+                    ...(order.journalEntry||{}),
+                    v9TradeNotes:tradeCardNotes,
+                    postTradeNotes:patch.postTradeNotes,
+                  };
+                }
                 if(typeof om.persistJournal==="function")om.persistJournal();
               }
             }

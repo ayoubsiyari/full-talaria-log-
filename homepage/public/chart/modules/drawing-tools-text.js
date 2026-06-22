@@ -102,6 +102,77 @@ function resolveNoteBoxStyle(style = {}) {
     return { lineStroke, boxFill, boxStroke, borderOn };
 }
 
+function normalizeDrawingTextFontWeight(fontWeight) {
+    if (fontWeight === 'bold' || fontWeight === 700 || fontWeight === '700') return 'bold';
+    return fontWeight || 'normal';
+}
+
+/** Canvas font string with Arabic family + synthetic italic handling. */
+function buildDrawingTextCanvasFont(text, fontSize, fontFamily, fontWeight, fontStyle) {
+    const resolved = typeof resolveDrawingTextStyle === 'function'
+        ? resolveDrawingTextStyle(text, fontStyle, fontFamily)
+        : { fontStyle: fontStyle || 'normal', fontFamily: fontFamily || 'Roboto, sans-serif' };
+    const weight = normalizeDrawingTextFontWeight(fontWeight);
+    return `${resolved.fontStyle} ${weight} ${fontSize}px ${resolved.fontFamily}`;
+}
+
+/** Apply resolved font family, weight, RTL direction, and italic skew to SVG text. */
+function applyDrawingTextElementPresentation(textEl, opts = {}) {
+    if (!textEl) return null;
+    const {
+        text = '',
+        fontStyle = 'normal',
+        fontFamily = 'Roboto, sans-serif',
+        fontWeight = 'normal',
+        x = 0,
+        y = 0,
+        rotation = 0,
+    } = opts;
+    const resolved = typeof resolveDrawingTextStyle === 'function'
+        ? resolveDrawingTextStyle(text, fontStyle, fontFamily)
+        : {
+            fontStyle: fontStyle || 'normal',
+            fontFamily: fontFamily || 'Roboto, sans-serif',
+            direction: null,
+            italicSkew: 0,
+        };
+    textEl
+        .attr('font-family', resolved.fontFamily)
+        .attr('font-style', resolved.fontStyle)
+        .attr('font-weight', normalizeDrawingTextFontWeight(fontWeight));
+    const transform = typeof buildDrawingTextTransform === 'function'
+        ? buildDrawingTextTransform(x, y, rotation, resolved.italicSkew)
+        : null;
+    if (transform) textEl.attr('transform', transform);
+    else textEl.attr('transform', null);
+    if (resolved.direction) {
+        textEl.style('direction', resolved.direction);
+        textEl.attr('unicode-bidi', 'embed');
+    } else {
+        textEl.style('direction', null);
+        textEl.attr('unicode-bidi', null);
+    }
+    return resolved;
+}
+
+/** After render, normalize font/RTL/italic on all inline-editable labels in a drawing group. */
+function patchDrawingGroupTextPresentation(group, drawing) {
+    if (!group || !drawing?.style) return;
+    const style = drawing.style;
+    const display = resolveTextToolDisplay(drawing.text);
+    group.selectAll('text.inline-editable-text').each(function() {
+        const el = d3.select(this);
+        applyDrawingTextElementPresentation(el, {
+            text: display.text,
+            fontStyle: style.fontStyle,
+            fontFamily: style.fontFamily,
+            fontWeight: style.fontWeight,
+            x: parseFloat(el.attr('x')) || 0,
+            y: parseFloat(el.attr('y')) || 0,
+        });
+    });
+}
+
 /** Inline editor width/wrap options that match the on-chart text box. */
 function buildWrapAwareInlineEditorOptions(drawing, bbox, padding = 6, extra = {}) {
     const style = drawing.style || {};
@@ -581,7 +652,7 @@ class TextTool extends BaseDrawing {
     static wrapTextLines(rawText, maxWidth, fontSize, fontFamily, fontWeight, fontStyle) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        ctx.font = `${fontStyle || 'normal'} ${fontWeight || 'normal'} ${fontSize}px ${fontFamily || 'Roboto, sans-serif'}`;
+        ctx.font = buildDrawingTextCanvasFont(rawText, fontSize, fontFamily, fontWeight, fontStyle);
         const measure = (str) => {
             try { return ctx.measureText(str || '').width; } catch (e) { return (str || '').length * fontSize * 0.55; }
         };
@@ -669,6 +740,10 @@ class TextTool extends BaseDrawing {
                 .style('pointer-events', 'none');
         }
 
+        const lineHeight = scaledFontSize * 1.2;
+        const maxWrapWidth = Math.max(40, (this.style.maxWidth || 200) * scaleFactor);
+        const display = resolveTextToolDisplay(this.text);
+
         // Draw the text with scaled font size (no transform locking)
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
@@ -676,18 +751,20 @@ class TextTool extends BaseDrawing {
             .attr('y', y)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight)
-            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'start')
             .attr('xml:space', 'preserve')
             .style('pointer-events', 'all')
             .style('cursor', textAnnotationHoverCursor(this))
             .style('user-select', 'none');
+        applyDrawingTextElementPresentation(textElement, {
+            text: display.text,
+            fontStyle: this.style.fontStyle,
+            fontFamily: this.style.fontFamily,
+            fontWeight: this.style.fontWeight,
+            x,
+            y,
+        });
 
-        const lineHeight = scaledFontSize * 1.2;
-        const maxWrapWidth = Math.max(40, (this.style.maxWidth || 200) * scaleFactor);
-        const display = resolveTextToolDisplay(this.text);
         if (display.isPlaceholder) {
             const phBg = this.style.fill && this.style.fill !== 'none' ? this.style.fill : null;
             textElement.attr('fill', resolveAnnotationTextFill(this.style.textColor, phBg, true));
@@ -1063,6 +1140,7 @@ class TextTool extends BaseDrawing {
         this.group.selectAll('.resize-handle, .resize-handle-group, .resize-handle-hit').remove();
         this.handles = [];
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -1300,7 +1378,7 @@ class NoteBoxTool extends BaseDrawing {
 
         const _nbCanvas = document.createElement('canvas');
         const _nbCtx = _nbCanvas.getContext('2d');
-        _nbCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Roboto, sans-serif'}`;
+        _nbCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _nbCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
             catch (e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -1577,6 +1655,7 @@ class NoteBoxTool extends BaseDrawing {
             borderHitNode.addEventListener('dblclick', handleOpenSettings, true);
         }
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -1759,7 +1838,7 @@ class AnchoredTextTool extends BaseDrawing {
 
         const _atCanvas = document.createElement('canvas');
         const _atCtx = _atCanvas.getContext('2d');
-        _atCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Roboto, sans-serif'}`;
+        _atCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _atCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
             catch (e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -2026,6 +2105,7 @@ class AnchoredTextTool extends BaseDrawing {
             anchoredBorderHit.addEventListener('dblclick', handleOpenSettings, true);
         }
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -2135,7 +2215,7 @@ class NoteTool extends BaseDrawing {
         // Helper: measure single-line text width via canvas (reliable, no DOM dependency)
         const _nCanvas = document.createElement('canvas');
         const _nCtx = _nCanvas.getContext('2d');
-        _nCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Arial, sans-serif'}`;
+        _nCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Arial, sans-serif', this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _nCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
             catch(e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -2509,6 +2589,7 @@ class NoteTool extends BaseDrawing {
         // Create handles at both endpoints
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -2613,7 +2694,7 @@ class PriceNoteTool extends BaseDrawing {
         const padding = 6;
         const _nCanvas = document.createElement('canvas');
         const _nCtx = _nCanvas.getContext('2d');
-        _nCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Roboto, sans-serif'}`;
+        _nCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily || 'Roboto, sans-serif', this.style.fontWeight, this.style.fontStyle);
         let textWidth = 60;
         try {
             textWidth = _nCtx.measureText(priceText || '').width || ((priceText || '').length * scaledFontSize * 0.6);
@@ -2676,6 +2757,7 @@ class PriceNoteTool extends BaseDrawing {
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -2761,7 +2843,7 @@ class PinTool extends BaseDrawing {
             const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
             const _pinCanvas = document.createElement('canvas');
             const _pinCtx = _pinCanvas.getContext('2d');
-            _pinCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily}`;
+            _pinCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily, this.style.fontWeight, this.style.fontStyle);
             const measureWidth = (str) => {
                 try { return _pinCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
                 catch (e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -3134,6 +3216,7 @@ class PinTool extends BaseDrawing {
                 });
         }
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -3299,6 +3382,7 @@ class TableTool extends BaseDrawing {
                 .text(tableRows[r][1]);
         }
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -3364,15 +3448,15 @@ class CalloutTool extends BaseDrawing {
         const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
         const _cFontWeight = this.style.fontWeight || 'normal';
         const _cFontStyle = this.style.fontStyle || 'normal';
+        const calloutDisplay = resolveTextToolDisplay(this.text);
         const _measCanvas = document.createElement('canvas');
         const _measCtx = _measCanvas.getContext('2d');
-        _measCtx.font = `${_cFontStyle} ${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
+        _measCtx.font = buildDrawingTextCanvasFont(calloutDisplay.text, _cFontSize, _cFontFamily, _cFontWeight, _cFontStyle);
         const measureW = (str) => {
             try { return _measCtx.measureText(str || '').width || (str.length * _cFontSize * 0.6); }
             catch(e) { return (str || '').length * _cFontSize * 0.6; }
         };
 
-        const calloutDisplay = resolveTextToolDisplay(this.text);
         const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
         const calloutSplitLines = (rawText) => {
             const lines = String(rawText || '').split('\n');
@@ -3662,6 +3746,7 @@ class CalloutTool extends BaseDrawing {
         this.group.selectAll('.resize-handle, .resize-handle-hit')
             .style('cursor', 'move');
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -3722,15 +3807,15 @@ class CommentTool extends BaseDrawing {
         const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
         const _cFontWeight = this.style.fontWeight || 'normal';
         const _cFontStyle = this.style.fontStyle || 'normal';
+        const commentDisplay = resolveTextToolDisplay(this.text);
         const _measCanvas = document.createElement('canvas');
         const _measCtx = _measCanvas.getContext('2d');
-        _measCtx.font = `${_cFontStyle} ${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
+        _measCtx.font = buildDrawingTextCanvasFont(commentDisplay.text, _cFontSize, _cFontFamily, _cFontWeight, _cFontStyle);
         const measureW = (str) => {
             try { return _measCtx.measureText(str || '').width || ((str || '').length * _cFontSize * 0.6); }
             catch(e) { return (str || '').length * _cFontSize * 0.6; }
         };
 
-        const commentDisplay = resolveTextToolDisplay(this.text);
         const maxBubbleWidth = this.style.maxWidth || 280;
         const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
         const commentSplitLines = (rawText) => {
@@ -4077,6 +4162,7 @@ class CommentTool extends BaseDrawing {
             this.addEventListener('dblclick', handleOpenSettings, true);
         });
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -4208,6 +4294,7 @@ class PriceLabelTool extends BaseDrawing {
         // Create handles at both endpoints
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -4369,6 +4456,7 @@ class PriceLabel2Tool extends BaseDrawing {
         // Create handles
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -4487,7 +4575,7 @@ class Signpost2Tool extends BaseDrawing {
         const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
         const _spCanvas = document.createElement('canvas');
         const _spCtx = _spCanvas.getContext('2d');
-        _spCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily}`;
+        _spCtx.font = buildDrawingTextCanvasFont(this.text, scaledFontSize, this.style.fontFamily, this.style.fontWeight, this.style.fontStyle);
         const measureWidth = (str) => {
             try { return _spCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
             catch (e) { return (str || '').length * scaledFontSize * 0.6; }
@@ -4762,6 +4850,7 @@ class Signpost2Tool extends BaseDrawing {
         this.group.selectAll('.resize-handle, .resize-handle-hit')
             .style('cursor', 'move');
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -4847,6 +4936,7 @@ class SignpostTool extends BaseDrawing {
         this.group.selectAll('.resize-handle, .resize-handle-hit')
             .style('cursor', 'move');
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 
@@ -4867,8 +4957,11 @@ class FlagMarkTool extends BaseDrawing {
         super('flag-mark', points, style);
         this.requiredPoints = 1;
         const flagColor = style.fill || style.stroke || '#787b86';
-        this.style.stroke = flagColor;
-        this.style.fill = flagColor;
+        const resolvedColor = (flagColor && flagColor !== 'none' && flagColor !== 'transparent')
+            ? flagColor
+            : '#787b86';
+        this.style.stroke = resolvedColor;
+        this.style.fill = resolvedColor;
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.lineLength = 24;
         this.style.flagWidth = 22;
@@ -4968,6 +5061,7 @@ class FlagMarkTool extends BaseDrawing {
         // Create handles
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
+        patchDrawingGroupTextPresentation(this.group, this);
         return this.group;
     }
 

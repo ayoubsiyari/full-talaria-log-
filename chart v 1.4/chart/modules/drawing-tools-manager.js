@@ -11283,6 +11283,46 @@ class DrawingToolsManager {
         return this._isPointInDrawingGroupBBox(drawing, mouseX, mouseY, 6);
     }
 
+    /** Text & label tools: select from body hit rects / label fill, not only glyph strokes. */
+    _isPointInTextAnnotationBody(drawing, mouseX, mouseY) {
+        if (!drawing?.group) return false;
+        const t = drawing.type;
+        if (!this._isTextDrawingType(t) && t !== 'price-label' && t !== 'price-label-2' && t !== 'label') {
+            return false;
+        }
+        const point = (typeof DOMPoint !== 'undefined') ? new DOMPoint(mouseX, mouseY) : null;
+        const bodySelectors = '.text-body-hit, .note-body-hit, .comment-body-hit, .pin-body-hit, .shape-border-hit.comment-body-hit';
+        for (const el of drawing.group.selectAll(bodySelectors).nodes()) {
+            if (!el) continue;
+            if (point && typeof el.isPointInFill === 'function' && el.isPointInFill(point)) {
+                return true;
+            }
+            if (typeof el.getBBox === 'function') {
+                try {
+                    const bb = el.getBBox();
+                    if (bb && bb.width > 0 && bb.height > 0
+                        && mouseX >= bb.x && mouseX <= bb.x + bb.width
+                        && mouseY >= bb.y && mouseY <= bb.y + bb.height) {
+                        return true;
+                    }
+                } catch (_) { /* ignore */ }
+            }
+        }
+        const textNode = drawing.group.select('text.inline-editable-text').node();
+        if (textNode && typeof textNode.getBBox === 'function') {
+            try {
+                const bb = textNode.getBBox();
+                const pad = 6;
+                if (bb && bb.width > 0 && bb.height > 0
+                    && mouseX >= bb.x - pad && mouseX <= bb.x + bb.width + pad
+                    && mouseY >= bb.y - pad && mouseY <= bb.y + bb.height + pad) {
+                    return true;
+                }
+            } catch (_) { /* ignore */ }
+        }
+        return false;
+    }
+
     _isPointInDrawingGroupBBox(drawing, mouseX, mouseY, pad = 8) {
         try {
             const node = drawing.group.node && drawing.group.node();
@@ -12234,6 +12274,12 @@ class DrawingToolsManager {
             
             // Flag / signpost / pin: select and dblclick from filled body, not only thin strokes.
             if (!hitsById.has(drawing.id) && this._isPointInCompactLabelDrawingBody(drawing, mouseX, mouseY)) {
+                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                continue;
+            }
+
+            // Text & labels: select from body hit area / label bbox (not only thin glyph strokes).
+            if (!hitsById.has(drawing.id) && this._isPointInTextAnnotationBody(drawing, mouseX, mouseY)) {
                 hitsById.set(drawing.id, { drawing, distance: 0, z });
                 continue;
             }
@@ -13806,6 +13852,18 @@ class DrawingToolsManager {
             };
         }
 
+        if (toolType === 'flag-mark') {
+            const flagColor = '#787b86';
+            return {
+                stroke: flagColor,
+                fill: flagColor,
+                strokeWidth: 2,
+                lineLength: 24,
+                flagWidth: 22,
+                flagHeight: 14,
+            };
+        }
+
         if (toolType === 'price-label') {
             const lineStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
                 ? DRAWING_TOOL_DEFAULT_STROKE
@@ -13836,7 +13894,7 @@ class DrawingToolsManager {
         }
 
         const textAnnotationTypes = new Set([
-            'label', 'signpost', 'flag-mark', 'table', 'emoji', 'image',
+            'label', 'signpost', 'table', 'emoji', 'image',
         ]);
         if (textAnnotationTypes.has(toolType)) {
             return {

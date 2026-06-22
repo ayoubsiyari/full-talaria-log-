@@ -4684,6 +4684,7 @@ function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthI
  * Returns null when Style tab should use flex fallback (ICT Everything, custom script).
  */
 function v9BuildIndicatorInputLayout(indicatorType) {
+    indicatorType = resolveIndicatorDefinitionKey(indicatorType);
     if (indicatorType === 'sma') {
         return {
             excludeFlexIds: ['showSmoothMa', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'smoothLineDashStyle'],
@@ -5600,6 +5601,16 @@ function v9EnsureIndicatorDashStyleParams(def) {
 Object.keys(INDICATOR_DEFINITIONS).forEach(function (k) {
     v9EnsureIndicatorDashStyleParams(INDICATOR_DEFINITIONS[k]);
 });
+
+/** SMA/EMA Input tab: LINE STYLE grid covers dash — drop orphan smoothLineDashStyle if present. */
+function v9StripSmoothedMaInputDashDupes() {
+    ['sma', 'ema'].forEach(function (key) {
+        const def = INDICATOR_DEFINITIONS[key];
+        if (!def || !Array.isArray(def.params)) return;
+        def.params = def.params.filter(function (p) { return p.id !== 'smoothLineDashStyle'; });
+    });
+}
+v9StripSmoothedMaInputDashDupes();
 
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
 window.INDICATOR_PLOT_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS;
