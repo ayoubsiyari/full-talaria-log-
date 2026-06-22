@@ -6807,11 +6807,11 @@ class Chart {
                     initialReplayTimestamp: restoreTs,
                 });
                 if (this.replaySystem.isActive
-                    && typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
-                    // Refresh / session start: clean right-anchored, auto-scaled view
-                    // (latest candle at the right edge, like TradingView) — not centered.
-                    this.replaySystem.syncReplayViewportToPlayhead(this, {
+                    && typeof this._ensureMultichartViewportVisible === 'function') {
+                    // Session start / refresh: show playhead candles (TradingView follow).
+                    this._ensureMultichartViewportVisible({
                         centerPlayhead: false,
+                        forceRecenter: true,
                         resetPriceScale: true,
                         render: true,
                     });
@@ -7595,13 +7595,23 @@ class Chart {
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                     this.replaySystem.applyPersistedState(state.replay);
                     this._pendingReplayState = null;
-                    if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                }
+                if (this.replaySystem && this.replaySystem.isActive) {
+                    if (typeof this._ensureMultichartViewportVisible === 'function') {
                         try {
-                            // Refresh: clean right-anchored, auto-scaled view (latest
-                            // candle at the right edge, like TradingView) — not centered.
+                            this._ensureMultichartViewportVisible({
+                                centerPlayhead: false,
+                                forceRecenter: true,
+                                resetPriceScale: true,
+                                render: true,
+                            });
+                        } catch (_) { /* ignore */ }
+                    } else if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                        try {
                             this.replaySystem.syncReplayViewportToPlayhead(this, {
                                 centerPlayhead: false,
                                 resetPriceScale: true,
+                                forceRecenter: true,
                                 render: true,
                             });
                         } catch (_) { /* ignore */ }
@@ -7720,7 +7730,15 @@ class Chart {
                 }
 
                 // Set flag to prevent fitToView() from overriding the restored position
-                this._chartViewRestored = true;
+                // only when bars are actually visible (empty grid = recover, don't lock).
+                if (typeof this._countVisiblePlotBars === 'function' && this._countVisiblePlotBars() > 0) {
+                    this._chartViewRestored = true;
+                } else {
+                    this._chartViewRestored = false;
+                    if (typeof this._scheduleViewportEmptyRecovery === 'function') {
+                        this._scheduleViewportEmptyRecovery();
+                    }
+                }
                 // Validate restored view against real candles on next scale calculation
                 this._pendingChartViewSanityCheck = true;
                 this.scheduleRender();
@@ -14093,7 +14111,7 @@ class Chart {
         }
         if (replay && replay.isActive) {
             if (forceRecenter) replay.userHasPanned = false;
-            const useCenter = centerPlayhead != null ? centerPlayhead : true;
+            const useCenter = centerPlayhead != null ? centerPlayhead : false;
             if (typeof replay.syncReplayViewportToPlayhead === 'function') {
                 const synced = replay.syncReplayViewportToPlayhead(this, {
                     centerPlayhead: useCenter,
@@ -14248,16 +14266,16 @@ class Chart {
             const i0 = Math.max(0, -Math.floor(this.offsetX / spacing));
             const i1 = Math.min(this.data.length, i0 + Math.ceil(plotW / spacing));
             if (i1 > i0) return;
+            this._clearTfSwitchViewportPin?.();
             this._chartViewRestored = false;
             const rs = this.replaySystem;
             if (this.isBacktestMode && rs) {
                 if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
                     rs.enterReplayMode({ startAtBeginning: true });
                 }
-                if (rs.isActive && typeof this._ensureMultichartViewportVisible === 'function'
-                    && this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
+                if (rs.isActive && typeof this._ensureMultichartViewportVisible === 'function') {
                     this._ensureMultichartViewportVisible({
-                        centerPlayhead: true,
+                        centerPlayhead: false,
                         resetPriceScale: true,
                         forceRecenter: true,
                         render: true,
@@ -14266,8 +14284,9 @@ class Chart {
                 }
                 if (rs.isActive && typeof rs.syncReplayViewportToPlayhead === 'function') {
                     rs.syncReplayViewportToPlayhead(this, {
-                        centerPlayhead: true,
+                        centerPlayhead: false,
                         resetPriceScale: true,
+                        forceRecenter: true,
                         render: true,
                     });
                     return;
@@ -19608,7 +19627,6 @@ class Chart {
 
     /** Pan, inertia, wheel burst, axis drag, or panel resize — lightweight paint until interaction settles. */
     _isInteractionFastRender() {
-        if (this._isReplaySmoothTickPlayback()) return true;
         if (this._chartPanRenderLoopActive) return true;
         if (this._isChartViewPanning()) return true;
         if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass) return true;
@@ -19993,7 +20011,6 @@ class Chart {
      * Fully zoomed-out pan alone is smooth; this covers the transition zone.
      */
     _shouldUseInteractionLitePaint(visibleCount) {
-        if (this._isReplaySmoothTickPlayback()) return true;
         if (this._isZoomedOutPaint(visibleCount)) return true;
         const wheelOut = this._isWheelZoomBurst()
             && !this._wheelBurstFinalPass
@@ -20008,11 +20025,6 @@ class Chart {
         const estOnScreen = Math.ceil(plotPx / Math.max(spacing, 1e-6));
         if (this._isChartViewPanning() && estOnScreen > plotPx * 0.45) return true;
         return false;
-    }
-
-    /** Overlay MAs/lines stay visible during zoom/pan; only skip on replay tick animation (perf). */
-    _shouldSkipOverlayIndicatorsDuringLitePaint() {
-        return this._isReplaySmoothTickPlayback();
     }
 
     _getCandleRenderMaxBuckets(visibleCount, plotPx, opts = {}) {
@@ -20629,12 +20641,7 @@ class Chart {
             performance.now() < this._panSyncBurstUntil;
 
         if (replayPlaying) {
-            if (this._isReplaySmoothTickPlayback()) {
-                this._scheduleReplayTickRender();
-                return;
-            }
-            this.renderPending = false;
-            this.render();
+            this._scheduleReplayTickRender();
             return;
         }
         if (inertialPan || panSyncBurst) {
@@ -20949,10 +20956,8 @@ class Chart {
             this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (!interactionLite || !this._shouldSkipOverlayIndicatorsDuringLitePaint()) {
-                if (typeof this.drawIndicators === 'function') {
-                    this.drawIndicators();
-                }
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
             }
             // Separate panels + legend must stay painted during lite pan — canvas is cleared each frame.
             if (typeof this.renderSeparatePanelIndicators === 'function') {

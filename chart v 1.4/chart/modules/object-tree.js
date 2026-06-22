@@ -313,7 +313,8 @@ class ObjectTreeManager {
             <line x1="2" y1="12" x2="6" y2="12"></line>
             <line x1="18" y1="12" x2="22" y2="12"></line>
         </svg>`;
-        jumpBtn.addEventListener('click', (e) => {
+        jumpBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             e.stopPropagation();
             this.jumpToDrawing(drawing);
         });
@@ -326,8 +327,8 @@ class ObjectTreeManager {
         // Visibility toggle
         const visibilityBtn = document.createElement('button');
         visibilityBtn.className = 'object-tree-action-btn';
-        visibilityBtn.title = drawing.visible === false ? 'Show' : 'Hide';
-        visibilityBtn.innerHTML = drawing.visible === false ? 
+        visibilityBtn.title = (drawing.visible === false || drawing.hidden === true) ? 'Show' : 'Hide';
+        visibilityBtn.innerHTML = (drawing.visible === false || drawing.hidden === true) ?
             `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                 <line x1="1" y1="1" x2="23" y2="23"></line>
@@ -336,7 +337,8 @@ class ObjectTreeManager {
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
             </svg>`;
-        visibilityBtn.addEventListener('click', (e) => {
+        visibilityBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             e.stopPropagation();
             this.toggleDrawingVisibility(drawing);
         });
@@ -352,7 +354,8 @@ class ObjectTreeManager {
             <line x1="10" y1="11" x2="10" y2="17"></line>
             <line x1="14" y1="11" x2="14" y2="17"></line>
         </svg>`;
-        deleteBtn.addEventListener('click', (e) => {
+        deleteBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             e.stopPropagation();
             this.deleteDrawing(drawing);
         });
@@ -466,11 +469,15 @@ class ObjectTreeManager {
      * Jump chart viewport to a drawing and select it
      */
     jumpToDrawing(drawing) {
-        if (!drawing) return;
+        if (!drawing || !this.drawingManager) return;
+        if (typeof this.drawingManager.focusDrawingInViewport === 'function') {
+            this.drawingManager.focusDrawingInViewport(drawing, { select: true });
+            return;
+        }
 
         this.selectDrawing(drawing);
 
-        const chart = this.drawingManager ? this.drawingManager.chart : null;
+        const chart = this.drawingManager.chart;
         const points = Array.isArray(drawing.points) ? drawing.points : null;
         if (!chart || !points || points.length === 0) {
             return;
@@ -502,20 +509,15 @@ class ObjectTreeManager {
             return;
         }
 
-        const targetIndex = Math.round(avgIndex);
-        chart.offsetX = (plotWidth / 2) - (targetIndex * candleSpacing);
+        chart.offsetX = (plotWidth / 2) - (avgIndex * candleSpacing);
 
         if (typeof chart.constrainOffset === 'function') {
             chart.constrainOffset();
         }
 
-        // Keep autoscale behavior unchanged; only center price when user already disabled autoscale.
-        if (chart.autoScale === false && Number.isFinite(avgPrice) && typeof chart.centerOnPrice === 'function') {
+        if (Number.isFinite(avgPrice) && typeof chart.centerOnPrice === 'function') {
             chart.centerOnPrice(avgPrice);
-            return;
-        }
-
-        if (typeof chart.scheduleRender === 'function') {
+        } else if (typeof chart.scheduleRender === 'function') {
             chart.scheduleRender();
         }
     }
@@ -524,16 +526,22 @@ class ObjectTreeManager {
      * Toggle drawing visibility
      */
     toggleDrawingVisibility(drawing) {
-        if (!drawing) return;
-        
-        drawing.visible = drawing.visible === false ? true : false;
-        
-        // Update the drawing
-        if (this.drawingManager && typeof this.drawingManager.renderDrawing === 'function') {
-            this.drawingManager.renderDrawing(drawing);
-            this.drawingManager.saveDrawings();
+        if (!drawing || !this.drawingManager) return;
+
+        if (typeof this.drawingManager.toggleHide === 'function') {
+            this.drawingManager.toggleHide(drawing);
+        } else {
+            const currentlyHidden = drawing.hidden === true || drawing.visible === false;
+            drawing.hidden = !currentlyHidden;
+            drawing.visible = currentlyHidden;
+            if (typeof this.drawingManager.renderDrawing === 'function') {
+                this.drawingManager.renderDrawing(drawing);
+            }
+            if (typeof this.drawingManager.saveDrawings === 'function') {
+                this.drawingManager.saveDrawings();
+            }
         }
-        
+
         this.refresh();
     }
 

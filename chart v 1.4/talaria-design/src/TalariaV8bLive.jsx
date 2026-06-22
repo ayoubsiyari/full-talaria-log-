@@ -580,6 +580,87 @@ function v9ClearObjectsOnAllPanels(action) {
   return true;
 }
 
+function v9ForEachChartInstance(fn) {
+  if (typeof fn !== "function") return;
+  const seen = new Set();
+  const visit = (ch) => {
+    if (!ch || seen.has(ch)) return;
+    seen.add(ch);
+    try { fn(ch); } catch (_) {}
+  };
+  try {
+    const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+    if (grid && typeof grid.enumerateCharts === "function") {
+      grid.enumerateCharts().forEach(visit);
+    }
+  } catch (_) {}
+  try {
+    visit(typeof window.getActiveChart === "function" ? window.getActiveChart() : null);
+    visit(typeof window !== "undefined" ? window.chart : null);
+    const pm = typeof window !== "undefined" ? window.panelManager : null;
+    if (pm && Array.isArray(pm.panels)) {
+      pm.panels.forEach((p) => visit(p && p.chartInstance));
+    }
+  } catch (_) {}
+}
+
+/** Immediate bulk delete (legacy TradingView-style) — not click-to-delete eraser mode. */
+function v9ExecuteBulkDelete(action) {
+  const act = action === "drawings" || action === "indicators" || action === "both" ? action : null;
+  if (!act) return;
+  if (!v9ClearObjectsOnAllPanels(act)) {
+    v9ForEachChartInstance((c) => {
+      if (act === "drawings") {
+        if (typeof c.clearOnlyDrawings === "function") {
+          c.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });
+        }
+      } else if (act === "indicators") {
+        if (typeof c.clearOnlyIndicators === "function") {
+          c.clearOnlyIndicators({ confirmPrompt: false });
+        }
+      } else if (typeof c.clearDrawingsAndIndicators === "function") {
+        c.clearDrawingsAndIndicators({ confirmPrompt: false, skipBroadcast: true });
+      }
+    });
+  }
+  try {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+      if (typeof dm.deselectAll === "function") dm.deselectAll({ forSelectionChange: true });
+      if (dm.toolbar && typeof dm.toolbar.hide === "function") dm.toolbar.hide();
+    });
+  } catch (_) {}
+}
+
+function v9ClearDeleteMode() {
+  const applyOne = (chartInst) => {
+    if (!chartInst) return;
+    try {
+      chartInst.v9DeleteIndicatorsMode = false;
+      const dm = chartInst.drawingManager;
+      if (chartInst.cursorType === "eraser" && typeof chartInst.setCursorType === "function") {
+        chartInst.setCursorType("cross", true);
+      } else if (dm && chartInst.cursorType !== "eraser") {
+        if (typeof dm.setEraserMode === "function") dm.setEraserMode(false);
+        else dm.eraserMode = false;
+      }
+    } catch (_) {}
+  };
+  try {
+    if (typeof window !== "undefined") window.v9DeleteMode = null;
+    const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+    if (grid && typeof grid.runCommandIframes === "function") {
+      void grid.runCommandIframes("setChartCursorType", { cursorType: "cross" }).catch(() => {});
+    }
+    const ch =
+      typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+    applyOne(ch);
+    const pm = typeof window !== "undefined" ? window.panelManager : null;
+    if (pm && Array.isArray(pm.panels)) {
+      pm.panels.forEach((p) => applyOne(p && p.chartInstance));
+    }
+  } catch (_) {}
+}
+
 /**
  * True when this document is a multichart tile iframe (`?multichart=1` /
  * `html.multichart-embed`). UI like Settings must not open modals here —
@@ -1549,9 +1630,48 @@ function v9ChartVertToUi(chartVert) {
   return v === "middle" ? "center" : v;
 }
 
-/** Quick-bar lock icons must follow the selected drawing (undefined locked => unlocked). */
+/** Quick-bar lock icons must follow the selected drawing(s) (all locked => active). */
+function v9GetSelectedDrawingEntriesForLock() {
+  const out = [];
+  try {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+      if (!dm) return;
+      if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+        dm.selectedDrawings.forEach((d) => { if (d) out.push({ dm, drawing: d }); });
+      } else if (dm.selectedDrawing) {
+        out.push({ dm, drawing: dm.selectedDrawing });
+      }
+    });
+  } catch (_) {}
+  return out;
+}
+
+function v9SelectedDrawingsAllLocked(entries) {
+  const list = entries || v9GetSelectedDrawingEntriesForLock();
+  if (!list.length) return false;
+  return list.every(({ drawing }) => !!(drawing && drawing.locked));
+}
+
+function v9ApplyLockToSelectedDrawings(targetLocked) {
+  const byDm = new Map();
+  v9GetSelectedDrawingEntriesForLock().forEach(({ dm, drawing }) => {
+    if (!dm || !drawing) return;
+    if (!byDm.has(dm)) byDm.set(dm, []);
+    byDm.get(dm).push(drawing);
+  });
+  byDm.forEach((list, dm) => {
+    try {
+      if (typeof dm.setDrawingsLock === "function") dm.setDrawingsLock(list, targetLocked);
+      else list.forEach((d) => { try { dm.toggleLock(d); } catch (_) {} });
+    } catch (_) {}
+  });
+}
+
 function v9SyncQuickBarLockFromDrawing(drawing, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked) {
-  const locked = !!(drawing && drawing.locked);
+  const entries = v9GetSelectedDrawingEntriesForLock();
+  const locked = entries.length
+    ? v9SelectedDrawingsAllLocked(entries)
+    : !!(drawing && drawing.locked);
   if (typeof setTlLocked === "function") setTlLocked(locked);
   if (typeof setTxtLocked === "function") setTxtLocked(locked);
   if (typeof setAvLocked === "function") {
@@ -2836,6 +2956,28 @@ function resolveLiveDrawingInDm(dm, d) {
   return dm.drawings.find((x) => x === d) || null;
 }
 
+function resolveLiveDrawingInDmById(dm, id) {
+  if (!dm || id == null || !Array.isArray(dm.drawings)) return null;
+  return dm.drawings.find((x) => x && x.id === id) || null;
+}
+
+function findLayerDrawingContext(item) {
+  if (!item) return { dm: null, d: null };
+  const lookupId = item.id;
+  const ownerDm = item._ownerDm;
+  if (ownerDm && Array.isArray(ownerDm.drawings)) {
+    const live = resolveLiveDrawingInDmById(ownerDm, lookupId)
+      || resolveLiveDrawingInDm(ownerDm, item._drawing);
+    if (live) return { dm: ownerDm, d: live };
+  }
+  for (const dm of enumerateV9DrawingManagersFromWindow()) {
+    const live = resolveLiveDrawingInDmById(dm, lookupId)
+      || resolveLiveDrawingInDm(dm, item._drawing);
+    if (live) return { dm, d: live };
+  }
+  return { dm: null, d: null };
+}
+
 /** Which shape is selected for templates / gear — scan chart instances; prefer the focused panel first. */
 function getSelectedDrawingAcrossCharts(editingRefDrawing) {
   if (editingRefDrawing) {
@@ -2977,29 +3119,44 @@ function v9SetSelectedDrawingsOfTypeLocked(type, nextLocked, editingRefDrawing) 
       sel = [dm.toolbar.currentDrawing];
     }
     if (!sel.length) return;
+    const liveList = [];
     const seen = new Set();
     sel.forEach((d) => {
       const live = resolveLiveDrawingInDm(dm, d);
       if (!live || seen.has(live.id)) return;
       seen.add(live.id);
-      live.locked = nextLocked;
-      changed = true;
-      try { if (typeof dm.renderDrawing === "function") dm.renderDrawing(live); } catch (_) {}
+      liveList.push(live);
     });
-    if (seen.size) {
-      try { if (typeof dm.saveDrawings === "function") dm.saveDrawings(); } catch (_) {}
+    if (!liveList.length) return;
+    const targetLocked = typeof nextLocked === "boolean"
+      ? nextLocked
+      : !liveList.every((d) => !!d.locked);
+    try {
+      if (typeof dm.setDrawingsLock === "function") {
+        dm.setDrawingsLock(liveList, targetLocked);
+        changed = true;
+      } else {
+        liveList.forEach((live) => {
+          if (!!live.locked === targetLocked) return;
+          try { dm.toggleLock(live); } catch (_) {}
+          changed = true;
+        });
+      }
       if (dm.chart?.scheduleRender) dm.chart.scheduleRender();
-    }
+    } catch (_) {}
   });
   if (!changed && editingRefDrawing?.type === type) {
     const dm = resolveDrawingManagerForDrawing(editingRefDrawing);
     const live = dm && resolveLiveDrawingInDm(dm, editingRefDrawing);
     if (live) {
-      live.locked = nextLocked;
-      changed = true;
-      try { dm.renderDrawing(live); } catch (_) {}
-      try { if (typeof dm.saveDrawings === "function") dm.saveDrawings(); } catch (_) {}
-      if (dm.chart?.scheduleRender) dm.chart.scheduleRender();
+      const targetLocked = typeof nextLocked === "boolean" ? nextLocked : !live.locked;
+      try {
+        if (typeof dm.setDrawingsLock === "function") dm.setDrawingsLock([live], targetLocked);
+        else if (typeof dm.setDrawingLock === "function") dm.setDrawingLock(live, targetLocked);
+        else live.locked = targetLocked;
+        changed = true;
+        if (dm.chart?.scheduleRender) dm.chart.scheduleRender();
+      } catch (_) {}
     }
   }
   return changed;
@@ -16570,55 +16727,8 @@ const TalariaV8bLive = () => {
     } catch (_) {}
   }, []);
 
-  const applyV9DeleteMode = useCallback((item) => {
-    const mode =
-      !item ? null
-      : item.icon === "trashDraw" ? "drawings"
-      : item.icon === "trashInd" ? "indicators"
-      : item.icon === "trash" ? "both"
-      : null;
-    const eraserOn = mode === "drawings" || mode === "both";
-    const indicatorsOn = mode === "indicators" || mode === "both";
-    const applyOne = (chartInst) => {
-      if (!chartInst) return;
-      try {
-        const dm = chartInst.drawingManager;
-        chartInst.v9DeleteIndicatorsMode = !!indicatorsOn;
-        if (mode != null) {
-          if (eraserOn && typeof chartInst.setCursorType === "function") {
-            chartInst.setCursorType("eraser", true);
-          } else if (!eraserOn && typeof chartInst.setCursorType === "function") {
-            chartInst.setCursorType("cross", true);
-          } else if (dm) {
-            if (typeof dm.setEraserMode === "function") dm.setEraserMode(eraserOn);
-            else dm.eraserMode = eraserOn;
-          }
-        } else {
-          chartInst.v9DeleteIndicatorsMode = false;
-          if (chartInst.cursorType === "eraser" && typeof chartInst.setCursorType === "function") {
-            chartInst.setCursorType("cross", true);
-          } else if (dm && chartInst.cursorType !== "eraser") {
-            if (typeof dm.setEraserMode === "function") dm.setEraserMode(false);
-            else dm.eraserMode = false;
-          }
-        }
-      } catch (_) {}
-    };
-    try {
-      if (typeof window !== "undefined") window.v9DeleteMode = mode;
-      const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
-      if (grid && typeof grid.runCommandIframes === "function") {
-        const cursorType = mode == null ? "cross" : eraserOn ? "eraser" : "cross";
-        void grid.runCommandIframes("setChartCursorType", { cursorType }).catch(() => {});
-      }
-      const ch =
-        typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-      applyOne(ch);
-      const pm = typeof window !== "undefined" ? window.panelManager : null;
-      if (pm && Array.isArray(pm.panels)) {
-        pm.panels.forEach((p) => applyOne(p && p.chartInstance));
-      }
-    } catch (_) {}
+  const applyV9DeleteMode = useCallback((_item) => {
+    v9ClearDeleteMode();
   }, []);
 
   useEffect(() => {
@@ -16649,10 +16759,7 @@ const TalariaV8bLive = () => {
 
   useEffect(() => {
     if (editingDrawingRef.current) return;
-    if (tool === "trash") {
-      applyV9DeleteMode(groupSelected.trash || null);
-      return;
-    }
+    if (tool === "trash") return;
     if (groupSelected.trash) {
       setGroupSelected((p) => {
         const next = { ...p };
@@ -16695,49 +16802,52 @@ const TalariaV8bLive = () => {
 
     const rebuildNow = () => {
       try {
-        const dm = window.chart && window.chart.drawingManager;
-        if (!dm || !Array.isArray(dm.drawings)) {
+        const managers = enumerateV9DrawingManagersFromWindow();
+        if (!managers.length) {
           if (layersItemsSigRef.current !== '') {
             layersItemsSigRef.current = '';
             setLayersItems([]);
           }
           return;
         }
-        const valid = dm.drawings.filter((d) => {
-          if (!d || !d.type) return false;
-          if (d.type === 'image' || d.type === 'image-v2') return true;
-          if (!Array.isArray(d.points) || d.points.length === 0) return false;
-          return d.points.some((p) => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
-        });
-        const tfOnChart = (d) => (
-          typeof dm.isDrawingVisibleOnChart === 'function'
-            ? dm.isDrawingVisibleOnChart(d)
-            : (d.visible !== false && (typeof dm._isVisibleForCurrentTimeframe !== 'function' || dm._isVisibleForCurrentTimeframe(d)))
-        );
-        const sig = valid.map((d) => {
-          const name = (typeof dm.getDrawingDisplayTitle === 'function')
-            ? dm.getDrawingDisplayTitle(d)
-            : (d.type || 'Drawing');
-          return `${d.id}|${d.type}|${name}|${d.visible !== false ? 1 : 0}|${tfOnChart(d) ? 1 : 0}|${d.locked ? 1 : 0}`;
-        }).join('\n');
+
+        const items = [];
+        for (const dm of managers) {
+          if (!dm || !Array.isArray(dm.drawings)) continue;
+          const valid = dm.drawings.filter((d) => {
+            if (!d || !d.type) return false;
+            if (d.type === 'image' || d.type === 'image-v2') return true;
+            if (!Array.isArray(d.points) || d.points.length === 0) return false;
+            return d.points.some((p) => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
+          });
+          const tfOnChart = (d) => (
+            typeof dm.isDrawingVisibleOnChart === 'function'
+              ? dm.isDrawingVisibleOnChart(d)
+              : (d.visible !== false && (typeof dm._isVisibleForCurrentTimeframe !== 'function' || dm._isVisibleForCurrentTimeframe(d)))
+          );
+          for (const d of valid) {
+            const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
+            const name = (typeof dm.getDrawingDisplayTitle === 'function')
+              ? dm.getDrawingDisplayTitle(d)
+              : (d.type || 'Drawing');
+            items.push({
+              id: d.id || `d-${Math.random().toString(36).slice(2, 9)}`,
+              icon,
+              name,
+              _visible: d.visible !== false && d.hidden !== true,
+              _tfVisibleOnChart: tfOnChart(d),
+              _locked: !!d.locked,
+              _drawing: d,
+              _ownerDm: dm,
+            });
+          }
+        }
+
+        const sig = items.map((item) =>
+          `${item.id}|${item.name}|${item._visible ? 1 : 0}|${item._tfVisibleOnChart ? 1 : 0}|${item._locked ? 1 : 0}`
+        ).join('\n');
         if (sig === layersItemsSigRef.current) return;
         layersItemsSigRef.current = sig;
-
-        const items = valid.map((d) => {
-          const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
-          const name = (typeof dm.getDrawingDisplayTitle === 'function')
-            ? dm.getDrawingDisplayTitle(d)
-            : (d.type || 'Drawing');
-          return {
-            id: d.id || `d-${Math.random().toString(36).slice(2, 9)}`,
-            icon,
-            name,
-            _visible: d.visible !== false,
-            _tfVisibleOnChart: tfOnChart(d),
-            _locked: !!d.locked,
-            _drawing: d,
-          };
-        });
         setLayersItems(items);
       } catch (err) {
         console.warn('[V9 Objects Tree] rebuild failed:', err);
@@ -20615,7 +20725,16 @@ const TalariaV8bLive = () => {
               } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
               else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
               if (list.length) {
-                list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
+                const targetLocked = !list.every((d) => !!(d && d.locked));
+                if (typeof dm.setDrawingsLock === "function") {
+                  dm.setDrawingsLock(list, targetLocked);
+                } else {
+                  list.forEach((d) => {
+                    try {
+                      if (!!d.locked !== targetLocked) dm.toggleLock(d);
+                    } catch (_) {}
+                  });
+                }
                 try {
                   const live = getPrimarySelectedDrawingForActiveChart(null);
                   v9SyncQuickBarLockFromDrawing(live, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
@@ -24179,22 +24298,20 @@ const TalariaV8bLive = () => {
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
           <TxBtn id="txt-lock" isAct={txtLocked} onClick={()=>{
             setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);
-            const next = !txtLocked; setTxtLocked(next);
+            const textEntries = v9GetSelectedDrawingEntriesForLock()
+              .filter(({ drawing }) => drawing && v9DrawingTypeToPanelGroup(drawing.type) === "text");
+            const targetLocked = textEntries.length
+              ? !v9SelectedDrawingsAllLocked(textEntries)
+              : !txtLocked;
+            setTxtLocked(targetLocked);
             try {
-              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-                const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
-                if (!sel || !sel.length) return;
-                sel.forEach((d) => {
-                  if (!d || drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
-                  d.locked = next;
-                  try {
-                    if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
-                  } catch (_) {}
-                });
-                try {
-                  if (typeof dm.saveDrawings === "function") dm.saveDrawings();
-                } catch (_) {}
-                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
+              const byDm = new Map();
+              textEntries.forEach(({ dm, drawing }) => {
+                if (!byDm.has(dm)) byDm.set(dm, []);
+                byDm.get(dm).push(drawing);
+              });
+              byDm.forEach((list, dm) => {
+                if (typeof dm.setDrawingsLock === "function") dm.setDrawingsLock(list, targetLocked);
               });
             } catch (_) {}
           }}>
@@ -28775,26 +28892,11 @@ const TalariaV8bLive = () => {
                so V9's lock matches what the legacy toolbar's lock button does. */}
           <TlBtn id="tl-lock" isAct={tlLocked} onClick={()=>{
             setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
-            const next = !tlLocked; setTlLocked(next);
+            const entries = v9GetSelectedDrawingEntriesForLock();
+            const targetLocked = entries.length ? !v9SelectedDrawingsAllLocked(entries) : !tlLocked;
+            setTlLocked(targetLocked);
             try {
-              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-                const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
-                if (!sel || !sel.length) return;
-                sel.forEach((d) => {
-                  if (!d) return;
-                  d.locked = next;
-                  try {
-                    if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
-                  } catch (_) {}
-                });
-                try {
-                  if (typeof dm.saveDrawings === "function") dm.saveDrawings();
-                } catch (_) {}
-                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
-              });
-              try {
-                window.dispatchEvent(new CustomEvent("talaria-drawing-lock-changed", { detail: { locked: next } }));
-              } catch (_) {}
+              v9ApplyLockToSelectedDrawings(targetLocked);
             } catch(_){}
           }}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
@@ -29029,10 +29131,17 @@ const TalariaV8bLive = () => {
                         closeDropdown();
                         return;
                       }
+                      const action =
+                        item.icon === "trashDraw" ? "drawings"
+                        : item.icon === "trashInd" ? "indicators"
+                        : item.icon === "trash" ? "both"
+                        : null;
+                      if (action) v9ExecuteBulkDelete(action);
                       setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, trash: item }));
                       v9UserExplicitToolRef.current = true;
                       setTool("trash");
-                      applyV9DeleteMode(item);
+                      setTlBarSelected(false);
+                      setTlBarSelectedType(null);
                       closeDropdown();
                       return;
                     }
@@ -33862,17 +33971,9 @@ const TalariaV8bLive = () => {
                   const isGloballyVisible = item._visible !== false;
                   const isTfVisibleOnChart = item._tfVisibleOnChart !== false;
                   const showOnChart = isGloballyVisible && isTfVisibleOnChart;
-                  // Helper: get the chart.js drawingManager + the live drawing
-                  // (item._drawing reference can become stale after undo/redo;
-                  // fall back to id lookup).
-                  const findDm = () => (window.chart && window.chart.drawingManager) || null;
-                  const findDrawing = (dm) => {
-                    if (!dm || !Array.isArray(dm.drawings)) return null;
-                    if (item._drawing && dm.drawings.includes(item._drawing)) return item._drawing;
-                    return dm.drawings.find(x => x && x.id === item.id) || null;
-                  };
+                  const layerCtx = () => findLayerDrawingContext(item);
                   const openLayerSettings = (preferVisibilityTab = false) => {
-                    const dm = findDm(); const d = findDrawing(dm);
+                    const { dm, d } = layerCtx();
                     if (!dm || !d) return;
                     if (typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
                     const px = Math.round(window.innerWidth * 0.38);
@@ -33889,12 +33990,11 @@ const TalariaV8bLive = () => {
                   };
                   return (
                     <div key={item.id}
-                      onClick={()=>{
-                        // Legacy parity (object-tree.js:364-366): item click → selectDrawing(d).
-                        const dm = findDm(); const d = findDrawing(dm);
+                      {...modalPointerActivate(() => {
+                        const { dm, d } = layerCtx();
                         if (!dm || !d) return;
                         if (typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
-                      }}
+                      })}
                       onDoubleClick={(e)=>{
                         e.stopPropagation();
                         openLayerSettings(true);
@@ -33920,18 +34020,17 @@ const TalariaV8bLive = () => {
                       {/* action buttons — appear on row hover */}
                       {/* jump to: center chart viewport on the drawing + select it */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{
-                          // Legacy parity (object-tree.js:316-319): jumpBtn click →
-                          // stopPropagation + jumpToDrawing(d).
-                          e.stopPropagation();
-                          const dm = findDm(); const d = findDrawing(dm);
+                        {...modalPointerActivate(() => {
+                          const { dm, d } = layerCtx();
                           if (!dm || !d) return;
-                          if (dm.objectTreeManager && typeof dm.objectTreeManager.jumpToDrawing === 'function') {
+                          if (typeof dm.focusDrawingInViewport === 'function') {
+                            dm.focusDrawingInViewport(d, { select: true });
+                          } else if (dm.objectTreeManager && typeof dm.objectTreeManager.jumpToDrawing === 'function') {
                             dm.objectTreeManager.jumpToDrawing(d);
                           } else if (typeof dm.selectDrawing === 'function') {
-                            dm.selectDrawing(d);
+                            dm.selectDrawing(d, false, { suppressToolbar: true, allowWhileArmed: true });
                           }
-                        }}
+                        })}
                         onMouseEnter={()=>setSwHov(`lyrJ-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>e.stopPropagation()}
@@ -33943,10 +34042,7 @@ const TalariaV8bLive = () => {
                       {/* settings: opens V9 drawing panel (Visibility tab when TF-hidden) */}
                       <div data-layeraction="1"
                         title={!isTfVisibleOnChart && isGloballyVisible ? 'Settings (Visibility)' : 'Settings'}
-                        onClick={(e)=>{
-                          e.stopPropagation();
-                          openLayerSettings(true);
-                        }}
+                        {...modalPointerActivate(() => openLayerSettings(true))}
                         onMouseEnter={()=>setSwHov(`lyrS-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>e.stopPropagation()}
@@ -33958,21 +34054,21 @@ const TalariaV8bLive = () => {
                       {/* eye: global show/hide (drawing.visible), not per-timeframe ranges */}
                       <div data-layeraction="1"
                         title={isGloballyVisible ? 'Hide on all timeframes' : 'Show on all timeframes'}
-                        onClick={(e)=>{
-                          // Legacy parity (object-tree.js:339-342, 526-538):
-                          // visibility click → toggle drawing.visible, renderDrawing,
-                          // saveDrawings (which fires drawingsChanged → V9 rebuilds).
-                          e.stopPropagation();
-                          const dm = findDm(); const d = findDrawing(dm);
+                        {...modalPointerActivate(() => {
+                          const { dm, d } = layerCtx();
                           if (!dm || !d) return;
-                          if (dm.objectTreeManager && typeof dm.objectTreeManager.toggleDrawingVisibility === 'function') {
+                          if (typeof dm.toggleHide === 'function') {
+                            dm.toggleHide(d);
+                          } else if (dm.objectTreeManager && typeof dm.objectTreeManager.toggleDrawingVisibility === 'function') {
                             dm.objectTreeManager.toggleDrawingVisibility(d);
                           } else {
-                            d.visible = d.visible === false ? true : false;
+                            const nextHidden = !(d.hidden === true || d.visible === false);
+                            d.hidden = nextHidden;
+                            d.visible = !nextHidden;
                             if (typeof dm.renderDrawing === 'function') dm.renderDrawing(d);
                             if (typeof dm.saveDrawings === 'function') dm.saveDrawings();
                           }
-                        }}
+                        })}
                         onMouseEnter={()=>setSwHov(`lyrV-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>e.stopPropagation()}
@@ -33988,16 +34084,11 @@ const TalariaV8bLive = () => {
                       </div>
                       {/* delete: removes the drawing from chart.js */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{
-                          // Legacy parity (object-tree.js:355-358, 543-549):
-                          // delete click → stopPropagation + dm.deleteDrawing(d).
-                          // dm.deleteDrawing calls saveDrawings → dispatches
-                          // drawingsChanged → V9 rebuilds the tree automatically.
-                          e.stopPropagation();
-                          const dm = findDm(); const d = findDrawing(dm);
+                        {...modalPointerActivate(() => {
+                          const { dm, d } = layerCtx();
                           if (!dm || !d) return;
                           if (typeof dm.deleteDrawing === 'function') dm.deleteDrawing(d);
-                        }}
+                        })}
                         onMouseEnter={()=>setSwHov(`lyrD-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>{e.stopPropagation();setSwHov(`lyrD-${item.id}_dn`);}}

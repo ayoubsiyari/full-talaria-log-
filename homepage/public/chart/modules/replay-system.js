@@ -2307,6 +2307,14 @@ class ReplaySystem {
         // Reset auto-scroll state
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
+
+        // Fresh session / refresh: never carry TF-switch pin or "restored" flags that block realign.
+        if (this.chart) {
+            if (typeof this.chart._clearTfSwitchViewportPin === 'function') {
+                this.chart._clearTfSwitchViewportPin();
+            }
+            this.chart._chartViewRestored = false;
+        }
         
         // Check if this is backtesting mode (from URL or options)
         const urlParams = new URLSearchParams(window.location.search);
@@ -2450,16 +2458,31 @@ class ReplaySystem {
                     this.chart.resize();
                 }
             } catch (e) { /* ignore */ }
-            if (this.autoScrollEnabled) {
-                this.chart.autoScale = true;
-                this.chart.priceOffset = 0;
-                this.chart.priceZoom = 1;
-                const st = this.getReplayAutoScrollState(this.chart);
-                if (st && Number.isFinite(st.offsetX)) {
-                    this.chart.offsetX = st.offsetX;
-                    if (typeof this.chart.constrainOffset === 'function') {
-                        this.chart.constrainOffset();
+            if (this.autoScrollEnabled && !this.userHasPanned) {
+                this.chart._clearTfSwitchViewportPin?.();
+                this.chart._chartViewRestored = false;
+                if (typeof this.chart._ensureMultichartViewportVisible === 'function') {
+                    this.chart._ensureMultichartViewportVisible({
+                        centerPlayhead: false,
+                        forceRecenter: true,
+                        resetPriceScale: realignAttempts === 0,
+                        render: false,
+                    });
+                } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
+                    this.syncReplayViewportToPlayhead(this.chart, {
+                        centerPlayhead: false,
+                        forceRecenter: true,
+                        resetPriceScale: realignAttempts === 0,
+                        render: false,
+                    });
+                } else {
+                    const st = this.getReplayAutoScrollState(this.chart);
+                    if (st && Number.isFinite(st.offsetX)) {
+                        this.chart.offsetX = st.offsetX;
                     }
+                }
+                if (typeof this.chart.constrainOffset === 'function') {
+                    this.chart.constrainOffset();
                 }
                 this.chart.renderPending = true;
                 if (typeof this.chart.render === 'function') this.chart.render();
@@ -2980,17 +3003,39 @@ class ReplaySystem {
         }
         
         // TF-switch pin: re-anchor after slice (indices change). Otherwise follow playhead.
-        const tfPinActive = !this.isPlaying && this.chart._tfSwitchViewportPin
+        let tfPinActive = !this.isPlaying && this.chart._tfSwitchViewportPin
             && typeof this.chart._reapplyTfSwitchViewportPin === 'function';
         if (tfPinActive) {
             try { this.chart._reapplyTfSwitchViewportPin(); } catch (_pin) { /* ignore */ }
-        } else if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
+            if (typeof this.chart._countVisiblePlotBars === 'function'
+                && this.chart._countVisiblePlotBars() <= 0) {
+                this.chart._clearTfSwitchViewportPin?.();
+                tfPinActive = false;
+            }
+        }
+        if (!tfPinActive && autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
             && !this._timeframeChanging) {
             this.syncReplayViewportToPlayhead(this.chart, {
                 resetPriceScale: false,
                 render: false,
                 forceRecenter: !this.userHasPanned,
             });
+        }
+
+        // Session start / refresh safety: bars loaded but none on screen → recover viewport.
+        if (!this.userHasPanned && !this.isPlaying && this.chart.data?.length > 0
+            && typeof this.chart._countVisiblePlotBars === 'function'
+            && this.chart._countVisiblePlotBars() <= 0) {
+            this.chart._clearTfSwitchViewportPin?.();
+            this.chart._chartViewRestored = false;
+            if (typeof this.chart._ensureMultichartViewportVisible === 'function') {
+                this.chart._ensureMultichartViewportVisible({
+                    centerPlayhead: false,
+                    forceRecenter: true,
+                    resetPriceScale: false,
+                    render: false,
+                });
+            }
         }
         
         // Update UI elements

@@ -2135,6 +2135,7 @@ class BaseDrawing {
             coordinateSystem: coordinateSystem,
             style: this.style,
             visible: this.visible,
+            locked: !!this.locked,
             visibility: this.visibility,
             meta: this.meta,
             text: this.text,

@@ -1711,19 +1711,38 @@ class DrawingToolbar {
         const lockBtn = this.toolbar.querySelector('#tb-lock');
         if (lockBtn) {
             lockBtn.addEventListener('click', () => {
-                drawing.locked = !drawing.locked;
-                lockBtn.classList.toggle('active', drawing.locked);
+                const dm = this.drawingManager
+                    || (typeof window !== 'undefined' && window.chart && window.chart.drawingManager)
+                    || null;
+                const selected = dm && Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length
+                    ? dm.selectedDrawings.filter(Boolean)
+                    : (drawing ? [drawing] : []);
+                const targetLocked = selected.length
+                    ? !selected.every((d) => !!d.locked)
+                    : !drawing.locked;
+
+                if (dm && typeof dm.setDrawingsLock === 'function' && selected.length) {
+                    dm.setDrawingsLock(selected, targetLocked);
+                    drawing.locked = selected.includes(drawing) ? targetLocked : drawing.locked;
+                } else if (dm && typeof dm.setDrawingLock === 'function') {
+                    dm.setDrawingLock(drawing, targetLocked);
+                    if (typeof dm.saveDrawings === 'function') dm.saveDrawings();
+                } else {
+                    drawing.locked = targetLocked;
+                    this.onUpdate(drawing);
+                }
+
+                lockBtn.classList.toggle('active', targetLocked);
                 
                 // Update icon
                 lockBtn.innerHTML = `
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        ${drawing.locked ? 
+                        ${targetLocked ?
                             '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>' :
                             '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M17 11V7a5 5 0 00-5-5 5 5 0 00-3 .9"/>'}
                     </svg>
                 `;
-                
-                this.onUpdate(drawing);
+
                 try {
                     window.dispatchEvent(new CustomEvent('talaria-drawing-lock-changed', { detail: { locked: !!drawing.locked } }));
                 } catch (_) {}

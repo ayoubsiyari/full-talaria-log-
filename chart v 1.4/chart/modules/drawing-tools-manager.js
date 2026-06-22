@@ -8343,12 +8343,71 @@ class DrawingToolsManager {
     }
 
     /**
+     * Pan the chart viewport to a drawing without opening the floating quick bar.
+     */
+    focusDrawingInViewport(drawing, options = {}) {
+        if (!drawing) return false;
+        const chart = this.chart;
+        if (!chart) return false;
+
+        let points = Array.isArray(drawing.points) ? drawing.points : [];
+        if (points.length === 0 && typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.resolveDrawingPoints === 'function') {
+            try {
+                points = CoordinateUtils.resolveDrawingPoints(drawing, chart) || [];
+            } catch (_) { /* ignore */ }
+        }
+
+        const validPoints = points.filter((point) =>
+            point &&
+            Number.isFinite(Number(point.x)) &&
+            Number.isFinite(Number(point.y))
+        );
+        if (validPoints.length === 0) return false;
+
+        const avgIndex = validPoints.reduce((sum, point) => sum + Number(point.x), 0) / validPoints.length;
+        const avgPrice = validPoints.reduce((sum, point) => sum + Number(point.y), 0) / validPoints.length;
+
+        const candleSpacing = typeof chart.getCandleSpacing === 'function'
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        const margin = chart.margin || { l: 0, r: 0 };
+        const plotWidth = Number(chart.w) - Number(margin.l || 0) - Number(margin.r || 0);
+
+        if (Number.isFinite(candleSpacing) && candleSpacing > 0 && Number.isFinite(plotWidth) && plotWidth > 0) {
+            chart.offsetX = (plotWidth / 2) - (avgIndex * candleSpacing);
+            if (typeof chart.constrainOffset === 'function') {
+                chart.constrainOffset();
+            }
+        }
+
+        if (Number.isFinite(avgPrice) && typeof chart.centerOnPrice === 'function') {
+            chart.centerOnPrice(avgPrice);
+        } else if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        }
+
+        if (options.select !== false && typeof this.selectDrawing === 'function') {
+            this.selectDrawing(drawing, false, {
+                suppressToolbar: true,
+                allowWhileArmed: true,
+                fromObjectTree: true
+            });
+        }
+        return true;
+    }
+
+    /**
      * Select a drawing (or delete if in eraser mode)
      * @param {Object} drawing - The drawing to select
      * @param {Boolean} addToSelection - If true, add to selection instead of replacing (Shift/Ctrl)
+     * @param {Object} [options]
+     * @param {boolean} [options.suppressToolbar=false] - Select without floating quick bar / V9 rail sync
+     * @param {boolean} [options.allowWhileArmed=false] - Allow selection while a draw tool is armed
      */
     selectDrawing(drawing, addToSelection = false, options = {}) {
         const allowWhileArmed = options.allowWhileArmed === true;
+        const suppressToolbar = options.suppressToolbar === true;
         if (!allowWhileArmed && this._isPlacementModeActive()) {
             return;
         }
@@ -8396,7 +8455,7 @@ class DrawingToolsManager {
             } else if (this.selectedDrawings.length === 1) {
                 // Show toolbar for single selection
                 const lastDrawing = this.selectedDrawings[0];
-                if (lastDrawing.group) {
+                if (!suppressToolbar && lastDrawing.group) {
                     const bbox = lastDrawing.group.node().getBBox();
                     const svgRect = this.svg.node().getBoundingClientRect();
                     const x = svgRect.left + bbox.x + (bbox.width / 2);
@@ -8414,7 +8473,7 @@ class DrawingToolsManager {
                 this.selectedDrawings = [drawing];
                 this.renderDrawing(drawing);
 
-                if (drawing.group) {
+                if (!suppressToolbar && drawing.group) {
                     const bbox = drawing.group.node().getBBox();
                     const svgRect = this.svg.node().getBoundingClientRect();
                     const x = svgRect.left + bbox.x + (bbox.width / 2);
@@ -8435,7 +8494,7 @@ class DrawingToolsManager {
             this.renderDrawing(drawing); // Re-render to show handles
             
             // Show floating toolbar
-            if (drawing.group) {
+            if (!suppressToolbar && drawing.group) {
                 const bbox = drawing.group.node().getBBox();
                 const svgRect = this.svg.node().getBoundingClientRect();
                 
@@ -9002,30 +9061,49 @@ class DrawingToolsManager {
     }
     
     /**
+     * Set lock state on one drawing (does not persist — caller saves once).
+     */
+    setDrawingLock(drawing, locked) {
+        if (!drawing) return;
+        const next = !!locked;
+        if (!!drawing.locked === next) return;
+        drawing.locked = next;
+        if (drawing.group) {
+            drawing.group.classed('locked', next);
+            drawing.group.style('opacity', next ? '0.7' : null);
+        }
+        this.renderDrawing(drawing);
+    }
+
+    /**
+     * Lock or unlock many drawings at once (bulk lock/unlock for multi-select).
+     */
+    setDrawingsLock(drawings, locked) {
+        const list = Array.isArray(drawings) ? drawings.filter(Boolean) : (drawings ? [drawings] : []);
+        if (!list.length) return;
+        let changed = false;
+        list.forEach((drawing) => {
+            const next = !!locked;
+            if (!!drawing.locked === next) return;
+            changed = true;
+            this.setDrawingLock(drawing, next);
+        });
+        if (!changed) return;
+        this.saveDrawings();
+        try {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('talaria-drawing-lock-changed', { detail: { locked: !!locked } }));
+            }
+        } catch (_) {}
+    }
+
+    /**
      * Toggle lock state of drawing
      */
     toggleLock(drawing) {
-        drawing.locked = !drawing.locked;
-        
-        if (drawing.locked) {
-            // When locked, only allow right-click for context menu
-            if (drawing.group) {
-                // Remove drag/resize but keep context menu
-                drawing.group.classed('locked', true);
-                drawing.group.style('opacity', '0.7');
-            }
-            // [debug removed]
-        } else {
-            // Re-enable full interaction
-            if (drawing.group) {
-                drawing.group.classed('locked', false);
-                drawing.group.style('opacity', null);
-            }
-            // [debug removed]
-        }
-        
+        if (!drawing) return;
+        this.setDrawingLock(drawing, !drawing.locked);
         this.saveDrawings();
-        this.renderDrawing(drawing); // Re-render to apply lock state
         try {
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new CustomEvent('talaria-drawing-lock-changed', { detail: { locked: !!drawing.locked } }));
@@ -9074,9 +9152,19 @@ class DrawingToolsManager {
      * Delete a drawing
      */
     deleteDrawing(drawing) {
+        if (!drawing) return;
         this._ensureDrawingId(drawing);
-        const index = this.drawings.indexOf(drawing);
+        let liveDrawing = drawing;
+        let index = this.drawings.indexOf(liveDrawing);
+        if (index === -1 && liveDrawing.id != null) {
+            const byId = this.drawings.find((d) => d && d.id === liveDrawing.id);
+            if (byId) {
+                liveDrawing = byId;
+                index = this.drawings.indexOf(byId);
+            }
+        }
         if (index > -1) {
+            drawing = liveDrawing;
             if (this._rafRenderSet) {
                 this._rafRenderSet.delete(drawing);
             }
@@ -11349,7 +11437,7 @@ class DrawingToolsManager {
 
         const selectedDrawings = [];
         this.drawings.forEach((drawing) => {
-            if (!drawing.locked && this.isDrawingInRectangle(drawing, rectX, rectY, rectWidth, rectHeight)) {
+            if (this.isDrawingInRectangle(drawing, rectX, rectY, rectWidth, rectHeight)) {
                 selectedDrawings.push(drawing);
             }
         });
