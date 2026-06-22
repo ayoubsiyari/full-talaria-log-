@@ -4842,7 +4842,9 @@ class Chart {
         const replayPath = !!options.replayPath;
         this._logTfSwitch(replayPath ? 'client-resample-replay' : 'client-resample-live', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
-        this.data = this.resampleData(this.rawData, normalizedTf);
+        if (!(replayPath && this.replaySystem && this.replaySystem.isActive)) {
+            this.data = this.resampleData(this.rawData, normalizedTf);
+        }
         if (this.currentFileId) {
             this._saveTfDataCache(this.currentFileId, normalizedTf);
         }
@@ -5707,6 +5709,9 @@ class Chart {
 
     async _applyBacktestTimeframeFromCache(timeframe) {
         if (!this.isBacktestMode || !this.currentFileId) return false;
+        // Replay TF toggles must refetch against the live viewport snapshot — cached
+        // windows from an earlier visit cause the 2nd+ switch to jump or hide candles.
+        if (this.replaySystem?.isActive) return false;
         const entry = this._getBtTfDataCache(this.currentFileId, timeframe);
         if (!entry) return false;
         if (!this._btTfCacheCoversTfSwitchViewport(entry, timeframe)) return false;

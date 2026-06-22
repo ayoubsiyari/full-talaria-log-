@@ -6324,8 +6324,14 @@ class ReplaySystem {
 
         restoreSavedPlayhead();
 
+        const pendingVp = this.chart._tfSwitchViewport;
+        const deferSliceForViewport = !!(pendingVp
+            && (Number.isFinite(pendingVp.anchorTs) || Number.isFinite(pendingVp.centerTs)));
+
         try {
-            this.updateChartData(false);
+            if (!deferSliceForViewport) {
+                this.updateChartData(false);
+            }
             if (!isEmbedInitiator) {
                 this.chart.priceOffset = savedPriceOffset;
                 this.chart.priceZoom = savedPriceZoom;
@@ -6348,9 +6354,9 @@ class ReplaySystem {
                     });
                 }
             } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                const pendingVp = this.chart._tfSwitchViewport;
-                const willRestoreViewport = pendingVp
-                    && Number.isFinite(pendingVp.anchorTs);
+                const pendingVp2 = this.chart._tfSwitchViewport;
+                const willRestoreViewport = pendingVp2
+                    && (Number.isFinite(pendingVp2.anchorTs) || Number.isFinite(pendingVp2.centerTs));
                 if (!willRestoreViewport) {
                     this.syncReplayViewportToPlayhead(this.chart, {
                         centerPlayhead: true,
@@ -6396,7 +6402,12 @@ class ReplaySystem {
             const runPostTfFinalize = () => {
                 if (changeSeq !== this._tfChangeSeq) return;
                 restoreSavedPlayhead();
-                try { this.updateChartData(false); } catch (_uc) { /* ignore */ }
+                if (this.chart._tfSwitchAnchorLock
+                    && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
+                    try { this.chart._reapplyTfSwitchAnchorLock(); } catch (_ra) { /* ignore */ }
+                } else {
+                    try { this.updateChartData(false); } catch (_uc) { /* ignore */ }
+                }
                 const omAfter = this._resolveOrderManagerForReplayGuards(this.chart);
                 if (guardTsAfter != null && omAfter && typeof omAfter._refreshAllGuardsToTimestamp === 'function') {
                     try { omAfter._refreshAllGuardsToTimestamp(guardTsAfter, Infinity); } catch (_g) { /* ignore */ }

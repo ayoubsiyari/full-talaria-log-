@@ -8781,6 +8781,11 @@ const TalariaV8b = () => {
   const [v16BootRevision, setV16BootRevision] = useState(0);
   const [dashTradesLoading, setDashTradesLoading] = useState(false);
   useEffect(() => {
+    if (dashLibraryAppliedSelection && !dashLibraryAppliedSelectionRef.current) {
+      dashLibraryAppliedSelectionRef.current = dashLibraryAppliedSelection;
+    }
+  }, [dashLibraryAppliedSelection]);
+  useEffect(() => {
     if (!isV16Embedded()) return;
     const syncBoot = () => {
       setDashBootLoading(!!window.__TALARIA_V16_BOOT_LOADING__);
