@@ -60,7 +60,7 @@ class FibChannelTool extends BaseDrawing {
 
         const scaledMedianWidth = Math.max(0.5, (this.style.strokeWidth || 2) * scaleFactor);
 
-        const extendLines = !!this.style.extendLines;
+        const { anyExtend } = BaseDrawing.resolveFibExtendFlags(this.style);
         const zonesEnabled = !!this.style.showZones;
         const reverse = !!this.style.reverse;
         const showLevelValues = this.style.levelsEnabled !== false;
@@ -99,7 +99,7 @@ class FibChannelTool extends BaseDrawing {
 
             // If the 3rd point is outside the rendered segment span (when not extending lines),
             // clamp handle position to the rendered level=1 segment using virtualPoints.
-            if (!extendLines && scales) {
+            if (!anyExtend && scales) {
                 const chart = scales.chart;
                 const xScale = scales.xScale;
                 const yScale = scales.yScale;
@@ -4218,7 +4218,6 @@ class TrendFibExtensionTool extends BaseDrawing {
             // Chart width for level lines
             const xRange = scales.xScale.range();
 
-            const extendLines = !!this.style.extendLines;
             const showZones = !!this.style.showZones;
 
             const reverse = !!this.style.reverse;
@@ -4227,24 +4226,9 @@ class TrendFibExtensionTool extends BaseDrawing {
 
             const signedMove = reverse ? (-priceMove) : priceMove;
 
-            // Determine line width based on extend option (match fib retracement/extension behavior)
-            let leftX, rightX;
-            if (extendLines) {
-                leftX = xRange[0];
-                rightX = xRange[1];
-            } else {
-                // Match the width of the drawn leg (from point 2 to point 3)
-                leftX = Math.min(x2, x3);
-                rightX = Math.max(x2, x3);
-
-                // Ensure minimum width for visibility
-                let width = Math.abs(rightX - leftX);
-                if (width < 50) {
-                    const centerX = (x2 + x3) / 2;
-                    leftX = centerX - 50;
-                    rightX = centerX + 50;
-                }
-            }
+            const { fibX1: leftX, fibX2: rightX } = BaseDrawing.computeFibHorizontalSpanPx(
+                this.style, xRange, x2, x3,
+            );
 
             const toRgba = (color, alpha) => {
                 if (!color) return `rgba(120, 123, 134, ${alpha})`;

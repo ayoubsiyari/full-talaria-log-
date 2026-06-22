@@ -10597,57 +10597,43 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            const extendWrap = document.createElement('div');
+            if (!drawing.style.extendLeft && !drawing.style.extendRight && drawing.style.extendLines) {
+                drawing.style.extendLeft = true;
+                drawing.style.extendRight = true;
+            }
 
-            extendWrap.className = 'tv-checkbox-wrapper';
+            const syncFibExtendLinesLegacy = () => {
+                drawing.style.extendLines = !!(drawing.style.extendLeft && drawing.style.extendRight);
+            };
 
-            extendWrap.style.cssText = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
-
-
-
-            const extendCb = document.createElement('div');
-
-            extendCb.className = `tv-checkbox ${(drawing.style.extendLines || false) ? 'checked' : ''}`;
-
-            extendCb.innerHTML = `
-
+            const makeExtendCb = (prop, label) => {
+                const wrap = document.createElement('div');
+                wrap.className = 'tv-checkbox-wrapper';
+                wrap.style.cssText = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
+                const cb = document.createElement('div');
+                cb.className = `tv-checkbox ${drawing.style[prop] ? 'checked' : ''}`;
+                cb.innerHTML = `
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-
                     <polyline points="20 6 9 17 4 12"/>
-
                 </svg>
-
             `;
+                const text = document.createElement('span');
+                text.className = 'tv-checkbox-label';
+                text.style.cssText = 'white-space: nowrap;';
+                text.textContent = label;
+                cb.addEventListener('click', () => {
+                    drawing.style[prop] = !drawing.style[prop];
+                    cb.classList.toggle('checked', !!drawing.style[prop]);
+                    syncFibExtendLinesLegacy();
+                    applyChanges();
+                });
+                wrap.appendChild(cb);
+                wrap.appendChild(text);
+                return wrap;
+            };
 
-
-
-            const extendText = document.createElement('span');
-
-            extendText.className = 'tv-checkbox-label';
-
-            extendText.style.cssText = 'white-space: nowrap;';
-
-            extendText.textContent = 'Extend Lines';
-
-
-
-            extendCb.addEventListener('click', () => {
-
-                drawing.style.extendLines = !drawing.style.extendLines;
-
-                extendCb.classList.toggle('checked', !!drawing.style.extendLines);
-
-                applyChanges();
-
-            });
-
-
-
-            extendWrap.appendChild(extendCb);
-
-            extendWrap.appendChild(extendText);
-
-            optionsRow.appendChild(extendWrap);
+            optionsRow.appendChild(makeExtendCb('extendLeft', 'Extend left'));
+            optionsRow.appendChild(makeExtendCb('extendRight', 'Extend right'));
 
 
 
@@ -16584,57 +16570,43 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        const extendWrap = document.createElement('div');
+        if (!drawing.style.extendLeft && !drawing.style.extendRight && drawing.style.extendLines) {
+            drawing.style.extendLeft = true;
+            drawing.style.extendRight = true;
+        }
 
-        extendWrap.className = 'tv-checkbox-wrapper';
+        const syncFibExtendLinesLegacy = () => {
+            drawing.style.extendLines = !!(drawing.style.extendLeft && drawing.style.extendRight);
+        };
 
-        extendWrap.style.cssText = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
-
-
-
-        const extendCb = document.createElement('div');
-
-        extendCb.className = `tv-checkbox ${(drawing.style.extendLines || false) ? 'checked' : ''}`;
-
-        extendCb.innerHTML = `
-
+        const makeExtendCb = (prop, label) => {
+            const wrap = document.createElement('div');
+            wrap.className = 'tv-checkbox-wrapper';
+            wrap.style.cssText = 'min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px;';
+            const cb = document.createElement('div');
+            cb.className = `tv-checkbox ${drawing.style[prop] ? 'checked' : ''}`;
+            cb.innerHTML = `
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-
                 <polyline points="20 6 9 17 4 12"/>
-
             </svg>
-
         `;
+            const text = document.createElement('span');
+            text.className = 'tv-checkbox-label';
+            text.style.cssText = 'white-space: nowrap;';
+            text.textContent = label;
+            cb.addEventListener('click', () => {
+                drawing.style[prop] = !drawing.style[prop];
+                cb.classList.toggle('checked', !!drawing.style[prop]);
+                syncFibExtendLinesLegacy();
+                applyChanges();
+            });
+            wrap.appendChild(cb);
+            wrap.appendChild(text);
+            return wrap;
+        };
 
-
-
-        const extendText = document.createElement('span');
-
-        extendText.className = 'tv-checkbox-label';
-
-        extendText.style.cssText = 'white-space: nowrap;';
-
-        extendText.textContent = 'Extend Lines';
-
-
-
-        extendCb.addEventListener('click', () => {
-
-            drawing.style.extendLines = !drawing.style.extendLines;
-
-            extendCb.classList.toggle('checked', !!drawing.style.extendLines);
-
-            applyChanges();
-
-        });
-
-
-
-        extendWrap.appendChild(extendCb);
-
-        extendWrap.appendChild(extendText);
-
-        optionsRow.appendChild(extendWrap);
+        optionsRow.appendChild(makeExtendCb('extendLeft', 'Extend left'));
+        optionsRow.appendChild(makeExtendCb('extendRight', 'Extend right'));
 
         section.appendChild(optionsRow);
 
@@ -30762,45 +30734,58 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-        // Extend Lines toggle
+        if (!drawing.style.extendLeft && !drawing.style.extendRight && drawing.style.extendLines) {
+            drawing.style.extendLeft = true;
+            drawing.style.extendRight = true;
+        }
 
-        const extendToggle = optionsRow.append('label')
+        const syncFibExtendLinesLegacy = () => {
+            drawing.style.extendLines = !!(drawing.style.extendLeft && drawing.style.extendRight);
+        };
 
+        // Extend Left toggle
+        const extendLeftLabel = optionsRow.append('label')
             .style('display', 'flex')
-
             .style('align-items', 'center')
-
             .style('gap', '6px')
-
             .style('cursor', 'default')
-
             .style('font-size', '11px')
-
             .style('color', '#787b86');
 
-
-
-        extendToggle.append('input')
-
+        extendLeftLabel.append('input')
             .attr('type', 'checkbox')
-
-            .property('checked', drawing.style.extendLines || false)
-
+            .property('checked', drawing.style.extendLeft || false)
             .style('cursor', 'default')
-
             .style('accent-color', '#787b86')
-
             .on('change', function() {
-
-                drawing.style.extendLines = this.checked;
-
+                drawing.style.extendLeft = this.checked;
+                syncFibExtendLinesLegacy();
                 applyChanges();
-
             });
 
+        extendLeftLabel.append('span').text('Extend Left');
 
+        // Extend Right toggle
+        const extendRightLabel = optionsRow.append('label')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('gap', '6px')
+            .style('cursor', 'default')
+            .style('font-size', '11px')
+            .style('color', '#787b86');
 
-        extendToggle.append('span').text('Extend Lines');
+        extendRightLabel.append('input')
+            .attr('type', 'checkbox')
+            .property('checked', drawing.style.extendRight || false)
+            .style('cursor', 'default')
+            .style('accent-color', '#787b86')
+            .on('change', function() {
+                drawing.style.extendRight = this.checked;
+                syncFibExtendLinesLegacy();
+                applyChanges();
+            });
+
+        extendRightLabel.append('span').text('Extend Right');
 
 
 

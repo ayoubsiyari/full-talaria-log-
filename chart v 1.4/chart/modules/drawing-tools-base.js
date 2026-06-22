@@ -797,6 +797,37 @@ class BaseDrawing {
         return scales.yScale(price);
     }
 
+    /** extendLeft / extendRight with legacy `extendLines` (= both) compatibility. */
+    static resolveFibExtendFlags(style) {
+        const s = style || {};
+        const legacyBoth = !!s.extendLines;
+        const extendLeft = s.extendLeft === true || legacyBoth;
+        const extendRight = s.extendRight === true || legacyBoth;
+        return { extendLeft, extendRight, anyExtend: extendLeft || extendRight };
+    }
+
+    /** Horizontal fib level span in pixel x (retracement / extension legs). */
+    static computeFibHorizontalSpanPx(style, xRange, x1, x2, minWidth = 50) {
+        const { extendLeft, extendRight } = BaseDrawing.resolveFibExtendFlags(style);
+        let fibX1;
+        let fibX2;
+        if (extendLeft || extendRight) {
+            fibX1 = extendLeft ? xRange[0] : Math.min(x1, x2);
+            fibX2 = extendRight ? xRange[1] : Math.max(x1, x2);
+        } else {
+            fibX1 = Math.min(x1, x2);
+            fibX2 = Math.max(x1, x2);
+        }
+        let fibWidth = Math.abs(fibX2 - fibX1);
+        if (!extendLeft && !extendRight && fibWidth < minWidth) {
+            const centerX = (x1 + x2) / 2;
+            fibX1 = centerX - minWidth;
+            fibX2 = centerX + minWidth;
+            fibWidth = minWidth * 2;
+        }
+        return { fibX1, fibX2, fibWidth };
+    }
+
     static computeTwoPointHorizontalFibLayout(tool, scales) {
         if (!tool || !scales || !Array.isArray(tool.points) || tool.points.length < 2) return null;
         const p1 = tool.points[0];
@@ -810,25 +841,9 @@ class BaseDrawing {
         if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
 
         const xRange = scales.xScale.range();
-        const chartWidth = xRange[1] - xRange[0];
-        let fibX1;
-        let fibX2;
-        let fibWidth;
-        if (tool.style && tool.style.extendLines) {
-            fibX1 = xRange[0];
-            fibX2 = xRange[1];
-            fibWidth = chartWidth;
-        } else {
-            fibX1 = Math.min(x1, x2);
-            fibX2 = Math.max(x1, x2);
-            fibWidth = Math.abs(x2 - x1);
-            if (fibWidth < 50) {
-                const centerX = (x1 + x2) / 2;
-                fibWidth = 100;
-                fibX1 = centerX - 50;
-                fibX2 = centerX + 50;
-            }
-        }
+        const { fibX1, fibX2, fibWidth } = BaseDrawing.computeFibHorizontalSpanPx(
+            tool.style, xRange, x1, x2,
+        );
 
         const priceDiff = p2.y - p1.y;
         const reverse = !!(tool.style && tool.style.reverse);
@@ -903,7 +918,7 @@ class BaseDrawing {
         const ny = dx / len;
         const channelOffset = (p3.x - p1.x) * nx + (p3.y - p1.y) * ny;
         const reverse = !!(tool.style && tool.style.reverse);
-        const extendLines = !!(tool.style && tool.style.extendLines);
+        const { extendLeft, extendRight, anyExtend } = BaseDrawing.resolveFibExtendFlags(tool.style);
         const xRange = scales.xScale.range();
 
         const toPx = (dp) => ({
@@ -915,18 +930,18 @@ class BaseDrawing {
             const a = toPx(dA);
             const b = toPx(dB);
             if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) return null;
-            if (!extendLines) return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+            if (!anyExtend) return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
             const xMin = Math.min(xRange[0], xRange[1]);
             const xMax = Math.max(xRange[0], xRange[1]);
             const dx2 = b.x - a.x;
             if (Math.abs(dx2) < 1e-6) return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
             const m = (b.y - a.y) / dx2;
-            return {
-                x1: xMin,
-                y1: a.y + m * (xMin - a.x),
-                x2: xMax,
-                y2: a.y + m * (xMax - a.x)
-            };
+            const yAt = (x) => a.y + m * (x - a.x);
+            const leftAnchorX = Math.min(a.x, b.x);
+            const rightAnchorX = Math.max(a.x, b.x);
+            const segX1 = extendLeft ? xMin : leftAnchorX;
+            const segX2 = extendRight ? xMax : rightAnchorX;
+            return { x1: segX1, y1: yAt(segX1), x2: segX2, y2: yAt(segX2) };
         };
 
         const offsetPoint = (dp, mult) => ({

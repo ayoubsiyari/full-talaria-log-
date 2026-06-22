@@ -2305,7 +2305,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
-    patch.extendLines = !!tlStyle.fibExtendLines;
+    v9SyncFibExtendToStyle(patch, tlStyle);
   }
   if (legacyTool && v9IsFibChannelType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
     const chartLevels = v9TlFibEnabledLevelsToChart(
@@ -2317,7 +2317,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
     v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
-    patch.extendLines = !!tlStyle.fibExtendLines;
+    v9SyncFibExtendToStyle(patch, tlStyle);
   }
   if (legacyTool && v9IsFibTimeZoneType(legacyTool) && Array.isArray(tlStyle.fibTzLevels)) {
     const chartLevels = v9TlFibTzLevelsToChart(tlStyle.fibTzLevels);
@@ -5369,6 +5369,28 @@ function v9FibShowPricesFromLevelsMode(mode) {
   return String(mode || "Value") === "Value and Percent";
 }
 
+function v9SyncFibExtendToStyle(st, tlStyle) {
+  if (!st || !tlStyle) return;
+  st.extendLeft = !!tlStyle.extendLeft;
+  st.extendRight = !!tlStyle.extendRight;
+  st.extendLines = !!(st.extendLeft && st.extendRight);
+}
+
+function v9FibExtendFromChartStyle(s) {
+  if (!s) return { extendLeft: false, extendRight: false };
+  if (s.extendLeft === true || s.extendRight === true) {
+    return { extendLeft: !!s.extendLeft, extendRight: !!s.extendRight };
+  }
+  if (s.extendLines) {
+    return { extendLeft: true, extendRight: true };
+  }
+  return { extendLeft: false, extendRight: false };
+}
+
+function v9FibToolIconHasExtend(icon) {
+  return icon !== "fibFan" && icon !== "fibTime" && icon !== "fibTimeZone" && icon !== "fibArcs" && icon !== "fibWedge";
+}
+
 function v9SyncFibLevelsLabelModeToStyle(st, tlStyle) {
   if (!st || !tlStyle) return;
   st.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
@@ -6180,7 +6202,7 @@ function v9ApplyFibChannelFromTlStyle(d, tlStyle, widthFallback) {
   v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   v9SyncFibLevelPositionToStyle(st, tlStyle);
-  st.extendLines = !!tlStyle.fibExtendLines;
+  v9SyncFibExtendToStyle(st, tlStyle);
 }
 
 function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
@@ -6412,7 +6434,8 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("fibLevelsOn");
     line("fibLevelsMode");
     line("fibLevelPosition");
-    line("fibExtendLines");
+    line("extendLeft");
+    line("extendRight");
     line("lineColor");
     line("lineWidth");
     line("lineType");
@@ -6429,7 +6452,8 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("fibLevelsOn");
     line("fibLevelsMode");
     line("fibLevelPosition");
-    line("fibExtendLines");
+    line("extendLeft");
+    line("extendRight");
     line("lineColor");
     line("lineWidth");
     line("lineType");
@@ -6616,7 +6640,7 @@ function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
   v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   st.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
-  st.extendLines = !!tlStyle.fibExtendLines;
+  v9SyncFibExtendToStyle(st, tlStyle);
 }
 
 /** Chart Gann level rows ↔ V9 Input tab (`on` / string `value` / `color`). */
@@ -7389,7 +7413,7 @@ function v9TlStylePatchFromDrawing(d) {
             fibLevelsOn: s.levelsEnabled !== false,
             fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices),
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
-            fibExtendLines: !!s.extendLines,
+            ...v9FibExtendFromChartStyle(s),
           };
         })()
       : {}),
@@ -7551,7 +7575,7 @@ function v9TlStylePatchFromDrawing(d) {
             fibLevelsOn: s.levelsEnabled !== false,
             fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices),
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
-            fibExtendLines: !!s.extendLines,
+            ...v9FibExtendFromChartStyle(s),
           };
         })()
       : {}),
@@ -11710,7 +11734,7 @@ const TalariaV8bLive = () => {
       { on: true, value: "0.75", color: "#FFEB3B" },
       { on: true, value: "1", color: "#4CAF50" },
     ],
-    fibLevelsOn: true, fibLevelsMode: "Value", fibLevelPosition: "Right", fibExtendLines: false, fibGrid: false,
+    fibLevelsOn: true, fibLevelsMode: "Value", fibLevelPosition: "Right", fibGrid: false,
     fibGridColor: "#787B86", fibGridType: "solid", fibGridWidth: "1",
     fibLineType: "solid", fibLineWidth: "2",
     fibLevels: v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-retracement"),
@@ -19417,6 +19441,10 @@ const TalariaV8bLive = () => {
     "rectangle",
     "rotated-rectangle",
     "regression-trend",
+    "fibonacci-retracement",
+    "fibonacci-extension",
+    "trend-fib-extension",
+    "fib-channel",
   ]);
 
   // Extend left/right — immediate repaint (TradingView toggles without waiting for OK).
@@ -19691,7 +19719,8 @@ const TalariaV8bLive = () => {
     tlStyle.fibLevelsOn,
     tlStyle.fibLevelsMode,
     tlStyle.fibLevelPosition,
-    tlStyle.fibExtendLines,
+    tlStyle.extendLeft,
+    tlStyle.extendRight,
     tlStyle.fibFanTimeLevels,
     tlStyle.fibTzLevels,
     v9FibTzLevelsBridgeSig(tlStyle.fibTzLevels),
@@ -22856,10 +22885,6 @@ const TalariaV8bLive = () => {
                           </div>
                         );
                       })()}
-                      {/* Extend Lines */}
-                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
-                        {TlChk(tlStyle.fibExtendLines,"tlchk-fibExt","Extend Lines",()=>setTlStyle(s=>({...s,fibExtendLines:!s.fibExtendLines})))}
-                      </div>}
                     </>;
                   })()}
                   {/* Level position — all fibonacci tools */}
@@ -23000,6 +23025,9 @@ const TalariaV8bLive = () => {
               ] : (tlSubTool.icon === "draw" || tlSubTool.icon === "brush") ? [
                 ["Labels", [["priceLabels","Price"],["timeLabels","Time"]]],
               ] : isGannTool ? [
+                ["Labels", [["priceLabels","Price"],["timeLabels","Time"]]],
+              ] : (isFibTool && v9FibToolIconHasExtend(tlSubTool.icon)) ? [
+                ["Extend", [["extendLeft","Left"],["extendRight","Right"]]],
                 ["Labels", [["priceLabels","Price"],["timeLabels","Time"]]],
               ] : isFibTool ? [
                 ["Labels", [["priceLabels","Price"],["timeLabels","Time"]]],

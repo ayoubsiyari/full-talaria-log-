@@ -69,29 +69,11 @@ class FibonacciRetracementTool extends BaseDrawing {
 
         // Get chart width for calculating zone width
         const xRange = scales.xScale.range();
-        const chartWidth = xRange[1] - xRange[0];
         
-        // Determine line width based on extend option
-        let fibX1, fibX2, fibWidth;
-        if (this.style.extendLines) {
-            // Full chart width
-            fibX1 = xRange[0];
-            fibX2 = xRange[1];
-            fibWidth = chartWidth;
-        } else {
-            // Match the width of the drawn line (from point 1 to point 2)
-            fibX1 = Math.min(x1, x2);
-            fibX2 = Math.max(x1, x2);
-            fibWidth = Math.abs(x2 - x1);
-            
-            // Ensure minimum width for visibility
-            if (fibWidth < 50) {
-                const centerX = (x1 + x2) / 2;
-                fibWidth = 100;
-                fibX1 = centerX - 50;
-                fibX2 = centerX + 50;
-            }
-        }
+        // Determine line width based on extend left/right
+        const { fibX1, fibX2, fibWidth } = BaseDrawing.computeFibHorizontalSpanPx(
+            this.style, xRange, x1, x2,
+        );
 
         // Calculate price difference
         const priceDiff = p2.y - p1.y;
@@ -332,29 +314,11 @@ class FibonacciExtensionTool extends BaseDrawing {
 
         // Get chart width for calculating zone width
         const xRange = scales.xScale.range();
-        const chartWidth = xRange[1] - xRange[0];
         
-        // Determine line width based on extend option
-        let fibX1, fibX2, fibWidth;
-        if (this.style.extendLines) {
-            // Full chart width
-            fibX1 = xRange[0];
-            fibX2 = xRange[1];
-            fibWidth = chartWidth;
-        } else {
-            // Match the width of the drawn line (from point 1 to point 2)
-            fibX1 = Math.min(x1, x2);
-            fibX2 = Math.max(x1, x2);
-            fibWidth = Math.abs(x2 - x1);
-            
-            // Ensure minimum width for visibility
-            if (fibWidth < 50) {
-                const centerX = (x1 + x2) / 2;
-                fibWidth = 100;
-                fibX1 = centerX - 50;
-                fibX2 = centerX + 50;
-            }
-        }
+        // Determine line width based on extend left/right
+        const { fibX1, fibX2, fibWidth } = BaseDrawing.computeFibHorizontalSpanPx(
+            this.style, xRange, x1, x2,
+        );
 
         // Calculate price difference
         const priceDiff = p2.y - p1.y;
