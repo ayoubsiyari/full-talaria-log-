@@ -24845,7 +24845,22 @@ class Chart {
         const m = this.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, this.w - m.l - m.r);
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
-        if (leftIdx >= 6) return;
+        if (leftIdx >= 6) {
+            const replay = this.replaySystem;
+            if (this._tfSwitchAnchorLock && replay && replay.isActive
+                && replay.autoScrollEnabled && !replay.userHasPanned) {
+                this._clearTfSwitchAnchorLock();
+                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                    try {
+                        replay.syncReplayViewportToPlayhead(this, {
+                            resetPriceScale: false,
+                            render: false,
+                        });
+                    } catch (_sync) { /* ignore */ }
+                }
+            }
+            return;
+        }
 
         const replay = this.replaySystem;
         const measureLen = () => (replay && Array.isArray(replay.fullRawData))
