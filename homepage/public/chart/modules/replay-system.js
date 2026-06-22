@@ -2871,12 +2871,7 @@ class ReplaySystem {
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
         if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
             && !this._timeframeChanging) {
-            if (this.chart._tfSwitchAnchorLock
-                && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
-                this.chart._reapplyTfSwitchAnchorLock();
-            } else {
-                this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
-            }
+            this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
         }
         
         // Update UI elements
@@ -2887,8 +2882,7 @@ class ReplaySystem {
         this.chart.isLoading = false;
         
         // Apply constraints
-        if (typeof this.chart.constrainOffset === 'function'
-            && !this.chart._tfSwitchAnchorLock) {
+        if (typeof this.chart.constrainOffset === 'function') {
             this.chart.constrainOffset();
         }
         this._applyPlaybackViewportLock(this.chart);
@@ -5225,9 +5219,6 @@ class ReplaySystem {
         this._viewportLockForPlayback = null;
         this.autoScrollEnabled = false;
         this.userHasPanned = true;
-        if (this.chart && typeof this.chart._clearTfSwitchAnchorLock === 'function') {
-            this.chart._clearTfSwitchAnchorLock();
-        }
 
         // Show visual indicator that auto-scroll is disabled
         this.updateAutoScrollIndicator();
@@ -6324,14 +6315,8 @@ class ReplaySystem {
 
         restoreSavedPlayhead();
 
-        const pendingVp = this.chart._tfSwitchViewport;
-        const deferSliceForViewport = !!(pendingVp
-            && (Number.isFinite(pendingVp.anchorTs) || Number.isFinite(pendingVp.centerTs)));
-
         try {
-            if (!deferSliceForViewport) {
-                this.updateChartData(false);
-            }
+            this.updateChartData(false);
             if (!isEmbedInitiator) {
                 this.chart.priceOffset = savedPriceOffset;
                 this.chart.priceZoom = savedPriceZoom;
@@ -6354,9 +6339,9 @@ class ReplaySystem {
                     });
                 }
             } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                const pendingVp2 = this.chart._tfSwitchViewport;
-                const willRestoreViewport = pendingVp2
-                    && (Number.isFinite(pendingVp2.anchorTs) || Number.isFinite(pendingVp2.centerTs));
+                const pendingVp = this.chart._tfSwitchViewport;
+                const willRestoreViewport = pendingVp
+                    && Number.isFinite(pendingVp.anchorTs);
                 if (!willRestoreViewport) {
                     this.syncReplayViewportToPlayhead(this.chart, {
                         centerPlayhead: true,
@@ -6402,12 +6387,7 @@ class ReplaySystem {
             const runPostTfFinalize = () => {
                 if (changeSeq !== this._tfChangeSeq) return;
                 restoreSavedPlayhead();
-                if (this.chart._tfSwitchAnchorLock
-                    && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
-                    try { this.chart._reapplyTfSwitchAnchorLock(); } catch (_ra) { /* ignore */ }
-                } else {
-                    try { this.updateChartData(false); } catch (_uc) { /* ignore */ }
-                }
+                try { this.updateChartData(false); } catch (_uc) { /* ignore */ }
                 const omAfter = this._resolveOrderManagerForReplayGuards(this.chart);
                 if (guardTsAfter != null && omAfter && typeof omAfter._refreshAllGuardsToTimestamp === 'function') {
                     try { omAfter._refreshAllGuardsToTimestamp(guardTsAfter, Infinity); } catch (_g) { /* ignore */ }
