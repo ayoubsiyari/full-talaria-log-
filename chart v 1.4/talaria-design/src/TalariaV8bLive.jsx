@@ -30633,7 +30633,7 @@ const TalariaV8bLive = () => {
                 {q:"How do I save my drawings?",a:"Drawings are auto-saved to your session. Use the Objects Tree panel to manage, hide, or delete individual drawings."},
               ].map((item,i)=>(
                 <div key={i} style={{marginBottom:4,border:`1px solid ${faqExpand===i?c.acB:c.br}`,overflow:"hidden"}}>
-                  <div onClick={()=>setFaqExpand(faqExpand===i?null:i)}
+                  <div {...modalPointerActivate(() => setFaqExpand((prev) => (prev === i ? null : i)))}
                     style={{cursor:"default",display:"flex",alignItems:"center",padding:"8px 12px",background:faqExpand===i?c.acD:"transparent",transition:"background 0.12s"}}>
                     <span style={{flex:1,fontSize:13,fontWeight:600,color:faqExpand===i?c.acL:c.ts}}>{item.q}</span>
                     <svg width={9} height={6} viewBox="0 0 10 6" style={{flexShrink:0,transform:faqExpand===i?"rotate(180deg)":"none",transition:"transform 0.18s"}}>
@@ -30653,8 +30653,10 @@ const TalariaV8bLive = () => {
                   </a>
                 </div>
                 <button type="button"
+                  {...modalPointerActivate(() => { setFaqCat("education"); setFaqExpand(null); })}
                   onMouseEnter={()=>setSwHov("faq-more")} onMouseLeave={()=>setSwHov(null)}
-                  onMouseDown={()=>setSwHov("faq-more_dn")} onMouseUp={()=>setSwHov("faq-more")}
+                  onMouseDown={(e) => { e.stopPropagation(); setSwHov("faq-more_dn"); }}
+                  onMouseUp={()=>setSwHov("faq-more")}
                   style={{height:28,padding:"0 4px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",gap:6,cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,background:"none",border:"none",
                     color:swHov==="faq-more_dn"?c.acL:swHov==="faq-more"?"rgba(140,160,255,0.85)":c.ts,
                     transition:"color 0.12s"}}>
