@@ -5397,6 +5397,18 @@ function v9FibToolIconHasLevelPosition(icon) {
   return icon !== "fibCircles" && icon !== "fibArcs" && icon !== "fibWedge";
 }
 
+/** Style tab: hide Level position for ray/arc geometry tools (icon + chart type). */
+function v9FibSettingsShowLevelPosition(subToolIcon, drawingType) {
+  if (
+    drawingType === "fib-circles" ||
+    drawingType === "fib-arcs" ||
+    drawingType === "fib-wedge"
+  ) {
+    return false;
+  }
+  return v9FibToolIconHasLevelPosition(subToolIcon);
+}
+
 function v9FibToolIconHasExtend(icon) {
   return icon !== "fibFan" && icon !== "fibTime" && icon !== "fibTimeZone" && icon !== "fibArcs" && icon !== "fibWedge";
 }
@@ -14381,11 +14393,17 @@ const TalariaV8bLive = () => {
     : effectiveTlGroup === "measure"
     ? v9RailSubtoolOrFallback("measure", groupSelected.measure, { icon: "measure", label: "Range Tool" })
     : v9RailSubtoolOrFallback("trendline", groupSelected.trendline, { icon: "trendline", label: "Trend Line" });
+  const tlSettingsDrawingType =
+    (tlSettOpen || closing.has("tlsett"))
+      ? (editingDrawingRef.current?.drawing?.type ?? null)
+      : null;
+  const tlActiveDrawingType =
+    tlSettingsDrawingType ||
+    chartPrimarySelectedDrawingType ||
+    editingDrawingRef.current?.drawing?.type ||
+    null;
   const tlSubTool = (() => {
-    const dt =
-      chartPrimarySelectedDrawingType ||
-      editingDrawingRef.current?.drawing?.type ||
-      null;
+    const dt = tlActiveDrawingType;
     const icon = v9SubToolIconFromDrawingType(dt, effectiveTlGroup);
     if (!icon || icon === tlSubToolRail.icon) return tlSubToolRail;
     return { icon, label: tlSubToolRail.label };
@@ -22888,8 +22906,8 @@ const TalariaV8bLive = () => {
                       })()}
                     </>;
                   })()}
-                  {/* Level position — fib tools except Fib Circles (labels follow trend ray) */}
-                  {isFibTool && v9FibToolIconHasLevelPosition(tlSubTool.icon) && (() => {
+                  {/* Level position — hidden for Fib Circles / Arcs / Wedge (labels follow trend ray) */}
+                  {isFibTool && v9FibSettingsShowLevelPosition(tlSubTool.icon, tlActiveDrawingType) && (() => {
                     const dk = "fibLevelPosition";
                     const verticalLevels = v9FibLevelPositionUsesVerticalAxis(tlSubTool.icon);
                     const options = verticalLevels ? ["Top", "Middle", "Bottom"] : ["Left", "Center", "Right"];

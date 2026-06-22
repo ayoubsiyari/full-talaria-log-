@@ -3003,12 +3003,45 @@ class ReplaySystem {
         } else {
             this.play();
         }
+
+        this._showPlayPauseFeedback(wasPlaying);
         
         // Force sync UI to actual state after toggle (immediate)
         this.syncPlayPauseUI();
         
         // Also sync after a brief delay to catch any race conditions
         setTimeout(() => this.syncPlayPauseUI(), 20);
+    }
+
+    /**
+     * Bottom toast: "Play" while replay runs, "Paused" when stopped.
+     * play() sets isPlaying inside rAF — use wasPlaying + short delay so Space / toolbar stay accurate.
+     */
+    _showPlayPauseFeedback(wasPlaying) {
+        const show = (playing) => {
+            const message = playing ? '▶ Play' : '⏸ Paused';
+            const stack = typeof window !== 'undefined' ? window.__TalariaToastStack : null;
+            if (this._playPauseToastDismiss) {
+                try { this._playPauseToastDismiss(); } catch (_) { /* ignore */ }
+                this._playPauseToastDismiss = null;
+            }
+            if (stack && typeof stack.show === 'function') {
+                this._playPauseToastDismiss = stack.show(message, { type: 'info', duration: 1500 });
+                return;
+            }
+            const ch = this.chart;
+            if (ch && typeof ch.showNotification === 'function') {
+                ch.showNotification(message, 1500);
+            }
+        };
+
+        if (wasPlaying) {
+            show(false);
+            return;
+        }
+        setTimeout(() => {
+            show(!!(this.isPlaying || this.isPlayStarting));
+        }, 50);
     }
     
     /**

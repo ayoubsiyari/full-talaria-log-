@@ -20,8 +20,11 @@ const liveIndexPath = path.resolve(__dirname, "../live/index.html");
 const distIndexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
 
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
+const LINK_HREF_RE = /(<link\b[^>]*\shref=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 /** Multichart iframe inject() cache bust in live/index.html */
-const INLINE_MULTICHART_V_RE = /var V = '\d{8}[ab]\d+';/g;
+const INLINE_MULTICHART_V_RE = /var V = '[^']+';/g;
+const SW_VERSION_RE = /const SW_VERSION = "[^"]+";/;
+const swPath = path.resolve(__dirname, "../live/public/sw.js");
 
 function defaultBuildId() {
   const d = new Date();
@@ -61,15 +64,26 @@ function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }
   const before = fs.readFileSync(filePath, "utf8");
   const buildId = buildIdOverride ?? resolveBuildId(before);
   let after = before.replace(SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+  after = after.replace(LINK_HREF_RE, `$1$2?v=${buildId}$3`);
   after = after.replace(INLINE_MULTICHART_V_RE, `var V = '${buildId}';`);
 
   if (after === before) {
-    console.warn("[bump-dist-v9-cache] No /chart/ script src= matched in", filePath);
+    console.warn("[bump-dist-v9-cache] No /chart/ asset references matched in", filePath);
     return 0;
   }
 
   fs.writeFileSync(filePath, after, "utf8");
-  console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on chart scripts in", filePath);
+  console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on chart assets in", filePath);
+  return 1;
+}
+
+function bumpServiceWorkerVersion(buildId) {
+  if (!buildId || !fs.existsSync(swPath)) return 0;
+  const before = fs.readFileSync(swPath, "utf8");
+  const after = before.replace(SW_VERSION_RE, `const SW_VERSION = "talaria-chart-${buildId}";`);
+  if (after === before) return 0;
+  fs.writeFileSync(swPath, after, "utf8");
+  console.log("[bump-dist-v9-cache] Set SW_VERSION=" + buildId + " in", swPath);
   return 1;
 }
 
@@ -91,6 +105,9 @@ if (mode === "live" || mode === "both") {
     required: mode === "live",
     buildId: buildIdForDist,
   });
+  if (buildIdForDist) {
+    touched += bumpServiceWorkerVersion(buildIdForDist);
+  }
 }
 
 if (mode === "dist" || mode === "both") {
@@ -115,6 +132,7 @@ if (mode === "dist" || mode === "both") {
       required: false,
       buildId: distBuildId,
     });
+    touched += bumpServiceWorkerVersion(distBuildId);
   }
 }
 

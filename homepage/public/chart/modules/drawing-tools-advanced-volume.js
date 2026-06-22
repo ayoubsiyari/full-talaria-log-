@@ -611,9 +611,9 @@ class AnchoredVWAPTool extends BaseDrawing {
             return;
         }
         
-        // Determine the visible range to limit calculations
+        // Always compute VWAP from anchor through full series — zoom must not change marker count.
         const startIndex = Math.max(0, anchorIndex);
-        const endIndex = Math.min(chartData.length, (scales.chart && Number.isFinite(scales.chart.visibleEndIndex)) ? scales.chart.visibleEndIndex + 200 : chartData.length);
+        const endIndex = chartData.length;
 
         let vwapPoints = null;
         let hasStdDev = false;
@@ -804,7 +804,8 @@ class AnchoredVWAPTool extends BaseDrawing {
                     scales.chart.dataIndexToPixel(p.index) : scales.xScale(p.index);
                 return {
                     x,
-                    y: scales.yScale(transformFn(p))
+                    y: scales.yScale(transformFn(p)),
+                    barIndex: p.index
                 };
             });
         };
@@ -830,13 +831,16 @@ class AnchoredVWAPTool extends BaseDrawing {
             const appendGuideMarkers = (points, markerGroupClass) => {
                 if (!Array.isArray(points) || points.length <= 1) return;
 
+                const lastBarIndex = points[points.length - 1]?.barIndex;
                 const markerPoints = [];
                 for (let i = 0; i < points.length; i++) {
                     const point = points[i];
                     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
-                    const isAnchor = i === 0;
-                    const isLast = i === points.length - 1;
-                    if (isAnchor || isLast || (i % markerBarStride === 0)) {
+                    const barIndex = Number.isFinite(point.barIndex) ? point.barIndex : (anchorIndex + i);
+                    const barOffset = barIndex - anchorIndex;
+                    const isAnchor = barOffset === 0;
+                    const isLast = Number.isFinite(lastBarIndex) ? barIndex === lastBarIndex : i === points.length - 1;
+                    if (isAnchor || isLast || (barOffset > 0 && barOffset % markerBarStride === 0)) {
                         markerPoints.push(point);
                     }
                 }

@@ -791,19 +791,8 @@ class KeyboardShortcutsManager {
         if (this.isReplayActive()) {
             const replay = this.chart.replaySystem;
             
-            // Toggle play state
+            // togglePlay() shows Play / Paused toast and syncs toolbar UI
             replay.togglePlay();
-            
-            // Force sync UI after a small delay to ensure state has changed
-            setTimeout(() => {
-                if (replay.syncPlayPauseUI) {
-                    replay.syncPlayPauseUI();
-                }
-            }, 10);
-            
-            // Show notification based on current state
-            const isPlaying = replay.isPlaying;
-            this.showNotification(isPlaying ? '▶ Playing' : '⏸ Paused');
         } else {
             // If not in replay mode, reset view
             this.resetChart();
