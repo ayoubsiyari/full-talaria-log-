@@ -14469,6 +14469,11 @@ const TalariaV8bLive = () => {
     }
   }, [tlSubTool.label, lineShapeUiContext]);
 
+  // RR tools have no Input tab — keep panel on Style if a stale tab id remains.
+  useEffect(() => {
+    if (isRRTool && tlSettTab === "input") setTlSettTab("style");
+  }, [isRRTool, tlSettTab]);
+
   // Update txtName when switching text sub-tools (Text → Note → Callout etc.), including when a placed annotation is selected.
   useEffect(() => {
     const textUiActive =
@@ -21748,7 +21753,7 @@ const TalariaV8bLive = () => {
             const noTextTab = !v9ToolHasTextTab(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasFibInputTab = V9_FIB_ICONS_WITH_INPUT_TAB.has(tlSubTool.icon);
-            const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || hasFibInputTab || isGannTool
+            const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || hasFibInputTab || isGannTool
               || ["channel", "pitchfork", "flatChannel", "disjointCh"].includes(tlSubTool.icon);
             const tlTabs=[["style","Style"],!noTextTab&&["text","Text"],hasInputTab&&["input","Input"],!noCoordsTab&&["coordinates","Coordinates"],["visibility","Visibility"]].filter(Boolean);
             const tlTabIdx=Math.max(0, tlTabs.findIndex(([id])=>id===tlSettTab));
@@ -26679,6 +26684,12 @@ const TalariaV8bLive = () => {
           : null;
         const inputLayout = indSettTab === "input" && inputLayoutFn ? inputLayoutFn(ctx.indicatorType) : null;
         const inputFlexExclude = new Set(inputLayout?.excludeFlexIds || []);
+        if (inputLayout?.excludeFlexIds?.length) {
+          inputLayout.excludeFlexIds.forEach((id) => {
+            const dashId = v9IndDashStyleParamId(id);
+            if (dashId) inputFlexExclude.add(dashId);
+          });
+        }
         const inTabForFlex = inputFlexExclude.size
           ? inTab.filter((p) => !inputFlexExclude.has(p.id))
           : inTab;
@@ -26688,6 +26699,12 @@ const TalariaV8bLive = () => {
           const layout = buildFn ? buildFn(ctx.indicatorType) : null;
           const ids = new Set();
           const exclude = new Set(layout?.excludeFlexIds || []);
+          if (layout?.excludeFlexIds?.length) {
+            layout.excludeFlexIds.forEach((id) => {
+              const dashId = v9IndDashStyleParamId(id);
+              if (dashId) exclude.add(dashId);
+            });
+          }
           if (layout && layout.sections) {
             layout.sections.forEach((sec) => {
               if (sec.checkboxRow && sec.checkboxRow.showId) ids.add(sec.checkboxRow.showId);

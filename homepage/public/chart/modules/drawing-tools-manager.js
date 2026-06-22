@@ -7395,23 +7395,21 @@ class DrawingToolsManager {
         if (!drawing || !this._getGannDrawingScales()) return false;
         const scales = this._getGannDrawingScales();
         if (drawing.type === 'gann-fan') {
+            if (typeof drawing.isPointInsideBody === 'function') {
+                return drawing.isPointInsideBody(mouseX, mouseY, scales);
+            }
             const layout = typeof drawing.getPixelLayout === 'function'
                 ? drawing.getPixelLayout(scales)
                 : null;
-            if (!layout) return false;
-            const { x1, y1, xBound, yMin, yMax } = layout;
-            if (![x1, y1, xBound, yMin, yMax].every(Number.isFinite)) return false;
-            const px = mouseX;
-            const py = mouseY;
-            const inTri = (ax, ay, bx, by, cx, cy) => {
-                const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
-                const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
-                const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
-                const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-                const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
-                return !(hasNeg && hasPos);
-            };
-            return inTri(x1, y1, xBound, yMin, xBound, yMax);
+            if (!layout || !layout.outerLow || !layout.outerHigh) return false;
+            const { x1, y1, outerLow, outerHigh } = layout;
+            if (![x1, y1, outerLow.x, outerLow.y, outerHigh.x, outerHigh.y].every(Number.isFinite)) return false;
+            return GannFanTool._pointInTriangle(
+                mouseX, mouseY,
+                x1, y1,
+                outerLow.x, outerLow.y,
+                outerHigh.x, outerHigh.y
+            );
         }
         if (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed') {
             const layout = typeof drawing.getPixelLayout === 'function'

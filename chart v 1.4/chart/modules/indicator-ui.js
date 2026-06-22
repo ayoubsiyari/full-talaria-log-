@@ -4686,7 +4686,7 @@ function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthI
 function v9BuildIndicatorInputLayout(indicatorType) {
     if (indicatorType === 'sma') {
         return {
-            excludeFlexIds: ['showSmoothMa', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth'],
+            excludeFlexIds: ['showSmoothMa', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'smoothLineDashStyle'],
             sections: [{
                 title: 'SMA-based MA',
                 header: true,
@@ -4698,7 +4698,7 @@ function v9BuildIndicatorInputLayout(indicatorType) {
     }
     if (indicatorType === 'ema') {
         return {
-            excludeFlexIds: ['showSmoothEma', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth'],
+            excludeFlexIds: ['showSmoothEma', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'smoothLineDashStyle'],
             sections: [{
                 title: 'EMA-based MA',
                 header: true,
@@ -4809,11 +4809,12 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'rsi') {
         return {
-            excludeFlexIds: ['showMa', 'maColor', 'maLineStyle', 'maLineWidth', 'showBg', 'bgColor'],
+            excludeFlexIds: ['showMa', 'maColor', 'maLineStyle', 'maLineWidth', 'maLineDashStyle', 'showLine', 'color', 'lineStyle', 'lineWidth', 'lineDashStyle', 'showBg', 'bgColor'],
             sections: [{
                 header: true,
                 rows: [
-                    v9PlotRow('RSI', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                    v9PlotRow('RSI', 'color', 'lineStyle', 'lineWidth', 'showLine'),
+                    v9PlotRow('RSI-based MA', 'maColor', 'maLineStyle', 'maLineWidth', 'showMa')
                 ]
             }, {
                 title: 'RSI Upper Band',
@@ -5582,6 +5583,8 @@ function v9EnsureIndicatorDashStyleParams(def) {
         if (!dashId || existing.has(dashId)) return;
         if (param.type !== 'select') return;
         if (!/LineStyle$/.test(param.id) && param.id !== 'lineStyle') return;
+        // Input-tab LINE STYLE grid rows already cover plot + dash — no separate Line Dash field.
+        if ((param.tab || 'style') === 'input') return;
         def.params.push({
             id: dashId,
             label: (param.label || 'Line').replace(/style/i, 'Dash'),

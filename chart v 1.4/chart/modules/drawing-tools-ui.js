@@ -5569,14 +5569,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
         modal.className = 'tv-settings-modal compact';
 
-        if (drawing.type === 'long-position' || drawing.type === 'short-position') {
-
-            modal.classList.add('tv-settings-modal--rr-inputs');
-
-        }
-
-
-
         // Pitchfork: compact modal matching fib-style layout
 
         if (drawing.type === 'pitchfork' || drawing.type === 'pitchfan') {
@@ -5791,7 +5783,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const isRangeInputsTool = drawing.type === 'date-price-range';
 
-        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isPositionInputsTool || isVolumeProfileInputsTool || isAnchoredVWAPInputsTool || isRangeInputsTool;
+        // RR (long/short position): entry/SL/TP are edited on-chart — no Inputs tab in settings.
+        const hasInputsTab = drawing.type === 'regression-trend' || isFibonacciInputTabTool || isGannInputTabTool || isVolumeProfileInputsTool || isAnchoredVWAPInputsTool || isRangeInputsTool;
 
         const inputTabLabel = (isFibonacciInputTabTool || isGannInputTabTool) ? 'Input' : 'Inputs';
 
@@ -27090,89 +27083,8 @@ applyTemplate(drawing, templateId, modal) {
 
         } else if (isRiskReward) {
 
-            this.ensureTabsStyles();
-
-
-
-            const tabsWrapper = contentRoot.append('div')
-
-                .attr('class', 'drawing-settings-tabs');
-
-
-
-            const tabHeader = tabsWrapper.append('div')
-
-                .attr('class', 'drawing-settings-tab-header');
-
-
-
-            const tabContent = tabsWrapper.append('div')
-
-                .attr('class', 'drawing-settings-tab-content');
-
-
-
-            const inputsPane = tabContent.append('div')
-
-                .attr('class', 'tab-pane')
-
-                .attr('data-tab', 'inputs');
-
-
-
-            const stylePane = tabContent.append('div')
-
-                .attr('class', 'tab-pane')
-
-                .attr('data-tab', 'style');
-
-
-
-            const tabs = [
-
-                { key: 'inputs', label: 'Inputs', pane: inputsPane },
-
-                { key: 'style', label: 'Style', pane: stylePane }
-
-            ];
-
-
-
-            const setActiveTab = (targetKey) => {
-
-                tabs.forEach(tab => {
-
-                    tab.button.classed('active', tab.key === targetKey);
-
-                    tab.pane.classed('active', tab.key === targetKey);
-
-                });
-
-            };
-
-
-
-            tabs.forEach(tab => {
-
-                tab.button = tabHeader.append('button')
-
-                    .attr('class', 'tab-button')
-
-                    .text(tab.label)
-
-                    .on('click', () => setActiveTab(tab.key));
-
-            });
-
-
-
-            setActiveTab('inputs');
-
-
-
-            this.addRiskRewardInputs(inputsPane, drawing);
-
-            styleContainerParent = stylePane;
+            // Style-only settings — RR levels are edited on the chart (no Inputs tab).
+            styleContainerParent = contentRoot;
 
         } else if (supportsTextTab) {
 

@@ -1255,6 +1255,10 @@ const TalariaV8b = () => {
   }, [isRRTool, tlSettOpen, tlSettTab, tlSubTool.icon]);
 
   useEffect(() => {
+    if (isRRTool && tlSettTab === "input") setTlSettTab("style");
+  }, [isRRTool, tlSettTab]);
+
+  useEffect(() => {
     if (!isRRTool) return;
     const onGeomLive = (ev) => {
       if (!tlSettOpen) return;
@@ -2241,7 +2245,7 @@ const TalariaV8b = () => {
           {(()=>{
             const noTextTab = isFibTool || isGannTool || isPatternTool || tool === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
-            const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool;
+            const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool;
             const tlTabs=[["style","Style"],!noTextTab&&["text","Text"],hasInputTab&&["input","Input"],!noCoordsTab&&["coordinates","Coordinates"],["visibility","Visibility"]].filter(Boolean);
             const tlTabIdx=Math.max(0, tlTabs.findIndex(([id])=>id===tlSettTab));
             return (

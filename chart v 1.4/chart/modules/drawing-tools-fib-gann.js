@@ -3804,6 +3804,114 @@ class GannFanTool extends BaseDrawing {
         return '';
     }
 
+    static _pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
+        const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+        const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+        const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+        const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+        const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+        return !(hasNeg && hasPos);
+    }
+
+    /** Shared pixel layout for render + hit tests (matches visible fan geometry). */
+    static _computeFanGeometry(points, style, scales) {
+        if (!points || points.length < 2 || !scales) return null;
+
+        const getX = (p) => scales.chart?.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x);
+        const getY = (p) => scales.yScale(p.y);
+
+        const x1 = getX(points[0]);
+        const y1 = getY(points[0]);
+        const x2 = getX(points[1]);
+        const y2 = getY(points[1]);
+
+        const xRange = scales.xScale && typeof scales.xScale.range === 'function'
+            ? scales.xScale.range()
+            : [0, scales.chart?.w || 1000];
+        const yRange = scales.yScale && typeof scales.yScale.range === 'function'
+            ? scales.yScale.range()
+            : [scales.chart?.h || 500, 0];
+        const xMin = Math.min(xRange[0], xRange[1]);
+        const xMax = Math.max(xRange[0], xRange[1]);
+        const yMin = Math.min(yRange[0], yRange[1]);
+        const yMax = Math.max(yRange[0], yRange[1]);
+
+        const baseDx = x2 - x1;
+        const baseDy = y2 - y1;
+        const xBound = baseDx >= 0 ? xMax : xMin;
+        const baseSlope = (Math.abs(baseDx) < 1e-6)
+            ? (baseDy >= 0 ? 1e6 : -1e6)
+            : (baseDy / baseDx);
+
+        const rayEndToBounds = (slope) => {
+            const dxToXBound = xBound - x1;
+            let endX = xBound;
+            let endY = y1 + (slope * dxToXBound);
+
+            if (endY >= yMin && endY <= yMax) {
+                return { x: endX, y: endY };
+            }
+
+            const yBound = endY < yMin ? yMin : yMax;
+            if (slope === 0) {
+                return { x: endX, y: Math.max(yMin, Math.min(yMax, y1)) };
+            }
+            const dxToY = (yBound - y1) / slope;
+            endX = x1 + dxToY;
+            endY = yBound;
+            endX = Math.max(xMin, Math.min(xMax, endX));
+            return { x: endX, y: endY };
+        };
+
+        const fanLevelsRaw = Array.isArray(style?.fanLevels) ? style.fanLevels : [];
+        const fanLevelsSource = Array.isArray(style?.fanLevels)
+            ? fanLevelsRaw
+            : GannFanTool.defaultFanLevels().map((l) => ({ ...l }));
+
+        const levelsAll = fanLevelsSource
+            .map((l) => {
+                const v = l && l.value != null ? parseFloat(l.value) : NaN;
+                const lbl = (l && l.label != null && `${l.label}` !== '')
+                    ? `${l.label}`
+                    : GannFanTool.labelForValue(v);
+                return {
+                    value: isFinite(v) ? v : NaN,
+                    enabled: l && l.enabled !== false,
+                    color: (l && l.color) ? l.color : (style?.stroke || '#4caf50'),
+                    label: lbl,
+                    lineWidth: l?.lineWidth,
+                    lineType: l?.lineType,
+                };
+            })
+            .filter((l) => l.enabled && isFinite(l.value));
+
+        const rays = levelsAll
+            .map((l) => {
+                const slope = baseSlope * l.value;
+                const end = rayEndToBounds(slope);
+                return { ...l, slope, end };
+            })
+            .sort((a, b) => a.slope - b.slope);
+
+        return {
+            x1,
+            y1,
+            x2,
+            y2,
+            xBound,
+            baseSlope,
+            xMin,
+            xMax,
+            yMin,
+            yMax,
+            rays,
+            outerLow: rays.length ? rays[0].end : null,
+            outerHigh: rays.length ? rays[rays.length - 1].end : null,
+        };
+    }
+
     onPointHandleDrag(index, context = {}) {
         const { point, scales } = context;
         if (!point || !scales) return false;
@@ -3860,26 +3968,17 @@ class GannFanTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing gann-fan', renderOpts);
         this._clearDrawingLabels(scales);
 
-        const getX = (p) => scales.chart?.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
-        const getY = (p) => scales.yScale(p.y);
-
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        const x1 = getX(this.points[0]);
-        const y1 = getY(this.points[0]);
-        const x2 = getX(this.points[1]);
-        const y2 = getY(this.points[1]);
+        const layout = GannFanTool._computeFanGeometry(this.points, this.style, scales);
+        if (!layout) return;
 
-        const xRange = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [0, scales.chart?.w || 1000];
-        const yRange = scales.yScale && typeof scales.yScale.range === 'function' ? scales.yScale.range() : [scales.chart?.h || 500, 0];
-        const xMin = Math.min(xRange[0], xRange[1]);
-        const xMax = Math.max(xRange[0], xRange[1]);
-        const yMin = Math.min(yRange[0], yRange[1]);
-        const yMax = Math.max(yRange[0], yRange[1]);
+        const {
+            x1, y1, xBound, xMin, xMax, yMin, yMax, rays, outerLow, outerHigh,
+        } = layout;
 
-        const baseDx = x2 - x1;
-        const baseDy = y2 - y1;
+        const baseDx = layout.x2 - layout.x1;
+        const baseDy = layout.y2 - layout.y1;
         const fanLen = Math.hypot(baseDx, baseDy);
 
         const invPxX = (px) => (scales.chart && typeof scales.chart.pixelToDataIndex === 'function')
@@ -3893,7 +3992,7 @@ class GannFanTool extends BaseDrawing {
         if (fanLen > 1e-6) {
             const ux = baseDx / fanLen;
             const uy = baseDy / fanLen;
-            const along = (x2 - x1) * ux + (y2 - y1) * uy;
+            const along = (layout.x2 - x1) * ux + (layout.y2 - y1) * uy;
             const hx = x1 + ux * along;
             const hy = y1 + uy * along;
             this.virtualPoints = [
@@ -3903,12 +4002,6 @@ class GannFanTool extends BaseDrawing {
         } else {
             this.virtualPoints = [this.points[0], this.points[1]];
         }
-
-        // Extend rays in the direction of anchor #2 (not always to the right).
-        const xBound = baseDx >= 0 ? xMax : xMin;
-        const baseSlope = (Math.abs(baseDx) < 1e-6)
-            ? (baseDy >= 0 ? 1e6 : -1e6)
-            : (baseDy / baseDx);
 
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
@@ -3939,67 +4032,12 @@ class GannFanTool extends BaseDrawing {
             return `rgba(120, 123, 134, ${alpha})`;
         };
 
-        const rayEndToBounds = (slope) => {
-            const dxToXBound = xBound - x1;
-            let endX = xBound;
-            let endY = y1 + (slope * dxToXBound);
-
-            if (endY >= yMin && endY <= yMax) {
-                return { x: endX, y: endY };
-            }
-
-            // Intersect with y boundary instead
-            const yBound = endY < yMin ? yMin : yMax;
-            if (slope === 0) {
-                return { x: endX, y: Math.max(yMin, Math.min(yMax, y1)) };
-            }
-            const dxToY = (yBound - y1) / slope;
-            endX = x1 + dxToY;
-            endY = yBound;
-            // Clamp X if needed
-            endX = Math.max(xMin, Math.min(xMax, endX));
-            return { x: endX, y: endY };
-        };
-
-        const fanLevelsRaw = Array.isArray(this.style.fanLevels) ? this.style.fanLevels : [];
-        const fanLevelsSource = Array.isArray(this.style.fanLevels)
-            ? fanLevelsRaw
-            : GannFanTool.defaultFanLevels().map((l) => ({ ...l }));
-
-        const levelsAll = fanLevelsSource
-            .map(l => {
-                const v = l && l.value != null ? parseFloat(l.value) : NaN;
-                const lbl = (l && l.label != null && `${l.label}` !== '')
-                    ? `${l.label}`
-                    : GannFanTool.labelForValue(v);
-                return {
-                    value: isFinite(v) ? v : NaN,
-                    enabled: l && l.enabled !== false,
-                    color: (l && l.color) ? l.color : (this.style.stroke || '#4caf50'),
-                    label: lbl
-                };
-            })
-            .filter(l => l.enabled && isFinite(l.value));
-
-        // Compute actual slopes and endpoints
-        const rays = levelsAll
-            .map(l => {
-                const slope = baseSlope * l.value;
-                const end = rayEndToBounds(slope);
-                return { ...l, slope, end };
-            })
-            .sort((a, b) => a.slope - b.slope);
-
-        // Hitbox (big wedge) for easy selection + dblclick settings — drawn last so it sits above rays/zones.
+        // Hitbox (wedge between outer rays) for easy whole-tool selection + move.
         const appendFanHitbox = () => {
-            const hit = [
-                { x: x1, y: y1 },
-                { x: xBound, y: yMin },
-                { x: xBound, y: yMax }
-            ];
+            if (!outerLow || !outerHigh) return;
             this.group.append('path')
                 .attr('class', 'shape-border-hit gann-fan-hitbox')
-                .attr('d', `M ${hit[0].x} ${hit[0].y} L ${hit[1].x} ${hit[1].y} L ${hit[2].x} ${hit[2].y} Z`)
+                .attr('d', `M ${x1} ${y1} L ${outerLow.x} ${outerLow.y} L ${outerHigh.x} ${outerHigh.y} Z`)
                 .attr('fill', 'rgba(255,255,255,0.001)')
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(16, 18 * scaleFactor))
@@ -4037,6 +4075,17 @@ class GannFanTool extends BaseDrawing {
             const hitW = Math.max(10, w * 6);
 
             this.group.append('line')
+                .attr('class', 'gann-level-hit')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', ray.end.x).attr('y2', ray.end.y)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', hitW)
+                .attr('stroke-dasharray', '')
+                .attr('opacity', 1)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+
+            this.group.append('line')
                 .attr('x1', x1).attr('y1', y1)
                 .attr('x2', ray.end.x).attr('y2', ray.end.y)
                 .attr('stroke', ray.color || this.style.stroke)
@@ -4061,38 +4110,29 @@ class GannFanTool extends BaseDrawing {
         });
 
         // Level values are edited in settings only — no per-ray drag (avoids whole-fan skew on mouse move).
-        // Whole-tool move uses gann-fan-hitbox; direction/scale uses the two anchor handles.
+        // Whole-tool move uses gann-fan-hitbox + ray hit strokes; direction/scale uses the two anchor handles.
         appendFanHitbox();
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
-    /** Pixel layout for level drag (matches `render` anchor + bounds). */
+    /** Pixel layout for hit tests (matches `render`). */
     getPixelLayout(scales) {
-        if (!this.points || this.points.length < 2 || !scales) return null;
-        const getX = (p) => scales.chart?.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p.x)
-            : scales.xScale(p.x);
-        const getY = (p) => scales.yScale(p.y);
-        const x1 = getX(this.points[0]);
-        const y1 = getY(this.points[0]);
-        const x2 = getX(this.points[1]);
-        const y2 = getY(this.points[1]);
-        const chartW = scales.chart?.width || (scales.xScale?.range ? Math.abs(scales.xScale.range()[1] - scales.xScale.range()[0]) : 0);
-        const chartH = scales.chart?.height || (scales.yScale?.range ? Math.abs(scales.yScale.range()[0] - scales.yScale.range()[1]) : 0);
-        const pad = 40;
-        const xMin = -pad;
-        const xMax = (chartW > 0 ? chartW : Math.max(x1, x2) + pad) + pad;
-        const yMin = -pad;
-        const yMax = (chartH > 0 ? chartH : Math.max(y1, y2) + pad) + pad;
-        const baseDx = x2 - x1;
-        const baseDy = y2 - y1;
-        const xBound = baseDx >= 0 ? xMax : xMin;
-        const baseSlope = (Math.abs(baseDx) < 1e-6)
-            ? (baseDy >= 0 ? 1e6 : -1e6)
-            : (baseDy / baseDx);
-        return { x1, y1, xBound, baseSlope, xMin, xMax, yMin, yMax };
+        return GannFanTool._computeFanGeometry(this.points, this.style, scales);
+    }
+
+    /** True when pointer is inside the fan wedge (whole-tool move). */
+    isPointInsideBody(mouseX, mouseY, scales) {
+        const layout = GannFanTool._computeFanGeometry(this.points, this.style, scales);
+        if (!layout || !layout.outerLow || !layout.outerHigh) return false;
+        const { x1, y1, outerLow, outerHigh } = layout;
+        return GannFanTool._pointInTriangle(
+            mouseX, mouseY,
+            x1, y1,
+            outerLow.x, outerLow.y,
+            outerHigh.x, outerHigh.y
+        );
     }
 
     static fromJSON(data, chart = null) {
