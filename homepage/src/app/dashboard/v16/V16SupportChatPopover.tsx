@@ -80,15 +80,17 @@ function popoverPosition() {
   const POP_W = 360;
   const POP_H = 500;
   const maxPopH = Math.min(POP_H, window.innerHeight * 0.75);
-  let right = Math.max(8, window.innerWidth - 76);
+  let left = 76;
   let top = Math.max(8, window.innerHeight - maxPopH - 16);
   if (btnR) {
-    right = Math.max(8, window.innerWidth - btnR.right - 4);
+    left = Math.round(btnR.right + 8);
+    left = Math.min(left, window.innerWidth - POP_W - 8);
+    left = Math.max(8, left);
     const below = Math.round(btnR.bottom + 6);
     const above = Math.round(btnR.top - maxPopH - 6);
     top = below + maxPopH <= window.innerHeight - 8 ? below : Math.max(8, above);
   }
-  return { top, right, width: POP_W, maxHeight: maxPopH };
+  return { top, left, width: POP_W, maxHeight: maxPopH };
 }
 
 /** Chart-style support ticket dropdown for V16 dashboard (when chart is not mounted). */
@@ -401,7 +403,7 @@ export function V16SupportChatPopover() {
       style={{
         position: "fixed",
         top: pos.top,
-        right: pos.right,
+        left: pos.left,
         width: pos.width,
         height: 500,
         maxHeight: "min(75vh, 560px)",

@@ -31655,12 +31655,20 @@ const TalariaV8bLive = () => {
             const navAnchor = typeof window !== "undefined" ? window.__TALARIA_SUPPORT_NAV_ANCHOR__ : null;
             const anchorEl = supportBtnRef.current || navAnchor;
             const btnR = anchorEl ? anchorEl.getBoundingClientRect() : null;
+            const useLeftSide = !!(navAnchor && anchorEl === navAnchor);
             const POP_W = 360, POP_H = 500;
             const maxPopH = Math.min(POP_H, window.innerHeight * 0.75);
+            let left = null;
             let right = Math.max(8, window.innerWidth - 76);
             let top = Math.max(8, window.innerHeight - maxPopH - 16);
             if (btnR) {
-              right = Math.max(8, window.innerWidth - btnR.right - 4);
+              if (useLeftSide) {
+                left = Math.round(btnR.right + 8);
+                left = Math.min(left, window.innerWidth - POP_W - 8);
+                left = Math.max(8, left);
+              } else {
+                right = Math.max(8, window.innerWidth - btnR.right - 4);
+              }
               const below = Math.round(btnR.bottom + 6);
               const above = Math.round(btnR.top - maxPopH - 6);
               top = below + maxPopH <= window.innerHeight - 8 ? below : Math.max(8, above);
@@ -31692,7 +31700,7 @@ const TalariaV8bLive = () => {
             };
             return (
               <div ref={supportPopRef} data-v9-chrome="1" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-                style={{ position:"fixed", top, right, width:POP_W, height:POP_H, maxHeight:"min(75vh,560px)", background:c.sf, border:`1px solid rgba(140,160,255,0.32)`, borderRadius:6, boxShadow:"0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)", zIndex:9999, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrWinIn 0.18s ease" }}>
+                style={{ position:"fixed", top, ...(left != null ? { left } : { right }), width:POP_W, height:POP_H, maxHeight:"min(75vh,560px)", background:c.sf, border:`1px solid rgba(140,160,255,0.32)`, borderRadius:6, boxShadow:"0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)", zIndex:9999, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrWinIn 0.18s ease" }}>
                 {/* ── Header ── */}
                 <div style={{ padding:"10px 14px", borderBottom:`1px solid ${c.br}`, display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                   {supportSelThread && !supportNewThread ? (
