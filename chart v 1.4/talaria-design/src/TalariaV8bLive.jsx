@@ -2816,6 +2816,15 @@ function v9DefaultVisibilityTlRows() {
   return patch;
 }
 
+function v9CloneDefaultVisibilityTlRows() {
+  const src = v9DefaultVisibilityTlRows();
+  const out = {};
+  Object.keys(src).forEach((key) => {
+    out[key] = { ...src[key] };
+  });
+  return out;
+}
+
 function v9NormalizeTlVisRow(key, row) {
   const meta = V9_IND_VIS_METAS.find(([k]) => k === key);
   const hm = meta ? meta[3] : 60;
@@ -7867,6 +7876,22 @@ function v9NotifyDrawingTemplateApplied(drawing, builtinDefault = false) {
   } catch (_) {}
 }
 
+function v9SyncOpenPanelAfterBuiltinDefault(drawing, dm) {
+  if (!drawing || !drawing.type) return;
+  try {
+    const g = v9DrawingTypeToPanelGroup(drawing.type);
+    if (g === 'text') {
+      if (typeof window.__v9ApplyBuiltinDefaultToTxtPanelStyle === 'function') {
+        window.__v9ApplyBuiltinDefaultToTxtPanelStyle(drawing, dm);
+      }
+      return;
+    }
+    if (typeof window.__v9ApplyBuiltinDefaultToPanelStyle === 'function') {
+      window.__v9ApplyBuiltinDefaultToPanelStyle(drawing, dm);
+    }
+  } catch (_) { /* ignore */ }
+}
+
 function v9ApplyDrawingTemplate(drawing, templateId) {
   const { tb, live } = v9ResolveDrawingToolbarForDrawing(drawing);
   if (!tb || !live || !templateId || typeof tb.applyTemplate !== 'function') return false;
@@ -7896,7 +7921,35 @@ function v9BuildDefaultTlStyleForDrawingType(type) {
     const line = out.lineColor || V9_DEFAULT_TL_LINE_COLOR;
     out.textColor = line;
   }
+  Object.assign(out, v9CloneDefaultVisibilityTlRows());
   return out;
+}
+
+/** Panel `tlStyle` after built-in Apply default — fresh style + default visibility + live coords. */
+function v9BuildTlStyleAfterBuiltinDefault(drawing) {
+  if (!drawing || !drawing.type) return null;
+  const full = v9BuildDefaultTlStyleForDrawingType(drawing.type);
+  if (!full) return null;
+  return {
+    ...full,
+    ...v9CloneDefaultVisibilityTlRows(),
+    ...v9CoordPatchFromDrawing(drawing),
+  };
+}
+
+function v9BuildTxtStyleAfterBuiltinDefault(drawing) {
+  if (!drawing || !drawing.type) return null;
+  const next = {
+    ...v9BuildDefaultTxtStyleForLegacyTool(drawing.type, null, { preserveCoords: true }),
+    ...v9CloneDefaultVisibilityTlRows(),
+    ...v9CoordPatchFromDrawing(drawing),
+  };
+  if (typeof drawing.text === "string") next.content = drawing.text;
+  return next;
+}
+
+function v9DefaultDrawingVisibilityObject() {
+  return v9IndicatorVisibilityFromDraft(v9DefaultVisibilityTlRows());
 }
 
 function v9ApplyDefaultDrawingTemplate(drawing) {
@@ -7904,6 +7957,7 @@ function v9ApplyDefaultDrawingTemplate(drawing) {
   if (!live) return false;
   if (dm && typeof dm.applyBuiltinDefaultStyleToDrawing === "function") {
     if (dm.applyBuiltinDefaultStyleToDrawing(live)) {
+      v9SyncOpenPanelAfterBuiltinDefault(live, dm);
       v9NotifyDrawingTemplateApplied(live, true);
       v9NotifyDrawingAction("Default style applied");
       return true;
@@ -7928,6 +7982,11 @@ function v9ApplyDefaultDrawingTemplate(drawing) {
       if (resetKeys.has(k)) delete live.style[k];
     }
     Object.assign(live.style, stylePatch);
+    if (typeof dm.resetDrawingVisibilityToDefaults === "function") {
+      dm.resetDrawingVisibilityToDefaults(live);
+    } else {
+      live.visibility = v9DefaultDrawingVisibilityObject();
+    }
     v9ApplyTlStyleExtrasToDrawing(live, defaults, dm);
     try {
       if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(live);
@@ -7937,6 +7996,7 @@ function v9ApplyDefaultDrawingTemplate(drawing) {
       try { dm.renderDrawing?.(live); } catch (_) {}
     }
     v9NotifyDrawingTemplateApplied(live, true);
+    v9SyncOpenPanelAfterBuiltinDefault(live, dm);
     v9NotifyDrawingAction("Default style applied");
     return true;
   }
@@ -13439,10 +13499,15 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlFontSizeDrop"); return n; }); }, 130);
   };
   const closeTlInfoDrop = () => {
-    if (tlStyleDrop !== "info" && !closing.has("tlInfoDrop")) return;
-    setClosing(s => new Set([...s, "tlInfoDrop"]));
+    setClosing((s) => new Set([...s, "tlInfoDrop"]));
     setTlStyleDrop(null);
-    setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlInfoDrop"); return n; }); }, 130);
+    setTimeout(() => {
+      setClosing((s) => {
+        const n = new Set(s);
+        n.delete("tlInfoDrop");
+        return n;
+      });
+    }, 130);
   };
   const closeTlSettTplDrop = () => {
     if (!tlSettTplDrop && !closing.has("tlSettTplDrop")) return;
@@ -17498,6 +17563,8 @@ const TalariaV8bLive = () => {
   const suppressVwapBridge = useRef(false);
   const suppressVpBridge = useRef(false);
   const suppressAvBridge = useRef(false);
+  /** Block drawingsChanged read-back while Apply default re-hydrates tlStyle visibility. */
+  const suppressBuiltinDefaultReadback = useRef(false);
 
   // After a saved template is applied on canvas, re-hydrate V9 tlStyle so the style bridge does not revert it.
   useEffect(() => {
@@ -17510,15 +17577,20 @@ const TalariaV8bLive = () => {
         const d = live || raw;
         if (!d || !d.type) return;
         suppressForwardBridge.current = true;
+        suppressCoordBridge.current = true;
+        suppressBuiltinDefaultReadback.current = !!builtinDefault;
         const full = builtinDefault
-          ? v9BuildDefaultTlStyleForDrawingType(d.type)
+          ? v9BuildTlStyleAfterBuiltinDefault(d)
           : v9BuildFullTlStyleFromDrawing(d, dm);
         if (full) {
           flushSync(() => setTlStyle(full));
           if (builtinDefault && dm) {
             try {
+              v9ApplyVisibilityFromTlStyle(d, full);
+              if (typeof dm.saveDrawings === "function") dm.saveDrawings();
               v9SyncDrawingAxisHighlights(d);
-              if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+              if (typeof dm.redrawAll === "function") dm.redrawAll();
+              else if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
               else if (dm.chart && typeof dm.chart.scheduleRender === "function") dm.chart.scheduleRender();
             } catch (_) {
               try { dm.renderDrawing?.(d); } catch (_) {}
@@ -17537,31 +17609,89 @@ const TalariaV8bLive = () => {
           v9MarkTxtStyleOwnerType(v9TxtStyleOwnerTypeRef, d);
           flushSync(() => {
             const next = builtinDefault
-              ? v9BuildDefaultTxtStyleForLegacyTool(d.type, null, { preserveCoords: true })
+              ? v9BuildTxtStyleAfterBuiltinDefault(d)
               : v9BuildFullTxtStyleFromDrawing(d);
-            const coordPatch = v9CoordPatchFromDrawing(d);
-            const visPatch = v9VisibilityPatchFromDrawing(d);
-            if (coordPatch && Object.keys(coordPatch).length) Object.assign(next, coordPatch);
-            if (visPatch && Object.keys(visPatch).length) Object.assign(next, visPatch);
-            if (typeof d.text === "string") next.content = d.text;
+            if (!builtinDefault && next) {
+              const visPatch = v9VisibilityPatchFromDrawing(d);
+              if (visPatch && Object.keys(visPatch).length) Object.assign(next, visPatch);
+            }
+            if (typeof d.text === "string" && next) next.content = d.text;
             setTxtStyle(next);
           });
+          if (builtinDefault && dm) {
+            try {
+              v9ApplyVisibilityFromTlStyle(d, v9CloneDefaultVisibilityTlRows());
+              if (typeof dm.saveDrawings === "function") dm.saveDrawings();
+            } catch (_) {}
+          }
           v9SyncQuickBarLockFromDrawing(d, null, setTxtLocked);
         }
         requestAnimationFrame(() => {
           suppressForwardBridge.current = false;
+          suppressCoordBridge.current = false;
           suppressTxtForwardBridge.current = false;
           suppressTxtCoordBridge.current = false;
+          suppressBuiltinDefaultReadback.current = false;
         });
       } catch (err) {
         suppressForwardBridge.current = false;
+        suppressCoordBridge.current = false;
         suppressTxtForwardBridge.current = false;
         suppressTxtCoordBridge.current = false;
+        suppressBuiltinDefaultReadback.current = false;
         console.warn("[V9] template style sync failed:", err);
       }
     };
     window.addEventListener("v9DrawingTemplateApplied", onTemplateApplied);
     return () => window.removeEventListener("v9DrawingTemplateApplied", onTemplateApplied);
+  }, []);
+
+  // Synchronous panel refresh when Apply default runs (settings modal may stay open on Visibility tab).
+  useEffect(() => {
+    const applyTlBuiltinDefaultToPanel = (drawing, dm) => {
+      if (!drawing?.type) return;
+      if (drawingTypeToPanelGroupRef.current(drawing.type) === "text") return;
+      const full = v9BuildTlStyleAfterBuiltinDefault(drawing);
+      if (!full) return;
+      suppressForwardBridge.current = true;
+      suppressCoordBridge.current = true;
+      suppressBuiltinDefaultReadback.current = true;
+      flushSync(() => setTlStyle(full));
+      try {
+        v9ApplyVisibilityFromTlStyle(drawing, full);
+        dm?.saveDrawings?.();
+      } catch (_) {}
+      requestAnimationFrame(() => {
+        suppressForwardBridge.current = false;
+        suppressCoordBridge.current = false;
+        suppressBuiltinDefaultReadback.current = false;
+      });
+    };
+    const applyTxtBuiltinDefaultToPanel = (drawing, dm) => {
+      if (!drawing?.type) return;
+      if (drawingTypeToPanelGroupRef.current(drawing.type) !== "text") return;
+      const next = v9BuildTxtStyleAfterBuiltinDefault(drawing);
+      if (!next) return;
+      suppressTxtForwardBridge.current = true;
+      suppressTxtCoordBridge.current = true;
+      suppressBuiltinDefaultReadback.current = true;
+      flushSync(() => setTxtStyle(next));
+      try {
+        v9ApplyVisibilityFromTlStyle(drawing, v9CloneDefaultVisibilityTlRows());
+        dm?.saveDrawings?.();
+      } catch (_) {}
+      requestAnimationFrame(() => {
+        suppressTxtForwardBridge.current = false;
+        suppressTxtCoordBridge.current = false;
+        suppressBuiltinDefaultReadback.current = false;
+      });
+    };
+    window.__v9ApplyBuiltinDefaultToPanelStyle = applyTlBuiltinDefaultToPanel;
+    window.__v9ApplyBuiltinDefaultToTxtPanelStyle = applyTxtBuiltinDefaultToPanel;
+    return () => {
+      delete window.__v9ApplyBuiltinDefaultToPanelStyle;
+      delete window.__v9ApplyBuiltinDefaultToTxtPanelStyle;
+    };
   }, []);
 
   useEffect(() => {
@@ -17656,7 +17786,7 @@ const TalariaV8bLive = () => {
       if (!d || !d.type) return;
       const patch = {
         ...v9CoordPatchFromDrawing(d),
-        ...v9VisibilityPatchFromDrawing(d),
+        ...(coordsOnly ? {} : v9VisibilityPatchFromDrawing(d)),
       };
       if (!coordsOnly && v9DrawingUsesFibStyleBridge(d.type)) {
         Object.assign(patch, v9TlStylePatchFromDrawing(d) || {});
@@ -17672,9 +17802,14 @@ const TalariaV8bLive = () => {
           const nv = next[key];
           const eq = Array.isArray(pv) && Array.isArray(nv)
             ? JSON.stringify(pv) === JSON.stringify(nv)
-            : nv === pv;
+            : (pv && nv && typeof pv === "object" && typeof nv === "object"
+              && !Array.isArray(pv) && !Array.isArray(nv))
+              ? JSON.stringify(pv) === JSON.stringify(nv)
+              : nv === pv;
           if (!eq) {
-            next[key] = pv;
+            next[key] = Array.isArray(pv)
+              ? pv.map((x) => (x && typeof x === "object" ? { ...x } : x))
+              : (pv && typeof pv === "object" ? { ...pv } : pv);
             changed = true;
           }
         }
@@ -17699,7 +17834,7 @@ const TalariaV8bLive = () => {
       if (drawingTypeToPanelGroupRef.current(d.type) === "text") {
         const txtPatch = {
           ...v9CoordPatchFromDrawing(d),
-          ...v9VisibilityPatchFromDrawing(d),
+          ...(coordsOnly ? {} : v9VisibilityPatchFromDrawing(d)),
         };
         if (Object.keys(txtPatch).length > 0) {
           suppressTxtForwardBridge.current = true;
@@ -17707,8 +17842,18 @@ const TalariaV8bLive = () => {
             let changed = false;
             const next = { ...s };
             for (const key of Object.keys(txtPatch)) {
-              if (next[key] !== txtPatch[key]) {
-                next[key] = txtPatch[key];
+              const pv = txtPatch[key];
+              const nv = next[key];
+              const eq = Array.isArray(pv) && Array.isArray(nv)
+                ? JSON.stringify(pv) === JSON.stringify(nv)
+                : (pv && nv && typeof pv === "object" && typeof nv === "object"
+                  && !Array.isArray(pv) && !Array.isArray(nv))
+                  ? JSON.stringify(pv) === JSON.stringify(nv)
+                  : nv === pv;
+              if (!eq) {
+                next[key] = Array.isArray(pv)
+                  ? pv.map((x) => (x && typeof x === "object" ? { ...x } : x))
+                  : (pv && typeof pv === "object" ? { ...pv } : pv);
                 changed = true;
               }
             }
@@ -17719,7 +17864,7 @@ const TalariaV8bLive = () => {
     };
     const syncTlStyleFromSelectedDrawing = () => {
       try {
-        if (suppressForwardBridge.current) return;
+        if (suppressForwardBridge.current || suppressBuiltinDefaultReadback.current) return;
         const editSess = editingDrawingRef.current;
         const d = editSess?.drawing
           || getSelectedDrawingAcrossCharts(null);
@@ -19492,13 +19637,17 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
-  /** Range Tool stats metric toggle — immediate chart sync. */
+  /** Range Tool / trend line Show Info metric toggle — close dropdown when nothing remains selected. */
   const applyTlShowInfoTypeToggle = useCallback((metric) => {
     flushSync(() => setTlStyle((s) => v9PatchTlShowInfoTypesOnToggle(s, metric)));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
       resolveLegacyTool,
     });
+    const types = tlStyleLiveRef.current?.showInfoTypes;
+    if (!tlStyleLiveRef.current?.showInfo || !Array.isArray(types) || types.length === 0) {
+      closeTlInfoDrop();
+    }
   }, []);
 
   /** Show Info master toggle — auto-select first metric when enabling; do not auto-open dropdown. */

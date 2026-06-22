@@ -2307,14 +2307,6 @@ class ReplaySystem {
         // Reset auto-scroll state
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
-
-        // Fresh session / refresh: never carry TF-switch pin or "restored" flags that block realign.
-        if (this.chart) {
-            if (typeof this.chart._clearTfSwitchViewportPin === 'function') {
-                this.chart._clearTfSwitchViewportPin();
-            }
-            this.chart._chartViewRestored = false;
-        }
         
         // Check if this is backtesting mode (from URL or options)
         const urlParams = new URLSearchParams(window.location.search);
@@ -2458,31 +2450,16 @@ class ReplaySystem {
                     this.chart.resize();
                 }
             } catch (e) { /* ignore */ }
-            if (this.autoScrollEnabled && !this.userHasPanned) {
-                this.chart._clearTfSwitchViewportPin?.();
-                this.chart._chartViewRestored = false;
-                if (typeof this.chart._ensureMultichartViewportVisible === 'function') {
-                    this.chart._ensureMultichartViewportVisible({
-                        centerPlayhead: false,
-                        forceRecenter: true,
-                        resetPriceScale: realignAttempts === 0,
-                        render: false,
-                    });
-                } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                    this.syncReplayViewportToPlayhead(this.chart, {
-                        centerPlayhead: false,
-                        forceRecenter: true,
-                        resetPriceScale: realignAttempts === 0,
-                        render: false,
-                    });
-                } else {
-                    const st = this.getReplayAutoScrollState(this.chart);
-                    if (st && Number.isFinite(st.offsetX)) {
-                        this.chart.offsetX = st.offsetX;
+            if (this.autoScrollEnabled) {
+                this.chart.autoScale = true;
+                this.chart.priceOffset = 0;
+                this.chart.priceZoom = 1;
+                const st = this.getReplayAutoScrollState(this.chart);
+                if (st && Number.isFinite(st.offsetX)) {
+                    this.chart.offsetX = st.offsetX;
+                    if (typeof this.chart.constrainOffset === 'function') {
+                        this.chart.constrainOffset();
                     }
-                }
-                if (typeof this.chart.constrainOffset === 'function') {
-                    this.chart.constrainOffset();
                 }
                 this.chart.renderPending = true;
                 if (typeof this.chart.render === 'function') this.chart.render();
@@ -2656,8 +2633,8 @@ class ReplaySystem {
     _replayUserOwnsViewport(chartInstance = this.chart) {
         if (!this.isActive || !chartInstance) return false;
         if (this.userHasPanned || !this.autoScrollEnabled) return true;
-        // TF-switch center pin while paused is not manual pan.
-        if (chartInstance._tfSwitchViewportPin) return false;
+        // TF-switch anchor lock while paused is not manual pan.
+        if (chartInstance._tfSwitchAnchorLock && !this.isPlaying) return false;
 
         const st = typeof this.getReplayAutoScrollState === 'function'
             ? this.getReplayAutoScrollState(chartInstance)
@@ -2740,8 +2717,8 @@ class ReplaySystem {
      */
     syncReplayViewportToPlayhead(chartInstance = this.chart, opts = {}) {
         if (!this.isActive || !chartInstance) return false;
-        // TF-switch screen anchor (paused) — never snap to playhead unless forced.
-        if (opts.forceRecenter !== true && chartInstance._tfSwitchViewportPin && !this.isPlaying) {
+        // TF-switch anchor lock (paused) — keep screen position unless forced.
+        if (opts.forceRecenter !== true && chartInstance._tfSwitchAnchorLock && !this.isPlaying) {
             return false;
         }
         // Manual viewport — don't recenter on playhead unless explicitly forced.
@@ -2794,144 +2771,6 @@ class ReplaySystem {
      * Update chart data based on current replay position
      * @param {boolean} autoScroll - Whether to auto-scroll to latest candles (default: true)
      */
-
-    /** True when this chart has at least one active indicator. */
-    _chartHasActiveIndicators(chart) {
-        return !!(chart && chart.indicators && chart.indicators.active && chart.indicators.active.length);
-    }
-
-    /** Coalesce indicator work during replay play — at most one async pass per chart every ~500ms. */
-    _scheduleDeferredReplayIndicatorRecalc(chart) {
-        if (!chart || !this._chartHasActiveIndicators(chart)) return;
-        if (chart._replayIndRecalcTimer) return;
-        chart._replayIndRecalcTimer = setTimeout(() => {
-            chart._replayIndRecalcTimer = null;
-            if (!this.isActive || !this._chartHasActiveIndicators(chart)) return;
-            try {
-                if (typeof chart.recalculateIndicatorsAsync === 'function') {
-                    chart.recalculateIndicatorsAsync();
-                } else if (typeof chart.recalculateIndicators === 'function') {
-                    chart.recalculateIndicators();
-                }
-            } catch (_) { /* ignore */ }
-        }, 500);
-    }
-
-    /** Flush pending debounced recalc and run a full sync pass (pause / scrub settle). */
-    _flushReplayIndicatorRecalc(chartInstance) {
-        const chart = chartInstance || this.chart;
-        if (!chart) return;
-        if (chart._replayIndRecalcTimer) {
-            clearTimeout(chart._replayIndRecalcTimer);
-            chart._replayIndRecalcTimer = null;
-        }
-        if (!this._chartHasActiveIndicators(chart)) return;
-        try {
-            if (typeof chart.recalculateIndicators === 'function') {
-                chart.recalculateIndicators();
-            }
-            if (typeof chart.scheduleRender === 'function') {
-                chart.scheduleRender();
-            }
-        } catch (_) { /* ignore */ }
-    }
-
-    /** Indicator refresh during replay — debounced while playing; sync when paused. */
-    _runReplayIndicatorRecalc(chartInstance) {
-        const chart = chartInstance || this.chart;
-        if (!chart || !this._chartHasActiveIndicators(chart)) return;
-        if (this._tfSwitchSkipHeavyIndicators) return;
-
-        if (this.isPlaying) {
-            this._scheduleDeferredReplayIndicatorRecalc(chart);
-            return;
-        }
-
-        if (typeof chart._isChartViewPanning === 'function'
-            && chart._isChartViewPanning()
-            && typeof chart._deferIndicatorRecalcAfterZoomFill === 'function') {
-            chart._deferIndicatorRecalcAfterZoomFill(120);
-            return;
-        }
-
-        try {
-            if (typeof chart.recalculateIndicatorsAsync === 'function') {
-                chart.recalculateIndicatorsAsync();
-            } else if (typeof chart.recalculateIndicators === 'function') {
-                chart.recalculateIndicators();
-            }
-        } catch (error) {
-            console.warn('⚠️ Error recalculating indicators:', error);
-        }
-    }
-
-    /** Smooth tick-by-tick candle animation (not fast-mode candle jumps). */
-    _isReplaySmoothTickAnim() {
-        return !!(this.isPlaying && this.animatingCandle && !this.fastMode
-            && typeof this.getPlaybackMode === 'function'
-            && this.getPlaybackMode() === 'tick');
-    }
-
-    /** Patch forming OHLC in-place — avoids slice + resample on every animation tick. */
-    _patchChartFormingCandle(chart, ac) {
-        if (!chart || !ac) return false;
-        const formTs = Number(ac.t);
-        if (!Number.isFinite(formTs)) return false;
-        const o = Number(ac.o != null ? ac.o : ac.open);
-        const h = Number(ac.h != null ? ac.h : ac.high);
-        const l = Number(ac.l != null ? ac.l : ac.low);
-        const c = Number(ac.c != null ? ac.c : ac.close);
-        const v = Number(ac.v != null ? ac.v : ac.volume) || 0;
-        if (![o, h, l, c].every(Number.isFinite)) return false;
-
-        const rd = chart.rawData;
-        if (!Array.isArray(rd) || !rd.length) return false;
-        const lastRaw = rd[rd.length - 1];
-        if (!lastRaw || Math.abs(Number(lastRaw.t) - formTs) >= 1000) return false;
-
-        lastRaw.o = o;
-        lastRaw.h = h;
-        lastRaw.l = l;
-        lastRaw.c = c;
-        lastRaw.v = v;
-
-        const dd = chart.data;
-        if (Array.isArray(dd) && dd.length > 0) {
-            const last = dd[dd.length - 1];
-            if (last) {
-                last.h = Math.max(Number(last.h), h);
-                last.l = Math.min(Number(last.l), l);
-                last.c = c;
-                last.v = v;
-            }
-        }
-        return true;
-    }
-
-    _scheduleChartReplayRender(chart) {
-        if (!chart) return;
-        if (typeof chart._scheduleReplayTickRender === 'function') {
-            chart._scheduleReplayTickRender();
-            return;
-        }
-        chart.renderPending = true;
-        chart.render();
-    }
-
-    _flushAllReplayTickRenders() {
-        const flush = (c) => {
-            if (c && typeof c._flushReplayTickRender === 'function') {
-                c._flushReplayTickRender();
-            }
-        };
-        flush(this.chart);
-        if (window.panelManager && Array.isArray(window.panelManager.panels)) {
-            window.panelManager.panels.forEach((panel) => {
-                flush(panel && panel.chartInstance);
-            });
-        }
-    }
-
     updateChartData(autoScroll = true) {
         if (!this.fullRawData || this.fullRawData.length === 0) {
             console.error('❌ No fullRawData available');
@@ -2993,47 +2832,64 @@ class ReplaySystem {
             return;
         }
         
-        // Recalculate indicators — throttled during play; ADR/timezone types stay on main thread.
-        this._runReplayIndicatorRecalc();
+        // Recalculate indicators — on 1m near session end, rawData can be 50k–100k bars;
+        // full recalc every frame freezes when pressing Play. Stride while playing; skip
+        // when paused on the last bar with a huge slice (Play at end is usually a no-op).
+        if (typeof this.chart.recalculateIndicators === 'function') {
+            try {
+                const sliceLen = this.chart.rawData.length;
+                const maxFullRecalc = 12000;
+                const stride = 20;
+                let runRecalc = sliceLen <= maxFullRecalc;
+                if (!runRecalc && this.isPlaying) {
+                    runRecalc = this.currentIndex < 4000
+                        || (this.currentIndex % stride === 0);
+                }
+                if (!runRecalc && !this.isPlaying && this._isAtLastLoadedBar()) {
+                    runRecalc = false;
+                }
+                if (this._tfSwitchSkipHeavyIndicators) {
+                    runRecalc = false;
+                }
+                // While the user is actively dragging the chart (manual backward
+                // pan loading history), a synchronous full indicator recalc over
+                // the whole loaded slice blocks the drag — the panning freezes /
+                // lags, worst when zoomed out where each load pulls a big chunk.
+                // Defer the recalc until the interaction settles; the new bars
+                // still render this frame, indicators catch up ~120ms after the
+                // drag stops. Playback (isPlaying) keeps its existing cadence.
+                if (runRecalc && !this.isPlaying
+                    && typeof this.chart._isChartViewPanning === 'function'
+                    && this.chart._isChartViewPanning()
+                    && typeof this.chart._deferIndicatorRecalcAfterZoomFill === 'function') {
+                    this.chart._deferIndicatorRecalcAfterZoomFill(120);
+                    runRecalc = false;
+                }
+                if (runRecalc) {
+                    this.chart.recalculateIndicators();
+                }
+            } catch (error) {
+                console.warn('⚠️ Error recalculating indicators:', error);
+            }
+        }
         if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
             const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
-            if (!panning && !this.isPlaying) {
+            if (!panning) {
                 this.chart.drawingManager.redrawAll();
             }
         }
         
-        // TF-switch pin: re-anchor after slice (indices change). Otherwise follow playhead.
-        let tfPinActive = !this.isPlaying && this.chart._tfSwitchViewportPin
-            && typeof this.chart._reapplyTfSwitchViewportPin === 'function';
-        if (tfPinActive) {
-            try { this.chart._reapplyTfSwitchViewportPin(); } catch (_pin) { /* ignore */ }
-            if (typeof this.chart._countVisiblePlotBars === 'function'
-                && this.chart._countVisiblePlotBars() <= 0) {
-                this.chart._clearTfSwitchViewportPin?.();
-                tfPinActive = false;
-            }
-        }
-        if (!tfPinActive && autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
+        // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
+        if (autoScroll && this.autoScrollEnabled && !this._viewportLockForPlayback
             && !this._timeframeChanging) {
-            this.syncReplayViewportToPlayhead(this.chart, {
-                resetPriceScale: false,
-                render: false,
-                forceRecenter: !this.userHasPanned,
-            });
-        }
-
-        // Session start / refresh safety: bars loaded but none on screen → recover viewport.
-        if (!this.userHasPanned && !this.isPlaying && this.chart.data?.length > 0
-            && typeof this.chart._countVisiblePlotBars === 'function'
-            && this.chart._countVisiblePlotBars() <= 0) {
-            this.chart._clearTfSwitchViewportPin?.();
-            this.chart._chartViewRestored = false;
-            if (typeof this.chart._ensureMultichartViewportVisible === 'function') {
-                this.chart._ensureMultichartViewportVisible({
-                    centerPlayhead: false,
-                    forceRecenter: true,
+            if (!this.isPlaying && this.chart._tfSwitchAnchorLock
+                && typeof this.chart._reapplyTfSwitchAnchorLock === 'function') {
+                this.chart._reapplyTfSwitchAnchorLock();
+            } else {
+                this.syncReplayViewportToPlayhead(this.chart, {
                     resetPriceScale: false,
                     render: false,
+                    forceRecenter: this.isPlaying && !this.userHasPanned,
                 });
             }
         }
@@ -3045,39 +2901,39 @@ class ReplaySystem {
         // Ensure chart is ready to render
         this.chart.isLoading = false;
         
-        // Apply constraints (skip offset clamp while TF pin holds a fixed screen anchor)
-        if (typeof this.chart.constrainOffset === 'function') {
-            if (!tfPinActive) {
-                this.chart.constrainOffset();
-            }
+        // Apply constraints
+        if (typeof this.chart.constrainOffset === 'function'
+            && !this.chart._tfSwitchAnchorLock) {
+            this.chart.constrainOffset();
         }
         this._applyPlaybackViewportLock(this.chart);
         
-        if (this.isPlaying && this._isReplaySmoothTickAnim()
-            && typeof this.chart._scheduleReplayTickRender === 'function') {
-            this.chart._scheduleReplayTickRender();
-        } else {
+        this.chart.renderPending = true;
+        this.chart.render();
+
+        if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
+            this.chart._syncReplayPlayheadCrosshairValues();
+        }
+        
+        // Force a reflow to commit the canvas changes
+        if (this.chart.canvas) {
+            void this.chart.canvas.offsetHeight;
+            
+            // Force canvas to flush by reading a pixel
+            if (this.chart.ctx) {
+                try {
+                    void this.chart.ctx.getImageData(0, 0, 1, 1);
+                } catch (e) {}
+            }
+        }
+
+        setTimeout(() => {
             this.chart.renderPending = true;
-            this.chart.render();
-        }
-
-        if (!this.isPlaying || (this.tickProgress || 0) % 8 === 0) {
-            if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
-                this.chart._syncReplayPlayheadCrosshairValues();
-            }
-        }
-
-        if (!this.isPlaying) {
-            if (this.chart.canvas) {
-                void this.chart.canvas.offsetHeight;
-            }
-            setTimeout(() => {
-                this.chart.renderPending = true;
-            }, 0);
-            requestAnimationFrame(() => {
-                this.chart.renderPending = true;
-            });
-        }
+        }, 0);
+        
+        requestAnimationFrame(() => {
+            this.chart.renderPending = true;
+        });
         
         // Update order manager positions after each candle
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
@@ -3355,10 +3211,10 @@ class ReplaySystem {
             return;
         }
 
-        // TF-switch viewport pin is pause-only — release follow mode on Play.
+        // TF-switch anchor lock is pause-only — release follow mode on Play.
         if (!this.userHasPanned) {
-            if (typeof this.chart._clearTfSwitchViewportPin === 'function') {
-                this.chart._clearTfSwitchViewportPin();
+            if (typeof this.chart._clearTfSwitchAnchorLock === 'function') {
+                this.chart._clearTfSwitchAnchorLock();
             }
             this.autoScrollEnabled = true;
             this.userHasPanned = false;
@@ -4375,8 +4231,14 @@ class ReplaySystem {
         }
         this._syncCompareOverlaysForReplay();
         
-        // Fast replay used to sync-recalc every tick — major freeze source with ADR / many indicators.
-        this._runReplayIndicatorRecalc();
+        // Recalculate indicators
+        if (typeof this.chart.recalculateIndicators === 'function') {
+            try {
+                this.chart.recalculateIndicators();
+            } catch (error) {
+                // Silent fail for performance
+            }
+        }
         
         // Auto-scroll if enabled
         if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this.userHasPanned) {
@@ -4402,24 +4264,16 @@ class ReplaySystem {
             this.chart.constrainOffset();
         }
         this._applyPlaybackViewportLock(this.chart);
-        if (this.isPlaying && typeof this.chart._scheduleReplayTickRender === 'function') {
-            this.chart._scheduleReplayTickRender();
-        } else {
-            this.chart.renderPending = true;
-            this.chart.render();
-        }
+        this.chart.renderPending = true;
+        this.chart.render();
 
-        if (!this.isPlaying || (this.tickProgress || 0) % 8 === 0) {
-            if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
-                this.chart._syncReplayPlayheadCrosshairValues();
-            }
+        if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
+            this.chart._syncReplayPlayheadCrosshairValues();
         }
 
         // Same as updateChartData: floating PnL / SL-TP logic must track the latest candle.
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            if (!this.isPlaying || (this.tickProgress || 0) % 12 === 0) {
-                this.chart.orderManager.updatePositions();
-            }
+            this.chart.orderManager.updatePositions();
         }
 
         // Sync panels (throttle every 3rd update to keep fast mode responsive)
@@ -4835,14 +4689,12 @@ class ReplaySystem {
             this.syncPanelChartsWithAnimatedCandle(this.chart.rawData, detail.animatedCandle);
         }
 
-        if (this.tickProgress % 24 === 0) {
-            this._runReplayIndicatorRecalc();
+        if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
+            this.chart.recalculateAllIndicators();
         }
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            if ((this.tickProgress || 0) % 12 === 0) {
-                this.chart.orderManager.updatePositions();
-            }
+            this.chart.orderManager.updatePositions();
         }
 
         const tn = performance.now();
@@ -4889,8 +4741,14 @@ class ReplaySystem {
         }
         this._syncCompareOverlaysForReplay();
         
-        // Recalculate indicators (throttled — same path as updateChartData / fast replay).
-        this._runReplayIndicatorRecalc();
+        // Recalculate indicators
+        if (typeof this.chart.recalculateIndicators === 'function') {
+            try {
+                this.chart.recalculateIndicators();
+            } catch (error) {
+                console.warn('⚠️ Error recalculating indicators:', error);
+            }
+        }
         
         // Update slider
         this.updateSliderRange();
@@ -4934,20 +4792,16 @@ class ReplaySystem {
                         pc.manualCenterPrice = null;
                         pc.manualRange = null;
                     }
-                    if (!this._patchChartFormingCandle(pc, animatedCandle)) {
-                        pc.rawData = slicedRaw;
-                        pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
-                    }
+                    pc.rawData = [...slicedRaw];
+                    pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
                     appliedSlice = true;
                 } else if (hasOwnData) {
-                    if (!this._patchChartFormingCandle(pc, animatedCandle)) {
-                        const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
-                        const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
-                        pc.rawData = panelSlice;
-                        pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                        if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
-                            pc._trimLastDataBarToReplayPlayhead();
-                        }
+                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
+                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
+                    pc.rawData = panelSlice;
+                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
+                    if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
+                        pc._trimLastDataBarToReplayPlayhead();
                     }
                     appliedSlice = true;
                 }
@@ -4956,8 +4810,8 @@ class ReplaySystem {
                     return;
                 }
 
-                if (this.tickProgress % 24 === 0) {
-                    this._runReplayIndicatorRecalc(pc);
+                if (this.tickProgress % 18 === 0 && typeof pc.recalculateIndicators === 'function') {
+                    try { pc.recalculateIndicators(); } catch (e) {}
                 }
 
                 if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
@@ -4969,7 +4823,7 @@ class ReplaySystem {
                     }
                 }
 
-                this._scheduleChartReplayRender(pc);
+                if (pc.render) pc.render();
             } catch (error) {
                 // Silent fail during animation to prevent lag
             }
@@ -4981,8 +4835,6 @@ class ReplaySystem {
      */
     completeTickAnimation() {
         this.stopTickAnimation();
-        this._cachedFormingTs = null;
-        this._cachedFormingTargetIdx = null;
         
         // ALWAYS advance by 1 raw candle for smooth animation on all TFs
         // The display timeframe only affects how data is shown, not playback
@@ -5095,16 +4947,6 @@ class ReplaySystem {
         
         // Update button UI immediately
         this.syncPlayPauseButtonVisuals();
-
-        this._flushReplayIndicatorRecalc(this.chart);
-        if (window.panelManager && Array.isArray(window.panelManager.panels)) {
-            window.panelManager.panels.forEach((panel) => {
-                const pc = panel && panel.chartInstance;
-                if (pc && pc !== this.chart) this._flushReplayIndicatorRecalc(pc);
-            });
-        }
-
-        this._flushAllReplayTickRenders();
 
         this._flushReplayStateToSession();
     }
@@ -5421,8 +5263,8 @@ class ReplaySystem {
         this._viewportLockForPlayback = null;
         this.autoScrollEnabled = false;
         this.userHasPanned = true;
-        if (this.chart && typeof this.chart._clearTfSwitchViewportPin === 'function') {
-            this.chart._clearTfSwitchViewportPin();
+        if (this.chart && typeof this.chart._clearTfSwitchAnchorLock === 'function') {
+            this.chart._clearTfSwitchAnchorLock();
         }
 
         // Show visual indicator that auto-scroll is disabled
@@ -5435,9 +5277,6 @@ class ReplaySystem {
     enableAutoScroll() {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
-        if (this.chart && typeof this.chart._clearTfSwitchViewportPin === 'function') {
-            this.chart._clearTfSwitchViewportPin();
-        }
         this._viewportLockForPlayback = null;
 
         const chart = this.chart;
@@ -5984,12 +5823,12 @@ class ReplaySystem {
         }
 
         if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
-        this._scheduleChartReplayRender(chart);
+        if (typeof chart.render === 'function') {
+            chart.renderPending = true;
+            chart.render();
+        }
         if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function') {
-            const tp = this.tickProgress || 0;
-            if (!this.isPlaying || tp % 12 === 0) {
-                try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
-            }
+            try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
         }
     }
 
@@ -6086,9 +5925,7 @@ class ReplaySystem {
         if (hasAnim) {
             const formTs = Number(anim.t);
             let targetIdx = -1;
-            if (this._cachedFormingTs === formTs && Number.isFinite(this._cachedFormingTargetIdx)) {
-                targetIdx = this._cachedFormingTargetIdx;
-            } else if (typeof chart.findGoToTargetIndex === 'function') {
+            if (typeof chart.findGoToTargetIndex === 'function') {
                 targetIdx = chart.findGoToTargetIndex(frd, formTs);
             }
             if (targetIdx < 0) {
@@ -6101,9 +5938,6 @@ class ReplaySystem {
                 }
             }
             if (targetIdx < 0) return false;
-
-            this._cachedFormingTs = formTs;
-            this._cachedFormingTargetIdx = targetIdx;
 
             const baseIdx = Math.max(0, targetIdx - 1);
             this.currentIndex = Math.max(this.sessionStartIndex || 0, baseIdx);
@@ -6124,28 +5958,12 @@ class ReplaySystem {
                 v: Number(anim.v) || 0,
             };
 
-            const tp = this.tickProgress || 0;
-            const pathTarget = (Array.isArray(this.fullRawData) && targetIdx >= 0 && this.fullRawData[targetIdx])
-                ? this.fullRawData[targetIdx]
-                : ((targetIdx >= 0 && frd[targetIdx]) ? frd[targetIdx] : null);
-
-            if (tp > 0 && this._patchChartFormingCandle(chart, animatedCandle)) {
-                if (tp % 8 === 0 && typeof chart.bumpDataVersion === 'function') {
-                    chart.bumpDataVersion();
-                }
-                if (this.autoScrollEnabled && !this._replayUserOwnsViewport(chart) && tp % 8 === 0) {
-                    if (chart.fitToView) chart.fitToView();
-                }
-                this._syncMirrorAnimatingCandleState(detail, anim, pathTarget);
-                this._finishMultichartMirrorRender(chart);
-                return true;
-            }
-
             const sliced = frd.slice(0, targetIdx);
             sliced.push(animatedCandle);
             chart.rawData = sliced;
 
-            if (chart.data && chart.data.length > 0 && tp > 0) {
+            const tp = this.tickProgress || 0;
+            if (chart.data && chart.data.length > 0 && tp > 1) {
                 const last = chart.data[chart.data.length - 1];
                 last.h = Math.max(last.h, animatedCandle.h);
                 last.l = Math.min(last.l, animatedCandle.l);
@@ -6165,6 +5983,9 @@ class ReplaySystem {
             if (this.autoScrollEnabled && !this._replayUserOwnsViewport(chart) && tp > 0 && tp % 8 === 0) {
                 if (chart.fitToView) chart.fitToView();
             }
+            const pathTarget = (Array.isArray(this.fullRawData) && targetIdx >= 0 && this.fullRawData[targetIdx])
+                ? this.fullRawData[targetIdx]
+                : ((targetIdx >= 0 && frd[targetIdx]) ? frd[targetIdx] : null);
             this._syncMirrorAnimatingCandleState(detail, anim, pathTarget);
         } else {
             const lastT = Number(frd[frd.length - 1]?.t);
@@ -6541,14 +6362,8 @@ class ReplaySystem {
 
         restoreSavedPlayhead();
 
-        const pendingVp = this.chart._tfSwitchViewport;
-        const deferSliceForViewport = !!(pendingVp
-            && (Number.isFinite(pendingVp.anchorTs) || Number.isFinite(pendingVp.centerTs)));
-
         try {
-            if (!deferSliceForViewport) {
-                this.updateChartData(false);
-            }
+            this.updateChartData(false);
             if (!isEmbedInitiator) {
                 this.chart.priceOffset = savedPriceOffset;
                 this.chart.priceZoom = savedPriceZoom;
@@ -6571,9 +6386,9 @@ class ReplaySystem {
                     });
                 }
             } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                const pendingVp2 = this.chart._tfSwitchViewport;
-                const willRestoreViewport = pendingVp2
-                    && (Number.isFinite(pendingVp2.anchorTs) || Number.isFinite(pendingVp2.centerTs));
+                const pendingVp = this.chart._tfSwitchViewport;
+                const willRestoreViewport = pendingVp
+                    && Number.isFinite(pendingVp.anchorTs);
                 if (!willRestoreViewport) {
                     this.syncReplayViewportToPlayhead(this.chart, {
                         centerPlayhead: true,
@@ -6619,12 +6434,7 @@ class ReplaySystem {
             const runPostTfFinalize = () => {
                 if (changeSeq !== this._tfChangeSeq) return;
                 restoreSavedPlayhead();
-                if (!this.isPlaying && this.chart._tfSwitchViewportPin
-                    && typeof this.chart._reapplyTfSwitchViewportPin === 'function') {
-                    try { this.chart._reapplyTfSwitchViewportPin(); } catch (_pin) { /* ignore */ }
-                } else if (!this.isPlaying) {
-                    try { this.updateChartData(false); } catch (_uc) { /* ignore */ }
-                }
+                try { this.updateChartData(false); } catch (_uc) { /* ignore */ }
                 const omAfter = this._resolveOrderManagerForReplayGuards(this.chart);
                 if (guardTsAfter != null && omAfter && typeof omAfter._refreshAllGuardsToTimestamp === 'function') {
                     try { omAfter._refreshAllGuardsToTimestamp(guardTsAfter, Infinity); } catch (_g) { /* ignore */ }
@@ -6810,11 +6620,11 @@ class ReplaySystem {
             console.warn('replay: main chart resample in syncPanelCharts failed', e);
             return;
         }
-        try { this._runReplayIndicatorRecalc(mainChart); } catch (_e) { /* ignore */ }
+        if (typeof mainChart.recalculateIndicators === 'function') {
+            try { mainChart.recalculateIndicators(); } catch (_e) { /* ignore */ }
+        }
         if (mainChart.drawingManager && typeof mainChart.drawingManager.redrawAll === 'function') {
-            try {
-                if (!this.isPlaying) mainChart.drawingManager.redrawAll();
-            } catch (_e) { /* ignore */ }
+            try { mainChart.drawingManager.redrawAll(); } catch (_e) { /* ignore */ }
         }
         if (this.autoScrollEnabled && !this._replayUserOwnsViewport(mainChart)) {
             const st = this.getReplayAutoScrollState(mainChart);
@@ -6924,8 +6734,10 @@ class ReplaySystem {
                 postArmPanelGuards();
 
                 if (typeof pc.bumpDataVersion === 'function') pc.bumpDataVersion();
-
-                this._runReplayIndicatorRecalc(pc);
+                
+                if (typeof pc.recalculateIndicators === 'function') {
+                    try { pc.recalculateIndicators(); } catch (e) {}
+                }
                 
                 if (this.autoScrollEnabled) {
                     const st = this.getReplayAutoScrollState(pc);

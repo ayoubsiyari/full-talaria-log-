@@ -13743,6 +13743,23 @@ class DrawingToolsManager {
     }
 
     /**
+     * Reset per-timeframe visibility ranges to built-in defaults (all units enabled, full min/max span).
+     */
+    resetDrawingVisibilityToDefaults(drawing) {
+        if (!drawing) return;
+        drawing.visibility = {
+            _ranges: {
+                m: { enabled: true, min: 1, max: 60 },
+                h: { enabled: true, min: 1, max: 24 },
+                d: { enabled: true, min: 1, max: 366 },
+                w: { enabled: true, min: 1, max: 260 },
+                M: { enabled: true, min: 1, max: 120 },
+                mo: { enabled: true, min: 1, max: 120 },
+            },
+        };
+    }
+
+    /**
      * Reset a drawing to built-in defaults (light gray stroke/fill) — "Apply default" in toolbar.
      */
     applyBuiltinDefaultStyleToDrawing(drawing) {
@@ -13770,6 +13787,7 @@ class DrawingToolsManager {
             if (resetKeys.has(k)) delete drawing.style[k];
         }
         Object.assign(drawing.style, patch);
+        this.resetDrawingVisibilityToDefaults(drawing);
 
         try {
             if (typeof window !== 'undefined'
