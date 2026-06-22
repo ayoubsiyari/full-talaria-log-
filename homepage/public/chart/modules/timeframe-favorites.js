@@ -957,10 +957,12 @@ class TimeframeFavorites {
                 lbl.className = 'tf-val-label';
                 lbl.textContent = this.getTimeframeLabel(tf);
 
-                // Star (favorite toggle)
-                const star = document.createElement('span');
+                // Star (favorite toggle) — button for a larger, reliable hit target
+                const star = document.createElement('button');
+                star.type = 'button';
                 star.className = 'tf-flyout-val-star' + (this.isFavorite(tf) ? ' favorited' : '');
                 star.title = this.isFavorite(tf) ? 'Remove from sidebar' : 'Add to sidebar';
+                star.setAttribute('aria-label', star.title);
                 const starSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 starSvg.setAttribute('viewBox', '0 0 24 24');
                 starSvg.setAttribute('fill', 'none');
@@ -971,14 +973,19 @@ class TimeframeFavorites {
                 starSvg.appendChild(pinPath);
                 star.appendChild(starSvg);
 
-                star.addEventListener('click', (e) => {
+                const onStarToggle = (e) => {
                     e.stopPropagation();
+                    e.preventDefault();
                     this.toggleFavorite(tf);
                     const isFav = this.isFavorite(tf);
                     star.classList.toggle('favorited', isFav);
-                    star.title = isFav ? 'Remove from sidebar' : 'Add to sidebar';
+                    const label = isFav ? 'Remove from sidebar' : 'Add to sidebar';
+                    star.title = label;
+                    star.setAttribute('aria-label', label);
                     this.renderSidebarTimeframes();
-                });
+                };
+                star.addEventListener('pointerdown', onStarToggle);
+                star.addEventListener('click', (e) => e.stopPropagation());
 
                 vBtn.appendChild(lbl);
                 vBtn.appendChild(star);

@@ -31648,7 +31648,7 @@ const TalariaV8bLive = () => {
               return (
               <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:300,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7)`,width:200,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                <div className="tlr-scroll" style={{maxHeight:360,overflowY:"auto",padding:"4px 0"}}>
+                <div className="tlr-scroll" style={{maxHeight:360,overflowY:"auto",padding:"4px 6px 4px 0"}}>
                   {Object.entries(tfCategories).map(([catId,{label,items}],ci)=>(
                     <div key={catId}>
                       {ci>0 && <div style={{height:1,margin:"3px 0",background:`linear-gradient(90deg,transparent,${c.br},transparent)`}}/>}
@@ -31675,23 +31675,30 @@ const TalariaV8bLive = () => {
                               {t}
                             </button>
                             {isCustom && (
-                              <div onClick={e=>{e.stopPropagation();setTfCustomItems(prev=>prev.filter(x=>x!==t));setTfPinned(prev=>prev.filter(x=>x!==t));if(tf===t)setTf("1H");}}
+                              <button type="button" aria-label={`Remove custom interval ${t}`}
+                                onPointerDown={(e)=>{e.stopPropagation();e.preventDefault();setTfCustomItems(prev=>prev.filter(x=>x!==t));setTfPinned(prev=>prev.filter(x=>x!==t));if(tf===t)setTf("1H");}}
+                                onClick={(e)=>e.stopPropagation()}
                                 onMouseEnter={()=>setSwHov(`tfdel-${t}`)} onMouseLeave={()=>setSwHov(`tf-${t}`)}
-                                style={{width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",
+                                style={{width:28,height:28,minWidth:28,minHeight:28,margin:"-4px 0",padding:0,border:"none",background:isDelHov?"rgba(255,80,104,0.08)":"transparent",borderRadius:4,
+                                  display:"flex",alignItems:"center",justifyContent:"center",
                                   cursor:"default",flexShrink:0,
-                                  opacity:isDelHov?1:isRowHov?0.6:0,transition:"opacity 0.15s"}}>
+                                  opacity:isDelHov?1:isRowHov?0.6:0,transition:"opacity 0.15s, background 0.12s"}}>
                                 <I n="x" s={10} cl={isDelHov?c.rd:c.ts}/>
-                              </div>
+                              </button>
                             )}
-                            <div onClick={e=>{e.stopPropagation();setTfPinned(prev=>isPinned?prev.filter(x=>x!==t):prev.length>=10?prev:[...prev,t]);}}
+                            <button type="button" aria-label={isPinned ? `Unpin ${t} from toolbar` : `Pin ${t} to toolbar`}
+                              onPointerDown={(e)=>{e.stopPropagation();e.preventDefault();setTfPinned(prev=>isPinned?prev.filter(x=>x!==t):prev.length>=10?prev:[...prev,t]);}}
+                              onClick={(e)=>e.stopPropagation()}
                               onMouseEnter={()=>setSwHov(`tfpin-${t}`)} onMouseLeave={()=>setSwHov(`tf-${t}`)}
-                              style={{width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",
+                              style={{width:32,height:32,minWidth:32,minHeight:32,margin:"-4px 0",padding:0,border:"none",borderRadius:4,
+                                display:"flex",alignItems:"center",justifyContent:"center",
                                 cursor:"default",flexShrink:0,
-                                opacity:isPinned?1:isPinHov?1:isRowHov?0.6:0,
+                                background:isPinHov?"rgba(201,168,76,0.08)":"transparent",
+                                opacity:isPinned?1:isPinHov?1:isRowHov?0.75:0.4,
                                 transform:isPinHov&&!isPinned?"rotate(-25deg) scale(1.15)":"none",
-                                transition:"opacity 0.15s, transform 0.18s ease"}}>
-                              <I n={isPinned?"pinFill":"pin"} s={11} cl={isPinned?c.gold:isPinHov?c.gold:c.ts}/>
-                            </div>
+                                transition:"opacity 0.15s, transform 0.18s ease, background 0.12s"}}>
+                              <I n={isPinned?"pinFill":"pin"} s={13} cl={isPinned?c.gold:isPinHov?c.gold:c.ts}/>
+                            </button>
                           </div>
                         );
                       })}

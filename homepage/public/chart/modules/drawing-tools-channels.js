@@ -579,6 +579,7 @@ class ParallelChannelTool extends BaseDrawing {
             points: this.points,
             style: this.style,
             visible: this.visible,
+            locked: !!this.locked,
             text: this.text || '',
             levels: this.levels || [],
             meta: this.meta
@@ -593,6 +594,7 @@ class ParallelChannelTool extends BaseDrawing {
         tool.text = typeof data.text === 'string' ? data.text : '';
         tool.levels = Array.isArray(data.levels) ? data.levels : [];
         tool.chart = chart;
+        if (data.locked !== undefined) tool.locked = !!data.locked;
         return tool;
     }
 }

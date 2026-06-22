@@ -1363,7 +1363,7 @@ class DrawingToolsManager {
             this._apiSaveTimer = null;
         }
         if (!this.chart || !Array.isArray(this.drawings)) return;
-        const data = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
+        const data = this.drawings.map((d) => this._serializeDrawingForStorage(d));
         this._saveDrawingsToAPIKeepalive(data);
     }
 
@@ -1410,7 +1410,7 @@ class DrawingToolsManager {
             this._ensureDrawingId(d);
             if (!d.chart) d.chart = this.chart;
         });
-        const data = this.drawings.map(d => d.toJSON());
+        const data = this.drawings.map((d) => this._serializeDrawingForStorage(d));
         const cacheKey = this.getStorageKey();
         this._writeDrawingsCache(cacheKey, JSON.stringify(data));
 
@@ -2646,9 +2646,7 @@ class DrawingToolsManager {
         if (!this._liveSyncDrawingId) this._liveSyncDrawingId = this._nextLiveSyncId();
         tempDrawing.id = this._liveSyncDrawingId;
 
-        const payload = (typeof tempDrawing.toJSON === 'function')
-            ? tempDrawing.toJSON()
-            : JSON.parse(JSON.stringify(tempDrawing));
+        const payload = this._serializeDrawingForStorage(tempDrawing);
         payload.id = this._liveSyncDrawingId;
 
         this.chart.broadcastDrawingChange(this._liveSyncBroadcasted ? 'update' : 'add', payload);
@@ -2946,9 +2944,7 @@ class DrawingToolsManager {
         this._lastLiveEditBroadcast = now;
 
         const ensuredId = this._ensureDrawingId(drawing);
-        const payload = (typeof drawing.toJSON === 'function')
-            ? drawing.toJSON()
-            : JSON.parse(JSON.stringify(drawing));
+        const payload = this._serializeDrawingForStorage(drawing);
         payload.id = drawing.id || payload.id || ensuredId;
         if (!payload.id) return;
         if (Array.isArray(pointsOverride)) payload.points = pointsOverride.map(p => ({ ...p }));
@@ -9591,6 +9587,7 @@ class DrawingToolsManager {
         }
         if (drawing.baseScale != null) payload.baseScale = drawing.baseScale;
         if (drawing.levels) payload.levels = JSON.parse(JSON.stringify(drawing.levels));
+        payload.locked = !!drawing.locked;
         return payload;
     }
 
@@ -10106,6 +10103,25 @@ class DrawingToolsManager {
     }
 
     /**
+     * Persist lock even when a tool class overrides toJSON() without `locked`.
+     */
+    _serializeDrawingForStorage(drawing) {
+        const json = (drawing && typeof drawing.toJSON === 'function')
+            ? drawing.toJSON()
+            : (drawing || {});
+        json.locked = !!(drawing && drawing.locked);
+        return json;
+    }
+
+    /** Restore lock after fromJSON() — many tool classes omit locked in fromJSON. */
+    _applyLoadedDrawingLockState(drawing, item) {
+        if (!drawing || !item) return;
+        if (item.locked !== undefined && item.locked !== null) {
+            drawing.locked = item.locked === true || item.locked === 1 || item.locked === 'true';
+        }
+    }
+
+    /**
      * Save drawings to localStorage and API (hybrid approach)
      * @param {string|null} fileIdOverride — when set, persist under this dataset id (pair switch before chart.currentFileId updates).
      */
@@ -10119,7 +10135,7 @@ class DrawingToolsManager {
             }
         });
         
-        const data = this.drawings.map(d => d.toJSON());
+        const data = this.drawings.map((d) => this._serializeDrawingForStorage(d));
         const key = this.getStorageKey(fileIdOverride);
         const clientUpdatedAt = Date.now();
 
@@ -10189,7 +10205,7 @@ class DrawingToolsManager {
         // Debounce API saves — local cache is instant; pulse only when fetch starts.
         this._apiSaveTimer = setTimeout(() => {
             if (!this.chart || !Array.isArray(this.drawings)) return;
-            const fresh = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
+            const fresh = this.drawings.map((d) => this._serializeDrawingForStorage(d));
             const key = this.getStorageKey();
             const meta = this._readDrawingsCacheMeta(key);
             this.saveDrawingsToAPI(fresh, meta?.client_updated_at || this._pendingApiSaveClientUpdatedAt);
@@ -10214,7 +10230,7 @@ class DrawingToolsManager {
             if (this._drawingsApiSaveQueued) {
                 this._drawingsApiSaveQueued = false;
                 if (this.chart && Array.isArray(this.drawings)) {
-                    const fresh = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
+                    const fresh = this.drawings.map((d) => this._serializeDrawingForStorage(d));
                     void this.saveDrawingsToAPI(fresh, Date.now());
                 }
             }
@@ -10599,6 +10615,7 @@ class DrawingToolsManager {
                     
                     const drawing = toolInfo.class.fromJSON(item, this.chart);
                     drawing.chart = this.chart;
+                    this._applyLoadedDrawingLockState(drawing, item);
                     
                     // Restore the original timestamp points (critical for timeframe switching)
                     if (originalTimestampPoints) {
@@ -10692,6 +10709,7 @@ class DrawingToolsManager {
 
                 const drawing = toolInfo.class.fromJSON(item, this.chart);
                 drawing.chart = this.chart;
+                this._applyLoadedDrawingLockState(drawing, item);
                 if (originalTimestampPoints) {
                     drawing.timestampPoints = originalTimestampPoints;
                 }
@@ -10706,7 +10724,7 @@ class DrawingToolsManager {
 
             this._drawingsLoaded = true;
             try {
-                const serialized = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
+                const serialized = this.drawings.map((d) => this._serializeDrawingForStorage(d));
                 const cacheKey = this.getStorageKey();
                 this._writeDrawingsCache(cacheKey, JSON.stringify(serialized));
                 const meta = this._readDrawingsCacheMeta(cacheKey) || {};
@@ -10724,7 +10742,7 @@ class DrawingToolsManager {
      * Export drawings as JSON
      */
     exportDrawings() {
-        const data = this.drawings.map(d => d.toJSON());
+        const data = this.drawings.map((d) => this._serializeDrawingForStorage(d));
         return JSON.stringify(data, null, 2);
     }
 
@@ -10740,6 +10758,7 @@ class DrawingToolsManager {
                 const toolInfo = this.toolRegistry[item.type];
                 if (toolInfo) {
                     const drawing = toolInfo.class.fromJSON(item);
+                    this._applyLoadedDrawingLockState(drawing, item);
                     this.addDrawing(drawing);
                 }
             });

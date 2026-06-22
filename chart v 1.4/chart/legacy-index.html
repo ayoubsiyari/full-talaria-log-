@@ -853,7 +853,7 @@
 
             border-radius: 8px;
 
-            padding: 4px;
+            padding: 4px 6px 4px 4px;
 
             min-width: 72px;
 
@@ -909,25 +909,43 @@
 
             justify-content: center;
 
-            width: 18px;
+            width: 32px;
 
-            height: 18px;
+            height: 32px;
+
+            min-width: 32px;
+
+            min-height: 32px;
+
+            margin: -6px -2px -6px 0;
+
+            padding: 0;
+
+            border: none;
+
+            border-radius: 4px;
 
             flex-shrink: 0;
 
-            opacity: 0;
+            opacity: 0.4;
 
-            transition: opacity 0.12s;
+            transition: opacity 0.12s, background 0.12s;
 
             color: #a0aec0;
 
+            cursor: pointer;
+
+            background: transparent;
+
         }
 
-        .tf-flyout-val-star svg { width: 12px; height: 12px; stroke: currentColor; fill: none; }
+        .tf-flyout-val-star svg { width: 13px; height: 13px; stroke: currentColor; fill: none; pointer-events: none; }
 
         .tf-flyout-val-btn:hover .tf-val-star,
 
-        .tf-flyout-val-btn:hover .tf-flyout-val-star { opacity: 1; }
+        .tf-flyout-val-btn:hover .tf-flyout-val-star:not(.favorited) { opacity: 1; }
+
+        .tf-flyout-val-star:hover { background: rgba(245, 197, 24, 0.08); }
 
         .tf-flyout-val-star.favorited { opacity: 1 !important; color: #f5c518; }
 
