@@ -17120,6 +17120,10 @@ class Chart {
         
         collapseBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (typeof window.talariaOhlcLegendCollapseBlocked === 'function'
+                && window.talariaOhlcLegendCollapseBlocked(this)) {
+                return;
+            }
             ohlcInfo.classList.toggle('collapsed');
             sync();
         });
@@ -29695,14 +29699,22 @@ class Chart {
     }
 
     getContextMenuSymbolName() {
-        if (window.alertSystem && typeof window.alertSystem.getSymbolName === 'function') {
-            const symbol = window.alertSystem.getSymbolName();
-            if (symbol) return symbol;
+        if (this.currentSymbol && String(this.currentSymbol).trim()) {
+            return String(this.currentSymbol).trim();
         }
 
-        if (this.currentFileId && typeof this.currentFileId === 'string') {
-            const parts = this.currentFileId.split('_');
-            return parts[parts.length - 1] || this.currentFileId;
+        if (window.alertSystem && typeof window.alertSystem.getSymbolName === 'function') {
+            const symbol = window.alertSystem.getSymbolName();
+            if (symbol && symbol !== 'SYMBOL') return symbol;
+        }
+
+        if (this.currentFileId != null && this.currentFileId !== '') {
+            const raw = String(this.currentFileId);
+            if (raw.includes('_')) {
+                const parts = raw.split('_');
+                return parts[parts.length - 1] || raw;
+            }
+            if (!/^\d+$/.test(raw)) return raw;
         }
 
         return 'SYMBOL';

@@ -322,9 +322,32 @@ class AlertSystem {
      * Get current symbol name
      */
     getSymbolName() {
-        if (this.chart && this.chart.currentFileId) {
-            return this.chart.currentFileId.split('_').pop() || 'SYMBOL';
+        const ch = this.chart;
+        if (!ch) return 'SYMBOL';
+
+        const sym = ch.currentSymbol;
+        if (sym != null && String(sym).trim()) {
+            return String(sym).trim();
         }
+
+        const fileId = ch.currentFileId;
+        if (fileId != null && fileId !== '') {
+            const raw = String(fileId);
+            if (raw.includes('_')) {
+                const tail = raw.split('_').pop();
+                if (tail) return tail;
+            }
+            if (!/^\d+$/.test(raw)) return raw;
+        }
+
+        try {
+            const el = document.getElementById('ohlcSymbol')
+                || document.querySelector('[id^="ohlcSymbol"]');
+            if (el && el.textContent && el.textContent.trim()) {
+                return el.textContent.trim();
+            }
+        } catch (_) {}
+
         return 'SYMBOL';
     }
     

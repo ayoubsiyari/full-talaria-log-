@@ -2601,6 +2601,60 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
     div.appendChild(item);
 }
 
+function talariaChartHasIndicators(chart) {
+    return !!(chart && chart.indicators && Array.isArray(chart.indicators.active) && chart.indicators.active.length > 0);
+}
+
+function talariaChartForOhlcPanel(idSuffix) {
+    const raw = idSuffix === undefined || idSuffix === null ? '' : String(idSuffix);
+    const idx = raw === '' ? 0 : parseInt(raw, 10);
+    if (!Number.isFinite(idx) || idx < 0) return null;
+    try {
+        const pm = (typeof window !== 'undefined' && window.chart && window.chart.panelManager)
+            || (typeof window !== 'undefined' && window.panelManager)
+            || null;
+        if (pm && Array.isArray(pm.panels) && pm.panels[idx] && pm.panels[idx].chartInstance) {
+            return pm.panels[idx].chartInstance;
+        }
+    } catch (_) {}
+    if (idx === 0 && typeof window !== 'undefined' && window.chart) return window.chart;
+    return null;
+}
+
+/** Keep legend chevron visible/expanded as an empty-state hint until the first indicator is added. */
+function talariaSyncOhlcLegendChevron(chart) {
+    if (!chart) return;
+    const idSuffix = (chart.panelIndex !== undefined && chart.panelIndex !== 0) ? String(chart.panelIndex) : '';
+    const ohlcInfo =
+        document.getElementById('ohlcInfo' + idSuffix) ||
+        chart.ctx?.canvas?.parentElement?.querySelector('.ohlc-info');
+    if (!ohlcInfo) return;
+
+    const hasIndicators = talariaChartHasIndicators(chart);
+    const footer = ohlcInfo.querySelector('.ohlc-legend-footer');
+    const collapseBtn = ohlcInfo.querySelector('.ohlc-legend-chevron')
+        || document.getElementById('ohlcCollapseBtn' + idSuffix);
+
+    if (!hasIndicators) {
+        ohlcInfo.classList.add('ohlc-legend-empty');
+        ohlcInfo.classList.remove('collapsed');
+        if (footer) footer.style.display = '';
+        if (collapseBtn) {
+            collapseBtn.style.display = '';
+            collapseBtn.setAttribute('aria-expanded', 'true');
+        }
+        return;
+    }
+
+    ohlcInfo.classList.remove('ohlc-legend-empty');
+    if (footer) footer.style.display = '';
+    if (collapseBtn) collapseBtn.style.display = '';
+}
+
+function talariaOhlcLegendCollapseBlocked(chart) {
+    return !talariaChartHasIndicators(chart);
+}
+
 function talariaRebuildOhlcIndicatorLegend(chart, div) {
     if (!div || !chart) return;
 
@@ -2612,6 +2666,7 @@ function talariaRebuildOhlcIndicatorLegend(chart, div) {
         } else {
             div.style.display = '';
         }
+        talariaSyncOhlcLegendChevron(chart);
         return;
     }
 
@@ -2628,6 +2683,7 @@ function talariaRebuildOhlcIndicatorLegend(chart, div) {
     } else {
         div.style.display = '';
     }
+    talariaSyncOhlcLegendChevron(chart);
 }
 
 function talariaOpenIndicatorSettingsFromLegend(chart, indicatorId, indicatorType, indicator) {
@@ -5790,4 +5846,7 @@ if (typeof Chart !== 'undefined') {
 // Export createIndicatorSettingsPanel globally for volume settings
 window.createIndicatorSettingsPanel = createIndicatorSettingsPanel;
 window.talariaSyncOhlcIndicatorLegendValues = talariaSyncOhlcIndicatorLegendValues;
+window.talariaSyncOhlcLegendChevron = talariaSyncOhlcLegendChevron;
+window.talariaOhlcLegendCollapseBlocked = talariaOhlcLegendCollapseBlocked;
+window.talariaChartForOhlcPanel = talariaChartForOhlcPanel;
 window.talariaCrosshairBarIndex = talariaCrosshairBarIndex;

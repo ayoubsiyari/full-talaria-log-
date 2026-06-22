@@ -2002,8 +2002,17 @@ class PanelManager {
         // Setup collapse button for this panel's OHLC
         const collapseBtn = ohlcInfo.querySelector(`#ohlcCollapseBtn${index}`);
         if (collapseBtn) {
+            const panelIdx = index;
             collapseBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                const suffix = panelIdx === 0 ? '' : String(panelIdx);
+                const ch = typeof window.talariaChartForOhlcPanel === 'function'
+                    ? window.talariaChartForOhlcPanel(suffix)
+                    : null;
+                if (ch && typeof window.talariaOhlcLegendCollapseBlocked === 'function'
+                    && window.talariaOhlcLegendCollapseBlocked(ch)) {
+                    return;
+                }
                 ohlcInfo.classList.toggle('collapsed');
                 const collapsed = ohlcInfo.classList.contains('collapsed');
                 collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');

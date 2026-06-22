@@ -194,6 +194,8 @@ Error generating stack: `+u.message+`
         .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg{transform:rotate(180deg)}
         .ohlc-info.collapsed .ohlc-legend-chevron svg{transform:rotate(0deg)}
         .ohlc-info.collapsed .ohlc-body{display:none !important}
+        .ohlc-info.ohlc-legend-empty .ohlc-legend-footer{display:flex}
+        .ohlc-info.ohlc-legend-empty .ohlc-legend-chevron{color:rgba(255,255,255,0.78);opacity:1}
         .ohlc-header{display:flex !important;align-items:center !important;flex-wrap:wrap !important;column-gap:10px !important;row-gap:2px !important}
         .ohlc-symbol-block{flex:0 0 auto !important;font-size:13px !important;line-height:1.25 !important;color:var(--ohlc-fg,#fff) !important}
         .ohlc-symbol-block #chartSymbol{color:var(--ohlc-fg,#fff) !important}

@@ -11626,6 +11626,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             } else {
                 div.style.display = '';
             }
+            if (typeof window.talariaSyncOhlcLegendChevron === 'function') {
+                window.talariaSyncOhlcLegendChevron(this);
+            }
             return;
         }
 
@@ -11647,6 +11650,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             div.style.display = 'none';
         } else {
             div.style.display = '';
+        }
+        if (typeof window.talariaSyncOhlcLegendChevron === 'function') {
+            window.talariaSyncOhlcLegendChevron(this);
         }
     };
     
