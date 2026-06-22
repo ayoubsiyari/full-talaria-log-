@@ -5421,8 +5421,7 @@ class Chart {
                         savedReplayTimestamp,
                         { usingReplay: true }
                     );
-                    const preserveView = replay.userHasPanned || !replay.autoScrollEnabled
-                        || !!this._chartViewRestored;
+                    const preserveView = replay.userHasPanned || !replay.autoScrollEnabled;
                     if (loaded && typeof replay.goToReplayTimestamp === 'function') {
                         replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: preserveView });
                     } else if (typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
@@ -17983,26 +17982,26 @@ class Chart {
     _snapReplayViewportAfterTfSwitch(replay, options = {}) {
         if (!replay || !replay.isActive) return;
 
-        if (this._chartViewRestored && typeof this._reapplyTfSwitchViewportPin === 'function') {
+        if (typeof this._reapplyTfSwitchViewportPin === 'function') {
             try { this._reapplyTfSwitchViewportPin(); } catch (_pin) { /* ignore */ }
-        } else {
-            const userOwnsViewport = replay.userHasPanned || !replay.autoScrollEnabled;
-            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
-            // Do NOT clamp a manually panned viewport — the old maxOffset=spacing*2
-            // snap destroyed "panned back then switch TF" (TradingView keeps the window).
-            if (!userOwnsViewport && !this._chartViewRestored
-                && Array.isArray(this.data) && this.data.length > 0 && spacing > 0) {
-                const m = this.margin || { l: 60, r: 60 };
-                const plotW = Math.max(1, (this.w || 800) - m.l - m.r);
-                const totalW = this.data.length * spacing;
-                const maxOffset = spacing * 2;
-                const minOffset = plotW - totalW - spacing * 2;
-                if (Number.isFinite(maxOffset) && this.offsetX > maxOffset) {
-                    this.offsetX = maxOffset;
-                }
-                if (Number.isFinite(minOffset) && this.offsetX < minOffset) {
-                    this.offsetX = minOffset;
-                }
+        }
+
+        const userOwnsViewport = replay.userHasPanned || !replay.autoScrollEnabled;
+        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
+        // Do NOT clamp a manually panned viewport — the old maxOffset=spacing*2
+        // snap destroyed "panned back then switch TF" (TradingView keeps the window).
+        if (!userOwnsViewport && !this._chartViewRestored && !this._tfSwitchViewportPin
+            && Array.isArray(this.data) && this.data.length > 0 && spacing > 0) {
+            const m = this.margin || { l: 60, r: 60 };
+            const plotW = Math.max(1, (this.w || 800) - m.l - m.r);
+            const totalW = this.data.length * spacing;
+            const maxOffset = spacing * 2;
+            const minOffset = plotW - totalW - spacing * 2;
+            if (Number.isFinite(maxOffset) && this.offsetX > maxOffset) {
+                this.offsetX = maxOffset;
+            }
+            if (Number.isFinite(minOffset) && this.offsetX < minOffset) {
+                this.offsetX = minOffset;
             }
         }
 
@@ -24432,14 +24431,11 @@ class Chart {
         const m = this.margin;
         const cw = this.w - m.l - m.r;
         const centerX = cw / 2;
+        const centerIndex = this.pixelToDataIndex(m.l + centerX);
+        const ts = this.estimateTimestampForDataIndex(centerIndex);
+        if (Number.isFinite(ts)) return ts;
 
-        // Get data index at center pixel
-        const centerIndex = Math.floor(this.pixelToDataIndex(m.l + centerX));
-
-        // Clamp to valid data range
-        const clampedIndex = Math.max(0, Math.min(this.data.length - 1, centerIndex));
-
-        // Return timestamp at that index
+        const clampedIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(centerIndex)));
         const candle = this.data[clampedIndex];
         return candle && candle.t ? candle.t : null;
     }
@@ -24536,6 +24532,12 @@ class Chart {
     _reapplyTfSwitchViewportPin() {
         const pin = this._tfSwitchViewportPin;
         if (!pin || !this.data || this.data.length === 0) return false;
+        const replay = this.replaySystem;
+        // Pin is pause-only: during follow-mode playback the chart must scroll with replay.
+        if (replay?.isPlaying) return false;
+        if (replay?.isActive && replay.autoScrollEnabled && !replay.userHasPanned) {
+            return false;
+        }
         const anchorTs = this._clampReplayTfSwitchAnchorTs(pin.anchorTs);
         this._restorePositionAtScreenX(
             anchorTs,
@@ -24945,7 +24947,9 @@ class Chart {
 
         setTimeout(() => {
             const grew = measureLen() > beforeLen;
-            if (grew && typeof this._reapplyTfSwitchViewportPin === 'function') {
+            const replay = this.replaySystem;
+            if (grew && typeof this._reapplyTfSwitchViewportPin === 'function'
+                && !(replay?.isPlaying)) {
                 try { this._reapplyTfSwitchViewportPin(); } catch (_e) { /* ignore */ }
             }
             // Keep going while data is arriving here OR a shared host fetch is in flight.

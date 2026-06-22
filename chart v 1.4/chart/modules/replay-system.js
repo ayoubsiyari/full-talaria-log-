@@ -2633,6 +2633,8 @@ class ReplaySystem {
     _replayUserOwnsViewport(chartInstance = this.chart) {
         if (!this.isActive || !chartInstance) return false;
         if (this.userHasPanned || !this.autoScrollEnabled) return true;
+        // TF-switch center pin while paused is not manual pan.
+        if (chartInstance._tfSwitchViewportPin) return false;
 
         const st = typeof this.getReplayAutoScrollState === 'function'
             ? this.getReplayAutoScrollState(chartInstance)
@@ -2654,6 +2656,10 @@ class ReplaySystem {
     _capturePlaybackViewportLock() {
         const chart = this.chart;
         if (!this.isActive || !chart) {
+            this._viewportLockForPlayback = null;
+            return;
+        }
+        if (chart._tfSwitchViewportPin && !this.userHasPanned) {
             this._viewportLockForPlayback = null;
             return;
         }
@@ -3188,6 +3194,22 @@ class ReplaySystem {
             this._maybeNotifyReplayToast('Already at the end of this backtest — step back or move the replay head to continue.');
             this.syncPlayPauseUI();
             return;
+        }
+
+        // TF-switch viewport pin is pause-only — release follow mode on Play.
+        if (this.chart?._tfSwitchViewportPin && !this.userHasPanned) {
+            if (typeof this.chart._clearTfSwitchViewportPin === 'function') {
+                this.chart._clearTfSwitchViewportPin();
+            }
+            this.autoScrollEnabled = true;
+            this.userHasPanned = false;
+            this._viewportLockForPlayback = null;
+            if (typeof this.syncReplayViewportToPlayhead === 'function') {
+                this.syncReplayViewportToPlayhead(this.chart, {
+                    resetPriceScale: false,
+                    render: false,
+                });
+            }
         }
 
         this._capturePlaybackViewportLock();
@@ -6396,10 +6418,10 @@ class ReplaySystem {
             const runPostTfFinalize = () => {
                 if (changeSeq !== this._tfChangeSeq) return;
                 restoreSavedPlayhead();
-                if (this.chart._chartViewRestored
+                if (!this.isPlaying && this.chart._tfSwitchViewportPin
                     && typeof this.chart._reapplyTfSwitchViewportPin === 'function') {
                     try { this.chart._reapplyTfSwitchViewportPin(); } catch (_pin) { /* ignore */ }
-                } else {
+                } else if (!this.isPlaying) {
                     try { this.updateChartData(false); } catch (_uc) { /* ignore */ }
                 }
                 const omAfter = this._resolveOrderManagerForReplayGuards(this.chart);
