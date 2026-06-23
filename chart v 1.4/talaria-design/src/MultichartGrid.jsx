@@ -1342,6 +1342,7 @@ export default function MultichartGrid({
     // behind it; the chart only becomes visible once it's stable.
     const overlayHoldTimersRef = useRef({});
     const OVERLAY_SETTLE_HOLD_MS = 1300;
+    const OVERLAY_MEMORY_BOOT_HOLD_MS = 400;
     useEffect(() => {
         return () => {
             const timers = overlayHoldTimersRef.current || {};
@@ -1822,6 +1823,12 @@ export default function MultichartGrid({
         // firing 3× addChart in one tick makes B/C/D fight for CPU + HTTP/2
         // streams so the last panel often misses the old 5s bridge-ready gate.
         const IFRAME_ADD_STAGGER_MS = 700;
+        try {
+            const hostCh = window.chart;
+            if (hostCh && typeof hostCh._ensureMultichartHostExportReady === "function") {
+                hostCh._ensureMultichartHostExportReady();
+            }
+        } catch (_) {}
         const hostNt = readHostChartFileAndTf();
         const propFid = initialFileIdRef.current && String(initialFileIdRef.current).trim();
         const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
@@ -3155,6 +3162,7 @@ export default function MultichartGrid({
             && id !== HOST_PANEL_ID
             && !dataReadyPanels.has(id)
             && !overlayHoldTimersRef.current[id]) {
+            const holdMs = state.memoryBoot ? OVERLAY_MEMORY_BOOT_HOLD_MS : OVERLAY_SETTLE_HOLD_MS;
             overlayHoldTimersRef.current[id] = setTimeout(() => {
                 delete overlayHoldTimersRef.current[id];
                 setDataReadyPanels((prev) => {
@@ -3169,7 +3177,7 @@ export default function MultichartGrid({
                     next.add(id);
                     return next;
                 });
-            }, OVERLAY_SETTLE_HOLD_MS);
+            }, holdMs);
         }
 
         // (a) focus mirror

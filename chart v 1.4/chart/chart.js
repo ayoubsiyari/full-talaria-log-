@@ -1866,6 +1866,71 @@ class Chart {
     }
 
     /**
+     * Best available 1m (or live) bar series on host tile A for iframe B/C/D to clone
+     * without a /smart round-trip. Prefers replay fullRawData, then backtest TF cache,
+     * then panel master, then live rawData.
+     * @param {object|null} parent window.parent.chart
+     * @returns {Array|null}
+     */
+    _resolveParentMultichartMasterRaw(parent) {
+        if (!parent) return null;
+        try {
+            const prs = parent.replaySystem;
+            if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
+                return prs.fullRawData;
+            }
+            const fid = parent.currentFileId != null ? String(parent.currentFileId) : '';
+            if (fid && typeof parent._getBtTfDataCache === 'function') {
+                const oneM = parent._getBtTfDataCache(fid, '1m');
+                if (oneM && Array.isArray(oneM.rawData) && oneM.rawData.length > 0) {
+                    return oneM.rawData;
+                }
+            }
+            if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {
+                return parent._panelFullRawData;
+            }
+            const inReplay = !!(prs && prs.isActive);
+            if (!inReplay && Array.isArray(parent.rawData) && parent.rawData.length > 0) {
+                return parent.rawData;
+            }
+            if (inReplay && Array.isArray(parent.rawData) && parent.rawData.length > 0) {
+                if (typeof parent._reseedReplayFullRawFromLoadedData === 'function') {
+                    parent._reseedReplayFullRawFromLoadedData();
+                }
+                if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
+                    return prs.fullRawData;
+                }
+            }
+        } catch (_e) { /* ignore */ }
+        return null;
+    }
+
+    /** True when host tile A already holds exportable bars for the requested fileId. */
+    _parentMultichartMasterReady(parent, fileId) {
+        if (!parent) return false;
+        const fid = fileId != null ? String(fileId).trim() : String(parent.currentFileId || '').trim();
+        if (!fid || String(parent.currentFileId || '').trim() !== fid) return false;
+        const master = this._resolveParentMultichartMasterRaw(parent);
+        return !!(master && master.length > 0);
+    }
+
+    /**
+     * Host tile A: ensure replay fullRawData (or live rawData) is ready before iframe panels boot.
+     * @returns {boolean}
+     */
+    _ensureMultichartHostExportReady() {
+        if (typeof window === 'undefined' || !window.__multichartGrid) return false;
+        const rs = this.replaySystem;
+        if (rs && rs.isActive) {
+            if (!Array.isArray(rs.fullRawData) || rs.fullRawData.length === 0) {
+                return !!this._reseedReplayFullRawFromLoadedData();
+            }
+            return true;
+        }
+        return Array.isArray(this.rawData) && this.rawData.length > 0;
+    }
+
+    /**
      * After a completed stroke auto-deselects the draw tool on this tile, clear the same
      * armed tool on every other multichart panel (host + iframes). Matches single-chart
      * behaviour where finalizeDrawing leaves only cursor mode active.
@@ -2014,10 +2079,7 @@ class Chart {
         if (!parent || String(parent.currentFileId || '') !== String(this.currentFileId || '')) {
             return false;
         }
-        const prs = parent.replaySystem;
-        const master = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
-            ? prs.fullRawData
-            : null;
+        const master = this._resolveParentMultichartMasterRaw(parent);
         if (!master || master.length === 0) return false;
         this._panelFullRawData = master.slice();
         return true;
@@ -2245,10 +2307,7 @@ class Chart {
                 : null;
             if (!parent) return null;
 
-            const prs = parent.replaySystem;
-            const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
-                ? prs.fullRawData
-                : null;
+            const masterRaw = this._resolveParentMultichartMasterRaw(parent);
             if (!masterRaw || masterRaw.length === 0) return null;
 
             this._panelFullRawData = masterRaw;
@@ -2302,6 +2361,9 @@ class Chart {
                 }
             };
             const hostMasterReady = (host) => {
+                if (typeof this._parentMultichartMasterReady === 'function') {
+                    return this._parentMultichartMasterReady(host, fid);
+                }
                 const prs = host && host.replaySystem;
                 return !!(prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0);
             };
@@ -2325,7 +2387,7 @@ class Chart {
                 return;
             }
             const startedAt = Date.now();
-            const maxWaitMs = 8000;
+            const maxWaitMs = 3000;
             const tick = () => {
                 if (settled() || Date.now() - startedAt >= maxWaitMs) {
                     resolve();
@@ -2362,12 +2424,7 @@ class Chart {
             const fid = String(targetFileId || '').trim();
             if (!fid || String(parent.currentFileId || '') !== fid) return null;
 
-            // Must use the host replay master — parent.rawData is only the visible
-            // playhead slice and would leave this tile on the wrong time range.
-            const prs = parent.replaySystem;
-            const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
-                ? prs.fullRawData
-                : null;
+            const masterRaw = this._resolveParentMultichartMasterRaw(parent);
             if (!masterRaw || masterRaw.length === 0) return null;
 
             const tf = this._normalizeBacktestTimeframe(displayTf) || displayTf || '1m';
@@ -2716,7 +2773,11 @@ class Chart {
                 viewportCommitted = true;
                 try {
                     global.dispatchEvent(new CustomEvent('chartDataLoaded', {
-                        detail: { fileId, source: 'loadMultichartPanelFromHost' },
+                        detail: {
+                            fileId,
+                            source: 'loadMultichartPanelFromHost',
+                            ingestSource: result && result.source ? result.source : null,
+                        },
                     }));
                 } catch (_ev) { /* ignore */ }
                 const selfMc = this;
@@ -5974,7 +6035,9 @@ class Chart {
                     data: this.data,
                     rawData: this.rawData,
                     symbol: this.currentSymbol,
-                    timeframe: this.currentTimeframe
+                    timeframe: this.currentTimeframe,
+                    fileId: this.currentFileId,
+                    ingestSource: options.ingestSource || this._lastIngestSource || null,
                 }
             }));
             this._emitTimeframeChanged();
@@ -6037,6 +6100,9 @@ class Chart {
      */
     _ingestSmartWindowResult(result, options = {}) {
         if (!result) return false;
+        if (result.source) {
+            this._lastIngestSource = result.source;
+        }
         if (Array.isArray(result.candles) && result.candles.length > 0) {
             const newData = this._normalizeCandlesFromApi(result.candles);
             if (newData.length === 0) {

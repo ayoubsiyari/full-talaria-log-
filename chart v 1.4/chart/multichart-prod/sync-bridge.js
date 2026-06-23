@@ -1204,12 +1204,15 @@
                         // which file each panel has loaded for session
                         // restore. Forbidden-fields filter still applies
                         // on inbound; fileId is not in the forbidden list.
-                        fileId: d.fileId || null,
+                        fileId: d.fileId || chart.currentFileId || null,
                         symbol: d.symbol || chart.currentSymbol || null,
                         timeframe: d.timeframe || chart.currentTimeframe || null,
                         candleCount: chart.data ? chart.data.length : 0,
                         firstBarMs: firstBarMs,
                         lastBarMs: lastBarMs,
+                        memoryBoot: d.ingestSource === 'parent-native-master'
+                            || d.ingestSource === 'parent-memory'
+                            || d.source === 'parent-bt-cache',
                     },
                 }, parentOrigin);
             } catch (_) {}
