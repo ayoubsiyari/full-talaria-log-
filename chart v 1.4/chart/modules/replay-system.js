@@ -2914,7 +2914,27 @@ class ReplaySystem {
         if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
             this.chart._syncReplayPlayheadCrosshairValues();
         }
+        
+        // Force a reflow to commit the canvas changes
+        if (this.chart.canvas) {
+            void this.chart.canvas.offsetHeight;
+            
+            // Force canvas to flush by reading a pixel
+            if (this.chart.ctx) {
+                try {
+                    void this.chart.ctx.getImageData(0, 0, 1, 1);
+                } catch (e) {}
+            }
+        }
 
+        setTimeout(() => {
+            this.chart.renderPending = true;
+        }, 0);
+        
+        requestAnimationFrame(() => {
+            this.chart.renderPending = true;
+        });
+        
         // Update order manager positions after each candle
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();

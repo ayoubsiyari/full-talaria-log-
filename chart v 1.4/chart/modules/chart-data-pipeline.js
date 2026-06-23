@@ -381,7 +381,7 @@
             const interactionFast = typeof chart._isInteractionFastRender === 'function'
                 && chart._isInteractionFastRender();
             const offsetKey = interactionFast
-                ? Math.round(offsetX / Math.max(ZOOMED_OUT_SLOT_PX, spacing, 4))
+                ? Math.round(offsetX / Math.max(spacing, ZOOMED_OUT_SLOT_PX))
                 : offsetX.toFixed(2);
 
             const cacheKey = [
