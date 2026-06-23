@@ -2008,12 +2008,20 @@ export default function MultichartGrid({
             focusPanelById(HOST_PANEL_ID);
             const grid = window.__multichartGrid;
             if (!grid) return;
-            if (prev !== HOST_PANEL_ID) {
-                if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                    grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
+            // Defer iframe deselect/settings close so host pan mousedown stays responsive.
+            const runClear = () => {
+                if (prev !== HOST_PANEL_ID) {
+                    if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                        grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
+                    }
+                } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                    grid.deselectDrawingsOnNonFocusedPanels(HOST_PANEL_ID);
                 }
-            } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
-                grid.deselectDrawingsOnNonFocusedPanels(HOST_PANEL_ID);
+            };
+            if (typeof requestAnimationFrame === "function") {
+                requestAnimationFrame(runClear);
+            } else {
+                runClear();
             }
         };
         if (wrapper) {

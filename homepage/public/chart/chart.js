@@ -20470,16 +20470,8 @@ class Chart {
         // Drop stale CSS translate; keep snap offsets for the pan loop.
         this._clearPanDrawingsLayerTransform(false);
         const dm = this.drawingManager;
-        // Re-resolve timestamp anchors once at pan start (e.g. after 1D→1m→1D) then freeze
-        // indices for the drag — per-frame resolve during pan caused shapes to snap/jump.
-        if (dm && dm.drawings && dm.drawings.length > 0
-            && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
-            dm.drawings.forEach((drawing) => {
-                if (drawing) {
-                    dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
-                }
-            });
-        }
+        // TF anchor refresh runs via drawingManager.scheduleRefreshAfterTimeframe after
+        // setTimeframe — not on every pan start (that loop blocked mousedown ~300ms).
         if (dm && typeof dm.prepareDrawingsForChartPan === 'function') {
             dm.prepareDrawingsForChartPan();
         }
@@ -26333,8 +26325,15 @@ class Chart {
         }, true);
 
         this.canvas.addEventListener('mousedown', e => {
-            if (e.button === 0 && this._isMultichartHostPanel()) {
-                this._requestMultichartClearDrawingUiOnOtherPanels();
+            // Host tile: MultichartGrid #chartWrapper pointerdown already clears drawing UI.
+            // Iframe tiles: defer so pan mousedown stays under one frame budget.
+            if (e.button === 0 && this._isMultichartEmbedPanel()) {
+                const deferClear = () => this._requestMultichartClearDrawingUiOnOtherPanels();
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(deferClear);
+                } else {
+                    deferClear();
+                }
             }
             if (tryStartCtrlMarqueeSelect.call(this, e)) {
                 return;
@@ -26505,10 +26504,8 @@ class Chart {
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
-                // Start pan loop on finger-down so the first mousemove is not waiting on rAF setup.
+                // Start pan loop on finger-down; first paint is on the next rAF (avoid sync render here).
                 this._scheduleChartPanRender();
-                this.renderPending = false;
-                this.render();
             }
         });
 
