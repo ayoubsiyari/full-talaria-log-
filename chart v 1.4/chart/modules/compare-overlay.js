@@ -1676,11 +1676,14 @@ class CompareOverlay {
         console.log(`📊 Pane drew ${pointCount} ${displayType}, range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}`);
         
         // Same decimal rules as main price axis, but resolved for this pane's symbol
-        const decimals = typeof mainChart.getPriceDecimalsForSymbol === 'function'
+        const symDec = typeof mainChart.getPriceDecimalsForSymbol === 'function'
             ? mainChart.getPriceDecimalsForSymbol(pane.symbol, priceRange, { data: paneData })
             : (typeof mainChart._decimalsFromPriceRangeHeuristic === 'function'
                 ? mainChart._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0))
                 : 5);
+        const axisDecimals = typeof mainChart._getAxisLabelDecimals === 'function'
+            ? mainChart._getAxisLabelDecimals(yTicks, Math.abs(priceRange), pane.symbol, { data: paneData })
+            : symDec;
         const scaleTextSize = mainChart.chartSettings?.scaleTextSize || 11;
         const scaleFont = `${scaleTextSize}px Roboto`;
         
@@ -1716,7 +1719,12 @@ class CompareOverlay {
             const y = yScale(price);
             if (y < margin.t + 8 || y > height - margin.b - 8) return;
             if (lastPrice > 0 && Math.abs(y - lastY) < 18) return;
-            if (!isNaN(price)) ctx.fillText(price.toFixed(decimals), width - margin.r / 2, y + 4);
+            if (!isNaN(price)) {
+                const axisLabel = typeof mainChart._formatAxisPrice === 'function'
+                    ? mainChart._formatAxisPrice(price, yTicks, Math.abs(priceRange), pane.symbol, { data: paneData })
+                    : price.toFixed(axisDecimals);
+                ctx.fillText(axisLabel, width - margin.r / 2, y + 4);
+            }
         });
         
         // Draw current price line and label
@@ -1743,7 +1751,13 @@ class CompareOverlay {
             ctx.fillStyle = pillText;
             ctx.font = `500 ${scaleTextSize}px Roboto`;
             ctx.textAlign = 'center';
-            ctx.fillText(lastPrice.toFixed(decimals), width - margin.r / 2, lastY + 4);
+            ctx.fillText(
+                typeof mainChart._formatLastPrice === 'function'
+                    ? mainChart._formatLastPrice(lastPrice, Math.abs(priceRange), pane.symbol)
+                    : lastPrice.toFixed(symDec),
+                width - margin.r / 2,
+                lastY + 4
+            );
         }
         
         // Draw crosshair if active
@@ -1791,7 +1805,13 @@ class CompareOverlay {
                     ctx.fillStyle = cursorLabelText;
                     ctx.font = scaleFont;
                     ctx.textAlign = 'center';
-                    ctx.fillText(crosshairPrice.toFixed(decimals), width - margin.r / 2, cy + 4);
+                    ctx.fillText(
+                        typeof mainChart._formatLastPrice === 'function'
+                            ? mainChart._formatLastPrice(crosshairPrice, Math.abs(priceRange), pane.symbol)
+                            : crosshairPrice.toFixed(symDec),
+                        width - margin.r / 2,
+                        cy + 4
+                    );
                 }
             }
             
@@ -4186,7 +4206,7 @@ class CompareOverlay {
 
         const numYTicks = Math.max(8, Math.min(15, Math.floor(priceHeight / 60)));
         const priceRange = maxPrice - minPrice;
-        const decimals = typeof this.chart.getPriceDecimalsForSymbol === 'function'
+        const symDec = typeof this.chart.getPriceDecimalsForSymbol === 'function'
             ? this.chart.getPriceDecimalsForSymbol(overlay.symbol, priceRange, { data: overlay.data })
             : (typeof this.chart._decimalsFromPriceRangeHeuristic === 'function'
                 ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0))
@@ -4195,6 +4215,9 @@ class CompareOverlay {
         const ticks = typeof this.chart._getYPriceTicksForDomain === 'function'
             ? this.chart._getYPriceTicksForDomain(minPrice, maxPrice, numYTicks, overlay.symbol, { data: overlay.data })
             : this.generateNiceTicks(minPrice, maxPrice, numYTicks);
+        const axisDecimals = typeof this.chart._getAxisLabelDecimals === 'function'
+            ? this.chart._getAxisLabelDecimals(ticks, Math.abs(priceRange), overlay.symbol, { data: overlay.data })
+            : symDec;
 
         const scaleTextSize = cs.scaleTextSize || 12;
         const scaleFont = `${scaleTextSize}px Roboto`;
@@ -4220,7 +4243,10 @@ class CompareOverlay {
 
             ctx.fillStyle = axisTextColor;
             ctx.font = scaleFont;
-            ctx.fillText(price.toFixed(decimals), axisMidX, y + 4);
+            const axisLabel = typeof this.chart._formatAxisPrice === 'function'
+                ? this.chart._formatAxisPrice(price, ticks, Math.abs(priceRange), overlay.symbol, { data: overlay.data })
+                : price.toFixed(axisDecimals);
+            ctx.fillText(axisLabel, axisMidX, y + 4);
         });
 
         if (overlay.showPriceLine) {
@@ -4230,7 +4256,9 @@ class CompareOverlay {
                 const currentY = yScale(currentPrice);
 
                 if (currentY >= m.t && currentY <= m.t + priceHeight) {
-                    const priceStr = Number(currentPrice).toFixed(decimals);
+                    const priceStr = typeof this.chart._formatLastPrice === 'function'
+                        ? this.chart._formatLastPrice(currentPrice, Math.abs(priceRange), overlay.symbol)
+                        : Number(currentPrice).toFixed(symDec);
                     const bgColor = overlay.color || this.chart.chartSettings?.priceLineColor || '#787B86';
                     const labelWidth = axisWidth - 4;
                     const labelX = axisX + 2;

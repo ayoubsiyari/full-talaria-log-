@@ -809,7 +809,7 @@ class Chart {
             // Price labels & lines
             noOverlappingLabels: true,
             showPlusButton: true,
-            showCountdownToBarClose: false,
+            showCountdownToBarClose: true,
             symbolLabelDisplay: 'Value, line',
             symbolLabelValue: 'Value according to scale',
             symbolColor: '#009688',
@@ -10500,7 +10500,7 @@ class Chart {
         if (typeof this.chartSettings.scalesPlacement === 'undefined') this.chartSettings.scalesPlacement = 'Auto';
         if (typeof this.chartSettings.noOverlappingLabels === 'undefined') this.chartSettings.noOverlappingLabels = true;
         if (typeof this.chartSettings.showPlusButton === 'undefined') this.chartSettings.showPlusButton = true;
-        if (typeof this.chartSettings.showCountdownToBarClose === 'undefined') this.chartSettings.showCountdownToBarClose = false;
+        if (typeof this.chartSettings.showCountdownToBarClose === 'undefined') this.chartSettings.showCountdownToBarClose = true;
         if (typeof this.chartSettings.symbolLabelDisplay === 'undefined') this.chartSettings.symbolLabelDisplay = 'Value, line';
         if (typeof this.chartSettings.symbolLabelValue === 'undefined') this.chartSettings.symbolLabelValue = 'Value according to scale';
         if (typeof this.chartSettings.symbolColor === 'undefined') this.chartSettings.symbolColor = '#009688';
@@ -20797,6 +20797,15 @@ class Chart {
             }
         }
 
+        // Keep bar-close countdown on the price axis ticking (TradingView-style).
+        if (this.chartSettings.showCountdownToBarClose !== false) {
+            const nowCd = performance.now();
+            if (!this._lastCountdownRender || nowCd - this._lastCountdownRender > 1000) {
+                this._lastCountdownRender = nowCd;
+                this.scheduleRender();
+            }
+        }
+
         // Calculate FPS
         const now = performance.now();
         this.frameCount++;
@@ -21285,12 +21294,11 @@ class Chart {
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
         const yTicks = this._getYPriceTicks(numYTicks);
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = this._getAxisLabelDecimals(yTicks, Math.abs(priceRange));
         
         yTicks.forEach(price => {
             const y = this.yScale(price);
             if (y > m.t + 8 && y < pricePlotBottom - 8) {
-                const text = price.toFixed(decimals);
+                const text = this._formatAxisPrice(price, yTicks, Math.abs(priceRange));
                 this.ctx.fillStyle = axisTextColor;
                 this.ctx.fillText(text, axisMidX, y + 4);
             }
@@ -22130,9 +22138,41 @@ class Chart {
         return 8;
     }
 
+    /** Median spacing between consecutive Y-axis ticks (robust vs float noise). */
+    _getAxisTickStep(yTicks) {
+        if (!Array.isArray(yTicks) || yTicks.length < 2) return null;
+        const steps = [];
+        for (let i = 1; i < yTicks.length; i++) {
+            const s = Math.abs(Number(yTicks[i]) - Number(yTicks[i - 1]));
+            if (Number.isFinite(s) && s > 0) steps.push(s);
+        }
+        if (!steps.length) return null;
+        steps.sort((a, b) => a - b);
+        return steps[Math.floor(steps.length / 2)];
+    }
+
+    /** Minimum decimals so every axis tick label is unique (TradingView tickmarks style). */
+    _minDecimalsForUniqueAxisLabels(yTicks, maxDec = 8) {
+        if (!Array.isArray(yTicks) || yTicks.length < 2) return 0;
+        for (let d = 0; d <= maxDec; d++) {
+            const seen = new Set();
+            let unique = true;
+            for (let i = 0; i < yTicks.length; i++) {
+                const label = Number(yTicks[i]).toFixed(d);
+                if (seen.has(label)) {
+                    unique = false;
+                    break;
+                }
+                seen.add(label);
+            }
+            if (unique) return d;
+        }
+        return maxDec;
+    }
+
     /**
-     * Y-axis label decimals: match visible grid spacing so 53.40 does not render as 53.40000.
-     * Crosshair / live price still use full symbol precision via getPriceDecimals().
+     * Y-axis label decimals: coarser than symbol precision — match visible grid spacing
+     * (e.g. 1.52 / 1.50 on axis while last price shows 1.48876).
      */
     _getAxisLabelDecimals(yTicks, priceRange, symbol, options = {}) {
         const symDec = symbol
@@ -22141,10 +22181,106 @@ class Chart {
                 : this.getPriceDecimals(priceRange))
             : this.getPriceDecimals(priceRange);
         if (!Array.isArray(yTicks) || yTicks.length < 2) return symDec;
-        const step = Math.abs(Number(yTicks[1]) - Number(yTicks[0]));
-        const tickDec = this._decimalsFromTickStep(step);
-        if (!Number.isFinite(tickDec)) return symDec;
-        return tickDec;
+        const step = this._getAxisTickStep(yTicks);
+        const tickDec = Number.isFinite(step) ? this._decimalsFromTickStep(step) : null;
+        const uniqueDec = this._minDecimalsForUniqueAxisLabels(yTicks);
+        let axisDec = Number.isFinite(tickDec) ? Math.max(tickDec, uniqueDec) : uniqueDec;
+        if (Number.isFinite(symDec) && symDec >= 0) {
+            axisDec = Math.min(axisDec, symDec);
+        }
+        const rangeDec = this._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0));
+        axisDec = Math.min(axisDec, rangeDec);
+        return Number.isFinite(axisDec) && axisDec >= 0 ? axisDec : symDec;
+    }
+
+    /** Format a Y-axis / grid price label (coarser decimals than last price). */
+    _formatAxisPrice(price, yTicks, priceRange, symbol, options = {}) {
+        const dec = this._getAxisLabelDecimals(yTicks, priceRange, symbol, options);
+        return Number(price).toFixed(dec);
+    }
+
+    /**
+     * Format last / crosshair price at full symbol precision (TradingView last-value label).
+     */
+    _formatLastPrice(price, priceRange, symbol) {
+        const p = Number(price);
+        if (!Number.isFinite(p)) return '—';
+        const sym = symbol || this.currentSymbol;
+        if (sym && typeof window !== 'undefined' && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                const specs = calc && calc.specs;
+                if (calc && specs && !specs._genericFallback && typeof calc.formatPrice === 'function') {
+                    return calc.formatPrice(p);
+                }
+            } catch (_) { /* fall through */ }
+        }
+        const dec = (sym && typeof this.getPriceDecimalsForSymbol === 'function')
+            ? this.getPriceDecimalsForSymbol(sym, priceRange)
+            : this.getPriceDecimals(priceRange);
+        return p.toFixed(dec);
+    }
+
+    _formatCountdownSeconds(remainingSeconds, totalSeconds) {
+        const remain = Math.max(0, Math.ceil(Number(remainingSeconds) || 0));
+        const total = Math.max(1, Number(totalSeconds) || 60);
+        if (total >= 3600) {
+            const hours = Math.floor(remain / 3600);
+            const minutes = Math.floor((remain % 3600) / 60);
+            const seconds = remain % 60;
+            return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+        const minutes = Math.floor(remain / 60);
+        const seconds = remain % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    /** Replay-mode bar-close countdown (progress through forming candle). */
+    _getReplayBarCloseCountdownText() {
+        const rs = this.replaySystem;
+        if (!rs || !rs.isActive) return '';
+        const timeframe = this.currentTimeframe || '1m';
+        const totalSeconds = this.getTimeframeSeconds(timeframe);
+        const displayTfMs = totalSeconds * 1000;
+        const rawTfMs = rs.fullRawData && rs.fullRawData.length > 1
+            ? (rs.fullRawData[1].t - rs.fullRawData[0].t) : 60000;
+        const rawCandlesPerDisplay = Math.max(1, displayTfMs / rawTfMs);
+        const currentIndex = rs.currentIndex || 0;
+        const currentTimestamp = rs.fullRawData && rs.fullRawData[currentIndex]
+            ? rs.fullRawData[currentIndex].t : 0;
+        const displayCandleStart = Math.floor(currentTimestamp / displayTfMs) * displayTfMs;
+        let completedRawCandles = 0;
+        for (let i = currentIndex; i >= 0; i--) {
+            if (rs.fullRawData[i] && rs.fullRawData[i].t >= displayCandleStart) {
+                completedRawCandles++;
+            } else {
+                break;
+            }
+        }
+        const ticksPerCandle = rs.currentTicksPerCandle || rs.ticksPerCandle || 72;
+        const currentRawProgress = rs.tickProgress / ticksPerCandle;
+        const rawProgress = (completedRawCandles - 1 + currentRawProgress) / rawCandlesPerDisplay;
+        const progress = Math.max(0, Math.min(1, rawProgress));
+        const remainingSeconds = Math.ceil(totalSeconds * (1 - progress));
+        return this._formatCountdownSeconds(remainingSeconds, totalSeconds);
+    }
+
+    /** Live / replay bar-close countdown for the price-axis badge (TradingView-style). */
+    _getBarCloseCountdownText() {
+        if (this.chartSettings && this.chartSettings.showCountdownToBarClose === false) return '';
+        if (this.replaySystem && this.replaySystem.isActive) {
+            return this._getReplayBarCloseCountdownText();
+        }
+        if (!this.data || this.data.length === 0) return '';
+        const lastBar = this.data[this.data.length - 1];
+        if (!lastBar || !Number.isFinite(lastBar.t)) return '';
+        const totalSeconds = this.getTimeframeSeconds(this.currentTimeframe || '1m');
+        const tfMs = totalSeconds * 1000;
+        const barCloseMs = lastBar.t + tfMs;
+        const nowMs = Date.now();
+        if (nowMs - lastBar.t > tfMs * 2) return '';
+        const remainingSeconds = Math.ceil((barCloseMs - nowMs) / 1000);
+        return this._formatCountdownSeconds(remainingSeconds, totalSeconds);
     }
 
     /**
@@ -22243,18 +22379,19 @@ class Chart {
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
         const yTicks = this._getYPriceTicks(numYTicks);
         const decimals = this._getAxisLabelDecimals(yTicks, Math.abs(priceRange));
+        const liveDecimals = this.getPriceDecimals(Math.abs(priceRange));
         const fs = this.chartSettings.scaleTextSize || 12;
 
         let maxW = 0;
-        const measure = (weightPrefix) => {
+        const measure = (weightPrefix, dec) => {
             this.ctx.font = weightPrefix ? `${weightPrefix} ${fs}px Roboto` : `${fs}px Roboto`;
             return (num) => {
-                const t = Number(num).toFixed(decimals);
+                const t = Number(num).toFixed(dec);
                 const w = this.ctx.measureText(t).width;
                 if (w > maxW) maxW = w;
             };
         };
-        const mTick = measure(false);
+        const mTick = measure(false, decimals);
         yTicks.forEach((price) => {
             const y = this.yScale(price);
             if (y > this.margin.t + 8 && y < pricePlotBottom - 8) {
@@ -22265,9 +22402,14 @@ class Chart {
         const d1 = this.yScale.domain()[1];
         mTick(d0);
         mTick(d1);
-        const mLive = measure('500');
-        mLive(d0);
-        mLive(d1);
+        const mLive = measure('500', liveDecimals);
+        const livePrice = this.resolveEffectiveCurrentPrice(this.data);
+        if (Number.isFinite(livePrice)) {
+            mLive(livePrice);
+        } else {
+            mLive(d0);
+            mLive(d1);
+        }
 
         const padding = 16;
         const minW = 48;
@@ -22888,8 +23030,7 @@ class Chart {
         const bgColor = this.chartSettings.priceLineColor || '#787B86';
         
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = this.getPriceDecimals(priceRange);
-        const priceText = Number(currentPrice).toFixed(decimals);
+        const priceText = this._formatLastPrice(currentPrice, Math.abs(priceRange));
 
         // Use fixed width matching the price axis area
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
@@ -22900,59 +23041,12 @@ class Chart {
         const labelX = axisLeft ? 2 : this.w - m.r;
         const radius = 2;
         
-        // Check if in replay mode to combine labels (show progress while paused too)
-        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive);
-        let countdownText = '';
-        
-        if (inReplayMode) {
-            const timeframe = this.currentTimeframe || '1m';
-            const totalSeconds = this.getTimeframeSeconds(timeframe);
-            
-            // Calculate progress through the DISPLAY candle (not just raw candle)
-            // On higher TFs, we need to track progress across multiple raw candles
-            const displayTfMs = totalSeconds * 1000;
-            const rawTfMs = this.replaySystem.fullRawData && this.replaySystem.fullRawData.length > 1 ?
-                (this.replaySystem.fullRawData[1].t - this.replaySystem.fullRawData[0].t) : 60000;
-            const rawCandlesPerDisplay = Math.max(1, displayTfMs / rawTfMs);
-            
-            // Get current raw candle's position within display period
-            const currentIndex = this.replaySystem.currentIndex || 0;
-            const currentTimestamp = this.replaySystem.fullRawData && this.replaySystem.fullRawData[currentIndex] ?
-                this.replaySystem.fullRawData[currentIndex].t : 0;
-            const displayCandleStart = Math.floor(currentTimestamp / displayTfMs) * displayTfMs;
-            
-            // Count completed raw candles in current display period
-            let completedRawCandles = 0;
-            for (let i = currentIndex; i >= 0; i--) {
-                if (this.replaySystem.fullRawData[i] && this.replaySystem.fullRawData[i].t >= displayCandleStart) {
-                    completedRawCandles++;
-                } else {
-                    break;
-                }
-            }
-            
-            // Calculate total progress: completed raw candles + current tick progress
-            const ticksPerCandle = this.replaySystem.currentTicksPerCandle || this.replaySystem.ticksPerCandle || 72;
-            const currentRawProgress = this.replaySystem.tickProgress / ticksPerCandle;
-            const rawProgress = (completedRawCandles - 1 + currentRawProgress) / rawCandlesPerDisplay;
-            const progress = Math.max(0, Math.min(1, rawProgress));
-            
-            const remainingSeconds = Math.ceil(totalSeconds * (1 - progress));
-            if (totalSeconds >= 3600) {
-                const hours = Math.floor(remainingSeconds / 3600);
-                const minutes = Math.floor((remainingSeconds % 3600) / 60);
-                const seconds = remainingSeconds % 60;
-                countdownText = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            } else {
-                const minutes = Math.floor(remainingSeconds / 60);
-                const seconds = remainingSeconds % 60;
-                countdownText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            }
-        }
+        const countdownText = this._getBarCloseCountdownText();
+        const showCountdown = !!countdownText;
         
         // Calculate total label height
         const priceHeight = 20;
-        const countdownHeight = inReplayMode ? 18 : 0;
+        const countdownHeight = showCountdown ? 18 : 0;
         const totalHeight = priceHeight + countdownHeight;
         const labelY = y - totalHeight / 2;
 
@@ -22980,8 +23074,8 @@ class Chart {
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
         this.ctx.fillText(priceText, labelX + labelWidth / 2, labelY + priceHeight / 2);
 
-        // Draw countdown text in bottom section if in replay mode
-        if (inReplayMode) {
+        // Draw countdown text in bottom section (TradingView-style bar timer)
+        if (showCountdown) {
             this.ctx.fillStyle = labelTextColor;
             this.ctx.font = `600 ${this.chartSettings.scaleTextSize - 1}px Roboto`;
             this.ctx.fillText(countdownText, labelX + labelWidth / 2, labelY + priceHeight + countdownHeight / 2);
@@ -23341,10 +23435,8 @@ class Chart {
         this.ctx.stroke();
         this.ctx.setLineDash([]);
         
-        const _hoverDec = this.getPriceDecimals(
-            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
-        );
-        const text = price.toFixed(_hoverDec);
+        const text = this._formatLastPrice(price, this.yScale
+            ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0);
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
         this.ctx.textAlign = 'left';
         const textWidth = this.ctx.measureText(text).width;
