@@ -1954,38 +1954,44 @@ class Chart {
         for (const [tf, entry] of perFile.entries()) {
             if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) continue;
             out[String(tf).toLowerCase().trim()] = {
-                rawData: entry.rawData,
                 totalCandles: entry.totalCandles,
                 serverCursors: entry.serverCursors ? { ...entry.serverCursors } : null,
                 nativeRawFetchTf: entry.nativeRawFetchTf,
                 anchorKey: entry.anchorKey,
+                seriesKey: this._btTfCacheSeriesKey(entry.rawData),
             };
         }
         return out;
     }
 
-    _warmLocalBtTfCacheFromSessionSnapshot(fileId, btTfSnapshot) {
+    _warmLocalBtTfCacheFromSessionSnapshot(fileId, btTfSnapshot, masterRaw) {
         if (!fileId || !btTfSnapshot || typeof btTfSnapshot !== 'object') return;
+        if (!Array.isArray(masterRaw) || !masterRaw.length) return;
         const fid = String(fileId);
         for (const tf of Object.keys(btTfSnapshot)) {
-            const entry = btTfSnapshot[tf];
-            if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) continue;
-            if (typeof this._storeBtTfDataCacheEntry === 'function') {
-                this._storeBtTfDataCacheEntry(fid, tf, entry.rawData, {
-                    totalCandles: entry.totalCandles,
-                    serverCursors: entry.serverCursors,
-                    nativeRawFetchTf: entry.nativeRawFetchTf,
-                    reuseArrayReference: true,
-                });
+            const meta = btTfSnapshot[tf];
+            if (!meta) continue;
+            if (typeof this._storeBtTfDataCacheEntry !== 'function') continue;
+            const nativeTf = String(meta.nativeRawFetchTf || tf).toLowerCase().trim();
+            let source = masterRaw;
+            if (nativeTf !== '1m' && tf !== nativeTf) {
+                if (typeof this.resampleData === 'function') {
+                    source = this.resampleData(masterRaw, tf);
+                }
+            } else if (tf !== '1m' && typeof this.resampleData === 'function') {
+                source = this.resampleData(masterRaw, tf);
             }
+            if (!Array.isArray(source) || !source.length) continue;
+            this._storeBtTfDataCacheEntry(fid, tf, source, {
+                totalCandles: meta.totalCandles,
+                serverCursors: meta.serverCursors,
+                nativeRawFetchTf: meta.nativeRawFetchTf || nativeTf,
+                reuseArrayReference: false,
+            });
         }
     }
 
-    /**
-     * After any panel loads a pair, publish exportable master + TF cache for other tiles.
-     * @param {string} [fileId]
-     */
-    _storeMultichartSessionPairCache(fileId) {
+    _flushMultichartSessionPairCacheStore(fileId) {
         if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return;
         const fid = String(fileId || this.currentFileId || '').trim();
         if (!fid) return;
@@ -1997,21 +2003,10 @@ class Chart {
 
         const prev = store.get(fid);
         const prevLen = prev && Array.isArray(prev.masterRaw) ? prev.masterRaw.length : 0;
-        if (prevLen > master.length * 1.05) {
-            this._warmLocalBtTfCacheFromSessionSnapshot(fid, prev.btTfSnapshot);
-            return;
-        }
-
-        if (typeof this._saveBtTfDataCacheFromChart === 'function') {
-            try { this._saveBtTfDataCacheFromChart(fid, '1m'); } catch (_save1m) { /* ignore */ }
-            const dispTf = String(this.currentTimeframe || '').toLowerCase().trim();
-            if (dispTf && dispTf !== '1m') {
-                try { this._saveBtTfDataCacheFromChart(fid, dispTf); } catch (_saveTf) { /* ignore */ }
-            }
-        }
+        if (prevLen > master.length * 1.05) return;
 
         store.set(fid, {
-            masterRaw: master.slice(),
+            masterRaw: master,
             nativeRawFetchTf: String(this._nativeRawFetchTf || '1m').toLowerCase().trim() || '1m',
             totalCandles: Number.isFinite(this.totalCandles) ? this.totalCandles : master.length,
             serverCursors: this._serverCursors ? { ...this._serverCursors } : null,
@@ -2020,7 +2015,7 @@ class Chart {
             storedAt: Date.now(),
         });
 
-        const maxEntries = 12;
+        const maxEntries = 8;
         if (store.size > maxEntries) {
             let oldestKey = null;
             let oldestAt = Infinity;
@@ -2032,6 +2027,26 @@ class Chart {
                 }
             }
             if (oldestKey != null) store.delete(oldestKey);
+        }
+    }
+
+    /**
+     * After any panel loads a pair, publish exportable master + TF cache for other tiles.
+     * Deferred to idle time so pair-store never blocks pan/zoom on the main chart.
+     * @param {string} [fileId]
+     */
+    _storeMultichartSessionPairCache(fileId) {
+        if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return;
+        const fid = String(fileId || this.currentFileId || '').trim();
+        if (!fid) return;
+        const self = this;
+        const run = () => {
+            try { self._flushMultichartSessionPairCacheStore(fid); } catch (_e) { /* ignore */ }
+        };
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(run, { timeout: 3000 });
+        } else {
+            setTimeout(run, 0);
         }
     }
 
@@ -2049,9 +2064,9 @@ class Chart {
         const entry = store.get(fid);
         if (!entry || !Array.isArray(entry.masterRaw) || !entry.masterRaw.length) return null;
 
-        this._warmLocalBtTfCacheFromSessionSnapshot(fid, entry.btTfSnapshot);
+        this._warmLocalBtTfCacheFromSessionSnapshot(fid, entry.btTfSnapshot, entry.masterRaw);
 
-        const masterRaw = entry.masterRaw;
+        const masterRaw = entry.masterRaw.slice();
         const pc = entry.serverCursors || {};
         return {
             candles: masterRaw,
@@ -2196,7 +2211,7 @@ class Chart {
         try {
             if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf, {
                 hostCacheOnly,
-                retryMs: hostCacheOnly ? 5000 : 0,
+                retryMs: hostCacheOnly ? 1200 : 0,
             })) {
                 return;
             }
@@ -6249,7 +6264,9 @@ class Chart {
                     ingestSource: options.ingestSource || this._lastIngestSource || null,
                 }
             }));
-            this._emitTimeframeChanged();
+            // Do NOT emit timeframeChanged here — pan/zoom load-more also commits
+            // bars with the same TF. That event must only fire from
+            // _commitTimeframeChange when the timeframe actually changes.
         }
 
         if (startIndex === 0 && this.currentFileId) {
@@ -17570,6 +17587,7 @@ class Chart {
             && Array.isArray(this.data) && this.data.length > 0
             && !this._panLoading;
         if (haveCurrentTfData) {
+            this._multichartTfFromHostCache = false;
             this._logTfSwitch('noop', { to: normalizedTf });
             if (this.drawingManager
                 && this.drawings

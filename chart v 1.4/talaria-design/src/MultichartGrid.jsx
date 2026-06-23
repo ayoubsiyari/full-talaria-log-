@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260623b83";
+const BRIDGE_VERSION = "20260623b85";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1644,6 +1644,12 @@ export default function MultichartGrid({
             cancelled = true;
             if (typeof window !== "undefined") {
                 window.__multichartRealData = prevMultichartRealData;
+                try {
+                    if (window.__multichartSessionPairCache
+                        && typeof window.__multichartSessionPairCache.clear === "function") {
+                        window.__multichartSessionPairCache.clear();
+                    }
+                } catch (_) {}
             }
             if (managerRef.current) {
                 try { managerRef.current.dispose(); } catch (_) {}
@@ -2054,14 +2060,19 @@ export default function MultichartGrid({
         } catch (_) {}
     }, [layoutSync, managerReady]);
 
+    const lastHostTfFanOutRef = useRef(null);
+
     // Fan synced timeframe to iframe panels from host cache (no per-iframe /smart).
     function fanOutTimeframeFromHostCache(tf) {
         const mgr = managerRef.current;
         if (!mgr || typeof mgr.sendCommand !== "function" || !tf) return;
         const tfStr = String(tf);
+        if (lastHostTfFanOutRef.current === tfStr) return;
+        lastHostTfFanOutRef.current = tfStr;
         lastBroadcastTfRef.current[HOST_PANEL_ID] = tfStr;
         for (const c of mgr.charts.values()) {
             if (!c || c.host) continue;
+            if (lastBroadcastTfRef.current[c.id] === tfStr) continue;
             lastBroadcastTfRef.current[c.id] = tfStr;
             try {
                 mgr.sendCommand(c.id, "setTimeframe", { tf: tfStr, fromHostCache: true });
