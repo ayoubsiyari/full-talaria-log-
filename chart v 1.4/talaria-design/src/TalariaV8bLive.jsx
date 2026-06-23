@@ -9607,12 +9607,12 @@ function v9GetPropMaxPosition(symbolType) {
     if (!sess || String(sess.type || "").toLowerCase() !== "propfirm") return null;
     const pr = sess.prop_rules || {};
     if (symbolType === "futures") {
-      if (pr.maxContractsEnabled === false || pr.maxPositionEnabled === false) return null;
-      const n = Number(pr.maxContracts ?? pr.maxPosition);
+      if (pr.maxContractsEnabled !== true) return null;
+      const n = Number(pr.maxContracts);
       if (!Number.isFinite(n) || n <= 0) return null;
       return Math.floor(n);
     }
-    if (!pr.maxPositionEnabled) return null;
+    if (pr.maxPositionEnabled !== true) return null;
     const n = Number(pr.maxPosition);
     if (!Number.isFinite(n) || n <= 0) return null;
     const unit = String(pr.maxPositionUnit || "lots").toLowerCase();

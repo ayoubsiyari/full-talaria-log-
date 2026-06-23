@@ -4405,12 +4405,12 @@ class OrderManager {
             if (!session || String(session.type || '').toLowerCase() !== 'propfirm') return null;
             const pr = session.prop_rules || {};
             if (this.marketType === 'futures') {
-                if (pr.maxContractsEnabled === false || pr.maxPositionEnabled === false) return null;
-                const n = Number(pr.maxContracts ?? pr.maxPosition);
+                if (pr.maxContractsEnabled !== true) return null;
+                const n = Number(pr.maxContracts);
                 if (!Number.isFinite(n) || n <= 0) return null;
                 return Math.floor(n);
             }
-            if (!pr.maxPositionEnabled) return null;
+            if (pr.maxPositionEnabled !== true) return null;
             const n = Number(pr.maxPosition);
             if (!Number.isFinite(n) || n <= 0) return null;
             const unit = String(pr.maxPositionUnit || 'lots').toLowerCase();
@@ -4451,12 +4451,12 @@ class OrderManager {
         if (this.positionSizeMode === 'lot-size') {
             const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
             if (Number.isFinite(lotSize) && lotSize > 0) {
-                return this._clampQtyToPropMax(this._roundQtyToStep(lotSize));
+                return this._roundQtyToStep(lotSize);
             }
         }
         if (this.isMultiEntryMode && this.multiEntryLevels?.length > 0) {
             const implied = this._getMultiEntryImpliedTotalLots();
-            if (implied > 0) return this._clampQtyToPropMax(this._roundQtyToStep(implied));
+            if (implied > 0) return this._roundQtyToStep(implied);
         }
         return Number.isFinite(oq) ? oq : 0;
     }
@@ -4466,7 +4466,7 @@ class OrderManager {
         const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
         const qtyInput = document.getElementById('orderQuantity');
         if (!qtyInput || !(lotSize > 0)) return;
-        const snapped = this._clampQtyToPropMax(this._roundQtyToStep(lotSize));
+        const snapped = this._roundQtyToStep(lotSize);
         const formatted = this._formatQty(snapped);
         if (qtyInput.value !== formatted) {
             qtyInput.value = formatted;

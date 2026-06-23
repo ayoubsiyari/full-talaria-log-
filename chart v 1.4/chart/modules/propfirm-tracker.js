@@ -164,9 +164,9 @@ class PropFirmTracker {
             numPhases: Number(pr.numPhases) || 1,
             weekendHold: !!(session.weekendHold ?? pr.weekendHold),
             maxContracts: Number(pr.maxContracts) || 0,
-            maxContractsEnabled: pr.maxContractsEnabled !== false,
-            maxPosition: Number(pr.maxPosition) || Number(pr.maxContracts) || 0,
-            maxPositionEnabled: !!(pr.maxPositionEnabled ?? pr.maxContractsEnabled),
+            maxContractsEnabled: pr.maxContractsEnabled === true,
+            maxPosition: Number(pr.maxPosition) || 0,
+            maxPositionEnabled: pr.maxPositionEnabled === true,
             maxPositionUnit: String(pr.maxPositionUnit || 'lots').toLowerCase()
         };
     }
@@ -225,11 +225,11 @@ class PropFirmTracker {
         const om = orderManager || (window.chart && window.chart.orderManager);
         const isFutures = om && om.marketType === 'futures';
         if (isFutures) {
-            if (this.rules.maxContractsEnabled === false) return null;
-            const n = Number(this.rules.maxContracts || this.rules.maxPosition);
+            if (this.rules.maxContractsEnabled !== true) return null;
+            const n = Number(this.rules.maxContracts);
             return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
         }
-        if (!this.rules.maxPositionEnabled) return null;
+        if (this.rules.maxPositionEnabled !== true) return null;
         const n = Number(this.rules.maxPosition);
         if (!Number.isFinite(n) || n <= 0) return null;
         const unit = String(this.rules.maxPositionUnit || 'lots').toLowerCase();
