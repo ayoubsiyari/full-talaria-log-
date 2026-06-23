@@ -737,7 +737,14 @@
                 // window and undo the playhead-matched load above.
                 if (tf && typeof ch.setTimeframe === 'function'
                     && ch.currentTimeframe !== tf) {
-                    try { ch.setTimeframe(tf); } catch (_) {}
+                    try {
+                        var pcTf = readParentChart();
+                        var bootFid = fileId || (ch.currentFileId != null ? String(ch.currentFileId) : '');
+                        var samePairTf = pcTf && bootFid
+                            && String(pcTf.currentFileId || '') === String(bootFid);
+                        if (samePairTf) ch._multichartTfFromHostCache = true;
+                        ch.setTimeframe(tf);
+                    } catch (_) {}
                 }
                 try {
                     if (typeof ch.render === 'function') ch.render();
@@ -844,6 +851,11 @@
                             // converged on the requested tf via some
                             // other code path (defensive).
                             if (ch.currentTimeframe !== tf) {
+                                var pcTf = readParentChart();
+                                var bootFid = fileId || (ch.currentFileId != null ? String(ch.currentFileId) : '');
+                                var samePairTf = pcTf && bootFid
+                                    && String(pcTf.currentFileId || '') === String(bootFid);
+                                if (samePairTf) ch._multichartTfFromHostCache = true;
                                 ch.setTimeframe(tf);
                             }
                         } catch (e) {
@@ -970,25 +982,55 @@
                     }
                     return Array.isArray(pc.rawData) && pc.rawData.length > 0;
                 };
-                runPanelLoad();
+                if (hostReadyForMirror()) {
+                    runPanelLoad();
+                } else {
+                    // Wait for tile A's replay master before boot — avoids tiny seek-buffer islands.
+                    pollFor(hostReadyForMirror, 50, 8000, runPanelLoad, runPanelLoad);
+                }
                 return;
             }
 
             // Live / no session — loadFileData clones parent memory when same pair
-            try {
-                var pcLive = readParentChart();
-                if (pcLive && typeof pcLive._ensureMultichartHostExportReady === 'function') {
-                    pcLive._ensureMultichartHostExportReady();
+            var runLivePanelLoad = function () {
+                try {
+                    var pcLive = readParentChart();
+                    if (pcLive && typeof pcLive._ensureMultichartHostExportReady === 'function') {
+                        pcLive._ensureMultichartHostExportReady();
+                    }
+                } catch (_) {}
+                p = ch.loadFileData(fileId);
+                if (p && typeof p.then === 'function') {
+                    p.then(afterLoad, function (err) {
+                        reportToShell('error', 'loadFileData failed: '
+                            + (err && err.message || err));
+                    });
+                } else {
+                    afterLoad();
                 }
-            } catch (_) {}
-            p = ch.loadFileData(fileId);
-            if (p && typeof p.then === 'function') {
-                p.then(afterLoad, function (err) {
-                    reportToShell('error', 'loadFileData failed: '
-                        + (err && err.message || err));
-                });
+            };
+            var hostReadyLive = function () {
+                var pc = readParentChart();
+                var fid = fileId || (pc && pc.currentFileId != null ? String(pc.currentFileId) : '');
+                if (!fid) return true;
+                if (!pc) return false;
+                // Different pair than host — fetch independently (do not wait on A).
+                if (String(pc.currentFileId || '') !== String(fid)) return true;
+                try {
+                    if (typeof pc._ensureMultichartHostExportReady === 'function') {
+                        pc._ensureMultichartHostExportReady();
+                    }
+                } catch (_) {}
+                var chLocal = window.chart;
+                if (chLocal && typeof chLocal._parentMultichartMasterReady === 'function') {
+                    return chLocal._parentMultichartMasterReady(pc, fid);
+                }
+                return Array.isArray(pc.rawData) && pc.rawData.length > 0;
+            };
+            if (hostReadyLive()) {
+                runLivePanelLoad();
             } else {
-                afterLoad();
+                pollFor(hostReadyLive, 50, 8000, runLivePanelLoad, runLivePanelLoad);
             }
         } catch (e) {
             reportToShell('error', 'applyInitialContext threw: ' + (e && e.message || e));

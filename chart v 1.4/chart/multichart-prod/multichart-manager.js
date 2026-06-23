@@ -273,18 +273,16 @@
             params.set('restoreEnd',   String(Math.floor(cfg.restoreEndSec)));
         }
 
-        // Per-cell loading overlay (sandbox only). Production MultichartGrid
-        // shows iframes directly — no blocking "Loading …" screen (TradingView UX).
-        var overlay = null;
-        if (!this.iframeSrcBuilder) {
-            overlay = document.createElement('div');
-            overlay.className = 'loading-overlay';
-            overlay.innerHTML =
-                '<div class="id">' + cfg.id + '</div>' +
-                '<div>Loading panel — pick a file…</div>' +
-                '<small>iframe: pending — bridge: pending</small>';
-            mountEl.appendChild(overlay);
-        }
+        // Per-cell loading overlay so we can see WHICH cells exist and which
+        // are stuck waiting for their iframe's chart.js to init. Removed when
+        // the cell goes ready (see _onWindowMessage on bridge-ready).
+        const overlay = document.createElement('div');
+        overlay.className = 'loading-overlay';
+        overlay.innerHTML =
+            '<div class="id">' + cfg.id + '</div>' +
+            '<div>Loading panel — pick a file…</div>' +
+            '<small>iframe: pending — bridge: pending</small>';
+        mountEl.appendChild(overlay);
 
         const frame = document.createElement('iframe');
         if (this.iframeSrcBuilder) {
@@ -312,11 +310,9 @@
         frame.addEventListener('load', function () {
             scheduleIframeBrandSuppression(frame);
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
-            if (overlay) {
-                const small = overlay.querySelector('small');
-                if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
-                    + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
-            }
+            const small = overlay.querySelector('small');
+            if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
+                + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
             setTimeout(function () {
                 const c = self.charts.get(cfg.id);
                 if (c && !c.ready) {
@@ -325,21 +321,17 @@
                         + '(chart.js init stalled or failed)';
                     self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but '
                         + reason + ' — open the iframe URL in a new tab to inspect its console: ' + frame.src);
-                    if (overlay) {
-                        const sm = overlay.querySelector('small');
-                        if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (no ready after '
-                            + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
-                    }
+                    const sm = overlay.querySelector('small');
+                    if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (no ready after '
+                        + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
                     try { self.onChartBootFailed(cfg.id, reason, frame.src); } catch (_) {}
                 }
             }, BRIDGE_READY_TIMEOUT_MS);
         });
         frame.addEventListener('error', function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
-            if (overlay) {
-                const small = overlay.querySelector('small');
-                if (small) small.textContent = 'iframe: LOAD FAILED';
-            }
+            const small = overlay.querySelector('small');
+            if (small) small.textContent = 'iframe: LOAD FAILED';
             try { self.onChartBootFailed(cfg.id, 'iframe failed to load', frame.src); } catch (_) {}
         });
         mountEl.appendChild(frame);

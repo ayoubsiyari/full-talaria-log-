@@ -4587,12 +4587,7 @@ class OrderManager {
         if (!window.propFirmTracker || typeof window.propFirmTracker.validateBeforeOrder !== 'function') {
             return { ok: true };
         }
-        try {
-            return window.propFirmTracker.validateBeforeOrder(quantity, this);
-        } catch (e) {
-            console.warn('propFirmTracker.validateBeforeOrder threw — allowing order', e);
-            return { ok: true };
-        }
+        return window.propFirmTracker.validateBeforeOrder(quantity, this);
     }
     
     /**

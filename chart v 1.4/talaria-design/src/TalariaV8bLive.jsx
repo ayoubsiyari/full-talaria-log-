@@ -10525,6 +10525,16 @@ const TalariaV8bLive = () => {
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
   const [chartType, setChartType] = useState("Candles");
   const [chartTypeDropL, setChartTypeDropL] = useState(185);
+  const [layoutSync, setLayoutSync] = useState({
+    crosshair: true,
+    time: false,
+    drawings: true,
+    symbol: false,
+    interval: false,
+    dateRange: false,
+    indicators: false,
+    chartType: false,
+  });
   const [tfOpen, setTfOpen] = useState(false);
   const [tfCat, setTfCat] = useState(null);
   const [tfPinned, setTfPinned] = useState(["1m","5m","15m","1H","4H","1D"]);
@@ -12513,7 +12523,6 @@ const TalariaV8bLive = () => {
   const sizeInputFocusedRef = useRef(false);
   /** Throttle OM full R:R recompute while React leads the bridge (margin badge reads DOM fed by this). */
   const omHeaderRecalcRef = useRef(0);
-  const omPlaceBtnRecalcRef = useRef(0);
   const closeOthersForIndSettRef = useRef(() => {});
   const indSettCtxRef = useRef({ chart: null, indicatorType: "", indicator: null });
   const flushIndDraftToChartRef = useRef(() => false);
@@ -12618,12 +12627,6 @@ const TalariaV8bLive = () => {
   // Single-chart layouts ignore this; multi-panel layouts highlight the
   // focused tile and (in Phase 7.2.4) route topbar/leftbar actions to it.
   const [focusedPanelId, setFocusedPanelId] = useState("A");
-  // Phase 7.2.3: TradingView-style topbar layout dropdown (replaces the
-  // deleted topbar layout entry). Anchor ref lets us position the popover
-  // directly below the button so it lines up like TradingView.
-  // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
-  // races re-enabling sync modes (especially `time`) unexpectedly.
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);
@@ -15349,19 +15352,6 @@ const TalariaV8bLive = () => {
       try {
         window.__talariaV9OrderBridge = null;
       } catch (_) {}
-    } else {
-      try {
-        window.__talariaV9OrderBridge = {
-          orderPanelOpen: true,
-          sizeMode,
-          riskVal,
-          slEnabled,
-          slRows,
-          entryRows,
-          buySell,
-          orderType,
-        };
-      } catch (_) {}
     }
     try {
       window.chart?.orderManager?.syncOrderPanelMountTarget?.();
@@ -15372,7 +15362,7 @@ const TalariaV8bLive = () => {
         ch.updateSVGPointerEvents();
       }
     } catch (_) {}
-  }, [orderPanelOpen, sizeMode, riskVal, slEnabled, slRows, entryRows, buySell, orderType]);
+  }, [orderPanelOpen]);
 
   // Push V8b controls into order-manager's hidden inputs so calculations + Place Order match chart.js.
   useEffect(() => {
@@ -16339,13 +16329,9 @@ const TalariaV8bLive = () => {
       setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
       if (om && typeof om.updatePlaceButtonText === "function") {
-        const nowBtn = Date.now();
-        if (nowBtn - omPlaceBtnRecalcRef.current > 100) {
-          omPlaceBtnRecalcRef.current = nowBtn;
-          try {
-            om.updatePlaceButtonText();
-          } catch (_) {}
-        }
+        try {
+          om.updatePlaceButtonText();
+        } catch (_) {}
       }
       const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
       setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
