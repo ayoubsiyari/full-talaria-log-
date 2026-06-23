@@ -42,16 +42,6 @@ if (fs.existsSync(chartJsSrc)) {
   console.warn("[sync-v9-to-homepage] chart.js not found, skip:", chartJsSrc);
 }
 
-const legacyIndexSrc = path.resolve(__dirname, "../../chart/legacy-index.html");
-const legacyIndexDest = path.resolve(__dirname, "../../../homepage/public/chart/legacy-index.html");
-if (fs.existsSync(legacyIndexSrc)) {
-  fs.mkdirSync(path.dirname(legacyIndexDest), { recursive: true });
-  fs.copyFileSync(legacyIndexSrc, legacyIndexDest);
-  console.log("[sync-v9-to-homepage] Copied legacy-index.html", legacyIndexSrc, "→", legacyIndexDest);
-} else {
-  console.warn("[sync-v9-to-homepage] legacy-index.html not found, skip:", legacyIndexSrc);
-}
-
 const compareOverlaySrc = path.resolve(__dirname, "../../chart/modules/compare-overlay.js");
 const compareOverlayDest = path.resolve(__dirname, "../../../homepage/public/chart/modules/compare-overlay.js");
 if (fs.existsSync(compareOverlaySrc)) {
