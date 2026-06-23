@@ -4446,6 +4446,37 @@ class OrderManager {
     }
 
     /** Authoritative qty for placement / prop rules — lot-size mode uses #lotSizeAmount, not stale #orderQuantity. */
+    _isStopLossActiveForSizing(entryPrice) {
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const enableSL = document.getElementById('enableSL')?.checked;
+        if (!Number.isFinite(slPrice) || slPrice <= 0) return false;
+        if (enableSL) return true;
+        const ep = Number(entryPrice) || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        return ep > 0 && Math.abs(slPrice - ep) > 1e-12;
+    }
+
+    _deriveOrderQuantityFromRiskInputs() {
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!(entryPrice > 0) || !this._isStopLossActiveForSizing(entryPrice)) return 0;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        if (!(slPrice > 0)) return 0;
+
+        const riskUsd = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+        const riskPct = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+        let riskAmount = 0;
+        if (this.positionSizeMode === 'risk-percent' && riskPct > 0) {
+            const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+            const balance = balanceType === 'current' ? this.balance : this.initialBalance;
+            riskAmount = (balance * riskPct) / 100;
+        } else if (riskUsd > 0) {
+            riskAmount = riskUsd;
+        }
+
+        if (!(riskAmount > 0) || typeof this._enginePositionSize !== 'function') return 0;
+        const derived = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
+        return Number.isFinite(derived) && derived > 0 ? this._roundQtyToStep(derived) : 0;
+    }
+
     _getEffectiveOrderQuantity() {
         const oq = parseFloat(document.getElementById('orderQuantity')?.value || 0);
         if (this.positionSizeMode === 'lot-size') {
@@ -4460,30 +4491,21 @@ class OrderManager {
         }
         if (Number.isFinite(oq) && oq > 0) return oq;
 
-        if (this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent') {
-            const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-            const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-            const enableSL = document.getElementById('enableSL')?.checked;
-            if (entryPrice > 0 && slPrice > 0 && enableSL) {
-                let riskAmount = 0;
-                if (this.positionSizeMode === 'risk-usd') {
-                    riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
-                } else {
-                    const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
-                    const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-                    const balance = balanceType === 'current' ? this.balance : this.initialBalance;
-                    riskAmount = (balance * riskPercent) / 100;
-                }
-                if (riskAmount > 0 && typeof this._enginePositionSize === 'function') {
-                    const derived = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
-                    if (Number.isFinite(derived) && derived > 0) {
-                        return this._roundQtyToStep(derived);
-                    }
-                }
-            }
-        }
+        const derived = this._deriveOrderQuantityFromRiskInputs();
+        if (derived > 0) return derived;
 
         return Number.isFinite(oq) ? oq : 0;
+    }
+
+    _syncOrderQuantityFromRisk() {
+        if (this.positionSizeMode === 'lot-size') return;
+        const q = this._deriveOrderQuantityFromRiskInputs();
+        const qtyInput = document.getElementById('orderQuantity');
+        if (!qtyInput || !(q > 0)) return;
+        const formatted = this._formatQty(q);
+        if (qtyInput.value !== formatted) {
+            qtyInput.value = formatted;
+        }
     }
 
     _syncOrderQuantityFromLotSize() {
@@ -14905,8 +14927,8 @@ class OrderManager {
 
         const quantity = this._getEffectiveOrderQuantity();
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-        const enableSL = document.getElementById('enableSL')?.checked;
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const hasActiveSl = this._isStopLossActiveForSizing(entryPrice);
         
         const symbol = this._getSymbol() || '';
         
@@ -14933,7 +14955,7 @@ class OrderManager {
                 } else if (this.positionSizeMode === 'lot-size') {
                     reason = `Enter ${positionLabel}`;
                 } else if ((this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent')) {
-                    if (!enableSL || !slPrice || slPrice <= 0) {
+                    if (!hasActiveSl) {
                         reason = 'Set Stop Loss';
                     } else {
                         reason = 'Set Position Size';
@@ -15114,7 +15136,14 @@ class OrderManager {
             entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         }
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const enableSL = document.getElementById('enableSL')?.checked;
+        let enableSL = document.getElementById('enableSL')?.checked;
+        if (slPrice > 0 && !enableSL) {
+            const slChk = document.getElementById('enableSL');
+            if (slChk) {
+                slChk.checked = true;
+                enableSL = true;
+            }
+        }
         
         // For lot-size mode, we don't need SL to set position size
         if (this.positionSizeMode === 'lot-size') {
@@ -15178,8 +15207,9 @@ class OrderManager {
         }
         
         // For risk-based modes, need entry price and stop loss to calculate position size
-        if (!entryPrice || !slPrice || !enableSL) {
-            document.getElementById('orderQuantity').value = '0';
+        if (!entryPrice || !this._isStopLossActiveForSizing(entryPrice)) {
+            const qtyInput = document.getElementById('orderQuantity');
+            if (qtyInput) qtyInput.value = '0';
             this._applyCalculatedReadout(this._getCalculatedReadoutParts());
             return;
         }

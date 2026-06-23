@@ -15284,6 +15284,10 @@ const TalariaV8bLive = () => {
 
         if (sizeMode === "$") {
           if (!v9IsPartialDecimalInput(riskVal)) setIn("riskAmountUSD", riskVal);
+          try {
+            om?.calculatePositionFromRisk?.();
+            om?._syncOrderQuantityFromRisk?.();
+          } catch (_) {}
         } else if (sizeMode === "%") {
           if (!v9IsPartialDecimalInput(riskVal)) {
           let pct = riskVal;
@@ -15300,6 +15304,10 @@ const TalariaV8bLive = () => {
           const wantBal = "current";
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
+          try {
+            om?.calculatePositionFromRisk?.();
+            om?._syncOrderQuantityFromRisk?.();
+          } catch (_) {}
         } else {
           // Lot-size (#): `riskVal` is lots/contracts in the rail SIZE field.
           // Multi-entry: row lots drive SIZE — do not overwrite with stale #orderQuantity.
@@ -15704,6 +15712,7 @@ const TalariaV8bLive = () => {
           }
 
           om?.calculatePositionFromRisk?.();
+          om?._syncOrderQuantityFromRisk?.();
           om?.calculateAdvancedRiskReward?.();
           om?.updatePlaceButtonText?.();
 
