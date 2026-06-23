@@ -14084,7 +14084,13 @@ const TalariaV8bLive = () => {
       if (!Number.isFinite(n) || n <= maxP) return prev;
       return currentSymbol.type === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
     });
-  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev]);
+    try {
+      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+      om?.calculatePositionFromRisk?.();
+      om?._syncOrderQuantityFromLotSize?.();
+      om?.updatePlaceButtonText?.();
+    } catch (_) {}
+  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev, riskVal]);
 
   /** Lot-size (#): SIZE (`riskVal`) is contracts/lots — sync single ENTRY + TP row values (legacy "100" was %). */
   useEffect(() => {
@@ -15200,7 +15206,7 @@ const TalariaV8bLive = () => {
               : 0;
           if (entryLotSum > 0) {
             lotCore = entryLotSum;
-          } else if (!isOmBridgeLead(omPanelBridgeRef.current.control)) {
+          } else if (!isOmBridgeLead(omPanelBridgeRef.current.control) && !(parseFloat(riskVal || "0") > 0)) {
             const oq = parseFloat(
               String(document.getElementById("orderQuantity")?.value ?? "").replace(/,/g, "") || "0"
             );
@@ -15216,6 +15222,11 @@ const TalariaV8bLive = () => {
           }
           if (!v9IsPartialDecimalInput(riskVal)) {
             setIn("lotSizeAmount", lotStr);
+            try {
+              om?.calculatePositionFromRisk?.();
+              om?._syncOrderQuantityFromLotSize?.();
+              om?.updatePlaceButtonText?.();
+            } catch (_) {}
           }
           queueMicrotask(() => {
             try {

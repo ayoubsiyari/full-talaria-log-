@@ -4445,6 +4445,34 @@ class OrderManager {
         return Math.min(q, max);
     }
 
+    /** Authoritative qty for placement / prop rules — lot-size mode uses #lotSizeAmount, not stale #orderQuantity. */
+    _getEffectiveOrderQuantity() {
+        const oq = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        if (this.positionSizeMode === 'lot-size') {
+            const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
+            if (Number.isFinite(lotSize) && lotSize > 0) {
+                return this._clampQtyToPropMax(this._roundQtyToStep(lotSize));
+            }
+        }
+        if (this.isMultiEntryMode && this.multiEntryLevels?.length > 0) {
+            const implied = this._getMultiEntryImpliedTotalLots();
+            if (implied > 0) return this._clampQtyToPropMax(this._roundQtyToStep(implied));
+        }
+        return Number.isFinite(oq) ? oq : 0;
+    }
+
+    _syncOrderQuantityFromLotSize() {
+        if (this.positionSizeMode !== 'lot-size') return;
+        const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
+        const qtyInput = document.getElementById('orderQuantity');
+        if (!qtyInput || !(lotSize > 0)) return;
+        const snapped = this._clampQtyToPropMax(this._roundQtyToStep(lotSize));
+        const formatted = this._formatQty(snapped);
+        if (qtyInput.value !== formatted) {
+            qtyInput.value = formatted;
+        }
+    }
+
     _validatePropBeforeOrder(quantity) {
         if (!window.propFirmTracker || typeof window.propFirmTracker.validateBeforeOrder !== 'function') {
             return { ok: true };
@@ -14850,7 +14878,7 @@ class OrderManager {
             return;
         }
 
-        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        const quantity = this._getEffectiveOrderQuantity();
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         const enableSL = document.getElementById('enableSL')?.checked;
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
@@ -23461,7 +23489,10 @@ class OrderManager {
         const marketFillTimeMs = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         const currentPrice = currentCandle.c;
-        let quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        let quantity = this._getEffectiveOrderQuantity();
+        if (!(quantity > 0)) {
+            quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        }
         const propValidation = this._validatePropBeforeOrder(quantity);
         if (!propValidation.ok) {
             this.showNotification(propValidation.reason || 'Prop challenge rule violated', 'warning', 5000);
