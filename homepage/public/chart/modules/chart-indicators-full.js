@@ -56,7 +56,7 @@
     }
 
     function getTalariaActionBtnStyle() {
-        return 'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:default;transition:background .15s,color .15s;flex-shrink:0;';
+        return 'display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border-radius:3px;cursor:pointer;transition:background .15s,color .15s;flex-shrink:0;';
     }
 
     const MAX_ACTIVE_INDICATORS = 10;
@@ -611,7 +611,7 @@
     function buildObvLegendTokens(obvVal, maVal, style) {
         const st = style || {};
         const tokens = [];
-        if (st.showObv !== false && st.showLine !== false && obvVal !== null && Number.isFinite(obvVal)) {
+        if (st.showObv !== false && obvVal !== null && Number.isFinite(obvVal)) {
             tokens.push({ text: formatObvLegendNumber(obvVal), color: st.color || '#78909c' });
         }
         if (st.showMa !== false && maVal !== null && Number.isFinite(maVal)) {
@@ -4006,6 +4006,7 @@
 
     function applyObvStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
         indicator.params.smoothingType = params.smoothingType || 'None';
         indicator.params.smoothingLength = params.smoothingLength != null
             ? safeIndicatorNumber(params.smoothingLength, 14)
@@ -4013,13 +4014,14 @@
         indicator.params.bbStdDev = params.bbStdDev != null
             ? safeIndicatorNumber(params.bbStdDev, 2)
             : 2;
-        indicator.style.showObv = params.showObv !== false && params.showLine !== false;
+        indicator.style.showObv = params.showObv !== false;
         indicator.style.showLine = indicator.style.showObv;
+        indicator.params.showObv = indicator.style.showObv;
+        indicator.params.showLine = indicator.style.showLine;
         indicator.style.color = params.color || '#78909c';
         indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
         indicator.style.lineWidth = legacyW;
-        indicator.style.lineStyle = 'Line';
-        indicator.style.lineDashStyle = 'Solid';
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
         const hasSmoothing = String(indicator.params.smoothingType || 'None') !== 'None';
         indicator.style.showMa = hasSmoothing;
         indicator.style.maColor = '#ff9800';
@@ -4030,6 +4032,24 @@
         indicator.hidePlot = params.hideFromContainer === true;
         indicator.overlay = false;
         indicator.separatePanel = true;
+    }
+
+    function applyCotNetStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.cftcCode = params.cftcCode != null ? String(params.cftcCode).trim() : 'auto';
+        indicator.params.dataUrl = params.dataUrl != null ? String(params.dataUrl) : '';
+        indicator.params.showCommercial = params.showCommercial !== false;
+        indicator.params.showLarge = params.showLarge !== false;
+        indicator.style.bullColor = params.bullColor || '#26a69a';
+        indicator.style.bullOpacity = params.bullOpacity != null ? Number(params.bullOpacity) : 100;
+        indicator.style.bearColor = params.bearColor || '#ef5350';
+        indicator.style.bearOpacity = params.bearOpacity != null ? Number(params.bearOpacity) : 100;
+        indicator.style.lineWidth = legacyW;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+        indicator.isCotNet = true;
     }
 
     function calculateWilliamsR(data, period, source) {
@@ -4905,8 +4925,10 @@
         indicator.params.longRocLength = coppockCalcParams(params).longRoc;
         indicator.params.shortRocLength = coppockCalcParams(params).shortRoc;
         indicator.params.wmaPeriod = coppockCalcParams(params).wmaPeriod;
-        indicator.style.showCoppock = params.showCoppock !== false && params.showLine !== false;
+        indicator.style.showCoppock = params.showCoppock !== false;
         indicator.style.showLine = indicator.style.showCoppock;
+        indicator.params.showCoppock = indicator.style.showCoppock;
+        indicator.params.showLine = indicator.style.showLine;
         indicator.style.color = params.color || '#8e24aa';
         indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
         indicator.style.lineWidth = legacyW;
@@ -5705,16 +5727,7 @@
                 break;
 
             case 'cotnet':
-                indicator.params.cftcCode = params.cftcCode != null ? String(params.cftcCode).trim() : 'auto';
-                indicator.params.dataUrl = params.dataUrl != null ? String(params.dataUrl) : '';
-                indicator.params.showCommercial = params.showCommercial !== false;
-                indicator.params.showLarge = params.showLarge !== false;
-                indicator.style.bullColor = params.bullColor || '#26a69a';
-                indicator.style.bearColor = params.bearColor || '#ef5350';
-                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.overlay = false;
-                indicator.separatePanel = true;
-                indicator.isCotNet = true;
+                applyCotNetStyleFromParams(indicator, params);
                 indicator.name = 'COT net comm vs non-comm';
                 this.indicators.data[indicator.id] = { loading: true, error: null };
                 break;
@@ -6293,10 +6306,13 @@
             }
         }
         if (indicator.type === 'cotnet') {
-            if (newParams.cftcCode !== undefined) indicator.params.cftcCode = String(newParams.cftcCode).trim();
-            if (newParams.dataUrl !== undefined) indicator.params.dataUrl = String(newParams.dataUrl);
-            if (newParams.showCommercial !== undefined) indicator.params.showCommercial = newParams.showCommercial !== false;
-            if (newParams.showLarge !== undefined) indicator.params.showLarge = newParams.showLarge !== false;
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const reload = newParams.cftcCode !== undefined || newParams.dataUrl !== undefined;
+            applyCotNetStyleFromParams(indicator, merged);
+            if (reload) {
+                this.indicators.data[indicator.id] = { loading: true, error: null };
+                if (typeof this._scheduleCotNetLoad === 'function') this._scheduleCotNetLoad(indicator);
+            }
         }
         if (indicator.type === 'seasonality') {
             if (newParams.minSamples !== undefined) indicator.params.minSamples = Math.max(1, parseInt(newParams.minSamples, 10) || 2);
@@ -12439,6 +12455,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return;
         }
         if (!data.bull || !data.bear) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
         const showC = indicator.params && indicator.params.showCommercial !== false;
         const showL = indicator.params && indicator.params.showLarge !== false;
         const a = data.bull;
@@ -12483,14 +12501,18 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.stroke();
             ctx.setLineDash([]);
         }
-        const lw = indicator.style.lineWidth || 2;
+        const lw = style.lineWidth != null ? style.lineWidth : 2;
+        const lineStyle = style.lineStyle || 'Line';
+        const dashStyle = style.lineDashStyle || 'Solid';
+        const bullColor = resolve(style.bullColor || '#26a69a', style.bullOpacity);
+        const bearColor = resolve(style.bearColor || '#ef5350', style.bearOpacity);
         if (showC) {
-            this._drawPanelLine(ctx, m, a, indicator.style.bullColor || '#26a69a', lw, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+            this._drawPanelLine(ctx, m, a, bullColor, lw, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, lineStyle, dashStyle);
         }
         if (showL) {
-            this._drawPanelLine(ctx, m, b, indicator.style.bearColor || '#ef5350', lw, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+            this._drawPanelLine(ctx, m, b, bearColor, lw, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, lineStyle, dashStyle);
         }
-        indicator._displayColor = indicator.style.bullColor || '#26a69a';
+        indicator._displayColor = bullColor;
         if (data._cotMarket) {
             const m = data._cotMarket;
             indicator._displayLabel = m.length > 42 ? m.slice(0, 39) + '…' : m;
@@ -12856,7 +12878,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, cMin, cMax, scaleY, 2);
 
         const lineColor = resolve(style.color || '#8e24aa', style.lineOpacity);
-        if (style.showCoppock !== false && style.showLine !== false) {
+        if (style.showCoppock !== false) {
             this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
         }
 
@@ -13605,7 +13627,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
 
         const lineColor = resolve(style.color || '#78909c', style.lineOpacity);
-        if (style.showObv !== false && style.showLine !== false) {
+        if (style.showObv !== false) {
             this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
         }
 
@@ -13635,7 +13657,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ? legendTokens.map(function(t) { return t.text; }).join(' ')
             : '';
         const obvTags = [];
-        if (obvVal !== null && Number.isFinite(obvVal) && style.showObv !== false && style.showLine !== false) {
+        if (obvVal !== null && Number.isFinite(obvVal) && style.showObv !== false) {
             const yObv = scaleY(obvVal);
             if (Number.isFinite(yObv)) {
                 obvTags.push({ y: yObv, text: formatObvLegendNumber(obvVal), color: lineColor });
@@ -14143,10 +14165,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const canvas = this.ctx && this.ctx.canvas;
         if (!canvas || !e || typeof e.clientX !== 'number' || typeof e.clientY !== 'number') return;
         const type = e.type || 'mousedown';
+        const detail = type === 'dblclick' ? 2 : (type === 'click' ? 1 : 0);
         canvas.dispatchEvent(new MouseEvent(type, {
             bubbles: true,
             cancelable: true,
             view: window,
+            detail: detail,
             clientX: e.clientX,
             clientY: e.clientY,
             screenX: e.screenX,
@@ -14160,6 +14184,24 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }));
     };
 
+    Chart.prototype._separatePanelLegendHit = function(target) {
+        return !!(target && target.closest && (
+            target.closest('.talaria-ind-legend-row') ||
+            target.closest('.talaria-ind-actions')
+        ));
+    };
+
+    Chart.prototype._separatePanelPlotCursorAt = function(mx, my) {
+        let cursorStyle = typeof this.getCurrentCursorStyle === 'function'
+            ? this.getCurrentCursorStyle()
+            : 'crosshair';
+        if (typeof this.findSeparatePanelIndicatorAtPoint === 'function') {
+            const indHit = this.findSeparatePanelIndicatorAtPoint(mx, my);
+            if (indHit) cursorStyle = 'pointer';
+        }
+        return cursorStyle;
+    };
+
     /** Transparent hit layers over each indicator plot band — legend sits above; drags reach the chart. */
     Chart.prototype._syncSeparatePanelDragZones = function(overlay, panelSlots, m) {
         if (!overlay || !Array.isArray(panelSlots) || panelSlots.length === 0) return;
@@ -14171,19 +14213,46 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!zone) {
                 zone = document.createElement('div');
                 zone.setAttribute('data-talaria-sp-drag-zone', String(idx));
+                const skipLegendHit = function(ev) {
+                    return typeof self._separatePanelLegendHit === 'function' && self._separatePanelLegendHit(ev.target);
+                };
                 const onPanStart = function(ev) {
                     if (ev.button !== 0) return;
                     if (self.tool) return;
-                    if (ev.target && ev.target.closest && ev.target.closest('.talaria-ind-actions')) return;
+                    if (skipLegendHit(ev)) return;
                     ev.preventDefault();
                     if (typeof self._forwardPointerEventToCanvas === 'function') {
                         self._forwardPointerEventToCanvas(ev);
                     }
                 };
+                const onDblClick = function(ev) {
+                    if (skipLegendHit(ev)) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    if (typeof self._forwardPointerEventToCanvas === 'function') {
+                        self._forwardPointerEventToCanvas(ev);
+                    }
+                };
+                const onZoneMove = function(ev) {
+                    if (skipLegendHit(ev)) return;
+                    let cur = 'crosshair';
+                    if (typeof self._eventCanvasLocalXY === 'function' && typeof self._separatePanelPlotCursorAt === 'function') {
+                        const xy = self._eventCanvasLocalXY(ev);
+                        cur = self._separatePanelPlotCursorAt(xy[0], xy[1]);
+                    } else if (typeof self.getCurrentCursorStyle === 'function') {
+                        cur = self.getCurrentCursorStyle();
+                    }
+                    zone.style.cursor = cur;
+                };
                 zone.addEventListener('mousedown', onPanStart);
                 zone.addEventListener('pointerdown', onPanStart);
+                zone.addEventListener('dblclick', onDblClick);
+                zone.addEventListener('mousemove', onZoneMove);
                 overlay.insertBefore(zone, overlay.firstChild);
             }
+            const defaultCursor = typeof this.getCurrentCursorStyle === 'function'
+                ? this.getCurrentCursorStyle()
+                : 'crosshair';
             zone.style.cssText = [
                 'position:absolute',
                 'left:' + m.l + 'px',
@@ -14192,11 +14261,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 'height:' + slot.height + 'px',
                 'z-index:1',
                 'pointer-events:auto',
-                'cursor:move',
+                'cursor:' + defaultCursor,
                 'background:transparent',
                 'touch-action:none'
             ].join(';');
-        });
+        }, this);
         overlay.querySelectorAll('[data-talaria-sp-drag-zone]').forEach(function(z) {
             const idx = Number(z.getAttribute('data-talaria-sp-drag-zone'));
             if (!Number.isFinite(idx) || idx >= panelSlots.length) z.remove();
@@ -14432,14 +14501,26 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 'box-sizing:border-box',
                 'display:flex',
                 'align-items:center',
-                'gap:4px',
+                'gap:6px',
                 'justify-content:flex-start',
                 'min-width:0',
                 'z-index:10',
-                'pointer-events:none',
+                'pointer-events:auto',
+                'cursor:default',
                 'user-select:none',
                 'font-family:Roboto,sans-serif'
-            ].join(';') + ';margin:0;background:transparent;border:none;border-radius:0;padding:0;';
+            ].join(';') + ';margin:0;background:transparent;border:none;border-radius:0;padding:2px 4px 2px 0;';
+
+            bar.onmousedown = function(e) {
+                e.stopPropagation();
+            };
+            bar.ondblclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof self.showIndicatorSettings === 'function') {
+                    self.showIndicatorSettings(indicator.id);
+                }
+            };
 
             const nameEl = document.createElement('span');
             nameEl.textContent = '- ' + indicator.name;
@@ -14456,7 +14537,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const actions = document.createElement('span');
             actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex:0 0 auto;padding:0;background:transparent;border:none;box-shadow:none;pointer-events:auto;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:2px;flex:0 0 auto;padding:2px;background:transparent;border:none;box-shadow:none;pointer-events:auto;';
             const baseActionStyle = getTalariaActionBtnStyle();
 
             const eyeBtn = document.createElement('span');
@@ -14469,8 +14550,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             };
             applyPlotEyeState();
             eyeBtn.innerHTML = showPlot
-                ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
-                : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
             eyeBtn.onmouseenter = function() { eyeBtn.style.background = 'rgba(255, 255, 255, 0.08)'; };
             eyeBtn.onmouseleave = function() { applyPlotEyeState(); };
             eyeBtn.onclick = function(e) {
@@ -14491,7 +14572,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const setBtn = document.createElement('span');
             setBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
-            setBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.23.6.62.6 1s.24.77.6 1a1.65 1.65 0 0 0 1 .33H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.36.23-.6.62-.6 1z"/></svg>';
+            setBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.23.6.62.6 1s.24.77.6 1a1.65 1.65 0 0 0 1 .33H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.36.23-.6.62-.6 1z"/></svg>';
+            setBtn.title = 'Indicator settings';
             setBtn.onmouseenter = function() {
                 setBtn.style.color = '#d1d4dc';
                 setBtn.style.background = 'rgba(255, 255, 255, 0.08)';
@@ -14509,7 +14591,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const delBtn = document.createElement('span');
             delBtn.textContent = '×';
-            delBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
+            delBtn.title = 'Remove indicator';
+            delBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:16px;font-weight:600;line-height:1;background:transparent;';
             delBtn.onmouseenter = function() { delBtn.style.background = 'rgba(242, 54, 69, 0.2)'; };
             delBtn.onmouseleave = function() { delBtn.style.color = '#f23645'; delBtn.style.background = 'transparent'; };
             delBtn.onclick = function(e) {

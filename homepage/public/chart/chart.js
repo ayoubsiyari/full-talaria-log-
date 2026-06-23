@@ -22227,7 +22227,11 @@ class Chart {
             }
         }
         const ticksPerCandle = rs.currentTicksPerCandle || rs.ticksPerCandle || 72;
-        const currentRawProgress = rs.tickProgress / ticksPerCandle;
+        const effectiveTickProgress = (!rs.isPlaying && rs._savedTickState
+            && Number.isFinite(rs._savedTickState.tickProgress))
+            ? rs._savedTickState.tickProgress
+            : (rs.tickProgress || 0);
+        const currentRawProgress = effectiveTickProgress / ticksPerCandle;
         const rawProgress = (completedRawCandles - 1 + currentRawProgress) / rawCandlesPerDisplay;
         const progress = Math.max(0, Math.min(1, rawProgress));
         const remainingSeconds = Math.ceil(totalSeconds * (1 - progress));
@@ -26475,11 +26479,9 @@ class Chart {
                     this.canvas.style.cursor = 'ew-resize';
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ew-resize';
                 } else if (mode === 'separatePanelPlot') {
-                    let cursorStyle = this.getCurrentCursorStyle();
-                    if (typeof this.findSeparatePanelIndicatorAtPoint === 'function') {
-                        const indHit = this.findSeparatePanelIndicatorAtPoint(mx, my);
-                        if (indHit) cursorStyle = 'pointer';
-                    }
+                    let cursorStyle = typeof this._separatePanelPlotCursorAt === 'function'
+                        ? this._separatePanelPlotCursorAt(mx, my)
+                        : this.getCurrentCursorStyle();
                     this.canvas.style.cursor = cursorStyle;
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = cursorStyle;
                 } else if (this.tool || (this.drawingManager && this.drawingManager.currentTool)) {
