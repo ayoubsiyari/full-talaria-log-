@@ -2679,25 +2679,114 @@ function v9GetPriceStepPerPixel() {
   return 0.01;
 }
 
+/** Eastern Arabic / Persian digits → Western (0–9) for tool coordinate fields. */
+function v9NormalizeLatinNumericString(rawValue) {
+  if (rawValue == null) return "";
+  let s = String(rawValue).trim();
+  s = s.replace(/[\u0660-\u0669]/g, (ch) => String(ch.charCodeAt(0) - 0x0660));
+  s = s.replace(/[\u06F0-\u06F9]/g, (ch) => String(ch.charCodeAt(0) - 0x06F0));
+  s = s.replace(/\u066B/g, ".").replace(/\u066C/g, "").replace(/,/g, ".");
+  return s;
+}
+
+function v9ParseLatinCoordNumber(rawValue) {
+  const norm = v9NormalizeLatinNumericString(rawValue);
+  if (norm === "" || norm === "-" || norm === "+" || norm === "." || norm === "-." || norm === "+.") return NaN;
+  const n = parseFloat(norm);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function v9FormatCoordStoredValue(raw, type, dec) {
+  const norm = v9NormalizeLatinNumericString(raw);
+  if (norm === "" || norm === "-" || norm === "+" || norm === "." || norm === "-." || norm === "+.") return norm;
+  const n = parseFloat(norm);
+  if (!Number.isFinite(n)) return String(raw ?? "");
+  if (type === "price") return n.toFixed(dec);
+  const r = Math.round(n);
+  return Math.abs(n - r) < 1e-6 ? String(r) : n.toFixed(2);
+}
+
+function v9StepCoordStoredValue(raw, type, delta, dec, pxStep) {
+  const n = v9ParseLatinCoordNumber(raw);
+  const base = Number.isFinite(n) ? n : 0;
+  if (type === "price") return (base + delta * pxStep).toFixed(dec);
+  return String(Math.round(base + delta));
+}
+
+/** V9 Coordinates tab spin input — always Western Arabic numerals (0–9), even on Arabic OS locale. */
+function v9RenderCoordSpinInput({
+  k, type, value, onSetValue, dec, pxStep, c, F, btnFontSize = 8, onPointerDown, onMouseDown, pointerActivate,
+}) {
+  const activate = pointerActivate || ((fn) => ({
+    onPointerDown: (e) => { e.preventDefault(); e.stopPropagation(); fn(); },
+  }));
+  const commitFormatted = (raw) => {
+    const formatted = v9FormatCoordStoredValue(raw, type, dec);
+    onSetValue(k, formatted);
+  };
+  return (
+    <div style={{ position: "relative", width: "100%" }}>
+      <input
+        type="text"
+        inputMode={type === "price" ? "decimal" : "numeric"}
+        lang="en"
+        dir="ltr"
+        value={v9FormatCoordStoredValue(value, type, dec)}
+        onChange={(e) => onSetValue(k, v9NormalizeLatinNumericString(e.target.value))}
+        onBlur={(e) => commitFormatted(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={onPointerDown}
+        onMouseDown={onMouseDown}
+        className="tlr-nospinner"
+        style={{
+          width: "100%", height: 28, background: "rgba(140,160,255,0.05)",
+          border: "1px solid rgba(140,160,255,0.2)",
+          color: c.tx, fontSize: 12, fontFamily: F, padding: "0 19px 0 8px",
+          outline: "none", boxSizing: "border-box",
+          fontVariantNumeric: "tabular-nums lining-nums", unicodeBidi: "plaintext", direction: "ltr",
+        }}
+      />
+      <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${c.br}` }}>
+        {[[+1, "▲"], [-1, "▼"]].map(([delta, chr], i) => (
+          <button
+            type="button"
+            key={i}
+            {...activate(() => onSetValue(k, v9StepCoordStoredValue(value, type, delta, dec, pxStep)))}
+            onMouseEnter={(e) => { e.currentTarget.style.color = c.acL; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = c.ts; }}
+            style={{
+              flex: 1, width: 18, background: "transparent", border: "none", color: c.ts, cursor: "default",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: btnFontSize, lineHeight: 1, fontFamily: F, padding: 0,
+              borderBottom: i === 0 ? `1px solid ${c.br}` : "none", transition: "color 0.1s",
+            }}
+          >
+            {chr}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function v9MakeCoordSpinInputRenderer({ getValue, setValue, dec, pxStep, c, F, btnFontSize = 8, onPointerDown, onMouseDown, pointerActivate }) {
+  return (k, type) => v9RenderCoordSpinInput({
+    k, type, value: getValue(k), onSetValue: setValue, dec, pxStep, c, F, btnFontSize, onPointerDown, onMouseDown, pointerActivate,
+  });
+}
+
 /** drawing.points[] — x = bar index, y = price → V9 Coordinates tab (`pt{n}Price` / `pt{n}Bar`). */
 function v9CoordPatchFromDrawing(d) {
   const pts = d && d.points;
   if (!Array.isArray(pts) || pts.length === 0) return {};
   const patch = {};
   const dec = v9GetPriceDecimals();
-  const fmtPrice = (y) => {
-    if (typeof y !== "number" || !Number.isFinite(y)) return "";
-    return y.toFixed(dec);
-  };
   for (let i = 0; i < Math.min(pts.length, 7); i++) {
     const p = pts[i];
     if (!p) continue;
     const n = i + 1;
-    patch[`pt${n}Price`] = fmtPrice(p.y);
-    const barIdx = p.x;
-    patch[`pt${n}Bar`] = Number.isFinite(barIdx)
-      ? (Math.abs(barIdx - Math.round(barIdx)) < 1e-6 ? String(Math.round(barIdx)) : barIdx.toFixed(2))
-      : "";
+    patch[`pt${n}Price`] = v9FormatCoordStoredValue(p.y, "price", dec);
+    patch[`pt${n}Bar`] = v9FormatCoordStoredValue(p.x, "bar", dec);
   }
   return patch;
 }
@@ -2767,10 +2856,8 @@ function v9AnchorCoordPatchFromDrawing(d) {
   const p = pts[0];
   const barIdx = p.x;
   return {
-    anchorPrice: Number.isFinite(p.y) ? p.y.toFixed(dec) : "",
-    anchorBar: Number.isFinite(barIdx)
-      ? (Math.abs(barIdx - Math.round(barIdx)) < 1e-6 ? String(Math.round(barIdx)) : barIdx.toFixed(2))
-      : "",
+    anchorPrice: v9FormatCoordStoredValue(p.y, "price", dec),
+    anchorBar: v9FormatCoordStoredValue(barIdx, "bar", dec),
   };
 }
 
@@ -2779,12 +2866,12 @@ function v9ApplyAnchorPointsFromAvStyle(d, avStyle) {
   let changed = false;
   const rawP = avStyle.anchorPrice;
   if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
-    const py = parseFloat(String(rawP).replace(/,/g, ""));
+    const py = v9ParseLatinCoordNumber(rawP);
     if (Number.isFinite(py) && py !== d.points[0].y) { d.points[0].y = py; changed = true; }
   }
   const rawB = avStyle.anchorBar;
   if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
-    const px = parseFloat(String(rawB).replace(/,/g, ""));
+    const px = v9ParseLatinCoordNumber(rawB);
     if (Number.isFinite(px) && px !== d.points[0].x) { d.points[0].x = px; changed = true; }
   }
   if (!changed) return false;
@@ -2803,7 +2890,7 @@ function v9ApplyPointsFromTlStyle(d, tlStyle) {
     const n = i + 1;
     const rawP = tlStyle[`pt${n}Price`];
     if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
-      const py = parseFloat(String(rawP).replace(/,/g, ""));
+      const py = v9ParseLatinCoordNumber(rawP);
       if (Number.isFinite(py) && py !== d.points[i].y) {
         d.points[i].y = py;
         changed = true;
@@ -2812,7 +2899,7 @@ function v9ApplyPointsFromTlStyle(d, tlStyle) {
     }
     const rawB = tlStyle[`pt${n}Bar`];
     if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
-      const px = parseFloat(String(rawB).replace(/,/g, ""));
+      const px = v9ParseLatinCoordNumber(rawB);
       if (Number.isFinite(px) && px !== d.points[i].x) {
         d.points[i].x = px;
         changed = true;
@@ -10566,11 +10653,21 @@ const TalariaV8bLive = () => {
     const syncProp = () => {
       let prop = false;
       try {
-        if (new URLSearchParams(window.location.search).get("mode") === "propfirm") prop = true;
+        const mode = new URLSearchParams(window.location.search).get("mode");
+        if (mode === "propfirm") prop = true;
       } catch (_) {}
       try {
+        if (window.chart?.isPropFirmMode) prop = true;
         const sess = window.chart?.backtestingSession;
         if (sess && String(sess.type || "").toLowerCase() === "propfirm") prop = true;
+      } catch (_) {}
+      try {
+        const raw = window.userStorage?.getItem?.("backtestingSession")
+          ?? localStorage.getItem("backtestingSession");
+        if (raw) {
+          const s = JSON.parse(raw);
+          if (String(s.type || "").toLowerCase() === "propfirm") prop = true;
+        }
       } catch (_) {}
       setIsPropFirmMode(prop);
       if (!prop) {
@@ -10579,7 +10676,11 @@ const TalariaV8bLive = () => {
       }
       const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
       if (tracker) {
-        if (!tracker.sessionData && typeof tracker.loadSession === "function") tracker.loadSession();
+        if (!tracker.sessionData && typeof tracker.loadSession === "function") {
+          tracker.loadSession();
+        } else if (typeof tracker.reloadRulesFromSession === "function") {
+          tracker.reloadRulesFromSession(window.chart?.backtestingSession);
+        }
         if (typeof tracker.getProgressSummary === "function") {
           setPropHud(tracker.getProgressSummary());
         }
@@ -14093,7 +14194,7 @@ const TalariaV8bLive = () => {
       om?._syncOrderQuantityFromLotSize?.();
       om?.updatePlaceButtonText?.();
     } catch (_) {}
-  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev, riskVal]);
+  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev]);
 
   /** Lot-size (#): SIZE (`riskVal`) is contracts/lots — sync single ENTRY + TP row values (legacy "100" was %). */
   useEffect(() => {
@@ -24625,32 +24726,17 @@ const TalariaV8bLive = () => {
             {/* ── COORDINATES TAB ── */}
             {tlSettTab==="coordinates" && (()=>{
               const _dec = v9GetPriceDecimals();
-              const _step = Math.pow(10, -_dec);
               const _pxStep = v9GetPriceStepPerPixel();
-              const spinInput=(k,type)=>(
-                <div style={{ position:"relative", width:"100%" }}>
-                  <input type="number" step={type==="price"?String(_step):"1"} value={tlStyle[k]}
-                    onChange={e=>setTlStyle(s=>({...s,[k]:e.target.value}))}
-                    onClick={e=>e.stopPropagation()}
-                    className="tlr-nospinner"
-                    style={{ width:"100%", height:28, background:"rgba(140,160,255,0.05)",
-                             border:"1px solid rgba(140,160,255,0.2)",
-                             color:c.tx, fontSize:12, fontFamily:F, padding:"0 19px 0 8px",
-                             outline:"none", boxSizing:"border-box", fontVariantNumeric:"tabular-nums" }}/>
-                  <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
-                    {[[+1,"▲"],[- 1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_pxStep).toFixed(_dec):String(+s[k]+delta)})))}
-                        onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                        style={{ flex:1, width:18, background:"transparent", border:"none", color:c.ts, cursor:"default",
-                                 display:"flex", alignItems:"center", justifyContent:"center",
-                                 fontSize:8, lineHeight:1, fontFamily:F, padding:0,
-                                 borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
-                        {chr}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
+              const spinInput = v9MakeCoordSpinInputRenderer({
+                getValue: (k) => tlStyle[k],
+                setValue: (k, v) => setTlStyle((s) => ({ ...s, [k]: v })),
+                dec: _dec,
+                pxStep: _pxStep,
+                c,
+                F,
+                btnFontSize: 8,
+                pointerActivate: modalPointerActivate,
+              });
               const isSimpleLine = ["hline","hray","vline","crossLine"].includes(tlSubTool.icon);
               const isSinglePoint = ["arrowUp","arrowDn"].includes(tlSubTool.icon);
               const isVline = tlSubTool.icon === "vline";
@@ -25627,32 +25713,17 @@ const TalariaV8bLive = () => {
             {/* ── COORDINATES TAB (note tool only) ── */}
             {txtSettTab==="coordinates" && (()=>{
               const _dec = v9GetPriceDecimals();
-              const _step = Math.pow(10, -_dec);
               const _pxStep = v9GetPriceStepPerPixel();
-              const spinInput=(k,type)=>(
-                <div style={{position:"relative",width:"100%"}}>
-                  <input type="number" step={type==="price"?String(_step):"1"} value={txtStyle[k]}
-                    onChange={e=>setTxtStyle(s=>({...s,[k]:e.target.value}))}
-                    onClick={e=>e.stopPropagation()}
-                    className="tlr-nospinner"
-                    style={{width:"100%",height:28,background:"rgba(140,160,255,0.05)",
-                            border:"1px solid rgba(140,160,255,0.2)",
-                            color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
-                            outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
-                  <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                    {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} {...modalPointerActivate(() => setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_pxStep).toFixed(_dec):String(+s[k]+delta)})))}
-                        onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                        style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
-                                display:"flex",alignItems:"center",justifyContent:"center",
-                                fontSize:7,lineHeight:1,fontFamily:F,padding:0,
-                                borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
-                        {chr}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
+              const spinInput = v9MakeCoordSpinInputRenderer({
+                getValue: (k) => txtStyle[k],
+                setValue: (k, v) => setTxtStyle((s) => ({ ...s, [k]: v })),
+                dec: _dec,
+                pxStep: _pxStep,
+                c,
+                F,
+                btnFontSize: 7,
+                pointerActivate: modalPointerActivate,
+              });
               const twoPoints = !isComment && !isPin && !isPriceLabel && !isSignpost && !isFlag && !isImage && !isEmoji;
               const col = twoPoints ? "80px 1fr 1fr" : "80px 1fr";
               return (
@@ -28223,39 +28294,24 @@ const TalariaV8bLive = () => {
               {/* ── COORDINATES TAB ── */}
               {vwapSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
-                const _step = Math.pow(10, -_dec);
                 const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{
                   patchVwapStyle(s=>({...s,[k]:v}));
                   setTlStyle(s=>({...s,[k]:v}));
                   v9FlushVwapAnchorCoordToChart({ ...vwapStyleLiveRef.current, [k]: v }, editDraw);
                 };
-                const spinInput=(k,type)=>(
-                  <div style={{position:"relative",width:"100%"}}>
-                    <input type="number" step={type==="price"?String(_step):"1"} value={vwapStyle[k]}
-                      onPointerDown={e=>e.stopPropagation()}
-                      onMouseDown={e=>e.stopPropagation()}
-                      onChange={e=>setCoord(k,e.target.value)}
-                      onClick={e=>e.stopPropagation()}
-                      className="tlr-nospinner"
-                      style={{width:"100%",height:28,background:"rgba(140,160,255,0.05)",
-                              border:"1px solid rgba(140,160,255,0.2)",
-                              color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
-                              outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
-                    <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                      {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vwapStyle[k]+delta*_pxStep).toFixed(_dec):String(+vwapStyle[k]+delta);setCoord(k,nv);})}
-                          onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                          style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
-                                  display:"flex",alignItems:"center",justifyContent:"center",
-                                  fontSize:7,lineHeight:1,fontFamily:F,padding:0,
-                                  borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
-                          {chr}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
+                const spinInput = v9MakeCoordSpinInputRenderer({
+                  getValue: (k) => vwapStyle[k],
+                  setValue: setCoord,
+                  dec: _dec,
+                  pxStep: _pxStep,
+                  c,
+                  F,
+                  btnFontSize: 7,
+                  onPointerDown: (e) => e.stopPropagation(),
+                  onMouseDown: (e) => e.stopPropagation(),
+                  pointerActivate: modalPointerActivate,
+                });
                 return (
                   <div style={{marginBottom:16}}>
                     <div style={{display:"grid",gridTemplateColumns:"80px 1fr"}}>
@@ -28641,33 +28697,18 @@ const TalariaV8bLive = () => {
               {/* ── COORDINATES TAB ── */}
               {vpSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
-                const _step = Math.pow(10, -_dec);
                 const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{setVpStyle(s=>({...s,[k]:v}));setTlStyle(s=>({...s,[k]:v}));};
-                const spinInput=(k,type)=>(
-                  <div style={{position:"relative",width:"100%"}}>
-                    <input type="number" step={type==="price"?String(_step):"1"} value={vpStyle[k]}
-                      onChange={e=>setCoord(k,e.target.value)}
-                      onClick={e=>e.stopPropagation()}
-                      className="tlr-nospinner"
-                      style={{width:"100%",height:28,background:"rgba(140,160,255,0.05)",
-                              border:"1px solid rgba(140,160,255,0.2)",
-                              color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
-                              outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
-                    <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                      {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vpStyle[k]+delta*_pxStep).toFixed(_dec):String(+vpStyle[k]+delta);setCoord(k,nv);})}
-                          onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                          style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
-                                  display:"flex",alignItems:"center",justifyContent:"center",
-                                  fontSize:7,lineHeight:1,fontFamily:F,padding:0,
-                                  borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
-                          {chr}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
+                const spinInput = v9MakeCoordSpinInputRenderer({
+                  getValue: (k) => vpStyle[k],
+                  setValue: setCoord,
+                  dec: _dec,
+                  pxStep: _pxStep,
+                  c,
+                  F,
+                  btnFontSize: 7,
+                  pointerActivate: modalPointerActivate,
+                });
                 return (
                   <div>
                     {[{hdr:"FIRST BAR",pk:"pt1Price",bk:"pt1Bar"},{hdr:"LAST BAR",pk:"pt2Price",bk:"pt2Bar"}].map(({hdr,pk,bk})=>(
@@ -29024,33 +29065,18 @@ const TalariaV8bLive = () => {
               {/* ── COORDINATES TAB ── */}
               {avSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
-                const _step = Math.pow(10, -_dec);
                 const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{setAvStyle(s=>({...s,[k]:v}));setTlStyle(s=>({...s,[k]:v}));};
-                const spinInput=(k,type)=>(
-                  <div style={{position:"relative",width:"100%"}}>
-                    <input type="number" step={type==="price"?String(_step):"1"} value={avStyle[k]}
-                      onChange={e=>setCoord(k,e.target.value)}
-                      onClick={e=>e.stopPropagation()}
-                      className="tlr-nospinner"
-                      style={{width:"100%",height:28,background:"rgba(140,160,255,0.05)",
-                              border:"1px solid rgba(140,160,255,0.2)",
-                              color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
-                              outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
-                    <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                      {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+avStyle[k]+delta*_pxStep).toFixed(_dec):String(+avStyle[k]+delta);setCoord(k,nv);})}
-                          onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                          style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
-                                  display:"flex",alignItems:"center",justifyContent:"center",
-                                  fontSize:7,lineHeight:1,fontFamily:F,padding:0,
-                                  borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
-                          {chr}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
+                const spinInput = v9MakeCoordSpinInputRenderer({
+                  getValue: (k) => avStyle[k],
+                  setValue: setCoord,
+                  dec: _dec,
+                  pxStep: _pxStep,
+                  c,
+                  F,
+                  btnFontSize: 7,
+                  pointerActivate: modalPointerActivate,
+                });
                 return (
                   <div>
                     <div style={{display:"grid",gridTemplateColumns:"80px 1fr"}}>

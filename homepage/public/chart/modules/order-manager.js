@@ -27703,21 +27703,25 @@ class OrderManager {
         
         // Track prop firm progress (for both partial and full closes)
         if (window.propFirmTracker) {
-            window.propFirmTracker.recordTrade({
-                id: orderId,
-                type: position.type,
-                openPrice: position.openPrice,
-                closePrice: closePrice,
-                openTime: position.openTime,
-                closeTime: closeTime,
-                timestamp: closeTime,
-                quantity: closeQuantity,
-                profit: pnl,
-                pnl: pnl,
-                hitType: hitType,
-                isPartial: isPartialClose
-            });
-            window.propFirmTracker.updateBalance(this.balance);
+            try {
+                window.propFirmTracker.recordTrade({
+                    id: orderId,
+                    type: position.type,
+                    openPrice: position.openPrice,
+                    closePrice: closePrice,
+                    openTime: position.openTime,
+                    closeTime: closeTime,
+                    timestamp: closeTime,
+                    quantity: closeQuantity,
+                    profit: pnl,
+                    pnl: pnl,
+                    hitType: hitType,
+                    isPartial: isPartialClose
+                });
+                window.propFirmTracker.updateBalance(this.balance);
+            } catch (e) {
+                console.warn('propFirmTracker close tracking failed', e);
+            }
         }
         
         if (isPartialClose) {

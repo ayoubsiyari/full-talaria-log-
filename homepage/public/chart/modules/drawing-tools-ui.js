@@ -2666,6 +2666,12 @@ class DrawingSettingsPanel {
 
     font-size: 12px;
 
+    font-variant-numeric: tabular-nums lining-nums;
+
+    unicode-bidi: plaintext;
+
+    direction: ltr;
+
     outline: none;
 
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35);
@@ -17550,13 +17556,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
     const formatAxisPrice = (val) => {
-
-        const n = Number.parseFloat(val);
-
+        const n = typeof parseLatinNumber === 'function'
+            ? parseLatinNumber(val)
+            : Number.parseFloat(normalizeLatinNumericString(val));
         if (!Number.isFinite(n)) return '';
-
-        return n.toFixed(getAxisDecimals());
-
+        return formatLatinCoordinatePrice(n, getAxisDecimals());
     };
 
 
@@ -17723,6 +17727,10 @@ body.light-mode .template-save-dialog .dialog-title {
 
             priceInput.inputMode = 'decimal';
 
+            priceInput.lang = 'en';
+
+            priceInput.dir = 'ltr';
+
             priceInput.dataset.pointIndex = String(pt.index);
 
             priceInput.value = formatAxisPrice(p.y);
@@ -17793,9 +17801,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
             barInput.inputMode = 'numeric';
 
+            barInput.lang = 'en';
+
+            barInput.dir = 'ltr';
+
             barInput.dataset.pointIndex = String(pt.index);
 
-            barInput.value = Number.isFinite(p.x) ? String(Math.round(p.x)) : '0';
+            barInput.value = Number.isFinite(p.x) ? formatLatinCoordinateBar(p.x) : '0';
 
 
 
@@ -17851,9 +17863,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const pointIndex = priceInput.dataset.pointIndex;
 
-                const normalized = String(priceInput.value || '').trim().replace(',', '.');
-
-                const ny = parseFloat(normalized);
+                const ny = parseLatinNumber(priceInput.value);
 
                 applyPointUpdate(pointIndex, { price: ny });
 
@@ -17865,9 +17875,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             priceInput.addEventListener('blur', () => {
 
-                const normalized = String(priceInput.value || '').trim().replace(',', '.');
-
-                const ny = parseFloat(normalized);
+                const ny = parseLatinNumber(priceInput.value);
 
                 if (Number.isFinite(ny)) {
 
@@ -17883,9 +17891,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const pointIndex = priceInput.dataset.pointIndex;
 
-                const normalized = String(raw ?? '').trim().replace(',', '.');
-
-                const ny = parseFloat(normalized);
+                const ny = parseLatinNumber(raw);
 
                 if (Number.isFinite(ny)) {
 
@@ -17905,7 +17911,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const factor = Math.pow(10, decimals);
 
-                const current = parseFloat(String(priceInput.value || '').trim().replace(',', '.'));
+                const current = parseLatinNumber(priceInput.value);
 
                 const liveY = drawing?.points?.[pt.index]?.y;
 
@@ -17949,15 +17955,13 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const pointIndex = barInput.dataset.pointIndex;
 
-                const cleaned = String(raw ?? '').trim();
-
-                const nx = parseInt(cleaned, 10);
+                const nx = parseLatinNumber(raw);
 
                 if (Number.isFinite(nx)) {
 
-                    barInput.value = String(nx);
+                    barInput.value = formatLatinCoordinateBar(nx);
 
-                    applyPointUpdate(pointIndex, { index: nx });
+                    applyPointUpdate(pointIndex, { index: Math.round(nx) });
 
                 }
 
@@ -17987,9 +17991,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     e.preventDefault();
 
-                    const current = parseInt(String(barInput.value || '0'), 10);
+                    const current = parseLatinNumber(barInput.value);
 
-                    const base = Number.isFinite(current) ? current : 0;
+                    const base = Number.isFinite(current) ? Math.round(current) : 0;
 
                     const next = e.key === 'ArrowUp' ? (base + 1) : (base - 1);
 
@@ -18003,9 +18007,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
             upBtn.addEventListener('click', () => {
 
-                const current = parseInt(String(barInput.value || '0'), 10);
+                const current = parseLatinNumber(barInput.value);
 
-                const base = Number.isFinite(current) ? current : 0;
+                const base = Number.isFinite(current) ? Math.round(current) : 0;
 
                 commitBarValue(base + 1);
 
@@ -18015,9 +18019,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
             downBtn.addEventListener('click', () => {
 
-                const current = parseInt(String(barInput.value || '0'), 10);
+                const current = parseLatinNumber(barInput.value);
 
-                const base = Number.isFinite(current) ? current : 0;
+                const base = Number.isFinite(current) ? Math.round(current) : 0;
 
                 commitBarValue(base - 1);
 

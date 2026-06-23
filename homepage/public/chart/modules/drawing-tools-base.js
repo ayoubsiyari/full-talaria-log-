@@ -21,6 +21,39 @@ const DRAWING_TOOL_DEFAULT_FILL = 'rgba(140, 140, 140, 0.2)';
 
 const ARABIC_SCRIPT_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 const DRAWING_TEXT_ARABIC_FONT_FAMILY = '"Segoe UI", "Noto Sans Arabic", "Arial", sans-serif';
+
+/** Eastern Arabic / Persian digits → Western (0–9) for coordinate number fields. */
+function normalizeLatinNumericString(rawValue) {
+    if (rawValue == null) return '';
+    let s = String(rawValue).trim();
+    s = s.replace(/[\u0660-\u0669]/g, (ch) => String(ch.charCodeAt(0) - 0x0660));
+    s = s.replace(/[\u06F0-\u06F9]/g, (ch) => String(ch.charCodeAt(0) - 0x06F0));
+    s = s.replace(/\u066B/g, '.').replace(/\u066C/g, '').replace(/,/g, '.');
+    return s;
+}
+
+function parseLatinNumber(rawValue) {
+    const norm = normalizeLatinNumericString(rawValue);
+    if (norm === '' || norm === '-' || norm === '+' || norm === '.' || norm === '-.' || norm === '+.') {
+        return NaN;
+    }
+    const n = parseFloat(norm);
+    return Number.isFinite(n) ? n : NaN;
+}
+
+function formatLatinCoordinatePrice(value, decimals) {
+    const n = typeof value === 'number' ? value : parseLatinNumber(value);
+    if (!Number.isFinite(n)) return '';
+    const dec = Number.isFinite(decimals) ? Math.max(0, decimals | 0) : 5;
+    return n.toFixed(dec);
+}
+
+function formatLatinCoordinateBar(value) {
+    const n = typeof value === 'number' ? value : parseLatinNumber(value);
+    if (!Number.isFinite(n)) return '0';
+    const r = Math.round(n);
+    return Math.abs(n - r) < 1e-6 ? String(r) : n.toFixed(2);
+}
 const DRAWING_TEXT_ITALIC_SKEW_DEG = -12;
 
 function normalizeFibLevelsLabelPosition(style) {
@@ -2855,6 +2888,15 @@ class SVGHelpers {
 // ============================================================================
 // Export for use in other modules
 // ============================================================================
+if (typeof window !== 'undefined') {
+    window.DrawingCoordFormat = {
+        normalizeLatinNumericString,
+        parseLatinNumber,
+        formatLatinCoordinatePrice,
+        formatLatinCoordinateBar,
+    };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         generateUUID,

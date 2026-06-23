@@ -1451,7 +1451,8 @@ class Chart {
                 
                 // Store session data in chart
                 this.backtestingSession = this.normalizeBacktestingSession(session);
-                this.isPropFirmMode = isPropFirm;
+                this.isPropFirmMode = isPropFirm
+                    || String(this.backtestingSession?.type || '').toLowerCase() === 'propfirm';
 
                 try {
                     userStorage.setItem('backtestingSession', JSON.stringify(this.backtestingSession));
@@ -1478,6 +1479,10 @@ class Chart {
                 if (typeof window.syncPropFirmTracker === 'function') {
                     try {
                         window.syncPropFirmTracker();
+                    } catch (e) {}
+                } else if (window.propFirmTracker && typeof window.propFirmTracker.reloadRulesFromSession === 'function') {
+                    try {
+                        window.propFirmTracker.reloadRulesFromSession(this.backtestingSession);
                     } catch (e) {}
                 }
                 if (typeof window.applyChallengeToolbarVisibility === 'function') {

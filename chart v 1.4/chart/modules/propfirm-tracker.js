@@ -92,19 +92,8 @@ class PropFirmTracker {
     }
 
     // Load prop firm session from localStorage
-    loadSession() {
+    loadSession(options = {}) {
         try {
-            let mode = null;
-            try {
-                mode = typeof window !== 'undefined' && window.location && window.location.search
-                    ? new URLSearchParams(window.location.search).get('mode')
-                    : null;
-            } catch (e) {}
-            if (mode === 'backtest') {
-                this.sessionData = null;
-                return false;
-            }
-
             const session = userStorage.getItem('backtestingSession');
             if (!session) {
                 this.sessionData = null;
@@ -118,18 +107,29 @@ class PropFirmTracker {
                 return false;
             }
 
+            const wasActive = this._isPropFirmChallenge();
+            const prevSid = this.sessionData?.session_id || this.sessionData?.sessionId || null;
             parsed = sanitizePropRulesForSession(parsed);
-            try {
-                userStorage.setItem('backtestingSession', JSON.stringify(parsed));
-            } catch (e) {}
+            this._maybePersistSanitizedPropRules(parsed);
+
+            const newSid = parsed.session_id || parsed.sessionId || null;
+            const sameSession = wasActive && prevSid && newSid && String(prevSid) === String(newSid);
+
             this.sessionData = parsed;
             const sb = Number.parseFloat(this.sessionData.startBalance ?? this.sessionData.balance);
-            this.startBalance = Number.isFinite(sb) && sb > 0 ? sb : 10000;
-            this.currentBalance = this.startBalance;
-            this.peakBalance = this.startBalance;
-            this.currentPhase = 1;
-            this.phaseStartBalance = null;
-            this._applyPhaseRulesFromSession(this.sessionData, 1);
+            const parsedStart = Number.isFinite(sb) && sb > 0 ? sb : 10000;
+
+            if (!sameSession || options.forceReset) {
+                this.startBalance = parsedStart;
+                this.currentBalance = this.startBalance;
+                this.peakBalance = this.startBalance;
+                this.currentPhase = 1;
+                this.phaseStartBalance = null;
+            } else if (!Number.isFinite(this.startBalance) || this.startBalance <= 0) {
+                this.startBalance = parsedStart;
+            }
+
+            this._applyPhaseRulesFromSession(this.sessionData, this.currentPhase || 1);
 
             console.log('✅ Prop Firm Tracker initialized:', {
                 startBalance: this.startBalance,
@@ -141,6 +141,42 @@ class PropFirmTracker {
             console.error('Error loading prop firm session:', e);
             this.sessionData = null;
             return false;
+        }
+    }
+
+    /** Refresh prop_rules from session without wiping balances, trades, or phase. */
+    reloadRulesFromSession(sessionOverride) {
+        try {
+            let session = sessionOverride || this.sessionData;
+            if (!session) {
+                const raw = userStorage.getItem('backtestingSession');
+                if (raw) session = JSON.parse(raw);
+            }
+            if (!session || session.type !== 'propfirm') return false;
+            session = sanitizePropRulesForSession(session);
+            this._maybePersistSanitizedPropRules(session);
+            this.sessionData = session;
+            this._applyPhaseRulesFromSession(session, this.currentPhase || 1);
+            return true;
+        } catch (e) {
+            console.warn('reloadRulesFromSession failed', e);
+            return false;
+        }
+    }
+
+    _maybePersistSanitizedPropRules(parsed) {
+        try {
+            const existing = userStorage.getItem('backtestingSession');
+            if (!existing) return;
+            const ex = JSON.parse(existing);
+            if (String(ex.type || '').toLowerCase() !== 'propfirm') return;
+            const exPr = JSON.stringify(ex.prop_rules || {});
+            const newPr = JSON.stringify(parsed.prop_rules || {});
+            if (exPr !== newPr) {
+                userStorage.setItem('backtestingSession', JSON.stringify({ ...ex, prop_rules: parsed.prop_rules }));
+            }
+        } catch (e) {
+            /* ignore storage errors */
         }
     }
 
@@ -582,36 +618,41 @@ class PropFirmTracker {
         if (!this._isPropFirmChallenge()) {
             return true;
         }
-        const dailyBreached = this.isDailyLossBreached();
-        const totalBreached = this.isTotalLossBreached();
-        const consistencyBreached = this.isConsistencyBreached();
-        const weekendBreached = this.isWeekendExposureBreached();
-        this.violations.dailyLoss = dailyBreached;
-        this.violations.totalLoss = totalBreached;
-        this.violations.consistency = consistencyBreached;
-        this.violations.weekendHold = weekendBreached;
+        try {
+            const dailyBreached = this.isDailyLossBreached();
+            const totalBreached = this.isTotalLossBreached();
+            const consistencyBreached = this.isConsistencyBreached();
+            const weekendBreached = this.isWeekendExposureBreached();
+            this.violations.dailyLoss = dailyBreached;
+            this.violations.totalLoss = totalBreached;
+            this.violations.consistency = consistencyBreached;
+            this.violations.weekendHold = weekendBreached;
 
-        if (dailyBreached || totalBreached || consistencyBreached || weekendBreached) {
-            this.tradingDisabled = true;
-        }
-
-        if (!skipModalTrigger && !this.failedModalShown) {
-            if (dailyBreached) {
-                this.showChallengeFailedModal('Daily Loss Limit');
-            } else if (totalBreached) {
-                this.showChallengeFailedModal('Maximum Total Loss');
-            } else if (consistencyBreached) {
-                this.showChallengeFailedModal('Consistency Rule');
-            } else if (weekendBreached) {
-                this.showChallengeFailedModal('Weekend Holding');
+            if (dailyBreached || totalBreached || consistencyBreached || weekendBreached) {
+                this.tradingDisabled = true;
             }
-        }
 
-        if (!dailyBreached && !totalBreached && !consistencyBreached && !weekendBreached) {
-            this._tryAdvancePhaseOrPass(skipModalTrigger);
-        }
+            if (!skipModalTrigger && !this.failedModalShown) {
+                if (dailyBreached) {
+                    this.showChallengeFailedModal('Daily Loss Limit');
+                } else if (totalBreached) {
+                    this.showChallengeFailedModal('Maximum Total Loss');
+                } else if (consistencyBreached) {
+                    this.showChallengeFailedModal('Consistency Rule');
+                } else if (weekendBreached) {
+                    this.showChallengeFailedModal('Weekend Holding');
+                }
+            }
 
-        return !dailyBreached && !totalBreached && !consistencyBreached && !weekendBreached;
+            if (!dailyBreached && !totalBreached && !consistencyBreached && !weekendBreached) {
+                this._tryAdvancePhaseOrPass(skipModalTrigger);
+            }
+
+            return !dailyBreached && !totalBreached && !consistencyBreached && !weekendBreached;
+        } catch (e) {
+            console.warn('propFirmTracker.checkRules failed', e);
+            return true;
+        }
     }
 
     _tryAdvancePhaseOrPass(skipModalTrigger) {
@@ -1188,8 +1229,13 @@ function initPropFirmTracker() {
             return;
         }
         
-        // Reload session
-        const success = window.propFirmTracker.loadSession();
+        // Reload session rules without resetting balances / trade history
+        if (!window.propFirmTracker.sessionData) {
+            window.propFirmTracker.loadSession();
+        } else if (typeof window.propFirmTracker.reloadRulesFromSession === 'function') {
+            window.propFirmTracker.reloadRulesFromSession();
+        }
+        const success = window.propFirmTracker._isPropFirmChallenge();
         if (!success) {
             console.log('⚠️ Not a prop firm session or session not found');
             return;
