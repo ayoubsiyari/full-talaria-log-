@@ -1050,7 +1050,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                           fontFamily: F,
                           fontSize: 10,
                           fontWeight: 700,
-                          cursor: "pointer",
+                          cursor: "default",
                           letterSpacing: "0.04em",
                           textTransform: "uppercase",
                         }}
@@ -1684,11 +1684,27 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                               </div>
                               <div style={{display:"flex",alignItems:"center",gap:10}}>
                                 <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",width:130,flexShrink:0}}>Post-exit mode</span>
-                                <select value={newSessPostExitMode} onChange={e=>setNewSessPostExitMode(e.target.value as "hours" | "candles")}
-                                  style={{...inp({width:170,height:24,fontSize:10,cursor:"default"})}}>
-                                  <option value="hours">Hours window</option>
-                                  <option value="candles">Fixed candle count</option>
-                                </select>
+                                <div style={{position:"relative",width:170,flexShrink:0}}>
+                                  {(()=>{
+                                    const postExitDdKey="postExitMode";
+                                    const postExitLabels={hours:"Hours window",candles:"Fixed candle count"};
+                                    const postExitOpts=["hours","candles"] as const;
+                                    return(<>
+                                      <div onClick={e=>{e.stopPropagation();if(dropdown===postExitDdKey){setDropdown(null);setDdAnchor(null);}else{const r=e.currentTarget.getBoundingClientRect();setDdAnchor({top:r.bottom/Z+2,left:r.left/Z,minWidth:r.width/Z});setDropdown(postExitDdKey);setNewSessStratDropOpen(false);}}}
+                                        style={{height:24,display:"flex",alignItems:"center",padding:"0 18px 0 8px",position:"relative",background:c.el,border:`1px solid ${dropdown===postExitDdKey?c.acB:c.brH}`,cursor:"default",userSelect:"none",boxSizing:"border-box",transition:"border-color 0.12s"}}>
+                                        <span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,whiteSpace:"nowrap"}}>{postExitLabels[newSessPostExitMode]}</span>
+                                        <svg style={{position:"absolute",right:7,top:"50%",transform:`translateY(-50%) rotate(${dropdown===postExitDdKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                      </div>
+                                      {dropdown===postExitDdKey&&ddAnchor&&(
+                                        <><div style={{position:"fixed",inset:0,zIndex:9998}} onClick={e=>{e.stopPropagation();setDropdown(null);setDdAnchor(null);}}/>
+                                        <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:ddAnchor.top,left:ddAnchor.left,minWidth:ddAnchor.minWidth,zIndex:9999,background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
+                                          <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+                                          {postExitOpts.map(v=>{const isAct=v===newSessPostExitMode;const isHv=hov==="postExitOpt_"+v;return(<div key={v} onClick={e=>{e.stopPropagation();setNewSessPostExitMode(v);setDropdown(null);setDdAnchor(null);}} onMouseEnter={()=>setHov("postExitOpt_"+v)} onMouseLeave={()=>setHov(null)} style={{display:"flex",alignItems:"center",padding:"4px 10px",cursor:"default",position:"relative",background:isAct?c.acD:isHv?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>{isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}<span style={{fontSize:10,fontWeight:isAct?700:500,color:isAct?c.acL:isHv?c.tx:c.ts,fontFamily:F,whiteSpace:"nowrap"}}>{postExitLabels[v]}</span></div>);})}
+                                        </div></>
+                                      )}
+                                    </>);
+                                  })()}
+                                </div>
                               </div>
                               {newSessPostExitMode==="candles"&&(
                                 <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1748,7 +1764,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                     onMouseDown={e=>{e.stopPropagation();e.currentTarget.style.background=accent;e.currentTarget.style.borderColor=accent;e.currentTarget.style.color="#fff";}}
                                     onMouseUp={e=>{e.currentTarget.style.background=c.el;e.currentTarget.style.borderColor=c.br;e.currentTarget.style.color=c.tm;}}
                                     onMouseLeave={e=>{e.currentTarget.style.background=c.el;e.currentTarget.style.borderColor=c.br;e.currentTarget.style.color=c.tm;}}
-                                    style={{flex:1,width:"100%",minHeight:0,background:c.el,border:`1px solid ${c.br}`,borderRadius:2,color:c.tm,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,lineHeight:1,fontFamily:F,padding:0,transition:"background 0.1s,color 0.1s,border-color 0.1s"}}>
+                                    style={{flex:1,width:"100%",minHeight:0,background:c.el,border:`1px solid ${c.br}`,borderRadius:2,color:c.tm,cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,lineHeight:1,fontFamily:F,padding:0,transition:"background 0.1s,color 0.1s,border-color 0.1s"}}>
                                     {ch}
                                   </button>
                                 ))}
@@ -1839,8 +1855,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                       ):(assetSyms.length>0&&(
                                         <div>
                                           <div style={{marginBottom:5,paddingBottom:4,borderBottom:`1px solid ${c.br}`}}><span style={{fontSize:9,fontWeight:700,color:c.tm,fontFamily:F,letterSpacing:"0.03em"}}>SPREAD</span><span style={{fontSize:8,fontWeight:500,fontStyle:"italic",color:c.tm,opacity:0.75,marginLeft:4,fontFamily:F}}>{meta.spreadUnit}</span></div>
-                                          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4}}>
-                                            {assetSyms.map(sym=>(<div key={sym} style={{display:"grid",gridTemplateColumns:"14px 1fr 48px",alignItems:"center",columnGap:3,background:c.bg,padding:"2px 5px",border:`1px solid ${c.br}`,height:24,boxSizing:"border-box",minWidth:0}}>{(()=>{const sz=8,fw=Math.round(sz*15/11),fh=sz;const pr=pairInfo2(sym);if(pr)return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},MGC:{bg:"#1A1200",fg:"#FFBA00",label:"mGC"},MCL:{bg:"#071510",fg:"#33CC66",label:"mCL"}};if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35)}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0}}><FlagSvg code="US" w={fw} h={fh}/></div>);})()}<span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,letterSpacing:"0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{sym}</span>{numCell(getSpread(sym),e=>setSpread(sym,e.target.value),meta.spreadStep,48)}</div>))}
+                                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(132px, 1fr))",gap:6}}>
+                                            {assetSyms.map(sym=>(<div key={sym} style={{display:"flex",alignItems:"center",gap:4,background:c.bg,padding:"2px 6px",border:`1px solid ${c.br}`,height:24,boxSizing:"border-box"}}>{(()=>{const sz=8,fw=Math.round(sz*15/11),fh=sz;const pr=pairInfo2(sym);if(pr)return(<div style={{position:"relative",width:Math.round(sz*22/11),height:fh,flexShrink:0}}><div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",zIndex:2}}><FlagSvg code={pr.b} w={fw} h={fh}/></div><div style={{position:"absolute",left:Math.round(sz*7/11),top:0,borderRadius:1,overflow:"hidden",zIndex:1}}><FlagSvg code={pr.q} w={fw} h={fh}/></div></div>);const metalMap={XAUUSD:{bg:"#2B2200",fg:"#FFD700",label:"Au"},XAGUSD:{bg:"#1C2028",fg:"#C8D4E0",label:"Ag"},GC:{bg:"#2B2200",fg:"#FFD700",label:"GC"},SI:{bg:"#1C2028",fg:"#C8D4E0",label:"SI"},CL:{bg:"#0D1A12",fg:"#4CAF50",label:"CL"},NG:{bg:"#0A1020",fg:"#64B5F6",label:"NG"},MGC:{bg:"#1A1200",fg:"#FFBA00",label:"mGC"},MCL:{bg:"#071510",fg:"#33CC66",label:"mCL"}};if(metalMap[sym]){const m=metalMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:1}}><rect width={fw} height={fh} fill={m.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={m.fg} fontSize={fh*0.52} fontWeight="800" fontFamily={F}>{m.label}</text></svg>);}const cryptoMap={BTCUSD:{bg:"#E8820C",fg:"#fff",label:"₿"},ETHUSD:{bg:"#3D4FC4",fg:"#fff",label:"Ξ"},BNBUSD:{bg:"#C99800",fg:"#000",label:"B"},SOLUSD:{bg:"#7B3FBE",fg:"#fff",label:"S"},ADAUSD:{bg:"#0033AD",fg:"#fff",label:"A"}};if(cryptoMap[sym]){const cr=cryptoMap[sym];return(<svg width={fw} height={fh} viewBox={`0 0 ${fw} ${fh}`} style={{display:"block",flexShrink:0,borderRadius:Math.round(fh*0.35)}}><rect width={fw} height={fh} rx={Math.round(fh*0.35)} fill={cr.bg}/><text x={fw/2} y={fh*0.73} textAnchor="middle" fill={cr.fg} fontSize={fh*0.58} fontWeight="900" fontFamily={F}>{cr.label}</text></svg>);}return(<div style={{borderRadius:1,overflow:"hidden",flexShrink:0}}><FlagSvg code="US" w={fw} h={fh}/></div>);})()}<span style={{fontSize:9,fontWeight:700,color:c.ts,fontFamily:F,letterSpacing:"0.02em",whiteSpace:"nowrap",flexShrink:0}}>{sym}</span><div style={{marginLeft:"auto",flexShrink:0}}>{numCell(getSpread(sym),e=>setSpread(sym,e.target.value),meta.spreadStep,48)}</div></div>))}
                                           </div>
                                         </div>
                                       ))}
@@ -2016,7 +2032,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                 {[[()=>setter(v=>String(Math.max(1,parseInt(v||1)+1))),"▲"],[()=>setter(v=>String(Math.max(1,parseInt(v||1)-1))),"▼"]].map(([fn,ch],ii)=>(
                                   <button key={ii} onClick={enabled?fn:undefined}
                                     onMouseEnter={e=>{if(enabled)e.currentTarget.style.color=c.acL;}} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
-                                    style={{flex:1,background:"transparent",border:"none",color:c.ts,cursor:enabled?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",fontSize:6,lineHeight:1,fontFamily:F,padding:0,borderBottom:ii===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
+                                    style={{flex:1,background:"transparent",border:"none",color:c.ts,cursor:enabled?"default":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",fontSize:6,lineHeight:1,fontFamily:F,padding:0,borderBottom:ii===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
                                     {ch}
                                   </button>
                                 ))}
