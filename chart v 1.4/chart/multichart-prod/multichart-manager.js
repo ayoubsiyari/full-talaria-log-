@@ -273,18 +273,8 @@
             params.set('restoreEnd',   String(Math.floor(cfg.restoreEndSec)));
         }
 
-        // Per-cell loading overlay (sandbox only). Production MultichartGrid
-        // shows iframes directly — no blocking "Loading …" screen (TradingView UX).
-        var overlay = null;
-        if (!this.iframeSrcBuilder) {
-            overlay = document.createElement('div');
-            overlay.className = 'loading-overlay';
-            overlay.innerHTML =
-                '<div class="id">' + cfg.id + '</div>' +
-                '<div>Loading panel — pick a file…</div>' +
-                '<small>iframe: pending — bridge: pending</small>';
-            mountEl.appendChild(overlay);
-        }
+        // No per-cell loading overlay — show the iframe chart canvas immediately
+        // (TradingView UX). Boot failures surface via onChartBootFailed only.
 
         const frame = document.createElement('iframe');
         if (this.iframeSrcBuilder) {
@@ -312,11 +302,6 @@
         frame.addEventListener('load', function () {
             scheduleIframeBrandSuppression(frame);
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
-            if (overlay) {
-                const small = overlay.querySelector('small');
-                if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
-                    + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
-            }
             setTimeout(function () {
                 const c = self.charts.get(cfg.id);
                 if (c && !c.ready) {
@@ -325,21 +310,12 @@
                         + '(chart.js init stalled or failed)';
                     self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but '
                         + reason + ' — open the iframe URL in a new tab to inspect its console: ' + frame.src);
-                    if (overlay) {
-                        const sm = overlay.querySelector('small');
-                        if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (no ready after '
-                            + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
-                    }
                     try { self.onChartBootFailed(cfg.id, reason, frame.src); } catch (_) {}
                 }
             }, BRIDGE_READY_TIMEOUT_MS);
         });
         frame.addEventListener('error', function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
-            if (overlay) {
-                const small = overlay.querySelector('small');
-                if (small) small.textContent = 'iframe: LOAD FAILED';
-            }
             try { self.onChartBootFailed(cfg.id, 'iframe failed to load', frame.src); } catch (_) {}
         });
         mountEl.appendChild(frame);
@@ -348,7 +324,7 @@
             id:      cfg.id,
             cfg:     cfg,
             frame:   frame,
-            overlay: overlay,
+            overlay: null,
             ready:   false,
             state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
             mountEl: mountEl,
@@ -691,17 +667,12 @@
                     try { this.onChartReady(sourceId); } catch (e) {
                         this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
                     }
-                    // Phase 7.2.5: bring the new iframe in line with the
-                    // host's current visible range so the user's split
-                    // shows the SAME data window across every panel
-                    // instead of stale defaults from chart.js init.
-                    // Deferred to next tick so the iframe's bridge has
-                    // settled (it just sent bridge-ready synchronously
-                    // from inside its own message setup).
+                    // Push sync-mode toggles only. Viewport snap waits until
+                    // chart-state reports candleCount > 0 — snapping before
+                    // bars land made iframe panels jump/shake during boot.
                     const self = this;
                     setTimeout(function () {
                         self._pushSyncModeToChart(sourceChart);
-                        self._initialSyncToHost(sourceChart);
                     }, 0);
                 }
                 return;
@@ -721,7 +692,7 @@
                         setTimeout(function () {
                             self._pushSyncModeToChart(sourceChart);
                             self._initialSyncToHost(sourceChart);
-                        }, 0);
+                        }, 80);
                     }
                 }
                 return;

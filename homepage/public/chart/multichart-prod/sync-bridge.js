@@ -1219,6 +1219,17 @@
                     },
                 }, parentOrigin);
             } catch (_) {}
+            try {
+                const pending = chart._pendingForceInitialRange;
+                if (pending && chart.data && chart.data.length > 0) {
+                    chart._pendingForceInitialRange = null;
+                    const now = (typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now();
+                    chart._multichartViewportSettleUntil = now + 1200;
+                    applyVisibleRange(pending);
+                }
+            } catch (_) {}
         });
 
         // 4) Timeframe — chart-state only (NOT a sync field per Decision 1)
@@ -1793,6 +1804,13 @@
                 if (m && m.causationId) state.applied.add(m.causationId);
                 return;
             }
+            // Initial host snap before bars land causes a visible jump when data
+            // arrives — stash and apply once chartDataLoaded has populated data.
+            if (m.forceInitialSync && (!chart.data || chart.data.length === 0)) {
+                chart._pendingForceInitialRange = m;
+                if (m.causationId) state.applied.add(m.causationId);
+                return;
+            }
             const panSync = !!m.panSync;
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
@@ -1964,7 +1982,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260623b70';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260623b74';
 
         return {
             state,

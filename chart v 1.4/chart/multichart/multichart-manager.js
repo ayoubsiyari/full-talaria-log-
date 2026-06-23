@@ -131,16 +131,7 @@
             params.set('restoreEnd',   String(Math.floor(cfg.restoreEndSec)));
         }
 
-        // Per-cell loading overlay so we can see WHICH cells exist and which
-        // are stuck waiting for their iframe's chart.js to init. Removed when
-        // the cell goes ready (see _onWindowMessage on bridge-ready).
-        const overlay = document.createElement('div');
-        overlay.className = 'loading-overlay';
-        overlay.innerHTML =
-            '<div class="id">' + cfg.id + '</div>' +
-            '<div>Loading panel — pick a file…</div>' +
-            '<small>iframe: pending — bridge: pending</small>';
-        mountEl.appendChild(overlay);
+        // No per-cell loading overlay — iframe chart paints immediately.
 
         const frame = document.createElement('iframe');
         if (this.iframeSrcBuilder) {
@@ -162,21 +153,15 @@
         const self = this;
         frame.addEventListener('load', function () {
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
-            const small = overlay.querySelector('small');
-            if (small) small.textContent = 'iframe: LOADED — bridge: pending';
             setTimeout(function () {
                 const c = self.charts.get(cfg.id);
                 if (c && !c.ready) {
                     self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but bridge never reported ready (chart.js init likely failed — open the iframe directly in a new tab to see its console)');
-                    const sm = overlay.querySelector('small');
-                    if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (chart init failed)';
                 }
             }, 5000);
         });
         frame.addEventListener('error', function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
-            const small = overlay.querySelector('small');
-            if (small) small.textContent = 'iframe: LOAD FAILED';
         });
         mountEl.appendChild(frame);
 
@@ -184,7 +169,7 @@
             id:      cfg.id,
             cfg:     cfg,
             frame:   frame,
-            overlay: overlay,
+            overlay: null,
             ready:   false,
             state:   { symbol: '—', timeframe: cfg.tf, candleCount: 0 },
             mountEl: mountEl,

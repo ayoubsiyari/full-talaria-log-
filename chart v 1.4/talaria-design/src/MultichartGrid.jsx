@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260623b70";
+const BRIDGE_VERSION = "20260623b74";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -628,9 +628,14 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     return "/chart/dist-v9/index.html?" + params.toString();
 }
 
-// ─── panel boot-failure overlay (error only — no blocking "Loading B" screen) ─
+// ─── panel boot-failure overlay (error only — no blocking loading screen) ─
 const ERROR_STYLE_ID = "multichart-error-style";
 const ERROR_STYLE_CSS = `
+[data-multichart-grid] .loading-overlay {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
 .multichart-error-overlay {
     position: absolute; inset: 0; z-index: 5;
     display: flex; flex-direction: column;
@@ -1789,8 +1794,6 @@ export default function MultichartGrid({
             if (isDraggingRef.current) return;
             requestAnimationFrame(() => {
                 repaintAllPanelSurfaces(container, cellA, { reanchor: false });
-                const mgr = managerRef.current;
-                scheduleAlignHostOnly(mgr, 280);
                 if (computeFocusedRectRef.current) {
                     computeFocusedRectRef.current();
                 }
