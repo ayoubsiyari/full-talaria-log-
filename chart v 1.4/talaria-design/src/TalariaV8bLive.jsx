@@ -10516,6 +10516,8 @@ const TalariaV8bLive = () => {
   const [symbol, setSymbol] = useState("EUR/JPY");
   const symbolRef = useRef("EUR/JPY");
   const pendingSymbolRef = useRef(null);
+  /** Skip chart-type fan-out when topbar state mirrors a focus change. */
+  const chartTypeFromFocusRef = useRef(false);
   const symbolLoadGenRef = useRef(0);
   symbolRef.current = symbol;
   // Pairs available in the active backtest session (read from chart.js / userStorage).
@@ -11155,10 +11157,9 @@ const TalariaV8bLive = () => {
   // ─── SYNC CHART TYPE → chart.js ──────────────────────────────────────────
   // V9 React state (chartType) drives chart.js's chartSettings.chartType.
   // chart.js value vocabulary is lowercase / no spaces; map V9 labels here.
-  // Mirrors what legacy index.html's chart-type dropdown handler does:
-  //     activeChart.chartSettings.chartType = chartType;
-  //     activeChart.render();
-  // Plus _syncChartTypeUI keeps the legacy toolbar icon in sync if it's around.
+  // Multichart: runCommand targets the focused panel; fanOutChartType applies
+  // to every tile when layoutSync.chartType is on (unless this change came from
+  // a focus switch — then only the focused panel is updated).
   useEffect(() => {
     const CHART_TYPE_MAP = {
       "Candles": "candles",
@@ -11169,41 +11170,82 @@ const TalariaV8bLive = () => {
       "Area": "area",
     };
     const mapped = CHART_TYPE_MAP[chartType] || "candles";
+    const fromFocus = chartTypeFromFocusRef.current;
+    chartTypeFromFocusRef.current = false;
 
     let cancelled = false;
     let attempts = 0;
 
-    const apply = () => {
-      if (cancelled) return;
-      const chart = window.chart;
-      if (!chart || !chart.chartSettings || typeof chart.render !== "function") {
-        // chart.js not ready yet — retry briefly. Once ready it stays ready.
-        if (attempts++ < 60) setTimeout(apply, 100);
-        return;
-      }
-      if (chart.chartSettings.chartType === mapped) return;
-      chart.chartSettings.chartType = mapped;
-      try { chart.render(); } catch (err) { console.warn("[V9] chart.render failed after chartType change:", err); }
-      // Apply to other panels too (multi-panel sync, mirrors legacy behavior).
-      try {
-        const panels = window.panelManager?.getPanels?.() || [];
-        for (const p of panels) {
-          const pc = p?.chartInstance;
-          if (pc && pc !== chart && pc.chartSettings) {
-            pc.chartSettings.chartType = mapped;
-            if (typeof pc.render === "function") pc.render();
-          }
-        }
-      } catch (_) {}
-      // Sync legacy toolbar UI if it exists in the DOM.
+    const syncLegacyUi = () => {
       if (typeof window._syncChartTypeUI === "function") {
         try { window._syncChartTypeUI(mapped); } catch (_) {}
       }
     };
 
+    const apply = () => {
+      if (cancelled) return;
+
+      const grid = window.__multichartGrid;
+      if (grid && typeof grid.runCommand === "function") {
+        const fanAll = layoutSync.chartType && !fromFocus;
+        const p = fanAll && typeof grid.fanOutChartType === "function"
+          ? grid.fanOutChartType(mapped)
+          : grid.runCommand("setChartType", { chartType: mapped });
+        if (p && typeof p.then === "function") {
+          p.catch(() => {}).finally(syncLegacyUi);
+        } else {
+          syncLegacyUi();
+        }
+        return;
+      }
+
+      const chart = window.chart;
+      if (!chart || !chart.chartSettings || typeof chart.render !== "function") {
+        if (attempts++ < 60) setTimeout(apply, 100);
+        return;
+      }
+
+      if (layoutSync.chartType && !fromFocus) {
+        const pm = window.panelManager;
+        if (pm && typeof pm.syncChartTypeNow === "function" && v9IsMultiPanelLayoutActive()) {
+          const active = v9ActiveChartInstance() || chart;
+          if (active && active.chartSettings && active.chartSettings.chartType !== mapped) {
+            active.chartSettings.chartType = mapped;
+            try { active.render(); } catch (_) {}
+          }
+          try { pm.syncChartTypeNow(); } catch (_) {}
+          syncLegacyUi();
+          return;
+        }
+      }
+
+      const target = v9IsMultiPanelLayoutActive() ? (v9ActiveChartInstance() || chart) : chart;
+      if (!target || !target.chartSettings || typeof target.render !== "function") {
+        if (attempts++ < 60) setTimeout(apply, 100);
+        return;
+      }
+      if (target.chartSettings.chartType === mapped) {
+        syncLegacyUi();
+        return;
+      }
+      target.chartSettings.chartType = mapped;
+      try { target.render(); } catch (err) { console.warn("[V9] chart.render failed after chartType change:", err); }
+      try {
+        const panels = window.panelManager?.getPanels?.() || [];
+        for (const p of panels) {
+          const pc = p?.chartInstance;
+          if (pc && pc !== target && pc.chartSettings) {
+            pc.chartSettings.chartType = mapped;
+            if (typeof pc.render === "function") pc.render();
+          }
+        }
+      } catch (_) {}
+      syncLegacyUi();
+    };
+
     apply();
     return () => { cancelled = true; };
-  }, [chartType]);
+  }, [chartType, layoutSync.chartType]);
 
   // Per Chart instance (main + panel tiles): V9 id (e.g. "SMA") → chart.js runtime id.
   // WeakMap so each focused tile keeps its own mapping (multi-panel).
@@ -11225,6 +11267,20 @@ const TalariaV8bLive = () => {
     if (/^\d+h$/.test(s)) return s.toUpperCase();
     if (/^\d+d$/.test(s) || /^\d+w$/.test(s)) return s.toUpperCase();
     return s;
+  };
+
+  const chartJsTypeToV9 = (ct) => {
+    const key = String(ct || "").toLowerCase().trim();
+    const map = {
+      candles: "Candles",
+      hollow: "Hollow Candles",
+      heikinashi: "Heikin Ashi",
+      bars: "Bars",
+      line: "Line",
+      area: "Area",
+      candlestick: "Candles",
+    };
+    return map[key] || null;
   };
 
   const routeSessionFileLoadToSelectedPanel = (fileId) => {
@@ -11512,6 +11568,13 @@ const TalariaV8bLive = () => {
       if (d.timeframe) {
         const mapped = chartTfToV9(d.timeframe);
         if (mapped) setTf(mapped);
+      }
+      if (d.chartType) {
+        const label = chartJsTypeToV9(d.chartType);
+        if (label) {
+          chartTypeFromFocusRef.current = true;
+          setChartType(label);
+        }
       }
     };
 
@@ -13147,13 +13210,6 @@ const TalariaV8bLive = () => {
     pushWhenReady();
     return () => { cancelled = true; };
   }, [applyLayoutSyncToPanelManager]);
-
-  useEffect(() => {
-    if (!layoutSync.chartType) return;
-    const pm = window.panelManager;
-    if (!pm || typeof pm.syncChartTypeNow !== "function" || (pm.panels || []).length <= 1) return;
-    try { pm.syncChartTypeNow(); } catch (_) {}
-  }, [chartType, layoutSync.chartType]);
 
   const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
   const [settingsTab, setSettingsTab] = useState("chart");

@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260623b56";
+const BRIDGE_VERSION = "20260623b70";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -2038,9 +2038,10 @@ export default function MultichartGrid({
         if (!mgr || typeof mgr.setSyncMode !== "function") return;
         try {
             // Only these four map into MultichartManager / sync-bridge postMessage
-            // fan-out. `layoutSync.interval`, `indicators`, and `chartType` are
-            // handled elsewhere (React timeframe listener; legacy panelManager;
-            // indicator chips always target the focused panel in V9).
+            // fan-out. `layoutSync.interval` and `indicators` are handled
+            // elsewhere (React timeframe listener; indicator chips target
+            // the focused panel in V9). Chart type sync is in onStateAnyRef
+            // + TalariaV8bLive fanOutChartType when layoutSync.chartType is on.
             mgr.setSyncMode({
                 crosshair:    !!(layoutSync && layoutSync.crosshair),
                 visibleRange: !!(layoutSync && (layoutSync.dateRange || layoutSync.time)),
@@ -2952,10 +2953,14 @@ export default function MultichartGrid({
         if (panelId === HOST_PANEL_ID) {
             const ch = window.chart;
             if (!ch) return null;
+            const ct = ch.chartSettings && ch.chartSettings.chartType
+                ? String(ch.chartSettings.chartType).toLowerCase()
+                : null;
             return {
                 symbol:    ch.currentSymbol    || null,
                 timeframe: ch.currentTimeframe || null,
                 fileId:    ch.currentFileId    || null,
+                chartType: ct,
             };
         }
         const mgr = managerRef.current;
@@ -2965,6 +2970,7 @@ export default function MultichartGrid({
             symbol:    c.state.symbol    || null,
             timeframe: c.state.timeframe || null,
             fileId:    c.state.fileId    || null,
+            chartType: c.state.chartType || null,
         };
     }
 
@@ -2977,6 +2983,7 @@ export default function MultichartGrid({
                     symbol:    state ? state.symbol    : null,
                     timeframe: state ? state.timeframe : null,
                     fileId:    state ? state.fileId    : null,
+                    chartType: state ? state.chartType : null,
                 },
             }));
         } catch (_) {}
@@ -3012,6 +3019,7 @@ export default function MultichartGrid({
     // (chart-state from iframes can re-fire many times per pan).
     const lastBroadcastTfRef = useRef({});       // panelId -> tf
     const lastBroadcastFileRef = useRef({});     // panelId -> fileId
+    const lastBroadcastChartTypeRef = useRef({}); // panelId -> chartType
     /** Skip symbol-sync pull-back briefly after user picks a pair on this iframe tile. */
     const userPairLoadGuardRef = useRef({});
 
@@ -3113,6 +3121,28 @@ export default function MultichartGrid({
             }
         }
 
+        // Chart type sync ON: any iframe tile change fans out to host + peers.
+        if (state && state.chartType && sync.chartType) {
+            const ct = String(state.chartType).toLowerCase();
+            if (lastBroadcastChartTypeRef.current[id] !== ct) {
+                lastBroadcastChartTypeRef.current[id] = ct;
+                try {
+                    const hostCh = window.chart;
+                    if (hostCh && hostCh.chartSettings
+                        && hostCh.chartSettings.chartType !== ct) {
+                        hostCh.chartSettings.chartType = ct;
+                        if (typeof hostCh.render === "function") hostCh.render();
+                    }
+                    lastBroadcastChartTypeRef.current[HOST_PANEL_ID] = ct;
+                } catch (_) {}
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || c.id === id) continue;
+                    try { mgr.sendCommand(c.id, "setChartType", { chartType: ct }); } catch (_) {}
+                    lastBroadcastChartTypeRef.current[c.id] = ct;
+                }
+            }
+        }
+
     };
 
     // ─── Phase 7.2.4: expose the per-panel command bus to the parent ────
@@ -3156,6 +3186,17 @@ export default function MultichartGrid({
                         }
                         if (!args.tf) return Promise.reject(new Error("setTimeframe: missing tf"));
                         if (ch.currentTimeframe !== args.tf) ch.setTimeframe(args.tf);
+                        return Promise.resolve(null);
+                    }
+                    case "setChartType": {
+                        const ct = String(args.chartType || "").trim().toLowerCase();
+                        if (!ct) return Promise.reject(new Error("setChartType: missing chartType"));
+                        if (!ch.chartSettings) {
+                            return Promise.reject(new Error("chartSettings not available"));
+                        }
+                        if (ch.chartSettings.chartType === ct) return Promise.resolve(null);
+                        ch.chartSettings.chartType = ct;
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
                         return Promise.resolve(null);
                     }
                     case "loadFile": {
@@ -4029,6 +4070,24 @@ export default function MultichartGrid({
             return Promise.all(proms).then(() => undefined);
         }
 
+        /**
+         * Apply chart type to host + every iframe when Chart Type sync is on.
+         * Seeds lastBroadcastChartTypeRef so iframe chart-state echoes do not
+         * re-trigger bidirectional fan-out loops.
+         */
+        function fanOutChartType(chartType) {
+            const ct = String(chartType || "candles").trim().toLowerCase();
+            if (!ct) return Promise.resolve();
+            lastBroadcastChartTypeRef.current[HOST_PANEL_ID] = ct;
+            const mgr = managerRef.current;
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const c of mgr.charts.values()) {
+                    if (c && c.id) lastBroadcastChartTypeRef.current[c.id] = ct;
+                }
+            }
+            return runCommandOnAllPanels("setChartType", { chartType: ct });
+        }
+
         /** chart.js legacy ids for continuous freehand (see drawing-tools-manager). */
         function isPersistentFreehandLegacyTool(lt) {
             const x = String(lt || "").toLowerCase();
@@ -4311,6 +4370,7 @@ export default function MultichartGrid({
             isMounted,
             runCommand,
             runCommandOnAllPanels,
+            fanOutChartType,
             deselectDrawingsOnNonFocusedPanels,
             closeDrawingSettingsOnOtherPanels,
             closeDrawingSettingsOnAllPanels,

@@ -1027,6 +1027,26 @@
             args = args || {};
             switch (cmd) {
 
+                // ─── chart type (candles / hollow / heikinashi / …) ─────
+                case 'setChartType': {
+                    var ct = String(args.chartType || '').trim().toLowerCase();
+                    if (!ct) throw new Error('setChartType: missing args.chartType');
+                    if (!ch.chartSettings) {
+                        throw new Error('chart.chartSettings is not available');
+                    }
+                    if (ch.chartSettings.chartType === ct) return;
+                    ch.chartSettings.chartType = ct;
+                    if (typeof ch.render === 'function') ch.render();
+                    try {
+                        global.parent.postMessage({
+                            type: 'chart-state',
+                            source: chartId,
+                            state: { chartType: ct },
+                        }, parentOrigin);
+                    } catch (_) {}
+                    return;
+                }
+
                 // ─── timeframe ─────────────────────────────────────────
                 case 'setTimeframe': {
                     var tf = String(args.tf || '').trim().toLowerCase();
