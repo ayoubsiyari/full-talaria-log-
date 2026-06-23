@@ -19427,11 +19427,14 @@ class Chart {
      * Calculate scales for chart rendering
      */
     calculateScales() {
-        if (typeof this._syncSeparateIndicatorPanelHeightEstimate === 'function') {
-            this._syncSeparateIndicatorPanelHeightEstimate();
-        }
-        if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
-            this._normalizeVolumeIndicatorLayout();
+        const panLoop = this._chartPanRenderLoopActive && this._isChartViewPanDragging();
+        if (!panLoop) {
+            if (typeof this._syncSeparateIndicatorPanelHeightEstimate === 'function') {
+                this._syncSeparateIndicatorPanelHeightEstimate();
+            }
+            if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
+                this._normalizeVolumeIndicatorLayout();
+            }
         }
         // ZOOM-FIX-9: skip heavy OHLC scan on pan when Y domain can be derived from snap + priceOffset.
         if (this._chartPanRenderLoopActive && this._panScalesCalculated && this.yScale && this.xScale) {
@@ -20320,14 +20323,21 @@ class Chart {
         return this._flattenPixelSlotSegments(slots);
     }
 
-    /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
+    /** CSS translate on the drawings layer during pan — avoids tearing down SVG every rAF. */
     _canPanTransformDrawings() {
-        return false;
+        if (!this._isChartViewPanDragging()) return false;
+        const dm = this.drawingManager;
+        if (!dm || !Array.isArray(dm.drawings) || dm.drawings.length === 0) return true;
+        if (typeof dm.isVolumeProfileToolType !== 'function') return true;
+        for (let i = 0; i < dm.drawings.length; i++) {
+            const d = dm.drawings[i];
+            if (d && dm.isVolumeProfileToolType(d.type)) return false;
+        }
+        return true;
     }
 
-    /** @deprecated See _canPanTransformDrawings */
     _shouldUsePanDrawingsTransform() {
-        return false;
+        return this._canPanTransformDrawings();
     }
 
     /** V9 #chart-container uses overflow:hidden — relax while panning so nothing clips mid-drag. */
@@ -20360,6 +20370,10 @@ class Chart {
     /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
     _isChartPanDragging() {
         return !!(this.drag && this.drag.active && this.drag.type === 'pan');
+    }
+
+    _isChartViewPanDragging() {
+        return this._isChartPanDragging();
     }
 
     _releasePanPointerCapture() {
@@ -20456,17 +20470,18 @@ class Chart {
         } else {
             this._panelSnapDomains = null;
         }
+        if (typeof this._paintSeparatePanelStackBackground === 'function') {
+            this._paintSeparatePanelStackBackground();
+        }
         if (this.compareOverlay && typeof this.compareOverlay.snapshotPanDomains === 'function') {
             this.compareOverlay.snapshotPanDomains();
         } else {
             this._overlaySnapDomains = null;
         }
-        // Pre-warm tick cache so the first pan frame does not stall on _buildTimeTicks().
-        const panTicks = this._buildTimeTicks({ panCache: true });
-        this._panTimeTickCache = {
-            baseOffsetX: this.offsetX,
-            ticks: panTicks.map((t) => ({ ...t })),
-        };
+        // Tick cache built lazily on first pan frame (_buildPanTimeTicks) — not on mousedown.
+        this._clearPanTimeTickCache();
+        this._usedPanTransformDrawings = false;
+        this._setChartPanDomOverflow(true);
         // Drop stale CSS translate; keep snap offsets for the pan loop.
         this._clearPanDrawingsLayerTransform(false);
         const dm = this.drawingManager;
@@ -20545,6 +20560,9 @@ class Chart {
             requestAnimationFrame(() => {
                 if (this._isChartPanDragging()) return;
                 this._panScalesCalculated = false;
+                if (typeof this._paintSeparatePanelStackBackground === 'function') {
+                    this._paintSeparatePanelStackBackground();
+                }
                 this.renderPending = false;
                 this.render();
             });
@@ -21037,6 +21055,8 @@ class Chart {
         this.ctx.clearRect(0, 0, this.w, this.h);
         
         const chartViewPanning = this._isChartViewPanning();
+        const chartPanDragging = this._isChartViewPanDragging();
+        const panTransformDrawings = chartPanDragging && this._canPanTransformDrawings();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
         const interactionFast = this._isInteractionFastRender();
 
@@ -21051,15 +21071,14 @@ class Chart {
 
         // IMPORTANT: Calculate scales FIRST before drawing anything
         const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
-        const interactionLiteEarly = this._shouldUseInteractionLitePaint(null);
+        const interactionLiteEarly = chartPanDragging || this._shouldUseInteractionLitePaint(null);
         const skipHeavyChrome = interactionLiteEarly && (wheelBurstLight || chartViewPanning);
 
         this.calculateScales();
         if (typeof this._syncAdaptivePriceAxisMargin === 'function' && !skipHeavyChrome) {
             this._syncAdaptivePriceAxisMargin();
         }
-        // Keep separate-panel stack opaque even during lite pan (prevents candle bleed + legend drift).
-        if (typeof this._paintSeparatePanelStackBackground === 'function') {
+        if (!chartPanDragging && typeof this._paintSeparatePanelStackBackground === 'function') {
             this._paintSeparatePanelStackBackground();
         }
 
@@ -21073,6 +21092,9 @@ class Chart {
         if (skipHeavyChrome) {
             // Rebuild bar-grid ticks every frame so labels scroll with pan/zoom (not fixed screen slots).
             this._timeTicks = useFastTimeTicks ? this._buildTimeTicksFast() : this._buildTimeTicks();
+            this._cachedInteractionTimeTicks = this._timeTicks;
+        } else if (chartPanDragging) {
+            this._timeTicks = this._buildPanTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (chartViewPanning) {
             this._timeTicks = useFastTimeTicks
@@ -21159,11 +21181,10 @@ class Chart {
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (typeof this.drawIndicators === 'function') {
+            if (!chartPanDragging && typeof this.drawIndicators === 'function') {
                 this.drawIndicators();
             }
-            // Separate panels + legend must stay painted during lite pan — canvas is cleared each frame.
-            if (typeof this.renderSeparatePanelIndicators === 'function') {
+            if (!chartPanDragging && typeof this.renderSeparatePanelIndicators === 'function') {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
@@ -21184,15 +21205,17 @@ class Chart {
                 this.compareOverlay.updateInfoPositions();
             }
             this.drawCurrentPriceLabel(visible);
-            // Drawings must track candles during pan, wheel zoom, and axis zoom (including lite path).
-            const syncDrawingsNow = chartViewPanning || wheelBurstLight || axisZoomDragging || !interactionLite;
-            if (chartViewPanning) {
-                this._clearPanDrawingsLayerTransform(false);
-            }
-            if (syncDrawingsNow) {
+            const syncDrawingsNow = wheelBurstLight || axisZoomDragging || (!interactionLite && !panTransformDrawings);
+            if (panTransformDrawings) {
+                this._usedPanTransformDrawings = true;
+                this._applyPanDrawingsLayerTransform();
+            } else if (syncDrawingsNow) {
+                if (chartViewPanning) {
+                    this._clearPanDrawingsLayerTransform(false);
+                }
                 this.redrawDrawings();
             }
-            if (syncDrawingsNow) {
+            if (!chartPanDragging && syncDrawingsNow) {
                 this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight);
             }
             if (!interactionLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
@@ -26572,9 +26595,12 @@ class Chart {
                 if (this.drag.type === 'pan') {
                     this._scheduleChartPanFrame(e.clientX, e.clientY);
 
-                    // Update follow button visibility after panning
                     if (this.replaySystem && this.replaySystem.isActive) {
-                        this.replaySystem.updateAutoScrollIndicator();
+                        const now = performance.now();
+                        if (!this._lastPanReplayIndicatorTs || now - this._lastPanReplayIndicatorTs > 120) {
+                            this._lastPanReplayIndicatorTs = now;
+                            this.replaySystem.updateAutoScrollIndicator();
+                        }
                     }
                 }
                 // ─── Time Axis Drag Zoom ───
@@ -26858,9 +26884,20 @@ class Chart {
                         this.replaySystem.onUserPan();
                         this._scheduleReplayPanLoadLeft();
                     }
-                    this._finishPanDrawingRedraw();
-                    this.renderPending = false;
-                    this.render();
+                    const finishPan = () => {
+                        if (this._isChartPanDragging()) return;
+                        this._finishPanDrawingRedraw();
+                        if (typeof this._syncOrderOverlaysDuringPan === 'function') {
+                            this._syncOrderOverlaysDuringPan(true);
+                        }
+                        this.renderPending = false;
+                        this.render();
+                    };
+                    if (typeof requestAnimationFrame === 'function') {
+                        requestAnimationFrame(finishPan);
+                    } else {
+                        finishPan();
+                    }
                 }
                 this.scheduleChartViewSave();
 
@@ -28196,12 +28233,12 @@ class Chart {
     _finishPanDrawingRedraw() {
         if (this.drawingManager && this.xScale && this.yScale) {
             const dm = this.drawingManager;
-            // Geometry was kept in sync via panFast redraws during drag; pan start already
-            // re-anchored timestamps. Re-sync here only caused a visible snap on release.
             if (typeof dm.finalizeDrawingsAfterChartPan === 'function') {
                 dm.finalizeDrawingsAfterChartPan();
             }
-            dm.redrawAll({ forceFull: true });
+            // One bake after CSS translate — skip forceFull (no per-frame SVG tear-down during drag).
+            dm.redrawAll(this._usedPanTransformDrawings ? {} : { forceFull: true });
+            this._usedPanTransformDrawings = false;
         }
     }
 
@@ -28210,6 +28247,9 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
+            if (this._isChartViewPanDragging() && this._canPanTransformDrawings()) {
+                return;
+            }
             if (this._isChartViewPanning()) {
                 this.drawingManager.redrawAll({ panFast: true });
                 return;
