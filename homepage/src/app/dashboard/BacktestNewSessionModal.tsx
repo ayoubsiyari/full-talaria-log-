@@ -972,13 +972,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       consistencyRule: sessConsistencyRule,
       consistencyPct: parseFloat(sessConsistencyPct) || 30,
       weekendHold: sessWeekendHold,
-      maxContracts: parseInt(sessMaxContracts, 10) || 0,
-      maxContractsEnabled: !!sessMaxContractsEnabled,
+      maxContracts: isFutProp ? (parseInt(sessMaxContracts, 10) || 0) : 0,
+      maxContractsEnabled: isFutProp ? !!sessMaxContractsEnabled : false,
       maxPosition: isFutProp
         ? (sessMaxContractsEnabled ? (parseInt(sessMaxContracts, 10) || 0) : 0)
         : (sessMaxPosEnabled ? (parseFloat(sessMaxLotSize) || 0) : 0),
       maxPositionEnabled: isFutProp ? !!sessMaxContractsEnabled : !!sessMaxPosEnabled,
       maxPositionUnit: sessMaxPosUnit || (isFutProp ? "contracts" : "lots"),
+      ...(sessMaxPosEnabled && !isFutProp ? { _maxPositionUserSet: true } : {}),
       leverage: `1:${levNum}`,
       leverageNumber: levNum,
     } : null;
@@ -1138,7 +1139,16 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     }
     setSavingSession(true);
     try {
-      await persistSession();
+      const cfg = await buildChartConfig();
+      const id = await persistSessionWithConfig(cfg);
+      try {
+        const activeId = localStorage.getItem("active_trading_session_id");
+        if (id != null && activeId === String(id)) {
+          localStorage.setItem("backtestingSession", JSON.stringify(cfg));
+        }
+      } catch {
+        /* ignore storage errors */
+      }
       await onSaved?.();
       closeNewSess();
     } catch (e: any) {

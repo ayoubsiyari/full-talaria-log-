@@ -3,6 +3,49 @@
  * Monitors trading activity and validates against prop firm rules
  */
 
+/** Normalize prop_rules so forex sessions never inherit futures max-contract defaults. */
+function sanitizePropRulesForSession(session) {
+    if (!session || typeof session !== 'object') return session;
+    const pr = session.prop_rules;
+    if (!pr || typeof pr !== 'object') return session;
+
+    const ac = String(session.asset_class || session.assetClass || 'Forex').toLowerCase();
+    const isFutures = ac.includes('future');
+    const next = { ...pr };
+
+    if (isFutures) {
+        if (next.maxContractsEnabled !== true) {
+            next.maxContractsEnabled = false;
+            next.maxContracts = 0;
+        }
+        next.maxPositionEnabled = next.maxContractsEnabled === true;
+        next.maxPosition = next.maxContractsEnabled ? (Number(next.maxContracts) || 0) : 0;
+        next.maxPositionUnit = 'contracts';
+    } else {
+        next.maxContractsEnabled = false;
+        next.maxContracts = 0;
+        const posEnabled = next.maxPositionEnabled === true;
+        const maxPos = Number(next.maxPosition);
+        const maxCon = Number(pr.maxContracts);
+        const legacyBleed = posEnabled
+            && Number.isFinite(maxPos) && maxPos > 0
+            && pr.maxContractsEnabled === true
+            && Number.isFinite(maxCon) && maxCon > 0
+            && maxPos === maxCon
+            && next._maxPositionUserSet !== true;
+        if (!posEnabled || legacyBleed) {
+            next.maxPositionEnabled = false;
+            next.maxPosition = 0;
+        }
+    }
+
+    return { ...session, prop_rules: next };
+}
+
+if (typeof window !== 'undefined') {
+    window.sanitizePropRulesForSession = sanitizePropRulesForSession;
+}
+
 class PropFirmTracker {
     constructor() {
         this.sessionData = null;
@@ -68,13 +111,17 @@ class PropFirmTracker {
                 return false;
             }
 
-            const parsed = JSON.parse(session);
+            let parsed = JSON.parse(session);
             if (parsed.type !== 'propfirm') {
                 // Personal / standard backtest sessions share the same key; do not treat them as challenges.
                 this.sessionData = null;
                 return false;
             }
 
+            parsed = sanitizePropRulesForSession(parsed);
+            try {
+                userStorage.setItem('backtestingSession', JSON.stringify(parsed));
+            } catch (e) {}
             this.sessionData = parsed;
             const sb = Number.parseFloat(this.sessionData.startBalance ?? this.sessionData.balance);
             this.startBalance = Number.isFinite(sb) && sb > 0 ? sb : 10000;
@@ -98,6 +145,7 @@ class PropFirmTracker {
     }
 
     _applyPhaseRulesFromSession(session, phase) {
+        session = sanitizePropRulesForSession(session);
         const pr = session.prop_rules || {};
         const phaseNum = phase === 2 ? 2 : 1;
         const cap = this.startBalance > 0 ? this.startBalance : 10000;

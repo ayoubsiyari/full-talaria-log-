@@ -1057,6 +1057,12 @@ class Chart {
 
         this.materializeInstrumentCostFields(normalized);
 
+        if (String(normalized.type || '').toLowerCase() === 'propfirm'
+            && typeof window !== 'undefined'
+            && typeof window.sanitizePropRulesForSession === 'function') {
+            return window.sanitizePropRulesForSession(normalized);
+        }
+
         return normalized;
     }
 

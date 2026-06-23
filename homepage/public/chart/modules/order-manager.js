@@ -4458,6 +4458,31 @@ class OrderManager {
             const implied = this._getMultiEntryImpliedTotalLots();
             if (implied > 0) return this._roundQtyToStep(implied);
         }
+        if (Number.isFinite(oq) && oq > 0) return oq;
+
+        if (this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent') {
+            const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const enableSL = document.getElementById('enableSL')?.checked;
+            if (entryPrice > 0 && slPrice > 0 && enableSL) {
+                let riskAmount = 0;
+                if (this.positionSizeMode === 'risk-usd') {
+                    riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+                } else {
+                    const riskPercent = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+                    const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+                    const balance = balanceType === 'current' ? this.balance : this.initialBalance;
+                    riskAmount = (balance * riskPercent) / 100;
+                }
+                if (riskAmount > 0 && typeof this._enginePositionSize === 'function') {
+                    const derived = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
+                    if (Number.isFinite(derived) && derived > 0) {
+                        return this._roundQtyToStep(derived);
+                    }
+                }
+            }
+        }
+
         return Number.isFinite(oq) ? oq : 0;
     }
 

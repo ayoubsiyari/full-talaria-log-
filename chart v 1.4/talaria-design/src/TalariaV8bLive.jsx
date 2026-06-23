@@ -1232,7 +1232,10 @@ function v9OmTpShareLotsAt(om, targetIndex, symbolType) {
     typeof om._getReferenceEntryForOrderMath === "function"
       ? om._getReferenceEntryForOrderMath()
       : parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
-  const oq = parseFloat(document.getElementById("orderQuantity")?.value || 0);
+  const oq =
+    typeof om._getEffectiveOrderQuantity === "function"
+      ? om._getEffectiveOrderQuantity()
+      : parseFloat(document.getElementById("orderQuantity")?.value || 0);
   const side = om.orderSide || "BUY";
   const eff =
     typeof om._computeEffectiveTPPercentages === "function"
