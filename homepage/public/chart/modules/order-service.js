@@ -65,6 +65,20 @@ class OrderService {
         };
     }
 
+    _parseSessionLeverage(session) {
+        if (!session || typeof session !== 'object') return 30;
+        const fromNumber = Number.parseFloat(session.leverageNumber);
+        if (Number.isFinite(fromNumber) && fromNumber > 0) return fromNumber;
+        const text = String(session.leverage || '');
+        const match = text.match(/(\d+)\s*:\s*(\d+)/);
+        if (match) {
+            const lev = Number.parseFloat(match[2]);
+            if (Number.isFinite(lev) && lev > 0) return lev;
+        }
+        const direct = Number.parseFloat(text);
+        return Number.isFinite(direct) && direct > 0 ? direct : 30;
+    }
+
     loadSessionState(session) {
         if (!session) return;
         const raw = session.startBalance ?? session.balance;
@@ -75,7 +89,7 @@ class OrderService {
                 // Current balance/equity are owned by OrderManager.recomputeAccountFromJournal().
             }
         }
-        const leverageFromSession = Number.parseFloat(session.leverageNumber || session.leverage || 30);
+        const leverageFromSession = this._parseSessionLeverage(session);
         if (Number.isFinite(leverageFromSession) && leverageFromSession > 0) {
             this.multiInstrumentSession.leverage = leverageFromSession;
         }

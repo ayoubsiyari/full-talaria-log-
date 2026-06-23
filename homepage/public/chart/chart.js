@@ -968,6 +968,27 @@ class Chart {
             normalized.leverageNumber = Number.parseFloat(leverageText);
         }
 
+        // Standard sessions: Real-World Trading Costs leverage (e.g. Forex 1:500) is authoritative for margin.
+        if (String(normalized.type || '').toLowerCase() !== 'propfirm') {
+            const tc = normalized.trading_costs;
+            if (tc && typeof tc === 'object' && tc.costs && typeof tc.costs === 'object') {
+                const ac = String(normalized.asset_class || normalized.assetClass || 'Forex').toLowerCase();
+                let bucketKey = 'Forex';
+                if (ac.includes('future')) bucketKey = 'Futures';
+                else if (ac.includes('stock') || ac.includes('equit')) bucketKey = 'Stocks';
+                else if (ac.includes('crypto')) bucketKey = 'Crypto';
+                const levFromCosts = tc.costs[bucketKey] && tc.costs[bucketKey].leverage;
+                if (levFromCosts) {
+                    normalized.leverage = String(levFromCosts);
+                    const costMatch = String(levFromCosts).match(/(\d+)\s*:\s*(\d+)/);
+                    if (costMatch) {
+                        const lev = Number.parseFloat(costMatch[2]);
+                        if (Number.isFinite(lev) && lev > 0) normalized.leverageNumber = lev;
+                    }
+                }
+            }
+        }
+
         const instrumentsMap = {};
         if (Array.isArray(normalized.instruments)) {
             normalized.instruments.forEach((row) => {
@@ -1051,9 +1072,34 @@ class Chart {
             return n / 2;
         };
 
+        const supportingSet = new Set(
+            (Array.isArray(normalized.supporting_tickers) ? normalized.supporting_tickers : [])
+                .map((t) => String(t || '').replace(/\//g, '').toUpperCase())
+                .filter(Boolean),
+        );
+
         Object.keys(instruments).forEach((key) => {
             const row = instruments[key];
             if (!row || typeof row !== 'object') return;
+
+            const tickerNorm = String(row.ticker || key).replace(/\//g, '').toUpperCase();
+            const isViewOnly =
+                row.view_only === true
+                || row.tradable === false
+                || supportingSet.has(tickerNorm);
+
+            if (isViewOnly) {
+                row.view_only = true;
+                row.tradable = false;
+                row.spread = 0;
+                row.commission = 0;
+                row.spread_pips = 0;
+                row.spreadPips = 0;
+                row.commission_per_lot_per_side = 0;
+                row.commissionPerLotPerSide = 0;
+                row.commission_per_lot = 0;
+                return;
+            }
 
             if (costsOff) {
                 row.spread = 0;
@@ -1180,6 +1226,9 @@ class Chart {
                 mode: modeRaw === 'candles' ? 'candles' : 'hours',
                 candles: Number.isFinite(candles) && candles > 0 ? candles : om.postExitTrackingCandles,
             });
+            if (typeof om.updateOrderPanel === 'function') {
+                om.updateOrderPanel();
+            }
         } catch (e) { /* ignore */ }
     }
 
@@ -1376,6 +1425,13 @@ class Chart {
                         this.orderManager.orderService.loadSessionState(this.backtestingSession);
                     } catch (e) {
                         console.warn('orderService.loadSessionState failed', e);
+                    }
+                }
+                if (this.orderManager && typeof this.orderManager.updateOrderPanel === 'function') {
+                    try {
+                        this.orderManager.updateOrderPanel();
+                    } catch (e) {
+                        console.warn('orderManager.updateOrderPanel failed', e);
                     }
                 }
                 if (this.orderManager && typeof this.orderManager.applySessionStartingBalance === 'function') {

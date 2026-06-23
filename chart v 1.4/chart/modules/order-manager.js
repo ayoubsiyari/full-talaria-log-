@@ -2788,11 +2788,13 @@ class OrderManager {
         const spreadStr = costsOn && Number.isFinite(spread) && spread > 0
             ? (Math.abs(spread) >= 100 ? spread.toFixed(1) : spread.toFixed(2))
             : '—';
-        const commStr = costsOn && Number.isFinite(comm) && comm > 0 ? `$${comm.toFixed(2)}` : '—';
+        const commStr = costsOn && Number.isFinite(comm) && comm > 0
+            ? `$${(comm * 2).toFixed(2)}`
+            : '—';
         el.innerHTML = `
             <span title="Distance from mid to bid/ask per side (not full bid↔ask width)">Spread: <strong>${spreadStr}</strong> ${pipUnit}</span>
             <span style="opacity:0.45;margin:0 5px;">·</span>
-            <span title="Commission per lot per side (per fill)">Comm: <strong>${commStr}</strong> / lot / side</span>
+            <span title="Round-trip commission per lot (open + close)">Comm: <strong>${commStr}</strong> / lot RT</span>
         `;
         el.style.display = 'block';
     }

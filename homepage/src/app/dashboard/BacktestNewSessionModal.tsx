@@ -302,6 +302,49 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     return String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
   }
 
+  const SESSION_SYM_CAT: Record<string, string> = {
+    EURUSD: "Forex", GBPUSD: "Forex", USDJPY: "Forex", USDCHF: "Forex", AUDUSD: "Forex",
+    NZDUSD: "Forex", USDCAD: "Forex", EURGBP: "Forex", EURJPY: "Forex", GBPJPY: "Forex",
+    XAUUSD: "Forex", XAGUSD: "Forex", USDSEK: "Forex", USDNOK: "Forex",
+    NQ: "Futures", ES: "Futures", YM: "Futures", RTY: "Futures", CL: "Futures", GC: "Futures",
+    SI: "Futures", NG: "Futures", MNQ: "Futures", MES: "Futures", MYM: "Futures", M2K: "Futures",
+    MGC: "Futures", MCL: "Futures",
+    BTCUSD: "Crypto", ETHUSD: "Crypto", BNBUSD: "Crypto", SOLUSD: "Crypto", ADAUSD: "Crypto",
+    AAPL: "Stocks", TSLA: "Stocks", NVDA: "Stocks", MSFT: "Stocks", AMZN: "Stocks", GOOG: "Stocks",
+  };
+
+  function sessionAssetOf(sym: string) {
+    const cat = SESSION_SYM_CAT[normSessionSym(sym)] || "";
+    return cat === "Equities" ? "Stocks" : cat || "Forex";
+  }
+
+  const DEFAULT_SYMBOL_SPREADS: Record<string, string> = {
+    EURUSD: "0.8", GBPUSD: "1.0", USDJPY: "0.8", USDCHF: "1.1", AUDUSD: "0.8",
+    NZDUSD: "1.2", USDCAD: "1.1", EURGBP: "1.1", EURJPY: "1.3", GBPJPY: "1.9",
+    XAUUSD: "0.30", XAGUSD: "0.03", USDSEK: "3.0", USDNOK: "3.5",
+    NQ: "1", ES: "1", YM: "1", RTY: "1", CL: "1", GC: "1", SI: "1", NG: "1",
+    MNQ: "1", MES: "1", MYM: "1", M2K: "1", MGC: "1", MCL: "1",
+    AAPL: "0.01", TSLA: "0.01", NVDA: "0.01", MSFT: "0.01", AMZN: "0.01", GOOG: "0.02",
+    BTCUSD: "0.01", ETHUSD: "0.01", BNBUSD: "0.03", SOLUSD: "0.04", ADAUSD: "0.08",
+  };
+
+  function resolveSessionLeverage(
+    tradingMode: string,
+    primarySym: string,
+    tickers: string[],
+    costs: typeof newSessCosts,
+    propLeverage: string,
+  ) {
+    if (tradingMode === "prop") return propLeverage;
+    const syms = [primarySym, ...tickers];
+    for (const sym of syms) {
+      const asset = sessionAssetOf(sym);
+      const lev = costs[asset as keyof typeof costs]?.leverage;
+      if (lev) return String(lev);
+    }
+    return propLeverage;
+  }
+
   function assetClassToPickerCat(assetClass: string) {
     const a = String(assetClass || "").toLowerCase();
     if (a.includes("future")) return "Futures";
@@ -441,6 +484,38 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setNewSessTradingCostsEnabled(
       !!(cfg.trading_costs_enabled ?? (cfg.commission && cfg.commission !== "None"))
     );
+    const tc = cfg.trading_costs && typeof cfg.trading_costs === "object"
+      ? (cfg.trading_costs as Record<string, unknown>)
+      : null;
+    if (tc?.costs && typeof tc.costs === "object") {
+      setNewSessCosts((prev) => ({ ...prev, ...(tc.costs as typeof prev) }));
+    }
+    if (tc?.spreads && typeof tc.spreads === "object") {
+      setNewSessSymbolSpreads(tc.spreads as Record<string, string>);
+    }
+    if (tc?.futuresMargins && typeof tc.futuresMargins === "object") {
+      setNewSessFuturesData(tc.futuresMargins as Record<string, unknown>);
+    }
+    const mfe = cfg.mfe_mae && typeof cfg.mfe_mae === "object"
+      ? (cfg.mfe_mae as Record<string, unknown>)
+      : null;
+    if (cfg.mfe_mae_enabled === false || mfe?.enabled === false) {
+      setNewSessMfeMaeEnabled(false);
+    } else if (cfg.mfe_mae_enabled === true || mfe?.enabled === true) {
+      setNewSessMfeMaeEnabled(true);
+    }
+    const mfeHours = cfg.mfe_mae_tracking_hours ?? mfe?.tracking_hours ?? mfe?.hours;
+    if (mfeHours != null && mfeHours !== "") setNewSessMfeMaeHours(String(mfeHours));
+    const postMode = cfg.post_exit_tracking_mode ?? mfe?.post_exit_mode ?? mfe?.mode;
+    if (postMode === "candles" || postMode === "hours") {
+      setNewSessPostExitMode(postMode);
+    }
+    const postCandles = cfg.post_exit_tracking_candles ?? mfe?.post_exit_candles ?? mfe?.candles;
+    if (postCandles != null && postCandles !== "") {
+      setNewSessPostExitCandles(String(postCandles));
+    }
+    if (cfg.margin_call_level != null) setNewSessMarginCall(String(cfg.margin_call_level));
+    if (cfg.stop_out_level != null) setNewSessStopOut(String(cfg.stop_out_level));
     setNewSessTimezone(String(cfg.timezone || "America/New_York"));
     setNewSessDST(cfg.dst !== false);
     setNewSessProtect(String(cfg.protectionPreset || cfg.protection_preset || "none"));
@@ -698,13 +773,70 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       );
     }
 
-    const instruments = Object.fromEntries(
+    const supportResolved = newSessSupportTickers.length
+      ? await resolveInstrumentsForTickers(newSessSupportTickers)
+      : {
+          instruments: {} as Record<string, Record<string, unknown>>,
+          files: [] as { id: string | number; name: string }[],
+          missing: [] as string[],
+        };
+
+    if (supportResolved.missing.length > 0) {
+      throw new Error(
+        `Missing chart data for supporting symbols: ${supportResolved.missing.join(", ")}. Upload datasets for every supporting symbol or remove them.`
+      );
+    }
+
+    const tradableInstruments = Object.fromEntries(
       Object.entries(resolved.instruments).map(([k, row]) => {
         if (!newSessTradingCostsEnabled) {
           return [k, { ...row, spread: 0, commission: 0 }];
         }
-        return [k, row];
+        const sym = String(row.ticker || k);
+        const asset = sessionAssetOf(sym);
+        const spread =
+          newSessSymbolSpreads[k] ??
+          newSessSymbolSpreads[sym] ??
+          DEFAULT_SYMBOL_SPREADS[k] ??
+          DEFAULT_SYMBOL_SPREADS[sym] ??
+          row.spread;
+        let commission =
+          newSessCosts[asset as keyof typeof newSessCosts]?.commission ?? row.commission;
+        if (asset === "Futures") {
+          const fd = newSessFuturesData[sym];
+          if (fd?.commission != null && fd.commission !== "") {
+            commission = fd.commission;
+          }
+        }
+        return [k, { ...row, spread, commission }];
       })
+    );
+
+    const supportInstruments = Object.fromEntries(
+      Object.entries(supportResolved.instruments).map(([k, row]) => [
+        k,
+        { ...row, view_only: true, tradable: false, spread: 0, commission: 0 },
+      ])
+    );
+
+    const instruments = { ...tradableInstruments, ...supportInstruments };
+
+    const seenFileIds = new Set(resolved.files.map((f) => String(f.id)));
+    const allFiles = [...resolved.files];
+    supportResolved.files.forEach((f) => {
+      const fid = String(f.id);
+      if (!seenFileIds.has(fid)) {
+        allFiles.push({ ...f, view_only: true });
+        seenFileIds.add(fid);
+      }
+    });
+
+    const sessionLeverage = resolveSessionLeverage(
+      sessTradingMode,
+      primary,
+      tickers,
+      newSessCosts,
+      sessLeverage,
     );
 
     const resolvedStrategyId = (() => {
@@ -750,17 +882,26 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       symbol: newSessTickers.length === 1 ? newSessTickers[0] : newSessTickers.length > 1 ? `${newSessTickers.length} symbols` : primary,
       fileId: resolved.primaryFileId,
       fileName: resolved.fileName,
-      files: resolved.files,
+      files: allFiles,
       instruments,
-      symbols: tickers.map((sym) => ({
-        symbolName: sym,
-        fileId: instruments[normSessionSym(sym)]?.fileId,
-      })),
+      symbols: [
+        ...tickers.map((sym) => ({
+          symbolName: sym,
+          fileId: instruments[normSessionSym(sym)]?.fileId,
+          tradable: true,
+        })),
+        ...newSessSupportTickers.map((sym) => ({
+          symbolName: sym,
+          fileId: instruments[normSessionSym(sym)]?.fileId,
+          view_only: true,
+          tradable: false,
+        })),
+      ],
       startDate,
       endDate,
       startBalance: String(newSessCapital || "10000"),
       account_currency: newSessCurrency,
-      leverage: sessLeverage,
+      leverage: sessionLeverage,
       margin_call_level: parseFloat(newSessMarginCall || "100"),
       stop_out_level: parseFloat(newSessStopOut || "50"),
       max_risk_per_trade_pct: parseFloat(newSessMaxRisk || "0") || null,
@@ -791,19 +932,10 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
         ? {
             costs: newSessCosts,
             spreads: (() => {
-              const defaultSpreads: Record<string, string> = {
-                EURUSD: "0.8", GBPUSD: "1.0", USDJPY: "0.8", USDCHF: "1.1", AUDUSD: "0.8",
-                NZDUSD: "1.2", USDCAD: "1.1", EURGBP: "1.1", EURJPY: "1.3", GBPJPY: "1.9",
-                XAUUSD: "0.30", XAGUSD: "0.03", USDSEK: "3.0", USDNOK: "3.5",
-                NQ: "1", ES: "1", YM: "1", RTY: "1", CL: "1", GC: "1", SI: "1", NG: "1",
-                MNQ: "1", MES: "1", MYM: "1", M2K: "1", MGC: "1", MCL: "1",
-                AAPL: "0.01", TSLA: "0.01", NVDA: "0.01", MSFT: "0.01", AMZN: "0.01", GOOG: "0.02",
-                BTCUSD: "0.01", ETHUSD: "0.01", BNBUSD: "0.03", SOLUSD: "0.04", ADAUSD: "0.08",
-              };
               const merged: Record<string, string> = {};
-              [...newSessTickers, ...newSessSupportTickers].forEach((sym) => {
+              newSessTickers.forEach((sym) => {
                 const k = normSessionSym(sym);
-                const v = newSessSymbolSpreads[k] ?? defaultSpreads[k];
+                const v = newSessSymbolSpreads[k] ?? DEFAULT_SYMBOL_SPREADS[k];
                 if (v != null && v !== "") merged[k] = String(v);
               });
               return merged;
@@ -1793,7 +1925,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                             const setFd=(sym,key,val)=>setNewSessFuturesData(p=>({...p,[sym]:{...getFd(sym),[key]:val}}));
                             const tickSpec={NQ:{sz:"0.25 pt",val:"$5.00"},ES:{sz:"0.25 pt",val:"$12.50"},YM:{sz:"1 pt",val:"$5.00"},RTY:{sz:"0.10 pt",val:"$5.00"},CL:{sz:"$0.01",val:"$10.00"},GC:{sz:"$0.10",val:"$10.00"},SI:{sz:"$0.005",val:"$25.00"},NG:{sz:"$0.001",val:"$10.00"},MNQ:{sz:"0.25 pt",val:"$0.50"},MES:{sz:"0.25 pt",val:"$1.25"},MYM:{sz:"1 pt",val:"$0.50"},M2K:{sz:"0.10 pt",val:"$0.50"},MGC:{sz:"$0.10",val:"$1.00"},MCL:{sz:"$0.01",val:"$1.00"}};
                             const catOrder=["Forex","Futures","Stocks","Crypto"];
-                            const activeCostCats=[...new Set([...newSessTickers.map(catOf2),...newSessSupportTickers.map(catOf2)])].filter(a=>costMeta[a]).sort((a,b)=>catOrder.indexOf(a)-catOrder.indexOf(b));
+                            const activeCostCats=[...new Set(newSessTickers.map(catOf2))].filter(a=>costMeta[a]).sort((a,b)=>catOrder.indexOf(a)-catOrder.indexOf(b));
                             const defaultSpread={EURUSD:"0.8",GBPUSD:"1.0",USDJPY:"0.8",USDCHF:"1.1",AUDUSD:"0.8",NZDUSD:"1.2",USDCAD:"1.1",EURGBP:"1.1",EURJPY:"1.3",GBPJPY:"1.9",XAUUSD:"0.30",XAGUSD:"0.03",USDSEK:"3.0",USDNOK:"3.5",NQ:"1",ES:"1",YM:"1",RTY:"1",CL:"1",GC:"1",SI:"1",NG:"1",MNQ:"1",MES:"1",MYM:"1",M2K:"1",MGC:"1",MCL:"1",AAPL:"0.01",TSLA:"0.01",NVDA:"0.01",MSFT:"0.01",AMZN:"0.01",GOOG:"0.02",BTCUSD:"0.01",ETHUSD:"0.01",BNBUSD:"0.03",SOLUSD:"0.04",ADAUSD:"0.08"};
                             const getSpread=sym=>newSessSymbolSpreads[sym]??defaultSpread[sym]??"0";
                             const setSpread=(sym,val)=>setNewSessSymbolSpreads(p=>({...p,[sym]:val}));
@@ -1806,7 +1938,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                   const row=newSessCosts[asset]||{commission:defaultComms[asset],leverage:meta.defLev};
                                   const setComm=val=>setNewSessCosts(p=>({...p,[asset]:{...p[asset],commission:val}}));
                                   const setLev=val=>setNewSessCosts(p=>({...p,[asset]:{...p[asset],leverage:val}}));
-                                  const assetSyms=[...new Set([...newSessTickers.filter(t=>catOf2(t)===asset),...newSessSupportTickers.filter(t=>catOf2(t)===asset)])];
+                                  const assetSyms=[...new Set(newSessTickers.filter(t=>catOf2(t)===asset))];
                                   const showCommRow=!meta.perSymComm||!meta.hideLev;
                                   return(
                                     <div key={asset} style={{padding:"8px 12px",borderBottom:i<activeCostCats.length-1?`1px solid ${c.br}`:"none"}}>
