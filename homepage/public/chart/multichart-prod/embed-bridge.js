@@ -970,12 +970,7 @@
                     }
                     return Array.isArray(pc.rawData) && pc.rawData.length > 0;
                 };
-                if (hostReadyForMirror()) {
-                    runPanelLoad();
-                } else {
-                    // Wait for tile A's replay master before boot — avoids tiny seek-buffer islands.
-                    pollFor(hostReadyForMirror, 50, 3000, runPanelLoad, runPanelLoad);
-                }
+                runPanelLoad();
                 return;
             }
 

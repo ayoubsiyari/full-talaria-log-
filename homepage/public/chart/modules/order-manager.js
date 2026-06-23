@@ -14981,6 +14981,7 @@ class OrderManager {
     updatePlaceButtonText() {
         if (this._orderPlacedAwaitingReset) return;
 
+        this._syncPositionSizeModeFromV9Bridge();
         this._syncOrderQuantityFromRisk();
         this._syncOrderQuantityFromLotSize();
 

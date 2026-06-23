@@ -628,93 +628,30 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     return "/chart/dist-v9/index.html?" + params.toString();
 }
 
-// ─── loading overlay keyframes (injected once into parent /chart/ head) ─────
-//
-// TradingView-style 3-dot pulsing indicator + soft chart skeleton silhouette
-// behind it. Lives in the PARENT page (not the iframe) because the iframe
-// content is exactly what we're hiding while it boots.
-const LOADING_STYLE_ID = "multichart-loading-style";
-const LOADING_STYLE_CSS = `
-@keyframes tlrMultichartDot {
-  0%, 80%, 100% { opacity: 0.28; transform: scale(0.82); }
-  40%           { opacity: 1;    transform: scale(1);
-                  box-shadow: 0 0 8px rgba(74,106,255,0.55); }
-}
-@keyframes tlrMultichartSkeletonShimmer {
-  0%   { transform: translateX(-30%); }
-  100% { transform: translateX(130%); }
-}
-.multichart-loading-overlay {
+// ─── panel boot-failure overlay (error only — no blocking "Loading B" screen) ─
+const ERROR_STYLE_ID = "multichart-error-style";
+const ERROR_STYLE_CSS = `
+.multichart-error-overlay {
     position: absolute; inset: 0; z-index: 5;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     background: linear-gradient(180deg, #0b0c14 0%, #0d1018 100%);
-    pointer-events: none;
-    overflow: hidden;
-    transition: opacity 0.18s ease;
-}
-.multichart-loading-overlay::before {
-    /* Faint horizontal grid-line skeleton — hints that this is a chart. */
-    content: "";
-    position: absolute; inset: 0;
-    background-image:
-        linear-gradient(rgba(140,160,255,0.045) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(140,160,255,0.025) 1px, transparent 1px);
-    background-size: 60px 40px, 60px 40px;
-    opacity: 0.6;
-}
-.multichart-loading-overlay::after {
-    /* Sweeping shimmer band over the skeleton. */
-    content: "";
-    position: absolute; top: 0; bottom: 0; left: 0; width: 30%;
-    background: linear-gradient(90deg,
-        transparent 0%,
-        rgba(140,160,255,0.06) 50%,
-        transparent 100%);
-    animation: tlrMultichartSkeletonShimmer 2.6s linear infinite;
-    will-change: transform;
-}
-.multichart-loading-dots {
-    position: relative; z-index: 1;
-    display: flex; gap: 8px;
-}
-.multichart-loading-dots > span {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #4a6aff;
-    opacity: 0.28;
-    animation: tlrMultichartDot 1.35s ease-in-out infinite both;
-}
-.multichart-loading-dots > span:nth-child(2) { animation-delay: 0.18s; }
-.multichart-loading-dots > span:nth-child(3) { animation-delay: 0.36s; }
-.multichart-loading-label {
-    position: relative; z-index: 1;
-    margin-top: 14px;
-    font-size: 10.5px; font-weight: 600;
-    letter-spacing: 0.18em; text-transform: uppercase;
-    color: rgba(255,255,255,0.32);
-    font-family: 'Exo 2', system-ui, sans-serif;
-}
-.multichart-error-overlay {
     gap: 8px;
     padding: 16px;
     text-align: center;
 }
-.multichart-error-overlay::after { display: none; }
 .multichart-error-title {
-    position: relative; z-index: 1;
     font-size: 13px; font-weight: 700;
     color: #ff7a85;
     font-family: 'Exo 2', system-ui, sans-serif;
 }
 .multichart-error-reason {
-    position: relative; z-index: 1;
     max-width: 90%;
     font-size: 11px; line-height: 1.45;
     color: rgba(255,255,255,0.55);
     font-family: 'JetBrains Mono', monospace;
 }
 .multichart-error-actions {
-    position: relative; z-index: 1;
     display: flex; gap: 8px; margin-top: 6px;
 }
 .multichart-error-btn {
@@ -737,12 +674,12 @@ const LOADING_STYLE_CSS = `
 }
 `;
 
-function ensureLoadingStyleInjected() {
+function ensureErrorStyleInjected() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(LOADING_STYLE_ID)) return;
+    if (document.getElementById(ERROR_STYLE_ID)) return;
     const s = document.createElement("style");
-    s.id = LOADING_STYLE_ID;
-    s.textContent = LOADING_STYLE_CSS;
+    s.id = ERROR_STYLE_ID;
+    s.textContent = ERROR_STYLE_CSS;
     document.head.appendChild(s);
 }
 
@@ -1322,36 +1259,11 @@ export default function MultichartGrid({
     // existing #chartWrapper, which has been alive (with all the user's
     // drawings, indicators, replay state, etc.) since the user first
     // opened /chart/. No loading overlay needed.
-    // bridge-ready (commands/sync) vs data-ready (hide loading overlay)
+    // bridge-ready (commands/sync) — iframe panels render directly (TradingView UX).
     const [readyPanels, setReadyPanels] = useState(() => new Set([HOST_PANEL_ID]));
-    const [dataReadyPanels, setDataReadyPanels] = useState(() => new Set([HOST_PANEL_ID]));
-    // Fallback when chart-state never reports candleCount (partial deploy / load race).
-    const [overlayFallbackPanels, setOverlayFallbackPanels] = useState(() => new Set([HOST_PANEL_ID]));
     // panelId -> { reason, src }. Set by the manager's onChartBootFailed when an
     // iframe never reaches `bridge-ready` (boot timeout) or its iframe errors.
-    // Drives a visible error overlay so a stuck panel no longer shows an
-    // endless "Loading …" spinner.
     const [failedPanels, setFailedPanels] = useState(() => new Map());
-
-    // panelId -> timeout id. When a panel's first bars arrive we DON'T hide
-    // its loading overlay immediately: the iframe chart still runs a viewport
-    // settle pass (canvas 0→real resize + _finalizeMultichartPanelAfterPairLoad,
-    // ~1.2s) that re-anchors the candles horizontally. Dismissing the overlay
-    // on "first bars" let the user watch that re-anchor as a left/right shake.
-    // We hold the overlay across the settle window so the reposition happens
-    // behind it; the chart only becomes visible once it's stable.
-    const overlayHoldTimersRef = useRef({});
-    const OVERLAY_SETTLE_HOLD_MS = 1300;
-    const OVERLAY_MEMORY_BOOT_HOLD_MS = 400;
-    useEffect(() => {
-        return () => {
-            const timers = overlayHoldTimersRef.current || {};
-            for (const k in timers) {
-                if (timers[k]) clearTimeout(timers[k]);
-            }
-            overlayHoldTimersRef.current = {};
-        };
-    }, []);
 
     // Capture initial context in refs so the per-tile add closure always
     // uses the LATEST values when a new tile is added (e.g. user opens
@@ -1519,9 +1431,7 @@ export default function MultichartGrid({
         ).join(" ");
     });
 
-    // Inject the loading-overlay CSS once (idempotent — checks for existing
-    // <style> tag by id).
-    useEffect(() => { ensureLoadingStyleInjected(); }, []);
+    useEffect(() => { ensureErrorStyleInjected(); }, []);
 
     // Diagnostic — prints the current bundle version so we (and the
     // user) can confirm a hard-refresh actually picked up the new code
@@ -1609,20 +1519,6 @@ export default function MultichartGrid({
                         next.add(id);
                         return next;
                     });
-                    // Safety net: if chart-state never reports bars (mixed old/new deploy),
-                    // dismiss the loading overlay so panels are not stuck forever.
-                    if (id !== HOST_PANEL_ID) {
-                        setTimeout(function () {
-                            setOverlayFallbackPanels((prev) => {
-                                if (prev.has(id)) return prev;
-                                const next = new Set(prev);
-                                next.add(id);
-                                return next;
-                            });
-                        }, 12000);
-                    }
-                    // A panel that recovered after a prior boot failure clears
-                    // its error overlay here.
                     setFailedPanels((prev) => {
                         if (!prev.has(id)) return prev;
                         const next = new Map(prev);
@@ -1750,8 +1646,6 @@ export default function MultichartGrid({
             }
             setManagerReady(false);
             setReadyPanels(new Set());
-            setDataReadyPanels(new Set([HOST_PANEL_ID]));
-            setOverlayFallbackPanels(new Set([HOST_PANEL_ID]));
             setFailedPanels(new Map());
         };
         // Mount-once — never re-run.
@@ -1784,23 +1678,7 @@ export default function MultichartGrid({
         for (const existingId of Array.from(mgr.charts.keys())) {
             if (!desiredIframeIds.has(existingId)) {
                 try { mgr.removeChart(existingId); } catch (_) {}
-                if (overlayHoldTimersRef.current[existingId]) {
-                    clearTimeout(overlayHoldTimersRef.current[existingId]);
-                    delete overlayHoldTimersRef.current[existingId];
-                }
                 setReadyPanels((prev) => {
-                    if (!prev.has(existingId)) return prev;
-                    const next = new Set(prev);
-                    next.delete(existingId);
-                    return next;
-                });
-                setDataReadyPanels((prev) => {
-                    if (!prev.has(existingId)) return prev;
-                    const next = new Set(prev);
-                    next.delete(existingId);
-                    return next;
-                });
-                setOverlayFallbackPanels((prev) => {
                     if (!prev.has(existingId)) return prev;
                     const next = new Set(prev);
                     next.delete(existingId);
@@ -1819,10 +1697,8 @@ export default function MultichartGrid({
         // (The cell <div> is already mounted by React's render that just
         // committed — useEffect runs AFTER commit, so cellRefs are set.)
         //
-        // Stagger spawns slightly: each iframe loads the full dist-v9 bundle;
-        // firing 3× addChart in one tick makes B/C/D fight for CPU + HTTP/2
-        // streams so the last panel often misses the old 5s bridge-ready gate.
-        const IFRAME_ADD_STAGGER_MS = 700;
+        // Spawn all iframe panels at once — no stagger delay (TradingView UX).
+        const IFRAME_ADD_STAGGER_MS = 0;
         try {
             const hostCh = window.chart;
             if (hostCh && typeof hostCh._ensureMultichartHostExportReady === "function") {
@@ -3152,34 +3028,6 @@ export default function MultichartGrid({
     //       (effect above); iframe tf/fileId arrive via sync-bridge
     //       `chart-state` postMessage.
     onStateAnyRef.current = (id, state) => {
-        // Hide the tile loading overlay only once bars exist AND the iframe's
-        // viewport settle window has elapsed — bridge-ready fires before
-        // loadFileData finishes (empty-chart flash), and "first bars" fires
-        // before the panel finishes re-anchoring its viewport (left/right
-        // shake). We hold the overlay across OVERLAY_SETTLE_HOLD_MS so the
-        // reposition happens behind it.
-        if (state && Number(state.candleCount) > 0
-            && id !== HOST_PANEL_ID
-            && !dataReadyPanels.has(id)
-            && !overlayHoldTimersRef.current[id]) {
-            const holdMs = state.memoryBoot ? OVERLAY_MEMORY_BOOT_HOLD_MS : OVERLAY_SETTLE_HOLD_MS;
-            overlayHoldTimersRef.current[id] = setTimeout(() => {
-                delete overlayHoldTimersRef.current[id];
-                setDataReadyPanels((prev) => {
-                    if (prev.has(id)) return prev;
-                    const next = new Set(prev);
-                    next.add(id);
-                    return next;
-                });
-                setOverlayFallbackPanels((prev) => {
-                    if (prev.has(id)) return prev;
-                    const next = new Set(prev);
-                    next.add(id);
-                    return next;
-                });
-            }, holdMs);
-        }
-
         // (a) focus mirror
         if (id === focusedPanelIdRef.current) {
             dispatchFocusChanged(id);
@@ -5391,10 +5239,6 @@ export default function MultichartGrid({
             {layout.tiles.map((tile) => {
                 const isHost    = tile.id === HOST_PANEL_ID;
                 const isFocused = focusedPanelId === tile.id;
-                // Host tile is always "ready" (it's the parent's already-loaded
-                // chart) — never show the loading overlay for it.
-                const isReady   = isHost || dataReadyPanels.has(tile.id)
-                    || overlayFallbackPanels.has(tile.id);
                 const failure   = isHost ? null : failedPanels.get(tile.id);
                 return (
                     <div
@@ -5442,24 +5286,9 @@ export default function MultichartGrid({
                             pointerEvents: isHost ? "none" : "auto",
                         }}
                     >
-                        {/* Loading overlay (TradingView-style 3 dots + faint
-                             chart skeleton). Renders ABOVE the manager-spawned
-                             iframe (z-index:5 > iframe default) until the
-                             panel's bridge fires `bridge-ready`. Unmounted
-                             once chart-state reports candleCount > 0.
-                             Skipped for the host cell — parent chart is
-                             already loaded with full state. */}
-                        {!isReady && !failure && (
-                            <div className="multichart-loading-overlay" aria-hidden="true">
-                                <div className="multichart-loading-dots">
-                                    <span/><span/><span/>
-                                </div>
-                                <div className="multichart-loading-label">Loading {tile.id}</div>
-                            </div>
-                        )}
-                        {!isReady && failure && (
+                        {failure && (
                             <div
-                                className="multichart-loading-overlay multichart-error-overlay"
+                                className="multichart-error-overlay"
                                 style={{ pointerEvents: "auto" }}
                             >
                                 <div className="multichart-error-title">Panel {tile.id} failed to load</div>
@@ -5474,14 +5303,6 @@ export default function MultichartGrid({
                                             const cellEl = cellRefs.current[tile.id];
                                             try { mgr.removeChart(tile.id); } catch (_) {}
                                             setReadyPanels((prev) => {
-                                                if (!prev.has(tile.id)) return prev;
-                                                const n = new Set(prev); n.delete(tile.id); return n;
-                                            });
-                                            setDataReadyPanels((prev) => {
-                                                if (!prev.has(tile.id)) return prev;
-                                                const n = new Set(prev); n.delete(tile.id); return n;
-                                            });
-                                            setOverlayFallbackPanels((prev) => {
                                                 if (!prev.has(tile.id)) return prev;
                                                 const n = new Set(prev); n.delete(tile.id); return n;
                                             });

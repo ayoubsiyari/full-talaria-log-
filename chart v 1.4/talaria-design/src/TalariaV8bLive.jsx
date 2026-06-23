@@ -15348,6 +15348,19 @@ const TalariaV8bLive = () => {
       try {
         window.__talariaV9OrderBridge = null;
       } catch (_) {}
+    } else {
+      try {
+        window.__talariaV9OrderBridge = {
+          orderPanelOpen: true,
+          sizeMode,
+          riskVal,
+          slEnabled,
+          slRows,
+          entryRows,
+          buySell,
+          orderType,
+        };
+      } catch (_) {}
     }
     try {
       window.chart?.orderManager?.syncOrderPanelMountTarget?.();
@@ -15358,7 +15371,7 @@ const TalariaV8bLive = () => {
         ch.updateSVGPointerEvents();
       }
     } catch (_) {}
-  }, [orderPanelOpen]);
+  }, [orderPanelOpen, sizeMode, riskVal, slEnabled, slRows, entryRows, buySell, orderType]);
 
   // Push V8b controls into order-manager's hidden inputs so calculations + Place Order match chart.js.
   useEffect(() => {
