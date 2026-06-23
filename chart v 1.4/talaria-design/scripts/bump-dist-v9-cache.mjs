@@ -3,6 +3,7 @@
  *
  * - `live/index.html` (source; copied into dist by Vite)
  * - `chart/dist-v9/index.html` (production output)
+ * - `chart/legacy-index.html` (standalone monolith chart — not multichart iframes)
  *
  * Usage (via npm run build:live):
  *   node scripts/bump-dist-v9-cache.mjs --live
@@ -18,9 +19,13 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const liveIndexPath = path.resolve(__dirname, "../live/index.html");
 const distIndexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
+const legacyIndexPath = path.resolve(__dirname, "../../chart/legacy-index.html");
 
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 const LINK_HREF_RE = /(<link\b[^>]*\shref=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
+/** Relative chart assets in legacy-index.html (modules/*.js, chart.js, settings-panel*.js). */
+const LEGACY_SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")((?:modules\/[^"?]+|chart\.js|settings-panel[^"?]*\.js))(?:\?[^"#]*)?(")/g;
+const LEGACY_LINK_HREF_RE = /(<link\b[^>]*\shref=")((?:modules\/)[^"?]+)(?:\?[^"#]*)?(")/g;
 /** Multichart iframe inject() cache bust in live/index.html */
 const INLINE_MULTICHART_V_RE = /var V = '[^']+';/g;
 const SW_VERSION_RE = /const SW_VERSION = "[^"]+";/;
@@ -40,7 +45,8 @@ function incrementBuildId(id) {
 }
 
 function readCurrentChartBuildId(html) {
-  const m = html.match(/\/chart\/[^"?]+\?v=([^"'#\s]+)/);
+  const m = html.match(/\/chart\/[^"?]+\?v=([^"'#\s]+)/)
+    || html.match(/(?:src|href)="(?:modules\/[^"?]+|chart\.js|settings-panel[^"?]*\.js)\?v=([^"'#\s]+)/);
   return m ? m[1] : null;
 }
 
@@ -77,6 +83,30 @@ function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }
   return 1;
 }
 
+function bumpLegacyChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }) {
+  if (!fs.existsSync(filePath)) {
+    if (required) {
+      console.error("[bump-dist-v9-cache] Missing:", filePath);
+      process.exit(1);
+    }
+    return 0;
+  }
+
+  const before = fs.readFileSync(filePath, "utf8");
+  const buildId = buildIdOverride ?? resolveBuildId(before);
+  let after = before.replace(LEGACY_SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
+  after = after.replace(LEGACY_LINK_HREF_RE, `$1$2?v=${buildId}$3`);
+
+  if (after === before) {
+    console.warn("[bump-dist-v9-cache] No legacy chart asset references matched in", filePath);
+    return 0;
+  }
+
+  fs.writeFileSync(filePath, after, "utf8");
+  console.log("[bump-dist-v9-cache] Set ?v=" + buildId + " on legacy chart assets in", filePath);
+  return 1;
+}
+
 function bumpServiceWorkerVersion(buildId) {
   if (!buildId || !fs.existsSync(swPath)) return 0;
   const before = fs.readFileSync(swPath, "utf8");
@@ -107,6 +137,10 @@ if (mode === "live" || mode === "both") {
   });
   if (buildIdForDist) {
     touched += bumpServiceWorkerVersion(buildIdForDist);
+    touched += bumpLegacyChartScriptsInHtml(legacyIndexPath, {
+      required: false,
+      buildId: buildIdForDist,
+    });
   }
 }
 
@@ -133,6 +167,10 @@ if (mode === "dist" || mode === "both") {
       buildId: distBuildId,
     });
     touched += bumpServiceWorkerVersion(distBuildId);
+    touched += bumpLegacyChartScriptsInHtml(legacyIndexPath, {
+      required: false,
+      buildId: distBuildId,
+    });
   }
 }
 
