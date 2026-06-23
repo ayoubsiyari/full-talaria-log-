@@ -46,16 +46,15 @@ function isMultichartEmbedPanel() {
 function ChartBrandLink({ multi = false }) {
   if (isMultichartEmbedPanel()) return null;
   return (
-    <a
+    <div
       className={`chart-brand brand-lockup${multi ? " chart-brand--multi" : ""}`}
-      href="/"
-      title="Talaria Homepage"
+      aria-hidden="true"
     >
-      <img src="/chart/modules/logo-08.png" alt="Talaria logo symbol" className="logo-top logo-dark" />
-      <img src="/chart/modules/logo-09.png" alt="Talaria logo symbol" className="logo-top logo-light" />
+      <img src="/chart/modules/logo-08.png" alt="" className="logo-top logo-dark" />
+      <img src="/chart/modules/logo-09.png" alt="" className="logo-top logo-light" />
       <span className="logo-bottom logo-dark">Talaria-Log</span>
       <span className="logo-bottom logo-light">Talaria-Log</span>
-    </a>
+    </div>
   );
 }
 

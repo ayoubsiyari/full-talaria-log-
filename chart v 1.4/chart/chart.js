@@ -197,6 +197,30 @@ function applyChartContextMenuThemeVars() {
     root.style.setProperty('--tlr-cm-font', (t && t.font) || defaults.font);
 }
 
+function isMacChartPlatform() {
+    if (typeof navigator === 'undefined') return false;
+    if (navigator.userAgentData && typeof navigator.userAgentData.platform === 'string') {
+        return navigator.userAgentData.platform === 'macOS';
+    }
+    return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || '');
+}
+
+/** Platform-aware shortcut label for chart context menu rows (only show keys that are actually bound). */
+function formatChartContextMenuShortcut(parts) {
+    if (!Array.isArray(parts) || !parts.length) return '';
+    const mac = isMacChartPlatform();
+    const sym = (token) => {
+        const u = String(token).toLowerCase();
+        if (u === 'mod') return mac ? '⌘' : 'Ctrl';
+        if (u === 'shift') return mac ? '⇧' : 'Shift';
+        if (u === 'alt') return mac ? '⌥' : 'Alt';
+        if (u.length === 1) return u.toUpperCase();
+        return token;
+    };
+    if (mac) return parts.map(sym).join('');
+    return parts.map(sym).join('+');
+}
+
 let _chartContextMenuStylesInstalled = false;
 function installChartContextMenuStyles() {
     if (_chartContextMenuStylesInstalled || typeof document === 'undefined') return;
@@ -212,8 +236,10 @@ function installChartContextMenuStyles() {
         .chart-context-menu {
             position: fixed;
             display: none;
-            min-width: 220px;
-            max-width: 340px;
+            width: 330px;
+            min-width: 330px;
+            max-width: 330px;
+            box-sizing: border-box;
             padding: 4px 0 6px;
             margin: 0;
             overflow: hidden;
@@ -235,6 +261,10 @@ function installChartContextMenuStyles() {
             height: 2px;
             margin: 0 0 4px;
             background: linear-gradient(90deg, var(--tlr-cm-ac, #2643F7), var(--tlr-cm-acL, #4A6AFF), var(--tlr-cm-ac, #2643F7));
+        }
+        .chart-context-menu .context-menu-item {
+            padding: 0;
+            margin: 0;
         }
         .chart-context-menu .tv-context-menu-item {
             position: relative;
@@ -287,18 +317,20 @@ function installChartContextMenuStyles() {
         }
         .chart-context-menu .chart-cm-shortcut {
             flex-shrink: 0;
+            min-width: 56px;
+            text-align: right;
             font-size: 10px;
-            font-weight: 600;
+            font-weight: 500;
             letter-spacing: 0.02em;
             color: var(--tlr-cm-tm, rgba(255,255,255,0.5));
             font-family: var(--tlr-cm-font, 'Exo 2', sans-serif);
+            white-space: nowrap;
         }
         .chart-context-menu .tv-context-menu-item:hover {
             background: var(--tlr-cm-hv, rgba(74,106,255,0.14));
         }
         .chart-context-menu .tv-context-menu-item:hover .chart-cm-label {
             color: var(--tlr-cm-acL, #4A6AFF);
-            font-weight: 600;
         }
         .chart-context-menu .tv-context-menu-item:hover::before {
             content: '';
@@ -29540,7 +29572,9 @@ class Chart {
             .style('left', menuX + 'px')
             .style('top', menuY + 'px')
             .style('opacity', '1')
-            .style('width', 'fit-content')
+            .style('width', menuWidth + 'px')
+            .style('min-width', menuWidth + 'px')
+            .style('max-width', menuWidth + 'px')
             .html('');
 
         // ── 1. Buy / Sell / Add Order ──────────────────────────────
@@ -29558,7 +29592,6 @@ class Chart {
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'buy',
                 label: `Buy 1 ${symbolName} @ ${priceText} ${buyOrderType}`,
-                shortcut: '⇧ B',
                 onClick: () => {
                     this.openOrderPanelFromContext({ side: 'BUY', orderType: buyOrderType, entryPrice: priceAtCursor });
                     this.hideContextMenu();
@@ -29568,7 +29601,6 @@ class Chart {
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'sell',
                 label: `Sell 1 ${symbolName} @ ${priceText} ${sellOrderType}`,
-                shortcut: '⇧ S',
                 onClick: () => {
                     this.openOrderPanelFromContext({ side: 'SELL', orderType: sellOrderType, entryPrice: priceAtCursor });
                     this.hideContextMenu();
@@ -29578,7 +29610,6 @@ class Chart {
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'order',
                 label: `Add order on ${symbolName} at ${priceText}...`,
-                shortcut: '⇧ T',
                 onClick: () => {
                     this.openOrderPanelFromContext({ entryPrice: priceAtCursor });
                     this.hideContextMenu();
@@ -29593,7 +29624,6 @@ class Chart {
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'alert',
                 label: `Add alert on ${symbolName} at ${priceText}...`,
-                shortcut: '⌥ A',
                 onClick: () => {
                     if (window.alertSystem) {
                         window.alertSystem.createAlertAtPrice(priceAtCursor);
@@ -29622,7 +29652,7 @@ class Chart {
         // ── 4. Paste ────────────────────────────────────────────────
         this.addTradingViewContextMenuItem(menu, {
             label: 'Paste',
-            shortcut: '⌘ V',
+            shortcut: formatChartContextMenuShortcut(['mod', 'v']),
             onClick: async () => {
                 if (this.drawingManager && this.drawingManager.clipboardDrawing && typeof this.drawingManager.pasteDrawing === 'function') {
                     const anchorPoint = (typeof this.drawingManager.getDataPointAtClient === 'function')
