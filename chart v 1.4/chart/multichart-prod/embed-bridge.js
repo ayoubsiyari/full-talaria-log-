@@ -730,7 +730,7 @@
                 });
             } catch (_) {}
             var afterLoad = function () {
-                markViewportBootSettle(ch, 1400);
+                markViewportBootSettle(ch, 500);
                 // Only switch tf when it actually differs — calling
                 // setTimeframe with the already-loaded tf would trigger a
                 // redundant re-fetch that, in replay, can re-anchor the
