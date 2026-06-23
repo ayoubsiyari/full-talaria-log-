@@ -9595,12 +9595,79 @@ function v9IsPartialDecimalInput(str) {
   return false;
 }
 
+/** Prop firm session: configured max position (# mode); null = unlimited. */
+function v9GetPropMaxPosition(symbolType) {
+  try {
+    const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
+    const om = window.chart?.orderManager;
+    if (tracker && typeof tracker.getMaxPositionQuantity === "function") {
+      return tracker.getMaxPositionQuantity(om);
+    }
+    const sess = window.chart?.backtestingSession;
+    if (!sess || String(sess.type || "").toLowerCase() !== "propfirm") return null;
+    const pr = sess.prop_rules || {};
+    if (symbolType === "futures") {
+      if (pr.maxContractsEnabled === false || pr.maxPositionEnabled === false) return null;
+      const n = Number(pr.maxContracts ?? pr.maxPosition);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return Math.floor(n);
+    }
+    if (!pr.maxPositionEnabled) return null;
+    const n = Number(pr.maxPosition);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const unit = String(pr.maxPositionUnit || "lots").toLowerCase();
+    if (unit === "%" && om) {
+      const eq = Number(om.equity) || Number(sess.initial_balance) || 0;
+      const candle = typeof om.getCurrentCandle === "function" ? om.getCurrentCandle() : null;
+      const price = Number(candle?.c) || 0;
+      const cs = Number(om.contractSize) || 100000;
+      if (eq > 0 && price > 0 && cs > 0) {
+        return Math.max(0, (eq * (n / 100)) / (cs * price));
+      }
+      return null;
+    }
+    return n;
+  } catch {
+    return null;
+  }
+}
+
+/** @deprecated — use v9GetPropMaxPosition */
+function v9GetPropMaxContracts() {
+  return v9GetPropMaxPosition("futures");
+}
+
+function v9CapPropPosition(n, symbolType, sizeMode = "#") {
+  if (sizeMode !== "#") return n;
+  const maxP = v9GetPropMaxPosition(symbolType);
+  const val =
+    symbolType === "futures"
+      ? Math.max(0, Math.floor(Number(n) || 0))
+      : Math.max(0, Number(n) || 0);
+  return maxP != null ? Math.min(val, maxP) : val;
+}
+
+function v9CapFuturesContracts(n, symbolType) {
+  return v9CapPropPosition(n, symbolType, "#");
+}
+
 /** SIZE rail input — allow free typing; cap fractional digits (default 3). */
 function v9SanitizeSizeInputRaw(raw, sizeMode, symbolType, maxDecimals = 3) {
   let v = String(raw ?? "");
-  if (sizeMode === "#" && symbolType === "futures") {
-    if (!/^\d*$/.test(v)) return null;
-    return v;
+  if (sizeMode === "#") {
+    if (symbolType === "futures") {
+      if (!/^\d*$/.test(v)) return null;
+    } else if (!/^-?\d*\.?\d*$/.test(v)) {
+      return null;
+    }
+    const maxP = v9GetPropMaxPosition(symbolType);
+    if (maxP != null && v !== "") {
+      const n = symbolType === "futures" ? parseInt(v, 10) : parseFloat(v);
+      if (Number.isFinite(n) && n > maxP) {
+        return symbolType === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
+      }
+    }
+    if (symbolType === "futures") return v;
   }
   if (!/^-?\d*\.?\d*$/.test(v)) return null;
   if (v.length > 18) return null;
@@ -9623,8 +9690,8 @@ function v9FormatSizeInputOnBlur(raw, sizeMode, symbolType, accountEquity) {
   if (s === "" || s === ".") return "0";
   const n = parseFloat(s);
   if (!Number.isFinite(n)) return "0";
-  if (sizeMode === "#" && symbolType === "futures") {
-    return String(Math.max(0, Math.floor(n)));
+  if (sizeMode === "#") {
+    return String(v9CapPropPosition(n, symbolType, "#"));
   }
   if (sizeMode === "%") {
     return String(Math.max(0, Math.min(100, parseFloat(n.toFixed(2)))));
@@ -9661,12 +9728,11 @@ function v9ApplySizeStepperDelta(rawVal, dir, sizeMode, symbolType, accountEquit
   if (sizeMode === "%") capped = Math.min(100, next);
   else if (sizeMode === "$" && Number.isFinite(accountEquity)) capped = Math.min(accountEquity, next);
 
-  if (sizeMode === "#" && symbolType === "futures") {
-    return String(Math.max(0, Math.floor(capped)));
-  }
   if (sizeMode === "#") {
+    const cappedQty = v9CapPropPosition(capped, symbolType, "#");
+    if (symbolType === "futures") return String(Math.max(0, Math.floor(cappedQty)));
     const dec = step >= 0.01 ? 2 : 3;
-    return String(parseFloat(capped.toFixed(dec)));
+    return String(parseFloat(Math.max(0, cappedQty).toFixed(dec)));
   }
   if (sizeMode === "$") {
     return String(parseFloat(capped.toFixed(3)));
@@ -10525,6 +10591,18 @@ const TalariaV8bLive = () => {
     const id = window.setInterval(syncProp, 1000);
     return () => window.clearInterval(id);
   }, [omTradeRev]);
+
+  // Cap SIZE field when prop max-position rule is active (# mode).
+  useEffect(() => {
+    if (sizeMode !== "#") return;
+    const maxP = v9GetPropMaxPosition(currentSymbol.type);
+    if (maxP == null) return;
+    setRiskVal((prev) => {
+      const n = currentSymbol.type === "futures" ? parseInt(prev, 10) : parseFloat(prev);
+      if (!Number.isFinite(n) || n <= maxP) return prev;
+      return currentSymbol.type === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
+    });
+  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev]);
 
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
   useEffect(() => {
@@ -33721,15 +33799,21 @@ const TalariaV8bLive = () => {
                   const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
                   const rules = tracker?.rules || {};
                   const hud = propHud || (tracker && typeof tracker.getProgressSummary === "function" ? tracker.getProgressSummary() : null);
-                  const breached = !!(hud && (hud.dailyLoss?.breached || hud.totalLoss?.breached));
+                  const breached = !!(hud && (hud.dailyLoss?.breached || hud.totalLoss?.breached || hud.consistency?.breached || hud.weekendHold?.breached || hud.tradingDisabled));
                   const passed = !!(hud && hud.profit?.completed && hud.tradingDays?.completed);
                   const statusLbl = breached ? "FAILED" : passed ? "PASSED" : "IN PROGRESS";
                   const statusCol = breached ? c.rd : passed ? c.gn : c.gold;
+                  const maxPosLbl = hud?.maxPosition?.limit != null
+                    ? `${Number(hud.maxPosition.limit).toFixed(hud.maxPosition.unit === "contracts" ? 0 : 2)} ${hud.maxPosition.unit}`
+                    : "—";
                   const propRows = hud ? [
                     { key: "days", label: "Trading days", cur: hud.tradingDays.required <= 0 ? `${hud.tradingDays.current}` : `${hud.tradingDays.current} / ${hud.tradingDays.required}`, pct: hud.tradingDays.percent, col: hud.tradingDays.completed ? c.gn : c.tx, breached: false },
                     { key: "profit", label: "Profit target", cur: `${hud.profit.current.toFixed(2)}% / ${hud.profit.target}%`, pct: hud.profit.percent, col: hud.profit.completed ? c.gn : c.tx, breached: false },
                     { key: "daily", label: "Daily loss", cur: `${hud.dailyLoss.current.toFixed(2)}% / ${hud.dailyLoss.limit}%`, pct: hud.dailyLoss.percent, col: hud.dailyLoss.breached ? c.rd : c.tx, breached: hud.dailyLoss.breached },
                     { key: "dd", label: "Max drawdown", cur: `${hud.totalLoss.current.toFixed(2)}% / ${hud.totalLoss.limit}%`, pct: hud.totalLoss.percent, col: hud.totalLoss.breached ? c.rd : c.tx, breached: hud.totalLoss.breached },
+                    ...(hud.consistency?.enabled ? [{ key: "consistency", label: "Consistency", cur: `≤ ${hud.consistency.limit}% best day`, pct: hud.consistency.breached ? 100 : 0, col: hud.consistency.breached ? c.rd : c.tx, breached: hud.consistency.breached }] : []),
+                    ...(hud.maxPosition?.limit != null ? [{ key: "maxpos", label: "Max position", cur: maxPosLbl, pct: 0, col: c.tx, breached: false }] : []),
+                    ...(!hud.weekendHold?.allowed ? [{ key: "weekend", label: "Weekend hold", cur: hud.weekendHold.breached ? "VIOLATION" : "Not allowed", pct: hud.weekendHold.breached ? 100 : 0, col: hud.weekendHold.breached ? c.rd : c.tm, breached: hud.weekendHold.breached }] : []),
                   ] : [];
                   return(
                     <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
@@ -35244,11 +35328,7 @@ const TalariaV8bLive = () => {
                             : String(Math.max(0, single))
                         );
                       } else if (total > 0) {
-                        setRiskVal(
-                          currentSymbol.type === "futures"
-                            ? String(Math.floor(total))
-                            : String(total)
-                        );
+                        setRiskVal(String(v9CapPropPosition(total, currentSymbol.type, sizeMode)));
                       }
                     } else if (sizeMode === "$") {
                       if (rowsAfter.length === 1) {
