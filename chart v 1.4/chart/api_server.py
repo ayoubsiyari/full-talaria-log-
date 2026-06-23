@@ -521,6 +521,55 @@ DUKASCOPY_INSTRUMENT_GROUPS: dict[str, list[dict[str, str]]] = {
         {"id": "eurgbp", "label": "EUR/GBP"},
         {"id": "eurjpy", "label": "EUR/JPY"},
         {"id": "gbpjpy", "label": "GBP/JPY"},
+        {"id": "audjpy", "label": "AUD/JPY"},
+        {"id": "nzdjpy", "label": "NZD/JPY"},
+        {"id": "cadjpy", "label": "CAD/JPY"},
+        {"id": "chfjpy", "label": "CHF/JPY"},
+        {"id": "euraud", "label": "EUR/AUD"},
+        {"id": "eurnzd", "label": "EUR/NZD"},
+        {"id": "eurcad", "label": "EUR/CAD"},
+        {"id": "eurchf", "label": "EUR/CHF"},
+        {"id": "gbpaud", "label": "GBP/AUD"},
+        {"id": "gbpnzd", "label": "GBP/NZD"},
+        {"id": "gbpcad", "label": "GBP/CAD"},
+        {"id": "gbpchf", "label": "GBP/CHF"},
+        {"id": "audnzd", "label": "AUD/NZD"},
+        {"id": "audcad", "label": "AUD/CAD"},
+        {"id": "audchf", "label": "AUD/CHF"},
+        {"id": "nzdcad", "label": "NZD/CAD"},
+        {"id": "nzdchf", "label": "NZD/CHF"},
+        {"id": "cadchf", "label": "CAD/CHF"},
+        {"id": "usdnok", "label": "USD/NOK"},
+        {"id": "eurnok", "label": "EUR/NOK"},
+        {"id": "usdsek", "label": "USD/SEK"},
+        {"id": "eursek", "label": "EUR/SEK"},
+        {"id": "usddkk", "label": "USD/DKK"},
+        {"id": "usdpln", "label": "USD/PLN"},
+        {"id": "eurpln", "label": "EUR/PLN"},
+        {"id": "usdhuf", "label": "USD/HUF"},
+        {"id": "usdczk", "label": "USD/CZK"},
+        {"id": "eurczk", "label": "EUR/CZK"},
+        {"id": "usdsgd", "label": "USD/SGD"},
+        {"id": "eursgd", "label": "EUR/SGD"},
+        {"id": "sgdjpy", "label": "SGD/JPY"},
+        {"id": "usdhkd", "label": "USD/HKD"},
+        {"id": "usdcnh", "label": "USD/CNH (offshore yuan)"},
+        {"id": "usdthb", "label": "USD/THB"},
+        {"id": "usdinr", "label": "USD/INR"},
+        {"id": "usdkrw", "label": "USD/KRW"},
+        {"id": "usdidr", "label": "USD/IDR"},
+        {"id": "usdphp", "label": "USD/PHP"},
+        {"id": "usdmxn", "label": "USD/MXN"},
+        {"id": "eurmxn", "label": "EUR/MXN"},
+        {"id": "usdbrl", "label": "USD/BRL"},
+        {"id": "usdclp", "label": "USD/CLP"},
+        {"id": "usdtry", "label": "USD/TRY"},
+        {"id": "eurtry", "label": "EUR/TRY"},
+        {"id": "usdzar", "label": "USD/ZAR"},
+        {"id": "eurzar", "label": "EUR/ZAR"},
+        {"id": "gbpzar", "label": "GBP/ZAR"},
+        {"id": "xauusd", "label": "Gold / USD"},
+        {"id": "xagusd", "label": "Silver / USD"},
     ],
 }
 
@@ -3314,10 +3363,25 @@ def _firstrate_filter_csv_paths_by_tickers(paths: list[Path], tokens: list[str])
 # Static symbol tables mirrored from backtesting.html's `classifyFile`. Kept
 # inline (rather than imported from a shared module) because the admin server
 # is otherwise self-contained and the lists rarely change.
+# CME roots on My Funded Futures (40 instruments). Source:
+# https://help.myfundedfutures.com/en/articles/9735811-futures-instrument-list
 _FIRSTRATE_FUTURES_SYMS = frozenset({
-    "ES","NQ","YM","RTY","MES","MNQ","M2K","CL","GC","SI","NG","ZB","ZN",
-    "MCL","MGC","MSI","MNG","HG","PL","PA","ZC","ZS","ZW","ZL","ZM",
-    "6E","6B","6J","6A","6C","6S","6N",
+    # FX futures
+    "6A", "6B", "6C", "6E", "6J", "6N", "6S",
+    # Equity index
+    "ES", "NQ", "RTY", "YM", "MES", "MNQ", "M2K", "MYM", "NKD",
+    # Micro FX
+    "M6A", "M6E",
+    # Crypto futures
+    "MBT", "MET",
+    # Metals
+    "GC", "MGC", "SI", "SIL", "HG", "PL",
+    # Energy
+    "CL", "MCL", "QM", "NG", "QG", "HO", "RB",
+    # Agriculture / livestock
+    "ZC", "ZS", "ZW", "ZL", "ZM", "HE", "LE",
+    # Legacy / FirstRate extras not on MFF list (keep for existing datasets)
+    "ZB", "ZN", "ZF", "ZT", "MSI", "MNG", "PA",
 })
 _FIRSTRATE_CRYPTO_SYMS = frozenset({
     "BTC","ETH","SOL","XRP","ADA","DOGE","BNB","LTC","AVAX","ATOM","DOT",
@@ -3326,7 +3390,15 @@ _FIRSTRATE_CRYPTO_SYMS = frozenset({
 })
 _FIRSTRATE_CURRENCY_SYMS = frozenset({
     "USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF","HKD","SGD","SEK",
-    "NOK","DKK","ZAR","TRY","MXN","CNY","XAU","XAG",
+    "NOK","DKK","ZAR","TRY","MXN","CNY","PLN","HUF","CZK","THB","INR",
+    "KRW","IDR","PHP","BRL","CLP","XAU","XAG","XPT",
+})
+# Cash-index / commodity CFD stems (FirstRate `index` type — not 6-letter FX pairs).
+_FIRSTRATE_INDEX_SYMS = frozenset({
+    "SPX500","NAS100","US30","US2000","US100","US500",
+    "GER40","UK100","FRA40","EUSTX50","JPN225","HK50","AUS200",
+    "USOIL","UKOIL","NGAS","COPPER","CORN","WHEAT","SOYBN",
+    "DAX","NIKKEI","NDX","SPX",
 })
 # FirstRate bucket name for each classified instrument. These are the `type`
 # values the vendor's data_file / last_update endpoints accept.
@@ -3334,6 +3406,7 @@ _FIRSTRATE_INSTRUMENT_TYPE_CANON = {
     "futures": "futures",
     "crypto":  "crypto",
     "fx":      "fx",
+    "index":   "index",
     "stock":   "stock",
 }
 # "Meta" filename segments added by the FirstRate pipeline that should be
@@ -3387,6 +3460,8 @@ def _firstrate_classify_ticker(ticker: str) -> str | None:
         return None
     if t in _FIRSTRATE_FUTURES_SYMS:
         return "futures"
+    if t in _FIRSTRATE_INDEX_SYMS:
+        return "index"
     if len(t) >= 6:
         base, quote = t[:3], t[3:6]
         if base in _FIRSTRATE_CRYPTO_SYMS or quote in _FIRSTRATE_CRYPTO_SYMS:
@@ -3430,6 +3505,8 @@ def _infer_dataset_asset_label(ticker: str, original_name: str) -> str:
     cls = _firstrate_classify_ticker(ticker or "")
     if cls == "fx":
         return "Forex"
+    if cls == "index":
+        return "Indices"
     if cls == "futures":
         return "Futures"
     if cls == "crypto":

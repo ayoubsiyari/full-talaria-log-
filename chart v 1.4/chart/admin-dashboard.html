@@ -1235,11 +1235,29 @@ select { cursor:default; }
 /* ~= matches space-separated groups, e.g. data-ds-group="overview sync" */
 #sec-datasets.ds-hub-view-overview [data-ds-group~="overview"],
 #sec-datasets.ds-hub-view-import [data-ds-group~="import"],
+#sec-datasets.ds-hub-view-schedule [data-ds-group~="schedule"],
 #sec-datasets.ds-hub-view-sync [data-ds-group~="sync"],
 #sec-datasets.ds-hub-view-maintenance [data-ds-group~="maintenance"],
 #sec-datasets.ds-hub-view-library [data-ds-group~="library"] {
   display: block !important;
 }
+.ds-download-guide {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+}
+.ds-download-guide-item {
+  padding: 14px 16px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--panel);
+}
+.ds-download-guide-item h3 {
+  margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--text);
+}
+.ds-download-guide-item p {
+  margin: 0 0 10px; font-size: 11px; color: var(--text-muted); line-height: 1.5;
+}
+.ds-download-guide-item ul {
+  margin: 0 0 10px; padding-left: 16px; font-size: 11px; color: var(--text-muted); line-height: 1.45;
+}
+.ds-download-guide-item .btn { margin-top: 4px; }
 #sec-datasets.ds-hub-view-library .grid-2 { display: grid !important; }
 #sec-datasets.ds-hub-view-registry > *:not(.ds-hub) { display: none !important; }
 #sec-dataset-registry { display: none !important; }
@@ -3161,7 +3179,7 @@ select { cursor:default; }
             <span class="adm-bdg adm-bdg-important">Ops</span>
             <div class="adm-ico-slot" aria-hidden="true"></div>
             <div class="adm-map-title">Scheduled jobs</div>
-            <div class="adm-map-desc">FirstRate / nightly jobs — configure in Datasets; central cron registry: roadmap.</div>
+            <div class="adm-map-desc">FirstRate schedule + nightly jobs — Datasets → Schedule tab.</div>
           </button>
         </div>
 
@@ -3343,27 +3361,54 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="registry" onclick="setDsHubTab('registry')">Registry</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="library" onclick="setDsHubTab('library')">Library</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="import" onclick="setDsHubTab('import')">Import</button>
+            <button type="button" class="ds-hub-tab" data-ds-tab="schedule" onclick="setDsHubTab('schedule')">Schedule</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
-            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-05-19b</span>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-06-23a</span>
           </div>
         </div>
 
         <div class="card" data-ds-group="overview" style="margin-bottom:16px">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
-            <div class="card-title">Pipeline at a glance</div>
+            <div class="card-title">Download &amp; update — pick your workflow</div>
           </div>
           <div class="card-body" style="padding-top:0">
-            <p class="ds-card-lead">Stats above refresh from the registry API. Jump to a task:</p>
-            <p class="ds-card-lead" style="margin-top:0;font-size:11px;color:var(--text-muted)">New imports and <strong>Rebuild</strong> automatically sync to QuestDB when <code style="font-size:10px">QUESTDB_ENABLED=true</code> on the server. Registry shows which tickers are already in QuestDB vs still tiles-only.</p>
-            <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <button type="button" class="btn sm primary" onclick="setDsHubTab('import')">Import data</button>
-              <button type="button" class="btn sm" onclick="setDsHubTab('registry')">Open registry</button>
-              <button type="button" class="btn sm" onclick="setDsHubTab('library')">Manage library</button>
-              <button type="button" class="btn sm" onclick="setDsHubTab('sync')">Sync health</button>
-              <button type="button" class="btn sm" onclick="setDsHubTab('maintenance')">Duplicates</button>
+            <p class="ds-card-lead" style="margin-bottom:12px">Three separate paths. After any import the server builds chart binaries (tiles + <code style="font-size:10px">.bin</code>) in the background — watch progress on <strong>Sync health</strong>.</p>
+            <div class="ds-download-guide">
+              <div class="ds-download-guide-item">
+                <h3>1 · New symbols (first time)</h3>
+                <p>Add tickers you do not have yet.</p>
+                <ul>
+                  <li><strong>Import</strong> tab → FirstRate: <code>period=week</code> or <code>full</code></li>
+                  <li>List tickers in the box (or use quick-add)</li>
+                  <li>Leave <strong>Merge</strong> on if a partial row already exists</li>
+                </ul>
+                <button type="button" class="btn sm primary" onclick="setDsHubTab('import')">Go to Import</button>
+              </div>
+              <div class="ds-download-guide-item">
+                <h3>2 · Daily updates (automatic)</h3>
+                <p>VPS pulls vendor <code>day</code> bundles and merges into existing history.</p>
+                <ul>
+                  <li><strong>Schedule</strong> tab → enable nightly auto-sync</li>
+                  <li>Recommended: all asset classes + merge + stale repair</li>
+                  <li>Runs once per day at your UTC hour (default 02:00)</li>
+                </ul>
+                <button type="button" class="btn sm primary" onclick="setDsHubTab('schedule')">Go to Schedule</button>
+              </div>
+              <div class="ds-download-guide-item">
+                <h3>3 · Update now (manual)</h3>
+                <p>Force a delta pull without waiting for the nightly run.</p>
+                <ul>
+                  <li><strong>Import</strong> → <code>period=day</code> → Download &amp; import</li>
+                  <li>Or <strong>Schedule</strong> → Run now (fx / crypto / …)</li>
+                  <li>Or <strong>Sync health</strong> → Fix issues per class</li>
+                </ul>
+                <button type="button" class="btn sm" onclick="setDsHubTab('import')">Import now</button>
+                <button type="button" class="btn sm" onclick="setDsHubTab('sync')">Sync health</button>
+              </div>
             </div>
+            <p class="ds-card-lead" style="margin:14px 0 0;font-size:11px">Registry stats above refresh from the dataset API. QuestDB backfill runs when <code style="font-size:10px">QUESTDB_SYNC_ON_BUILD=true</code>.</p>
           </div>
         </div>
 
@@ -3453,20 +3498,36 @@ select { cursor:default; }
                   <div id="fr_catalog_status" style="font-size:11px;color:var(--text-muted);margin-top:8px"></div>
                 </div>
                 <div id="fr_quickadd_fx" class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                  <span style="font-size:11px;color:var(--text-muted)">Quick add (FX):</span>
-                  <button type="button" class="btn sm primary" onclick="frPairsFillAllForex()" title="Replace contents with a broad retail/institutional FX symbol list (G10 grid + common USD exotics & crosses)">All FX (market list)</button>
-                  <button type="button" class="btn sm" onclick="frPairsAdd('EURUSD GBPUSD USDJPY AUDUSD USDCAD')">majors</button>
-                  <button type="button" class="btn sm" onclick="frPairsAdd('EURJPY GBPJPY EURGBP')">crosses</button>
+                  <span style="font-size:11px;color:var(--text-muted)">Quick add (FX &amp; metals):</span>
+                  <button type="button" class="btn sm primary" onclick="frPairsFillAllForex()" title="All G10 majors, crosses, and USD exotics in your retail CFD list">All FX pairs</button>
+                  <button type="button" class="btn sm" onclick="frPairsAdd('EURUSD GBPUSD USDJPY AUDUSD NZDUSD USDCAD USDCHF')">majors</button>
+                  <button type="button" class="btn sm" onclick="frPairsAdd('EURJPY GBPJPY EURGBP AUDJPY NZDJPY CADJPY CHFJPY')">JPY crosses</button>
+                  <button type="button" class="btn sm" onclick="frPairsAdd('EURGBP EURAUD EURNZD EURCAD EURCHF GBPAUD GBPNZD GBPCAD GBPCHF AUDNZD AUDCAD AUDCHF NZDCAD NZDCHF CADCHF')">G10 crosses</button>
+                  <button type="button" class="btn sm" onclick="frPairsAdd('USDNOK EURNOK USDSEK EURSEK USDDKK USDPLN EURPLN USDHUF USDCZK EURCZK USDSGD EURSGD SGDJPY USDHKD USDCNH USDTHB USDINR USDKRW USDIDR USDPHP USDMXN EURMXN USDBRL USDCLP USDTRY EURTRY USDZAR EURZAR GBPZAR')">exotics</button>
+                  <button type="button" class="btn sm" onclick="frPairsAdd('XAUUSD XAGUSD XPTUSD')" title="Spot metals — imported as FX type">metals</button>
+                  <button type="button" class="btn sm" onclick="frPairsFillAllIndices()" title="Switches instrument type to index and fills US/EU/Asia cash indices + energy/softs">indices &amp; energy</button>
+                  <button type="button" class="btn sm" onclick="frPairsFillAllCryptoCfd()" title="Switches instrument type to crypto and fills BTC/ETH CFD list">crypto CFDs</button>
                   <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+                </div>
+                <div id="fr_quickadd_index" class="field fg-full" style="display:none">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <span style="font-size:11px;color:var(--text-muted)">Quick add (indices &amp; commodities):</span>
+                    <button type="button" class="btn sm primary" onclick="frPairsFillAllIndices()" title="US/EU/Asia indices + WTI/Brent/gas/metals/agriculture CFD stems">All indices &amp; energy</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('SPX500 NAS100 US30 US2000 GER40 UK100 FRA40 EUSTX50 JPN225 HK50 AUS200')">equity indices</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('USOIL UKOIL NGAS COPPER CORN WHEAT SOYBN')">energy &amp; ags</button>
+                    <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+                  </div>
                 </div>
                 <div id="fr_quickadd_fut" class="field fg-full" style="display:none">
                   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                    <span style="font-size:11px;color:var(--text-muted)">Quick add (common roots):</span>
-                    <button type="button" class="btn sm primary" onclick="frPairsFillAllFutures()" title="Replace contents with curated CME-style continuous roots (FX forwards, equity index, energy, metals, micros — trim to match your vendor filenames)">All futures (screenshot list)</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('ES NQ RTY YM')">equity index</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('CL NG RB HO')">energy</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('GC SI HG PL')">metals</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('ZN ZB ZF ZT')">rates</button>
+                    <span style="font-size:11px;color:var(--text-muted)">Quick add (MFF futures list):</span>
+                    <button type="button" class="btn sm primary" onclick="frPairsFillAllFutures()" title="All 40 CME roots from My Funded Futures instrument list">All MFF futures (40)</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('6A 6B 6C 6E 6J 6N 6S M6A M6E')">FX</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('ES NQ RTY YM MES MNQ M2K MYM NKD')">equity index</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('CL MCL QM NG QG HO RB')">energy</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('GC MGC SI SIL HG PL')">metals</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('ZC ZS ZW ZL ZM HE LE')">ags &amp; livestock</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('MBT MET')">crypto futures</button>
                     <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
                   </div>
                 </div>
@@ -3492,84 +3553,18 @@ select { cursor:default; }
                   </label>
                   <span id="frProgress" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
                 </div>
+                <p style="font-size:11px;color:var(--text-muted);margin:12px 0 0;line-height:1.5">
+                  <strong>Automatic nightly updates</strong> are configured on the
+                  <button type="button" class="btn sm" style="vertical-align:baseline;padding:2px 8px;font-size:11px" onclick="setDsHubTab('schedule')">Schedule</button>
+                  tab (not here). Use this form for one-off imports.
+                </p>
                 <details class="field fg-full" style="margin-top:12px;border-top:1px dashed var(--border);padding-top:12px">
-                  <summary style="cursor:default;font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;user-select:none">Advanced &middot; automatic schedule &amp; dataset purge</summary>
+                  <summary style="cursor:default;font-size:12px;font-weight:600;color:var(--danger,#ff6b6b);text-transform:uppercase;letter-spacing:0.05em;user-select:none">Danger zone · wipe all datasets before import</summary>
                   <div style="padding:14px 4px 4px">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;color:var(--danger,#ff6b6b);font-size:12px">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;color:var(--danger,#ff6b6b);font-size:12px">
                       <input type="checkbox" id="fr_delete_first">
                       Wipe all existing datasets before this import (requires confirmation phrase)
                     </label>
-                    <div style="height:1px;background:var(--border);margin:10px 0"></div>
-                    <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.55">
-                      <strong>Daily auto-sync:</strong> after the UTC hour below, the VPS pulls <em>day</em> bundles (Monday on Tuesday, etc.) for each asset class. <strong>24/7 stale-only</strong> fills gaps between nights (12 tickers/job, fx→futures→crypto→stock). Use <strong>nightly</strong> mode + all asset classes — not interval pinned to one class.
-                    </p>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;font-size:12px">
-                      <input type="checkbox" id="fr_sched_enabled">
-                      Enable nightly auto-sync on this VPS
-                    </label>
-                    <div class="form-grid" style="margin-bottom:10px">
-                      <div class="field">
-                        <label for="fr_sched_nightly_hour">Start at (UTC hour, 0–23)</label>
-                        <input type="number" id="fr_sched_nightly_hour" class="input" min="0" max="23" value="2" step="1">
-                      </div>
-                      <div class="field">
-                        <label for="fr_sched_mode">Mode</label>
-                        <select id="fr_sched_mode" class="input">
-                          <option value="nightly" selected>nightly (once per day)</option>
-                          <option value="interval">interval (legacy)</option>
-                        </select>
-                      </div>
-                      <div class="field" id="fr_sched_interval_wrap" style="display:none">
-                        <label for="fr_sched_interval">Repeat every (minutes, interval mode only)</label>
-                        <input type="number" id="fr_sched_interval" class="input" min="15" max="10080" value="1440" step="15">
-                      </div>
-                    </div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px" title="When on, the nightly run iterates every fx/crypto/futures/stock dataset you already have. When off, it uses the single instrument_type + pairs from the manual form above.">
-                      <input type="checkbox" id="fr_sched_auto_all" checked>
-                      Pull every asset class I already have data for
-                    </label>
-                    <div id="fr_sched_excluded_wrap" style="margin:0 0 10px 26px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:color-mix(in oklab, var(--panel) 80%, transparent)">
-                      <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Skip these asset classes (won't download):</div>
-                      <div style="display:flex;flex-wrap:wrap;gap:10px">
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_stock" value="stock"> Stock</label>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_etf" value="etf"> ETF</label>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_crypto" value="crypto"> Crypto</label>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_futures" value="futures"> Futures</label>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_fx" value="fx"> Forex</label>
-                      </div>
-                    </div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
-                      <input type="checkbox" id="fr_sched_auto_repair" checked>
-                      24/7 stale-only auto-sync — checks stale/missing tickers and queues them automatically (not the whole class)
-                    </label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
-                      <input type="checkbox" id="fr_sched_adaptive" checked>
-                      Auto week/month when data is stale or missing (recommended)
-                    </label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:10px;font-size:12px">
-                      <input type="checkbox" id="fr_sched_upsert" checked>
-                      Merge into existing datasets (recommended — preserves history)
-                    </label>
-                    <div id="fr_sched_preview" style="font-size:11px;color:var(--text-muted);margin:6px 0 10px;line-height:1.6;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);font-family:ui-monospace,monospace;white-space:pre-wrap">Next nightly run will cover: …</div>
-                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                      <button type="button" class="btn sm primary" id="frSchedSaveBtn" onclick="saveFirstrateSchedule()">Save schedule</button>
-                      <button type="button" class="btn sm" id="frSchedRefreshBtn" onclick="refreshFirstrateScheduleStatus()">Refresh preview</button>
-                      <span id="frSchedStatus" style="font-size:12px;color:var(--text-muted)"></span>
-                    </div>
-                    <!-- Manual per-class run-now triggers. Each button hits the same `/sync` endpoint
-                         the scheduler uses, but for one specific instrument_type and on demand —
-                         handy when the scheduler hasn't reached that class yet, or when something
-                         wedged the round-robin and you want to push a single class through. The
-                         click handler is the global `data-fr-run-class` delegate registered alongside
-                         the Nightly sync health card; no extra wiring needed here. -->
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
-                      <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">Run now</span>
-                      <button type="button" class="btn sm" data-fr-run-class="fx" title="Pull the day bundle for fx and merge into existing datasets">fx</button>
-                      <button type="button" class="btn sm" data-fr-run-class="crypto" title="Pull the day bundle for crypto and merge into existing datasets">crypto</button>
-                      <button type="button" class="btn sm" data-fr-run-class="futures" title="Pull the day bundle for futures (contin_UNadj) and merge into existing datasets">futures</button>
-                      <button type="button" class="btn sm" data-fr-run-class="stock" title="Pull the day bundle for stock and merge into existing datasets">stock</button>
-                      <span style="font-size:11px;color:var(--text-muted)">— queues the same import the scheduler would, but for one class only.</span>
-                    </div>
                   </div>
                 </details>
               </div>
@@ -3617,6 +3612,93 @@ select { cursor:default; }
             <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:14px;align-items:center">
               <span id="dukaProgress" style="font-size:12px;color:var(--text-muted);flex:1;min-width:160px"></span>
               <button type="button" class="btn sm primary" id="dkFetchBtn" onclick="fetchDukascopy()">Fetch &amp; save dataset</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Automatic schedule — nightly + stale repair (FirstRate VPS) -->
+        <div class="card" id="dsCardSchedule" data-ds-group="schedule" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 28%, var(--border))">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div class="card-title">Automatic schedule (FirstRate)</div>
+            <span class="card-badge" id="frScheduleTabBadge" style="background:var(--panel);color:var(--text-muted)">loading…</span>
+          </div>
+          <div class="card-body">
+            <p class="ds-card-lead">
+              Turns on <strong>hands-free daily updates</strong> on this VPS. The server writes settings to
+              <code style="font-size:10px">uploads/firstrate_schedule.json</code> and runs a background loop:
+              once per night it pulls vendor <code>day</code> bundles per asset class and <strong>merges</strong> new bars into existing CSVs, then rebuilds chart binaries.
+              Between nights, <strong>stale-only repair</strong> queues tickers that fell behind (max 12 per job).
+            </p>
+            <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:12px;font-size:13px;font-weight:600">
+              <input type="checkbox" id="fr_sched_enabled">
+              Enable nightly auto-sync on this VPS
+            </label>
+            <div class="form-grid" style="margin-bottom:12px">
+              <div class="field">
+                <label for="fr_sched_nightly_hour">Start at (UTC hour, 0–23)</label>
+                <input type="number" id="fr_sched_nightly_hour" class="input" min="0" max="23" value="2" step="1">
+              </div>
+              <div class="field">
+                <label for="fr_sched_mode">Mode</label>
+                <select id="fr_sched_mode" class="input">
+                  <option value="nightly" selected>nightly (once per day)</option>
+                  <option value="interval">interval (legacy)</option>
+                </select>
+              </div>
+              <div class="field" id="fr_sched_interval_wrap" style="display:none">
+                <label for="fr_sched_interval">Repeat every (minutes, interval mode only)</label>
+                <input type="number" id="fr_sched_interval" class="input" min="15" max="10080" value="1440" step="15">
+              </div>
+            </div>
+            <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.55">
+              Schedule uses the <strong>Import</strong> tab form for defaults (instrument type, period, timeframe, ticker list) when “pull all classes” is off.
+              With <strong>pull every asset class</strong> on, it iterates fx → crypto → futures → stock based on what you already have in the registry.
+            </p>
+            <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px" title="When on, the nightly run iterates every fx/crypto/futures/stock dataset you already have. When off, it uses the single instrument_type + pairs from the Import form.">
+              <input type="checkbox" id="fr_sched_auto_all" checked>
+              Pull every asset class I already have data for
+            </label>
+            <div id="fr_sched_excluded_wrap" style="margin:0 0 12px 26px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:color-mix(in oklab, var(--panel) 80%, transparent)">
+              <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Skip these asset classes (won't download):</div>
+              <div style="display:flex;flex-wrap:wrap;gap:10px">
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_stock" value="stock"> Stock</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_etf" value="etf"> ETF</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_crypto" value="crypto"> Crypto</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_futures" value="futures"> Futures</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_fx" value="fx"> Forex</label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:default"><input type="checkbox" id="fr_excl_index" value="index"> Indices</label>
+              </div>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
+              <input type="checkbox" id="fr_sched_auto_repair" checked>
+              24/7 stale-only auto-sync (queues stale/missing tickers only)
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px">
+              <input type="checkbox" id="fr_sched_adaptive" checked>
+              Auto week/month when data is very stale or missing
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:12px;font-size:12px">
+              <input type="checkbox" id="fr_sched_upsert" checked>
+              Merge into existing datasets (recommended — preserves history)
+            </label>
+            <div id="fr_sched_preview" style="font-size:11px;color:var(--text-muted);margin:0 0 12px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--panel);font-family:ui-monospace,monospace;white-space:pre-wrap">Next nightly run will cover: …</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+              <button type="button" class="btn sm primary" id="frSchedSaveBtn" onclick="saveFirstrateSchedule()">Save schedule</button>
+              <button type="button" class="btn sm" id="frSchedRefreshBtn" onclick="refreshFirstrateScheduleStatus()">Refresh preview</button>
+              <span id="frSchedStatus" style="font-size:12px;color:var(--text-muted)"></span>
+            </div>
+            <div style="padding-top:14px;border-top:1px dashed var(--border)">
+              <p style="font-size:11px;font-weight:600;color:var(--text-muted);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em">Manual update now (same as scheduler)</p>
+              <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.45">Queues a <code>day</code> bundle import for one asset class — use when you cannot wait for tonight's run.</p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <button type="button" class="btn sm" data-fr-run-class="fx" title="Pull the day bundle for fx and merge into existing datasets">fx</button>
+                <button type="button" class="btn sm" data-fr-run-class="index" title="Pull the day bundle for indices/commodity CFDs">index</button>
+                <button type="button" class="btn sm" data-fr-run-class="crypto" title="Pull the day bundle for crypto and merge into existing datasets">crypto</button>
+                <button type="button" class="btn sm" data-fr-run-class="futures" title="Pull the day bundle for futures and merge into existing datasets">futures</button>
+                <button type="button" class="btn sm" data-fr-run-class="stock" title="Pull the day bundle for stock and merge into existing datasets">stock</button>
+                <button type="button" class="btn sm" onclick="setDsHubTab('import')" style="margin-left:auto">Or one-off import…</button>
+              </div>
             </div>
           </div>
         </div>
@@ -3671,7 +3753,7 @@ select { cursor:default; }
         </div>
 
         <!-- FirstRate server connection diagnostics -->
-        <div class="card" id="frConnectionCard" data-ds-group="sync overview import" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 25%, var(--border))">
+        <div class="card" id="frConnectionCard" data-ds-group="schedule sync" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 25%, var(--border))">
           <div class="card-hdr">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             <div class="card-title">FirstRate server connection</div>
@@ -4875,7 +4957,7 @@ const sectionTitles = {
   settings: 'Settings'
 };
 
-const DS_HUB_TABS = ['overview', 'registry', 'library', 'import', 'sync', 'maintenance'];
+const DS_HUB_TABS = ['overview', 'registry', 'library', 'import', 'schedule', 'sync', 'maintenance'];
 let dsHubTab = 'overview';
 
 function fillDsHubSummary(s) {
@@ -4917,6 +4999,11 @@ function setDsHubTab(tab, opts) {
   }
   if (tab === 'registry' && !opts.skipRegistryLoad) loadDatasetRegistry();
   if (tab === 'library') loadDatasets(true).catch(function () {});
+  if (tab === 'schedule' || tab === 'sync') {
+    try {
+      refreshFirstrateScheduleStatus();
+    } catch (_) {}
+  }
   if (tab === 'sync') {
     try {
       refreshFirstrateConnectionStatus(true);
@@ -8647,11 +8734,16 @@ function updateFirstrateInstrumentUi() {
     } else if (v === 'futures') {
       hint.innerHTML =
         'Futures bundles come pre-stitched by FirstRate (one continuous series per root). ' +
-        'When this box is <strong>empty</strong>, imports can match every root in the bundle (see server behavior for your adjustment). When <strong>filled</strong> (default list after load: curated FX forwards + index / micro / energy / metals / rates roots), only those stems are kept — trim to your filenames. ' +
-        'The ticker-range letter does <em>not</em> apply — pick the continuous-adjustment value below.';
+        'Default list matches the <strong>40-instrument My Funded Futures</strong> CME list (FX, equity index, metals, energy, ags, crypto futures). ' +
+        'Pick continuous adjustment below (<strong>contin_UNadj</strong> is the usual starting point).';
     } else if (v === 'fx') {
       hint.innerHTML =
-        'When this box is <strong>empty</strong>, the import matches <em>every</em> FX file in the ZIP. When it is <strong>filled</strong> (default list after load: full G10 grid + common exotics/crosses), only those stems are kept — remove symbols your bundle does not ship. FX is one bundle — no letter split.';
+        'When this box is <strong>empty</strong>, the import matches <em>every</em> FX file in the ZIP. When it is <strong>filled</strong> (default: full retail G10 + exotics list), only those stems are kept. ' +
+        'Use quick-add for <strong>indices / energy</strong> (switches to <code style="font-size:10px">index</code> type) or <strong>crypto CFDs</strong>. Spot metals (XAUUSD, XAGUSD) stay on <code style="font-size:10px">fx</code>.';
+    } else if (v === 'index') {
+      hint.innerHTML =
+        'Cash indices (SPX500, NAS100, GER40, JPN225, …) and commodity CFDs (USOIL, NGAS, COPPER, …) use FirstRate <code style="font-size:10px">index</code> bundles — not the FX endpoint. ' +
+        'Use <strong>All indices &amp; energy</strong> quick-add or type stems matching your vendor filenames.';
     } else if (v === 'crypto') {
       hint.innerHTML =
         'FirstRate crypto bundles ship as one ZIP per period (<strong>day / week / month</strong> — <code style="font-size:10px">full</code> is disabled on this subscription). ' +
@@ -8680,9 +8772,11 @@ function updateFirstrateInstrumentUi() {
   }
 
   const fxq = $('fr_quickadd_fx');
+  const idxq = $('fr_quickadd_index');
   const futq = $('fr_quickadd_fut');
   const cryq = $('fr_quickadd_crypto');
   if (fxq)  fxq.style.display  = v === 'fx'      ? 'flex'  : 'none';
+  if (idxq) idxq.style.display = v === 'index'   ? 'block' : 'none';
   if (futq) futq.style.display = v === 'futures' ? 'block' : 'none';
   if (cryq) cryq.style.display = v === 'crypto'  ? 'block' : 'none';
 
@@ -8769,6 +8863,7 @@ const FR_CRYPTO_BUILTIN_CATALOG = [
   { ticker: 'BCHUSD',   name: 'Bitcoin Cash / USD' },
   { ticker: 'LINKUSD',  name: 'Chainlink / USD' },
   { ticker: 'DOTUSD',   name: 'Polkadot / USD' },
+  { ticker: 'BNBUSD',   name: 'Binance Coin / USD' },
   { ticker: 'AVAXUSD',  name: 'Avalanche / USD' },
   { ticker: 'MATICUSD', name: 'Polygon / USD' },
   { ticker: 'UNIUSD',   name: 'Uniswap / USD' },
@@ -8988,7 +9083,7 @@ function frApplyTickerCatalogSelection() {
   toast('Added ' + picked.length + ' symbol(s)', 'ok');
 }
 
-/** Broad FX symbol list for admin prepopulation: full G10 grid + common USD exotics & crosses (vendor filenames are usually 6-letter roots). */
+/** Broad FX symbol list: retail CFD majors, G10 crosses, and USD exotics (vendor filenames are usually 6-letter roots). */
 function buildDefaultForexTickerList() {
   const majorsUsd = [
     'EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDCAD', 'USDCHF', 'USDJPY',
@@ -9002,28 +9097,55 @@ function buildDefaultForexTickerList() {
     'CHFJPY',
   ];
   const usdExotics = [
-    'USDSEK', 'USDNOK', 'USDDKK',
-    'USDMXN', 'USDZAR', 'USDTRY',
-    'USDPLN', 'USDHUF', 'USDCZK',
-    'USDSGD', 'USDHKD', 'USDILS',
-    'USDTHB', 'USDCNH', 'USDINR', 'USDKRW', 'USDPHP', 'USDMYR', 'USDIDR', 'USDBRL',
-    'USDCLP',
+    'USDNOK', 'EURNOK', 'USDSEK', 'EURSEK', 'USDDKK',
+    'USDPLN', 'EURPLN', 'USDHUF', 'USDCZK', 'EURCZK',
+    'USDSGD', 'EURSGD', 'SGDJPY', 'USDHKD', 'USDCNH',
+    'USDTHB', 'USDINR', 'USDKRW', 'USDIDR', 'USDPHP',
+    'USDMXN', 'EURMXN', 'USDBRL', 'USDCLP',
+    'USDTRY', 'EURTRY', 'USDZAR', 'EURZAR', 'GBPZAR',
   ];
-  const extraCrosses = [
-    'EURSEK', 'EURNOK', 'EURDKK', 'EURPLN', 'EURTRY', 'EURHUF', 'EURCZK',
-    'GBPSEK', 'GBPNOK', 'GBPPLN',
-    'AUDSGD', 'NZDSGD', 'CADSGD',
-    'EURMXN', 'GBPMXN', 'EURZAR', 'GBPZAR',
-  ];
+  const metalsFx = ['XAUUSD', 'XAGUSD', 'XPTUSD'];
   const uniq = new Set();
-  [].concat(majorsUsd, g10Crosses, usdExotics, extraCrosses).forEach(function (s) {
+  [].concat(majorsUsd, g10Crosses, usdExotics, metalsFx).forEach(function (s) {
     uniq.add(String(s).toUpperCase().trim());
   });
   return Array.from(uniq).sort();
 }
 
+/** Cash index + commodity CFD stems (FirstRate `index` instrument type). */
+function buildDefaultIndexCfdTickerList() {
+  const equityIndices = [
+    'SPX500', 'NAS100', 'US30', 'US2000',
+    'GER40', 'UK100', 'FRA40', 'EUSTX50', 'JPN225', 'HK50', 'AUS200',
+  ];
+  const energySofts = [
+    'USOIL', 'UKOIL', 'NGAS', 'COPPER', 'CORN', 'WHEAT', 'SOYBN',
+  ];
+  const uniq = new Set();
+  [].concat(equityIndices, energySofts).forEach(function (s) {
+    uniq.add(String(s).toUpperCase().trim());
+  });
+  return Array.from(uniq).sort();
+}
+
+/** Core crypto CFD symbols (FirstRate `crypto` type). */
+function buildDefaultCryptoCfdTickerList() {
+  return [
+    'BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD', 'ADAUSD', 'DOTUSD',
+    'DOGEUSD', 'LINKUSD', 'AVAXUSD', 'LTCUSD', 'BNBUSD',
+  ];
+}
+
 function getDefaultAllForexTickersComma() {
   return buildDefaultForexTickerList().join(', ');
+}
+
+function getDefaultAllIndexTickersComma() {
+  return buildDefaultIndexCfdTickerList().join(', ');
+}
+
+function getDefaultCryptoCfdTickersComma() {
+  return buildDefaultCryptoCfdTickerList().join(', ');
 }
 
 /** After schedule loads: if FX is selected and no explicit pairs were saved, show the full market-style list. */
@@ -9035,17 +9157,32 @@ function seedDefaultForexPairsIfNeeded() {
   ta.value = getDefaultAllForexTickersComma();
 }
 
-/** Curated futures roots from admin UI lists (FX futures, index, micros, energy, metals, rates). Matches typical FirstRate continuous-contract stems — trim symbols your bundle omits. */
+function seedDefaultIndexPairsIfNeeded() {
+  const ta = $('fr_pairs');
+  const typ = $('fr_type');
+  if (!ta || !typ || String(typ.value || '').toLowerCase() !== 'index') return;
+  if (String(ta.value || '').trim()) return;
+  ta.value = getDefaultAllIndexTickersComma();
+}
+
+/** My Funded Futures CME roots (40). https://help.myfundedfutures.com/en/articles/9735811-futures-instrument-list */
 function buildDefaultFuturesTickerList() {
-  const roots = [
-    '6A', '6B', '6E', '6J',
-    'CL', 'ES', 'GC',
-    'HG', 'M2K', 'M6E', 'MBT', 'MCL', 'MES', 'MGC',
-    'MHG', 'MNQ', 'MYM', 'NG', 'NKD', 'NQ',
-    'PL', 'RTY', 'SI', 'SIL', 'YM', 'ZB',
+  const mffFutures = [
+    // FX futures
+    '6A', '6B', '6C', '6E', '6J', '6N', '6S', 'M6A', 'M6E',
+    // Equity index
+    'ES', 'NQ', 'RTY', 'YM', 'MES', 'MNQ', 'M2K', 'MYM', 'NKD',
+    // Crypto futures
+    'MBT', 'MET',
+    // Metals
+    'GC', 'MGC', 'SI', 'SIL', 'HG', 'PL',
+    // Energy
+    'CL', 'MCL', 'QM', 'NG', 'QG', 'HO', 'RB',
+    // Agriculture / livestock
+    'ZC', 'ZS', 'ZW', 'ZL', 'ZM', 'HE', 'LE',
   ];
   const uniq = new Set();
-  roots.forEach(function (s) {
+  mffFutures.forEach(function (s) {
     uniq.add(String(s).toUpperCase().trim());
   });
   return Array.from(uniq).sort();
@@ -9065,8 +9202,43 @@ function seedDefaultFuturesPairsIfNeeded() {
 
 function seedDefaultInstrumentPairsIfNeeded() {
   seedDefaultForexPairsIfNeeded();
+  seedDefaultIndexPairsIfNeeded();
   seedDefaultFuturesPairsIfNeeded();
   seedDefaultCryptoPairsIfNeeded();
+}
+
+function frPairsFillAllIndices() {
+  const typ = $('fr_type');
+  const ta = $('fr_pairs');
+  if (!ta) return;
+  if (typ) {
+    typ.value = 'index';
+    updateFirstrateInstrumentUi();
+  }
+  ta.value = getDefaultAllIndexTickersComma();
+  try {
+    const n = parsePairsFromTextarea('fr_pairs').length;
+    toast('Filled ' + n + ' index/commodity CFD symbols (instrument type set to index).', 'ok');
+  } catch (e) {
+    toast('Filled index CFD list', 'ok');
+  }
+}
+
+function frPairsFillAllCryptoCfd() {
+  const typ = $('fr_type');
+  const ta = $('fr_pairs');
+  if (!ta) return;
+  if (typ) {
+    typ.value = 'crypto';
+    updateFirstrateInstrumentUi();
+  }
+  ta.value = getDefaultCryptoCfdTickersComma();
+  try {
+    const n = parsePairsFromTextarea('fr_pairs').length;
+    toast('Filled ' + n + ' crypto CFD symbols (instrument type set to crypto).', 'ok');
+  } catch (e) {
+    toast('Filled crypto CFD list', 'ok');
+  }
 }
 
 function frPairsFillAllFutures() {
@@ -9075,7 +9247,7 @@ function frPairsFillAllFutures() {
   ta.value = getDefaultAllFuturesTickersComma();
   try {
     const n = parsePairsFromTextarea('fr_pairs').length;
-    toast('Filled ' + n + ' futures roots (adjust for your vendor / adjustment series).', 'ok');
+    toast('Filled ' + n + ' MFF futures roots (My Funded Futures instrument list).', 'ok');
   } catch (e) {
     toast('Filled futures list', 'ok');
   }
@@ -10001,7 +10173,7 @@ async function loadFirstrateSchedule() {
     if ($('fr_sched_nightly_hour')) $('fr_sched_nightly_hour').value = String(Math.max(0, Math.min(23, parseInt(s.nightly_utc_hour, 10) || 2)));
     if ($('fr_sched_auto_all')) $('fr_sched_auto_all').checked = (s.auto_all_types !== false);
     var excl = Array.isArray(s.excluded_types) ? s.excluded_types : [];
-    ['stock', 'etf', 'crypto', 'futures', 'fx'].forEach(function (t) {
+    ['stock', 'etf', 'crypto', 'futures', 'fx', 'index'].forEach(function (t) {
       var cb = $('fr_excl_' + t);
       if (cb) cb.checked = excl.indexOf(t) !== -1;
     });
@@ -10042,6 +10214,12 @@ async function loadFirstrateSchedule() {
       if (vparts.length) bits.push('FirstRate last_update: ' + vparts.join(', '));
     }
     if (hint) hint.textContent = bits.join(' · ');
+    var schedBadge = $('frScheduleTabBadge');
+    if (schedBadge) {
+      schedBadge.textContent = s.enabled ? 'ON' : 'OFF';
+      schedBadge.style.color = s.enabled ? '#22c55e' : 'var(--text-muted)';
+      schedBadge.style.background = s.enabled ? 'color-mix(in oklab, #22c55e 18%, var(--panel))' : 'var(--panel)';
+    }
   } catch (e) {
     if (hint) hint.textContent = 'Could not load schedule';
   }
@@ -10059,7 +10237,7 @@ async function saveFirstrateSchedule() {
     const selAdj = $('fr_adjustment');
     const mode = ($('fr_sched_mode') && $('fr_sched_mode').value) || 'nightly';
     var excludedTypes = [];
-    ['stock', 'etf', 'crypto', 'futures', 'fx'].forEach(function (t) {
+    ['stock', 'etf', 'crypto', 'futures', 'fx', 'index'].forEach(function (t) {
       var cb = $('fr_excl_' + t);
       if (cb && cb.checked) excludedTypes.push(t);
     });
