@@ -881,6 +881,11 @@
                 try { ch.backtestingSession = btSession; } catch (_) {}
                 var runPanelLoad = function () {
                     var pc = readParentChart();
+                    try {
+                        if (pc && typeof pc._ensureMultichartHostExportReady === 'function') {
+                            pc._ensureMultichartHostExportReady();
+                        }
+                    } catch (_) {}
                     var playheadTs = readParentPlayhead();
                     var loadFid = fileId;
                     if (!loadFid && pc && pc.currentFileId) {
@@ -950,19 +955,37 @@
                     if (!pc) return true;
                     var fid = fileId || (pc.currentFileId != null ? String(pc.currentFileId) : '');
                     if (!fid || String(pc.currentFileId || '') !== String(fid)) return true;
+                    try {
+                        if (typeof pc._ensureMultichartHostExportReady === 'function') {
+                            pc._ensureMultichartHostExportReady();
+                        }
+                    } catch (_) {}
+                    var ch = window.chart;
+                    if (ch && typeof ch._parentMultichartMasterReady === 'function') {
+                        return ch._parentMultichartMasterReady(pc, fid);
+                    }
                     var prs = pc.replaySystem;
-                    return !!(prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0);
+                    if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
+                        return true;
+                    }
+                    return Array.isArray(pc.rawData) && pc.rawData.length > 0;
                 };
                 if (hostReadyForMirror()) {
                     runPanelLoad();
                 } else {
                     // Wait for tile A's replay master before boot — avoids tiny seek-buffer islands.
-                    pollFor(hostReadyForMirror, 100, 12000, runPanelLoad, runPanelLoad);
+                    pollFor(hostReadyForMirror, 50, 3000, runPanelLoad, runPanelLoad);
                 }
                 return;
             }
 
-            // Live / no session — plain loadFileData
+            // Live / no session — loadFileData clones parent memory when same pair
+            try {
+                var pcLive = readParentChart();
+                if (pcLive && typeof pcLive._ensureMultichartHostExportReady === 'function') {
+                    pcLive._ensureMultichartHostExportReady();
+                }
+            } catch (_) {}
             p = ch.loadFileData(fileId);
             if (p && typeof p.then === 'function') {
                 p.then(afterLoad, function (err) {

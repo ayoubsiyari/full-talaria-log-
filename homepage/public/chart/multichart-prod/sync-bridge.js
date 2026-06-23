@@ -1204,12 +1204,15 @@
                         // which file each panel has loaded for session
                         // restore. Forbidden-fields filter still applies
                         // on inbound; fileId is not in the forbidden list.
-                        fileId: d.fileId || null,
+                        fileId: d.fileId || chart.currentFileId || null,
                         symbol: d.symbol || chart.currentSymbol || null,
                         timeframe: d.timeframe || chart.currentTimeframe || null,
                         candleCount: chart.data ? chart.data.length : 0,
                         firstBarMs: firstBarMs,
                         lastBarMs: lastBarMs,
+                        memoryBoot: d.ingestSource === 'parent-native-master'
+                            || d.ingestSource === 'parent-memory'
+                            || d.source === 'parent-bt-cache',
                     },
                 }, parentOrigin);
             } catch (_) {}
@@ -1958,7 +1961,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b07';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260623b56';
 
         return {
             state,

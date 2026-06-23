@@ -4463,6 +4463,17 @@ class OrderManager {
         return ep > 0 && Math.abs(slPrice - ep) > 1e-12;
     }
 
+    _syncPositionSizeModeFromV9Bridge() {
+        try {
+            const b = typeof window !== 'undefined' ? window.__talariaV9OrderBridge : null;
+            if (!b || b.orderPanelOpen !== true || !b.sizeMode) return;
+            const mode = b.sizeMode === '$' ? 'risk-usd' : b.sizeMode === '%' ? 'risk-percent' : 'lot-size';
+            if (mode && this.positionSizeMode !== mode) {
+                this.positionSizeMode = mode;
+            }
+        } catch (_e) { /* ignore */ }
+    }
+
     _readV9OrderBridgeField(field) {
         try {
             const b = typeof window !== 'undefined' ? window.__talariaV9OrderBridge : null;
@@ -14970,6 +14981,7 @@ class OrderManager {
     updatePlaceButtonText() {
         if (this._orderPlacedAwaitingReset) return;
 
+        this._syncPositionSizeModeFromV9Bridge();
         this._syncOrderQuantityFromRisk();
         this._syncOrderQuantityFromLotSize();
 
@@ -15183,6 +15195,7 @@ class OrderManager {
      */
     calculatePositionFromRisk() {
         if (this._orderPlacedAwaitingReset) return;
+        this._syncPositionSizeModeFromV9Bridge();
 
         let entryPrice;
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
@@ -15210,8 +15223,18 @@ class OrderManager {
             const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
             
             if (lotSize <= 0) {
+                const bridgedQty = this._deriveOrderQuantityFromRiskInputs();
+                if (bridgedQty > 0) {
+                    const qtyInput = document.getElementById('orderQuantity');
+                    if (qtyInput) qtyInput.value = this._formatQty(bridgedQty);
+                    this._applyCalculatedReadout(this._getCalculatedReadoutParts());
+                    this.updatePlaceButtonText();
+                    this.calculateAdvancedRiskReward();
+                    return;
+                }
                 document.getElementById('orderQuantity').value = '0';
                 this._applyCalculatedReadout(this._getCalculatedReadoutParts());
+                this.updatePlaceButtonText();
                 return;
             }
 
@@ -16636,9 +16659,12 @@ class OrderManager {
         // Set default TP and SL aligned with entry
         this.syncDefaultTargetsToEntry();
         
-        // Calculate position size and risk/reward
-        this.calculatePositionFromRisk();
-        this.calculateAdvancedRiskReward();
+        // V9 React rail owns risk sizing — live price tick must not wipe derived lots.
+        const v9Rail = !!(typeof window !== 'undefined' && (window.__talariaV9ReactOrderUi || window.__talariaV9OrderRailOpen));
+        if (!v9Rail) {
+            this.calculatePositionFromRisk();
+            this.calculateAdvancedRiskReward();
+        }
     }
 
     /**
@@ -16726,8 +16752,11 @@ class OrderManager {
         }
 
         this.syncDefaultTargetsToEntry();
-        this.calculatePositionFromRisk();
-        this.calculateAdvancedRiskReward();
+        const v9Rail = !!(typeof window !== 'undefined' && (window.__talariaV9ReactOrderUi || window.__talariaV9OrderRailOpen));
+        if (!v9Rail) {
+            this.calculatePositionFromRisk();
+            this.calculateAdvancedRiskReward();
+        }
         this.updatePreviewLines();
     }
 
