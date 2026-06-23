@@ -12513,6 +12513,7 @@ const TalariaV8bLive = () => {
   const sizeInputFocusedRef = useRef(false);
   /** Throttle OM full R:R recompute while React leads the bridge (margin badge reads DOM fed by this). */
   const omHeaderRecalcRef = useRef(0);
+  const omPlaceBtnRecalcRef = useRef(0);
   const closeOthersForIndSettRef = useRef(() => {});
   const indSettCtxRef = useRef({ chart: null, indicatorType: "", indicator: null });
   const flushIndDraftToChartRef = useRef(() => false);
@@ -16338,9 +16339,13 @@ const TalariaV8bLive = () => {
       setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
       if (om && typeof om.updatePlaceButtonText === "function") {
-        try {
-          om.updatePlaceButtonText();
-        } catch (_) {}
+        const nowBtn = Date.now();
+        if (nowBtn - omPlaceBtnRecalcRef.current > 100) {
+          omPlaceBtnRecalcRef.current = nowBtn;
+          try {
+            om.updatePlaceButtonText();
+          } catch (_) {}
+        }
       }
       const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
       setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));

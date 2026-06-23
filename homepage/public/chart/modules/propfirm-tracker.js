@@ -355,6 +355,7 @@ class PropFirmTracker {
 
     validateBeforeOrder(quantity, orderManager) {
         if (!this._isPropFirmChallenge()) return { ok: true };
+        try {
         if (this.tradingDisabled) {
             return { ok: false, reason: 'Trading disabled — challenge rule violated' };
         }
@@ -385,6 +386,10 @@ class PropFirmTracker {
             return { ok: false, reason: 'Max drawdown limit reached' };
         }
         return { ok: true };
+        } catch (e) {
+            console.warn('propFirmTracker.validateBeforeOrder failed — allowing order', e);
+            return { ok: true };
+        }
     }
 
     _failChallenge(ruleName, message) {
@@ -506,9 +511,7 @@ class PropFirmTracker {
     // Calculate daily P&L for specific day
     getDailyPnL(dateKey) {
         const trades = this.dailyTrades[dateKey] || [];
-        const total = trades.reduce((sum, trade) => sum + (trade.profit || 0), 0);
-        console.log(`📅 Daily P&L for ${dateKey}: $${total.toFixed(2)} (${trades.length} trades)`);
-        return total;
+        return trades.reduce((sum, trade) => sum + (trade.profit || 0), 0);
     }
 
     // Calculate daily P&L percentage for specific day
@@ -528,9 +531,6 @@ class PropFirmTracker {
         const dateKeyToUse = latestTradingDay || this.getTodayKey();
         
         const todayPercent = this.getDailyPnLPercent(dateKeyToUse);
-        console.log(`📅 Latest trading day: ${dateKeyToUse} P&L: ${todayPercent.toFixed(2)}%`);
-        console.log(`📅 All trading days:`, tradingDaysArray);
-        console.log(`📅 Daily trades:`, this.dailyTrades);
         return todayPercent;
     }
 
@@ -559,6 +559,11 @@ class PropFirmTracker {
             return Math.max(0, this.peakBalance - this.currentBalance);
         }
         return this.currentBalance < this.startBalance ? (this.startBalance - this.currentBalance) : 0;
+    }
+
+    /** Alias used by validateBeforeOrder / isTotalLossBreached. */
+    _getTotalLossUsd() {
+        return this.getTotalLossUsd();
     }
 
     // Consistency rule: best profitable day cannot exceed X% of total profits
