@@ -803,15 +803,15 @@ class KeyboardShortcutsManager {
      * Step forward in replay
      */
     replayStepForward() {
-        if (this.isReplayActive()) {
-            // Pause if playing
-            if (this.chart.replaySystem.isPlaying) {
-                this.chart.replaySystem.pause();
-            }
-            this.chart.replaySystem.stepForward();
-            this.showNotification('⏭ Step Forward');
-        } else {
+        if (!this.isReplayActive()) {
             this.showNotification('Replay not active');
+            return;
+        }
+        const rs = this.chart.replaySystem;
+        if (rs && typeof rs.requestStepForward === 'function') {
+            rs.requestStepForward();
+        } else if (rs) {
+            rs.stepForward();
         }
     }
     
@@ -819,20 +819,19 @@ class KeyboardShortcutsManager {
      * Step backward in replay
      */
     replayStepBackward() {
-        if (this.isReplayActive()) {
-            const rs = this.chart.replaySystem;
-            if (rs && typeof rs.isBackNavigationAllowed === 'function' && !rs.isBackNavigationAllowed()) {
-                this.showNotification('Back navigation disabled');
-                return;
-            }
-            // Pause if playing
-            if (rs && rs.isPlaying) {
-                rs.pause();
-            }
-            if (rs) rs.stepBackward();
-            this.showNotification('⏮ Step Backward');
-        } else {
+        if (!this.isReplayActive()) {
             this.showNotification('Replay not active');
+            return;
+        }
+        const rs = this.chart.replaySystem;
+        if (rs && typeof rs.isBackNavigationAllowed === 'function' && !rs.isBackNavigationAllowed()) {
+            this.showNotification('Back navigation disabled');
+            return;
+        }
+        if (rs && typeof rs.requestStepBackward === 'function') {
+            rs.requestStepBackward();
+        } else if (rs) {
+            rs.stepBackward();
         }
     }
     

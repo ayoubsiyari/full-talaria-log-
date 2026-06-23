@@ -9939,6 +9939,11 @@ const TalariaV8bLive = () => {
   const [buySell, setBuySell] = useState("buy");
   const [orderType, setOrderType] = useState("market");
   const [btmTab, setBtmTab] = useState("all");
+  const [isPropFirmMode, setIsPropFirmMode] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("mode") === "propfirm"; } catch { return false; }
+  });
+  const [propHud, setPropHud] = useState(null);
+  const propTabAutoOpenedRef = useRef(false);
   const [btmIndPos, setBtmIndPos] = useState(null);
   const [tblSort, setTblSort] = useState(null); // {col, dir:'asc'|'desc'}
   /** Bumps when chart orderManager trades / P&L change so the trades table stays live. */
@@ -10486,6 +10491,40 @@ const TalariaV8bLive = () => {
     });
     return undefined;
   }, [btmTab, omTradeRev]);
+
+  // Prop firm challenge progress — poll tracker when in propfirm session.
+  useEffect(() => {
+    const syncProp = () => {
+      let prop = false;
+      try {
+        if (new URLSearchParams(window.location.search).get("mode") === "propfirm") prop = true;
+      } catch (_) {}
+      try {
+        const sess = window.chart?.backtestingSession;
+        if (sess && String(sess.type || "").toLowerCase() === "propfirm") prop = true;
+      } catch (_) {}
+      setIsPropFirmMode(prop);
+      if (!prop) {
+        setPropHud(null);
+        return;
+      }
+      const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
+      if (tracker) {
+        if (!tracker.sessionData && typeof tracker.loadSession === "function") tracker.loadSession();
+        if (typeof tracker.getProgressSummary === "function") {
+          setPropHud(tracker.getProgressSummary());
+        }
+      }
+      if (!propTabAutoOpenedRef.current) {
+        propTabAutoOpenedRef.current = true;
+        setBtmTab("prop");
+        setBtmOpen(true);
+      }
+    };
+    syncProp();
+    const id = window.setInterval(syncProp, 1000);
+    return () => window.clearInterval(id);
+  }, [omTradeRev]);
 
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
   useEffect(() => {
@@ -33584,7 +33623,14 @@ const TalariaV8bLive = () => {
               const nPend = rawCounts.filter((r) => r.status === "pending").length;
               const nOpen = rawCounts.filter((r) => r.status === "open").length;
               const nHist = rawCounts.filter((r) => r.status === "closed").length;
-              const ordTabs=[["all","All Trade",nAll],["pending","Pending",nPend],["open","Open Positions",nOpen],["history","History",nHist],["analytics","Analytics",null]];
+              const ordTabs=[
+                ["all","All Trade",nAll],
+                ["pending","Pending",nPend],
+                ["open","Open Positions",nOpen],
+                ["history","History",nHist],
+                ...(isPropFirmMode ? [["prop","Prop Challenge",null]] : []),
+                ["analytics","Analytics",null],
+              ];
               return(
               <div ref={btmTabBarRef} style={{display:"flex",flexShrink:0,borderBottom:`1px solid ${c.br}`,paddingLeft:10,position:"relative",alignItems:"center"}}>
                 {ordTabs.map(([id,label,cnt])=>{
@@ -33639,7 +33685,7 @@ const TalariaV8bLive = () => {
                   initTags._custom = trade.preTags.filter(t => !knownBools.has(t) && !knownOpts.has(t));
                   setTapTags(initTags); setTapJournal(""); setTapStrategy(""); setTapScreenshots([null,null]); setTapTagInput(""); setTradeActPopup(trade);
                 };
-                const filtered = btmTab==="all"?allTradesR : btmTab==="analytics"?[] : allTradesR.filter(r=>
+                const filtered = btmTab==="all"?allTradesR : (btmTab==="analytics"||btmTab==="prop")?[] : allTradesR.filter(r=>
                   btmTab==="pending"?r.status==="pending":
                   btmTab==="open"?r.status==="open":
                   btmTab==="history"?r.status==="closed":false
@@ -33671,6 +33717,66 @@ const TalariaV8bLive = () => {
                 const jMaxAbsCum = Math.max(1, ...jCum.map((x) => Math.abs(x.cum)));
                 const jStrats = (ja?.strategies || []).slice(0, 12);
                 const cols="minmax(0,0.7fr) minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.6fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr)";
+                if(btmTab==="prop") {
+                  const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
+                  const rules = tracker?.rules || {};
+                  const hud = propHud || (tracker && typeof tracker.getProgressSummary === "function" ? tracker.getProgressSummary() : null);
+                  const breached = !!(hud && (hud.dailyLoss?.breached || hud.totalLoss?.breached));
+                  const passed = !!(hud && hud.profit?.completed && hud.tradingDays?.completed);
+                  const statusLbl = breached ? "FAILED" : passed ? "PASSED" : "IN PROGRESS";
+                  const statusCol = breached ? c.rd : passed ? c.gn : c.gold;
+                  const propRows = hud ? [
+                    { key: "days", label: "Trading days", cur: hud.tradingDays.required <= 0 ? `${hud.tradingDays.current}` : `${hud.tradingDays.current} / ${hud.tradingDays.required}`, pct: hud.tradingDays.percent, col: hud.tradingDays.completed ? c.gn : c.tx, breached: false },
+                    { key: "profit", label: "Profit target", cur: `${hud.profit.current.toFixed(2)}% / ${hud.profit.target}%`, pct: hud.profit.percent, col: hud.profit.completed ? c.gn : c.tx, breached: false },
+                    { key: "daily", label: "Daily loss", cur: `${hud.dailyLoss.current.toFixed(2)}% / ${hud.dailyLoss.limit}%`, pct: hud.dailyLoss.percent, col: hud.dailyLoss.breached ? c.rd : c.tx, breached: hud.dailyLoss.breached },
+                    { key: "dd", label: "Max drawdown", cur: `${hud.totalLoss.current.toFixed(2)}% / ${hud.totalLoss.limit}%`, pct: hud.totalLoss.percent, col: hud.totalLoss.breached ? c.rd : c.tx, breached: hud.totalLoss.breached },
+                  ] : [];
+                  return(
+                    <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                        <div>
+                          <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:4}}>PROP CHALLENGE</div>
+                          <div style={{fontSize:11,color:c.ts}}>
+                            {`Account $${hud?.balance?.start != null ? Number(hud.balance.start).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}`}
+                            {rules.trailingDrawdown ? " · Trailing DD" : " · Static DD"}
+                            {rules.dailyLossEnabled === false ? " · No daily limit" : ""}
+                          </div>
+                        </div>
+                        <div style={{padding:"6px 12px",border:`1px solid ${statusCol}`,background:breached?"rgba(255,80,104,0.08)":passed?"rgba(0,212,161,0.08)":"rgba(201,168,76,0.08)"}}>
+                          <span style={{fontSize:10,fontWeight:800,color:statusCol,letterSpacing:"0.08em"}}>{statusLbl}</span>
+                        </div>
+                      </div>
+                      {!hud && (
+                        <div style={{fontSize:11,color:c.tm,padding:"8px 0"}}>Loading challenge rules…</div>
+                      )}
+                      {propRows.map((row) => (
+                        <div key={row.key} style={{background:c.bg,border:`1px solid ${row.breached?"rgba(255,80,104,0.35)":c.br}`,padding:"10px 12px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                            <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{row.label.toUpperCase()}</span>
+                            <span style={{fontSize:11,fontWeight:700,color:row.col,fontVariantNumeric:"tabular-nums"}}>{row.cur}</span>
+                          </div>
+                          <div style={{height:5,background:"rgba(140,160,255,0.07)",overflow:"hidden"}}>
+                            <div style={{width:`${Math.min(100, Math.max(0, row.pct))}%`,height:"100%",background:row.breached?c.rd:row.pct>=100?c.gn:c.gold,opacity:0.8,transition:"width 0.35s ease"}}/>
+                          </div>
+                        </div>
+                      ))}
+                      {hud && (
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
+                          {[
+                            { l: "Balance", v: `$${Number(hud.balance.current).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, col: c.tx },
+                            { l: "Peak", v: `$${Number(hud.balance.peak).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, col: c.tx },
+                            { l: "Net P&L", v: `${hud.profit.current >= 0 ? "+" : ""}${hud.profit.current.toFixed(2)}%`, col: hud.profit.current >= 0 ? c.gn : c.rd },
+                          ].map(({ l, v, col }) => (
+                            <div key={l} style={{background:c.bg,border:`1px solid ${c.br}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
+                              <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{l}</span>
+                              <span style={{fontSize:16,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums"}}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
                 if(btmTab==="analytics") return(
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
                     {jMeta.loading&&(

@@ -19780,6 +19780,23 @@ class Chart {
         return this.data[last].t + (i - last) * tfMs;
     }
 
+    /**
+     * True when bar idx opens after a session/weekend gap (wall-clock jump >> one bar).
+     * FX daily/weekly gaps place consecutive indices one candle apart on screen.
+     */
+    _isBarSessionTimeGap(idx) {
+        if (!this.data || idx <= 0 || idx >= this.data.length) return false;
+        const prev = this.data[idx - 1];
+        const cur = this.data[idx];
+        if (!prev || !cur || !Number.isFinite(prev.t) || !Number.isFinite(cur.t)) return false;
+        const tfMs = typeof this._estimateTimeframeStepMs === 'function'
+            ? this._estimateTimeframeStepMs()
+            : this.parseTimeframe(String(this.currentTimeframe || '1m').toLowerCase());
+        const barMs = Number.isFinite(tfMs) && tfMs > 0 ? tfMs : 60000;
+        const delta = cur.t - prev.t;
+        return Number.isFinite(delta) && delta > Math.max(barMs * 2.5, 1800000);
+    }
+
     _formatTimeLabelForBarIndex(idx) {
         const ts = this._projectBarIndexTimestamp(idx);
         if (!Number.isFinite(ts)) return '';
@@ -20879,17 +20896,19 @@ class Chart {
         const interactionLightPaint = this._isInteractionLightPaint();
         const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
         const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
+        const replayActive = !!(this.replaySystem && this.replaySystem.isActive);
+        const useFastTimeTicks = interactionLiteEarly && !replayActive;
         if (skipHeavyChrome) {
             // Rebuild bar-grid ticks every frame so labels scroll with pan/zoom (not fixed screen slots).
-            this._timeTicks = this._buildTimeTicksFast();
+            this._timeTicks = useFastTimeTicks ? this._buildTimeTicksFast() : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (chartViewPanning) {
-            this._timeTicks = interactionLiteEarly
+            this._timeTicks = useFastTimeTicks
                 ? this._buildTimeTicksFast()
                 : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (wheelBurstLight || timeAxisZoomDragging) {
-            this._timeTicks = interactionLiteEarly
+            this._timeTicks = useFastTimeTicks
                 ? this._buildTimeTicksFast()
                 : this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
@@ -21451,11 +21470,15 @@ class Chart {
             : this._fastTimeTickAlignStart(vp.first, step, timeframeMs);
 
         while (idx <= vp.last + step * 2 && merged.length < wantTicks + 4) {
+            if (idx + 1 <= this.data.length - 1 && this._isBarSessionTimeGap(idx + 1)) {
+                idx += step;
+                continue;
+            }
             const x = typeof this.dataIndexToPixel === 'function'
                 ? this.dataIndexToPixel(idx)
                 : (m.l + this.offsetX + idx * vp.spacing);
             if (x > viewRight + minSpacingPx) break;
-            if (x >= viewLeft && (merged.length === 0 || x - lastX >= minSpacingPx * 0.65)) {
+            if (x >= viewLeft && (merged.length === 0 || x - lastX >= minSpacingPx)) {
                 const label = this._formatTimeLabelForBarIndex(idx);
                 if (label) {
                     merged.push({ idx, x, label, isBoundary: false });
@@ -21500,11 +21523,15 @@ class Chart {
         const viewRight = m.l + plotW;
         const maxTicks = Math.ceil(plotW / minSpacingPx) + 4;
         while (idx <= lastVisibleIdx + labelInterval * 2 && ticks.length < maxTicks) {
+            if (idx + 1 <= this.data.length - 1 && this._isBarSessionTimeGap(idx + 1)) {
+                idx += labelInterval;
+                continue;
+            }
             const x = typeof this.dataIndexToPixel === 'function'
                 ? this.dataIndexToPixel(idx)
                 : (m.l + this.offsetX + idx * vp.spacing);
             if (x > viewRight + minSpacingPx * 0.5) break;
-            if (x >= viewLeft - 1 && (ticks.length === 0 || x - lastX >= minSpacingPx * 0.65)) {
+            if (x >= viewLeft - 1 && (ticks.length === 0 || x - lastX >= minSpacingPx)) {
                 const label = this._formatTimeLabelForBarIndex(idx);
                 if (label) {
                     ticks.push({ idx, x, label, isBoundary: false });
@@ -21528,7 +21555,8 @@ class Chart {
         const firstVisibleIdx = -this.offsetX / candleSpacing;
         const lastVisibleIdx     = firstVisibleIdx + cw / candleSpacing;
         const visibleBarsCount   = Math.max(1, Math.ceil(Math.max(0, lastVisibleIdx - firstVisibleIdx)));
-        if (visibleBarsCount > 400 && !options.full) {
+        const replayActive = !!(this.replaySystem && this.replaySystem.isActive);
+        if (visibleBarsCount > 400 && !options.full && !replayActive) {
             return this._buildTimeTicksFast();
         }
 
@@ -21693,18 +21721,31 @@ class Chart {
                 }
             }
 
+            // Pre-gap round ticks sit one candle from the reopen bar but hours/days apart in time.
+            if (isRound && !isBoundary && idx + 1 < this.data.length && this._isBarSessionTimeGap(idx + 1)) {
+                isRound = false;
+            }
+            const isSessionGapOpen = this._isBarSessionTimeGap(idx);
+            if (isSessionGapOpen && !isDailyOrHigher && !intradayCalendarMode) {
+                isBoundary = true;
+                boundaryLabel = monthNames[month] + ' ' + day;
+            }
+
             const hasBoundary = isBoundary && !!boundaryLabel;
             // When zoomed out on daily+, show ONLY month/year boundaries (no round ticks)
             const shouldEmitTick = suppressDayBoundaries
                 ? hasBoundary
-                : (isRound || (!suppressIntradayBoundaryLabels && allowStandaloneBoundaries && hasBoundary));
+                : (isRound
+                    || (isSessionGapOpen && hasBoundary)
+                    || (!suppressIntradayBoundaryLabels && allowStandaloneBoundaries && hasBoundary));
             if (!shouldEmitTick) continue;
 
             const useBoundaryLabel = suppressDayBoundaries
                 ? hasBoundary
-                : (!suppressIntradayBoundaryLabels
-                    && hasBoundary
-                    && (allowStandaloneBoundaries || isRound));
+                : ((isSessionGapOpen && hasBoundary)
+                    || (!suppressIntradayBoundaryLabels
+                        && hasBoundary
+                        && (allowStandaloneBoundaries || isRound)));
 
             let label;
             if (useBoundaryLabel) {
@@ -21846,8 +21887,8 @@ class Chart {
         const viewRight = this.w - m.r - 20 + panBufferPx;
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
-            const gap = useUniformIntradayTicks ? 0 : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
-            if (gap <= 0 || x - lastX >= gap || lastX === -Infinity) {
+            const gapPx = (c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing;
+            if (x - lastX >= gapPx || lastX === -Infinity) {
                 if (x >= viewLeft && x <= viewRight) {
                     ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
                 }
