@@ -1277,6 +1277,109 @@ select { cursor:default; }
 }
 .ds-card-lead code { font-size: 10px; }
 
+/* ── FirstRate import (step layout) ─────────────── */
+.fr-import { display: flex; flex-direction: column; gap: 16px; }
+.fr-step {
+  border: 1px solid var(--border); border-radius: var(--radius, 10px);
+  background: var(--panel); overflow: hidden;
+}
+.fr-step-hdr {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,.12);
+}
+.fr-step-num {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: var(--accent, #60a5fa);
+  background: rgba(96,165,250,.12); border: 1px solid rgba(96,165,250,.35);
+}
+.fr-step-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.fr-step-desc { margin: 3px 0 0; font-size: 11px; color: var(--text-muted); line-height: 1.45; }
+.fr-step-body { padding: 16px; }
+.fr-settings-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 14px;
+}
+.fr-settings-grid .fr-field-type { grid-column: 1 / -1; }
+.fr-settings-grid .fr-field-full { grid-column: 1 / -1; }
+@media (max-width: 720px) {
+  .fr-settings-grid { grid-template-columns: 1fr; }
+}
+.fr-field label {
+  display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+}
+.fr-type-select { font-weight: 600; }
+.fr-symbols-layout {
+  display: grid; grid-template-columns: 220px 1fr; gap: 14px; align-items: start;
+}
+@media (max-width: 900px) {
+  .fr-symbols-layout { grid-template-columns: 1fr; }
+}
+.fr-quickadd-panel {
+  padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: rgba(0,0,0,.1);
+}
+.fr-quickadd-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;
+}
+.fr-quickadd-btns { display: flex; flex-direction: column; gap: 6px; }
+.fr-quickadd-btns .btn { width: 100%; justify-content: center; text-align: center; }
+.fr-quickadd-btns .btn.primary { font-weight: 600; }
+.fr-quickadd-tools {
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.fr-quickadd-tools .btn { width: 100%; }
+.fr-symbols-main { min-width: 0; }
+.fr-symbols-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.fr-symbols-toolbar label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted); margin: 0;
+}
+#fr_pairs_count {
+  font-size: 11px; font-weight: 600; color: var(--accent, #60a5fa);
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.25);
+}
+#fr_pairs_count.is-empty { color: var(--text-muted); background: transparent; border-color: var(--border); }
+.fr-symbols-toolbar .btn-clear { margin-left: auto; }
+#fr_pairs {
+  width: 100%; min-height: 120px; max-height: 220px;
+  font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5;
+  resize: vertical;
+}
+#fr_ticker_hint {
+  font-size: 11px; color: var(--text-muted); margin: 8px 0 0; line-height: 1.5;
+  padding: 8px 10px; border-radius: 6px; background: rgba(0,0,0,.08);
+  border-left: 3px solid rgba(96,165,250,.4);
+}
+.fr-review-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px;
+}
+@media (max-width: 640px) { .fr-review-grid { grid-template-columns: 1fr; } }
+.fr-review-opt {
+  display: flex; align-items: flex-start; gap: 8px; font-size: 12px;
+  color: var(--text-muted); line-height: 1.45; cursor: default;
+}
+.fr-review-opt input { margin-top: 3px; flex-shrink: 0; }
+.fr-actions-row {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+#fr_pair_check_panel {
+  margin-bottom: 12px; padding: 12px 14px; border-radius: 8px;
+  border: 1px solid var(--border); background: rgba(0,0,0,.12);
+  font-size: 12px; line-height: 1.55;
+}
+.fr-footer-note {
+  font-size: 11px; color: var(--text-muted); margin: 0; line-height: 1.5;
+  padding: 10px 16px 14px; border-top: 1px dashed var(--border);
+}
+
 /* ── Dataset registry (all datasets / health) ─────── */
 .dr-registry-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dr-registry-wrap th, .dr-registry-wrap td {
@@ -3364,7 +3467,7 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="schedule" onclick="setDsHubTab('schedule')">Schedule</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
-            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-06-23b</span>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-06-23c</span>
           </div>
         </div>
 
@@ -3418,169 +3521,196 @@ select { cursor:default; }
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <div class="card-title">FirstRate import</div>
           </div>
-          <div class="card-body">
-            <!-- FirstRate Data (official vendor ZIP → chart datasets) -->
-            <div>
-              <p class="ds-card-lead">
-                Choose type, period, timeframe, and optional tickers, then <strong>Download &amp; import now</strong>. Requires <code style="font-size:10px">FIrstrate_USERID</code> on the server.
+          <div class="card-body" style="padding-top:0">
+            <div class="fr-import">
+              <p class="ds-card-lead" style="margin:14px 16px 0;padding:0 0 4px">
+                One-off download from FirstRate → chart datasets. Requires <code>FIrstrate_USERID</code> on the server.
+                Nightly updates live on the <button type="button" class="btn sm" style="vertical-align:baseline;padding:1px 7px;font-size:10px" onclick="setDsHubTab('schedule')">Schedule</button> tab.
               </p>
-              <div class="form-grid">
-                <div class="field">
-                  <label for="fr_period">Period</label>
-                  <select id="fr_period" class="input" onchange="updateFrFullPeriodUi()">
-                    <option value="week" selected>week</option>
-                    <option value="day">day</option>
-                    <option value="month">month</option>
-                    <option value="full">full (large)</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="fr_tf">Timeframe</label>
-                  <select id="fr_tf" class="input">
-                    <option value="1min" selected>1min</option>
-                    <option value="5min">5min</option>
-                    <option value="30min">30min</option>
-                    <option value="1hour">1hour</option>
-                    <option value="1day">1day</option>
-                  </select>
-                </div>
-                <div class="field fg-full">
-                  <label for="fr_type">Instrument type</label>
-                  <select id="fr_type" class="input" onchange="updateFirstrateInstrumentUi()">
-                    <option value="fx" selected>fx</option>
-                    <option value="stock">stock</option>
-                    <option value="etf">etf</option>
-                    <option value="futures">futures</option>
-                    <option value="crypto">crypto</option>
-                    <option value="index">index</option>
-                    <option value="options">options</option>
-                  </select>
-                  <div id="fr_subscription_warn" style="display:none;margin-top:8px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5"></div>
-                </div>
-                <div id="fr_ticker_range_wrap" class="field fg-full" style="display:none">
-                  <label for="fr_ticker_range">Ticker-range letter (advanced override)</label>
-                  <select id="fr_ticker_range" class="input">
-                    <option value="">— auto (recommended) —</option>
-                    <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option><option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option><option value="M">M</option><option value="N">N</option><option value="O">O</option><option value="P">P</option><option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option><option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option><option value="Y">Y</option><option value="Z">Z</option>
-                  </select>
-                  <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45">
-                    For <code style="font-size:10px">period=full</code>, FirstRate splits stock / ETF / options into one ZIP per letter. Leave on <strong>auto</strong> and list your tickers below — the server downloads every needed letter automatically (e.g. <code style="font-size:10px">AAPL, TSLA</code> → letters A + T). With no tickers listed, auto sweeps the full A–Z (slow). Pick a single letter only to restrict manually. Futures use continuous-contract bundles instead of letter shards (select the adjustment below).
-                  </span>
-                </div>
-                <div class="field fg-full" id="fr_adjustment_wrap" style="display:none">
-                  <label for="fr_adjustment"><span id="fr_adjustment_label">Adjustment</span></label>
-                  <select id="fr_adjustment" class="input">
-                    <!-- options injected by updateFirstrateInstrumentUi() based on instrument type -->
-                  </select>
-                  <span id="fr_adjustment_hint" style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45"></span>
-                </div>
-                <div class="field fg-full">
-                  <label for="fr_pairs" style="display:block;font-size:11px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted)">Tickers / pairs (optional)</label>
-                  <textarea id="fr_pairs" rows="8" class="input" style="resize:vertical;font-family:ui-monospace,'JetBrains Mono',monospace;font-size:12px;line-height:1.45;min-height:140px" placeholder="EURUSD, GBPUSD, … — comma, space, or newline. Empty = every CSV in the ZIP."></textarea>
-                  <p style="font-size:10px;color:var(--text-muted);margin:6px 0 0;line-height:1.45">Duplicate symbols are merged automatically when you <strong>Download &amp; import</strong> or <strong>Save schedule</strong> (same rules as the server filter).</p>
-                  <p id="fr_ticker_hint" style="font-size:11px;color:var(--text-muted);margin:8px 0 0;line-height:1.5"></p>
-                </div>
-                <div class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                  <button type="button" class="btn sm primary" id="fr_load_tickers_btn" style="display:none" onclick="loadFirstrateTickerCatalog()">Browse symbols (FirstRate API)</button>
-                  <button type="button" class="btn sm" id="fr_last_update_btn" onclick="checkFirstrateLastUpdate()" title="Ask FirstRate for the publication date of the most recent update bundle for the selected instrument type. Use this before downloading to confirm there is fresh data available.">Check last update</button>
-                  <label style="font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px;cursor:default" title="When on, asks for the date of the last full-history rebuild instead of the rolling day/week/month update.">
-                    <input type="checkbox" id="fr_last_update_full"> full-history
-                  </label>
-                  <span id="fr_last_update_note" style="font-size:11px;color:var(--text-muted)"></span>
-                  <span id="fr_load_tickers_note" style="font-size:11px;color:var(--text-muted)"></span>
-                </div>
-                <div id="fr_ticker_catalog_wrap" class="field fg-full" style="display:none;margin-top:4px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-                    <input type="search" id="fr_catalog_filter" class="input" placeholder="Filter by symbol or name…" style="flex:1;min-width:180px" oninput="frCatalogFilterInput()">
-                    <button type="button" class="btn sm" onclick="frApplyTickerCatalogSelection()">Add selected to box</button>
-                    <button type="button" class="btn sm" onclick="frCloseTickerCatalog()">Close list</button>
-                  </div>
-                  <select id="fr_catalog_select" multiple size="14" class="input" style="width:100%;font-family:ui-monospace,monospace;font-size:11px"></select>
-                  <div id="fr_catalog_status" style="font-size:11px;color:var(--text-muted);margin-top:8px"></div>
-                </div>
-                <div id="fr_quickadd_fx" class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                  <span style="font-size:11px;color:var(--text-muted)">Quick add (FX &amp; metals):</span>
-                  <button type="button" class="btn sm primary" onclick="frPairsFillAllForex()" title="All G10 majors, crosses, and USD exotics in your retail CFD list">All FX pairs</button>
-                  <button type="button" class="btn sm" onclick="frPairsAdd('EURUSD GBPUSD USDJPY AUDUSD NZDUSD USDCAD USDCHF')">majors</button>
-                  <button type="button" class="btn sm" onclick="frPairsAdd('EURJPY GBPJPY EURGBP AUDJPY NZDJPY CADJPY CHFJPY')">JPY crosses</button>
-                  <button type="button" class="btn sm" onclick="frPairsAdd('EURGBP EURAUD EURNZD EURCAD EURCHF GBPAUD GBPNZD GBPCAD GBPCHF AUDNZD AUDCAD AUDCHF NZDCAD NZDCHF CADCHF')">G10 crosses</button>
-                  <button type="button" class="btn sm" onclick="frPairsAdd('USDNOK EURNOK USDSEK EURSEK USDDKK USDPLN EURPLN USDHUF USDCZK EURCZK USDSGD EURSGD SGDJPY USDHKD USDCNH USDTHB USDINR USDKRW USDIDR USDPHP USDMXN EURMXN USDBRL USDCLP USDTRY EURTRY USDZAR EURZAR GBPZAR')">exotics</button>
-                  <button type="button" class="btn sm" onclick="frPairsAdd('XAUUSD XAGUSD XPTUSD')" title="Spot metals — imported as FX type">metals</button>
-                  <button type="button" class="btn sm" onclick="frPairsFillAllIndices()" title="Switches instrument type to index and fills US/EU/Asia cash indices + energy/softs">indices &amp; energy</button>
-                  <button type="button" class="btn sm" onclick="frPairsFillAllCryptoCfd()" title="Switches instrument type to crypto and fills BTC/ETH CFD list">crypto CFDs</button>
-                  <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
-                </div>
-                <div id="fr_quickadd_index" class="field fg-full" style="display:none">
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                    <span style="font-size:11px;color:var(--text-muted)">Quick add (indices &amp; commodities):</span>
-                    <button type="button" class="btn sm primary" onclick="frPairsFillAllIndices()" title="US/EU/Asia indices + WTI/Brent/gas/metals/agriculture CFD stems">All indices &amp; energy</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('SPX500 NAS100 US30 US2000 GER40 UK100 FRA40 EUSTX50 JPN225 HK50 AUS200')">equity indices</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('USOIL UKOIL NGAS COPPER CORN WHEAT SOYBN')">energy &amp; ags</button>
-                    <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+
+              <!-- Step 1: bundle settings -->
+              <section class="fr-step" style="margin:12px 16px 0">
+                <div class="fr-step-hdr">
+                  <span class="fr-step-num">1</span>
+                  <div>
+                    <h3 class="fr-step-title">Bundle settings</h3>
+                    <p class="fr-step-desc">Instrument type, period, and bar size from FirstRate</p>
                   </div>
                 </div>
-                <div id="fr_quickadd_fut" class="field fg-full" style="display:none">
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                    <span style="font-size:11px;color:var(--text-muted)">Quick add (MFF futures list):</span>
-                    <button type="button" class="btn sm primary" onclick="frPairsFillAllFutures()" title="All 40 CME roots from My Funded Futures instrument list">All MFF futures (40)</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('6A 6B 6C 6E 6J 6N 6S M6A M6E')">FX</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('ES NQ RTY YM MES MNQ M2K MYM NKD')">equity index</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('CL MCL QM NG QG HO RB')">energy</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('GC MGC SI SIL HG PL')">metals</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('ZC ZS ZW ZL ZM HE LE')">ags &amp; livestock</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('MBT MET')">crypto futures</button>
-                    <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+                <div class="fr-step-body">
+                  <div class="fr-settings-grid">
+                    <div class="field fr-field-type">
+                      <label for="fr_type">Instrument type</label>
+                      <select id="fr_type" class="input fr-type-select" onchange="updateFirstrateInstrumentUi()">
+                        <option value="fx" selected>fx — forex &amp; spot metals</option>
+                        <option value="index">index — cash indices &amp; commodity CFDs</option>
+                        <option value="futures">futures — CME roots (MFF list)</option>
+                        <option value="crypto">crypto — digital assets</option>
+                        <option value="stock">stock</option>
+                        <option value="etf">etf</option>
+                        <option value="options">options</option>
+                      </select>
+                      <div id="fr_subscription_warn" style="display:none;margin-top:8px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5"></div>
+                    </div>
+                    <div class="field">
+                      <label for="fr_period">Period</label>
+                      <select id="fr_period" class="input" onchange="updateFrFullPeriodUi()">
+                        <option value="week" selected>week</option>
+                        <option value="day">day</option>
+                        <option value="month">month</option>
+                        <option value="full">full (large)</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="fr_tf">Timeframe</label>
+                      <select id="fr_tf" class="input">
+                        <option value="1min" selected>1min</option>
+                        <option value="5min">5min</option>
+                        <option value="30min">30min</option>
+                        <option value="1hour">1hour</option>
+                        <option value="1day">1day</option>
+                      </select>
+                    </div>
+                    <div id="fr_ticker_range_wrap" class="field fr-field-full" style="display:none">
+                      <label for="fr_ticker_range">Ticker-range letter (advanced)</label>
+                      <select id="fr_ticker_range" class="input">
+                        <option value="">— auto (recommended) —</option>
+                        <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option><option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option><option value="M">M</option><option value="N">N</option><option value="O">O</option><option value="P">P</option><option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option><option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option><option value="Y">Y</option><option value="Z">Z</option>
+                      </select>
+                      <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45">
+                        For <code style="font-size:10px">period=full</code> on stock/ETF/options: leave <strong>auto</strong> and list tickers below — server fetches each needed letter (e.g. AAPL + TSLA → A + T).
+                      </span>
+                    </div>
+                    <div class="field fr-field-full" id="fr_adjustment_wrap" style="display:none">
+                      <label for="fr_adjustment"><span id="fr_adjustment_label">Adjustment</span></label>
+                      <select id="fr_adjustment" class="input"></select>
+                      <span id="fr_adjustment_hint" style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45"></span>
+                    </div>
                   </div>
                 </div>
-                <div id="fr_quickadd_crypto" class="field fg-full" style="display:none">
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                    <span style="font-size:11px;color:var(--text-muted)">Quick add (crypto):</span>
-                    <button type="button" class="btn sm primary" onclick="frPairsFillAllCrypto()" title="Replace contents with bundled + extended USD/USDT stems (trim to match your ZIP filenames)">All crypto (market list)</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('BTCUSD ETHUSD')">majors</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('SOLUSD XRPUSD ADAUSD DOGEUSD LTCUSD BCHUSD')">large caps</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('LINKUSD DOTUSD AVAXUSD MATICUSD UNIUSD ATOMUSD')">altcoins</button>
-                    <button type="button" class="btn sm" onclick="frPairsAdd('BTCUSDT ETHUSDT SOLUSDT XRPUSDT')">USDT perps</button>
-                    <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+              </section>
+
+              <!-- Step 2: symbol list -->
+              <section class="fr-step" style="margin:0 16px">
+                <div class="fr-step-hdr">
+                  <span class="fr-step-num">2</span>
+                  <div>
+                    <h3 class="fr-step-title">Symbol list</h3>
+                    <p class="fr-step-desc">Pick presets or paste tickers — empty box imports every file in the ZIP</p>
                   </div>
                 </div>
-                <div id="fr_pair_check_panel" class="field fg-full" style="display:none;margin-top:8px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:12px;line-height:1.55"></div>
-                <div class="field fg-full" style="margin-top:8px;padding-top:16px;border-top:1px dashed var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                  <button type="button" class="btn sm" id="frCheckPairsBtn" onclick="checkFirstratePairs()" title="Compare the ticker list against datasets already on the server — see what would be downloaded vs skipped">
-                    Check tickers
-                  </button>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:default;font-size:12px;color:var(--text-muted)" title="Symbols with data updated within the last 48 hours are not re-downloaded.">
-                    <input type="checkbox" id="fr_skip_fresh" checked>
-                    Skip tickers already up to date (fresh)
-                  </label>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:default;font-size:12px;color:var(--text-muted)" title="Only symbols with no dataset in the registry are downloaded. Stale symbols are skipped until you uncheck this.">
-                    <input type="checkbox" id="fr_skip_all_existing">
-                    Only download symbols not in registry yet
-                  </label>
-                  <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Download &amp; import now
-                  </button>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:default;font-size:12px;color:var(--text-muted)" title="When on, the newly downloaded candles are merged into the existing dataset with the same symbol: historical bars are preserved and any timestamp appearing in both is replaced with the vendor's freshest print. When off, a new dataset is created and the old one is kept untouched.">
-                    <input type="checkbox" id="fr_upsert" checked>
-                    Merge into existing dataset by symbol
-                  </label>
-                  <span id="frProgress" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+                <div class="fr-step-body">
+                  <div class="fr-symbols-layout">
+                    <aside class="fr-quickadd-panel">
+                      <div class="fr-quickadd-label">Quick add</div>
+                      <div id="fr_quickadd_fx" class="fr-quickadd-btns">
+                        <button type="button" class="btn sm primary" onclick="frPairsFillAllForex()" title="Full retail FX + metals list">All FX pairs</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('EURUSD GBPUSD USDJPY AUDUSD NZDUSD USDCAD USDCHF')">Majors</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('EURJPY GBPJPY EURGBP AUDJPY NZDJPY CADJPY CHFJPY')">JPY crosses</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('EURGBP EURAUD EURNZD EURCAD EURCHF GBPAUD GBPNZD GBPCAD GBPCHF AUDNZD AUDCAD AUDCHF NZDCAD NZDCHF CADCHF')">G10 crosses</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('USDNOK EURNOK USDSEK EURSEK USDDKK USDPLN EURPLN USDHUF USDCZK EURCZK USDSGD EURSGD SGDJPY USDHKD USDCNH USDTHB USDINR USDKRW USDIDR USDPHP USDMXN EURMXN USDBRL USDCLP USDTRY EURTRY USDZAR EURZAR GBPZAR')">Exotics</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('XAUUSD XAGUSD XPTUSD')" title="Spot metals">Metals</button>
+                      </div>
+                      <div id="fr_quickadd_index" class="fr-quickadd-btns" style="display:none">
+                        <button type="button" class="btn sm primary" onclick="frPairsFillAllIndices()">All indices &amp; energy</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('SPX500 NAS100 US30 US2000 GER40 UK100 FRA40 EUSTX50 JPN225 HK50 AUS200')">Equity indices</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('USOIL UKOIL NGAS COPPER CORN WHEAT SOYBN')">Energy &amp; ags</button>
+                      </div>
+                      <div id="fr_quickadd_fut" class="fr-quickadd-btns" style="display:none">
+                        <button type="button" class="btn sm primary" onclick="frPairsFillAllFutures()">All MFF futures (40)</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('6A 6B 6C 6E 6J 6N 6S M6A M6E')">FX</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('ES NQ RTY YM MES MNQ M2K MYM NKD')">Equity index</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('CL MCL QM NG QG HO RB')">Energy</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('GC MGC SI SIL HG PL')">Metals</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('ZC ZS ZW ZL ZM HE LE')">Ags &amp; livestock</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('MBT MET')">Crypto futures</button>
+                      </div>
+                      <div id="fr_quickadd_crypto" class="fr-quickadd-btns" style="display:none">
+                        <button type="button" class="btn sm primary" onclick="frPairsFillAllCrypto()">All crypto (market list)</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('BTCUSD ETHUSD')">Majors</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('SOLUSD XRPUSD ADAUSD DOGEUSD LTCUSD BCHUSD')">Large caps</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('LINKUSD DOTUSD AVAXUSD MATICUSD UNIUSD ATOMUSD')">Altcoins</button>
+                        <button type="button" class="btn sm" onclick="frPairsAdd('BTCUSDT ETHUSDT SOLUSDT XRPUSDT')">USDT perps</button>
+                      </div>
+                      <div id="fr_quickadd_none" class="fr-quickadd-btns" style="display:none">
+                        <p style="font-size:11px;color:var(--text-muted);margin:0;line-height:1.45">No presets for this type — use <strong>Browse symbols</strong> below or type tickers in the list.</p>
+                      </div>
+                      <div class="fr-quickadd-tools">
+                        <button type="button" class="btn sm" id="fr_load_tickers_btn" style="display:none" onclick="loadFirstrateTickerCatalog()">Browse symbols</button>
+                        <button type="button" class="btn sm" id="fr_last_update_btn" onclick="checkFirstrateLastUpdate()" title="Vendor publication date for the selected type">Check last update</button>
+                        <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;cursor:default">
+                          <input type="checkbox" id="fr_last_update_full"> Full-history date
+                        </label>
+                        <span id="fr_last_update_note" style="font-size:10px;color:var(--text-muted);line-height:1.4"></span>
+                        <span id="fr_load_tickers_note" style="font-size:10px;color:var(--text-muted);line-height:1.4"></span>
+                      </div>
+                    </aside>
+                    <div class="fr-symbols-main">
+                      <div class="fr-symbols-toolbar">
+                        <label for="fr_pairs">Tickers</label>
+                        <span id="fr_pairs_count" class="is-empty">Empty — whole ZIP</span>
+                        <button type="button" class="btn sm btn-clear" onclick="frPairsClear()">Clear list</button>
+                      </div>
+                      <textarea id="fr_pairs" rows="7" class="input" placeholder="EURUSD, GBPUSD, XAUUSD … comma, space, or newline" oninput="updateFrPairsCount()"></textarea>
+                      <p id="fr_ticker_hint"></p>
+                    </div>
+                  </div>
+                  <div id="fr_ticker_catalog_wrap" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,.08)">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+                      <input type="search" id="fr_catalog_filter" class="input" placeholder="Filter by symbol or name…" style="flex:1;min-width:180px" oninput="frCatalogFilterInput()">
+                      <button type="button" class="btn sm" onclick="frApplyTickerCatalogSelection()">Add selected</button>
+                      <button type="button" class="btn sm" onclick="frCloseTickerCatalog()">Close</button>
+                    </div>
+                    <select id="fr_catalog_select" multiple size="12" class="input" style="width:100%;font-family:ui-monospace,monospace;font-size:11px"></select>
+                    <div id="fr_catalog_status" style="font-size:11px;color:var(--text-muted);margin-top:8px"></div>
+                  </div>
                 </div>
-                <p style="font-size:11px;color:var(--text-muted);margin:12px 0 0;line-height:1.5">
-                  <strong>Automatic nightly updates</strong> are configured on the
-                  <button type="button" class="btn sm" style="vertical-align:baseline;padding:2px 8px;font-size:11px" onclick="setDsHubTab('schedule')">Schedule</button>
-                  tab (not here). Use this form for one-off imports.
-                </p>
-                <details class="field fg-full" style="margin-top:12px;border-top:1px dashed var(--border);padding-top:12px">
-                  <summary style="cursor:default;font-size:12px;font-weight:600;color:var(--danger,#ff6b6b);text-transform:uppercase;letter-spacing:0.05em;user-select:none">Danger zone · wipe all datasets before import</summary>
-                  <div style="padding:14px 4px 4px">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;color:var(--danger,#ff6b6b);font-size:12px">
+              </section>
+
+              <!-- Step 3: review & download -->
+              <section class="fr-step" style="margin:0 16px 16px">
+                <div class="fr-step-hdr">
+                  <span class="fr-step-num">3</span>
+                  <div>
+                    <h3 class="fr-step-title">Review &amp; download</h3>
+                    <p class="fr-step-desc">Check registry first — symbols you already have are skipped automatically</p>
+                  </div>
+                </div>
+                <div class="fr-step-body">
+                  <div id="fr_pair_check_panel" style="display:none"></div>
+                  <div class="fr-review-grid">
+                    <label class="fr-review-opt" title="Symbols updated within 48h are not re-downloaded">
+                      <input type="checkbox" id="fr_skip_fresh" checked>
+                      <span><strong>Skip fresh tickers</strong> — data ≤48h old stays as-is</span>
+                    </label>
+                    <label class="fr-review-opt" title="Only symbols with no dataset row are downloaded">
+                      <input type="checkbox" id="fr_skip_all_existing">
+                      <span><strong>New symbols only</strong> — never re-download anything in registry</span>
+                    </label>
+                    <label class="fr-review-opt" title="Merge new candles into existing dataset by symbol">
+                      <input type="checkbox" id="fr_upsert" checked>
+                      <span><strong>Merge into existing</strong> — keep history, update overlapping bars</span>
+                    </label>
+                  </div>
+                  <div class="fr-actions-row">
+                    <button type="button" class="btn sm" id="frCheckPairsBtn" onclick="checkFirstratePairs()">Check tickers</button>
+                    <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Download &amp; import
+                    </button>
+                    <span id="frProgress" style="font-size:12px;color:var(--text-muted);margin-left:auto;min-width:0;flex:1;text-align:right"></span>
+                  </div>
+                </div>
+                <details class="fr-footer-note" style="border-top-style:solid">
+                  <summary style="cursor:default;font-size:11px;font-weight:600;color:var(--danger,#ff6b6b);text-transform:uppercase;letter-spacing:0.05em;user-select:none;list-style:none">Danger zone · wipe all datasets before import</summary>
+                  <div style="padding-top:10px">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:default;color:var(--danger,#ff6b6b);font-size:12px">
                       <input type="checkbox" id="fr_delete_first">
-                      Wipe all existing datasets before this import (requires confirmation phrase)
+                      Delete every existing dataset before this import (requires confirmation phrase)
                     </label>
                   </div>
                 </details>
-              </div>
+              </section>
             </div>
           </div>
         </div>
@@ -8846,8 +8976,7 @@ function updateFirstrateInstrumentUi() {
         'Pick continuous adjustment below (<strong>contin_UNadj</strong> is the usual starting point).';
     } else if (v === 'fx') {
       hint.innerHTML =
-        'When this box is <strong>empty</strong>, the import matches <em>every</em> FX file in the ZIP. When it is <strong>filled</strong> (default: full retail G10 + exotics list), only those stems are kept. ' +
-        'Use quick-add for <strong>indices / energy</strong> (switches to <code style="font-size:10px">index</code> type) or <strong>crypto CFDs</strong>. Spot metals (XAUUSD, XAGUSD) stay on <code style="font-size:10px">fx</code>.';
+        'Empty list = every FX file in the ZIP. Filled list = only those symbols. Spot metals (XAUUSD, XAGUSD) use this <code style="font-size:10px">fx</code> type — switch to <code style="font-size:10px">index</code> or <code style="font-size:10px">crypto</code> in step 1 for other asset classes.';
     } else if (v === 'index') {
       hint.innerHTML =
         'Cash indices (SPX500, NAS100, GER40, JPN225, …) and commodity CFDs (USOIL, NGAS, COPPER, …) use FirstRate <code style="font-size:10px">index</code> bundles — not the FX endpoint. ' +
@@ -8883,10 +9012,13 @@ function updateFirstrateInstrumentUi() {
   const idxq = $('fr_quickadd_index');
   const futq = $('fr_quickadd_fut');
   const cryq = $('fr_quickadd_crypto');
+  const noneq = $('fr_quickadd_none');
+  const hasPreset = v === 'fx' || v === 'index' || v === 'futures' || v === 'crypto';
   if (fxq)  fxq.style.display  = v === 'fx'      ? 'flex'  : 'none';
-  if (idxq) idxq.style.display = v === 'index'   ? 'block' : 'none';
-  if (futq) futq.style.display = v === 'futures' ? 'block' : 'none';
-  if (cryq) cryq.style.display = v === 'crypto'  ? 'block' : 'none';
+  if (idxq) idxq.style.display = v === 'index'   ? 'flex'  : 'none';
+  if (futq) futq.style.display = v === 'futures' ? 'flex'  : 'none';
+  if (cryq) cryq.style.display = v === 'crypto'  ? 'flex'  : 'none';
+  if (noneq) noneq.style.display = hasPreset ? 'none' : 'flex';
 
   const cat = $('fr_ticker_catalog_wrap');
   if (cat && !catalogOk) {
@@ -8894,6 +9026,26 @@ function updateFirstrateInstrumentUi() {
     frCloseTickerCatalog(true);
   }
   updateFrFullPeriodUi();
+  updateFrPairsCount();
+}
+
+function updateFrPairsCount() {
+  const el = $('fr_pairs_count');
+  if (!el) return;
+  const n = parsePairsFromTextarea('fr_pairs').length;
+  if (!n) {
+    el.textContent = 'Empty — whole ZIP';
+    el.classList.add('is-empty');
+  } else {
+    el.textContent = n + ' symbol' + (n !== 1 ? 's' : '');
+    el.classList.remove('is-empty');
+  }
+}
+
+function frPairsClear() {
+  const el = $('fr_pairs');
+  if (el) el.value = '';
+  updateFrPairsCount();
 }
 
 function frInstrumentTypeChanged() {
@@ -9042,6 +9194,7 @@ function frPairsFillAllCrypto() {
   const ta = $('fr_pairs');
   if (!ta) return;
   ta.value = getDefaultAllCryptoTickersComma();
+  updateFrPairsCount();
   try {
     const n = parsePairsFromTextarea('fr_pairs').length;
     toast('Filled ' + n + ' crypto symbols (trim symbols your vendor ZIP does not include).', 'ok');
@@ -9324,6 +9477,7 @@ function frPairsFillAllIndices() {
     updateFirstrateInstrumentUi();
   }
   ta.value = getDefaultAllIndexTickersComma();
+  updateFrPairsCount();
   try {
     const n = parsePairsFromTextarea('fr_pairs').length;
     toast('Filled ' + n + ' index/commodity CFD symbols (instrument type set to index).', 'ok');
@@ -9341,6 +9495,7 @@ function frPairsFillAllCryptoCfd() {
     updateFirstrateInstrumentUi();
   }
   ta.value = getDefaultCryptoCfdTickersComma();
+  updateFrPairsCount();
   try {
     const n = parsePairsFromTextarea('fr_pairs').length;
     toast('Filled ' + n + ' crypto CFD symbols (instrument type set to crypto).', 'ok');
@@ -9353,6 +9508,7 @@ function frPairsFillAllFutures() {
   const ta = $('fr_pairs');
   if (!ta) return;
   ta.value = getDefaultAllFuturesTickersComma();
+  updateFrPairsCount();
   try {
     const n = parsePairsFromTextarea('fr_pairs').length;
     toast('Filled ' + n + ' MFF futures roots (My Funded Futures instrument list).', 'ok');
@@ -9365,6 +9521,7 @@ function frPairsFillAllForex() {
   const ta = $('fr_pairs');
   if (!ta) return;
   ta.value = getDefaultAllForexTickersComma();
+  updateFrPairsCount();
   try {
     const n = parsePairsFromTextarea('fr_pairs').length;
     toast('Filled ' + n + ' FX symbols (trim in the box if your vendor bundle omits some).', 'ok');
@@ -9406,6 +9563,7 @@ function dedupeFrPairsTextareaInPlace() {
   const normBefore = before.replace(/\s+/g, ' ').trim();
   if (normBefore === after) return false;
   el.value = after;
+  updateFrPairsCount();
   return true;
 }
 
@@ -9415,6 +9573,7 @@ function frPairsAdd(line) {
   const cur = el.value.replace(/\s+$/, '');
   const add = line.trim();
   el.value = cur ? (cur + ' ' + add) : add;
+  updateFrPairsCount();
 }
 
 let _frLivePrevJobId = null;
@@ -10299,6 +10458,7 @@ async function loadFirstrateSchedule() {
     } else if ($('fr_pairs') && (!s.pairs || !s.pairs.length)) {
       $('fr_pairs').value = '';
     }
+    updateFrPairsCount();
     if ($('fr_ticker_range')) {
       var tr = s.ticker_range;
       $('fr_ticker_range').value =
