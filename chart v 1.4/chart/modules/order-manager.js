@@ -3600,15 +3600,6 @@ class OrderManager {
                 this.orderService.recomputeSharedMarginState();
             }
         }
-        try {
-            if (window.propFirmTracker && typeof window.propFirmTracker.checkRules === 'function') {
-                const now = Date.now();
-                if (!this._lastPropRuleCheckMs || now - this._lastPropRuleCheckMs >= 300) {
-                    this._lastPropRuleCheckMs = now;
-                    window.propFirmTracker.checkRules();
-                }
-            }
-        } catch (e) {}
     }
 
     recomputeAccountFromJournal() {
@@ -4393,190 +4384,6 @@ class OrderManager {
             } catch (e) {}
         }
         console.log(`💰 Applied session starting balance: $${pb.toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
-    }
-
-    /** Prop firm: max position (contracts / lots / % equity); null = no cap. */
-    _getPropMaxPositionLimit() {
-        try {
-            if (window.propFirmTracker && typeof window.propFirmTracker.getMaxPositionQuantity === 'function') {
-                return window.propFirmTracker.getMaxPositionQuantity(this);
-            }
-            const session = this.chart && this.chart.backtestingSession;
-            if (!session || String(session.type || '').toLowerCase() !== 'propfirm') return null;
-            const pr = session.prop_rules || {};
-            if (this.marketType === 'futures') {
-                if (pr.maxContractsEnabled !== true) return null;
-                const n = Number(pr.maxContracts);
-                if (!Number.isFinite(n) || n <= 0) return null;
-                return Math.floor(n);
-            }
-            if (pr.maxPositionEnabled !== true) return null;
-            const n = Number(pr.maxPosition);
-            if (!Number.isFinite(n) || n <= 0) return null;
-            const unit = String(pr.maxPositionUnit || 'lots').toLowerCase();
-            if (unit === '%') {
-                const eq = Number(this.equity) || Number(session.initial_balance) || 0;
-                const candle = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
-                const price = Number(candle && candle.c) || 0;
-                const cs = Number(this.contractSize) || 100000;
-                if (eq > 0 && price > 0 && cs > 0) {
-                    return Math.max(0, (eq * (n / 100)) / (cs * price));
-                }
-                return null;
-            }
-            return n;
-        } catch (e) {
-            return null;
-        }
-    }
-
-    /** @deprecated use _getPropMaxPositionLimit */
-    _getPropMaxContractsLimit() {
-        if (this.marketType !== 'futures') return null;
-        const max = this._getPropMaxPositionLimit();
-        return max != null ? Math.floor(max) : null;
-    }
-
-    _clampQtyToPropMax(qty) {
-        const max = this._getPropMaxPositionLimit();
-        if (max == null) return qty;
-        const q = parseFloat(qty);
-        if (!Number.isFinite(q) || q <= 0) return qty;
-        return Math.min(q, max);
-    }
-
-    /** Authoritative qty for placement / prop rules — lot-size mode uses #lotSizeAmount, not stale #orderQuantity. */
-    _isStopLossActiveForSizing(entryPrice) {
-        let slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        if (!(slPrice > 0)) {
-            const bridgedSl = this._readV9OrderBridgeField('slPrice');
-            if (bridgedSl != null) slPrice = bridgedSl;
-        }
-        const enableSL = document.getElementById('enableSL')?.checked;
-        if (!Number.isFinite(slPrice) || slPrice <= 0) return false;
-        if (enableSL) return true;
-        let ep = Number(entryPrice) || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-        if (!(ep > 0)) {
-            const bridgedEp = this._readV9OrderBridgeField('entryPrice');
-            if (bridgedEp != null) ep = bridgedEp;
-        }
-        return ep > 0 && Math.abs(slPrice - ep) > 1e-12;
-    }
-
-    _readV9OrderBridgeField(field) {
-        try {
-            const b = typeof window !== 'undefined' ? window.__talariaV9OrderBridge : null;
-            if (!b || b.orderPanelOpen !== true) return null;
-            if (field === 'entryPrice') {
-                const rows = b.entryRows;
-                const px = parseFloat(rows?.[0]?.price ?? '');
-                return Number.isFinite(px) && px > 0 ? px : null;
-            }
-            if (field === 'slPrice') {
-                if (b.slEnabled === false) return null;
-                const px = parseFloat(b.slRows?.[0]?.price ?? '');
-                return Number.isFinite(px) && px > 0 ? px : null;
-            }
-            if (field === 'riskUsd') {
-                if (b.sizeMode !== '$') return null;
-                const v = parseFloat(b.riskVal ?? '');
-                return Number.isFinite(v) && v > 0 ? v : null;
-            }
-            if (field === 'riskPct') {
-                if (b.sizeMode !== '%') return null;
-                const v = parseFloat(b.riskVal ?? '');
-                return Number.isFinite(v) && v > 0 ? v : null;
-            }
-        } catch (_e) { /* ignore */ }
-        return null;
-    }
-
-    _deriveOrderQuantityFromRiskInputs() {
-        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-        if (!(entryPrice > 0)) {
-            const bridged = this._readV9OrderBridgeField('entryPrice');
-            if (bridged != null) entryPrice = bridged;
-        }
-        if (!(entryPrice > 0) || !this._isStopLossActiveForSizing(entryPrice)) return 0;
-        let slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        if (!(slPrice > 0)) {
-            const bridgedSl = this._readV9OrderBridgeField('slPrice');
-            if (bridgedSl != null) slPrice = bridgedSl;
-        }
-        if (!(slPrice > 0)) return 0;
-
-        let riskUsd = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
-        let riskPct = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
-        if (!(riskUsd > 0)) {
-            const bridgedUsd = this._readV9OrderBridgeField('riskUsd');
-            if (bridgedUsd != null) riskUsd = bridgedUsd;
-        }
-        if (!(riskPct > 0)) {
-            const bridgedPct = this._readV9OrderBridgeField('riskPct');
-            if (bridgedPct != null) riskPct = bridgedPct;
-        }
-        let riskAmount = 0;
-        if (this.positionSizeMode === 'risk-percent' && riskPct > 0) {
-            const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-            const balance = balanceType === 'current' ? this.balance : this.initialBalance;
-            riskAmount = (balance * riskPct) / 100;
-        } else if (riskUsd > 0) {
-            riskAmount = riskUsd;
-        }
-
-        if (!(riskAmount > 0) || typeof this._enginePositionSize !== 'function') return 0;
-        const derived = this._enginePositionSize(riskAmount, entryPrice, slPrice, entryPrice);
-        return Number.isFinite(derived) && derived > 0 ? this._roundQtyToStep(derived) : 0;
-    }
-
-    _getEffectiveOrderQuantity() {
-        const oq = parseFloat(document.getElementById('orderQuantity')?.value || 0);
-        if (this.positionSizeMode === 'lot-size') {
-            const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
-            if (Number.isFinite(lotSize) && lotSize > 0) {
-                return this._roundQtyToStep(lotSize);
-            }
-        }
-        if (this.isMultiEntryMode && this.multiEntryLevels?.length > 0) {
-            const implied = this._getMultiEntryImpliedTotalLots();
-            if (implied > 0) return this._roundQtyToStep(implied);
-        }
-        if (Number.isFinite(oq) && oq > 0) return oq;
-
-        const derived = this._deriveOrderQuantityFromRiskInputs();
-        if (derived > 0) return derived;
-
-        return Number.isFinite(oq) ? oq : 0;
-    }
-
-    _syncOrderQuantityFromRisk() {
-        if (this.positionSizeMode === 'lot-size') return;
-        const q = this._deriveOrderQuantityFromRiskInputs();
-        const qtyInput = document.getElementById('orderQuantity');
-        if (!qtyInput || !(q > 0)) return;
-        const formatted = this._formatQty(q);
-        if (qtyInput.value !== formatted) {
-            qtyInput.value = formatted;
-        }
-    }
-
-    _syncOrderQuantityFromLotSize() {
-        if (this.positionSizeMode !== 'lot-size') return;
-        const lotSize = parseFloat(document.getElementById('lotSizeAmount')?.value || 0);
-        const qtyInput = document.getElementById('orderQuantity');
-        if (!qtyInput || !(lotSize > 0)) return;
-        const snapped = this._roundQtyToStep(lotSize);
-        const formatted = this._formatQty(snapped);
-        if (qtyInput.value !== formatted) {
-            qtyInput.value = formatted;
-        }
-    }
-
-    _validatePropBeforeOrder(quantity) {
-        if (!window.propFirmTracker || typeof window.propFirmTracker.validateBeforeOrder !== 'function') {
-            return { ok: true };
-        }
-        return window.propFirmTracker.validateBeforeOrder(quantity, this);
     }
     
     /**
@@ -14215,7 +14022,6 @@ class OrderManager {
                 
                 this._syncTpProfitTargetFieldVisibility();
                 this._syncSlCardSecondaryRows();
-                this.updatePlaceButtonText();
             };
         });
         
@@ -14244,7 +14050,6 @@ class OrderManager {
                 }
                 
                 this.updatePreviewLines();
-                this.updatePlaceButtonText();
                 this.syncSelectedRiskRewardDrawingFromPanelDebounced();
             };
         }
@@ -14261,7 +14066,6 @@ class OrderManager {
                 }
                 
                 this.updatePreviewLines();
-                this.updatePlaceButtonText();
                 this.syncSelectedRiskRewardDrawingFromPanelDebounced();
             };
         }
@@ -14278,7 +14082,6 @@ class OrderManager {
                 }
                 
                 this.updatePreviewLines();
-                this.updatePlaceButtonText();
                 this.syncSelectedRiskRewardDrawingFromPanelDebounced();
             };
         }
@@ -14540,7 +14343,6 @@ class OrderManager {
                 this.calculatePositionFromRisk();
                 this.calculateAdvancedRiskReward();
                 this.updatePreviewLines(); // Update preview when SL is toggled
-                this.updatePlaceButtonText();
             };
         }
         
@@ -14970,9 +14772,6 @@ class OrderManager {
     updatePlaceButtonText() {
         if (this._orderPlacedAwaitingReset) return;
 
-        this._syncOrderQuantityFromRisk();
-        this._syncOrderQuantityFromLotSize();
-
         const placeBtn = document.getElementById('placeOrderButton');
         const config = this.getMarketConfig();
         const positionLabel = config.positionLabel;
@@ -14985,10 +14784,10 @@ class OrderManager {
             return;
         }
 
-        const quantity = this._getEffectiveOrderQuantity();
+        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 0);
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const enableSL = document.getElementById('enableSL')?.checked;
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const hasActiveSl = this._isStopLossActiveForSizing(entryPrice);
         
         const symbol = this._getSymbol() || '';
         
@@ -15015,7 +14814,7 @@ class OrderManager {
                 } else if (this.positionSizeMode === 'lot-size') {
                     reason = `Enter ${positionLabel}`;
                 } else if ((this.positionSizeMode === 'risk-usd' || this.positionSizeMode === 'risk-percent')) {
-                    if (!hasActiveSl) {
+                    if (!enableSL || !slPrice || slPrice <= 0) {
                         reason = 'Set Stop Loss';
                     } else {
                         reason = 'Set Position Size';
@@ -15031,19 +14830,6 @@ class OrderManager {
             } else if (this._futuresMultiTpAllocationErrors(entryPrice, quantity).length > 0) {
                 canPlace = false;
                 reason = 'Multi-TP: whole contracts only';
-            } else {
-                const propMax = this._getPropMaxPositionLimit();
-                if (propMax != null && quantity > propMax) {
-                    canPlace = false;
-                    const unit = this.marketType === 'futures' ? 'contracts' : 'lots';
-                    reason = `Max ${propMax} ${unit}`;
-                } else {
-                    const propValidation = this._validatePropBeforeOrder(quantity);
-                    if (!propValidation.ok) {
-                        canPlace = false;
-                        reason = propValidation.reason || 'Challenge rule violated';
-                    }
-                }
             }
             
             // Update button state
@@ -15196,14 +14982,7 @@ class OrderManager {
             entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         }
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        let enableSL = document.getElementById('enableSL')?.checked;
-        if (slPrice > 0 && !enableSL) {
-            const slChk = document.getElementById('enableSL');
-            if (slChk) {
-                slChk.checked = true;
-                enableSL = true;
-            }
-        }
+        const enableSL = document.getElementById('enableSL')?.checked;
         
         // For lot-size mode, we don't need SL to set position size
         if (this.positionSizeMode === 'lot-size') {
@@ -15238,7 +15017,7 @@ class OrderManager {
             
             // Update orderQuantity (instrument-aware formatting: futures = integer contracts).
             // Use floor-snap, not toFixed(0), so 0.8 futures contracts becomes invalid instead of rounding up to 1.
-            const snappedLotSize = this._clampQtyToPropMax(this._roundQtyToStep(lotSize));
+            const snappedLotSize = this._roundQtyToStep(lotSize);
             const qtyInput = document.getElementById('orderQuantity');
             if (qtyInput) {
                 qtyInput.value = this._formatQty(snappedLotSize);
@@ -15267,11 +15046,9 @@ class OrderManager {
         }
         
         // For risk-based modes, need entry price and stop loss to calculate position size
-        if (!entryPrice || !this._isStopLossActiveForSizing(entryPrice)) {
-            const qtyInput = document.getElementById('orderQuantity');
-            if (qtyInput) qtyInput.value = '0';
+        if (!entryPrice || !slPrice || !enableSL) {
+            document.getElementById('orderQuantity').value = '0';
             this._applyCalculatedReadout(this._getCalculatedReadoutParts());
-            this.updatePlaceButtonText();
             return;
         }
         
@@ -15280,7 +15057,6 @@ class OrderManager {
         if (slDistance === 0) {
             document.getElementById('orderQuantity').value = '0';
             this._applyCalculatedReadout(this._getCalculatedReadoutParts());
-            this.updatePlaceButtonText();
             return;
         }
         
@@ -15298,7 +15074,6 @@ class OrderManager {
         if (riskAmount <= 0) {
             document.getElementById('orderQuantity').value = '0';
             this._applyCalculatedReadout(this._getCalculatedReadoutParts());
-            this.updatePlaceButtonText();
             return;
         }
 
@@ -23592,8 +23367,6 @@ class OrderManager {
     placeAdvancedOrder(options = {}) {
         console.log('🟦OM-DIAG placeAdvancedOrder() CALLED', options);
         const keepPanelOpen = options.keepPanelOpen === true;
-        this._syncOrderQuantityFromRisk();
-        this._syncOrderQuantityFromLotSize();
         if (!this.replaySystem || !this.replaySystem.isActive) {
             alert('Replay mode must be active to place orders');
             return;
@@ -23609,21 +23382,7 @@ class OrderManager {
         const marketFillTimeMs = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         const currentPrice = currentCandle.c;
-        let quantity = this._getEffectiveOrderQuantity();
-        if (!(quantity > 0)) {
-            quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        }
-        const propValidation = this._validatePropBeforeOrder(quantity);
-        if (!propValidation.ok) {
-            this.showNotification(propValidation.reason || 'Prop challenge rule violated', 'warning', 5000);
-            return;
-        }
-        const propMaxPosition = this._getPropMaxPositionLimit();
-        if (propMaxPosition != null && quantity > propMaxPosition) {
-            const unit = this.marketType === 'futures' ? 'contracts' : 'lots';
-            this.showNotification(`Max ${propMaxPosition} ${unit} (prop challenge rule)`, 'warning', 5000);
-            return;
-        }
+        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         // `let` (not `const`) — tick-grid snap below re-assigns this value so all
         // downstream order-creation paths use the snapped price.
         let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
@@ -23646,14 +23405,12 @@ class OrderManager {
             }
         }
         
-        // Calculate SL price from inputs (honour priced SL even if checkbox lagged behind V9 bridge)
-        if (slEnabled || this._isStopLossActiveForSizing(entryPrice)) {
+        // Calculate SL price from inputs
+        if (slEnabled) {
             const slPriceInput = parseFloat(document.getElementById('slPrice')?.value || 0);
             
             if (slPriceInput > 0) {
                 slPrice = slPriceInput;
-                const slChk = document.getElementById('enableSL');
-                if (slChk && !slChk.checked) slChk.checked = true;
             }
         }
 
@@ -27800,25 +27557,21 @@ class OrderManager {
         
         // Track prop firm progress (for both partial and full closes)
         if (window.propFirmTracker) {
-            try {
-                window.propFirmTracker.recordTrade({
-                    id: orderId,
-                    type: position.type,
-                    openPrice: position.openPrice,
-                    closePrice: closePrice,
-                    openTime: position.openTime,
-                    closeTime: closeTime,
-                    timestamp: closeTime,
-                    quantity: closeQuantity,
-                    profit: pnl,
-                    pnl: pnl,
-                    hitType: hitType,
-                    isPartial: isPartialClose
-                });
-                window.propFirmTracker.updateBalance(this.balance);
-            } catch (e) {
-                console.warn('propFirmTracker close tracking failed', e);
-            }
+            window.propFirmTracker.recordTrade({
+                id: orderId,
+                type: position.type,
+                openPrice: position.openPrice,
+                closePrice: closePrice,
+                openTime: position.openTime,
+                closeTime: closeTime,
+                timestamp: closeTime,
+                quantity: closeQuantity,
+                profit: pnl,
+                pnl: pnl,
+                hitType: hitType,
+                isPartial: isPartialClose
+            });
+            window.propFirmTracker.updateBalance(this.balance);
         }
         
         if (isPartialClose) {

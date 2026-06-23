@@ -1059,8 +1059,6 @@ async function handleFormSubmit(e) {
     const p2ProfitTargetAmt = getNum('phase2ProfitTargetDollar', p1ProfitTargetAmt);
     const minTradingDays = getBool('disableMinDays', false) ? 0 : getInt('minTradingDays', 0);
     const leverageNumber = getInt('leverageValue', 100);
-    const sessionAssetClass = getStr('assetClass', getStr('asset_class', 'Forex'));
-    const isFutPropAsset = sessionAssetClass.toLowerCase().includes('future');
 
     // Collect form data
     const formData = {
@@ -1113,16 +1111,11 @@ async function handleFormSubmit(e) {
             p1MinDays: minTradingDays,
             p2MinDays: getInt('phase2MinTradingDays', minTradingDays),
             minTradingDays: minTradingDays,
-            maxPosition: isFutPropAsset
-                ? (getBool('maxContractsEnabled', false) ? getInt('maxContracts', 0) : 0)
-                : (getBool('maxPositionEnabled', false) ? getNum('maxPositionValue', 0) : 0),
-            maxPositionEnabled: isFutPropAsset
-                ? getBool('maxContractsEnabled', false)
-                : getBool('maxPositionEnabled', false),
+            maxPosition: getNum('maxPositionValue', getNum('maxContracts', 0)),
+            maxPositionEnabled: getBool('maxPositionEnabled', getBool('maxContractsEnabled', false)),
             maxPositionUnit: getStr('maxPositionUnit', 'lots'),
             maxContracts: getInt('maxContracts', 0),
             maxContractsEnabled: getBool('maxContractsEnabled', false),
-            ...(getBool('maxPositionEnabled', false) ? { _maxPositionUserSet: true } : {}),
             consistencyRule: getBool('consistencyRule', false),
             consistencyPct: getNum('consistencyPct', 30),
             weekendHold: getBool('weekendHold', false),

@@ -1232,10 +1232,7 @@ function v9OmTpShareLotsAt(om, targetIndex, symbolType) {
     typeof om._getReferenceEntryForOrderMath === "function"
       ? om._getReferenceEntryForOrderMath()
       : parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
-  const oq =
-    typeof om._getEffectiveOrderQuantity === "function"
-      ? om._getEffectiveOrderQuantity()
-      : parseFloat(document.getElementById("orderQuantity")?.value || 0);
+  const oq = parseFloat(document.getElementById("orderQuantity")?.value || 0);
   const side = om.orderSide || "BUY";
   const eff =
     typeof om._computeEffectiveTPPercentages === "function"
@@ -2679,114 +2676,25 @@ function v9GetPriceStepPerPixel() {
   return 0.01;
 }
 
-/** Eastern Arabic / Persian digits → Western (0–9) for tool coordinate fields. */
-function v9NormalizeLatinNumericString(rawValue) {
-  if (rawValue == null) return "";
-  let s = String(rawValue).trim();
-  s = s.replace(/[\u0660-\u0669]/g, (ch) => String(ch.charCodeAt(0) - 0x0660));
-  s = s.replace(/[\u06F0-\u06F9]/g, (ch) => String(ch.charCodeAt(0) - 0x06F0));
-  s = s.replace(/\u066B/g, ".").replace(/\u066C/g, "").replace(/,/g, ".");
-  return s;
-}
-
-function v9ParseLatinCoordNumber(rawValue) {
-  const norm = v9NormalizeLatinNumericString(rawValue);
-  if (norm === "" || norm === "-" || norm === "+" || norm === "." || norm === "-." || norm === "+.") return NaN;
-  const n = parseFloat(norm);
-  return Number.isFinite(n) ? n : NaN;
-}
-
-function v9FormatCoordStoredValue(raw, type, dec) {
-  const norm = v9NormalizeLatinNumericString(raw);
-  if (norm === "" || norm === "-" || norm === "+" || norm === "." || norm === "-." || norm === "+.") return norm;
-  const n = parseFloat(norm);
-  if (!Number.isFinite(n)) return String(raw ?? "");
-  if (type === "price") return n.toFixed(dec);
-  const r = Math.round(n);
-  return Math.abs(n - r) < 1e-6 ? String(r) : n.toFixed(2);
-}
-
-function v9StepCoordStoredValue(raw, type, delta, dec, pxStep) {
-  const n = v9ParseLatinCoordNumber(raw);
-  const base = Number.isFinite(n) ? n : 0;
-  if (type === "price") return (base + delta * pxStep).toFixed(dec);
-  return String(Math.round(base + delta));
-}
-
-/** V9 Coordinates tab spin input — always Western Arabic numerals (0–9), even on Arabic OS locale. */
-function v9RenderCoordSpinInput({
-  k, type, value, onSetValue, dec, pxStep, c, F, btnFontSize = 8, onPointerDown, onMouseDown, pointerActivate,
-}) {
-  const activate = pointerActivate || ((fn) => ({
-    onPointerDown: (e) => { e.preventDefault(); e.stopPropagation(); fn(); },
-  }));
-  const commitFormatted = (raw) => {
-    const formatted = v9FormatCoordStoredValue(raw, type, dec);
-    onSetValue(k, formatted);
-  };
-  return (
-    <div style={{ position: "relative", width: "100%" }}>
-      <input
-        type="text"
-        inputMode={type === "price" ? "decimal" : "numeric"}
-        lang="en"
-        dir="ltr"
-        value={v9FormatCoordStoredValue(value, type, dec)}
-        onChange={(e) => onSetValue(k, v9NormalizeLatinNumericString(e.target.value))}
-        onBlur={(e) => commitFormatted(e.target.value)}
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={onPointerDown}
-        onMouseDown={onMouseDown}
-        className="tlr-nospinner"
-        style={{
-          width: "100%", height: 28, background: "rgba(140,160,255,0.05)",
-          border: "1px solid rgba(140,160,255,0.2)",
-          color: c.tx, fontSize: 12, fontFamily: F, padding: "0 19px 0 8px",
-          outline: "none", boxSizing: "border-box",
-          fontVariantNumeric: "tabular-nums lining-nums", unicodeBidi: "plaintext", direction: "ltr",
-        }}
-      />
-      <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${c.br}` }}>
-        {[[+1, "▲"], [-1, "▼"]].map(([delta, chr], i) => (
-          <button
-            type="button"
-            key={i}
-            {...activate(() => onSetValue(k, v9StepCoordStoredValue(value, type, delta, dec, pxStep)))}
-            onMouseEnter={(e) => { e.currentTarget.style.color = c.acL; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = c.ts; }}
-            style={{
-              flex: 1, width: 18, background: "transparent", border: "none", color: c.ts, cursor: "default",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: btnFontSize, lineHeight: 1, fontFamily: F, padding: 0,
-              borderBottom: i === 0 ? `1px solid ${c.br}` : "none", transition: "color 0.1s",
-            }}
-          >
-            {chr}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function v9MakeCoordSpinInputRenderer({ getValue, setValue, dec, pxStep, c, F, btnFontSize = 8, onPointerDown, onMouseDown, pointerActivate }) {
-  return (k, type) => v9RenderCoordSpinInput({
-    k, type, value: getValue(k), onSetValue: setValue, dec, pxStep, c, F, btnFontSize, onPointerDown, onMouseDown, pointerActivate,
-  });
-}
-
 /** drawing.points[] — x = bar index, y = price → V9 Coordinates tab (`pt{n}Price` / `pt{n}Bar`). */
 function v9CoordPatchFromDrawing(d) {
   const pts = d && d.points;
   if (!Array.isArray(pts) || pts.length === 0) return {};
   const patch = {};
   const dec = v9GetPriceDecimals();
+  const fmtPrice = (y) => {
+    if (typeof y !== "number" || !Number.isFinite(y)) return "";
+    return y.toFixed(dec);
+  };
   for (let i = 0; i < Math.min(pts.length, 7); i++) {
     const p = pts[i];
     if (!p) continue;
     const n = i + 1;
-    patch[`pt${n}Price`] = v9FormatCoordStoredValue(p.y, "price", dec);
-    patch[`pt${n}Bar`] = v9FormatCoordStoredValue(p.x, "bar", dec);
+    patch[`pt${n}Price`] = fmtPrice(p.y);
+    const barIdx = p.x;
+    patch[`pt${n}Bar`] = Number.isFinite(barIdx)
+      ? (Math.abs(barIdx - Math.round(barIdx)) < 1e-6 ? String(Math.round(barIdx)) : barIdx.toFixed(2))
+      : "";
   }
   return patch;
 }
@@ -2856,8 +2764,10 @@ function v9AnchorCoordPatchFromDrawing(d) {
   const p = pts[0];
   const barIdx = p.x;
   return {
-    anchorPrice: v9FormatCoordStoredValue(p.y, "price", dec),
-    anchorBar: v9FormatCoordStoredValue(barIdx, "bar", dec),
+    anchorPrice: Number.isFinite(p.y) ? p.y.toFixed(dec) : "",
+    anchorBar: Number.isFinite(barIdx)
+      ? (Math.abs(barIdx - Math.round(barIdx)) < 1e-6 ? String(Math.round(barIdx)) : barIdx.toFixed(2))
+      : "",
   };
 }
 
@@ -2866,12 +2776,12 @@ function v9ApplyAnchorPointsFromAvStyle(d, avStyle) {
   let changed = false;
   const rawP = avStyle.anchorPrice;
   if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
-    const py = v9ParseLatinCoordNumber(rawP);
+    const py = parseFloat(String(rawP).replace(/,/g, ""));
     if (Number.isFinite(py) && py !== d.points[0].y) { d.points[0].y = py; changed = true; }
   }
   const rawB = avStyle.anchorBar;
   if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
-    const px = v9ParseLatinCoordNumber(rawB);
+    const px = parseFloat(String(rawB).replace(/,/g, ""));
     if (Number.isFinite(px) && px !== d.points[0].x) { d.points[0].x = px; changed = true; }
   }
   if (!changed) return false;
@@ -2890,7 +2800,7 @@ function v9ApplyPointsFromTlStyle(d, tlStyle) {
     const n = i + 1;
     const rawP = tlStyle[`pt${n}Price`];
     if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
-      const py = v9ParseLatinCoordNumber(rawP);
+      const py = parseFloat(String(rawP).replace(/,/g, ""));
       if (Number.isFinite(py) && py !== d.points[i].y) {
         d.points[i].y = py;
         changed = true;
@@ -2899,7 +2809,7 @@ function v9ApplyPointsFromTlStyle(d, tlStyle) {
     }
     const rawB = tlStyle[`pt${n}Bar`];
     if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
-      const px = v9ParseLatinCoordNumber(rawB);
+      const px = parseFloat(String(rawB).replace(/,/g, ""));
       if (Number.isFinite(px) && px !== d.points[i].x) {
         d.points[i].x = px;
         changed = true;
@@ -9685,79 +9595,12 @@ function v9IsPartialDecimalInput(str) {
   return false;
 }
 
-/** Prop firm session: configured max position (# mode); null = unlimited. */
-function v9GetPropMaxPosition(symbolType) {
-  try {
-    const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
-    const om = window.chart?.orderManager;
-    if (tracker && typeof tracker.getMaxPositionQuantity === "function") {
-      return tracker.getMaxPositionQuantity(om);
-    }
-    const sess = window.chart?.backtestingSession;
-    if (!sess || String(sess.type || "").toLowerCase() !== "propfirm") return null;
-    const pr = sess.prop_rules || {};
-    if (symbolType === "futures") {
-      if (pr.maxContractsEnabled !== true) return null;
-      const n = Number(pr.maxContracts);
-      if (!Number.isFinite(n) || n <= 0) return null;
-      return Math.floor(n);
-    }
-    if (pr.maxPositionEnabled !== true) return null;
-    const n = Number(pr.maxPosition);
-    if (!Number.isFinite(n) || n <= 0) return null;
-    const unit = String(pr.maxPositionUnit || "lots").toLowerCase();
-    if (unit === "%" && om) {
-      const eq = Number(om.equity) || Number(sess.initial_balance) || 0;
-      const candle = typeof om.getCurrentCandle === "function" ? om.getCurrentCandle() : null;
-      const price = Number(candle?.c) || 0;
-      const cs = Number(om.contractSize) || 100000;
-      if (eq > 0 && price > 0 && cs > 0) {
-        return Math.max(0, (eq * (n / 100)) / (cs * price));
-      }
-      return null;
-    }
-    return n;
-  } catch {
-    return null;
-  }
-}
-
-/** @deprecated — use v9GetPropMaxPosition */
-function v9GetPropMaxContracts() {
-  return v9GetPropMaxPosition("futures");
-}
-
-function v9CapPropPosition(n, symbolType, sizeMode = "#") {
-  if (sizeMode !== "#") return n;
-  const maxP = v9GetPropMaxPosition(symbolType);
-  const val =
-    symbolType === "futures"
-      ? Math.max(0, Math.floor(Number(n) || 0))
-      : Math.max(0, Number(n) || 0);
-  return maxP != null ? Math.min(val, maxP) : val;
-}
-
-function v9CapFuturesContracts(n, symbolType) {
-  return v9CapPropPosition(n, symbolType, "#");
-}
-
 /** SIZE rail input — allow free typing; cap fractional digits (default 3). */
 function v9SanitizeSizeInputRaw(raw, sizeMode, symbolType, maxDecimals = 3) {
   let v = String(raw ?? "");
-  if (sizeMode === "#") {
-    if (symbolType === "futures") {
-      if (!/^\d*$/.test(v)) return null;
-    } else if (!/^-?\d*\.?\d*$/.test(v)) {
-      return null;
-    }
-    const maxP = v9GetPropMaxPosition(symbolType);
-    if (maxP != null && v !== "") {
-      const n = symbolType === "futures" ? parseInt(v, 10) : parseFloat(v);
-      if (Number.isFinite(n) && n > maxP) {
-        return symbolType === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
-      }
-    }
-    if (symbolType === "futures") return v;
+  if (sizeMode === "#" && symbolType === "futures") {
+    if (!/^\d*$/.test(v)) return null;
+    return v;
   }
   if (!/^-?\d*\.?\d*$/.test(v)) return null;
   if (v.length > 18) return null;
@@ -9780,8 +9623,8 @@ function v9FormatSizeInputOnBlur(raw, sizeMode, symbolType, accountEquity) {
   if (s === "" || s === ".") return "0";
   const n = parseFloat(s);
   if (!Number.isFinite(n)) return "0";
-  if (sizeMode === "#") {
-    return String(v9CapPropPosition(n, symbolType, "#"));
+  if (sizeMode === "#" && symbolType === "futures") {
+    return String(Math.max(0, Math.floor(n)));
   }
   if (sizeMode === "%") {
     return String(Math.max(0, Math.min(100, parseFloat(n.toFixed(2)))));
@@ -9818,11 +9661,12 @@ function v9ApplySizeStepperDelta(rawVal, dir, sizeMode, symbolType, accountEquit
   if (sizeMode === "%") capped = Math.min(100, next);
   else if (sizeMode === "$" && Number.isFinite(accountEquity)) capped = Math.min(accountEquity, next);
 
+  if (sizeMode === "#" && symbolType === "futures") {
+    return String(Math.max(0, Math.floor(capped)));
+  }
   if (sizeMode === "#") {
-    const cappedQty = v9CapPropPosition(capped, symbolType, "#");
-    if (symbolType === "futures") return String(Math.max(0, Math.floor(cappedQty)));
     const dec = step >= 0.01 ? 2 : 3;
-    return String(parseFloat(Math.max(0, cappedQty).toFixed(dec)));
+    return String(parseFloat(capped.toFixed(dec)));
   }
   if (sizeMode === "$") {
     return String(parseFloat(capped.toFixed(3)));
@@ -10095,11 +9939,6 @@ const TalariaV8bLive = () => {
   const [buySell, setBuySell] = useState("buy");
   const [orderType, setOrderType] = useState("market");
   const [btmTab, setBtmTab] = useState("all");
-  const [isPropFirmMode, setIsPropFirmMode] = useState(() => {
-    try { return new URLSearchParams(window.location.search).get("mode") === "propfirm"; } catch { return false; }
-  });
-  const [propHud, setPropHud] = useState(null);
-  const propTabAutoOpenedRef = useRef(false);
   const [btmIndPos, setBtmIndPos] = useState(null);
   const [tblSort, setTblSort] = useState(null); // {col, dir:'asc'|'desc'}
   /** Bumps when chart orderManager trades / P&L change so the trades table stays live. */
@@ -10647,73 +10486,6 @@ const TalariaV8bLive = () => {
     });
     return undefined;
   }, [btmTab, omTradeRev]);
-
-  // Prop firm challenge progress — poll tracker when in propfirm session.
-  useEffect(() => {
-    const syncProp = () => {
-      let prop = false;
-      let urlMode = "";
-      try {
-        urlMode = new URLSearchParams(window.location.search).get("mode") || "";
-      } catch (_) {}
-
-      const sess = window.chart?.backtestingSession;
-      const sessType = sess ? String(sess.type || "").toLowerCase() : "";
-
-      if (sessType === "standard") {
-        prop = false;
-      } else if (sessType === "propfirm") {
-        prop = true;
-      } else {
-        try {
-          if (window.chart?.isPropFirmMode) prop = true;
-        } catch (_) {}
-        // Before chart hydrates, only trust localStorage when URL is propfirm (not standard backtest).
-        if (!prop && !sess && urlMode === "propfirm") {
-          try {
-            const raw = window.userStorage?.getItem?.("backtestingSession")
-              ?? localStorage.getItem("backtestingSession");
-            if (raw) {
-              const s = JSON.parse(raw);
-              if (String(s.type || "").toLowerCase() === "propfirm") prop = true;
-            }
-          } catch (_) {}
-        }
-      }
-
-      if (urlMode === "backtest") {
-        prop = false;
-      } else if (urlMode === "propfirm" && sessType !== "standard") {
-        prop = true;
-      }
-
-      setIsPropFirmMode(prop);
-      if (!prop) {
-        propTabAutoOpenedRef.current = false;
-        setPropHud(null);
-        return;
-      }
-      const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
-      if (tracker) {
-        if (!tracker.sessionData && typeof tracker.loadSession === "function") {
-          tracker.loadSession();
-        } else if (typeof tracker.reloadRulesFromSession === "function") {
-          tracker.reloadRulesFromSession(window.chart?.backtestingSession);
-        }
-        if (typeof tracker.getProgressSummary === "function") {
-          setPropHud(tracker.getProgressSummary());
-        }
-      }
-      if (!propTabAutoOpenedRef.current) {
-        propTabAutoOpenedRef.current = true;
-        setBtmTab("prop");
-        setBtmOpen(true);
-      }
-    };
-    syncProp();
-    const id = window.setInterval(syncProp, 1000);
-    return () => window.clearInterval(id);
-  }, [omTradeRev]);
 
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
   useEffect(() => {
@@ -14197,24 +13969,6 @@ const TalariaV8bLive = () => {
     });
   }, [omOrderQtyTxt, riskVal, sizeMode, currentSymbol.type, tpRows.length]);
 
-  // Cap SIZE field when prop max-position rule is active (# mode).
-  useEffect(() => {
-    if (!isPropFirmMode || sizeMode !== "#") return;
-    const maxP = v9GetPropMaxPosition(currentSymbol.type);
-    if (maxP == null) return;
-    setRiskVal((prev) => {
-      const n = currentSymbol.type === "futures" ? parseInt(prev, 10) : parseFloat(prev);
-      if (!Number.isFinite(n) || n <= maxP) return prev;
-      return currentSymbol.type === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
-    });
-    try {
-      const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
-      om?.calculatePositionFromRisk?.();
-      om?._syncOrderQuantityFromLotSize?.();
-      om?.updatePlaceButtonText?.();
-    } catch (_) {}
-  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev]);
-
   /** Lot-size (#): SIZE (`riskVal`) is contracts/lots — sync single ENTRY + TP row values (legacy "100" was %). */
   useEffect(() => {
     if (!orderPanelOpen || sizeMode !== "#") return;
@@ -15219,11 +14973,6 @@ const TalariaV8bLive = () => {
     if (typeof window === "undefined") return;
     window.__talariaV9ReactOrderUi = !!orderPanelOpen;
     window.__talariaV9OrderRailOpen = !!orderPanelOpen;
-    if (!orderPanelOpen) {
-      try {
-        window.__talariaV9OrderBridge = null;
-      } catch (_) {}
-    }
     try {
       window.chart?.orderManager?.syncOrderPanelMountTarget?.();
     } catch (_) {}
@@ -15261,19 +15010,14 @@ const TalariaV8bLive = () => {
         const ptab = dm && document.querySelector(`#orderPanel .position-mode-tab[data-mode="${dm}"]`);
         if (ptab && !ptab.classList.contains("active")) ptab.click();
 
-        const setIn = (id, val, opts = {}) => {
+        const setIn = (id, val) => {
           const el = document.getElementById(id);
           if (!el) return;
           const s = String(val ?? "");
-          const unchanged = el.value === s;
-          if (unchanged && !opts.force) return;
-          if (!unchanged) {
-            el.value = s;
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-            el.dispatchEvent(new Event("change", { bubbles: true }));
-          } else if (opts.force) {
-            el.dispatchEvent(new Event("input", { bubbles: true }));
-          }
+          if (el.value === s) return;
+          el.value = s;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
         };
 
         const setChk = (id, checked) => {
@@ -15313,10 +15057,6 @@ const TalariaV8bLive = () => {
 
         if (sizeMode === "$") {
           if (!v9IsPartialDecimalInput(riskVal)) setIn("riskAmountUSD", riskVal);
-          try {
-            om?.calculatePositionFromRisk?.();
-            om?._syncOrderQuantityFromRisk?.();
-          } catch (_) {}
         } else if (sizeMode === "%") {
           if (!v9IsPartialDecimalInput(riskVal)) {
           let pct = riskVal;
@@ -15333,10 +15073,6 @@ const TalariaV8bLive = () => {
           const wantBal = "current";
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
-          try {
-            om?.calculatePositionFromRisk?.();
-            om?._syncOrderQuantityFromRisk?.();
-          } catch (_) {}
         } else {
           // Lot-size (#): `riskVal` is lots/contracts in the rail SIZE field.
           // Multi-entry: row lots drive SIZE — do not overwrite with stale #orderQuantity.
@@ -15347,7 +15083,7 @@ const TalariaV8bLive = () => {
               : 0;
           if (entryLotSum > 0) {
             lotCore = entryLotSum;
-          } else if (!isOmBridgeLead(omPanelBridgeRef.current.control) && !(parseFloat(riskVal || "0") > 0)) {
+          } else if (!isOmBridgeLead(omPanelBridgeRef.current.control)) {
             const oq = parseFloat(
               String(document.getElementById("orderQuantity")?.value ?? "").replace(/,/g, "") || "0"
             );
@@ -15363,11 +15099,6 @@ const TalariaV8bLive = () => {
           }
           if (!v9IsPartialDecimalInput(riskVal)) {
             setIn("lotSizeAmount", lotStr);
-            try {
-              om?.calculatePositionFromRisk?.();
-              om?._syncOrderQuantityFromLotSize?.();
-              om?.updatePlaceButtonText?.();
-            } catch (_) {}
           }
           queueMicrotask(() => {
             try {
@@ -15741,23 +15472,8 @@ const TalariaV8bLive = () => {
           }
 
           om?.calculatePositionFromRisk?.();
-          om?._syncOrderQuantityFromRisk?.();
-          om?._syncOrderQuantityFromLotSize?.();
           om?.calculateAdvancedRiskReward?.();
           om?.updatePlaceButtonText?.();
-
-          try {
-            window.__talariaV9OrderBridge = {
-              orderPanelOpen: true,
-              sizeMode,
-              riskVal,
-              slEnabled,
-              slRows,
-              entryRows,
-              buySell,
-              orderType,
-            };
-          } catch (_) {}
 
           try {
             om?.updatePreviewLines?.();
@@ -16199,11 +15915,6 @@ const TalariaV8bLive = () => {
       const rwd = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
       setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
-      if (om && typeof om.updatePlaceButtonText === "function") {
-        try {
-          om.updatePlaceButtonText();
-        } catch (_) {}
-      }
       const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
       setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
 
@@ -24783,17 +24494,32 @@ const TalariaV8bLive = () => {
             {/* ── COORDINATES TAB ── */}
             {tlSettTab==="coordinates" && (()=>{
               const _dec = v9GetPriceDecimals();
+              const _step = Math.pow(10, -_dec);
               const _pxStep = v9GetPriceStepPerPixel();
-              const spinInput = v9MakeCoordSpinInputRenderer({
-                getValue: (k) => tlStyle[k],
-                setValue: (k, v) => setTlStyle((s) => ({ ...s, [k]: v })),
-                dec: _dec,
-                pxStep: _pxStep,
-                c,
-                F,
-                btnFontSize: 8,
-                pointerActivate: modalPointerActivate,
-              });
+              const spinInput=(k,type)=>(
+                <div style={{ position:"relative", width:"100%" }}>
+                  <input type="number" step={type==="price"?String(_step):"1"} value={tlStyle[k]}
+                    onChange={e=>setTlStyle(s=>({...s,[k]:e.target.value}))}
+                    onClick={e=>e.stopPropagation()}
+                    className="tlr-nospinner"
+                    style={{ width:"100%", height:28, background:"rgba(140,160,255,0.05)",
+                             border:"1px solid rgba(140,160,255,0.2)",
+                             color:c.tx, fontSize:12, fontFamily:F, padding:"0 19px 0 8px",
+                             outline:"none", boxSizing:"border-box", fontVariantNumeric:"tabular-nums" }}/>
+                  <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
+                    {[[+1,"▲"],[- 1,"▼"]].map(([delta,chr],i)=>(
+                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_pxStep).toFixed(_dec):String(+s[k]+delta)})))}
+                        onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
+                        style={{ flex:1, width:18, background:"transparent", border:"none", color:c.ts, cursor:"default",
+                                 display:"flex", alignItems:"center", justifyContent:"center",
+                                 fontSize:8, lineHeight:1, fontFamily:F, padding:0,
+                                 borderBottom:i===0?`1px solid ${c.br}`:"none", transition:"color 0.1s" }}>
+                        {chr}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
               const isSimpleLine = ["hline","hray","vline","crossLine"].includes(tlSubTool.icon);
               const isSinglePoint = ["arrowUp","arrowDn"].includes(tlSubTool.icon);
               const isVline = tlSubTool.icon === "vline";
@@ -25770,17 +25496,32 @@ const TalariaV8bLive = () => {
             {/* ── COORDINATES TAB (note tool only) ── */}
             {txtSettTab==="coordinates" && (()=>{
               const _dec = v9GetPriceDecimals();
+              const _step = Math.pow(10, -_dec);
               const _pxStep = v9GetPriceStepPerPixel();
-              const spinInput = v9MakeCoordSpinInputRenderer({
-                getValue: (k) => txtStyle[k],
-                setValue: (k, v) => setTxtStyle((s) => ({ ...s, [k]: v })),
-                dec: _dec,
-                pxStep: _pxStep,
-                c,
-                F,
-                btnFontSize: 7,
-                pointerActivate: modalPointerActivate,
-              });
+              const spinInput=(k,type)=>(
+                <div style={{position:"relative",width:"100%"}}>
+                  <input type="number" step={type==="price"?String(_step):"1"} value={txtStyle[k]}
+                    onChange={e=>setTxtStyle(s=>({...s,[k]:e.target.value}))}
+                    onClick={e=>e.stopPropagation()}
+                    className="tlr-nospinner"
+                    style={{width:"100%",height:28,background:"rgba(140,160,255,0.05)",
+                            border:"1px solid rgba(140,160,255,0.2)",
+                            color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
+                            outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
+                  <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
+                    {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
+                      <button type="button" key={i} {...modalPointerActivate(() => setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_pxStep).toFixed(_dec):String(+s[k]+delta)})))}
+                        onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
+                        style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
+                                display:"flex",alignItems:"center",justifyContent:"center",
+                                fontSize:7,lineHeight:1,fontFamily:F,padding:0,
+                                borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
+                        {chr}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
               const twoPoints = !isComment && !isPin && !isPriceLabel && !isSignpost && !isFlag && !isImage && !isEmoji;
               const col = twoPoints ? "80px 1fr 1fr" : "80px 1fr";
               return (
@@ -28351,24 +28092,39 @@ const TalariaV8bLive = () => {
               {/* ── COORDINATES TAB ── */}
               {vwapSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
+                const _step = Math.pow(10, -_dec);
                 const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{
                   patchVwapStyle(s=>({...s,[k]:v}));
                   setTlStyle(s=>({...s,[k]:v}));
                   v9FlushVwapAnchorCoordToChart({ ...vwapStyleLiveRef.current, [k]: v }, editDraw);
                 };
-                const spinInput = v9MakeCoordSpinInputRenderer({
-                  getValue: (k) => vwapStyle[k],
-                  setValue: setCoord,
-                  dec: _dec,
-                  pxStep: _pxStep,
-                  c,
-                  F,
-                  btnFontSize: 7,
-                  onPointerDown: (e) => e.stopPropagation(),
-                  onMouseDown: (e) => e.stopPropagation(),
-                  pointerActivate: modalPointerActivate,
-                });
+                const spinInput=(k,type)=>(
+                  <div style={{position:"relative",width:"100%"}}>
+                    <input type="number" step={type==="price"?String(_step):"1"} value={vwapStyle[k]}
+                      onPointerDown={e=>e.stopPropagation()}
+                      onMouseDown={e=>e.stopPropagation()}
+                      onChange={e=>setCoord(k,e.target.value)}
+                      onClick={e=>e.stopPropagation()}
+                      className="tlr-nospinner"
+                      style={{width:"100%",height:28,background:"rgba(140,160,255,0.05)",
+                              border:"1px solid rgba(140,160,255,0.2)",
+                              color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
+                              outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
+                    <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
+                      {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
+                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vwapStyle[k]+delta*_pxStep).toFixed(_dec):String(+vwapStyle[k]+delta);setCoord(k,nv);})}
+                          onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
+                          style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
+                                  display:"flex",alignItems:"center",justifyContent:"center",
+                                  fontSize:7,lineHeight:1,fontFamily:F,padding:0,
+                                  borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
+                          {chr}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
                 return (
                   <div style={{marginBottom:16}}>
                     <div style={{display:"grid",gridTemplateColumns:"80px 1fr"}}>
@@ -28754,18 +28510,33 @@ const TalariaV8bLive = () => {
               {/* ── COORDINATES TAB ── */}
               {vpSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
+                const _step = Math.pow(10, -_dec);
                 const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{setVpStyle(s=>({...s,[k]:v}));setTlStyle(s=>({...s,[k]:v}));};
-                const spinInput = v9MakeCoordSpinInputRenderer({
-                  getValue: (k) => vpStyle[k],
-                  setValue: setCoord,
-                  dec: _dec,
-                  pxStep: _pxStep,
-                  c,
-                  F,
-                  btnFontSize: 7,
-                  pointerActivate: modalPointerActivate,
-                });
+                const spinInput=(k,type)=>(
+                  <div style={{position:"relative",width:"100%"}}>
+                    <input type="number" step={type==="price"?String(_step):"1"} value={vpStyle[k]}
+                      onChange={e=>setCoord(k,e.target.value)}
+                      onClick={e=>e.stopPropagation()}
+                      className="tlr-nospinner"
+                      style={{width:"100%",height:28,background:"rgba(140,160,255,0.05)",
+                              border:"1px solid rgba(140,160,255,0.2)",
+                              color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
+                              outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
+                    <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
+                      {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
+                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vpStyle[k]+delta*_pxStep).toFixed(_dec):String(+vpStyle[k]+delta);setCoord(k,nv);})}
+                          onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
+                          style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
+                                  display:"flex",alignItems:"center",justifyContent:"center",
+                                  fontSize:7,lineHeight:1,fontFamily:F,padding:0,
+                                  borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
+                          {chr}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
                 return (
                   <div>
                     {[{hdr:"FIRST BAR",pk:"pt1Price",bk:"pt1Bar"},{hdr:"LAST BAR",pk:"pt2Price",bk:"pt2Bar"}].map(({hdr,pk,bk})=>(
@@ -29122,18 +28893,33 @@ const TalariaV8bLive = () => {
               {/* ── COORDINATES TAB ── */}
               {avSettTab==="coordinates" && (()=>{
                 const _dec = v9GetPriceDecimals();
+                const _step = Math.pow(10, -_dec);
                 const _pxStep = v9GetPriceStepPerPixel();
                 const setCoord=(k,v)=>{setAvStyle(s=>({...s,[k]:v}));setTlStyle(s=>({...s,[k]:v}));};
-                const spinInput = v9MakeCoordSpinInputRenderer({
-                  getValue: (k) => avStyle[k],
-                  setValue: setCoord,
-                  dec: _dec,
-                  pxStep: _pxStep,
-                  c,
-                  F,
-                  btnFontSize: 7,
-                  pointerActivate: modalPointerActivate,
-                });
+                const spinInput=(k,type)=>(
+                  <div style={{position:"relative",width:"100%"}}>
+                    <input type="number" step={type==="price"?String(_step):"1"} value={avStyle[k]}
+                      onChange={e=>setCoord(k,e.target.value)}
+                      onClick={e=>e.stopPropagation()}
+                      className="tlr-nospinner"
+                      style={{width:"100%",height:28,background:"rgba(140,160,255,0.05)",
+                              border:"1px solid rgba(140,160,255,0.2)",
+                              color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
+                              outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
+                    <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
+                      {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
+                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+avStyle[k]+delta*_pxStep).toFixed(_dec):String(+avStyle[k]+delta);setCoord(k,nv);})}
+                          onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
+                          style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
+                                  display:"flex",alignItems:"center",justifyContent:"center",
+                                  fontSize:7,lineHeight:1,fontFamily:F,padding:0,
+                                  borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
+                          {chr}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
                 return (
                   <div>
                     <div style={{display:"grid",gridTemplateColumns:"80px 1fr"}}>
@@ -33798,14 +33584,7 @@ const TalariaV8bLive = () => {
               const nPend = rawCounts.filter((r) => r.status === "pending").length;
               const nOpen = rawCounts.filter((r) => r.status === "open").length;
               const nHist = rawCounts.filter((r) => r.status === "closed").length;
-              const ordTabs=[
-                ["all","All Trade",nAll],
-                ["pending","Pending",nPend],
-                ["open","Open Positions",nOpen],
-                ["history","History",nHist],
-                ...(isPropFirmMode ? [["prop","Prop Challenge",null]] : []),
-                ["analytics","Analytics",null],
-              ];
+              const ordTabs=[["all","All Trade",nAll],["pending","Pending",nPend],["open","Open Positions",nOpen],["history","History",nHist],["analytics","Analytics",null]];
               return(
               <div ref={btmTabBarRef} style={{display:"flex",flexShrink:0,borderBottom:`1px solid ${c.br}`,paddingLeft:10,position:"relative",alignItems:"center"}}>
                 {ordTabs.map(([id,label,cnt])=>{
@@ -33860,7 +33639,7 @@ const TalariaV8bLive = () => {
                   initTags._custom = trade.preTags.filter(t => !knownBools.has(t) && !knownOpts.has(t));
                   setTapTags(initTags); setTapJournal(""); setTapStrategy(""); setTapScreenshots([null,null]); setTapTagInput(""); setTradeActPopup(trade);
                 };
-                const filtered = btmTab==="all"?allTradesR : (btmTab==="analytics"||btmTab==="prop")?[] : allTradesR.filter(r=>
+                const filtered = btmTab==="all"?allTradesR : btmTab==="analytics"?[] : allTradesR.filter(r=>
                   btmTab==="pending"?r.status==="pending":
                   btmTab==="open"?r.status==="open":
                   btmTab==="history"?r.status==="closed":false
@@ -33892,79 +33671,6 @@ const TalariaV8bLive = () => {
                 const jMaxAbsCum = Math.max(1, ...jCum.map((x) => Math.abs(x.cum)));
                 const jStrats = (ja?.strategies || []).slice(0, 12);
                 const cols="minmax(0,0.7fr) minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.6fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr)";
-                if(btmTab==="prop") {
-                  const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
-                  const rules = tracker?.rules || {};
-                  const hud = propHud || (tracker && typeof tracker.getProgressSummary === "function" ? tracker.getProgressSummary() : null);
-                  const breached = !!(hud && (hud.dailyLoss?.breached || hud.totalLoss?.breached || hud.consistency?.breached || hud.weekendHold?.breached || hud.tradingDisabled));
-                  const phaseLbl = hud?.phase?.total > 1
-                    ? `Phase ${hud.phase.current} of ${hud.phase.total}`
-                    : "Single phase";
-                  const passed = !!(hud && hud.profit?.completed);
-                  const statusLbl = breached ? "FAILED" : passed ? "PASSED" : hud?.phase?.total > 1 && hud?.phase?.current === 1 && hud?.profit?.percent >= 100 ? "PHASE 1 DONE" : "IN PROGRESS";
-                  const statusCol = breached ? c.rd : passed ? c.gn : c.gold;
-                  const maxPosLbl = hud?.maxPosition?.limit != null
-                    ? `${Number(hud.maxPosition.limit).toFixed(hud.maxPosition.unit === "contracts" ? 0 : 2)} ${hud.maxPosition.unit}`
-                    : "—";
-                  const propRows = hud ? [
-                    { key: "days", label: "Trading days", cur: hud.tradingDays.required <= 0 ? `${hud.tradingDays.current}` : `${hud.tradingDays.current} / ${hud.tradingDays.required}`, pct: hud.tradingDays.percent, col: hud.tradingDays.completed ? c.gn : c.tx, breached: false },
-                    { key: "profit", label: hud.phase?.total > 1 ? `Profit target (P${hud.phase.current})` : "Profit target", cur: `${hud.profit.current.toFixed(2)}% / ${hud.profit.target}%${hud.phase?.profitTargetUsd ? ` (≈$${Number(hud.phase.profitTargetUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})` : ""}`, pct: hud.profit.percent, col: hud.profit.completed ? c.gn : c.tx, breached: false },
-                    { key: "daily", label: "Daily loss", cur: `${hud.dailyLoss.current.toFixed(2)}% / ${hud.dailyLoss.limit}%`, pct: hud.dailyLoss.percent, col: hud.dailyLoss.breached ? c.rd : c.tx, breached: hud.dailyLoss.breached },
-                    { key: "dd", label: "Max drawdown", cur: `${hud.totalLoss.current.toFixed(2)}% / ${hud.totalLoss.limit}%`, pct: hud.totalLoss.percent, col: hud.totalLoss.breached ? c.rd : c.tx, breached: hud.totalLoss.breached },
-                    ...(hud.consistency?.enabled ? [{ key: "consistency", label: "Consistency", cur: `≤ ${hud.consistency.limit}% best day`, pct: hud.consistency.breached ? 100 : 0, col: hud.consistency.breached ? c.rd : c.tx, breached: hud.consistency.breached }] : []),
-                    ...(hud.maxPosition?.limit != null ? [{ key: "maxpos", label: "Max position", cur: maxPosLbl, pct: 0, col: c.tx, breached: false }] : []),
-                    ...(!hud.weekendHold?.allowed ? [{ key: "weekend", label: "Weekend hold", cur: hud.weekendHold.breached ? "VIOLATION" : "Not allowed", pct: hud.weekendHold.breached ? 100 : 0, col: hud.weekendHold.breached ? c.rd : c.tm, breached: hud.weekendHold.breached }] : []),
-                  ] : [];
-                  return(
-                    <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-                        <div>
-                          <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:4}}>PROP CHALLENGE</div>
-                          <div style={{fontSize:11,color:c.ts}}>
-                            {phaseLbl}
-                            {` · Account $${hud?.balance?.start != null ? Number(hud.balance.start).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}`}
-                            {hud?.phase?.total > 1 && hud?.phase?.current >= 2 && hud?.phase?.baseline != null
-                              ? ` · P2 base $${Number(hud.phase.baseline).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                              : ""}
-                            {rules.trailingDrawdown ? " · Trailing DD" : " · Static DD"}
-                            {rules.dailyLossEnabled === false ? " · No daily limit" : ""}
-                          </div>
-                        </div>
-                        <div style={{padding:"6px 12px",border:`1px solid ${statusCol}`,background:breached?"rgba(255,80,104,0.08)":passed?"rgba(0,212,161,0.08)":"rgba(201,168,76,0.08)"}}>
-                          <span style={{fontSize:10,fontWeight:800,color:statusCol,letterSpacing:"0.08em"}}>{statusLbl}</span>
-                        </div>
-                      </div>
-                      {!hud && (
-                        <div style={{fontSize:11,color:c.tm,padding:"8px 0"}}>Loading challenge rules…</div>
-                      )}
-                      {propRows.map((row) => (
-                        <div key={row.key} style={{background:c.bg,border:`1px solid ${row.breached?"rgba(255,80,104,0.35)":c.br}`,padding:"10px 12px"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                            <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{row.label.toUpperCase()}</span>
-                            <span style={{fontSize:11,fontWeight:700,color:row.col,fontVariantNumeric:"tabular-nums"}}>{row.cur}</span>
-                          </div>
-                          <div style={{height:5,background:"rgba(140,160,255,0.07)",overflow:"hidden"}}>
-                            <div style={{width:`${Math.min(100, Math.max(0, row.pct))}%`,height:"100%",background:row.breached?c.rd:row.pct>=100?c.gn:c.gold,opacity:0.8,transition:"width 0.35s ease"}}/>
-                          </div>
-                        </div>
-                      ))}
-                      {hud && (
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
-                          {[
-                            { l: "Balance", v: `$${Number(hud.balance.current).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, col: c.tx },
-                            { l: "Peak", v: `$${Number(hud.balance.peak).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, col: c.tx },
-                            { l: "Net P&L", v: `${hud.profit.current >= 0 ? "+" : ""}${hud.profit.current.toFixed(2)}%`, col: hud.profit.current >= 0 ? c.gn : c.rd },
-                          ].map(({ l, v, col }) => (
-                            <div key={l} style={{background:c.bg,border:`1px solid ${c.br}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
-                              <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{l}</span>
-                              <span style={{fontSize:16,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums"}}>{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
                 if(btmTab==="analytics") return(
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
                     {jMeta.loading&&(
@@ -35432,7 +35138,11 @@ const TalariaV8bLive = () => {
                             : String(Math.max(0, single))
                         );
                       } else if (total > 0) {
-                        setRiskVal(String(v9CapPropPosition(total, currentSymbol.type, sizeMode)));
+                        setRiskVal(
+                          currentSymbol.type === "futures"
+                            ? String(Math.floor(total))
+                            : String(total)
+                        );
                       }
                     } else if (sizeMode === "$") {
                       if (rowsAfter.length === 1) {
