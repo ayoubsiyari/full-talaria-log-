@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260623b80";
+const BRIDGE_VERSION = "20260623b74";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1917,7 +1917,7 @@ export default function MultichartGrid({
                     }
                     mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
                 }
-                if (pushTf && tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf, fromHostCache: true });
+                if (pushTf && tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf });
             } catch (_) {}
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2054,21 +2054,6 @@ export default function MultichartGrid({
         } catch (_) {}
     }, [layoutSync, managerReady]);
 
-    // Fan synced timeframe to iframe panels from host cache (no per-iframe /smart).
-    function fanOutTimeframeFromHostCache(tf) {
-        const mgr = managerRef.current;
-        if (!mgr || typeof mgr.sendCommand !== "function" || !tf) return;
-        const tfStr = String(tf);
-        lastBroadcastTfRef.current[HOST_PANEL_ID] = tfStr;
-        for (const c of mgr.charts.values()) {
-            if (!c || c.host) continue;
-            lastBroadcastTfRef.current[c.id] = tfStr;
-            try {
-                mgr.sendCommand(c.id, "setTimeframe", { tf: tfStr, fromHostCache: true });
-            } catch (_) {}
-        }
-    }
-
     // ─── Interval (timeframe) sync ──────────────────────────────────────
     //
     // Fan out the host chart's timeframe to every iframe **only** when the
@@ -2090,7 +2075,10 @@ export default function MultichartGrid({
                 || (window.chart && window.chart.currentTimeframe)
                 || null;
             if (!tf) return;
-            fanOutTimeframeFromHostCache(tf);
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host) continue; // host already changed; iframes only
+                try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
+            }
         };
         window.addEventListener("timeframeChanged", onTfChanged);
         return () => window.removeEventListener("timeframeChanged", onTfChanged);
@@ -3119,7 +3107,8 @@ export default function MultichartGrid({
             const tf = String(state.timeframe);
             if (lastBroadcastTfRef.current[id] !== tf) {
                 lastBroadcastTfRef.current[id] = tf;
-                // Host tile A is the only network authority when Interval sync is on.
+                // 1) push to the host (in-process call) — host doesn't
+                // run panel-cmd-bridge, so we hit window.chart directly.
                 try {
                     if (window.chart && typeof window.chart.setTimeframe === "function"
                         && window.chart.currentTimeframe !== tf) {
@@ -3127,7 +3116,11 @@ export default function MultichartGrid({
                         lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
                     }
                 } catch (_) {}
-                // Iframe fan-out runs via timeframeChanged after host commits.
+                // 2) push to every other iframe panel
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || c.id === id) continue;
+                    try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
+                }
             }
         }
 
@@ -3766,13 +3759,6 @@ export default function MultichartGrid({
                 : (focusedPanelIdRef.current || HOST_PANEL_ID);
             if (cmd === "loadFile" && args && args.fileId != null && args.fileId !== "") {
                 return loadFileOnPanel(target, args.fileId, { force: !!args.force });
-            }
-            // Interval sync ON: only host fetches; timeframeChanged fans iframes from cache.
-            if (cmd === "setTimeframe" && args && args.tf
-                && layoutSyncRef.current && layoutSyncRef.current.interval
-                && !args.fromHostCache) {
-                const tf = String(args.tf);
-                return applyHostCommand("setTimeframe", { tf });
             }
             if (target === HOST_PANEL_ID) {
                 return applyHostCommand(cmd, args);

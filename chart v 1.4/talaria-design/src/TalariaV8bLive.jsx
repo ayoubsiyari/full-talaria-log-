@@ -10518,8 +10518,6 @@ const TalariaV8bLive = () => {
   const pendingSymbolRef = useRef(null);
   /** Skip chart-type fan-out when topbar state mirrors a focus change. */
   const chartTypeFromFocusRef = useRef(false);
-  /** Mirror of layoutSync.chartType — chart-type effect runs before layoutSync state exists. */
-  const layoutSyncChartTypeRef = useRef(false);
   const symbolLoadGenRef = useRef(0);
   symbolRef.current = symbol;
   // Pairs available in the active backtest session (read from chart.js / userStorage).
@@ -11189,7 +11187,7 @@ const TalariaV8bLive = () => {
 
       const grid = window.__multichartGrid;
       if (grid && typeof grid.runCommand === "function") {
-        const fanAll = layoutSyncChartTypeRef.current && !fromFocus;
+        const fanAll = layoutSync.chartType && !fromFocus;
         const p = fanAll && typeof grid.fanOutChartType === "function"
           ? grid.fanOutChartType(mapped)
           : grid.runCommand("setChartType", { chartType: mapped });
@@ -11207,7 +11205,7 @@ const TalariaV8bLive = () => {
         return;
       }
 
-      if (layoutSyncChartTypeRef.current && !fromFocus) {
+      if (layoutSync.chartType && !fromFocus) {
         const pm = window.panelManager;
         if (pm && typeof pm.syncChartTypeNow === "function" && v9IsMultiPanelLayoutActive()) {
           const active = v9ActiveChartInstance() || chart;
@@ -11247,7 +11245,7 @@ const TalariaV8bLive = () => {
 
     apply();
     return () => { cancelled = true; };
-  }, [chartType]);
+  }, [chartType, layoutSync.chartType]);
 
   // Per Chart instance (main + panel tiles): V9 id (e.g. "SMA") → chart.js runtime id.
   // WeakMap so each focused tile keeps its own mapping (multi-panel).
@@ -12689,34 +12687,6 @@ const TalariaV8bLive = () => {
   // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
   // races re-enabling sync modes (especially `time`) unexpectedly.
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
-
-  useEffect(() => {
-    layoutSyncChartTypeRef.current = !!layoutSync.chartType;
-  }, [layoutSync.chartType]);
-
-  // When Chart Type sync is toggled ON, align every panel to the current topbar type.
-  useEffect(() => {
-    if (!layoutSync.chartType) return;
-    const CHART_TYPE_MAP = {
-      "Candles": "candles",
-      "Hollow Candles": "hollow",
-      "Heikin Ashi": "heikinashi",
-      "Bars": "bars",
-      "Line": "line",
-      "Area": "area",
-    };
-    const mapped = CHART_TYPE_MAP[chartType] || "candles";
-    const grid = window.__multichartGrid;
-    if (grid && typeof grid.fanOutChartType === "function" && v9IsMultiPanelLayoutActive()) {
-      grid.fanOutChartType(mapped).catch(() => {});
-      return;
-    }
-    const pm = window.panelManager;
-    if (pm && typeof pm.syncChartTypeNow === "function" && v9IsMultiPanelLayoutActive()) {
-      try { pm.syncChartTypeNow(); } catch (_) {}
-    }
-  }, [layoutSync.chartType]);
-
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);

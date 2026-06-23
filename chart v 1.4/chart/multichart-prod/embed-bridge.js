@@ -737,14 +737,7 @@
                 // window and undo the playhead-matched load above.
                 if (tf && typeof ch.setTimeframe === 'function'
                     && ch.currentTimeframe !== tf) {
-                    try {
-                        var pcTf = readParentChart();
-                        var bootFid = fileId || (ch.currentFileId != null ? String(ch.currentFileId) : '');
-                        var samePairTf = pcTf && bootFid
-                            && String(pcTf.currentFileId || '') === String(bootFid);
-                        if (samePairTf) ch._multichartTfFromHostCache = true;
-                        ch.setTimeframe(tf);
-                    } catch (_) {}
+                    try { ch.setTimeframe(tf); } catch (_) {}
                 }
                 try {
                     if (typeof ch.render === 'function') ch.render();
@@ -967,9 +960,9 @@
                             pc._ensureMultichartHostExportReady();
                         }
                     } catch (_) {}
-                    var chLocal = window.chart;
-                    if (chLocal && typeof chLocal._parentMultichartMasterReady === 'function') {
-                        return chLocal._parentMultichartMasterReady(pc, fid);
+                    var ch = window.chart;
+                    if (ch && typeof ch._parentMultichartMasterReady === 'function') {
+                        return ch._parentMultichartMasterReady(pc, fid);
                     }
                     var prs = pc.replaySystem;
                     if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
@@ -977,90 +970,25 @@
                     }
                     return Array.isArray(pc.rawData) && pc.rawData.length > 0;
                 };
-                var waitForHostMasterThen = function (fn, label) {
-                    var startedAt = Date.now();
-                    var maxWaitMs = 8000;
-                    var tick = function () {
-                        if (hostReadyForMirror() || Date.now() - startedAt >= maxWaitMs) {
-                            if (!hostReadyForMirror()) {
-                                reportToShell('warn', (label || 'boot')
-                                    + ': host master not ready after ' + maxWaitMs + 'ms — loading anyway');
-                            } else {
-                                reportToShell('info', (label || 'boot') + ': host master ready — cloning');
-                            }
-                            try { fn(); } catch (e) {
-                                reportToShell('error', (label || 'boot') + ' failed: ' + (e && e.message || e));
-                            }
-                            return;
-                        }
-                        setTimeout(tick, 60);
-                    };
-                    if (hostReadyForMirror()) {
-                        reportToShell('info', (label || 'boot') + ': host master ready — cloning');
-                        try { fn(); } catch (e) {
-                            reportToShell('error', (label || 'boot') + ' failed: ' + (e && e.message || e));
-                        }
-                    } else {
-                        reportToShell('info', (label || 'boot') + ': waiting for host master…');
-                        setTimeout(tick, 60);
-                    }
-                };
-                waitForHostMasterThen(runPanelLoad, 'backtest boot');
+                runPanelLoad();
                 return;
             }
 
             // Live / no session — loadFileData clones parent memory when same pair
-            var hostReadyLive = function () {
-                var pc = readParentChart();
-                if (!pc) return true;
-                var fid = fileId || (pc.currentFileId != null ? String(pc.currentFileId) : '');
-                if (!fid || String(pc.currentFileId || '') !== String(fid)) return true;
-                try {
-                    if (typeof pc._ensureMultichartHostExportReady === 'function') {
-                        pc._ensureMultichartHostExportReady();
-                    }
-                } catch (_) {}
-                return Array.isArray(pc.rawData) && pc.rawData.length > 0;
-            };
-            var runLiveLoad = function () {
-                try {
-                    var pcLive = readParentChart();
-                    if (pcLive && typeof pcLive._ensureMultichartHostExportReady === 'function') {
-                        pcLive._ensureMultichartHostExportReady();
-                    }
-                } catch (_) {}
-                p = ch.loadFileData(fileId);
-                if (p && typeof p.then === 'function') {
-                    p.then(afterLoad, function (err) {
-                        reportToShell('error', 'loadFileData failed: '
-                            + (err && err.message || err));
-                    });
-                } else {
-                    afterLoad();
+            try {
+                var pcLive = readParentChart();
+                if (pcLive && typeof pcLive._ensureMultichartHostExportReady === 'function') {
+                    pcLive._ensureMultichartHostExportReady();
                 }
-            };
-            if (fileId) {
-                var liveStartedAt = Date.now();
-                var liveMaxWaitMs = 8000;
-                var liveTick = function () {
-                    if (hostReadyLive() || Date.now() - liveStartedAt >= liveMaxWaitMs) {
-                        if (!hostReadyLive()) {
-                            reportToShell('warn', 'live boot: host bars not ready after '
-                                + liveMaxWaitMs + 'ms — loading anyway');
-                        }
-                        runLiveLoad();
-                        return;
-                    }
-                    setTimeout(liveTick, 60);
-                };
-                if (hostReadyLive()) {
-                    runLiveLoad();
-                } else {
-                    reportToShell('info', 'live boot: waiting for host bars…');
-                    setTimeout(liveTick, 60);
-                }
+            } catch (_) {}
+            p = ch.loadFileData(fileId);
+            if (p && typeof p.then === 'function') {
+                p.then(afterLoad, function (err) {
+                    reportToShell('error', 'loadFileData failed: '
+                        + (err && err.message || err));
+                });
             } else {
-                runLiveLoad();
+                afterLoad();
             }
         } catch (e) {
             reportToShell('error', 'applyInitialContext threw: ' + (e && e.message || e));

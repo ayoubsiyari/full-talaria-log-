@@ -2027,17 +2027,8 @@ class Chart {
             this._endTimeframeSwitching();
             return;
         }
-        const hostCacheOnly = !!this._multichartTfFromHostCache;
-        this._multichartTfFromHostCache = false;
         try {
-            if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf, {
-                hostCacheOnly,
-                retryMs: hostCacheOnly ? 5000 : 0,
-            })) {
-                return;
-            }
-            if (hostCacheOnly && !this._isIndependentMultichartPair()) {
-                console.warn('[multichart] host-cache-only TF switch missed cache for', normalizedTf);
+            if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf)) {
                 return;
             }
             await this._refetchBacktestTimeframeCore(normalizedTf, { logTag: 'multichart-server' });
@@ -2050,40 +2041,27 @@ class Chart {
 
     /**
      * Fast TF paths for multichart iframe tiles (avoid network reload when possible).
-     * @param {string} normalizedTf
-     * @param {{ hostCacheOnly?: boolean, retryMs?: number }} [opts]
      * @returns {Promise<boolean>}
      */
-    async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf, opts = {}) {
-        const retryMs = Number.isFinite(Number(opts.retryMs)) ? Number(opts.retryMs) : 0;
-        const startedAt = Date.now();
-        const attempt = async () => {
-            if (typeof this._warmBtTfCacheFromParent === 'function') {
-                this._warmBtTfCacheFromParent(normalizedTf);
-            }
-            if (await this._applyBacktestTimeframeFromCache(normalizedTf)) {
-                return true;
-            }
-            if (await this._applyBacktestTimeframeFromParentCache(normalizedTf)) {
-                return true;
-            }
-            if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
-                return true;
-            }
-            if (this._independentPanelTimeframeSwitch(normalizedTf)) {
-                return true;
-            }
-            if (!opts.hostCacheOnly && this._canClientResampleToTimeframe(normalizedTf)) {
-                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                return true;
-            }
-            return false;
-        };
-        if (await attempt()) return true;
-        if (retryMs <= 0) return false;
-        while (Date.now() - startedAt < retryMs) {
-            await new Promise((resolve) => setTimeout(resolve, 60));
-            if (await attempt()) return true;
+    async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf) {
+        if (typeof this._warmBtTfCacheFromParent === 'function') {
+            this._warmBtTfCacheFromParent(normalizedTf);
+        }
+        if (await this._applyBacktestTimeframeFromCache(normalizedTf)) {
+            return true;
+        }
+        if (await this._applyBacktestTimeframeFromParentCache(normalizedTf)) {
+            return true;
+        }
+        if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
+            return true;
+        }
+        if (this._independentPanelTimeframeSwitch(normalizedTf)) {
+            return true;
+        }
+        if (this._canClientResampleToTimeframe(normalizedTf)) {
+            this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+            return true;
         }
         return false;
     }
@@ -2409,7 +2387,7 @@ class Chart {
                 return;
             }
             const startedAt = Date.now();
-            const maxWaitMs = 8000;
+            const maxWaitMs = 3000;
             const tick = () => {
                 if (settled() || Date.now() - startedAt >= maxWaitMs) {
                     resolve();
@@ -2568,11 +2546,12 @@ class Chart {
                     this.viewportData.init(fileId, displayTf, sessionStartTs, sessionEndMs);
                 }
 
-                // Same-pair boot OR synchronized pair switch: wait for host tile A's
-                // master before classifying / cloning — avoids N redundant /smart fetches.
-                const preSamePairHint = typeof this._multichartSamePairAsHost === 'function'
-                    && this._multichartSamePairAsHost(fileId);
-                if (switchingPair || preSamePairHint) {
+                // Synchronized pair switch: let the host (tile A) settle on the new pair
+                // before classifying same-pair vs independent. Without this, racing tiles
+                // mis-read the host's old fileId and each refetch a full-session 1m master
+                // (slow on high TF, scales with panel count). Independent panels resolve
+                // instantly here, so they are not delayed.
+                if (switchingPair) {
                     try { await this._awaitHostPairSettle(fileId, loadSeq); } catch (_settle) { /* ignore */ }
                     if (loadSeq !== this._multichartPanelLoadSeq) {
                         if (pairLoadUiActive) {
@@ -2590,26 +2569,13 @@ class Chart {
 
                 let result = null;
 
-                // FAST PATH: same pair as tile A — clone host replay master (no /bars, no /smart).
-                if (samePairAsHost && !independentPair) {
-                    const cloneStartedAt = Date.now();
-                    const cloneMaxWaitMs = 8000;
-                    while (!result && Date.now() - cloneStartedAt < cloneMaxWaitMs) {
-                        if (loadSeq !== this._multichartPanelLoadSeq) {
-                            if (pairLoadUiActive) {
-                                try { this._endPairSwitchLoading(loadSeq); } catch (_staleClone) { /* ignore */ }
-                            }
-                            return;
-                        }
-                        if (typeof this._warmBtTfCacheFromParent === 'function') {
-                            try { this._warmBtTfCacheFromParent(); } catch (_warmMc) { /* ignore */ }
-                        }
-                        if (typeof this._takeParentNativeMasterSmartWindow === 'function') {
-                            result = this._takeParentNativeMasterSmartWindow(fileId);
-                        }
-                        if (result) break;
-                        await new Promise((resolve) => setTimeout(resolve, 60));
-                    }
+                // FAST PATH: same pair as tile A — clone host replay master (no /bars, no tiny seek window).
+                if (samePairAsHost && typeof this._warmBtTfCacheFromParent === 'function') {
+                    try { this._warmBtTfCacheFromParent(); } catch (_warmMc) { /* ignore */ }
+                }
+                if (samePairAsHost && !independentPair
+                    && typeof this._takeParentNativeMasterSmartWindow === 'function') {
+                    result = this._takeParentNativeMasterSmartWindow(fileId);
                 }
 
                 // Independent pair on a high TF: HYBRID master — native bars for fast
@@ -2658,13 +2624,14 @@ class Chart {
                         console.warn('loadMultichartPanelFromHost: /bars fetch failed', e);
                     }
                 }
-                if (!result && (!samePairAsHost || independentPair)) {
+                if (!result) {
                     let range;
                     if (independentPair && sessionEndMs != null) {
                         range = { endTs: sessionEndMs };
                     } else if (independentPair && Number.isFinite(replayTs)) {
                         range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
                     } else {
+                        // Same-pair fallback: full session window (single-chart parity), not playhead island.
                         range = this._getBacktestInitialFetchRange(masterTf, session);
                     }
                     result = await this._fetchSmartWindow(
