@@ -2101,8 +2101,10 @@ export default function MultichartGrid({
             // id actually changes.
             if (String(fileId) === String(lastBroadcastFileId)) return;
             lastBroadcastFileId = String(fileId);
+            lastBroadcastFileRef.current[HOST_PANEL_ID] = String(fileId);
             for (const c of mgr.charts.values()) {
                 if (!c || c.host) continue;
+                lastBroadcastFileRef.current[c.id] = String(fileId);
                 try { mgr.sendCommand(c.id, "loadFile", { fileId }); } catch (_) {}
             }
         };
@@ -3049,10 +3051,39 @@ export default function MultichartGrid({
         const hostFid = hostCh && hostCh.currentFileId != null && String(hostCh.currentFileId).trim() !== ""
             ? String(hostCh.currentFileId)
             : "";
-        // When Symbol sync is on, pull a lagging iframe back to the host file.
-        // When Symbol sync is off, tiles may use different pairs during replay.
+
+        // Symbol sync ON: when an iframe tile loads a different file, fan out to
+        // host A + every other iframe (TradingView — any panel drives all).
+        // Must run BEFORE any "pull back to host" logic; the old pull-back ran
+        // first and undid B/C/D pair picks while host still held the previous fileId.
+        if (state && state.fileId && sync.symbol) {
+            const fid = String(state.fileId);
+            if (lastBroadcastFileRef.current[id] !== fid) {
+                lastBroadcastFileRef.current[id] = fid;
+                userPairLoadGuardRef.current[id] = performance.now() + 4000;
+                try {
+                    if (window.chart && String(window.chart.currentFileId || "") !== fid) {
+                        const ch = window.chart;
+                        const useMc = !!(ch.isBacktestMode || ch.backtestingSession)
+                            && typeof ch.loadMultichartPanelFile === "function";
+                        if (useMc) ch.loadMultichartPanelFile(fid, { force: true });
+                        else if (typeof ch.loadFileData === "function") ch.loadFileData(fid);
+                        lastBroadcastFileRef.current[HOST_PANEL_ID] = fid;
+                    }
+                } catch (_) {}
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || c.id === id) continue;
+                    try { mgr.sendCommand(c.id, "loadFile", { fileId: fid }); } catch (_) {}
+                    lastBroadcastFileRef.current[c.id] = fid;
+                }
+                return;
+            }
+        }
+
+        // Host moved first; this iframe's chart-state still reports the old file.
         if (sync.symbol && hostFid && state && state.fileId != null
-            && String(state.fileId) !== hostFid) {
+            && String(state.fileId) !== hostFid
+            && lastBroadcastFileRef.current[HOST_PANEL_ID] === hostFid) {
             const guardUntil = userPairLoadGuardRef.current[id];
             if (!(guardUntil && performance.now() < guardUntil)) {
                 try { mgr.sendCommand(id, "loadFile", { fileId: hostFid }); } catch (_) {}
@@ -3078,26 +3109,6 @@ export default function MultichartGrid({
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || c.id === id) continue;
                     try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
-                }
-            }
-        }
-        if (state && state.fileId && sync.symbol) {
-            const fid = String(state.fileId);
-            if (lastBroadcastFileRef.current[id] !== fid) {
-                lastBroadcastFileRef.current[id] = fid;
-                try {
-                    if (window.chart && String(window.chart.currentFileId || "") !== fid) {
-                        const ch = window.chart;
-                        const useMc = !!(ch.isBacktestMode || ch.backtestingSession)
-                            && typeof ch.loadMultichartPanelFile === "function";
-                        if (useMc) ch.loadMultichartPanelFile(fid, { force: true });
-                        else if (typeof ch.loadFileData === "function") ch.loadFileData(fid);
-                        lastBroadcastFileRef.current[HOST_PANEL_ID] = fid;
-                    }
-                } catch (_) {}
-                for (const c of mgr.charts.values()) {
-                    if (!c || c.host || c.id === id) continue;
-                    try { mgr.sendCommand(c.id, "loadFile", { fileId: fid }); } catch (_) {}
                 }
             }
         }
