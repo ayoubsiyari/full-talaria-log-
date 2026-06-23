@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b12';
+const CHART_ENGINE_BUILD = '20260624b1';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -20066,8 +20066,8 @@ class Chart {
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
         const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
-        const estOnScreen = Math.ceil(plotPx / Math.max(spacing, 1e-6));
-        if (this._isChartViewPanning() && estOnScreen > plotPx * 0.45) return true;
+        // All chart-body pan uses lite paint (skip volume, calendar markers, compare overlays).
+        if (this._isChartViewPanning()) return true;
         return false;
     }
 
@@ -21007,11 +21007,13 @@ class Chart {
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (typeof this.drawIndicators === 'function') {
+            // Overlay indicators + separate panels are expensive; skip during active pan drag
+            // and restore on mouseup via _stopChartPanRenderLoop's full-quality paint.
+            const deferHeavyOverlays = chartViewPanning && this._chartPanRenderLoopActive;
+            if (typeof this.drawIndicators === 'function' && !deferHeavyOverlays) {
                 this.drawIndicators();
             }
-            // Separate panels + legend must stay painted during lite pan — canvas is cleared each frame.
-            if (typeof this.renderSeparatePanelIndicators === 'function') {
+            if (typeof this.renderSeparatePanelIndicators === 'function' && !deferHeavyOverlays) {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
