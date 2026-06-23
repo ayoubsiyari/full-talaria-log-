@@ -1317,19 +1317,13 @@ class Chart {
         const fileKey = String(fileId);
         const isNumericOnly = (s) => /^\d+$/.test(String(s || '').trim());
 
-        if (Array.isArray(session.files)) {
-            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
-            if (file) {
-                const fromName = this._formatPairTicker(file.name || file.fileName, null);
-                if (fromName && !isNumericOnly(fromName)) return fromName;
-            }
-        }
+        // Prefer the symbol the user picked in session setup (ES, NQ), not the raw CSV stem (ESG1, …).
         if (Array.isArray(session.symbols)) {
             const symRow = session.symbols.find((row) => row && String(row.fileId) === fileKey);
             if (symRow) {
                 const fromSym = this._formatPairTicker(
                     symRow.symbolName || symRow.symbol || symRow.ticker,
-                    symRow.fileName || symRow.name
+                    null
                 );
                 if (fromSym && !isNumericOnly(fromSym)) return fromSym;
             }
@@ -1344,13 +1338,22 @@ class Chart {
                 if (String(rowFileId) === fileKey) {
                     const fromRow = this._formatPairTicker(
                         row.ticker || row.symbol || ticker,
-                        row.fileName || row.name
+                        null
                     );
                     if (fromRow && !isNumericOnly(fromRow)) return fromRow;
                     if (!isNumericOnly(ticker)) {
-                        return this._formatPairTicker(ticker, row.fileName || row.name);
+                        return this._formatPairTicker(ticker, null);
                     }
                 }
+            }
+        }
+        if (Array.isArray(session.files)) {
+            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
+            if (file) {
+                const fromTicker = this._formatPairTicker(file.ticker || null, null);
+                if (fromTicker && !isNumericOnly(fromTicker)) return fromTicker;
+                const fromName = this._formatPairTicker(file.name || file.fileName, null);
+                if (fromName && !isNumericOnly(fromName)) return fromName;
             }
         }
         return null;
@@ -1841,6 +1844,14 @@ class Chart {
             this.updateLoaderProgress(95, 'Starting replay mode...');
             this.updateLoaderStep(3, 'active');
             queueMicrotask(() => this.startBacktestingReplay(session));
+            setTimeout(() => {
+                try {
+                    if (String(selfBt.currentFileId) === String(fileId)
+                        && typeof selfBt._storeMultichartSessionPairCache === 'function') {
+                        selfBt._storeMultichartSessionPairCache(fileId);
+                    }
+                } catch (_btSessCache) { /* ignore */ }
+            }, 1500);
             
         } catch (error) {
             console.error('❌ Failed to load file data:', error);
@@ -1873,29 +1884,34 @@ class Chart {
      * @returns {Array|null}
      */
     _resolveParentMultichartMasterRaw(parent) {
-        if (!parent) return null;
+        return this._resolveChartExportableMasterRaw(parent);
+    }
+
+    /** Exportable 1m master (or live bars) from any chart instance for multichart clone/cache. */
+    _resolveChartExportableMasterRaw(chart) {
+        if (!chart) return null;
         try {
-            const prs = parent.replaySystem;
+            const prs = chart.replaySystem;
             if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
                 return prs.fullRawData;
             }
-            const fid = parent.currentFileId != null ? String(parent.currentFileId) : '';
-            if (fid && typeof parent._getBtTfDataCache === 'function') {
-                const oneM = parent._getBtTfDataCache(fid, '1m');
+            const fid = chart.currentFileId != null ? String(chart.currentFileId) : '';
+            if (fid && typeof chart._getBtTfDataCache === 'function') {
+                const oneM = chart._getBtTfDataCache(fid, '1m');
                 if (oneM && Array.isArray(oneM.rawData) && oneM.rawData.length > 0) {
                     return oneM.rawData;
                 }
             }
-            if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {
-                return parent._panelFullRawData;
+            if (Array.isArray(chart._panelFullRawData) && chart._panelFullRawData.length > 0) {
+                return chart._panelFullRawData;
             }
             const inReplay = !!(prs && prs.isActive);
-            if (!inReplay && Array.isArray(parent.rawData) && parent.rawData.length > 0) {
-                return parent.rawData;
+            if (!inReplay && Array.isArray(chart.rawData) && chart.rawData.length > 0) {
+                return chart.rawData;
             }
-            if (inReplay && Array.isArray(parent.rawData) && parent.rawData.length > 0) {
-                if (typeof parent._reseedReplayFullRawFromLoadedData === 'function') {
-                    parent._reseedReplayFullRawFromLoadedData();
+            if (inReplay && Array.isArray(chart.rawData) && chart.rawData.length > 0) {
+                if (typeof chart._reseedReplayFullRawFromLoadedData === 'function') {
+                    chart._reseedReplayFullRawFromLoadedData();
                 }
                 if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
                     return prs.fullRawData;
@@ -1905,13 +1921,161 @@ class Chart {
         return null;
     }
 
+    /** Parent-window Map shared by host A + iframe B/C/D for cross-panel pair reuse. */
+    _getMultichartSessionPairCacheStore() {
+        if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return null;
+        try {
+            const root = (this._isMultichartEmbedPanel() && window.parent && window.parent !== window)
+                ? window.parent
+                : window;
+            if (!root.__multichartSessionPairCache) {
+                root.__multichartSessionPairCache = new Map();
+            }
+            return root.__multichartSessionPairCache;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _multichartSessionPairCacheHas(fileId) {
+        const fid = String(fileId || '').trim();
+        if (!fid) return false;
+        const store = this._getMultichartSessionPairCacheStore();
+        if (!store || !store.has(fid)) return false;
+        const entry = store.get(fid);
+        return !!(entry && Array.isArray(entry.masterRaw) && entry.masterRaw.length > 0);
+    }
+
+    _snapshotBtTfCacheForSessionStore(fileId) {
+        const out = {};
+        if (!fileId || !this._btTfDataCache) return out;
+        const perFile = this._btTfDataCache.get(String(fileId));
+        if (!perFile) return out;
+        for (const [tf, entry] of perFile.entries()) {
+            if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) continue;
+            out[String(tf).toLowerCase().trim()] = {
+                rawData: entry.rawData,
+                totalCandles: entry.totalCandles,
+                serverCursors: entry.serverCursors ? { ...entry.serverCursors } : null,
+                nativeRawFetchTf: entry.nativeRawFetchTf,
+                anchorKey: entry.anchorKey,
+            };
+        }
+        return out;
+    }
+
+    _warmLocalBtTfCacheFromSessionSnapshot(fileId, btTfSnapshot) {
+        if (!fileId || !btTfSnapshot || typeof btTfSnapshot !== 'object') return;
+        const fid = String(fileId);
+        for (const tf of Object.keys(btTfSnapshot)) {
+            const entry = btTfSnapshot[tf];
+            if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) continue;
+            if (typeof this._storeBtTfDataCacheEntry === 'function') {
+                this._storeBtTfDataCacheEntry(fid, tf, entry.rawData, {
+                    totalCandles: entry.totalCandles,
+                    serverCursors: entry.serverCursors,
+                    nativeRawFetchTf: entry.nativeRawFetchTf,
+                    reuseArrayReference: true,
+                });
+            }
+        }
+    }
+
+    /**
+     * After any panel loads a pair, publish exportable master + TF cache for other tiles.
+     * @param {string} [fileId]
+     */
+    _storeMultichartSessionPairCache(fileId) {
+        if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return;
+        const fid = String(fileId || this.currentFileId || '').trim();
+        if (!fid) return;
+        const master = this._resolveChartExportableMasterRaw(this);
+        if (!master || !master.length) return;
+
+        const store = this._getMultichartSessionPairCacheStore();
+        if (!store) return;
+
+        const prev = store.get(fid);
+        const prevLen = prev && Array.isArray(prev.masterRaw) ? prev.masterRaw.length : 0;
+        if (prevLen > master.length * 1.05) {
+            this._warmLocalBtTfCacheFromSessionSnapshot(fid, prev.btTfSnapshot);
+            return;
+        }
+
+        if (typeof this._saveBtTfDataCacheFromChart === 'function') {
+            try { this._saveBtTfDataCacheFromChart(fid, '1m'); } catch (_save1m) { /* ignore */ }
+            const dispTf = String(this.currentTimeframe || '').toLowerCase().trim();
+            if (dispTf && dispTf !== '1m') {
+                try { this._saveBtTfDataCacheFromChart(fid, dispTf); } catch (_saveTf) { /* ignore */ }
+            }
+        }
+
+        store.set(fid, {
+            masterRaw: master.slice(),
+            nativeRawFetchTf: String(this._nativeRawFetchTf || '1m').toLowerCase().trim() || '1m',
+            totalCandles: Number.isFinite(this.totalCandles) ? this.totalCandles : master.length,
+            serverCursors: this._serverCursors ? { ...this._serverCursors } : null,
+            btTfSnapshot: this._snapshotBtTfCacheForSessionStore(fid),
+            storedBy: this._getMultichartPanelId(),
+            storedAt: Date.now(),
+        });
+
+        const maxEntries = 12;
+        if (store.size > maxEntries) {
+            let oldestKey = null;
+            let oldestAt = Infinity;
+            for (const [k, v] of store.entries()) {
+                const at = v && Number.isFinite(v.storedAt) ? v.storedAt : 0;
+                if (at < oldestAt) {
+                    oldestAt = at;
+                    oldestKey = k;
+                }
+            }
+            if (oldestKey != null) store.delete(oldestKey);
+        }
+    }
+
+    /**
+     * Clone a pair another multichart tile already loaded — no /smart round-trip.
+     * @param {string} targetFileId
+     * @returns {object|null}
+     */
+    _takeMultichartSessionPairCache(targetFileId) {
+        if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return null;
+        const fid = String(targetFileId || '').trim();
+        if (!fid || !this._multichartSessionPairCacheHas(fid)) return null;
+
+        const store = this._getMultichartSessionPairCacheStore();
+        const entry = store.get(fid);
+        if (!entry || !Array.isArray(entry.masterRaw) || !entry.masterRaw.length) return null;
+
+        this._warmLocalBtTfCacheFromSessionSnapshot(fid, entry.btTfSnapshot);
+
+        const masterRaw = entry.masterRaw;
+        const pc = entry.serverCursors || {};
+        return {
+            candles: masterRaw,
+            total: Number.isFinite(entry.totalCandles) ? entry.totalCandles : masterRaw.length,
+            returned: masterRaw.length,
+            first_cursor: masterRaw[0]?.t ?? pc.firstTs ?? null,
+            last_cursor: masterRaw[masterRaw.length - 1]?.t ?? pc.lastTs ?? null,
+            has_more_left: pc.hasMoreLeft !== false,
+            has_more_right: pc.hasMoreRight === true,
+            source: 'multichart-session-pair-cache',
+            nativeRawFetchTf: entry.nativeRawFetchTf || '1m',
+        };
+    }
+
     /** True when host tile A already holds exportable bars for the requested fileId. */
     _parentMultichartMasterReady(parent, fileId) {
         if (!parent) return false;
         const fid = fileId != null ? String(fileId).trim() : String(parent.currentFileId || '').trim();
-        if (!fid || String(parent.currentFileId || '').trim() !== fid) return false;
-        const master = this._resolveParentMultichartMasterRaw(parent);
-        return !!(master && master.length > 0);
+        if (!fid) return false;
+        if (String(parent.currentFileId || '').trim() === fid) {
+            const master = this._resolveParentMultichartMasterRaw(parent);
+            if (master && master.length > 0) return true;
+        }
+        return this._multichartSessionPairCacheHas(fid);
     }
 
     /**
@@ -2607,6 +2771,9 @@ class Chart {
                         if (typeof this._takeParentNativeMasterSmartWindow === 'function') {
                             result = this._takeParentNativeMasterSmartWindow(fileId);
                         }
+                        if (!result && typeof this._takeMultichartSessionPairCache === 'function') {
+                            result = this._takeMultichartSessionPairCache(fileId);
+                        }
                         if (result) break;
                         await new Promise((resolve) => setTimeout(resolve, 60));
                     }
@@ -2615,6 +2782,10 @@ class Chart {
                 // Independent pair on a high TF: HYBRID master — native bars for fast
                 // history (single-chart speed) + 1m around the playhead for smooth replay.
                 // Avoids fetching/resampling a full-session 1m master per panel.
+                if (!result && independentPair
+                    && typeof this._takeMultichartSessionPairCache === 'function') {
+                    result = this._takeMultichartSessionPairCache(fileId);
+                }
                 if (!result && independentPair
                     && String(displayTf).toLowerCase().trim() !== '1m'
                     && typeof this._buildIndependentHybridInitialMaster === 'function') {
@@ -2813,6 +2984,11 @@ class Chart {
                         },
                     }));
                 } catch (_ev) { /* ignore */ }
+                try {
+                    if (typeof this._storeMultichartSessionPairCache === 'function') {
+                        this._storeMultichartSessionPairCache(fileId);
+                    }
+                } catch (_mcCache) { /* ignore */ }
                 const selfMc = this;
                 const fidMc = fileId;
                 const samePairEmbed = !this._isIndependentMultichartPair();
@@ -6280,6 +6456,10 @@ class Chart {
             if (!result && canUseParentMemory) {
                 result = this._takeParentMemorySmartWindow(targetFileId, requestTimeframe);
             }
+            if (!result && (this._isMultichartHostPanel() || this._isMultichartEmbedPanel())
+                && typeof this._takeMultichartSessionPairCache === 'function') {
+                result = this._takeMultichartSessionPairCache(targetFileId);
+            }
             if (!result) result = this._tryTakeSmartPrefetch(targetFileId, params);
             if (!result && !fetchReplayAnchored) {
                 const prefetchParams = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
@@ -6551,6 +6731,12 @@ class Chart {
                 pairSwitchLoadSeq: pairSwitchLoadSeq,
             });
             if (pairLoadUiActive) pairSwitchEndDeferred = true;
+
+            try {
+                if (typeof this._storeMultichartSessionPairCache === 'function') {
+                    this._storeMultichartSessionPairCache(targetFileId);
+                }
+            } catch (_sessCache) { /* ignore */ }
 
             return true;
         } catch (error) {
