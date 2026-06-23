@@ -3960,7 +3960,7 @@ def _firstrate_class_health_stats(instrument_type: str) -> dict:
     return stats
 
 
-_FIRSTRATE_AUTO_REPAIR_CLASS_ORDER = ("fx", "futures", "crypto", "stock", "etf")
+_FIRSTRATE_AUTO_REPAIR_CLASS_ORDER = ("fx", "index", "futures", "crypto", "stock", "etf")
 
 
 def _firstrate_tickers_repair_bucket(
@@ -4009,6 +4009,133 @@ def _firstrate_tickers_repair_bucket(
         if b == bucket:
             out.append(canon)
     return sorted(set(out))
+
+
+def _firstrate_canonical_ticker_status_map(
+    instrument_type: str | None = None,
+) -> dict[str, dict]:
+    """
+    Best dataset row per canonical ticker (newest 1m end_ts when duplicates exist).
+    Keys are uppercase tickers; values include freshness bucket (fresh/stale/missing).
+    """
+    want = (instrument_type or "").strip().lower() or None
+    now_ms = datetime.utcnow().timestamp() * 1000.0
+    best: dict[str, dict] = {}
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).all()
+        aggs = (
+            db.query(CSVAggregate)
+            .filter(CSVAggregate.timeframe == "1m")
+            .all()
+        )
+    finally:
+        db.close()
+    agg_by_file = {int(a.file_id): a for a in aggs}
+    for f in files:
+        ticker = _firstrate_extract_ticker_from_filename(f.original_name or "")
+        if not ticker:
+            continue
+        asset_class = _firstrate_classify_ticker(ticker)
+        if want and asset_class != want:
+            continue
+        canon = ticker.upper()
+        last_ts = None
+        agg = agg_by_file.get(int(f.id))
+        if agg is not None and agg.end_ts is not None:
+            try:
+                last_ts = float(agg.end_ts)
+            except (TypeError, ValueError):
+                last_ts = None
+        staleness_hours: float | None = None
+        if last_ts is not None:
+            staleness_hours = max(0.0, (now_ms - last_ts) / 3_600_000.0)
+        bucket = _firstrate_freshness_bucket(staleness_hours)
+        row_count_1m = int(agg.row_count or 0) if agg else 0
+        prev = best.get(canon)
+        prev_ts = float(prev["last_ts"]) if prev and prev.get("last_ts") is not None else -1.0
+        if prev is None or (last_ts or 0) > prev_ts:
+            best[canon] = {
+                "ticker": canon,
+                "asset_class": asset_class,
+                "bucket": bucket,
+                "last_ts": last_ts,
+                "staleness_hours": round(staleness_hours, 2) if staleness_hours is not None else None,
+                "file_id": int(f.id),
+                "row_count_1m": row_count_1m,
+            }
+    return best
+
+
+def _firstrate_plan_pair_import(
+    instrument_type: str,
+    pairs: list[str] | None,
+    *,
+    skip_fresh: bool = True,
+    skip_all_existing: bool = False,
+) -> dict:
+    """
+    Split a requested ticker list into download vs skip buckets using the dataset registry.
+
+    - fresh (≤48h): skipped when skip_fresh
+    - stale: queued for update (merge)
+    - missing (not in registry): queued for first-time download
+    - skip_all_existing: only symbols with no registry row are downloaded
+    """
+    it = (instrument_type or "fx").strip().lower()
+    requested = _normalize_ticker_filter_list(pairs) if pairs else []
+    registry = _firstrate_canonical_ticker_status_map(it)
+
+    skipped_fresh: list[str] = []
+    skipped_existing: list[str] = []
+    to_update_stale: list[str] = []
+    to_download_new: list[str] = []
+    wrong_class: list[dict] = []
+
+    for tok in requested:
+        cls = _firstrate_classify_ticker(tok)
+        if cls and cls != it:
+            wrong_class.append({"ticker": tok, "expected": it, "actual": cls})
+            continue
+        row = registry.get(tok)
+        if row is None:
+            to_download_new.append(tok)
+            continue
+        if skip_all_existing:
+            skipped_existing.append(tok)
+            continue
+        bucket = str(row.get("bucket") or "missing")
+        if bucket == "fresh" and skip_fresh:
+            skipped_fresh.append(tok)
+        elif bucket in {"stale", "missing"}:
+            to_update_stale.append(tok)
+        elif skip_fresh:
+            skipped_fresh.append(tok)
+        else:
+            to_update_stale.append(tok)
+
+    to_download = sorted(set(to_download_new + ([] if skip_all_existing else to_update_stale)))
+
+    return {
+        "instrument_type": it,
+        "requested_count": len(requested),
+        "requested": requested,
+        "to_download": to_download,
+        "to_download_new": sorted(set(to_download_new)),
+        "to_update_stale": sorted(set(to_update_stale)),
+        "skipped_fresh": sorted(set(skipped_fresh)),
+        "skipped_existing": sorted(set(skipped_existing)),
+        "wrong_class": wrong_class,
+        "registry_count": len(registry),
+        "summary": {
+            "download": len(to_download),
+            "new": len(to_download_new),
+            "stale_update": len(to_update_stale) if not skip_all_existing else 0,
+            "skipped_fresh": len(skipped_fresh),
+            "skipped_existing": len(skipped_existing),
+            "wrong_class": len(wrong_class),
+        },
+    }
 
 
 def _firstrate_tickers_needing_repair(instrument_type: str) -> list[str]:
@@ -8438,6 +8565,7 @@ def _queue_firstrate_fx_import_job(
     upsert_existing: bool,
     trigger: str,
     pairs: list[str] | None = None,
+    import_plan: dict | None = None,
 ) -> dict:
     uid = get_firstrate_userid()
     if not uid:
@@ -8491,7 +8619,15 @@ def _queue_firstrate_fx_import_job(
         "datasets_created": [],
         "skipped_files": [],
         "pairs": list(pairs) if pairs else [],
+        "import_plan": import_plan,
     }
+    if import_plan and pairs:
+        sk = int(import_plan.get("summary", {}).get("skipped_fresh") or 0)
+        dl = len(pairs)
+        state["message"] = (
+            f"Queued FirstRate import — {dl} ticker{'s' if dl != 1 else ''} to download"
+            + (f" ({sk} fresh skipped)" if sk else "")
+        )
     _firstrate_write_job(job_id, state)
     try:
         cfg = _load_firstrate_schedule()
@@ -8517,9 +8653,47 @@ def _start_firstrate_fx_import_job(
     upsert_existing: bool = False,
     trigger: str = "manual",
     pairs: list[str] | None = None,
+    skip_fresh_existing: bool = True,
+    skip_all_existing: bool = False,
 ) -> dict:
+    pair_list = list(pairs) if pairs else []
+    import_plan: dict | None = None
+    if pair_list and not delete_existing_first:
+        import_plan = _firstrate_plan_pair_import(
+            instrument_type,
+            pair_list,
+            skip_fresh=bool(skip_fresh_existing),
+            skip_all_existing=bool(skip_all_existing),
+        )
+        pair_list = list(import_plan.get("to_download") or [])
+        if import_plan.get("wrong_class"):
+            bad = import_plan["wrong_class"][:5]
+            hints = ", ".join(
+                f"{x['ticker']}→{x['actual']}" for x in bad
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Some tickers belong to a different instrument type ({hints}). "
+                    f"Switch Instrument type to match, or remove them from the list."
+                ),
+            )
+        if not pair_list:
+            msg = (
+                f"All {import_plan.get('requested_count', 0)} tickers already in registry "
+                f"({import_plan['summary'].get('skipped_fresh', 0)} fresh"
+                f"{', ' + str(import_plan['summary'].get('skipped_existing', 0)) + ' existing skipped' if skip_all_existing else ''}) "
+                "— nothing to download."
+            )
+            return {
+                "success": True,
+                "skipped": True,
+                "message": msg,
+                "import_plan": import_plan,
+            }
+
     try:
-        return _queue_firstrate_fx_import_job(
+        result = _queue_firstrate_fx_import_job(
             period=period,
             timeframe=timeframe,
             instrument_type=instrument_type,
@@ -8530,8 +8704,12 @@ def _start_firstrate_fx_import_job(
             download_timeout_sec=download_timeout_sec,
             upsert_existing=upsert_existing,
             trigger=trigger,
-            pairs=pairs,
+            pairs=pair_list,
+            import_plan=import_plan,
         )
+        if import_plan and isinstance(result, dict):
+            result["import_plan"] = import_plan
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -9535,6 +9713,8 @@ class AdminFirstrateFxSyncIn(BaseModel):
     download_timeout_sec: float | None = 7200
     upsert_existing: bool = False
     pairs: list[str] | None = None
+    skip_fresh_existing: bool = True
+    skip_all_existing: bool = False
 
 
 class AdminFirstrateScheduleIn(BaseModel):
@@ -15316,7 +15496,38 @@ async def admin_firstrate_fx_sync(payload: AdminFirstrateFxSyncIn, request: Requ
         upsert_existing=bool(payload.upsert_existing),
         trigger="manual",
         pairs=pair_list,
+        skip_fresh_existing=bool(payload.skip_fresh_existing),
+        skip_all_existing=bool(payload.skip_all_existing),
     )
+
+
+@app.get("/api/admin/datasets/firstrate-fx/pair-check")
+async def admin_firstrate_fx_pair_check(
+    request: Request,
+    instrument_type: str = Query("fx"),
+    pairs: str = Query("", description="Comma-separated tickers to check"),
+    skip_fresh: bool = Query(True),
+    skip_all_existing: bool = Query(False),
+):
+    """
+    Compare a ticker list against the dataset registry before import.
+    Returns which symbols would be downloaded vs skipped (fresh / already present).
+    """
+    _require_admin(request)
+    it = (instrument_type or "fx").strip().lower()
+    if it not in VALID_INSTRUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"instrument_type must be one of {sorted(VALID_INSTRUMENT_TYPES)}",
+        )
+    raw_pairs = [p.strip() for p in re.split(r"[\s,;]+", pairs or "") if p.strip()]
+    plan = _firstrate_plan_pair_import(
+        it,
+        raw_pairs,
+        skip_fresh=bool(skip_fresh),
+        skip_all_existing=bool(skip_all_existing),
+    )
+    return {"success": True, "plan": plan}
 
 
 @app.get("/api/admin/datasets/firstrate-fx/live-status")

@@ -3364,7 +3364,7 @@ select { cursor:default; }
             <button type="button" class="ds-hub-tab" data-ds-tab="schedule" onclick="setDsHubTab('schedule')">Schedule</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="sync" onclick="setDsHubTab('sync')">Sync health</button>
             <button type="button" class="ds-hub-tab" data-ds-tab="maintenance" onclick="setDsHubTab('maintenance')">Maintenance</button>
-            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-06-23a</span>
+            <span id="dsHubBuildTag" style="margin-left:auto;font-size:10px;color:var(--text-muted);align-self:center" title="Admin dashboard build — if this date is old, redeploy trading-chart">admin 2026-06-23b</span>
           </div>
         </div>
 
@@ -3381,8 +3381,9 @@ select { cursor:default; }
                 <p>Add tickers you do not have yet.</p>
                 <ul>
                   <li><strong>Import</strong> tab → FirstRate: <code>period=week</code> or <code>full</code></li>
-                  <li>List tickers in the box (or use quick-add)</li>
-                  <li>Leave <strong>Merge</strong> on if a partial row already exists</li>
+                  <li>FX &amp; metals → type <code>fx</code> · indices/energy → <code>index</code> · crypto → <code>crypto</code> · MFF futures → <code>futures</code></li>
+                  <li>List tickers (quick-add) → <strong>Check tickers</strong> → <strong>Download &amp; import</strong></li>
+                  <li>Fresh symbols already in the registry are skipped automatically</li>
                 </ul>
                 <button type="button" class="btn sm primary" onclick="setDsHubTab('import')">Go to Import</button>
               </div>
@@ -3542,7 +3543,19 @@ select { cursor:default; }
                     <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
                   </div>
                 </div>
+                <div id="fr_pair_check_panel" class="field fg-full" style="display:none;margin-top:8px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:12px;line-height:1.55"></div>
                 <div class="field fg-full" style="margin-top:8px;padding-top:16px;border-top:1px dashed var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <button type="button" class="btn sm" id="frCheckPairsBtn" onclick="checkFirstratePairs()" title="Compare the ticker list against datasets already on the server — see what would be downloaded vs skipped">
+                    Check tickers
+                  </button>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:default;font-size:12px;color:var(--text-muted)" title="Symbols with data updated within the last 48 hours are not re-downloaded.">
+                    <input type="checkbox" id="fr_skip_fresh" checked>
+                    Skip tickers already up to date (fresh)
+                  </label>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:default;font-size:12px;color:var(--text-muted)" title="Only symbols with no dataset in the registry are downloaded. Stale symbols are skipped until you uncheck this.">
+                    <input type="checkbox" id="fr_skip_all_existing">
+                    Only download symbols not in registry yet
+                  </label>
                   <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download &amp; import now
@@ -3653,7 +3666,7 @@ select { cursor:default; }
             </div>
             <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.55">
               Schedule uses the <strong>Import</strong> tab form for defaults (instrument type, period, timeframe, ticker list) when “pull all classes” is off.
-              With <strong>pull every asset class</strong> on, it iterates fx → crypto → futures → stock based on what you already have in the registry.
+              With <strong>pull every asset class</strong> on, it iterates every class you already have in the registry (fx, index, futures, crypto, stock, …) — one class per scheduler tick.
             </p>
             <label style="display:flex;align-items:center;gap:8px;cursor:default;margin-bottom:6px;font-size:12px" title="When on, the nightly run iterates every fx/crypto/futures/stock dataset you already have. When off, it uses the single instrument_type + pairs from the Import form.">
               <input type="checkbox" id="fr_sched_auto_all" checked>
@@ -8534,6 +8547,80 @@ async function waitForDukascopyJob(jobId) {
   toast('Browser watch timed out (server may still be working).', 'err');
 }
 
+async function checkFirstratePairs() {
+  const panel = $('fr_pair_check_panel');
+  const btn = $('frCheckPairsBtn');
+  const pairs = parsePairsFromTextarea('fr_pairs');
+  if (!pairs.length) {
+    if (panel) {
+      panel.style.display = 'block';
+      panel.innerHTML = '<span style="color:var(--text-muted)">No tickers in the box — add symbols or use a quick-add button, then check again.</span>';
+    }
+    return toast('Add tickers to the list first', 'err');
+  }
+  dedupeFrPairsTextareaInPlace();
+  const inst = $('fr_type') ? $('fr_type').value : 'fx';
+  const skipFresh = !!($('fr_skip_fresh') && $('fr_skip_fresh').checked);
+  const skipAll = !!($('fr_skip_all_existing') && $('fr_skip_all_existing').checked);
+  if (btn) btn.disabled = true;
+  if (panel) {
+    panel.style.display = 'block';
+    panel.textContent = 'Checking registry…';
+  }
+  try {
+    const qs = new URLSearchParams({
+      instrument_type: inst,
+      pairs: pairs.join(','),
+      skip_fresh: skipFresh ? 'true' : 'false',
+      skip_all_existing: skipAll ? 'true' : 'false',
+    });
+    const data = await api('/api/admin/datasets/firstrate-fx/pair-check?' + qs.toString());
+    const plan = data.plan || {};
+    const s = plan.summary || {};
+    const fmtList = (arr, max) => {
+      if (!arr || !arr.length) return '—';
+      const show = arr.slice(0, max);
+      const rest = arr.length - show.length;
+      return show.join(', ') + (rest > 0 ? ` … +${rest} more` : '');
+    };
+  const wrong = plan.wrong_class || [];
+    let html = `<strong>Ticker check</strong> · ${plan.requested_count || 0} requested · ${plan.registry_count || 0} in registry (${inst})<br>`;
+    html += `<span style="color:var(--ok,#4ade80)">Download: ${s.download || 0}</span>`;
+    html += ` · <span style="color:var(--accent,#60a5fa)">New: ${s.new || 0}</span>`;
+    if (!skipAll) html += ` · <span style="color:var(--warn,#fbbf24)">Stale update: ${s.stale_update || 0}</span>`;
+    html += ` · <span style="color:var(--text-muted)">Skip fresh: ${s.skipped_fresh || 0}</span>`;
+    if (skipAll) html += ` · <span style="color:var(--text-muted)">Skip existing: ${s.skipped_existing || 0}</span>`;
+    if (wrong.length) html += ` · <span style="color:var(--danger,#f87171)">Wrong type: ${wrong.length}</span>`;
+    if ((plan.to_download_new || []).length) {
+      html += `<div style="margin-top:8px"><strong>New (first download):</strong> ${fmtList(plan.to_download_new, 24)}</div>`;
+    }
+    if (!skipAll && (plan.to_update_stale || []).length) {
+      html += `<div style="margin-top:6px"><strong>Stale (merge update):</strong> ${fmtList(plan.to_update_stale, 24)}</div>`;
+    }
+    if ((plan.skipped_fresh || []).length) {
+      html += `<div style="margin-top:6px;color:var(--text-muted)"><strong>Skipped (fresh):</strong> ${fmtList(plan.skipped_fresh, 20)}</div>`;
+    }
+    if ((plan.skipped_existing || []).length) {
+      html += `<div style="margin-top:6px;color:var(--text-muted)"><strong>Skipped (already in registry):</strong> ${fmtList(plan.skipped_existing, 20)}</div>`;
+    }
+    if (wrong.length) {
+      const hints = wrong.slice(0, 8).map((x) => `${x.ticker}→${x.actual}`).join(', ');
+      html += `<div style="margin-top:6px;color:var(--danger,#f87171)"><strong>Wrong instrument type:</strong> ${hints}</div>`;
+    }
+    if (panel) panel.innerHTML = html;
+    if ((s.download || 0) === 0) {
+      toast('All tickers already covered — nothing to download with current options.', 'ok');
+    } else {
+      toast(`Ready to download ${s.download} ticker(s).`, 'ok');
+    }
+  } catch (e) {
+    if (panel) panel.innerHTML = `<span style="color:var(--danger,#f87171)">${String(e.message || e).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+    toast(e.message || String(e), 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function syncFirstrateFx() {
   const period = $('fr_period').value;
   const timeframe = $('fr_tf').value;
@@ -8568,6 +8655,8 @@ async function syncFirstrateFx() {
       delete_existing_first: deleteFirst,
       upsert_existing: !!($('fr_upsert') && $('fr_upsert').checked),
       pairs: parsePairsFromTextarea('fr_pairs'),
+      skip_fresh_existing: !!($('fr_skip_fresh') && $('fr_skip_fresh').checked),
+      skip_all_existing: !!($('fr_skip_all_existing') && $('fr_skip_all_existing').checked),
     };
     if (adj) body.adjustment = adj;
     const trEl = $('fr_ticker_range');
@@ -8588,6 +8677,25 @@ async function syncFirstrateFx() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
+    if (data.skipped) {
+      if (label) label.textContent = data.message || 'Nothing to download — all tickers already covered.';
+      toast(data.message || 'All tickers skipped — already in registry.', 'ok');
+      if (data.import_plan) {
+        const panel = $('fr_pair_check_panel');
+        if (panel) {
+          panel.style.display = 'block';
+          await checkFirstratePairs();
+        }
+      }
+      return;
+    }
+    if (data.import_plan && data.import_plan.summary) {
+      const s = data.import_plan.summary;
+      const sk = s.skipped_fresh || 0;
+      if (label && sk) {
+        label.textContent = `Queued ${s.download || 0} ticker(s) (${sk} fresh skipped)`;
+      }
+    }
     if (data.job_id) await waitForFirstrateJob(data.job_id);
     await loadDatasets();
   } catch (e) {
