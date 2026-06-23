@@ -16122,10 +16122,21 @@ const TalariaV8b = () => {
             {id:"privacy",label:dashTxt("Privacy","خصوصية"),symbol:"***"},
           ];
           const activeDashValueOption = dashValueOptions.find(option=>option.id===dashValueMode) || dashValueOptions[0];
-          const cycleDashValueMode = () => {
-            const currentIndex = dashValueOptions.findIndex(option=>option.id===dashValueMode);
-            const nextOption = dashValueOptions[(currentIndex + 1 + dashValueOptions.length) % dashValueOptions.length] || dashValueOptions[0];
-            setDashValueMode(nextOption.id);
+          const dashValueModeDropKey = "dashValueModeDrop";
+          const toggleDashValueModeDrop = (anchorEl) => {
+            if (dropdown === dashValueModeDropKey) {
+              setDropdown(null);
+              setDdAnchor(null);
+              return;
+            }
+            const r = anchorEl.getBoundingClientRect();
+            const menuW = 128;
+            setDdAnchor({
+              top: r.bottom / Z + 2,
+              left: Math.max(8, r.right / Z - menuW),
+              minWidth: menuW,
+            });
+            setDropdown(dashValueModeDropKey);
           };
           const ValueModeSymbol = ({option, active=false, large=false}) => (
             <span style={{width:large?22:18,height:large?22:18,display:"inline-flex",alignItems:"center",justifyContent:"center",flex:`0 0 ${large?22:18}px`,color:"currentColor",fontSize:large?(option.id==="privacy"?7.8:15):(option.id==="privacy"?7.2:11),fontWeight:900,fontFamily:F,lineHeight:1,textShadow:"none",boxSizing:"border-box",textRendering:"geometricPrecision"}}>
@@ -30145,9 +30156,9 @@ const TalariaV8b = () => {
             setDashAddTradeExcursionOpen(false);
           };
           const DashboardBalanceField = () => (
-            <div className="tlr-dashboard-value-menu-wrap" style={{position:"relative",height:40,width:286,flex:"0 0 286px",zIndex:1}}>
+            <div className="tlr-dashboard-value-menu-wrap" style={{position:"relative",height:40,width:286,flex:"0 0 286px",zIndex:dropdown===dashValueModeDropKey?10050:1}}>
               <div className="tlr-dashboard-balance-field"
-                style={{height:40,position:"relative",display:"grid",gridTemplateColumns:"minmax(86px,1fr) minmax(88px,1fr) 32px",padding:"0 7px 0 12px",alignItems:"center",columnGap:14,background:"linear-gradient(180deg,rgba(17,21,37,0.98),rgba(9,12,24,0.96))",border:"1px solid rgba(140,160,255,0.20)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.05)",boxSizing:"border-box",fontFamily:F,overflow:"hidden",cursor:"default",outline:"none"}}>
+                style={{height:40,position:"relative",display:"grid",gridTemplateColumns:"minmax(86px,1fr) minmax(88px,1fr) 32px",padding:"0 7px 0 12px",alignItems:"center",columnGap:14,background:"linear-gradient(180deg,rgba(17,21,37,0.98),rgba(9,12,24,0.96))",border:"1px solid rgba(140,160,255,0.20)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.05)",boxSizing:"border-box",fontFamily:F,overflow:"visible",cursor:"default",outline:"none"}}>
                 <div style={{minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4,overflow:"hidden"}}>
                   <span className="tlr-dashboard-balance-label" style={{fontSize:7,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{dashTxt("Starting","البداية")}</span>
                   <span style={{width:"fit-content",maxWidth:"100%",fontSize:11,fontWeight:900,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
@@ -30160,14 +30171,43 @@ const TalariaV8b = () => {
                     {dashboardBalanceDisplay(dashboardCurrentEquity)}
                   </span>
                 </div>
-                <span className="tlr-dashboard-balance-mode-icon" role="button" tabIndex={0}
-                  aria-label={`${dashTxt("Value mode","وضع القيمة")}: ${activeDashValueOption.label}. ${dashTxt("Click to switch display mode","اضغط لتغيير وضع العرض")}`}
-                  onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();e.stopPropagation();cycleDashValueMode();}}
-                  onKeyDown={e=>{if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); cycleDashValueMode(); }}}
-                  style={{"--tlr-balance-icon-accent":dashValueMode==="privacy"?c.gold:c.acL,"--tlr-balance-icon-hover-bg":dashValueMode==="privacy"?"rgba(201,168,76,0.12)":"rgba(74,106,255,0.12)","--tlr-balance-icon-active-bg":dashValueMode==="privacy"?"rgba(201,168,76,0.20)":"rgba(74,106,255,0.20)",width:26,height:26,display:"grid",placeItems:"center",justifySelf:"end",color:dashValueMode==="privacy"?c.gold:c.ts,opacity:.94,boxSizing:"border-box",pointerEvents:"auto",outline:"none"}}>
+                <div
+                  className={`tlr-dashboard-balance-mode-icon tlr-dashboard-value-select${dropdown===dashValueModeDropKey?" tlr-dashboard-source-switch-open":""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-haspopup="listbox"
+                  aria-expanded={dropdown===dashValueModeDropKey}
+                  aria-label={`${dashTxt("Value mode","وضع القيمة")}: ${activeDashValueOption.label}`}
+                  onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();e.stopPropagation();toggleDashValueModeDrop(e.currentTarget);}}
+                  onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();toggleDashValueModeDrop(e.currentTarget);}else if(e.key==="Escape"&&dropdown===dashValueModeDropKey){e.preventDefault();setDropdown(null);setDdAnchor(null);}}}
+                  style={{"--tlr-balance-icon-accent":dashValueMode==="privacy"?c.gold:c.acL,"--tlr-balance-icon-hover-bg":dashValueMode==="privacy"?"rgba(201,168,76,0.12)":"rgba(74,106,255,0.12)","--tlr-balance-icon-active-bg":dashValueMode==="privacy"?"rgba(201,168,76,0.20)":"rgba(74,106,255,0.20)",width:26,height:26,display:"grid",gridTemplateColumns:"1fr 10px",alignItems:"center",justifySelf:"end",gap:0,color:dashValueMode==="privacy"?c.gold:c.ts,opacity:.94,boxSizing:"border-box",pointerEvents:"auto",outline:"none",background:dropdown===dashValueModeDropKey?"rgba(74,106,255,0.10)":"transparent",border:`1px solid ${dropdown===dashValueModeDropKey?"rgba(140,160,255,0.45)":c.brH}`}}>
                   <ValueModeSymbol option={activeDashValueOption} active={false} large/>
-                </span>
+                  <svg style={{justifySelf:"end",transform:`rotate(${dropdown===dashValueModeDropKey?180:0}deg)`,transition:"transform 0.15s",pointerEvents:"none"}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
               </div>
+              {dropdown===dashValueModeDropKey&&ddAnchor&&(
+                <>
+                  <div style={{position:"fixed",inset:0,zIndex:10049}} onClick={e=>{e.stopPropagation();setDropdown(null);setDdAnchor(null);}}/>
+                  <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:ddAnchor.top,left:ddAnchor.left,minWidth:ddAnchor.minWidth,zIndex:10050,background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 4px 16px rgba(0,0,0,0.5)",fontFamily:F}} role="listbox" aria-label={dashTxt("Value mode","وضع القيمة")}>
+                    <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+                    {dashValueOptions.map(option=>{
+                      const isAct=option.id===dashValueMode;
+                      const isHv=hov==="dashValueOpt_"+option.id;
+                      return(
+                        <div key={option.id} role="option" aria-selected={isAct}
+                          className={`tlr-dashboard-value-option${isAct?" tlr-dashboard-value-option-active":""}`}
+                          onClick={e=>{e.stopPropagation();setDashValueMode(option.id);setDropdown(null);setDdAnchor(null);}}
+                          onMouseEnter={()=>setHov("dashValueOpt_"+option.id)}
+                          onMouseLeave={()=>setHov(null)}
+                          style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",cursor:"default",position:"relative",background:isAct?c.acD:isHv?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
+                          <ValueModeSymbol option={option} active={isAct}/>
+                          <span style={{fontSize:10,fontWeight:isAct?700:500,color:isAct?c.acL:isHv?c.tx:c.ts,fontFamily:F,whiteSpace:"nowrap"}}>{option.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           );
 
