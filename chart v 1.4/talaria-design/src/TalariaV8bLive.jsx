@@ -10527,6 +10527,17 @@ const TalariaV8bLive = () => {
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
   const [chartType, setChartType] = useState("Candles");
   const [chartTypeDropL, setChartTypeDropL] = useState(185);
+  // Must be declared before chart-type sync effect (TDZ: layoutSync.chartType in deps).
+  const [layoutSync, setLayoutSync] = useState({
+    crosshair: true,
+    time: false,
+    drawings: true,
+    symbol: false,
+    interval: false,
+    dateRange: false,
+    indicators: false,
+    chartType: false,
+  });
   const [tfOpen, setTfOpen] = useState(false);
   const [tfCat, setTfCat] = useState(null);
   const [tfPinned, setTfPinned] = useState(["1m","5m","15m","1H","4H","1D"]);
@@ -12681,12 +12692,6 @@ const TalariaV8bLive = () => {
   // Single-chart layouts ignore this; multi-panel layouts highlight the
   // focused tile and (in Phase 7.2.4) route topbar/leftbar actions to it.
   const [focusedPanelId, setFocusedPanelId] = useState("A");
-  // Phase 7.2.3: TradingView-style topbar layout dropdown (replaces the
-  // deleted topbar layout entry). Anchor ref lets us position the popover
-  // directly below the button so it lines up like TradingView.
-  // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
-  // races re-enabling sync modes (especially `time`) unexpectedly.
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);
