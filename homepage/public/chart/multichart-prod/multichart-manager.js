@@ -611,12 +611,7 @@
             };
             try {
                 c.frame.contentWindow.postMessage(msg, '*');
-                var hotCmd = cmd === 'syncReplayFromHost'
-                    || cmd === 'replayFrame'
-                    || cmd === 'replayTick';
-                if (!hotCmd) {
-                    self._log('out', 'panel-cmd ' + cmd + ' → ' + panelId);
-                }
+                self._log('out', 'panel-cmd ' + cmd + ' → ' + panelId);
             } catch (e) {
                 clearTimeout(timeout);
                 self._pendingCmds.delete(requestId);
@@ -777,7 +772,7 @@
                 // command bus can chain on the result (e.g. capture the
                 // chartId returned from addIndicator).
                 if (msg.ok) {
-                    // cmd-result OK is too noisy during replay sync — failures still log.
+                    this._log('info', 'cmd-result OK ' + sourceId + ' req=' + msg.requestId);
                 } else {
                     this._log('warn', 'cmd-result FAIL ' + sourceId
                         + ' req=' + msg.requestId + ' err=' + (msg.error || 'unknown'));

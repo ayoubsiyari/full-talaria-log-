@@ -1317,13 +1317,19 @@ class Chart {
         const fileKey = String(fileId);
         const isNumericOnly = (s) => /^\d+$/.test(String(s || '').trim());
 
-        // Prefer the symbol the user picked in session setup (ES, NQ), not the raw CSV stem (ESG1, …).
+        if (Array.isArray(session.files)) {
+            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
+            if (file) {
+                const fromName = this._formatPairTicker(file.name || file.fileName, null);
+                if (fromName && !isNumericOnly(fromName)) return fromName;
+            }
+        }
         if (Array.isArray(session.symbols)) {
             const symRow = session.symbols.find((row) => row && String(row.fileId) === fileKey);
             if (symRow) {
                 const fromSym = this._formatPairTicker(
                     symRow.symbolName || symRow.symbol || symRow.ticker,
-                    null
+                    symRow.fileName || symRow.name
                 );
                 if (fromSym && !isNumericOnly(fromSym)) return fromSym;
             }
@@ -1338,22 +1344,13 @@ class Chart {
                 if (String(rowFileId) === fileKey) {
                     const fromRow = this._formatPairTicker(
                         row.ticker || row.symbol || ticker,
-                        null
+                        row.fileName || row.name
                     );
                     if (fromRow && !isNumericOnly(fromRow)) return fromRow;
                     if (!isNumericOnly(ticker)) {
-                        return this._formatPairTicker(ticker, null);
+                        return this._formatPairTicker(ticker, row.fileName || row.name);
                     }
                 }
-            }
-        }
-        if (Array.isArray(session.files)) {
-            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
-            if (file) {
-                const fromTicker = this._formatPairTicker(file.ticker || null, null);
-                if (fromTicker && !isNumericOnly(fromTicker)) return fromTicker;
-                const fromName = this._formatPairTicker(file.name || file.fileName, null);
-                if (fromName && !isNumericOnly(fromName)) return fromName;
             }
         }
         return null;
@@ -1876,68 +1873,35 @@ class Chart {
      * @returns {Array|null}
      */
     _resolveParentMultichartMasterRaw(parent) {
-        return this._resolveChartExportableMasterRaw(parent);
-    }
-
-    /** Exportable 1m master (or live bars) from any chart instance for multichart clone/cache. */
-    _resolveChartExportableMasterRaw(chart) {
-        if (!chart) return null;
+        if (!parent) return null;
         try {
-            const prs = chart.replaySystem;
+            const prs = parent.replaySystem;
             if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
                 return prs.fullRawData;
             }
-            const fid = chart.currentFileId != null ? String(chart.currentFileId) : '';
-            if (fid && typeof chart._getBtTfDataCache === 'function') {
-                const oneM = chart._getBtTfDataCache(fid, '1m');
+            const fid = parent.currentFileId != null ? String(parent.currentFileId) : '';
+            if (fid && typeof parent._getBtTfDataCache === 'function') {
+                const oneM = parent._getBtTfDataCache(fid, '1m');
                 if (oneM && Array.isArray(oneM.rawData) && oneM.rawData.length > 0) {
                     return oneM.rawData;
                 }
             }
-            if (Array.isArray(chart._panelFullRawData) && chart._panelFullRawData.length > 0) {
-                return chart._panelFullRawData;
+            if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {
+                return parent._panelFullRawData;
             }
             const inReplay = !!(prs && prs.isActive);
-            if (!inReplay && Array.isArray(chart.rawData) && chart.rawData.length > 0) {
-                return chart.rawData;
+            if (!inReplay && Array.isArray(parent.rawData) && parent.rawData.length > 0) {
+                return parent.rawData;
             }
-            if (inReplay && Array.isArray(chart.rawData) && chart.rawData.length > 0) {
-                if (typeof chart._reseedReplayFullRawFromLoadedData === 'function') {
-                    chart._reseedReplayFullRawFromLoadedData();
+            if (inReplay && Array.isArray(parent.rawData) && parent.rawData.length > 0) {
+                if (typeof parent._reseedReplayFullRawFromLoadedData === 'function') {
+                    parent._reseedReplayFullRawFromLoadedData();
                 }
                 if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
                     return prs.fullRawData;
                 }
             }
         } catch (_e) { /* ignore */ }
-        return null;
-    }
-
-    /** Parent-window Map shared by host A + iframe B/C/D for cross-panel pair reuse. */
-    _getMultichartSessionPairCacheStore() {
-        if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return null;
-        try {
-            const root = (this._isMultichartEmbedPanel() && window.parent && window.parent !== window)
-                ? window.parent
-                : window;
-            if (!root.__multichartSessionPairCache) {
-                root.__multichartSessionPairCache = new Map();
-            }
-            return root.__multichartSessionPairCache;
-        } catch (_e) {
-            return null;
-        }
-    }
-
-    _multichartSessionPairCacheHas(fileId) {
-        return false;
-    }
-
-    _storeMultichartSessionPairCache(_fileId) {
-        // Disabled — duplicated large bar arrays and competed with pan/zoom on the main thread.
-    }
-
-    _takeMultichartSessionPairCache(_targetFileId) {
         return null;
     }
 
@@ -2068,7 +2032,7 @@ class Chart {
         try {
             if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf, {
                 hostCacheOnly,
-                retryMs: hostCacheOnly ? 1200 : 0,
+                retryMs: hostCacheOnly ? 5000 : 0,
             })) {
                 return;
             }
@@ -2643,9 +2607,6 @@ class Chart {
                         if (typeof this._takeParentNativeMasterSmartWindow === 'function') {
                             result = this._takeParentNativeMasterSmartWindow(fileId);
                         }
-                        if (!result && typeof this._takeMultichartSessionPairCache === 'function') {
-                            result = this._takeMultichartSessionPairCache(fileId);
-                        }
                         if (result) break;
                         await new Promise((resolve) => setTimeout(resolve, 60));
                     }
@@ -2654,10 +2615,6 @@ class Chart {
                 // Independent pair on a high TF: HYBRID master — native bars for fast
                 // history (single-chart speed) + 1m around the playhead for smooth replay.
                 // Avoids fetching/resampling a full-session 1m master per panel.
-                if (!result && independentPair
-                    && typeof this._takeMultichartSessionPairCache === 'function') {
-                    result = this._takeMultichartSessionPairCache(fileId);
-                }
                 if (!result && independentPair
                     && String(displayTf).toLowerCase().trim() !== '1m'
                     && typeof this._buildIndependentHybridInitialMaster === 'function') {
@@ -2856,11 +2813,6 @@ class Chart {
                         },
                     }));
                 } catch (_ev) { /* ignore */ }
-                try {
-                    if (typeof this._storeMultichartSessionPairCache === 'function') {
-                        this._storeMultichartSessionPairCache(fileId);
-                    }
-                } catch (_mcCache) { /* ignore */ }
                 const selfMc = this;
                 const fidMc = fileId;
                 const samePairEmbed = !this._isIndependentMultichartPair();
@@ -6121,9 +6073,7 @@ class Chart {
                     ingestSource: options.ingestSource || this._lastIngestSource || null,
                 }
             }));
-            // Do NOT emit timeframeChanged here — pan/zoom load-more also commits
-            // bars with the same TF. That event must only fire from
-            // _commitTimeframeChange when the timeframe actually changes.
+            this._emitTimeframeChanged();
         }
 
         if (startIndex === 0 && this.currentFileId) {
@@ -6329,10 +6279,6 @@ class Chart {
             }
             if (!result && canUseParentMemory) {
                 result = this._takeParentMemorySmartWindow(targetFileId, requestTimeframe);
-            }
-            if (!result && (this._isMultichartHostPanel() || this._isMultichartEmbedPanel())
-                && typeof this._takeMultichartSessionPairCache === 'function') {
-                result = this._takeMultichartSessionPairCache(targetFileId);
             }
             if (!result) result = this._tryTakeSmartPrefetch(targetFileId, params);
             if (!result && !fetchReplayAnchored) {
@@ -6605,12 +6551,6 @@ class Chart {
                 pairSwitchLoadSeq: pairSwitchLoadSeq,
             });
             if (pairLoadUiActive) pairSwitchEndDeferred = true;
-
-            try {
-                if (typeof this._storeMultichartSessionPairCache === 'function') {
-                    this._storeMultichartSessionPairCache(targetFileId);
-                }
-            } catch (_sessCache) { /* ignore */ }
 
             return true;
         } catch (error) {
@@ -17444,7 +17384,6 @@ class Chart {
             && Array.isArray(this.data) && this.data.length > 0
             && !this._panLoading;
         if (haveCurrentTfData) {
-            this._multichartTfFromHostCache = false;
             this._logTfSwitch('noop', { to: normalizedTf });
             if (this.drawingManager
                 && this.drawings
@@ -19427,14 +19366,11 @@ class Chart {
      * Calculate scales for chart rendering
      */
     calculateScales() {
-        const panLoop = this._chartPanRenderLoopActive && this._isChartViewPanDragging();
-        if (!panLoop) {
-            if (typeof this._syncSeparateIndicatorPanelHeightEstimate === 'function') {
-                this._syncSeparateIndicatorPanelHeightEstimate();
-            }
-            if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
-                this._normalizeVolumeIndicatorLayout();
-            }
+        if (typeof this._syncSeparateIndicatorPanelHeightEstimate === 'function') {
+            this._syncSeparateIndicatorPanelHeightEstimate();
+        }
+        if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
+            this._normalizeVolumeIndicatorLayout();
         }
         // ZOOM-FIX-9: skip heavy OHLC scan on pan when Y domain can be derived from snap + priceOffset.
         if (this._chartPanRenderLoopActive && this._panScalesCalculated && this.yScale && this.xScale) {
@@ -20323,21 +20259,14 @@ class Chart {
         return this._flattenPixelSlotSegments(slots);
     }
 
-    /** CSS translate on the drawings layer during pan — avoids tearing down SVG every rAF. */
+    /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
     _canPanTransformDrawings() {
-        if (!this._isChartViewPanDragging()) return false;
-        const dm = this.drawingManager;
-        if (!dm || !Array.isArray(dm.drawings) || dm.drawings.length === 0) return true;
-        if (typeof dm.isVolumeProfileToolType !== 'function') return true;
-        for (let i = 0; i < dm.drawings.length; i++) {
-            const d = dm.drawings[i];
-            if (d && dm.isVolumeProfileToolType(d.type)) return false;
-        }
-        return true;
+        return false;
     }
 
+    /** @deprecated See _canPanTransformDrawings */
     _shouldUsePanDrawingsTransform() {
-        return this._canPanTransformDrawings();
+        return false;
     }
 
     /** V9 #chart-container uses overflow:hidden — relax while panning so nothing clips mid-drag. */
@@ -20370,10 +20299,6 @@ class Chart {
     /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
     _isChartPanDragging() {
         return !!(this.drag && this.drag.active && this.drag.type === 'pan');
-    }
-
-    _isChartViewPanDragging() {
-        return this._isChartPanDragging();
     }
 
     _releasePanPointerCapture() {
@@ -20470,23 +20395,30 @@ class Chart {
         } else {
             this._panelSnapDomains = null;
         }
-        if (typeof this._paintSeparatePanelStackBackground === 'function') {
-            this._paintSeparatePanelStackBackground();
-        }
         if (this.compareOverlay && typeof this.compareOverlay.snapshotPanDomains === 'function') {
             this.compareOverlay.snapshotPanDomains();
         } else {
             this._overlaySnapDomains = null;
         }
-        // Tick cache built lazily on first pan frame (_buildPanTimeTicks) — not on mousedown.
-        this._clearPanTimeTickCache();
-        this._usedPanTransformDrawings = false;
-        this._setChartPanDomOverflow(true);
+        // Pre-warm tick cache so the first pan frame does not stall on _buildTimeTicks().
+        const panTicks = this._buildTimeTicks({ panCache: true });
+        this._panTimeTickCache = {
+            baseOffsetX: this.offsetX,
+            ticks: panTicks.map((t) => ({ ...t })),
+        };
         // Drop stale CSS translate; keep snap offsets for the pan loop.
         this._clearPanDrawingsLayerTransform(false);
         const dm = this.drawingManager;
-        // TF anchor refresh runs via drawingManager.scheduleRefreshAfterTimeframe after
-        // setTimeframe — not on every pan start (that loop blocked mousedown ~300ms).
+        // Re-resolve timestamp anchors once at pan start (e.g. after 1D→1m→1D) then freeze
+        // indices for the drag — per-frame resolve during pan caused shapes to snap/jump.
+        if (dm && dm.drawings && dm.drawings.length > 0
+            && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
+            dm.drawings.forEach((drawing) => {
+                if (drawing) {
+                    dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                }
+            });
+        }
         if (dm && typeof dm.prepareDrawingsForChartPan === 'function') {
             dm.prepareDrawingsForChartPan();
         }
@@ -20560,9 +20492,6 @@ class Chart {
             requestAnimationFrame(() => {
                 if (this._isChartPanDragging()) return;
                 this._panScalesCalculated = false;
-                if (typeof this._paintSeparatePanelStackBackground === 'function') {
-                    this._paintSeparatePanelStackBackground();
-                }
                 this.renderPending = false;
                 this.render();
             });
@@ -21055,8 +20984,6 @@ class Chart {
         this.ctx.clearRect(0, 0, this.w, this.h);
         
         const chartViewPanning = this._isChartViewPanning();
-        const chartPanDragging = this._isChartViewPanDragging();
-        const panTransformDrawings = chartPanDragging && this._canPanTransformDrawings();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
         const interactionFast = this._isInteractionFastRender();
 
@@ -21071,14 +20998,15 @@ class Chart {
 
         // IMPORTANT: Calculate scales FIRST before drawing anything
         const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
-        const interactionLiteEarly = chartPanDragging || this._shouldUseInteractionLitePaint(null);
+        const interactionLiteEarly = this._shouldUseInteractionLitePaint(null);
         const skipHeavyChrome = interactionLiteEarly && (wheelBurstLight || chartViewPanning);
 
         this.calculateScales();
         if (typeof this._syncAdaptivePriceAxisMargin === 'function' && !skipHeavyChrome) {
             this._syncAdaptivePriceAxisMargin();
         }
-        if (!chartPanDragging && typeof this._paintSeparatePanelStackBackground === 'function') {
+        // Keep separate-panel stack opaque even during lite pan (prevents candle bleed + legend drift).
+        if (typeof this._paintSeparatePanelStackBackground === 'function') {
             this._paintSeparatePanelStackBackground();
         }
 
@@ -21092,9 +21020,6 @@ class Chart {
         if (skipHeavyChrome) {
             // Rebuild bar-grid ticks every frame so labels scroll with pan/zoom (not fixed screen slots).
             this._timeTicks = useFastTimeTicks ? this._buildTimeTicksFast() : this._buildTimeTicks();
-            this._cachedInteractionTimeTicks = this._timeTicks;
-        } else if (chartPanDragging) {
-            this._timeTicks = this._buildPanTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (chartViewPanning) {
             this._timeTicks = useFastTimeTicks
@@ -21181,10 +21106,11 @@ class Chart {
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (!chartPanDragging && typeof this.drawIndicators === 'function') {
+            if (typeof this.drawIndicators === 'function') {
                 this.drawIndicators();
             }
-            if (!chartPanDragging && typeof this.renderSeparatePanelIndicators === 'function') {
+            // Separate panels + legend must stay painted during lite pan — canvas is cleared each frame.
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
@@ -21205,17 +21131,15 @@ class Chart {
                 this.compareOverlay.updateInfoPositions();
             }
             this.drawCurrentPriceLabel(visible);
-            const syncDrawingsNow = wheelBurstLight || axisZoomDragging || (!interactionLite && !panTransformDrawings);
-            if (panTransformDrawings) {
-                this._usedPanTransformDrawings = true;
-                this._applyPanDrawingsLayerTransform();
-            } else if (syncDrawingsNow) {
-                if (chartViewPanning) {
-                    this._clearPanDrawingsLayerTransform(false);
-                }
+            // Drawings must track candles during pan, wheel zoom, and axis zoom (including lite path).
+            const syncDrawingsNow = chartViewPanning || wheelBurstLight || axisZoomDragging || !interactionLite;
+            if (chartViewPanning) {
+                this._clearPanDrawingsLayerTransform(false);
+            }
+            if (syncDrawingsNow) {
                 this.redrawDrawings();
             }
-            if (!chartPanDragging && syncDrawingsNow) {
+            if (syncDrawingsNow) {
                 this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight);
             }
             if (!interactionLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
@@ -26348,15 +26272,8 @@ class Chart {
         }, true);
 
         this.canvas.addEventListener('mousedown', e => {
-            // Host tile: MultichartGrid #chartWrapper pointerdown already clears drawing UI.
-            // Iframe tiles: defer so pan mousedown stays under one frame budget.
-            if (e.button === 0 && this._isMultichartEmbedPanel()) {
-                const deferClear = () => this._requestMultichartClearDrawingUiOnOtherPanels();
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(deferClear);
-                } else {
-                    deferClear();
-                }
+            if (e.button === 0 && this._isMultichartHostPanel()) {
+                this._requestMultichartClearDrawingUiOnOtherPanels();
             }
             if (tryStartCtrlMarqueeSelect.call(this, e)) {
                 return;
@@ -26527,8 +26444,10 @@ class Chart {
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
-                // Start pan loop on finger-down; first paint is on the next rAF (avoid sync render here).
+                // Start pan loop on finger-down so the first mousemove is not waiting on rAF setup.
                 this._scheduleChartPanRender();
+                this.renderPending = false;
+                this.render();
             }
         });
 
@@ -26595,12 +26514,9 @@ class Chart {
                 if (this.drag.type === 'pan') {
                     this._scheduleChartPanFrame(e.clientX, e.clientY);
 
+                    // Update follow button visibility after panning
                     if (this.replaySystem && this.replaySystem.isActive) {
-                        const now = performance.now();
-                        if (!this._lastPanReplayIndicatorTs || now - this._lastPanReplayIndicatorTs > 120) {
-                            this._lastPanReplayIndicatorTs = now;
-                            this.replaySystem.updateAutoScrollIndicator();
-                        }
+                        this.replaySystem.updateAutoScrollIndicator();
                     }
                 }
                 // ─── Time Axis Drag Zoom ───
@@ -26884,20 +26800,9 @@ class Chart {
                         this.replaySystem.onUserPan();
                         this._scheduleReplayPanLoadLeft();
                     }
-                    const finishPan = () => {
-                        if (this._isChartPanDragging()) return;
-                        this._finishPanDrawingRedraw();
-                        if (typeof this._syncOrderOverlaysDuringPan === 'function') {
-                            this._syncOrderOverlaysDuringPan(true);
-                        }
-                        this.renderPending = false;
-                        this.render();
-                    };
-                    if (typeof requestAnimationFrame === 'function') {
-                        requestAnimationFrame(finishPan);
-                    } else {
-                        finishPan();
-                    }
+                    this._finishPanDrawingRedraw();
+                    this.renderPending = false;
+                    this.render();
                 }
                 this.scheduleChartViewSave();
 
@@ -28233,12 +28138,12 @@ class Chart {
     _finishPanDrawingRedraw() {
         if (this.drawingManager && this.xScale && this.yScale) {
             const dm = this.drawingManager;
+            // Geometry was kept in sync via panFast redraws during drag; pan start already
+            // re-anchored timestamps. Re-sync here only caused a visible snap on release.
             if (typeof dm.finalizeDrawingsAfterChartPan === 'function') {
                 dm.finalizeDrawingsAfterChartPan();
             }
-            // One bake after CSS translate — skip forceFull (no per-frame SVG tear-down during drag).
-            dm.redrawAll(this._usedPanTransformDrawings ? {} : { forceFull: true });
-            this._usedPanTransformDrawings = false;
+            dm.redrawAll({ forceFull: true });
         }
     }
 
@@ -28247,9 +28152,6 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
-            if (this._isChartViewPanDragging() && this._canPanTransformDrawings()) {
-                return;
-            }
             if (this._isChartViewPanning()) {
                 this.drawingManager.redrawAll({ panFast: true });
                 return;

@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260623b96";
+const BRIDGE_VERSION = "20260623b80";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1644,12 +1644,6 @@ export default function MultichartGrid({
             cancelled = true;
             if (typeof window !== "undefined") {
                 window.__multichartRealData = prevMultichartRealData;
-                try {
-                    if (window.__multichartSessionPairCache
-                        && typeof window.__multichartSessionPairCache.clear === "function") {
-                        window.__multichartSessionPairCache.clear();
-                    }
-                } catch (_) {}
             }
             if (managerRef.current) {
                 try { managerRef.current.dispose(); } catch (_) {}
@@ -1883,8 +1877,6 @@ export default function MultichartGrid({
     // replay), a tile that already reports its own fileId (user picked a
     // different pair on Panel B) must NOT be reset to the host when other
     // tiles become ready or when Panel A changes pair.
-    const prevReadyIframeSyncRef = useRef(new Set());
-
     useEffect(() => {
         if (!managerReady) return;
         const hostNt = readHostChartFileAndTf();
@@ -1897,25 +1889,19 @@ export default function MultichartGrid({
         if (!mgr || !mgr.charts) return;
         const pushTf = !!(layoutSync && layoutSync.interval);
         const symFollow = !!(layoutSync && layoutSync.symbol);
+        // Only stamp the host file onto every iframe when Symbol sync is on.
+        // Backtest/replay file-lock must NOT override this — users turn all
+        // layout toggles off to keep independent instruments per tile.
         const forceHostFileOnEveryTile = symFollow;
         const hostFidStr = String((hostNt.fileId || fid || "")).trim();
         const hostInBacktest = !!(typeof window !== "undefined"
             && window.chart
             && (window.chart.isBacktestMode || window.chart.backtestingSession));
-
-        const newlyReady = [];
-        const currentReady = new Set();
         for (const c of mgr.charts.values()) {
             if (!c || c.host || !c.ready) continue;
-            currentReady.add(c.id);
-            if (!prevReadyIframeSyncRef.current.has(c.id)) newlyReady.push(c);
-        }
-        prevReadyIframeSyncRef.current = currentReady;
-
-        for (const c of newlyReady) {
             try {
                 if (hostInBacktest) {
-                    mgr.sendCommandNoReply(c.id, "syncFromHost", {
+                    mgr.sendCommand(c.id, "syncFromHost", {
                         force: true,
                         syncTimeframe: pushTf,
                         syncSymbol: symFollow,
@@ -1931,9 +1917,7 @@ export default function MultichartGrid({
                     }
                     mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
                 }
-                if (pushTf && tf) {
-                    mgr.sendCommandNoReply(c.id, "setTimeframe", { tf, fromHostCache: true });
-                }
+                if (pushTf && tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf, fromHostCache: true });
             } catch (_) {}
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2008,20 +1992,12 @@ export default function MultichartGrid({
             focusPanelById(HOST_PANEL_ID);
             const grid = window.__multichartGrid;
             if (!grid) return;
-            // Defer iframe deselect/settings close so host pan mousedown stays responsive.
-            const runClear = () => {
-                if (prev !== HOST_PANEL_ID) {
-                    if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                        grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
-                    }
-                } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
-                    grid.deselectDrawingsOnNonFocusedPanels(HOST_PANEL_ID);
+            if (prev !== HOST_PANEL_ID) {
+                if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                    grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
                 }
-            };
-            if (typeof requestAnimationFrame === "function") {
-                requestAnimationFrame(runClear);
-            } else {
-                runClear();
+            } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                grid.deselectDrawingsOnNonFocusedPanels(HOST_PANEL_ID);
             }
         };
         if (wrapper) {
@@ -2078,19 +2054,14 @@ export default function MultichartGrid({
         } catch (_) {}
     }, [layoutSync, managerReady]);
 
-    const lastHostTfFanOutRef = useRef(null);
-
     // Fan synced timeframe to iframe panels from host cache (no per-iframe /smart).
     function fanOutTimeframeFromHostCache(tf) {
         const mgr = managerRef.current;
         if (!mgr || typeof mgr.sendCommand !== "function" || !tf) return;
         const tfStr = String(tf);
-        if (lastHostTfFanOutRef.current === tfStr) return;
-        lastHostTfFanOutRef.current = tfStr;
         lastBroadcastTfRef.current[HOST_PANEL_ID] = tfStr;
         for (const c of mgr.charts.values()) {
             if (!c || c.host) continue;
-            if (lastBroadcastTfRef.current[c.id] === tfStr) continue;
             lastBroadcastTfRef.current[c.id] = tfStr;
             try {
                 mgr.sendCommand(c.id, "setTimeframe", { tf: tfStr, fromHostCache: true });
@@ -2460,9 +2431,30 @@ export default function MultichartGrid({
         // session start" — no tick will fire until they hit play).
         _primeReplayFromParent();
 
-        // Replay alignment is handled by replayVirtualTimeChanged (paused)
-        // and replayMultichartFrame (playing). A polling guard here was
-        // firing syncReplayFromHost every 800ms on B/C/D, freezing the host.
+        // Hard guard: while parent is in replay, re-align iframe playheads.
+        const replayAlignGuardMs = 800;
+        const runReplayAlignGuard = () => {
+            try {
+                const mgr = managerRef.current;
+                if (!mgr || !mgr.charts) return;
+                const ch = window.chart;
+                const rs = ch && ch.replaySystem;
+                if (!rs || !rs.isActive) return;
+                const ts = Number(rs.replayTimestamp);
+                if (!Number.isFinite(ts)) return;
+                const hostPlaying = !!rs.isPlaying;
+                replayStateRef.current.lastBroadcastTs = ts;
+                replayStateRef.current.everEntered = true;
+                replayStateRef.current.parentEverEntered = true;
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || !c.ready) continue;
+                    try {
+                        mgr.sendCommand(c.id, "syncReplayFromHost", { force: hostPlaying });
+                    } catch (_) {}
+                }
+            } catch (_) {}
+        };
+        const replayAlignGuard = setInterval(runReplayAlignGuard, replayAlignGuardMs);
 
         // Helper: broadcast a replay command to every non-host iframe.
         // Used by all the playback-state monkey-patches below.
@@ -2776,6 +2768,7 @@ export default function MultichartGrid({
         tryPatch(Date.now() + 5000);
 
         return () => {
+            clearInterval(replayAlignGuard);
             window.removeEventListener("replayVirtualTimeChanged", onReplayTick);
             window.removeEventListener("replayMultichartFrame", onMultichartReplayFrame);
             window.removeEventListener("talariaReplayCut", onReplayCut);

@@ -9,11 +9,6 @@ import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
 import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso } from "./backtestModal/dateRangeUtils";
 import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
-import {
-  displaySessionSymbol,
-  findDatasetFileForSymbol,
-  normSymbolKey,
-} from "./backtestModal/symbolMatch";
 import { JOURNAL_API_BASE, journalAuthHeaders } from "@/lib/journalApi";
 import { apiStrategyToBankRow, extractStrategyVariablesFromDefinition } from "./strategies/strategyLabV9Mappers";
 
@@ -304,7 +299,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   const [stratRows, setStratRows] = useState<any[]>([]);
 
   function normSessionSym(t: string) {
-    return normSymbolKey(t);
+    return String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
   }
 
   const SESSION_SYM_CAT: Record<string, string> = {
@@ -359,20 +354,21 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   }
 
   function findApiFileForSymbol(sym: string, apiFiles: Record<string, unknown>[]) {
-    return findDatasetFileForSymbol(sym, apiFiles);
+    const key = normSessionSym(sym);
+    return apiFiles.find((f) => {
+      const ft = normSessionSym(String(f.ticker || ""));
+      const fromName = normSessionSym(String(f.original_name || f.name || "").replace(/\.csv$/i, ""));
+      return ft === key || fromName === key || fromName.startsWith(key) || key.startsWith(ft);
+    }) || null;
   }
 
   const sessionDatasetSymbols = useMemo(() => {
     const seen = new Set<string>();
     const out: { sym: string; cat: string }[] = [];
     sessionApiFiles.forEach((f) => {
-      const raw = normSessionSym(String(f.ticker || ""));
-      if (!raw || seen.has(raw)) return;
-      const sym = displaySessionSymbol(raw);
-      const dedupeKey = normSessionSym(sym);
-      if (seen.has(dedupeKey)) return;
-      seen.add(raw);
-      seen.add(dedupeKey);
+      const sym = normSessionSym(String(f.ticker || ""));
+      if (!sym || seen.has(sym)) return;
+      seen.add(sym);
       out.push({ sym, cat: assetClassToPickerCat(String(f.asset_class || "")) });
     });
     return out.sort(compareSymbolsByPopularity);
