@@ -59,6 +59,33 @@ const INSTRUMENT_REGISTRY = {
     'NZDCAD': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:5, label:'NZD/CAD' },
     'NZDCHF': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:5, label:'NZD/CHF' },
 
+    // EM / exotic FX (common retail CFD precision — 4 dp on large quotes)
+    'USDTRY': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/TRY' },
+    'EURTRY': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'EUR/TRY' },
+    'GBPTRY': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'GBP/TRY' },
+    'USDZAR': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/ZAR' },
+    'EURZAR': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'EUR/ZAR' },
+    'GBPZAR': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'GBP/ZAR' },
+    'USDMXN': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/MXN' },
+    'EURMXN': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'EUR/MXN' },
+    'USDPLN': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/PLN' },
+    'EURPLN': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'EUR/PLN' },
+    'USDHUF': { type:'forex', contractSize:100000, pipSize:0.01,   quoteType:'cross_usd', precision:2, label:'USD/HUF' },
+    'EURHUF': { type:'forex', contractSize:100000, pipSize:0.01,   quoteType:'cross_usd', precision:2, label:'EUR/HUF' },
+    'USDCZK': { type:'forex', contractSize:100000, pipSize:0.01,   quoteType:'cross_usd', precision:2, label:'USD/CZK' },
+    'EURCZK': { type:'forex', contractSize:100000, pipSize:0.01,   quoteType:'cross_usd', precision:2, label:'EUR/CZK' },
+    'USDSGD': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/SGD' },
+    'EURSGD': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'EUR/SGD' },
+    'SGDJPY': { type:'forex', contractSize:100000, pipSize:0.01,   quoteType:'cross_jpy', precision:3, label:'SGD/JPY' },
+    'USDNOK': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/NOK' },
+    'EURNOK': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'EUR/NOK' },
+    'USDSEK': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/SEK' },
+    'EURSEK': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'EUR/SEK' },
+    'USDDKK': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/DKK' },
+    'EURDKK': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'EUR/DKK' },
+    'USDTHB': { type:'forex', contractSize:100000, pipSize:0.001,  quoteType:'cross_usd', precision:3, label:'USD/THB' },
+    'USDRUB': { type:'forex', contractSize:100000, pipSize:0.0001, quoteType:'cross_usd', precision:4, label:'USD/RUB' },
+
     // ── FUTURES ───────────────────────────────────────────────────────────────
     // CME Equity Index
     'ES':  { type:'futures', tickSize:0.25,    tickValue:12.50,  contractSize:1, precision:2, label:'S&P 500 (ES)',       exchange:'CME'   },
@@ -649,7 +676,13 @@ class MarketCalculationEngine {
             const h = this._heuristicForexSpecs(key, symbol);
             if (h) return h;
         }
-        return this._fallback(ft, symbol);
+        return { ...this._fallback(ft, symbol), _genericFallback: true };
+    }
+
+    /** True when the symbol maps to an explicit INSTRUMENT_REGISTRY row (not heuristic/fallback). */
+    isRegistered(symbol) {
+        const key = this._resolveRegistryKey(symbol);
+        return !!(key && Object.prototype.hasOwnProperty.call(this._registry, key));
     }
 
     /**
@@ -668,6 +701,40 @@ class MarketCalculationEngine {
                 contractSize: 100000,
                 pipSize: 0.01,
                 quoteType: 'cross_jpy',
+                precision: 3,
+                label
+            };
+        }
+        const exotic4dp = new Set(['TRY', 'ZAR', 'MXN', 'PLN', 'NOK', 'SEK', 'DKK', 'SGD', 'RUB']);
+        const quote = key.length >= 6 ? key.slice(3) : '';
+        const base = key.length >= 6 ? key.slice(0, 3) : '';
+        if (exotic4dp.has(quote) || exotic4dp.has(base)) {
+            return {
+                type: 'forex',
+                contractSize: 100000,
+                pipSize: 0.0001,
+                quoteType: 'cross_usd',
+                precision: 4,
+                label
+            };
+        }
+        const exotic2dp = new Set(['HUF', 'CZK']);
+        if (exotic2dp.has(quote) || exotic2dp.has(base)) {
+            return {
+                type: 'forex',
+                contractSize: 100000,
+                pipSize: 0.01,
+                quoteType: 'cross_usd',
+                precision: 2,
+                label
+            };
+        }
+        if (quote === 'THB' || base === 'THB') {
+            return {
+                type: 'forex',
+                contractSize: 100000,
+                pipSize: 0.001,
+                quoteType: 'cross_usd',
                 precision: 3,
                 label
             };

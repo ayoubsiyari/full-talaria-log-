@@ -21285,7 +21285,7 @@ class Chart {
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
         const yTicks = this._getYPriceTicks(numYTicks);
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = this.getPriceDecimals(priceRange);
+        const decimals = this._getAxisLabelDecimals(yTicks, Math.abs(priceRange));
         
         yTicks.forEach(price => {
             const y = this.yScale(price);
@@ -21887,15 +21887,12 @@ class Chart {
             this._symbolPrecision = undefined;
             this._symbolPrecisionResolvedFor = this.currentSymbol;
         }
-        // Always consult the registry first — for a known symbol its tick size IS the
-        // correct decimal count, and it beats any cached value or range guess.
+        // Registered instruments: registry tick/precision is authoritative.
         if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
             try {
                 const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
                 const specs = calc && calc.specs;
-                if (specs) {
-                    // Prefer explicit `precision`; derive from `tickSize` if only that is set
-                    // (some futures specs use tickSize as the source of truth).
+                if (specs && !specs._genericFallback) {
                     if (Number.isFinite(specs.precision) && specs.precision >= 0) {
                         this._symbolPrecision = specs.precision;
                         return specs.precision;
@@ -21954,17 +21951,24 @@ class Chart {
                 }
             } catch (_) { /* keep fallback */ }
         }
-        if (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0) {
-            return this._symbolPrecision;
-        }
-        // Data-driven fallback: examine actual OHLC values in the loaded series
-        // to infer the native precision. Much more reliable than the price-range
-        // heuristic below because it reflects the instrument's real tick size
-        // regardless of symbol resolution state.
         const dataDec = this._inferPrecisionFromData();
         if (Number.isFinite(dataDec) && dataDec >= 0) {
             this._symbolPrecision = dataDec;
             return dataDec;
+        }
+        if (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0) {
+            return this._symbolPrecision;
+        }
+        // Heuristic / generic registry fallback (JPY crosses, exotics) after data miss.
+        if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                const specs = calc && calc.specs;
+                if (specs && Number.isFinite(specs.precision) && specs.precision >= 0) {
+                    this._symbolPrecision = specs.precision;
+                    return specs.precision;
+                }
+            } catch (_) { /* fall through */ }
         }
         return this._decimalsFromPriceRangeHeuristic(priceRange);
     }
@@ -22041,7 +22045,7 @@ class Chart {
                 try {
                     const calc = window.marketCalcEngine.getCalculator(c);
                     const specs = calc && calc.specs;
-                    if (specs) {
+                    if (specs && !specs._genericFallback) {
                         if (Number.isFinite(specs.precision) && specs.precision >= 0) {
                             return specs.precision;
                         }
@@ -22096,7 +22100,51 @@ class Chart {
             if (Number.isFinite(inferred) && inferred >= 0) return inferred;
         }
 
+        if (symKey && typeof window !== 'undefined' && window.marketCalcEngine) {
+            const tryKeys = [symKey, symKey.replace(/\//g, ''), symKey.replace(/-/g, ''), symKey.replace(/\s+/g, '')];
+            const seen = new Set();
+            for (const c of tryKeys) {
+                if (!c || seen.has(c)) continue;
+                seen.add(c);
+                try {
+                    const calc = window.marketCalcEngine.getCalculator(c);
+                    const specs = calc && calc.specs;
+                    if (specs && Number.isFinite(specs.precision) && specs.precision >= 0) {
+                        return specs.precision;
+                    }
+                } catch (_) { /* try next */ }
+            }
+        }
+
         return this._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0));
+    }
+
+    /** Decimal places implied by a price-axis tick step (e.g. 0.01 → 2). */
+    _decimalsFromTickStep(step) {
+        const s = Number(step);
+        if (!Number.isFinite(s) || s <= 0) return null;
+        for (let d = 0; d <= 8; d++) {
+            const scaled = s * Math.pow(10, d);
+            if (Math.abs(scaled - Math.round(scaled)) < 1e-6) return d;
+        }
+        return 8;
+    }
+
+    /**
+     * Y-axis label decimals: match visible grid spacing so 53.40 does not render as 53.40000.
+     * Crosshair / live price still use full symbol precision via getPriceDecimals().
+     */
+    _getAxisLabelDecimals(yTicks, priceRange, symbol, options = {}) {
+        const symDec = symbol
+            ? (typeof this.getPriceDecimalsForSymbol === 'function'
+                ? this.getPriceDecimalsForSymbol(symbol, priceRange, options)
+                : this.getPriceDecimals(priceRange))
+            : this.getPriceDecimals(priceRange);
+        if (!Array.isArray(yTicks) || yTicks.length < 2) return symDec;
+        const step = Math.abs(Number(yTicks[1]) - Number(yTicks[0]));
+        const tickDec = this._decimalsFromTickStep(step);
+        if (!Number.isFinite(tickDec)) return symDec;
+        return tickDec;
     }
 
     /**
@@ -22192,9 +22240,9 @@ class Chart {
         const ch = this.h - this.margin.t - this.margin.b;
         if (ch <= 0) return;
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = this.getPriceDecimals(Math.abs(priceRange));
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
         const yTicks = this._getYPriceTicks(numYTicks);
+        const decimals = this._getAxisLabelDecimals(yTicks, Math.abs(priceRange));
         const fs = this.chartSettings.scaleTextSize || 12;
 
         let maxW = 0;
@@ -22529,10 +22577,10 @@ class Chart {
             : (this.h - this.margin.t - this.margin.b);
         const tickCount = Math.max(8, Math.min(15, Math.floor(ch / 60)));
         const wantTicks = Number(numYTicks) > 0 ? numYTicks : tickCount;
-        const decimals = typeof this.getPriceDecimalsForSymbol === 'function'
-            ? this.getPriceDecimalsForSymbol(symbol, span, options)
-            : this.getPriceDecimals(span);
         const yTicks = this._getYPriceTicksForDomain(loN, hiN, wantTicks, symbol, options);
+        const decimals = typeof this.getPriceDecimalsForSymbol === 'function'
+            ? this._getAxisLabelDecimals(yTicks, span, symbol, options)
+            : this._getAxisLabelDecimals(yTicks, span);
         const fs = this.chartSettings.scaleTextSize || 12;
         let maxW = 0;
         const measure = (weightPrefix) => {

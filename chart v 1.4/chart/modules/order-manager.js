@@ -2935,6 +2935,19 @@ class OrderManager {
         if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
             try {
                 const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                if (calc && calc.specs && Number.isFinite(calc.specs.precision) && calc.specs.precision >= 0
+                    && !calc.specs._genericFallback) {
+                    prec = calc.specs.precision;
+                }
+            } catch (_) {}
+        }
+        if (prec == null && this.chart && typeof this.chart._inferPrecisionFromData === 'function') {
+            const dataPrec = this.chart._inferPrecisionFromData();
+            if (Number.isFinite(dataPrec) && dataPrec >= 0) prec = dataPrec;
+        }
+        if (prec == null && window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
                 if (calc && calc.specs && Number.isFinite(calc.specs.precision) && calc.specs.precision >= 0) {
                     prec = calc.specs.precision;
                 }

@@ -49,6 +49,8 @@ function ChartBrandLink({ multi = false }) {
     <div
       className={`chart-brand brand-lockup${multi ? " chart-brand--multi" : ""}`}
       aria-hidden="true"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onMouseDown={(e) => { e.preventDefault(); }}
     >
       <img src="/chart/modules/logo-08.png" alt="" className="logo-top logo-dark" />
       <img src="/chart/modules/logo-09.png" alt="" className="logo-top logo-light" />
