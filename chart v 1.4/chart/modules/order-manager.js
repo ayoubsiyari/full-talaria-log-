@@ -4447,22 +4447,74 @@ class OrderManager {
 
     /** Authoritative qty for placement / prop rules — lot-size mode uses #lotSizeAmount, not stale #orderQuantity. */
     _isStopLossActiveForSizing(entryPrice) {
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        let slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        if (!(slPrice > 0)) {
+            const bridgedSl = this._readV9OrderBridgeField('slPrice');
+            if (bridgedSl != null) slPrice = bridgedSl;
+        }
         const enableSL = document.getElementById('enableSL')?.checked;
         if (!Number.isFinite(slPrice) || slPrice <= 0) return false;
         if (enableSL) return true;
-        const ep = Number(entryPrice) || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        let ep = Number(entryPrice) || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!(ep > 0)) {
+            const bridgedEp = this._readV9OrderBridgeField('entryPrice');
+            if (bridgedEp != null) ep = bridgedEp;
+        }
         return ep > 0 && Math.abs(slPrice - ep) > 1e-12;
     }
 
+    _readV9OrderBridgeField(field) {
+        try {
+            const b = typeof window !== 'undefined' ? window.__talariaV9OrderBridge : null;
+            if (!b || b.orderPanelOpen !== true) return null;
+            if (field === 'entryPrice') {
+                const rows = b.entryRows;
+                const px = parseFloat(rows?.[0]?.price ?? '');
+                return Number.isFinite(px) && px > 0 ? px : null;
+            }
+            if (field === 'slPrice') {
+                if (b.slEnabled === false) return null;
+                const px = parseFloat(b.slRows?.[0]?.price ?? '');
+                return Number.isFinite(px) && px > 0 ? px : null;
+            }
+            if (field === 'riskUsd') {
+                if (b.sizeMode !== '$') return null;
+                const v = parseFloat(b.riskVal ?? '');
+                return Number.isFinite(v) && v > 0 ? v : null;
+            }
+            if (field === 'riskPct') {
+                if (b.sizeMode !== '%') return null;
+                const v = parseFloat(b.riskVal ?? '');
+                return Number.isFinite(v) && v > 0 ? v : null;
+            }
+        } catch (_e) { /* ignore */ }
+        return null;
+    }
+
     _deriveOrderQuantityFromRiskInputs() {
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!(entryPrice > 0)) {
+            const bridged = this._readV9OrderBridgeField('entryPrice');
+            if (bridged != null) entryPrice = bridged;
+        }
         if (!(entryPrice > 0) || !this._isStopLossActiveForSizing(entryPrice)) return 0;
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        let slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        if (!(slPrice > 0)) {
+            const bridgedSl = this._readV9OrderBridgeField('slPrice');
+            if (bridgedSl != null) slPrice = bridgedSl;
+        }
         if (!(slPrice > 0)) return 0;
 
-        const riskUsd = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
-        const riskPct = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+        let riskUsd = parseFloat(document.getElementById('riskAmountUSD')?.value || 0);
+        let riskPct = parseFloat(document.getElementById('riskAmountPercent')?.value || 0);
+        if (!(riskUsd > 0)) {
+            const bridgedUsd = this._readV9OrderBridgeField('riskUsd');
+            if (bridgedUsd != null) riskUsd = bridgedUsd;
+        }
+        if (!(riskPct > 0)) {
+            const bridgedPct = this._readV9OrderBridgeField('riskPct');
+            if (bridgedPct != null) riskPct = bridgedPct;
+        }
         let riskAmount = 0;
         if (this.positionSizeMode === 'risk-percent' && riskPct > 0) {
             const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
@@ -14163,6 +14215,7 @@ class OrderManager {
                 
                 this._syncTpProfitTargetFieldVisibility();
                 this._syncSlCardSecondaryRows();
+                this.updatePlaceButtonText();
             };
         });
         
@@ -14191,6 +14244,7 @@ class OrderManager {
                 }
                 
                 this.updatePreviewLines();
+                this.updatePlaceButtonText();
                 this.syncSelectedRiskRewardDrawingFromPanelDebounced();
             };
         }
@@ -14207,6 +14261,7 @@ class OrderManager {
                 }
                 
                 this.updatePreviewLines();
+                this.updatePlaceButtonText();
                 this.syncSelectedRiskRewardDrawingFromPanelDebounced();
             };
         }
@@ -14223,6 +14278,7 @@ class OrderManager {
                 }
                 
                 this.updatePreviewLines();
+                this.updatePlaceButtonText();
                 this.syncSelectedRiskRewardDrawingFromPanelDebounced();
             };
         }
@@ -14484,6 +14540,7 @@ class OrderManager {
                 this.calculatePositionFromRisk();
                 this.calculateAdvancedRiskReward();
                 this.updatePreviewLines(); // Update preview when SL is toggled
+                this.updatePlaceButtonText();
             };
         }
         
@@ -14913,6 +14970,9 @@ class OrderManager {
     updatePlaceButtonText() {
         if (this._orderPlacedAwaitingReset) return;
 
+        this._syncOrderQuantityFromRisk();
+        this._syncOrderQuantityFromLotSize();
+
         const placeBtn = document.getElementById('placeOrderButton');
         const config = this.getMarketConfig();
         const positionLabel = config.positionLabel;
@@ -15211,6 +15271,7 @@ class OrderManager {
             const qtyInput = document.getElementById('orderQuantity');
             if (qtyInput) qtyInput.value = '0';
             this._applyCalculatedReadout(this._getCalculatedReadoutParts());
+            this.updatePlaceButtonText();
             return;
         }
         
@@ -15219,6 +15280,7 @@ class OrderManager {
         if (slDistance === 0) {
             document.getElementById('orderQuantity').value = '0';
             this._applyCalculatedReadout(this._getCalculatedReadoutParts());
+            this.updatePlaceButtonText();
             return;
         }
         
@@ -15236,6 +15298,7 @@ class OrderManager {
         if (riskAmount <= 0) {
             document.getElementById('orderQuantity').value = '0';
             this._applyCalculatedReadout(this._getCalculatedReadoutParts());
+            this.updatePlaceButtonText();
             return;
         }
 
@@ -23529,6 +23592,8 @@ class OrderManager {
     placeAdvancedOrder(options = {}) {
         console.log('🟦OM-DIAG placeAdvancedOrder() CALLED', options);
         const keepPanelOpen = options.keepPanelOpen === true;
+        this._syncOrderQuantityFromRisk();
+        this._syncOrderQuantityFromLotSize();
         if (!this.replaySystem || !this.replaySystem.isActive) {
             alert('Replay mode must be active to place orders');
             return;
@@ -23581,12 +23646,14 @@ class OrderManager {
             }
         }
         
-        // Calculate SL price from inputs
-        if (slEnabled) {
+        // Calculate SL price from inputs (honour priced SL even if checkbox lagged behind V9 bridge)
+        if (slEnabled || this._isStopLossActiveForSizing(entryPrice)) {
             const slPriceInput = parseFloat(document.getElementById('slPrice')?.value || 0);
             
             if (slPriceInput > 0) {
                 slPrice = slPriceInput;
+                const slChk = document.getElementById('enableSL');
+                if (slChk && !slChk.checked) slChk.checked = true;
             }
         }
 

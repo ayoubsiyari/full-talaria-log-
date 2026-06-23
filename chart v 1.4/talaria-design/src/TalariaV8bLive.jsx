@@ -10652,25 +10652,44 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     const syncProp = () => {
       let prop = false;
+      let urlMode = "";
       try {
-        const mode = new URLSearchParams(window.location.search).get("mode");
-        if (mode === "propfirm") prop = true;
+        urlMode = new URLSearchParams(window.location.search).get("mode") || "";
       } catch (_) {}
-      try {
-        if (window.chart?.isPropFirmMode) prop = true;
-        const sess = window.chart?.backtestingSession;
-        if (sess && String(sess.type || "").toLowerCase() === "propfirm") prop = true;
-      } catch (_) {}
-      try {
-        const raw = window.userStorage?.getItem?.("backtestingSession")
-          ?? localStorage.getItem("backtestingSession");
-        if (raw) {
-          const s = JSON.parse(raw);
-          if (String(s.type || "").toLowerCase() === "propfirm") prop = true;
+
+      const sess = window.chart?.backtestingSession;
+      const sessType = sess ? String(sess.type || "").toLowerCase() : "";
+
+      if (sessType === "standard") {
+        prop = false;
+      } else if (sessType === "propfirm") {
+        prop = true;
+      } else {
+        try {
+          if (window.chart?.isPropFirmMode) prop = true;
+        } catch (_) {}
+        // Before chart hydrates, only trust localStorage when URL is propfirm (not standard backtest).
+        if (!prop && !sess && urlMode === "propfirm") {
+          try {
+            const raw = window.userStorage?.getItem?.("backtestingSession")
+              ?? localStorage.getItem("backtestingSession");
+            if (raw) {
+              const s = JSON.parse(raw);
+              if (String(s.type || "").toLowerCase() === "propfirm") prop = true;
+            }
+          } catch (_) {}
         }
-      } catch (_) {}
+      }
+
+      if (urlMode === "backtest") {
+        prop = false;
+      } else if (urlMode === "propfirm" && sessType !== "standard") {
+        prop = true;
+      }
+
       setIsPropFirmMode(prop);
       if (!prop) {
+        propTabAutoOpenedRef.current = false;
         setPropHud(null);
         return;
       }
@@ -15200,6 +15219,11 @@ const TalariaV8bLive = () => {
     if (typeof window === "undefined") return;
     window.__talariaV9ReactOrderUi = !!orderPanelOpen;
     window.__talariaV9OrderRailOpen = !!orderPanelOpen;
+    if (!orderPanelOpen) {
+      try {
+        window.__talariaV9OrderBridge = null;
+      } catch (_) {}
+    }
     try {
       window.chart?.orderManager?.syncOrderPanelMountTarget?.();
     } catch (_) {}
@@ -15237,14 +15261,19 @@ const TalariaV8bLive = () => {
         const ptab = dm && document.querySelector(`#orderPanel .position-mode-tab[data-mode="${dm}"]`);
         if (ptab && !ptab.classList.contains("active")) ptab.click();
 
-        const setIn = (id, val) => {
+        const setIn = (id, val, opts = {}) => {
           const el = document.getElementById(id);
           if (!el) return;
           const s = String(val ?? "");
-          if (el.value === s) return;
-          el.value = s;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
+          const unchanged = el.value === s;
+          if (unchanged && !opts.force) return;
+          if (!unchanged) {
+            el.value = s;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          } else if (opts.force) {
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+          }
         };
 
         const setChk = (id, checked) => {
@@ -15713,8 +15742,22 @@ const TalariaV8bLive = () => {
 
           om?.calculatePositionFromRisk?.();
           om?._syncOrderQuantityFromRisk?.();
+          om?._syncOrderQuantityFromLotSize?.();
           om?.calculateAdvancedRiskReward?.();
           om?.updatePlaceButtonText?.();
+
+          try {
+            window.__talariaV9OrderBridge = {
+              orderPanelOpen: true,
+              sizeMode,
+              riskVal,
+              slEnabled,
+              slRows,
+              entryRows,
+              buySell,
+              orderType,
+            };
+          } catch (_) {}
 
           try {
             om?.updatePreviewLines?.();
@@ -16156,6 +16199,11 @@ const TalariaV8bLive = () => {
       const rwd = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
       setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
+      if (om && typeof om.updatePlaceButtonText === "function") {
+        try {
+          om.updatePlaceButtonText();
+        } catch (_) {}
+      }
       const pbt = document.getElementById("placeOrderButton")?.textContent?.replace(/\s+/g, " ").trim() || "";
       setOmPlaceButtonTxt((prev) => (prev === pbt ? prev : pbt));
 
