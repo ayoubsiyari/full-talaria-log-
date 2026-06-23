@@ -1866,71 +1866,6 @@ class Chart {
     }
 
     /**
-     * Best available 1m (or live) bar series on host tile A for iframe B/C/D to clone
-     * without a /smart round-trip. Prefers replay fullRawData, then backtest TF cache,
-     * then panel master, then live rawData.
-     * @param {object|null} parent window.parent.chart
-     * @returns {Array|null}
-     */
-    _resolveParentMultichartMasterRaw(parent) {
-        if (!parent) return null;
-        try {
-            const prs = parent.replaySystem;
-            if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-                return prs.fullRawData;
-            }
-            const fid = parent.currentFileId != null ? String(parent.currentFileId) : '';
-            if (fid && typeof parent._getBtTfDataCache === 'function') {
-                const oneM = parent._getBtTfDataCache(fid, '1m');
-                if (oneM && Array.isArray(oneM.rawData) && oneM.rawData.length > 0) {
-                    return oneM.rawData;
-                }
-            }
-            if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {
-                return parent._panelFullRawData;
-            }
-            const inReplay = !!(prs && prs.isActive);
-            if (!inReplay && Array.isArray(parent.rawData) && parent.rawData.length > 0) {
-                return parent.rawData;
-            }
-            if (inReplay && Array.isArray(parent.rawData) && parent.rawData.length > 0) {
-                if (typeof parent._reseedReplayFullRawFromLoadedData === 'function') {
-                    parent._reseedReplayFullRawFromLoadedData();
-                }
-                if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
-                    return prs.fullRawData;
-                }
-            }
-        } catch (_e) { /* ignore */ }
-        return null;
-    }
-
-    /** True when host tile A already holds exportable bars for the requested fileId. */
-    _parentMultichartMasterReady(parent, fileId) {
-        if (!parent) return false;
-        const fid = fileId != null ? String(fileId).trim() : String(parent.currentFileId || '').trim();
-        if (!fid || String(parent.currentFileId || '').trim() !== fid) return false;
-        const master = this._resolveParentMultichartMasterRaw(parent);
-        return !!(master && master.length > 0);
-    }
-
-    /**
-     * Host tile A: ensure replay fullRawData (or live rawData) is ready before iframe panels boot.
-     * @returns {boolean}
-     */
-    _ensureMultichartHostExportReady() {
-        if (typeof window === 'undefined' || !window.__multichartGrid) return false;
-        const rs = this.replaySystem;
-        if (rs && rs.isActive) {
-            if (!Array.isArray(rs.fullRawData) || rs.fullRawData.length === 0) {
-                return !!this._reseedReplayFullRawFromLoadedData();
-            }
-            return true;
-        }
-        return Array.isArray(this.rawData) && this.rawData.length > 0;
-    }
-
-    /**
      * After a completed stroke auto-deselects the draw tool on this tile, clear the same
      * armed tool on every other multichart panel (host + iframes). Matches single-chart
      * behaviour where finalizeDrawing leaves only cursor mode active.
@@ -2027,17 +1962,8 @@ class Chart {
             this._endTimeframeSwitching();
             return;
         }
-        const hostCacheOnly = !!this._multichartTfFromHostCache;
-        this._multichartTfFromHostCache = false;
         try {
-            if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf, {
-                hostCacheOnly,
-                retryMs: hostCacheOnly ? 5000 : 0,
-            })) {
-                return;
-            }
-            if (hostCacheOnly && !this._isIndependentMultichartPair()) {
-                console.warn('[multichart] host-cache-only TF switch missed cache for', normalizedTf);
+            if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf)) {
                 return;
             }
             await this._refetchBacktestTimeframeCore(normalizedTf, { logTag: 'multichart-server' });
@@ -2050,40 +1976,27 @@ class Chart {
 
     /**
      * Fast TF paths for multichart iframe tiles (avoid network reload when possible).
-     * @param {string} normalizedTf
-     * @param {{ hostCacheOnly?: boolean, retryMs?: number }} [opts]
      * @returns {Promise<boolean>}
      */
-    async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf, opts = {}) {
-        const retryMs = Number.isFinite(Number(opts.retryMs)) ? Number(opts.retryMs) : 0;
-        const startedAt = Date.now();
-        const attempt = async () => {
-            if (typeof this._warmBtTfCacheFromParent === 'function') {
-                this._warmBtTfCacheFromParent(normalizedTf);
-            }
-            if (await this._applyBacktestTimeframeFromCache(normalizedTf)) {
-                return true;
-            }
-            if (await this._applyBacktestTimeframeFromParentCache(normalizedTf)) {
-                return true;
-            }
-            if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
-                return true;
-            }
-            if (this._independentPanelTimeframeSwitch(normalizedTf)) {
-                return true;
-            }
-            if (!opts.hostCacheOnly && this._canClientResampleToTimeframe(normalizedTf)) {
-                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                return true;
-            }
-            return false;
-        };
-        if (await attempt()) return true;
-        if (retryMs <= 0) return false;
-        while (Date.now() - startedAt < retryMs) {
-            await new Promise((resolve) => setTimeout(resolve, 60));
-            if (await attempt()) return true;
+    async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf) {
+        if (typeof this._warmBtTfCacheFromParent === 'function') {
+            this._warmBtTfCacheFromParent(normalizedTf);
+        }
+        if (await this._applyBacktestTimeframeFromCache(normalizedTf)) {
+            return true;
+        }
+        if (await this._applyBacktestTimeframeFromParentCache(normalizedTf)) {
+            return true;
+        }
+        if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
+            return true;
+        }
+        if (this._independentPanelTimeframeSwitch(normalizedTf)) {
+            return true;
+        }
+        if (this._canClientResampleToTimeframe(normalizedTf)) {
+            this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+            return true;
         }
         return false;
     }
@@ -2101,7 +2014,10 @@ class Chart {
         if (!parent || String(parent.currentFileId || '') !== String(this.currentFileId || '')) {
             return false;
         }
-        const master = this._resolveParentMultichartMasterRaw(parent);
+        const prs = parent.replaySystem;
+        const master = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
+            ? prs.fullRawData
+            : null;
         if (!master || master.length === 0) return false;
         this._panelFullRawData = master.slice();
         return true;
@@ -2329,7 +2245,10 @@ class Chart {
                 : null;
             if (!parent) return null;
 
-            const masterRaw = this._resolveParentMultichartMasterRaw(parent);
+            const prs = parent.replaySystem;
+            const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
+                ? prs.fullRawData
+                : null;
             if (!masterRaw || masterRaw.length === 0) return null;
 
             this._panelFullRawData = masterRaw;
@@ -2383,9 +2302,6 @@ class Chart {
                 }
             };
             const hostMasterReady = (host) => {
-                if (typeof this._parentMultichartMasterReady === 'function') {
-                    return this._parentMultichartMasterReady(host, fid);
-                }
                 const prs = host && host.replaySystem;
                 return !!(prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0);
             };
@@ -2446,7 +2362,12 @@ class Chart {
             const fid = String(targetFileId || '').trim();
             if (!fid || String(parent.currentFileId || '') !== fid) return null;
 
-            const masterRaw = this._resolveParentMultichartMasterRaw(parent);
+            // Must use the host replay master — parent.rawData is only the visible
+            // playhead slice and would leave this tile on the wrong time range.
+            const prs = parent.replaySystem;
+            const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
+                ? prs.fullRawData
+                : null;
             if (!masterRaw || masterRaw.length === 0) return null;
 
             const tf = this._normalizeBacktestTimeframe(displayTf) || displayTf || '1m';
@@ -2568,11 +2489,12 @@ class Chart {
                     this.viewportData.init(fileId, displayTf, sessionStartTs, sessionEndMs);
                 }
 
-                // Same-pair boot OR synchronized pair switch: wait for host tile A's
-                // master before classifying / cloning — avoids N redundant /smart fetches.
-                const preSamePairHint = typeof this._multichartSamePairAsHost === 'function'
-                    && this._multichartSamePairAsHost(fileId);
-                if (switchingPair || preSamePairHint) {
+                // Synchronized pair switch: let the host (tile A) settle on the new pair
+                // before classifying same-pair vs independent. Without this, racing tiles
+                // mis-read the host's old fileId and each refetch a full-session 1m master
+                // (slow on high TF, scales with panel count). Independent panels resolve
+                // instantly here, so they are not delayed.
+                if (switchingPair) {
                     try { await this._awaitHostPairSettle(fileId, loadSeq); } catch (_settle) { /* ignore */ }
                     if (loadSeq !== this._multichartPanelLoadSeq) {
                         if (pairLoadUiActive) {
@@ -2590,26 +2512,13 @@ class Chart {
 
                 let result = null;
 
-                // FAST PATH: same pair as tile A — clone host replay master (no /bars, no /smart).
-                if (samePairAsHost && !independentPair) {
-                    const cloneStartedAt = Date.now();
-                    const cloneMaxWaitMs = 8000;
-                    while (!result && Date.now() - cloneStartedAt < cloneMaxWaitMs) {
-                        if (loadSeq !== this._multichartPanelLoadSeq) {
-                            if (pairLoadUiActive) {
-                                try { this._endPairSwitchLoading(loadSeq); } catch (_staleClone) { /* ignore */ }
-                            }
-                            return;
-                        }
-                        if (typeof this._warmBtTfCacheFromParent === 'function') {
-                            try { this._warmBtTfCacheFromParent(); } catch (_warmMc) { /* ignore */ }
-                        }
-                        if (typeof this._takeParentNativeMasterSmartWindow === 'function') {
-                            result = this._takeParentNativeMasterSmartWindow(fileId);
-                        }
-                        if (result) break;
-                        await new Promise((resolve) => setTimeout(resolve, 60));
-                    }
+                // FAST PATH: same pair as tile A — clone host replay master (no /bars, no tiny seek window).
+                if (samePairAsHost && typeof this._warmBtTfCacheFromParent === 'function') {
+                    try { this._warmBtTfCacheFromParent(); } catch (_warmMc) { /* ignore */ }
+                }
+                if (samePairAsHost && !independentPair
+                    && typeof this._takeParentNativeMasterSmartWindow === 'function') {
+                    result = this._takeParentNativeMasterSmartWindow(fileId);
                 }
 
                 // Independent pair on a high TF: HYBRID master — native bars for fast
@@ -2658,13 +2567,14 @@ class Chart {
                         console.warn('loadMultichartPanelFromHost: /bars fetch failed', e);
                     }
                 }
-                if (!result && (!samePairAsHost || independentPair)) {
+                if (!result) {
                     let range;
                     if (independentPair && sessionEndMs != null) {
                         range = { endTs: sessionEndMs };
                     } else if (independentPair && Number.isFinite(replayTs)) {
                         range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
                     } else {
+                        // Same-pair fallback: full session window (single-chart parity), not playhead island.
                         range = this._getBacktestInitialFetchRange(masterTf, session);
                     }
                     result = await this._fetchSmartWindow(
@@ -2806,11 +2716,7 @@ class Chart {
                 viewportCommitted = true;
                 try {
                     global.dispatchEvent(new CustomEvent('chartDataLoaded', {
-                        detail: {
-                            fileId,
-                            source: 'loadMultichartPanelFromHost',
-                            ingestSource: result && result.source ? result.source : null,
-                        },
+                        detail: { fileId, source: 'loadMultichartPanelFromHost' },
                     }));
                 } catch (_ev) { /* ignore */ }
                 const selfMc = this;
@@ -6068,9 +5974,7 @@ class Chart {
                     data: this.data,
                     rawData: this.rawData,
                     symbol: this.currentSymbol,
-                    timeframe: this.currentTimeframe,
-                    fileId: this.currentFileId,
-                    ingestSource: options.ingestSource || this._lastIngestSource || null,
+                    timeframe: this.currentTimeframe
                 }
             }));
             this._emitTimeframeChanged();
@@ -6133,9 +6037,6 @@ class Chart {
      */
     _ingestSmartWindowResult(result, options = {}) {
         if (!result) return false;
-        if (result.source) {
-            this._lastIngestSource = result.source;
-        }
         if (Array.isArray(result.candles) && result.candles.length > 0) {
             const newData = this._normalizeCandlesFromApi(result.candles);
             if (newData.length === 0) {

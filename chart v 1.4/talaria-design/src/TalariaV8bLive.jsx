@@ -9626,7 +9626,7 @@ function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
   } catch (_) {}
 }
 
-/** Lightweight live market entry tick — updates hidden + React rows without wiping V9 risk sizing. */
+/** Lightweight live market entry tick — updates hidden + React rows; preview only when price moves. */
 function v9TickMarketOrderEntryFromChart(om, setEntryRows) {
   if (!om || om.isDraggingPreviewLine || om._orderPlacedAwaitingReset) return;
   if (!v9ShouldAnchorEntryToLiveMarket(om)) return;
@@ -9636,141 +9636,16 @@ function v9TickMarketOrderEntryFromChart(om, setEntryRows) {
     "market";
   if (activeOt !== "market") return;
   const prev = parseFloat(document.getElementById("orderEntryPrice")?.value || "0");
-  const candle = typeof om.getCurrentCandle === "function" ? om.getCurrentCandle() : null;
-  const closePx = candle ? Number.parseFloat(candle.c ?? candle.close) : NaN;
-  if (!Number.isFinite(closePx)) return;
-  const priceInput = document.getElementById("orderEntryPrice");
-  if (!priceInput) return;
-  const nextStr =
-    typeof om.formatPrice === "function" ? om.formatPrice(closePx) : String(closePx);
-  const next = parseFloat(nextStr);
-  priceInput.value = nextStr;
-  if (nextStr) v9ApplyLiveEntryPriceToRows(setEntryRows, nextStr);
+  try {
+    om.updateOrderPanelPrice?.();
+  } catch (_) {}
+  const ep = document.getElementById("orderEntryPrice")?.value ?? "";
+  if (ep) v9ApplyLiveEntryPriceToRows(setEntryRows, ep);
+  const next = parseFloat(ep);
   if (Number.isFinite(next) && Number.isFinite(prev) && Math.abs(next - prev) >= 1e-10) {
     try {
       om.updatePreviewLines?.();
     } catch (_) {}
-  }
-}
-
-/** Push V9 rail state into hidden #orderPanel and place the order (bypasses disabled native button). */
-function v9ExecutePlaceOrderFromRail(ctx) {
-  const om = ctx?.om || (typeof window !== "undefined" ? window.chart?.orderManager : null);
-  if (!om) return;
-  const {
-    buySell,
-    orderType,
-    sizeMode,
-    riskVal,
-    riskBasis,
-    slEnabled,
-    slRows,
-    entryRows,
-    tpRows,
-    slAdvMode,
-    panelMode,
-    slBeUnit,
-    slBeTrigger,
-    slBeOffset,
-    slTslUnit,
-    slTslActivation,
-    slTslTrail,
-    slTslStep,
-  } = ctx;
-
-  const setIn = (id, val) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const s = String(val ?? "");
-    el.value = s;
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  };
-  const setChk = (id, checked) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.checked = !!checked;
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  };
-
-  document.getElementById(buySell === "sell" ? "sellTab" : "buyTab")?.click();
-  const otBtn = document.querySelector(`#orderPanel .order-type-btn[data-type="${orderType}"]`);
-  if (otBtn) otBtn.click();
-  const modeMap = { $: "risk-usd", "%": "risk-percent", "#": "lot-size" };
-  const dm = modeMap[sizeMode];
-  const ptab = dm && document.querySelector(`#orderPanel .position-mode-tab[data-mode="${dm}"]`);
-  if (ptab) ptab.click();
-
-  if (sizeMode === "$") {
-    setIn("riskAmountUSD", riskVal);
-  } else if (sizeMode === "%") {
-    let pct = riskVal;
-    const b = Number(om.balance);
-    const eq = Number(om.equity);
-    if (riskBasis === "equity" && b > 0 && Number.isFinite(eq)) {
-      pct = String((parseFloat(riskVal || "0") * eq) / b);
-    }
-    setIn("riskAmountPercent", pct);
-    const br = document.querySelector('input[name="balanceType"][value="current"]');
-    if (br && !br.checked) br.click();
-  } else {
-    setIn("lotSizeAmount", riskVal);
-  }
-
-  const entryPx = parseFloat(entryRows?.[0]?.price ?? "0");
-  if (entryPx > 0) setIn("orderEntryPrice", String(entryPx));
-
-  setChk("enableSL", slEnabled);
-  const slPx = String(slRows?.[0]?.price ?? "0");
-  if (slEnabled && parseFloat(slPx) > 0) {
-    setIn("slPrice", slPx);
-    om.slManuallyPositioned = true;
-  }
-
-  const tp0 = tpRows?.[0];
-  setChk("enableTP", tp0?.enabled !== false);
-  const tpPx = String(tp0?.price ?? "0");
-  if (tp0?.enabled !== false && parseFloat(tpPx) > 0) {
-    setIn("tpPrice", tpPx);
-    om.tpManuallyPositioned = true;
-  }
-
-  v9SyncSlAdvToHiddenOrderPanel({
-    slAdvMode,
-    panelMode,
-    slBeUnit,
-    slBeTrigger,
-    slBeOffset,
-    slTslUnit,
-    slTslActivation,
-    slTslTrail,
-    slTslStep,
-  });
-
-  try {
-    window.__talariaV9OrderBridge = {
-      orderPanelOpen: true,
-      sizeMode,
-      riskVal,
-      slEnabled,
-      slRows,
-      entryRows,
-      buySell,
-      orderType,
-    };
-  } catch (_) {}
-
-  try {
-    om.calculatePositionFromRisk?.();
-    om._syncOrderQuantityFromRisk?.();
-    om._syncOrderQuantityFromLotSize?.();
-    om.calculateAdvancedRiskReward?.();
-    om.updatePlaceButtonText?.();
-    om.updatePreviewLines?.();
-  } catch (_) {}
-
-  if (typeof om.placeAdvancedOrder === "function") {
-    om.placeAdvancedOrder({ keepPanelOpen: true });
   }
 }
 
@@ -10525,16 +10400,6 @@ const TalariaV8bLive = () => {
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
   const [chartType, setChartType] = useState("Candles");
   const [chartTypeDropL, setChartTypeDropL] = useState(185);
-  const [layoutSync, setLayoutSync] = useState({
-    crosshair: true,
-    time: false,
-    drawings: true,
-    symbol: false,
-    interval: false,
-    dateRange: false,
-    indicators: false,
-    chartType: false,
-  });
   const [tfOpen, setTfOpen] = useState(false);
   const [tfCat, setTfCat] = useState(null);
   const [tfPinned, setTfPinned] = useState(["1m","5m","15m","1H","4H","1D"]);
@@ -12627,6 +12492,12 @@ const TalariaV8bLive = () => {
   // Single-chart layouts ignore this; multi-panel layouts highlight the
   // focused tile and (in Phase 7.2.4) route topbar/leftbar actions to it.
   const [focusedPanelId, setFocusedPanelId] = useState("A");
+  // Phase 7.2.3: TradingView-style topbar layout dropdown (replaces the
+  // deleted topbar layout entry). Anchor ref lets us position the popover
+  // directly below the button so it lines up like TradingView.
+  // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
+  // races re-enabling sync modes (especially `time`) unexpectedly.
+  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);
@@ -16071,7 +15942,7 @@ const TalariaV8bLive = () => {
                 try {
                   v9TickMarketOrderEntryFromChart(omLocal, setEntryRows);
                 } catch (_) {}
-              } else if (!window.__talariaV9ReactOrderUi && !window.__talariaV9OrderRailOpen) {
+              } else {
                 try {
                   omLocal.calculatePositionFromRisk?.();
                 } catch (_) {}
@@ -37133,17 +37004,7 @@ const TalariaV8bLive = () => {
                       window.__talariaV9RailScreenshots = list.length ? list : null;
                       window.__talariaV9RailTradeNotes = trimmedNotes || null;
                     }
-                    v9ExecutePlaceOrderFromRail({
-                      om: window.chart?.orderManager,
-                      buySell,
-                      orderType,
-                      sizeMode,
-                      riskVal,
-                      riskBasis,
-                      slEnabled,
-                      slRows,
-                      entryRows,
-                      tpRows,
+                    v9SyncSlAdvToHiddenOrderPanel({
                       slAdvMode,
                       panelMode,
                       slBeUnit,
@@ -37154,6 +37015,7 @@ const TalariaV8bLive = () => {
                       slTslTrail,
                       slTslStep,
                     });
+                    document.getElementById("placeOrderButton")?.click();
                   }} data-nodrag="1"
                   onMouseEnter={()=>setSwHov("exec-btn")} onMouseLeave={()=>setSwHov(null)}
                   onMouseDown={()=>setSwHov("exec-btn_dn")} onMouseUp={()=>setSwHov("exec-btn")}

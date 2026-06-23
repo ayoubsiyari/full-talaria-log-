@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260623b98";
+const BRIDGE_VERSION = "20260609b07";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1317,9 +1317,6 @@ export default function MultichartGrid({
     const containerRef = useRef(null);
     const cellRefs = useRef({});             // panelId -> cell <div>
     const managerRef = useRef(null);
-    /** Set in grid mount effect — used by timeframeChanged listener above refs in file order. */
-    const fanOutTimeframeFromHostCacheRef = useRef(null);
-    const lastHostTfFanOutRef = useRef(null);
     const [managerReady, setManagerReady] = useState(false);
     // Host tile A is "ready" from frame 0 — it just shows the parent's
     // existing #chartWrapper, which has been alive (with all the user's
@@ -1345,7 +1342,6 @@ export default function MultichartGrid({
     // behind it; the chart only becomes visible once it's stable.
     const overlayHoldTimersRef = useRef({});
     const OVERLAY_SETTLE_HOLD_MS = 1300;
-    const OVERLAY_MEMORY_BOOT_HOLD_MS = 400;
     useEffect(() => {
         return () => {
             const timers = overlayHoldTimersRef.current || {};
@@ -1826,12 +1822,6 @@ export default function MultichartGrid({
         // firing 3× addChart in one tick makes B/C/D fight for CPU + HTTP/2
         // streams so the last panel often misses the old 5s bridge-ready gate.
         const IFRAME_ADD_STAGGER_MS = 700;
-        try {
-            const hostCh = window.chart;
-            if (hostCh && typeof hostCh._ensureMultichartHostExportReady === "function") {
-                hostCh._ensureMultichartHostExportReady();
-            }
-        } catch (_) {}
         const hostNt = readHostChartFileAndTf();
         const propFid = initialFileIdRef.current && String(initialFileIdRef.current).trim();
         const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
@@ -2041,7 +2031,7 @@ export default function MultichartGrid({
                     }
                     mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
                 }
-                if (pushTf && tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf, fromHostCache: true });
+                if (pushTf && tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf });
             } catch (_) {}
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2198,8 +2188,9 @@ export default function MultichartGrid({
                 || (window.chart && window.chart.currentTimeframe)
                 || null;
             if (!tf) return;
-            if (fanOutTimeframeFromHostCacheRef.current) {
-                fanOutTimeframeFromHostCacheRef.current(tf);
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host) continue; // host already changed; iframes only
+                try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
             }
         };
         window.addEventListener("timeframeChanged", onTfChanged);
@@ -3164,7 +3155,6 @@ export default function MultichartGrid({
             && id !== HOST_PANEL_ID
             && !dataReadyPanels.has(id)
             && !overlayHoldTimersRef.current[id]) {
-            const holdMs = state.memoryBoot ? OVERLAY_MEMORY_BOOT_HOLD_MS : OVERLAY_SETTLE_HOLD_MS;
             overlayHoldTimersRef.current[id] = setTimeout(() => {
                 delete overlayHoldTimersRef.current[id];
                 setDataReadyPanels((prev) => {
@@ -3179,7 +3169,7 @@ export default function MultichartGrid({
                     next.add(id);
                     return next;
                 });
-            }, holdMs);
+            }, OVERLAY_SETTLE_HOLD_MS);
         }
 
         // (a) focus mirror
@@ -3219,6 +3209,8 @@ export default function MultichartGrid({
             const tf = String(state.timeframe);
             if (lastBroadcastTfRef.current[id] !== tf) {
                 lastBroadcastTfRef.current[id] = tf;
+                // 1) push to the host (in-process call) — host doesn't
+                // run panel-cmd-bridge, so we hit window.chart directly.
                 try {
                     if (window.chart && typeof window.chart.setTimeframe === "function"
                         && window.chart.currentTimeframe !== tf) {
@@ -3226,8 +3218,10 @@ export default function MultichartGrid({
                         lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
                     }
                 } catch (_) {}
-                if (fanOutTimeframeFromHostCacheRef.current) {
-                    fanOutTimeframeFromHostCacheRef.current(tf);
+                // 2) push to every other iframe panel
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || c.id === id) continue;
+                    try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
                 }
             }
         }
@@ -3848,36 +3842,12 @@ export default function MultichartGrid({
             return Promise.resolve(null);
         }
 
-        function fanOutTimeframeFromHostCache(tf) {
-            const mgr = managerRef.current;
-            if (!mgr || typeof mgr.sendCommand !== "function" || !tf) return;
-            const tfStr = String(tf);
-            if (lastHostTfFanOutRef.current === tfStr) return;
-            lastHostTfFanOutRef.current = tfStr;
-            lastBroadcastTfRef.current[HOST_PANEL_ID] = tfStr;
-            for (const c of mgr.charts.values()) {
-                if (!c || c.host) continue;
-                lastBroadcastTfRef.current[c.id] = tfStr;
-                try {
-                    mgr.sendCommand(c.id, "setTimeframe", { tf: tfStr, fromHostCache: true });
-                } catch (_) {}
-            }
-        }
-        fanOutTimeframeFromHostCacheRef.current = fanOutTimeframeFromHostCache;
-
         function runCommand(cmd, args, opts) {
             const target = (opts && opts.panelId)
                 ? opts.panelId
                 : (focusedPanelIdRef.current || HOST_PANEL_ID);
             if (cmd === "loadFile" && args && args.fileId != null && args.fileId !== "") {
                 return loadFileOnPanel(target, args.fileId, { force: !!args.force });
-            }
-            // Interval sync ON: only host fetches; timeframeChanged fans iframes from cache.
-            if (cmd === "setTimeframe" && args && args.tf
-                && layoutSyncRef.current && layoutSyncRef.current.interval
-                && !args.fromHostCache) {
-                const tf = String(args.tf);
-                return applyHostCommand("setTimeframe", { tf });
             }
             if (target === HOST_PANEL_ID) {
                 return applyHostCommand(cmd, args);
@@ -4473,7 +4443,6 @@ export default function MultichartGrid({
         window.__multichartGrid = {
             isMounted,
             runCommand,
-            fanOutTimeframeFromHostCache,
             runCommandOnAllPanels,
             deselectDrawingsOnNonFocusedPanels,
             closeDrawingSettingsOnOtherPanels,

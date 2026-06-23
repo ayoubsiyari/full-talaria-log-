@@ -1053,7 +1053,6 @@
                             ch.replaySystem.replayTimestamp = Number(prsTf.replayTimestamp);
                         }
                     } catch (_) {}
-                    if (args.fromHostCache) ch._multichartTfFromHostCache = true;
                     var sw = ch.setTimeframe(tf);
                     if (sw && typeof sw.then === 'function') {
                         return sw.then(function () {
