@@ -7615,6 +7615,15 @@ class Chart {
                 }
             }
 
+            if (state.propfirm_challenge && typeof window !== 'undefined' && window.propFirmTracker
+                && typeof window.propFirmTracker.hydrateFromPersistedSnapshot === 'function') {
+                try {
+                    window.propFirmTracker.hydrateFromPersistedSnapshot(state.propfirm_challenge);
+                } catch (e) {
+                    console.warn('Prop firm challenge hydrate failed', e);
+                }
+            }
+
             if (this.orderManager) {
                 if (typeof this.orderManager.updateJournalTab === 'function') {
                     this.orderManager.updateJournalTab();

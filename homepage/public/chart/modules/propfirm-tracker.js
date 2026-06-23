@@ -399,12 +399,24 @@ class PropFirmTracker {
         return this.tradingDays.size;
     }
 
-    // Calculate profit percentage (phase 2 measures from phase baseline)
+    // Calculate profit percentage (phase 2 measures gain from phase baseline; % is vs initial account)
     getProfitPercent() {
         const baseline = (this.currentPhase >= 2 && Number.isFinite(this.phaseStartBalance))
             ? this.phaseStartBalance
             : this.startBalance;
+        if (!this.startBalance || this.startBalance <= 0) return 0;
         return ((this.currentBalance - baseline) / this.startBalance) * 100;
+    }
+
+    _getProfitTargetUsd() {
+        return (this.startBalance * (this.rules.profitTarget || 0)) / 100;
+    }
+
+    _isChallengeFullyPassed() {
+        const numPhases = this.rules.numPhases || 1;
+        if (numPhases >= 2 && this.currentPhase < 2) return false;
+        const daysOk = this._getTradingDaysRequired() <= 0 || this.isTradingDaysComplete();
+        return this.isProfitTargetReached() && daysOk;
     }
 
     // Calculate daily P&L for specific day
@@ -563,12 +575,17 @@ class PropFirmTracker {
         if (this.currentPhase < 2 && numPhases >= 2) {
             this._advanceToPhase2();
             if (!skipModalTrigger && typeof window.showNotification === 'function') {
-                window.showNotification('Phase 1 complete — Phase 2 challenge started', 'success', 6000);
+                const pt = this.rules.profitTarget;
+                window.showNotification(
+                    `Phase 1 complete — Phase 2 started (${pt}% / ≈$${this._getProfitTargetUsd().toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
+                    'success',
+                    8000
+                );
             }
             return;
         }
 
-        if (!skipModalTrigger && !this.profitTargetReachedShown) {
+        if (!skipModalTrigger && !this.profitTargetReachedShown && this._isChallengeFullyPassed()) {
             this.showChallengePassedModal();
             this.profitTargetReachedShown = true;
         }
@@ -577,10 +594,47 @@ class PropFirmTracker {
     _advanceToPhase2() {
         this.currentPhase = 2;
         this.phaseStartBalance = this.currentBalance;
+        this.peakBalance = this.currentBalance;
         this.profitTargetReachedShown = false;
         this.tradingDays = new Set();
         this.dailyTrades = {};
+        this.violations = {
+            dailyLoss: false,
+            totalLoss: false,
+            consistency: false,
+            weekendHold: false
+        };
+        this.tradingDisabled = false;
         this._applyPhaseRulesFromSession(this.sessionData, 2);
+        this._queuePersistChallengeSnapshot();
+        this.updateUI();
+    }
+
+    /** Restore phase / breach state after session reload (from propfirm_challenge snapshot). */
+    hydrateFromPersistedSnapshot(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object' || !this._isPropFirmChallenge()) return;
+        const phase = Number(snapshot.currentPhase) || 1;
+        if (phase >= 2 && (this.rules.numPhases || 1) >= 2) {
+            this.currentPhase = 2;
+            const psb = Number(snapshot.phaseStartBalance);
+            this.phaseStartBalance = Number.isFinite(psb) && psb > 0 ? psb : this.currentBalance;
+            this.peakBalance = Math.max(this.peakBalance, this.currentBalance);
+            this._applyPhaseRulesFromSession(this.sessionData, 2);
+        }
+        if (snapshot.violations && typeof snapshot.violations === 'object') {
+            this.violations = {
+                ...this.violations,
+                ...snapshot.violations
+            };
+        }
+        const status = String(snapshot.status || '').toLowerCase();
+        if (status === 'breached' || this.violations.dailyLoss || this.violations.totalLoss || this.violations.consistency || this.violations.weekendHold) {
+            this.tradingDisabled = true;
+            this.failedModalShown = true;
+        }
+        if (status === 'passed' || this._isChallengeFullyPassed()) {
+            this.profitTargetReachedShown = true;
+        }
         this.updateUI();
     }
 
@@ -624,11 +678,9 @@ class PropFirmTracker {
             tradingDaysCount: this.getTradingDaysCount(),
             violations: { ...this.violations },
             summary: summary,
-            status: (this.violations.dailyLoss || this.violations.totalLoss || this.violations.consistency)
+            status: (this.violations.dailyLoss || this.violations.totalLoss || this.violations.consistency || this.violations.weekendHold)
                 ? 'breached'
-                : (this.isProfitTargetReached() && (this._getTradingDaysRequired() <= 0 || this.isTradingDaysComplete())
-                    ? 'passed'
-                    : 'active'),
+                : (this._isChallengeFullyPassed() ? 'passed' : 'active'),
             currentPhase: this.currentPhase,
             phaseStartBalance: this.phaseStartBalance
         };
@@ -688,6 +740,14 @@ class PropFirmTracker {
             ? 100
             : Math.min((this.getTradingDaysCount() / reqDays) * 100, 100);
         return {
+            phase: {
+                current: this.currentPhase,
+                total: this.rules.numPhases || 1,
+                baseline: (this.currentPhase >= 2 && Number.isFinite(this.phaseStartBalance))
+                    ? this.phaseStartBalance
+                    : this.startBalance,
+                profitTargetUsd: this._getProfitTargetUsd()
+            },
             tradingDays: {
                 current: this.getTradingDaysCount(),
                 required: reqDays,
@@ -697,9 +757,9 @@ class PropFirmTracker {
             profit: {
                 current: this.getProfitPercent(),
                 target: this.rules.profitTarget,
-                completed: this.isProfitTargetReached(),
+                completed: this._isChallengeFullyPassed(),
                 percent: this.getProfitPercent() >= 0 
-                    ? Math.min((this.getProfitPercent() / this.rules.profitTarget) * 100, 100)
+                    ? Math.min((this.getProfitPercent() / Math.max(0.0001, this.rules.profitTarget)) * 100, 100)
                     : 0
             },
             dailyLoss: {

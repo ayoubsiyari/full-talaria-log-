@@ -10592,18 +10592,6 @@ const TalariaV8bLive = () => {
     return () => window.clearInterval(id);
   }, [omTradeRev]);
 
-  // Cap SIZE field when prop max-position rule is active (# mode).
-  useEffect(() => {
-    if (sizeMode !== "#") return;
-    const maxP = v9GetPropMaxPosition(currentSymbol.type);
-    if (maxP == null) return;
-    setRiskVal((prev) => {
-      const n = currentSymbol.type === "futures" ? parseInt(prev, 10) : parseFloat(prev);
-      if (!Number.isFinite(n) || n <= maxP) return prev;
-      return currentSymbol.type === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
-    });
-  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev]);
-
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
   useEffect(() => {
     const onOpen = () => {
@@ -14085,6 +14073,18 @@ const TalariaV8bLive = () => {
       return rows.slice(0, maxLegs);
     });
   }, [omOrderQtyTxt, riskVal, sizeMode, currentSymbol.type, tpRows.length]);
+
+  // Cap SIZE field when prop max-position rule is active (# mode).
+  useEffect(() => {
+    if (!isPropFirmMode || sizeMode !== "#") return;
+    const maxP = v9GetPropMaxPosition(currentSymbol.type);
+    if (maxP == null) return;
+    setRiskVal((prev) => {
+      const n = currentSymbol.type === "futures" ? parseInt(prev, 10) : parseFloat(prev);
+      if (!Number.isFinite(n) || n <= maxP) return prev;
+      return currentSymbol.type === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
+    });
+  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev]);
 
   /** Lot-size (#): SIZE (`riskVal`) is contracts/lots — sync single ENTRY + TP row values (legacy "100" was %). */
   useEffect(() => {
@@ -33800,15 +33800,18 @@ const TalariaV8bLive = () => {
                   const rules = tracker?.rules || {};
                   const hud = propHud || (tracker && typeof tracker.getProgressSummary === "function" ? tracker.getProgressSummary() : null);
                   const breached = !!(hud && (hud.dailyLoss?.breached || hud.totalLoss?.breached || hud.consistency?.breached || hud.weekendHold?.breached || hud.tradingDisabled));
-                  const passed = !!(hud && hud.profit?.completed && hud.tradingDays?.completed);
-                  const statusLbl = breached ? "FAILED" : passed ? "PASSED" : "IN PROGRESS";
+                  const phaseLbl = hud?.phase?.total > 1
+                    ? `Phase ${hud.phase.current} of ${hud.phase.total}`
+                    : "Single phase";
+                  const passed = !!(hud && hud.profit?.completed);
+                  const statusLbl = breached ? "FAILED" : passed ? "PASSED" : hud?.phase?.total > 1 && hud?.phase?.current === 1 && hud?.profit?.percent >= 100 ? "PHASE 1 DONE" : "IN PROGRESS";
                   const statusCol = breached ? c.rd : passed ? c.gn : c.gold;
                   const maxPosLbl = hud?.maxPosition?.limit != null
                     ? `${Number(hud.maxPosition.limit).toFixed(hud.maxPosition.unit === "contracts" ? 0 : 2)} ${hud.maxPosition.unit}`
                     : "—";
                   const propRows = hud ? [
                     { key: "days", label: "Trading days", cur: hud.tradingDays.required <= 0 ? `${hud.tradingDays.current}` : `${hud.tradingDays.current} / ${hud.tradingDays.required}`, pct: hud.tradingDays.percent, col: hud.tradingDays.completed ? c.gn : c.tx, breached: false },
-                    { key: "profit", label: "Profit target", cur: `${hud.profit.current.toFixed(2)}% / ${hud.profit.target}%`, pct: hud.profit.percent, col: hud.profit.completed ? c.gn : c.tx, breached: false },
+                    { key: "profit", label: hud.phase?.total > 1 ? `Profit target (P${hud.phase.current})` : "Profit target", cur: `${hud.profit.current.toFixed(2)}% / ${hud.profit.target}%${hud.phase?.profitTargetUsd ? ` (≈$${Number(hud.phase.profitTargetUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})` : ""}`, pct: hud.profit.percent, col: hud.profit.completed ? c.gn : c.tx, breached: false },
                     { key: "daily", label: "Daily loss", cur: `${hud.dailyLoss.current.toFixed(2)}% / ${hud.dailyLoss.limit}%`, pct: hud.dailyLoss.percent, col: hud.dailyLoss.breached ? c.rd : c.tx, breached: hud.dailyLoss.breached },
                     { key: "dd", label: "Max drawdown", cur: `${hud.totalLoss.current.toFixed(2)}% / ${hud.totalLoss.limit}%`, pct: hud.totalLoss.percent, col: hud.totalLoss.breached ? c.rd : c.tx, breached: hud.totalLoss.breached },
                     ...(hud.consistency?.enabled ? [{ key: "consistency", label: "Consistency", cur: `≤ ${hud.consistency.limit}% best day`, pct: hud.consistency.breached ? 100 : 0, col: hud.consistency.breached ? c.rd : c.tx, breached: hud.consistency.breached }] : []),
@@ -33821,7 +33824,11 @@ const TalariaV8bLive = () => {
                         <div>
                           <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:4}}>PROP CHALLENGE</div>
                           <div style={{fontSize:11,color:c.ts}}>
-                            {`Account $${hud?.balance?.start != null ? Number(hud.balance.start).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}`}
+                            {phaseLbl}
+                            {` · Account $${hud?.balance?.start != null ? Number(hud.balance.start).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}`}
+                            {hud?.phase?.total > 1 && hud?.phase?.current >= 2 && hud?.phase?.baseline != null
+                              ? ` · P2 base $${Number(hud.phase.baseline).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                              : ""}
                             {rules.trailingDrawdown ? " · Trailing DD" : " · Static DD"}
                             {rules.dailyLossEnabled === false ? " · No daily limit" : ""}
                           </div>
