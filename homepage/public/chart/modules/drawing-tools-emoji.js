@@ -148,52 +148,111 @@ class EmojiStickerTool extends BaseDrawing {
         return this.group;
     }
 
-    /**
-     * Create 4 corner resize handles like rectangles
-     */
-    createBoxHandles(group, scales) {
-        const handleRadius = 3;
-        const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
-        const handleStrokeWidth = 2;
-        
-        // Remove existing handles
-        group.selectAll('.resize-handle').remove();
-        group.selectAll('.resize-handle-group').remove();
-        
-        if (this.points.length < 1) return;
-        
+    /** Screen-space box around the glyph (matches selection rect). */
+    _computeBoxGeometry(scales) {
+        if (!scales || this.points.length < 1) return null;
+
         const point = this.points[0];
-        const cx = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
-        const cy = scales.yScale(point.y);
-        
-        // Use the calculated font size (scales with chart)
-        const fontSize = this._currentFontSize || this.style.fontSize;
+        const cx = this._screenX != null ? this._screenX : (
+            scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x)
+        );
+        const cy = this._screenY != null ? this._screenY : scales.yScale(point.y);
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+
+        const fontSize = this._currentFontSize || this.style.fontSize || 48;
         const halfSize = fontSize * 0.6;
-        
+        const boxSize = fontSize * 1.2;
+
+        return { cx, cy, halfSize, boxSize };
+    }
+
+    _getCornerHandlePositions(geom) {
+        if (!geom) return [];
+        const { cx, cy, halfSize } = geom;
         const minX = cx - halfSize;
         const maxX = cx + halfSize;
         const minY = cy - halfSize;
         const maxY = cy + halfSize;
-        
-        // Define 4 corner handle positions (matching rectangle pattern)
-        const handlePositions = [
+
+        return [
             { x: minX, y: minY, cursor: 'nwse-resize', role: 'corner-tl' },
             { x: maxX, y: minY, cursor: 'nesw-resize', role: 'corner-tr' },
             { x: maxX, y: maxY, cursor: 'nwse-resize', role: 'corner-br' },
             { x: minX, y: maxY, cursor: 'nesw-resize', role: 'corner-bl' }
         ];
-        
+    }
+
+    /**
+     * Keep selection box + corner handles aligned without treating corners as anchor points.
+     * BaseDrawing.updateHandlePositions moves data-point-index="0" to the anchor — that broke TL.
+     */
+    _syncBoxHandlePositions(group, scales) {
+        if (!group || group.empty() || !scales) return;
+
+        const geom = this._computeBoxGeometry(scales);
+        if (!geom) return;
+
+        group.select('.emoji-selection-box')
+            .attr('x', geom.cx - geom.boxSize / 2)
+            .attr('y', geom.cy - geom.boxSize / 2)
+            .attr('width', geom.boxSize)
+            .attr('height', geom.boxSize);
+
+        const handlePositions = this._getCornerHandlePositions(geom);
+        handlePositions.forEach((pos) => {
+            const handleGroup = group.select(`.resize-handle-group[data-handle-role="${pos.role}"]`);
+            if (handleGroup.empty()) return;
+            handleGroup.selectAll('circle').attr('cx', pos.x).attr('cy', pos.y);
+        });
+    }
+
+    updateHandlePositions(scales) {
+        if (!this.group || this.group.empty()) return;
+        this._syncBoxHandlePositions(this.group, scales);
+    }
+
+    /**
+     * Create 4 corner resize handles like rectangles / images.
+     */
+    createBoxHandles(group, scales) {
+        const handleRadius = 3;
+        const hitRadius = 14;
+        const handleFill = 'transparent';
+        const handleStroke = '#2962FF';
+        const handleStrokeWidth = 2;
+
+        group.selectAll('.resize-handle').remove();
+        group.selectAll('.resize-handle-hit').remove();
+        group.selectAll('.resize-handle-group').remove();
+
+        const geom = this._computeBoxGeometry(scales);
+        if (!geom) return;
+
+        const handlePositions = this._getCornerHandlePositions(geom);
         this.handles = [];
-        
+
         handlePositions.forEach((pos, index) => {
             const handleGroup = group.append('g')
                 .attr('class', 'resize-handle-group')
                 .attr('data-handle-role', pos.role)
-                .attr('data-point-index', index);
-            
-            const handle = handleGroup.append('circle')
+                .attr('data-box-handle-index', index);
+
+            handleGroup.append('circle')
+                .attr('class', 'resize-handle-hit')
+                .attr('cx', pos.x)
+                .attr('cy', pos.y)
+                .attr('r', hitRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('cursor', pos.cursor)
+                .style('pointer-events', 'all')
+                .style('opacity', 0)
+                .attr('data-handle-role', pos.role)
+                .attr('data-box-handle-index', index);
+
+            handleGroup.append('circle')
                 .attr('class', 'resize-handle')
                 .attr('cx', pos.x)
                 .attr('cy', pos.y)
@@ -202,13 +261,15 @@ class EmojiStickerTool extends BaseDrawing {
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('cursor', pos.cursor)
-                .style('pointer-events', 'all')
+                .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-handle-role', pos.role)
-                .attr('data-point-index', index);
-            
+                .attr('data-box-handle-index', index);
+
             this.handles.push(handleGroup);
         });
+
+        group.selectAll('.resize-handle-group').raise();
     }
 
     /**

@@ -24775,8 +24775,8 @@ const TalariaV8bLive = () => {
           }} className="tl-drag" style={{width:40,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"move",flexShrink:0}}>
             <I n="grip" s={16} cl={c.tm}/>
           </div>
-          {/* template button (menu portaled below) */}
-          <div style={{position:"relative",flexShrink:0}}>
+          {/* template button (menu portaled below) — image has no style templates */}
+          {txtQuickIcon !== "image" && <div style={{position:"relative",flexShrink:0}}>
             <TxBtn id="txt-tmpl" isAct={txtBarDrop==="template"}
               onClick={(e) => {
                 e.stopPropagation();
@@ -24795,7 +24795,7 @@ const TalariaV8bLive = () => {
                 <line x1="9" y1="12" x2="15" y2="12" stroke={col} strokeWidth="1.7" strokeLinecap="round"/>
               </svg>}
             </TxBtn>
-          </div>
+          </div>}
           {/* Border + background swatches for note / priceNote */}
           {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBorderColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.borderColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBorderColor");}}}>
@@ -25015,8 +25015,8 @@ const TalariaV8bLive = () => {
                   style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8,cursor:"text",lineHeight:"1.4"}}>{txtName}</span>
             }
             <div style={{flex:1,cursor:"move"}}/>
-            {/* template button — same dropdown pattern as TL settings header */}
-            <div style={{position:"relative"}}>
+            {/* template button — hidden for image (no save/apply-default templates) */}
+            {!isImage && <div style={{position:"relative"}}>
               <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
                 onMouseEnter={()=>setHov("txt-tmpl-hdr")} onMouseLeave={()=>setHov(null)}
                 onClick={e=>{e.stopPropagation();if(txtSettTplDrop||closing.has("txtSettTplDrop")){closeTxtSettTplDrop();}else{setTxtSettTplDrop(true);setTxtSaveAsMode(false);setTxtNewTplName("");}if(txtBarDrop)setTxtBarDrop(null);setColorPicker(null);cpBarAnchorRef.current=null;setTxtSizeOpen(false);}}
@@ -25110,7 +25110,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
             {/* close button — identical to TL settings */}
             <div {...modalPointerActivate(closeTxtSett)}
               onMouseEnter={()=>setHov("txtx")} onMouseLeave={()=>setHov(null)}
@@ -27460,7 +27460,7 @@ const TalariaV8bLive = () => {
       })(), document.body)}
 
       {/* Text mini-bar template menu (portaled) */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarDrop === "template" && typeof document !== "undefined" && createPortal((() => {
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarDrop === "template" && txtSubTool.icon !== "image" && typeof document !== "undefined" && createPortal((() => {
         const a = txtBarDropAnchor;
         const dropW = 180;
         const tplRows = txtTemplates.length || 1;
