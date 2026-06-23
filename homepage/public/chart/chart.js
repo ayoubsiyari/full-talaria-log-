@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260624b1';
+const CHART_ENGINE_BUILD = '20260624b2';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -20279,9 +20279,6 @@ class Chart {
 
     _snapshotPanDrawingsLayer() {
         this._panScalesCalculated = false;
-        if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
-            this.dataPipeline.invalidatePanDisplayCache();
-        }
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
         this._panSnapPriceZoom = this.priceZoom;
@@ -20302,18 +20299,22 @@ class Chart {
             this._overlaySnapDomains = null;
         }
         // Pre-warm tick cache so the first pan frame does not stall on _buildTimeTicks().
-        const panTicks = this._buildTimeTicks({ panCache: true });
-        this._panTimeTickCache = {
-            baseOffsetX: this.offsetX,
-            ticks: panTicks.map((t) => ({ ...t })),
-        };
+        if (!this._panTimeTickCache) {
+            const panTicks = this._buildTimeTicks({ panCache: true });
+            this._panTimeTickCache = {
+                baseOffsetX: this.offsetX,
+                ticks: panTicks.map((t) => ({ ...t })),
+            };
+        }
         // Drop stale CSS translate; keep snap offsets for the pan loop.
         this._clearPanDrawingsLayerTransform(false);
         const dm = this.drawingManager;
-        // Re-resolve timestamp anchors once at pan start (e.g. after 1D→1m→1D) then freeze
-        // indices for the drag — per-frame resolve during pan caused shapes to snap/jump.
-        if (dm && dm.drawings && dm.drawings.length > 0
-            && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
+        const zoomedOutPan = typeof this._isZoomedOutPaintBySpacing === 'function'
+            && this._isZoomedOutPaintBySpacing();
+        const drawingCount = dm && Array.isArray(dm.drawings) ? dm.drawings.length : 0;
+        // Skip O(n) timestamp re-resolve on zoomed-out pan or empty canvas — restored on mouseup.
+        if (!zoomedOutPan && drawingCount > 0
+            && dm && dm.drawings && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
             dm.drawings.forEach((drawing) => {
                 if (drawing) {
                     dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
@@ -20919,13 +20920,12 @@ class Chart {
         const replayActive = !!(this.replaySystem && this.replaySystem.isActive);
         const useFastTimeTicks = interactionLiteEarly && !replayActive;
         if (skipHeavyChrome) {
-            // Rebuild bar-grid ticks every frame so labels scroll with pan/zoom (not fixed screen slots).
-            this._timeTicks = useFastTimeTicks ? this._buildTimeTicksFast() : this._buildTimeTicks();
+            this._timeTicks = chartViewPanning
+                ? this._buildPanTimeTicks()
+                : (useFastTimeTicks ? this._buildTimeTicksFast() : this._buildTimeTicks());
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (chartViewPanning) {
-            this._timeTicks = useFastTimeTicks
-                ? this._buildTimeTicksFast()
-                : this._buildTimeTicks();
+            this._timeTicks = this._buildPanTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         } else if (wheelBurstLight || timeAxisZoomDragging) {
             this._timeTicks = useFastTimeTicks
@@ -21001,12 +21001,14 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            this.drawGrid();
+            this.drawGrid(interactionLite && chartViewPanning ? { skipAll: true } : {});
             if (!interactionLite) {
                 this.drawVolume(visible, panOpts);
             }
             this.drawCandles(visible, panOpts);
-            this.drawPriceLine(visible);
+            if (!interactionLite || !chartViewPanning) {
+                this.drawPriceLine(visible);
+            }
             // Overlay indicators + separate panels are expensive; skip during active pan drag
             // and restore on mouseup via _stopChartPanRenderLoop's full-quality paint.
             const deferHeavyOverlays = chartViewPanning && this._chartPanRenderLoopActive;
@@ -21016,7 +21018,9 @@ class Chart {
             if (typeof this.renderSeparatePanelIndicators === 'function' && !deferHeavyOverlays) {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
-            this.drawAxes();
+            if (!interactionLite || !chartViewPanning) {
+                this.drawAxes();
+            }
             if (!interactionLite && chartViewPanning) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
@@ -21036,13 +21040,15 @@ class Chart {
             this.drawCurrentPriceLabel(visible);
             // Drawings must track candles during pan, wheel zoom, and axis zoom (including lite path).
             const syncDrawingsNow = chartViewPanning || wheelBurstLight || axisZoomDragging || !interactionLite;
+            const hasDrawings = !!(this.drawingManager && Array.isArray(this.drawingManager.drawings)
+                && this.drawingManager.drawings.length > 0);
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            if (syncDrawingsNow) {
+            if (syncDrawingsNow && hasDrawings) {
                 this.redrawDrawings();
             }
-            if (syncDrawingsNow) {
+            if (syncDrawingsNow && hasDrawings) {
                 this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight);
             }
             if (!interactionLite && typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
@@ -26347,10 +26353,8 @@ class Chart {
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
-                // Start pan loop on finger-down so the first mousemove is not waiting on rAF setup.
+                // Start pan loop on finger-down; first paint comes from the loop (skip sync render here).
                 this._scheduleChartPanRender();
-                this.renderPending = false;
-                this.render();
             }
         });
 
@@ -26698,14 +26702,18 @@ class Chart {
                 if (!isChartClick) {
                     this.dispatchScrollSync(true);
                     this._snapPanOffsetToHardBounds();
-                    this.constrainOffset();
-                    if (this.replaySystem?.isActive) {
-                        this.replaySystem.onUserPan();
-                        this._scheduleReplayPanLoadLeft();
-                    }
-                    this._finishPanDrawingRedraw();
-                    this.renderPending = false;
-                    this.render();
+                    const finishPanRelease = () => {
+                        if (this.drag && this.drag.active) return;
+                        this.constrainOffset();
+                        if (this.replaySystem?.isActive) {
+                            this.replaySystem.onUserPan();
+                            this._scheduleReplayPanLoadLeft();
+                        }
+                        this._finishPanDrawingRedraw();
+                        this.renderPending = false;
+                        this.render();
+                    };
+                    requestAnimationFrame(finishPanRelease);
                 }
                 this.scheduleChartViewSave();
 
