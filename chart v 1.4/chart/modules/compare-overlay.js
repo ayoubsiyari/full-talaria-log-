@@ -1681,9 +1681,6 @@ class CompareOverlay {
             : (typeof mainChart._decimalsFromPriceRangeHeuristic === 'function'
                 ? mainChart._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0))
                 : 5);
-        const axisDecimals = typeof mainChart._getAxisLabelDecimals === 'function'
-            ? mainChart._getAxisLabelDecimals(yTicks, Math.abs(priceRange), pane.symbol, { data: paneData })
-            : symDec;
         const scaleTextSize = mainChart.chartSettings?.scaleTextSize || 11;
         const scaleFont = `${scaleTextSize}px Roboto`;
         
@@ -1720,9 +1717,9 @@ class CompareOverlay {
             if (y < margin.t + 8 || y > height - margin.b - 8) return;
             if (lastPrice > 0 && Math.abs(y - lastY) < 18) return;
             if (!isNaN(price)) {
-                const axisLabel = typeof mainChart._formatAxisPrice === 'function'
-                    ? mainChart._formatAxisPrice(price, yTicks, Math.abs(priceRange), pane.symbol, { data: paneData })
-                    : price.toFixed(axisDecimals);
+                const axisLabel = typeof mainChart._formatLastPrice === 'function'
+                    ? mainChart._formatLastPrice(price, Math.abs(priceRange), pane.symbol)
+                    : price.toFixed(symDec);
                 ctx.fillText(axisLabel, width - margin.r / 2, y + 4);
             }
         });
@@ -4215,9 +4212,6 @@ class CompareOverlay {
         const ticks = typeof this.chart._getYPriceTicksForDomain === 'function'
             ? this.chart._getYPriceTicksForDomain(minPrice, maxPrice, numYTicks, overlay.symbol, { data: overlay.data })
             : this.generateNiceTicks(minPrice, maxPrice, numYTicks);
-        const axisDecimals = typeof this.chart._getAxisLabelDecimals === 'function'
-            ? this.chart._getAxisLabelDecimals(ticks, Math.abs(priceRange), overlay.symbol, { data: overlay.data })
-            : symDec;
 
         const scaleTextSize = cs.scaleTextSize || 12;
         const scaleFont = `${scaleTextSize}px Roboto`;
@@ -4243,9 +4237,9 @@ class CompareOverlay {
 
             ctx.fillStyle = axisTextColor;
             ctx.font = scaleFont;
-            const axisLabel = typeof this.chart._formatAxisPrice === 'function'
-                ? this.chart._formatAxisPrice(price, ticks, Math.abs(priceRange), overlay.symbol, { data: overlay.data })
-                : price.toFixed(axisDecimals);
+            const axisLabel = typeof this.chart._formatLastPrice === 'function'
+                ? this.chart._formatLastPrice(price, Math.abs(priceRange), overlay.symbol)
+                : price.toFixed(symDec);
             ctx.fillText(axisLabel, axisMidX, y + 4);
         });
 

@@ -22151,57 +22151,26 @@ class Chart {
         return steps[Math.floor(steps.length / 2)];
     }
 
-    /** Minimum decimals so every axis tick label is unique (TradingView tickmarks style). */
-    _minDecimalsForUniqueAxisLabels(yTicks, maxDec = 8) {
-        if (!Array.isArray(yTicks) || yTicks.length < 2) return 0;
-        for (let d = 0; d <= maxDec; d++) {
-            const seen = new Set();
-            let unique = true;
-            for (let i = 0; i < yTicks.length; i++) {
-                const label = Number(yTicks[i]).toFixed(d);
-                if (seen.has(label)) {
-                    unique = false;
-                    break;
-                }
-                seen.add(label);
-            }
-            if (unique) return d;
-        }
-        return maxDec;
-    }
-
     /**
-     * Y-axis label decimals: coarser than symbol precision — match visible grid spacing
-     * (e.g. 1.52 / 1.50 on axis while last price shows 1.48876).
+     * Y-axis label decimals — TradingView uses the same fixed symbol precision on every
+     * scale label and on the last-price badge (e.g. 1.38000, 1.36000, 1.14055).
      */
     _getAxisLabelDecimals(yTicks, priceRange, symbol, options = {}) {
-        const symDec = symbol
-            ? (typeof this.getPriceDecimalsForSymbol === 'function'
+        void yTicks;
+        if (symbol) {
+            return typeof this.getPriceDecimalsForSymbol === 'function'
                 ? this.getPriceDecimalsForSymbol(symbol, priceRange, options)
-                : this.getPriceDecimals(priceRange))
-            : this.getPriceDecimals(priceRange);
-        if (!Array.isArray(yTicks) || yTicks.length < 2) return symDec;
-        const step = this._getAxisTickStep(yTicks);
-        const tickDec = Number.isFinite(step) ? this._decimalsFromTickStep(step) : null;
-        const uniqueDec = this._minDecimalsForUniqueAxisLabels(yTicks);
-        let axisDec = Number.isFinite(tickDec) ? Math.max(tickDec, uniqueDec) : uniqueDec;
-        if (Number.isFinite(symDec) && symDec >= 0) {
-            axisDec = Math.min(axisDec, symDec);
+                : this.getPriceDecimals(priceRange);
         }
-        const rangeDec = this._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0));
-        axisDec = Math.min(axisDec, rangeDec);
-        return Number.isFinite(axisDec) && axisDec >= 0 ? axisDec : symDec;
+        return this.getPriceDecimals(priceRange);
     }
 
-    /** Format a Y-axis / grid price label (coarser decimals than last price). */
+    /** Format any price-scale label at symbol precision (axis, crosshair, last price). */
     _formatAxisPrice(price, yTicks, priceRange, symbol, options = {}) {
-        const dec = this._getAxisLabelDecimals(yTicks, priceRange, symbol, options);
-        return Number(price).toFixed(dec);
+        void yTicks;
+        void options;
+        return this._formatLastPrice(price, priceRange, symbol);
     }
-
-    /**
-     * Format last / crosshair price at full symbol precision (TradingView last-value label).
-     */
     _formatLastPrice(price, priceRange, symbol) {
         const p = Number(price);
         if (!Number.isFinite(p)) return '—';
@@ -22379,19 +22348,18 @@ class Chart {
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
         const yTicks = this._getYPriceTicks(numYTicks);
         const decimals = this._getAxisLabelDecimals(yTicks, Math.abs(priceRange));
-        const liveDecimals = this.getPriceDecimals(Math.abs(priceRange));
         const fs = this.chartSettings.scaleTextSize || 12;
 
         let maxW = 0;
-        const measure = (weightPrefix, dec) => {
+        const measure = (weightPrefix) => {
             this.ctx.font = weightPrefix ? `${weightPrefix} ${fs}px Roboto` : `${fs}px Roboto`;
             return (num) => {
-                const t = Number(num).toFixed(dec);
+                const t = this._formatLastPrice(num, Math.abs(priceRange));
                 const w = this.ctx.measureText(t).width;
                 if (w > maxW) maxW = w;
             };
         };
-        const mTick = measure(false, decimals);
+        const mTick = measure(false);
         yTicks.forEach((price) => {
             const y = this.yScale(price);
             if (y > this.margin.t + 8 && y < pricePlotBottom - 8) {
@@ -22402,7 +22370,7 @@ class Chart {
         const d1 = this.yScale.domain()[1];
         mTick(d0);
         mTick(d1);
-        const mLive = measure('500', liveDecimals);
+        const mLive = measure('500');
         const livePrice = this.resolveEffectiveCurrentPrice(this.data);
         if (Number.isFinite(livePrice)) {
             mLive(livePrice);
