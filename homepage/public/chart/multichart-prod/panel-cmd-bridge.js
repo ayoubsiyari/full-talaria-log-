@@ -1498,8 +1498,6 @@
                 case 'syncReplayFromHost': {
                     if (ch._multichartPairLoadInFlight) return;
                     if (isViewportSettling(ch)) return;
-                    // Parent streams replayFrame every animation tick while playing;
-                    // forceReplaySeek here fights the mirror renderer and desyncs tick animation.
                     if (isParentReplayPlaying()) return;
                     var pcReplay = null;
                     try {
@@ -1509,7 +1507,9 @@
                     if (!pcReplay || !pcReplay.replaySystem || !pcReplay.replaySystem.isActive) return;
                     var hostTs = Number(pcReplay.replaySystem.replayTimestamp);
                     if (!Number.isFinite(hostTs)) return;
+                    if (!args.force && ch._lastSyncReplayHostTs === hostTs) return;
                     if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                        ch._lastSyncReplayHostTs = hostTs;
                         return applyReplayEnter(ch, hostTs);
                     }
                     var panelTfMs = 60000;
@@ -1519,15 +1519,16 @@
                     var panelTs = Number(ch.replaySystem.replayTimestamp);
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
-                    // Aligned + paused: leave the panel's viewport exactly where the
-                    // user (or sync) put it — do NOT recenter on the playhead. This
-                    // restores the known-good behavior at commit 8d1751f. The
-                    // `_syncIndependentPanelViewportIfNeeded` recenter added afterwards
-                    // is what made the panel snap back to the middle every 800ms.
-                    if (!args.force && replayAligned) return;
-                    // Same render path as the play-time frame stream — avoids
-                    // goToReplayTimestamp viewport jumps when playhead drifted while paused.
-                    if (applyStaticMirrorFrame(ch, hostTs)) return;
+                    if (!args.force && replayAligned) {
+                        ch._lastSyncReplayHostTs = hostTs;
+                        return;
+                    }
+                    if (applyStaticMirrorFrame(ch, hostTs)) {
+                        ch.replaySystem.replayTimestamp = hostTs;
+                        ch._lastSyncReplayHostTs = hostTs;
+                        return;
+                    }
+                    ch._lastSyncReplayHostTs = hostTs;
                     return forceReplaySeek(ch, hostTs, false);
                 }
                 case 'replayEnter': {
@@ -2118,7 +2119,12 @@
         // own; broadcast '*' is delivered to all).
         if (msg.target && msg.target !== panelId && msg.target !== '*') return;
 
-        log('apply', msg.cmd, msg.args);
+        var hotCmd = msg.cmd === 'syncReplayFromHost'
+            || msg.cmd === 'replayFrame'
+            || msg.cmd === 'replayTick';
+        if (!hotCmd) {
+            log('apply', msg.cmd, msg.args);
+        }
         applyCommand(msg.cmd, msg.args).then(
             function (data) { reportResult(msg.requestId, true,  null, data); },
             function (err) {

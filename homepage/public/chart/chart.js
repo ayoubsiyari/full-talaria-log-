@@ -1844,14 +1844,6 @@ class Chart {
             this.updateLoaderProgress(95, 'Starting replay mode...');
             this.updateLoaderStep(3, 'active');
             queueMicrotask(() => this.startBacktestingReplay(session));
-            setTimeout(() => {
-                try {
-                    if (String(selfBt.currentFileId) === String(fileId)
-                        && typeof selfBt._storeMultichartSessionPairCache === 'function') {
-                        selfBt._storeMultichartSessionPairCache(fileId);
-                    }
-                } catch (_btSessCache) { /* ignore */ }
-            }, 1500);
             
         } catch (error) {
             console.error('❌ Failed to load file data:', error);
@@ -1938,159 +1930,24 @@ class Chart {
     }
 
     _multichartSessionPairCacheHas(fileId) {
-        const fid = String(fileId || '').trim();
-        if (!fid) return false;
-        const store = this._getMultichartSessionPairCacheStore();
-        if (!store || !store.has(fid)) return false;
-        const entry = store.get(fid);
-        return !!(entry && Array.isArray(entry.masterRaw) && entry.masterRaw.length > 0);
+        return false;
     }
 
-    _snapshotBtTfCacheForSessionStore(fileId) {
-        const out = {};
-        if (!fileId || !this._btTfDataCache) return out;
-        const perFile = this._btTfDataCache.get(String(fileId));
-        if (!perFile) return out;
-        for (const [tf, entry] of perFile.entries()) {
-            if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) continue;
-            out[String(tf).toLowerCase().trim()] = {
-                totalCandles: entry.totalCandles,
-                serverCursors: entry.serverCursors ? { ...entry.serverCursors } : null,
-                nativeRawFetchTf: entry.nativeRawFetchTf,
-                anchorKey: entry.anchorKey,
-                seriesKey: this._btTfCacheSeriesKey(entry.rawData),
-            };
-        }
-        return out;
+    _storeMultichartSessionPairCache(_fileId) {
+        // Disabled — duplicated large bar arrays and competed with pan/zoom on the main thread.
     }
 
-    _warmLocalBtTfCacheFromSessionSnapshot(fileId, btTfSnapshot, masterRaw) {
-        if (!fileId || !btTfSnapshot || typeof btTfSnapshot !== 'object') return;
-        if (!Array.isArray(masterRaw) || !masterRaw.length) return;
-        const fid = String(fileId);
-        for (const tf of Object.keys(btTfSnapshot)) {
-            const meta = btTfSnapshot[tf];
-            if (!meta) continue;
-            if (typeof this._storeBtTfDataCacheEntry !== 'function') continue;
-            const nativeTf = String(meta.nativeRawFetchTf || tf).toLowerCase().trim();
-            let source = masterRaw;
-            if (nativeTf !== '1m' && tf !== nativeTf) {
-                if (typeof this.resampleData === 'function') {
-                    source = this.resampleData(masterRaw, tf);
-                }
-            } else if (tf !== '1m' && typeof this.resampleData === 'function') {
-                source = this.resampleData(masterRaw, tf);
-            }
-            if (!Array.isArray(source) || !source.length) continue;
-            this._storeBtTfDataCacheEntry(fid, tf, source, {
-                totalCandles: meta.totalCandles,
-                serverCursors: meta.serverCursors,
-                nativeRawFetchTf: meta.nativeRawFetchTf || nativeTf,
-                reuseArrayReference: false,
-            });
-        }
-    }
-
-    _flushMultichartSessionPairCacheStore(fileId) {
-        if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return;
-        const fid = String(fileId || this.currentFileId || '').trim();
-        if (!fid) return;
-        const master = this._resolveChartExportableMasterRaw(this);
-        if (!master || !master.length) return;
-
-        const store = this._getMultichartSessionPairCacheStore();
-        if (!store) return;
-
-        const prev = store.get(fid);
-        const prevLen = prev && Array.isArray(prev.masterRaw) ? prev.masterRaw.length : 0;
-        if (prevLen > master.length * 1.05) return;
-
-        store.set(fid, {
-            masterRaw: master,
-            nativeRawFetchTf: String(this._nativeRawFetchTf || '1m').toLowerCase().trim() || '1m',
-            totalCandles: Number.isFinite(this.totalCandles) ? this.totalCandles : master.length,
-            serverCursors: this._serverCursors ? { ...this._serverCursors } : null,
-            btTfSnapshot: this._snapshotBtTfCacheForSessionStore(fid),
-            storedBy: this._getMultichartPanelId(),
-            storedAt: Date.now(),
-        });
-
-        const maxEntries = 8;
-        if (store.size > maxEntries) {
-            let oldestKey = null;
-            let oldestAt = Infinity;
-            for (const [k, v] of store.entries()) {
-                const at = v && Number.isFinite(v.storedAt) ? v.storedAt : 0;
-                if (at < oldestAt) {
-                    oldestAt = at;
-                    oldestKey = k;
-                }
-            }
-            if (oldestKey != null) store.delete(oldestKey);
-        }
-    }
-
-    /**
-     * After any panel loads a pair, publish exportable master + TF cache for other tiles.
-     * Deferred to idle time so pair-store never blocks pan/zoom on the main chart.
-     * @param {string} [fileId]
-     */
-    _storeMultichartSessionPairCache(fileId) {
-        if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return;
-        const fid = String(fileId || this.currentFileId || '').trim();
-        if (!fid) return;
-        const self = this;
-        const run = () => {
-            try { self._flushMultichartSessionPairCacheStore(fid); } catch (_e) { /* ignore */ }
-        };
-        if (typeof requestIdleCallback === 'function') {
-            requestIdleCallback(run, { timeout: 3000 });
-        } else {
-            setTimeout(run, 0);
-        }
-    }
-
-    /**
-     * Clone a pair another multichart tile already loaded — no /smart round-trip.
-     * @param {string} targetFileId
-     * @returns {object|null}
-     */
-    _takeMultichartSessionPairCache(targetFileId) {
-        if (!this._isMultichartHostPanel() && !this._isMultichartEmbedPanel()) return null;
-        const fid = String(targetFileId || '').trim();
-        if (!fid || !this._multichartSessionPairCacheHas(fid)) return null;
-
-        const store = this._getMultichartSessionPairCacheStore();
-        const entry = store.get(fid);
-        if (!entry || !Array.isArray(entry.masterRaw) || !entry.masterRaw.length) return null;
-
-        this._warmLocalBtTfCacheFromSessionSnapshot(fid, entry.btTfSnapshot, entry.masterRaw);
-
-        const masterRaw = entry.masterRaw.slice();
-        const pc = entry.serverCursors || {};
-        return {
-            candles: masterRaw,
-            total: Number.isFinite(entry.totalCandles) ? entry.totalCandles : masterRaw.length,
-            returned: masterRaw.length,
-            first_cursor: masterRaw[0]?.t ?? pc.firstTs ?? null,
-            last_cursor: masterRaw[masterRaw.length - 1]?.t ?? pc.lastTs ?? null,
-            has_more_left: pc.hasMoreLeft !== false,
-            has_more_right: pc.hasMoreRight === true,
-            source: 'multichart-session-pair-cache',
-            nativeRawFetchTf: entry.nativeRawFetchTf || '1m',
-        };
+    _takeMultichartSessionPairCache(_targetFileId) {
+        return null;
     }
 
     /** True when host tile A already holds exportable bars for the requested fileId. */
     _parentMultichartMasterReady(parent, fileId) {
         if (!parent) return false;
         const fid = fileId != null ? String(fileId).trim() : String(parent.currentFileId || '').trim();
-        if (!fid) return false;
-        if (String(parent.currentFileId || '').trim() === fid) {
-            const master = this._resolveParentMultichartMasterRaw(parent);
-            if (master && master.length > 0) return true;
-        }
-        return this._multichartSessionPairCacheHas(fid);
+        if (!fid || String(parent.currentFileId || '').trim() !== fid) return false;
+        const master = this._resolveParentMultichartMasterRaw(parent);
+        return !!(master && master.length > 0);
     }
 
     /**

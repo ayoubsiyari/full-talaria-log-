@@ -959,23 +959,15 @@
                 };
                 var hostReadyForMirror = function () {
                     var pc = readParentChart();
-                    var fid = fileId || (pc && pc.currentFileId != null ? String(pc.currentFileId) : '');
-                    if (!fid) return true;
-                    var chLocal = window.chart;
-                    if (chLocal && typeof chLocal._parentMultichartMasterReady === 'function') {
-                        if (chLocal._parentMultichartMasterReady(pc, fid)) return true;
-                    }
-                    if (chLocal && typeof chLocal._multichartSessionPairCacheHas === 'function'
-                        && chLocal._multichartSessionPairCacheHas(fid)) {
-                        return true;
-                    }
-                    if (!pc) return false;
-                    if (String(pc.currentFileId || '') !== String(fid)) return false;
+                    if (!pc) return true;
+                    var fid = fileId || (pc.currentFileId != null ? String(pc.currentFileId) : '');
+                    if (!fid || String(pc.currentFileId || '') !== String(fid)) return true;
                     try {
                         if (typeof pc._ensureMultichartHostExportReady === 'function') {
                             pc._ensureMultichartHostExportReady();
                         }
                     } catch (_) {}
+                    var chLocal = window.chart;
                     if (chLocal && typeof chLocal._parentMultichartMasterReady === 'function') {
                         return chLocal._parentMultichartMasterReady(pc, fid);
                     }
@@ -1020,15 +1012,9 @@
             // Live / no session — loadFileData clones parent memory when same pair
             var hostReadyLive = function () {
                 var pc = readParentChart();
-                var fid = fileId || (pc && pc.currentFileId != null ? String(pc.currentFileId) : '');
-                if (!fid) return true;
-                var chLocal = window.chart;
-                if (chLocal && typeof chLocal._multichartSessionPairCacheHas === 'function'
-                    && chLocal._multichartSessionPairCacheHas(fid)) {
-                    return true;
-                }
-                if (!pc) return false;
-                if (String(pc.currentFileId || '') !== String(fid)) return false;
+                if (!pc) return true;
+                var fid = fileId || (pc.currentFileId != null ? String(pc.currentFileId) : '');
+                if (!fid || String(pc.currentFileId || '') !== String(fid)) return true;
                 try {
                     if (typeof pc._ensureMultichartHostExportReady === 'function') {
                         pc._ensureMultichartHostExportReady();
