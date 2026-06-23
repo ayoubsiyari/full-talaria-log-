@@ -1207,9 +1207,6 @@
                         fileId: d.fileId || chart.currentFileId || null,
                         symbol: d.symbol || chart.currentSymbol || null,
                         timeframe: d.timeframe || chart.currentTimeframe || null,
-                        chartType: (chart.chartSettings && chart.chartSettings.chartType)
-                            ? String(chart.chartSettings.chartType).toLowerCase()
-                            : 'candles',
                         candleCount: chart.data ? chart.data.length : 0,
                         firstBarMs: firstBarMs,
                         lastBarMs: lastBarMs,
@@ -1964,7 +1961,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260623b70';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260623b56';
 
         return {
             state,
