@@ -3332,11 +3332,16 @@ class DrawingToolsManager {
                 }
 
                 if (best && !best.locked && allowsDirectMoveFromHitZone(best.type)) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    this.selectDrawing(best, false);
-                    this._startDirectMoveDrag(best, event);
-                    return;
+                    const [pfMx, pfMy] = this._eventCanvasLocalXY(event);
+                    const blockPfDirectMove = best.type === 'pitchfork'
+                        && this._isPointOnPitchforkLevelAdjustHit(best, pfMx, pfMy);
+                    if (!blockPfDirectMove) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.selectDrawing(best, false);
+                        this._startDirectMoveDrag(best, event);
+                        return;
+                    }
                 }
 
                 // Make shapes draggable on first drag as well
@@ -7012,9 +7017,12 @@ class DrawingToolsManager {
                             const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan')
                                 && self._isPointOnGannToolBody(drawing, mouseX, mouseY)
                                 && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
+                            const onPitchforkLevel = drawing.type === 'pitchfork'
+                                && self._isPointOnPitchforkLevelAdjustHit(drawing, mouseX, mouseY);
                             const onFibWedgeBody = drawing.type === 'fib-wedge'
                                 && self._isPointInFibWedgeBody(drawing, mouseX, mouseY);
-                            if (!onGannBody && !onFibWedgeBody && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
+                            if (!onGannBody && !onFibWedgeBody && !onPitchforkLevel
+                                && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                                 return false;
                             }
                         }
@@ -7344,6 +7352,158 @@ class DrawingToolsManager {
         dragElements.call(bodyDrag);
 
         this._setupGannLevelDrag(drawing);
+        this._setupPitchforkLevelDrag(drawing);
+    }
+
+    _isPitchforkLevelAdjustDrawingType(type) {
+        return type === 'pitchfork';
+    }
+
+    _isPointOnPitchforkLevelAdjustHit(drawing, mouseX, mouseY) {
+        if (!drawing?.group || drawing.type !== 'pitchfork') return false;
+
+        const svgPoint = this.svg?.node?.()?.createSVGPoint?.();
+        if (svgPoint) {
+            svgPoint.x = mouseX;
+            svgPoint.y = mouseY;
+        }
+        const lineHitTolerance = 14;
+
+        for (const element of drawing.group.selectAll('line.pitchfork-level-hit[data-pf-level-value]').nodes()) {
+            const elementSel = d3.select(element);
+            if (elementSel.style('opacity') === '0') continue;
+
+            if (svgPoint && typeof element.isPointInStroke === 'function' && element.isPointInStroke(svgPoint)) {
+                return true;
+            }
+
+            const x1 = parseFloat(element.getAttribute('x1'));
+            const y1 = parseFloat(element.getAttribute('y1'));
+            const x2 = parseFloat(element.getAttribute('x2'));
+            const y2 = parseFloat(element.getAttribute('y2'));
+            if ([x1, y1, x2, y2].every(Number.isFinite)) {
+                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 16;
+                if (distance <= Math.max(lineHitTolerance, (strokeWidth / 2) + 0.5)) return true;
+            }
+        }
+        return false;
+    }
+
+    _parsePitchforkLevelHitMeta(targetSel) {
+        if (!targetSel || !targetSel.attr) return null;
+        const valueRaw = targetSel.attr('data-pf-level-value');
+        const side = targetSel.attr('data-pf-side');
+        const anchor = targetSel.attr('data-pf-anchor');
+        if (valueRaw == null || valueRaw === '' || !side) return null;
+        const value = parseFloat(valueRaw);
+        if (!Number.isFinite(value)) return null;
+        return { value, side, anchor: anchor || null };
+    }
+
+    _findPitchforkLevelRow(drawing, levelValue) {
+        if (!Array.isArray(drawing.levels)) return null;
+        const idx = drawing.levels.findIndex((lv) => {
+            const v = parseFloat(lv && lv.value != null ? lv.value : lv.label);
+            return Number.isFinite(v) && Math.abs(v - levelValue) < 1e-6;
+        });
+        return idx >= 0 ? { idx, row: drawing.levels[idx] } : null;
+    }
+
+    _setupPitchforkLevelDrag(drawing) {
+        if (!this._isPitchforkLevelAdjustDrawingType(drawing.type) || !drawing.group) return;
+
+        const self = this;
+        const levelHits = drawing.group.selectAll('line.pitchfork-level-hit[data-pf-level-value]');
+        levelHits.on('mousedown.pitchfork-level-drag', null);
+
+        levelHits.on('mousedown.pitchfork-level-drag', function(event) {
+            if (self.currentTool) return;
+            if (event.ctrlKey) return;
+            event.stopPropagation();
+            event.preventDefault();
+
+            const targetSel = d3.select(event.currentTarget);
+            const dragMeta = self._parsePitchforkLevelHitMeta(targetSel);
+            if (!dragMeta) return;
+
+            if (!drawing.selected) {
+                self.selectDrawing(drawing, event.shiftKey);
+            }
+
+            if (dragMeta.anchor === 'b' || dragMeta.anchor === 'c') {
+                const pointIndex = dragMeta.anchor === 'b' ? 1 : 2;
+                self._prepareDrawingForHandleDrag(drawing, event);
+                self._resizePointerSource = 'document';
+                self.startHandleDrag(drawing, pointIndex, event);
+
+                const onMove = (e) => {
+                    if (self.chart && typeof self.chart.updateCrosshair === 'function') self.chart.updateCrosshair(e);
+                    self.handleDrag({ sourceEvent: e });
+                };
+                const onUp = (e) => {
+                    document.removeEventListener('mousemove', onMove, true);
+                    document.removeEventListener('mouseup', onUp, true);
+                    self.endHandleDrag(drawing);
+                };
+                document.addEventListener('mousemove', onMove, true);
+                document.addEventListener('mouseup', onUp, true);
+                return;
+            }
+
+            const match = self._findPitchforkLevelRow(drawing, dragMeta.value);
+            if (!match) return;
+
+            const beforeState = self.history ? self.history.captureState(drawing) : null;
+            self._beginDrawingLiveInteraction();
+
+            const onMove = (e) => {
+                const [mouseX, mouseY] = self._eventCanvasLocalXY(e);
+                const scales = self._getGannDrawingScales();
+                if (!scales || typeof drawing.levelValueFromPointer !== 'function') return;
+                const nextVal = drawing.levelValueFromPointer(
+                    dragMeta.side,
+                    dragMeta.value,
+                    mouseX,
+                    mouseY,
+                    scales
+                );
+                if (nextVal == null || !Number.isFinite(nextVal)) return;
+
+                const formatted = String(+nextVal.toFixed(3)).replace(/\.?0+$/, '') || '0';
+                const row = drawing.levels[match.idx];
+                drawing.levels[match.idx] = {
+                    ...row,
+                    value: nextVal,
+                    label: formatted,
+                };
+                if (drawing.meta) drawing.meta.updatedAt = Date.now();
+                self._skipHandleSetup = true;
+                self.renderDrawing(drawing, { skipInteraction: true, liveRender: true, skipTimestampSync: true });
+                self._skipHandleSetup = false;
+                self._broadcastLiveEditUpdate(drawing);
+            };
+
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove, true);
+                document.removeEventListener('mouseup', onUp, true);
+                self._endDrawingLiveInteraction();
+                if (beforeState && self.history) {
+                    self.history.pushState(drawing, beforeState);
+                }
+                self.saveDrawings();
+                const index = self.drawings.indexOf(drawing);
+                if (self.chart.broadcastDrawingChange && index > -1) {
+                    self.chart.broadcastDrawingChange('update', drawing, index);
+                }
+                try {
+                    window.dispatchEvent(new CustomEvent('drawingsChanged', { detail: { drawing } }));
+                } catch (_) {}
+            };
+
+            document.addEventListener('mousemove', onMove, true);
+            document.addEventListener('mouseup', onUp, true);
+        });
     }
 
     _isGannLevelAdjustDrawingType(type) {
@@ -7625,6 +7785,9 @@ class DrawingToolsManager {
                 shouldBlockStrokeOnlyToolBodyMove = drawings.some((d) => {
                     if (d.type === 'gann-box' || d.type === 'gann-square-fixed') {
                         return this._isPointOnGannLevelAdjustHit(d, startMouseX, startMouseY);
+                    }
+                    if (d.type === 'pitchfork') {
+                        return this._isPointOnPitchforkLevelAdjustHit(d, startMouseX, startMouseY);
                     }
                     return this._drawingRequiresStrokeOnlyDrag(d.type)
                         && !this._isPointOnDrawingVisibleStroke(d, startMouseX, startMouseY);

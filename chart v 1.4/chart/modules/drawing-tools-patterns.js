@@ -8,6 +8,16 @@ const PATTERN_TEXT_WEIGHT = '600';
 const PATTERN_LABEL_OFFSET_PX = 14;
 const PATTERN_VALUE_OFFSET_PX = 12;
 
+function patternZoneFill(style) {
+    if (typeof shapeBackgroundFill === 'function') {
+        return shapeBackgroundFill(style, DRAWING_TOOL_DEFAULT_FILL);
+    }
+    if (style && style.showBackground === false) return 'none';
+    const raw = style && (style.fill ?? style.backgroundColor);
+    if (raw === 'none' || raw === 'transparent') return DRAWING_TOOL_DEFAULT_FILL;
+    return raw || DRAWING_TOOL_DEFAULT_FILL;
+}
+
 function patternSyncDefaultLabelColors(style) {
     if (!style) return;
     const stroke = style.stroke || style.color;
@@ -258,7 +268,7 @@ class BarsPatternTool extends BaseDrawing {
             .attr('y', yTop)
             .attr('width', Math.abs(right - left))
             .attr('height', Math.max(0, yBottom - yTop))
-            .attr('fill', this.style.fill || DRAWING_TOOL_DEFAULT_FILL)
+            .attr('fill', patternZoneFill(this.style))
             .attr('stroke', 'none')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
@@ -455,7 +465,7 @@ class XABCDPatternTool extends BaseDrawing {
                              L ${getX(this.points[2])} ${getY(this.points[2])} Z`;
             this.group.append('path')
                 .attr('d', xabPath)
-                .attr('fill', this.style.fill)
+                .attr('fill', patternZoneFill(this.style))
                 .attr('stroke', 'none')
                 .style('pointer-events', 'none');
         }
@@ -467,7 +477,7 @@ class XABCDPatternTool extends BaseDrawing {
                              L ${getX(this.points[4])} ${getY(this.points[4])} Z`;
             this.group.append('path')
                 .attr('d', bcdPath)
-                .attr('fill', this.style.fill)
+                .attr('fill', patternZoneFill(this.style))
                 .attr('stroke', 'none')
                 .style('pointer-events', 'none');
         }
@@ -922,7 +932,7 @@ class HeadShouldersTool extends BaseDrawing {
 
                     this.group.append('path')
                         .attr('d', fillPath)
-                        .attr('fill', this.style.fill)
+                        .attr('fill', patternZoneFill(this.style))
                         .attr('stroke', 'none')
                         .style('pointer-events', 'none');
                 });
@@ -1654,7 +1664,7 @@ class TrianglePatternTool extends BaseDrawing {
             const fillPath = `M ${a.x} ${a.y} L ${topRightGuide.x} ${topRightGuide.y} L ${bottomRightGuide.x} ${bottomRightGuide.y} L ${bottomLeftGuide.x} ${bottomLeftGuide.y} Z`;
             this.group.append('path')
                 .attr('d', fillPath)
-                .attr('fill', this.style.fill)
+                .attr('fill', patternZoneFill(this.style))
                 .attr('stroke', 'none')
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');

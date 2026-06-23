@@ -19321,11 +19321,17 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         } else {
 
+                            drawing.style.showBackground = isChecked;
+
                             if (isChecked) {
 
                                 // Restore saved color or use default
 
-                                drawing.style.fill = drawing.style._savedFill || this.pendingChanges.backgroundColor || 'rgba(41, 98, 255, 0.2)';
+                                drawing.style.fill = drawing.style._savedFill || this.pendingChanges.backgroundColor || drawing.style.fill || (typeof DRAWING_TOOL_DEFAULT_FILL !== 'undefined' ? DRAWING_TOOL_DEFAULT_FILL : 'rgba(140, 140, 140, 0.2)');
+
+                                if (drawing.style.fill === 'none' || drawing.style.fill === 'transparent') {
+                                    drawing.style.fill = typeof DRAWING_TOOL_DEFAULT_FILL !== 'undefined' ? DRAWING_TOOL_DEFAULT_FILL : 'rgba(140, 140, 140, 0.2)';
+                                }
 
                             } else {
 
@@ -23645,9 +23651,16 @@ body.light-mode .template-save-dialog .dialog-title {
 
             if (this.pendingChanges.showBackground !== undefined) {
 
+                drawing.style.showBackground = this.pendingChanges.showBackground;
+
                 if (this.pendingChanges.showBackground) {
 
-                    drawing.style.fill = this.pendingChanges.backgroundColor || drawing.style.fill || 'rgba(41, 98, 255, 0.2)';
+                    const defaultFill = typeof DRAWING_TOOL_DEFAULT_FILL !== 'undefined' ? DRAWING_TOOL_DEFAULT_FILL : 'rgba(140, 140, 140, 0.2)';
+                    drawing.style.fill = this.pendingChanges.backgroundColor || drawing.style._savedFill || drawing.style.fill || defaultFill;
+
+                    if (drawing.style.fill === 'none' || drawing.style.fill === 'transparent') {
+                        drawing.style.fill = defaultFill;
+                    }
 
                 } else {
 

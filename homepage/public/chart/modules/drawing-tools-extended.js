@@ -683,10 +683,11 @@ class CircleTool extends BaseDrawing {
         const cx = x1;
         const cy = y1;
 
-        const fillPaint =
-            this.style.showBackground === false
+        const fillPaint = typeof shapeBackgroundFill === 'function'
+            ? shapeBackgroundFill(this.style, DRAWING_TOOL_DEFAULT_FILL)
+            : (this.style.showBackground === false
                 ? 'none'
-                : (this.style.fill ?? this.style.backgroundColor ?? this.style.fill);
+                : (this.style.fill ?? this.style.backgroundColor ?? DRAWING_TOOL_DEFAULT_FILL));
         const borderOn = !this.style || this.style.borderEnabled !== false;
 
         this.group.append('circle')
@@ -921,10 +922,11 @@ class RotatedRectangleTool extends BaseDrawing {
                           L ${corners[2].x} ${corners[2].y} 
                           L ${corners[3].x} ${corners[3].y} Z`;
 
-        const fillPaint =
-            this.style.showBackground === false
+        const fillPaint = typeof shapeBackgroundFill === 'function'
+            ? shapeBackgroundFill(this.style, DRAWING_TOOL_DEFAULT_FILL)
+            : (this.style.showBackground === false
                 ? 'none'
-                : (this.style.fill ?? this.style.backgroundColor ?? 'rgba(156, 39, 176, 0.1)');
+                : (this.style.fill ?? this.style.backgroundColor ?? DRAWING_TOOL_DEFAULT_FILL));
         const borderOn = !this.style || this.style.borderEnabled !== false;
 
         // Draw fill

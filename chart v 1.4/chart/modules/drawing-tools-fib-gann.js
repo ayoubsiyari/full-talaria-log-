@@ -2274,11 +2274,165 @@ class PitchforkTool extends BaseDrawing {
         ];
     }
 
+    /** Keep levels sorted by value so each input row maps to one chart line. */
+    _normalizeLevels() {
+        if (!Array.isArray(this.levels)) {
+            this.levels = [];
+            return;
+        }
+        this.levels = this.levels
+            .filter((lv) => lv && Number.isFinite(parseFloat(lv.value)))
+            .sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
+    }
+
+    onPointHandleDrag(index, context = {}) {
+        const { point } = context;
+        if (!point) return false;
+        if (index === 3) {
+            return this.handleCustomHandleDrag(3, {
+                ...context,
+                dataPoint: point,
+                pointIndex: 3,
+            });
+        }
+        if (index === 0 && this.points.length >= 2) {
+            const dx = point.x - this.points[0].x;
+            const dy = point.y - this.points[0].y;
+            this.points = this.points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+            if (this.meta) this.meta.updatedAt = Date.now();
+            return true;
+        }
+        return false;
+    }
+
+    handleCustomHandleDrag(handleRole, context = {}) {
+        const { dataPoint, pointIndex, scales } = context;
+        if (!dataPoint) return false;
+
+        const index = (pointIndex === undefined || pointIndex === null)
+            ? (typeof handleRole === 'number' ? handleRole : parseInt(handleRole, 10))
+            : pointIndex;
+        if (index !== 3 || !this.points || this.points.length < 3) return false;
+
+        const p2 = this.points[1];
+        const p3 = this.points[2];
+
+        if (scales && scales.yScale && context.screen && context.screen.x != null && context.screen.y != null) {
+            const getX = (p) => scales.chart?.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p.x)
+                : scales.xScale(p.x);
+            const getY = (p) => scales.yScale(p.y);
+
+            const x2px = getX(p2);
+            const y2px = getY(p2);
+            const x3px = getX(p3);
+            const y3px = getY(p3);
+            const midXpx = (x2px + x3px) / 2;
+            const midYpx = (y2px + y3px) / 2;
+            const pixelDx = context.screen.x - midXpx;
+            const pixelDy = context.screen.y - midYpx;
+
+            const xToData = (px) => (scales.chart && typeof scales.chart.pixelToDataIndex === 'function')
+                ? scales.chart.pixelToDataIndex(px)
+                : (scales.xScale && typeof scales.xScale.invert === 'function' ? scales.xScale.invert(px) : p2.x);
+            const yToData = (py) => (typeof scales.yScale.invert === 'function')
+                ? scales.yScale.invert(py)
+                : p2.y;
+
+            this.points[1] = { x: xToData(x2px + pixelDx), y: yToData(y2px + pixelDy) };
+            this.points[2] = { x: xToData(x3px + pixelDx), y: yToData(y3px + pixelDy) };
+        } else {
+            const midX = (p2.x + p3.x) / 2;
+            const midY = (p2.y + p3.y) / 2;
+            const dx = dataPoint.x - midX;
+            const dy = dataPoint.y - midY;
+            this.points[1] = { x: p2.x + dx, y: p2.y + dy };
+            this.points[2] = { x: p3.x + dx, y: p3.y + dy };
+        }
+
+        if (this.meta) this.meta.updatedAt = Date.now();
+        return true;
+    }
+
+    /** Pixel layout for level-value drag (matches `render`). */
+    getPixelLayout(scales) {
+        if (!this.points || this.points.length < 3 || !scales) return null;
+
+        const getX = (p) => scales.chart?.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x);
+        const getY = (p) => scales.yScale(p.y);
+
+        const ax = getX(this.points[0]);
+        const ay = getY(this.points[0]);
+        const bx = getX(this.points[1]);
+        const by = getY(this.points[1]);
+        const cx = getX(this.points[2]);
+        const cy = getY(this.points[2]);
+        const midX = (bx + cx) / 2;
+        const midY = (by + cy) / 2;
+
+        let pivotX = ax;
+        let pivotY = ay;
+        let medianTargetX = midX;
+        let medianTargetY = midY;
+        const style = this.style.pitchforkStyle || 'original';
+        if (style === 'schiff') {
+            pivotX = (ax + bx) / 2;
+            pivotY = (ay + by) / 2;
+        } else if (style === 'modified-schiff') {
+            pivotX = (ax + midX) / 2;
+            pivotY = (ay + midY) / 2;
+        } else if (style === 'inside') {
+            pivotX = (ax + bx) / 2;
+            pivotY = (ay + by) / 2;
+            medianTargetX = cx;
+            medianTargetY = cy;
+        }
+
+        const isOriginal = style === 'original' || !style;
+        const medianLineStartX = isOriginal ? midX : pivotX;
+        const medianLineStartY = isOriginal ? midY : pivotY;
+
+        return {
+            ax, ay, bx, by, cx, cy,
+            midX, midY,
+            pivotX, pivotY,
+            medianLineStartX, medianLineStartY,
+            medianTargetX, medianTargetY,
+            isOriginal,
+        };
+    }
+
+    /**
+     * Map pointer to pitchfork level ratio (0 = median anchor, 1 = B/C rail).
+     * @returns {number|null}
+     */
+    levelValueFromPointer(side, levelValue, mouseX, mouseY, scales) {
+        const layout = this.getPixelLayout(scales);
+        if (!layout || !side) return null;
+
+        const { midX, midY, bx, by, cx, cy } = layout;
+        const isLower = side === 'lower';
+        const railX = isLower ? bx : cx;
+        const railY = isLower ? by : cy;
+        const spanX = railX - midX;
+        const spanY = railY - midY;
+        const spanLen2 = spanX * spanX + spanY * spanY;
+        if (spanLen2 < 1e-6) return null;
+
+        const t = ((mouseX - midX) * spanX + (mouseY - midY) * spanY) / spanLen2;
+        const clamped = Math.max(0.001, Math.min(8, t));
+        if (Math.abs(levelValue - 1) < 1e-6) return 1;
+        return clamped;
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
+        this._normalizeLevels();
         this._prepareRenderGroup(container, 'drawing pitchfork', renderOpts);
         this._clearDrawingLabels(scales);
         this.group.style('pointer-events', 'none')
@@ -2425,18 +2579,25 @@ class PitchforkTool extends BaseDrawing {
             const stroke = opts.stroke || this.style.stroke;
             const sw = Math.max(0.5, Number(opts.strokeWidth ?? this.style.strokeWidth) || 1);
             const dash = opts.strokeDasharray != null ? opts.strokeDasharray : '';
-            const hitClass = opts.hitClass || 'pitchfork-level-hit';
+            const hitClass = opts.hitClass === false || opts.hitClass === '' ? null : (opts.hitClass || 'pitchfork-level-hit');
             const visClass = opts.visClass || 'pitchfork-level';
             const hitW = Math.max(10, sw * 6);
-            this.group.append('line')
-                .attr('class', hitClass)
-                .attr('x1', x1).attr('y1', y1)
-                .attr('x2', x2).attr('y2', y2)
-                .attr('stroke', 'rgba(255,255,255,0.001)')
-                .attr('stroke-width', hitW)
-                .attr('stroke-dasharray', dash || null)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+            if (hitClass) {
+                const hitLine = this.group.append('line')
+                    .attr('class', hitClass)
+                    .attr('x1', x1).attr('y1', y1)
+                    .attr('x2', x2).attr('y2', y2)
+                    .attr('stroke', 'rgba(255,255,255,0.001)')
+                    .attr('stroke-width', hitW)
+                    .attr('stroke-dasharray', dash || null)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', opts.cursor || 'move');
+                if (opts.dataPfLevelValue != null) {
+                    hitLine.attr('data-pf-level-value', String(opts.dataPfLevelValue));
+                }
+                if (opts.dataPfSide) hitLine.attr('data-pf-side', opts.dataPfSide);
+                if (opts.dataPfAnchor) hitLine.attr('data-pf-anchor', opts.dataPfAnchor);
+            }
             this.group.append('line')
                 .attr('class', visClass)
                 .attr('x1', x1).attr('y1', y1)
@@ -2717,7 +2878,10 @@ class PitchforkTool extends BaseDrawing {
             if (t > maxT) { maxT = t; maxP = p; }
         });
         appendPitchforkLine(minP.x, minP.y, maxP.x, maxP.y, {
-            ...handleOpts,
+            stroke: this.style.medianColor,
+            strokeWidth: medianStrokeWidth,
+            strokeDasharray: medianStrokeDasharray,
+            hitClass: false,
             visClass: 'pitchfork-handle pitchfork-base-line',
         });
 
@@ -2739,11 +2903,44 @@ class PitchforkTool extends BaseDrawing {
         levelLines.forEach(line => {
             if (line.isMedian) return; // Skip median, already drawn
             const seg = resolveLineSegment(line.startX, line.startY);
+            const lvVal = line.levelValue != null ? line.levelValue : Math.abs(line.value);
+            const side = line.value < 0 ? 'lower' : 'upper';
+            const anchor = Math.abs(lvVal - 1) < 1e-6 ? (line.value < 0 ? 'b' : 'c') : null;
             appendPitchforkLine(seg.x1, seg.y1, seg.x2, seg.y2, {
                 stroke: line.color,
                 strokeWidth: line.strokeWidth || 1,
+                dataPfLevelValue: lvVal,
+                dataPfSide: side,
+                dataPfAnchor: anchor,
             });
         });
+
+        if (this.points.length >= 3) {
+            const p2d = this.points[1];
+            const p3d = this.points[2];
+            const x2px = getX(p2d);
+            const y2px = getY(p2d);
+            const x3px = getX(p3d);
+            const y3px = getY(p3d);
+            const midXpx = (x2px + x3px) / 2;
+            const midYpx = (y2px + y3px) / 2;
+            const midXdata = (scales.chart && typeof scales.chart.pixelToDataIndex === 'function')
+                ? scales.chart.pixelToDataIndex(midXpx)
+                : (scales.xScale && typeof scales.xScale.invert === 'function'
+                    ? scales.xScale.invert(midXpx)
+                    : (p2d.x + p3d.x) / 2);
+            const midYdata = (scales.yScale && typeof scales.yScale.invert === 'function')
+                ? scales.yScale.invert(midYpx)
+                : (p2d.y + p3d.y) / 2;
+            this.virtualPoints = [
+                this.points[0],
+                this.points[1],
+                this.points[2],
+                { x: midXdata, y: midYdata },
+            ];
+        } else {
+            this.virtualPoints = null;
+        }
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;

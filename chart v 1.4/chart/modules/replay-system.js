@@ -3834,10 +3834,10 @@ class ReplaySystem {
         // rawCandlesPerSecond = speed / rawCandleTimeframeSec
         // At 60x: 60 / 60 = 1 raw candle/sec
         // At 3600x: 3600 / 60 = 60 raw candles/sec
-        const rawCandlesPerSecond = this.speed / rawCandleTimeframeSec;
+        const rawCandlesPerSecond = this.getEffectivePlaybackSpeed() / rawCandleTimeframeSec;
         
         // Calculate how long each raw candle should take in REAL time
-        const realTimeCandleDuration = rawCandleTimeframeMs / this.speed;
+        const realTimeCandleDuration = rawCandleTimeframeMs / this.getEffectivePlaybackSpeed();
         
         // If MORE than 1 raw candle per second (>60x), use FAST MODE
         // At 60x or less, use SMOOTH MODE with tick animation
@@ -5093,6 +5093,17 @@ class ReplaySystem {
         const n = Number(speed);
         if (!Number.isFinite(n)) return 1;
         return Math.max(1, Math.min(100, n));
+    }
+
+    /**
+     * Tick-by-tick playback runs at 2× the slider speed; candle-by-candle uses the slider as-is.
+     */
+    getEffectivePlaybackSpeed() {
+        const base = this.normalizeSpeed(this.speed);
+        if (this.getPlaybackMode() === 'tick') {
+            return Math.min(100, base * 2);
+        }
+        return base;
     }
 
     setSpeed(speed) {

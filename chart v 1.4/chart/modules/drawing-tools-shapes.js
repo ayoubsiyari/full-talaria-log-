@@ -137,9 +137,12 @@ function applyRectangleHorizontalExtend(x1, x2, scales, style) {
 /** Respect V9 / settings `showBackground` (default on when unset). */
 function shapeBackgroundFill(style, defaultFill) {
     if (style && style.showBackground === false) return 'none';
+    const fallback = (defaultFill && defaultFill !== 'none' && defaultFill !== 'transparent')
+        ? defaultFill
+        : (typeof DRAWING_TOOL_DEFAULT_FILL !== 'undefined' ? DRAWING_TOOL_DEFAULT_FILL : 'rgba(140, 140, 140, 0.2)');
     const raw = style && (style.fill ?? style.backgroundColor);
-    if (raw === 'none' || raw === 'transparent') return raw || 'none';
-    return raw || defaultFill;
+    if (raw === 'none' || raw === 'transparent') return fallback;
+    return raw || fallback;
 }
 
 /** Respect V9 / settings `borderEnabled` (default on when unset). */
@@ -1478,7 +1481,7 @@ class TriangleTool extends BaseDrawing {
             .attr('class', 'shape-fill')
             .attr('d', pathData)
             .attr('stroke', 'none')
-            .attr('fill', this.style.fill)
+            .attr('fill', shapeBackgroundFill(this.style, this.style.fill))
             .attr('opacity', this.style.opacity)
             .style('pointer-events', 'none')
             .style('cursor', 'default');

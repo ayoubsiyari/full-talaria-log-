@@ -556,6 +556,14 @@ function v9UsesTlShowBgChartType(type) {
       type === "disjoint-channel")
   );
 }
+/** Chart types whose V9 Background checkbox maps to style.fill / showBackground. */
+function v9TlShowBgAppliesToChartType(type) {
+  if (!type) return false;
+  if (v9UsesTlShowBgChartType(type) || v9IsArrowMarkChartType(type)) return true;
+  if (v9IsPatternChartType(type)) return true;
+  if (type === "curve" || type === "double-curve") return true;
+  return false;
+}
 function v9IsArrowMarkUiActive(subToolIcon, chartDrawingType) {
   if (subToolIcon === "arrowUp" || subToolIcon === "arrowDn" || subToolIcon === "arrowMarker") return true;
   return v9IsArrowMarkChartType(chartDrawingType);
@@ -2192,6 +2200,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     : parseInt(tlStyle.lineWidth, 10) || 2;
   const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
   const shapeBgOn = tlStyle.showBg !== false;
+  const resolvedShapeFill = shapeBgOn ? (tlStyle.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "none";
   const regMidOn =
     isRegCh && Array.isArray(tlStyle.regLines) && tlStyle.regLines[0]
       ? tlStyle.regLines[0].on !== false
@@ -2206,8 +2215,8 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
           dashArray: dashArr,
           strokeDasharray: dashArr,
         }),
-    fill: shapeBgOn ? tlStyle.bgColor : "none",
-    backgroundColor: tlStyle.bgColor,
+    fill: resolvedShapeFill,
+    backgroundColor: shapeBgOn ? (tlStyle.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "transparent",
     showBackground: shapeBgOn,
     borderEnabled: tlStyle.showBorder !== false,
     borderColor: tlStyle.borderColor,
@@ -5187,7 +5196,7 @@ function v9ChartPitchforkStyleToUi(v) {
 
 function v9PitchforkLevelsToPf(levels) {
   if (!Array.isArray(levels) || !levels.length) return undefined;
-  return levels.map((lv) => {
+  return v9SortPfLevelsTl(levels.map((lv) => {
     const raw = lv.value != null ? lv.value : lv.label;
     const valueStr =
       raw !== undefined && raw !== null && raw !== ""
@@ -5198,12 +5207,12 @@ function v9PitchforkLevelsToPf(levels) {
       value: valueStr,
       color: lv.color || "#2962FF",
     };
-  });
+  }));
 }
 
 function v9PfToPitchforkLevels(pfLevels) {
   if (!Array.isArray(pfLevels)) return [];
-  return pfLevels.map((ln) => {
+  return v9SortPfLevelsTl(pfLevels).map((ln) => {
     const t = parseFloat(ln.value);
     const value = Number.isFinite(t) ? t : 0;
     const vs = String(ln.value != null ? ln.value : "").trim() || String(value);
@@ -5214,6 +5223,40 @@ function v9PfToPitchforkLevels(pfLevels) {
       enabled: ln.on !== false,
     };
   });
+}
+
+function v9SortPfLevelsTl(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => ({ ...row }))
+    .sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
+}
+
+function v9EnsurePfLevelsRows(s, drawing = null) {
+  const existing = Array.isArray(s.pfLevels) ? s.pfLevels : [];
+  if (existing.length > 0) return v9SortPfLevelsTl(existing);
+  if (drawing && Array.isArray(drawing.levels) && drawing.levels.length) {
+    const pf = v9PitchforkLevelsToPf(drawing.levels);
+    return pf ? v9SortPfLevelsTl(pf) : v9DefaultPfLevelsTl();
+  }
+  return v9DefaultPfLevelsTl();
+}
+
+function v9PatchPfLevelsRowValue(s, idx, value, drawing = null) {
+  const base = v9EnsurePfLevelsRows(s, drawing);
+  if (idx < 0 || idx >= base.length) return s;
+  base[idx] = { ...base[idx], value };
+  return { ...s, pfLevels: v9SortPfLevelsTl(base) };
+}
+
+function v9BumpPfLevelsRowValueOnce(s, idx, delta, drawing = null) {
+  const base = v9EnsurePfLevelsRows(s, drawing);
+  if (idx < 0 || idx >= base.length) return s;
+  const cur = parseFloat(String(base[idx].value).replace(/,/g, ""));
+  const nextVal = (Math.max(0, +((Number.isFinite(cur) ? cur : 0) + delta * 0.001).toFixed(3)))
+    .toFixed(3)
+    .replace(/\.?0+$/, "") || "0";
+  return v9PatchPfLevelsRowValue(s, idx, nextVal, drawing);
 }
 
 /** Fib Retracement / Extension (`drawing-tools-fibonacci.js`) share `tlStyle.fibLevels` + fib* toggles. */
@@ -5686,16 +5729,16 @@ function v9FibWedgeDefaultLevelsTl() {
 }
 
 function v9DefaultPfLevelsTl() {
-  return [
+  return v9SortPfLevelsTl([
     { on: false, value: "0.25", color: "#FF4081" },
-    { on: true, value: "0.5", color: "#2962FF" },
-    { on: true, value: "0.75", color: "#00BFA5" },
-    { on: false, value: "1.5", color: "#AA00FF" },
     { on: false, value: "0.382", color: "#FF6D00" },
+    { on: true, value: "0.5", color: "#2962FF" },
     { on: false, value: "0.618", color: "#00BFA5" },
+    { on: true, value: "0.75", color: "#00BFA5" },
     { on: true, value: "1", color: "#2962FF" },
+    { on: false, value: "1.5", color: "#AA00FF" },
     { on: false, value: "1.75", color: "#FF4081" },
-  ];
+  ]);
 }
 
 function v9DefaultRegLinesTl() {
@@ -11248,6 +11291,19 @@ const TalariaV8bLive = () => {
     }
   }, [replayIntervalOptions, replayInterval]);
 
+  // Close MODE popover when clicking anywhere outside it (including other replay-bar controls).
+  useEffect(() => {
+    if (!replayOpts) return;
+    const onPointerDown = (e) => {
+      const el = e && e.target;
+      if (!el || typeof el.closest !== "function") return;
+      if (el.closest("[data-replay-mode-root]")) return;
+      closePopup(setReplayOpts, "replayOpts");
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [replayOpts]);
+
   // Replay system can appear after V9 mounts (refresh race). Ensure current V9
   // mode + interval are pushed once rs is ready so first Play is correct.
   useEffect(() => {
@@ -13307,6 +13363,24 @@ const TalariaV8bLive = () => {
     setClosing(s => new Set([...s, "tlbardrop"]));
     setTimeout(() => { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setClosing(s => { const n = new Set(s); n.delete("tlbardrop"); return n; }); }, 130);
   };
+
+  // Close Indicators panel when clicking anywhere outside it (chart, toolbar, replay bar, etc.).
+  useEffect(() => {
+    if (!indOpen) return;
+    const onPointerDown = (e) => {
+      const el = e && e.target;
+      if (!el || typeof el.closest !== "function") return;
+      if (el.closest("[data-indicators-panel]")) return;
+      if (el.closest("[data-indicators-btn]")) return;
+      setIndTplOpen(false);
+      animClose(setIndOpen, "ind");
+      setIndSearch("");
+      setIndSelectedId(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [indOpen]);
+
   const finishTlSettPanel = ({ save = false, restore = false } = {}) => {
     if (restore) {
       const editing = editingDrawingRef.current;
@@ -19396,7 +19470,7 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
-        if (!v9UsesTlShowBgChartType(d.type) && !v9IsArrowMarkChartType(d.type)) return;
+        if (!v9TlShowBgAppliesToChartType(d.type)) return;
         if (v9IsArrowMarkChartType(d.type)) {
           const fallback =
             d.type === "arrow-mark-up"
@@ -19430,7 +19504,12 @@ const TalariaV8bLive = () => {
   const toggleTlShowBg = () => {
     flushSync(() => {
       setTlStyle((s) => {
-        const next = { ...s, showBg: !s.showBg };
+        const enabling = s.showBg === false;
+        const next = {
+          ...s,
+          showBg: !s.showBg,
+          ...(enabling && !s.bgColor ? { bgColor: V9_DEFAULT_TL_SHAPE_FILL } : {}),
+        };
         flushV9ShapeBackgroundToChart(next);
         return next;
       });
@@ -24164,6 +24243,8 @@ const TalariaV8bLive = () => {
 
             {/* ── INPUT TAB (pitchfork type + levels) ── */}
             {tlSettTab==="input" && tlSubTool.icon === "pitchfork" && (() => {
+              const editDrawing = editingDrawingRef.current?.drawing;
+              const pfLevels = v9EnsurePfLevelsRows(tlStyle, editDrawing);
               const pfStyles = ["Original", "Schiff", "Modified Schiff", "Inside"];
               const pfDk = "pfInputStyle";
               return (
@@ -24202,23 +24283,31 @@ const TalariaV8bLive = () => {
                   </div>
                   <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"12px 0 6px" }}>PITCHFORK LEVELS</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:16, rowGap:10 }}>
-                    {(tlStyle.pfLevels || []).map((lv, idx) => {
+                    {pfLevels.map((lv, idx) => {
                       const op = lv.on ? 1 : 0.55;
                       return (
-                        <div key={idx} style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <div key={`${lv.value}-${idx}`} style={{ display:"flex", alignItems:"center", gap:6 }}>
                           <div style={{ width:18, flexShrink:0 }}>
-                            {TlChk(lv.on, `tlchk-pf-in-${idx}`, "", () => setTlStyle(s => ({ ...s, pfLevels: s.pfLevels.map((l, i) => i === idx ? { ...l, on: !l.on } : l) })))}
+                            {TlChk(lv.on, `tlchk-pf-in-${idx}`, "", () => setTlStyle(s => {
+                              const rows = v9EnsurePfLevelsRows(s, editDrawing);
+                              const target = rows[idx];
+                              if (!target) return s;
+                              const next = rows.map((r) => (
+                                String(r.value) === String(target.value) ? { ...r, on: !r.on } : r
+                              ));
+                              return { ...s, pfLevels: next };
+                            }))}
                           </div>
                           <div style={{ position:"relative", width:58, opacity:op, transition:"opacity 0.15s" }}>
                             <input value={lv.value}
-                              onChange={e => { const val = e.target.value; if (/^[0-9.]*$/.test(val)) setTlStyle(s => ({ ...s, pfLevels: s.pfLevels.map((l, i) => i === idx ? { ...l, value: val } : l) })); }}
+                              onChange={e => { const val = e.target.value; if (/^[0-9.]*$/.test(val)) setTlStyle(s => v9PatchPfLevelsRowValue(s, idx, val, editDrawing)); }}
                               onClick={e => e.stopPropagation()}
                               className="tlr-nospinner"
                               style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                        color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                             <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                               {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
-                                <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s => ({ ...s, pfLevels: s.pfLevels.map((l, j) => j === idx ? { ...l, value: (Math.max(0, +(+l.value + delta * 0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/, "") || "0" } : l) })))}
+                                <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s => v9BumpPfLevelsRowValueOnce(s, idx, delta, editDrawing)))}
                                   onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
                                   style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                            display:"flex", alignItems:"center", justifyContent:"center",
@@ -24398,7 +24487,7 @@ const TalariaV8bLive = () => {
               const isCrossLine = tlSubTool.icon === "crossLine";
               const isCurve = tlSubTool.icon === "curve";
               const isDoubleCurve = tlSubTool.icon === "doubleCurve";
-              const isThreePoint = tlSubTool.icon === "fibTime" || tlSubTool.icon === "triangle";
+              const isThreePoint = tlSubTool.icon === "fibTime" || tlSubTool.icon === "triangle" || tlSubTool.icon === "pitchfork";
               if (isCurve) return (
                 <div style={{ marginBottom:16 }}>
                   <div style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr" }}>
@@ -30350,7 +30439,7 @@ const TalariaV8bLive = () => {
         const tabAccent=(id)=> id==="active"?c.gn : id==="pinned"?c.gold : c.acL;
         const tabCount=(id)=> id==="active"?indActive.length : id==="pinned"?indPinned.length : id==="all"?indicatorData.length : indicatorData.filter(i=>i.cat===id).length;
         return (
-        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-indicators-panel="1" data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"ind",startX:e.clientX,startY:e.clientY,ox:indPos.x,oy:indPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="indicator" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Indicators</span>
@@ -32067,7 +32156,7 @@ const TalariaV8bLive = () => {
           {hov==="chartType" && !chartTypeOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button type="button" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);}else{closeWindows();setSettingsOpen(false);setIndSelectedId(null);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
+        <button type="button" data-indicators-btn="1" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);}else{closeWindows();setSettingsOpen(false);setIndSelectedId(null);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
@@ -32630,14 +32719,6 @@ const TalariaV8bLive = () => {
           <div style={{ flex: 1, position: "relative", background: c.bg, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
             <div ref={chartCanvasRef} id="chart-container"
               onContextMenu={(e) => e.preventDefault()}
-              onMouseDown={(e) => {
-                if (!indOpen) return;
-                const t = e.target;
-                if (t && typeof t.closest === "function" && t.closest("[data-sdrop]")) return;
-                animClose(setIndOpen, "ind");
-                setIndSearch("");
-                setIndSelectedId(null);
-              }}
               style={{
                 position: "absolute",
                 top: 0,
@@ -32873,7 +32954,7 @@ const TalariaV8bLive = () => {
             {/* Left separator */}
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 4px 0 0",flexShrink:0}}/>
             {/* Settings / Mode */}
-            <div style={{position:"relative"}}>
+            <div style={{position:"relative"}} data-replay-mode-root="1">
               <button type="button" onClick={(e)=>{e.stopPropagation();if(replayOpts){closePopup(setReplayOpts,"replayOpts");}else{if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}setReplayOpts(true);}}}
                 onMouseEnter={()=>setHov("rp-mode")} onMouseLeave={()=>setHov(null)}
                 style={{padding:"4px 5px",position:"relative",background:replayOpts?"rgba(74,106,255,0.08)":hov==="rp-mode"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:replayOpts?c.acL:hov==="rp-mode"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
@@ -32886,7 +32967,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"6px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>MODE</div>
                   {[{id:"tick",l:"Tick by Tick"},{id:"candle",l:"Candle by Candle"}].map(({id,l})=>{const isA=replayMode===id;return(
-                    <button type="button" key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);}}
+                    <button type="button" key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);closePopup(setReplayOpts,"replayOpts");}}
                       onMouseEnter={()=>setHov(`rm-${id}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"5px 10px",background:isA?c.acD:hov===`rm-${id}`?c.hv2:"transparent",border:"none",cursor:"default",fontFamily:F,transition:"background 0.1s",position:"relative"}}>
                       {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -32898,7 +32979,7 @@ const TalariaV8bLive = () => {
                   <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
                   <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
                     {replayIntervalOptions.map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
-                      <div key={t} onClick={(e)=>{e.stopPropagation();setReplayInterval(t);}}
+                      <div key={t} onClick={(e)=>{e.stopPropagation();setReplayInterval(t);closePopup(setReplayOpts,"replayOpts");}}
                         onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
                         {t}

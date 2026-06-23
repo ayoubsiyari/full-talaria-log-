@@ -320,13 +320,17 @@ class ParallelChannelTool extends BaseDrawing {
             };
 
             // Draw fill first (background)
-            const channelBgOn = this.style.showBackground !== false;
-            if (channelBgOn && this.style.fill && this.style.fill !== 'none') {
+            const channelFill = typeof shapeBackgroundFill === 'function'
+                ? shapeBackgroundFill(this.style, DRAWING_TOOL_DEFAULT_FILL)
+                : (this.style.showBackground !== false && this.style.fill && this.style.fill !== 'none'
+                    ? this.style.fill
+                    : 'none');
+            if (channelFill && channelFill !== 'none') {
                 const base = getLineEndpoints(x1, y1, x2, y2);
                 const parallel = getLineEndpoints(x1 + offsetX, y1 + offsetY, x2 + offsetX, y2 + offsetY);
                 this.group.append('polygon')
                     .attr('points', `${base.sX},${base.sY} ${base.eX},${base.eY} ${parallel.eX},${parallel.eY} ${parallel.sX},${parallel.sY}`)
-                    .attr('fill', this.style.fill)
+                    .attr('fill', channelFill)
                     .attr('stroke', 'none')
                     .attr('class', 'shape-fill')
                     .style('pointer-events', 'none')
@@ -1424,10 +1428,15 @@ class FlatTopBottomTool extends BaseDrawing {
             .style('pointer-events', 'none');
 
         // Fill between the lines (extended if needed)
-        if (this.style.fill && this.style.fill !== 'none') {
+        const flatFill = typeof shapeBackgroundFill === 'function'
+            ? shapeBackgroundFill(this.style, DRAWING_TOOL_DEFAULT_FILL)
+            : (this.style.showBackground !== false && this.style.fill && this.style.fill !== 'none'
+                ? this.style.fill
+                : 'none');
+        if (flatFill && flatFill !== 'none') {
             this.group.append('polygon')
                 .attr('points', `${fillX1},${angledY1} ${fillX2},${angledY2} ${fillX2},${y3} ${fillX1},${y3}`)
-                .attr('fill', this.style.fill)
+                .attr('fill', flatFill)
                 .attr('stroke', 'none')
                 .attr('class', 'shape-fill')
                 .style('pointer-events', 'none')
@@ -1927,10 +1936,15 @@ class DisjointChannelTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .attr('stroke-dasharray', this.style.strokeDasharray);
 
-        if (this.style.fill && this.style.fill !== 'none') {
+        const disjointFill = typeof shapeBackgroundFill === 'function'
+            ? shapeBackgroundFill(this.style, DRAWING_TOOL_DEFAULT_FILL)
+            : (this.style.showBackground !== false && this.style.fill && this.style.fill !== 'none'
+                ? this.style.fill
+                : 'none');
+        if (disjointFill && disjointFill !== 'none') {
             this.group.append('polygon')
                 .attr('points', `${startX1},${startY1} ${endX1},${endY1} ${endX2},${endY2} ${startX2},${startY2}`)
-                .attr('fill', this.style.fill)
+                .attr('fill', disjointFill)
                 .attr('stroke', 'none')
                 .attr('class', 'shape-fill')
                 .style('pointer-events', 'none')
