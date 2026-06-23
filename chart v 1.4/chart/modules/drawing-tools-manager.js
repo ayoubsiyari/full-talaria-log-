@@ -14096,6 +14096,23 @@ class DrawingToolsManager {
             };
         }
 
+        if (toolType === 'pitchfork') {
+            return {
+                stroke,
+                color: stroke,
+                strokeWidth: 2,
+                pitchforkStyle: 'original',
+                medianColor: typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
+                    ? DRAWING_TOOL_DEFAULT_STROKE
+                    : '#8C8C8C',
+                lineEnabled: true,
+                backgroundEnabled: true,
+                backgroundOpacity: 0.2,
+                extendRight: true,
+                extendLeft: false,
+            };
+        }
+
         const endpointArrowDefaults = (toolType === 'trendline' || toolType === 'curve' || toolType === 'path' || toolType === 'brush')
             ? { startStyle: 'normal', endStyle: toolType === 'brush' ? 'normal' : 'arrow' }
             : {};

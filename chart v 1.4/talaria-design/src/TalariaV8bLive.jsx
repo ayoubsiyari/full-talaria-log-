@@ -2170,6 +2170,16 @@ function v9TlStyleWithEnsuredLevels(tlStyle, legacyType) {
     out.pfLevels = v9DefaultPfLevelsTl();
   }
   if (legacyType === "pitchfork") {
+    const pfDefaults = v9PitchforkDefaultTlStyleFields();
+    if (!out.pitchforkStyle) out.pitchforkStyle = pfDefaults.pitchforkStyle;
+    if (out.pfMiddleLine == null) out.pfMiddleLine = pfDefaults.pfMiddleLine;
+    if (!out.pfMedianColor) out.pfMedianColor = pfDefaults.pfMedianColor;
+    if (!out.pfMedianType) out.pfMedianType = pfDefaults.pfMedianType;
+    if (out.pfMedianWidth == null || out.pfMedianWidth === "") out.pfMedianWidth = pfDefaults.pfMedianWidth;
+    if (out.pfLevelsWidth == null || out.pfLevelsWidth === "") out.pfLevelsWidth = pfDefaults.pfLevelsWidth;
+    if (out.pfBackground == null) out.pfBackground = pfDefaults.pfBackground;
+    if (!out.pfBgColor) out.pfBgColor = pfDefaults.pfBgColor;
+    if (out.pfBgOpacity == null || out.pfBgOpacity === "") out.pfBgOpacity = pfDefaults.pfBgOpacity;
     if (out.extendLeft == null) out.extendLeft = false;
     if (out.extendRight == null) out.extendRight = true;
     // Global tlStyle defaults use extendRight:false; treat that bleed as unset for pitchfork.
@@ -5369,6 +5379,16 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
     out.pfLevels = v9DefaultPfLevelsTl();
   }
   if (legacyType === "pitchfork") {
+    const pfDefaults = v9PitchforkDefaultTlStyleFields();
+    if (!out.pitchforkStyle) out.pitchforkStyle = pfDefaults.pitchforkStyle;
+    if (out.pfMiddleLine == null) out.pfMiddleLine = pfDefaults.pfMiddleLine;
+    if (!out.pfMedianColor) out.pfMedianColor = pfDefaults.pfMedianColor;
+    if (!out.pfMedianType) out.pfMedianType = pfDefaults.pfMedianType;
+    if (out.pfMedianWidth == null || out.pfMedianWidth === "") out.pfMedianWidth = pfDefaults.pfMedianWidth;
+    if (out.pfLevelsWidth == null || out.pfLevelsWidth === "") out.pfLevelsWidth = pfDefaults.pfLevelsWidth;
+    if (out.pfBackground == null) out.pfBackground = pfDefaults.pfBackground;
+    if (!out.pfBgColor) out.pfBgColor = pfDefaults.pfBgColor;
+    if (out.pfBgOpacity == null || out.pfBgOpacity === "") out.pfBgOpacity = pfDefaults.pfBgOpacity;
     if (out.extendLeft == null) out.extendLeft = false;
     if (out.extendRight == null) out.extendRight = true;
     // Global tlStyle defaults use extendRight:false; treat that bleed as unset for pitchfork.
@@ -5739,6 +5759,24 @@ function v9DefaultPfLevelsTl() {
     { on: false, value: "1.5", color: "#AA00FF" },
     { on: false, value: "1.75", color: "#FF4081" },
   ]);
+}
+
+/** Pitchfork Input/Style defaults — must survive Apply default + panel re-hydrate. */
+function v9PitchforkDefaultTlStyleFields() {
+  return {
+    pitchforkStyle: "Original",
+    pfMiddleLine: true,
+    pfMedianColor: V9_DEFAULT_TL_LINE_COLOR,
+    pfMedianType: "dashed",
+    pfMedianWidth: "2",
+    pfLevelsWidth: "2",
+    pfBackground: true,
+    pfBgColor: "#2962FF",
+    pfBgOpacity: 0.5,
+    pfLevels: v9DefaultPfLevelsTl(),
+    extendLeft: false,
+    extendRight: true,
+  };
 }
 
 function v9DefaultRegLinesTl() {
@@ -7830,7 +7868,7 @@ function v9DefaultArmedStyleForLegacyTool(legacy) {
     };
   }
   if (legacy === "pitchfork") {
-    return { extendLeft: false, extendRight: true };
+    return v9PitchforkDefaultTlStyleFields();
   }
   if (legacy === "fib-arcs" || legacy === "fib-wedge" || legacy === "fib-circles") {
     return v9FibSubtypeDefaultTlStyleFields(legacy);
@@ -8132,6 +8170,7 @@ function v9BuildDefaultTlStyleForDrawingType(type) {
       ...toolDefaults,
       ...v9GannDefaultTlStyleFields(type),
       ...v9FibSubtypeDefaultTlStyleFields(type),
+      ...(type === "pitchfork" ? v9PitchforkDefaultTlStyleFields() : {}),
       ...(fibLevelsDefault.length
         ? { fibLevels: fibLevelsDefault.map((r) => ({ ...r })) }
         : {}),
@@ -24257,7 +24296,7 @@ const TalariaV8bLive = () => {
                         style={{ height:26, padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
                                  background:tlStyleDrop === pfDk ? "rgba(74,106,255,0.08)" : hov === `tl-btn-${pfDk}` ? c.hv : "transparent",
                                  transition:"background 0.12s" }}>
-                        <span style={{ fontSize:12, color:tlStyleDrop === pfDk ? c.acL : c.ts }}>{tlStyle.pitchforkStyle}</span>
+                        <span style={{ fontSize:12, color:tlStyleDrop === pfDk ? c.acL : c.ts }}>{tlStyle.pitchforkStyle || "Original"}</span>
                         <I n="chevDown" s={7} cl={tlStyleDrop === pfDk ? c.acL : c.ts}/>
                       </div>
                       {tlStyleDrop === pfDk && (
