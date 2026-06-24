@@ -3482,7 +3482,6 @@ class ReplaySystem {
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             this.tickElapsedMs = 0;
-            this._bumpPropReplayClock(this.replayTimestamp);
         }
         
         this.updateChartData(this.autoScrollEnabled);
@@ -4224,7 +4223,6 @@ class ReplaySystem {
         this.tickElapsedMs = 0;
         this.tickProgress = 0;
         this.animatingCandle = null;
-        this._bumpPropReplayClock(this.replayTimestamp);
         
         // Update chart - use lightweight update for FAST MODE
         this.updateChartDataFast();
@@ -6799,19 +6797,6 @@ class ReplaySystem {
                 console.error(`Error syncing panel ${index}:`, error);
             }
         });
-    }
-
-    /** Notify prop firm tracker when virtual replay clock advances (weekend hold, etc.). */
-    _bumpPropReplayClock(ts) {
-        try {
-            if (window.propFirmTracker && typeof window.propFirmTracker.onReplayTimeAdvance === 'function') {
-                const rs = this;
-                const elapsed = Number(rs.tickElapsedMs) || 0;
-                const base = Number.isFinite(ts) ? ts : rs.replayTimestamp;
-                const virtualMs = Number.isFinite(base) ? base + elapsed : null;
-                window.propFirmTracker.onReplayTimeAdvance(virtualMs);
-            }
-        } catch (e) {}
     }
 }
 
