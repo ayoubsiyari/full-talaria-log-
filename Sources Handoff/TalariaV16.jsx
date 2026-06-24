@@ -30,17 +30,36 @@ const parseStratApiId = (id) => {
   }
   return null;
 };
+const strategyRowKey = (row) => {
+  if (!row) return null;
+  const apiId = parseStratApiId(row.id);
+  if (apiId != null) return `api:${apiId}`;
+  const localId = String(row.id ?? "").trim();
+  if (localId) return `local:${localId}`;
+  return null;
+};
+const sameStrategyRowId = (a, b) => {
+  const keyA = strategyRowKey(typeof a === "object" && a !== null ? a : { id: a });
+  const keyB = strategyRowKey(typeof b === "object" && b !== null ? b : { id: b });
+  return keyA != null && keyB != null && keyA === keyB;
+};
 /** Merge boot strategy bank with local rows (empty boot array must not hide local saves). */
 const mergeV16StrategyBankRows = (bankRows, localRows = []) => {
   const bank = Array.isArray(bankRows) ? bankRows : [];
   const local = Array.isArray(localRows) ? localRows : [];
-  const byName = new Map();
-  [...bank, ...local].forEach((row) => {
-    if (!row) return;
-    const name = String(row?.name || "").trim();
-    if (name) byName.set(name.toLowerCase(), row);
-  });
-  return [...byName.values()];
+  const byKey = new Map();
+  for (const row of bank) {
+    const key = strategyRowKey(row);
+    if (key) byKey.set(key, row);
+  }
+  for (const row of local) {
+    const key = strategyRowKey(row);
+    if (!key) continue;
+    // Persisted strategies come from the server bank only — never resurrect stale local API copies.
+    if (parseStratApiId(row.id) != null) continue;
+    if (!byKey.has(key)) byKey.set(key, row);
+  }
+  return [...byKey.values()];
 };
 const getV16StrategyBankRows = (localRows = []) => {
   if (!isV16LiveBoot()) return Array.isArray(localRows) ? localRows : [];
@@ -27721,13 +27740,7 @@ const TalariaV8b = () => {
           const getDashStrategyBankRows = () => {
             const bank = Array.isArray(getV16StrategyBank()) ? getV16StrategyBank() : [];
             const local = Array.isArray(myStrategies) ? myStrategies : [];
-            const byName = new Map();
-            [...bank, ...local].forEach((row) => {
-              if (!row) return;
-              const name = String(row?.name || "").trim();
-              if (name) byName.set(name.toLowerCase(), row);
-            });
-            return [...byName.values()];
+            return mergeV16StrategyBankRows(bank, local);
           };
           const findDashAddTradeStrategyBankRowByName = (strategyName) => {
             const cleaned = String(strategyName || "").trim().toLowerCase();
@@ -35217,7 +35230,7 @@ const TalariaV8b = () => {
                         onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                         <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
                       </div>
-                      <div title="Delete" onClick={()=>onDelete&&onDelete(strat.id)}
+                      <div title="Delete" onClick={()=>onDelete&&onDelete(strat)}
                         style={{width:36,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:c.sf,cursor:"default",color:c.rd,transition:"filter 0.12s"}}
                         onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.25)"}
                         onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
@@ -35350,7 +35363,7 @@ const TalariaV8b = () => {
                   else if (isMine && onEdit) onEdit(strat);
                 };
                 return (
-                  <div key={strat.id}
+                  <div key={strategyRowKey(strat)||strat.id}
                     onMouseEnter={()=>setStratCardHov(strat.id)}
                     onMouseLeave={()=>setStratCardHov(null)}
                     onDoubleClick={openEditableStrategy}
@@ -35480,6 +35493,10 @@ const TalariaV8b = () => {
           const cloneStrategyData = value => value == null ? value : JSON.parse(JSON.stringify(value));
           const copyStrategyIntoBank = (source) => {
             if (!source) return;
+            if (stratBuilderOpen) {
+              setStratBuilderOpen(false);
+              setStratEditId(null);
+            }
             const tpl = source.templatePreview ? source.template : null;
             setMyStrategies(prev=>{
               const id = `m${Date.now()}_${prev.length}`;
@@ -35538,19 +35555,23 @@ const TalariaV8b = () => {
               return;
             }
             const apiId = parseStratApiId(source.id);
+            const removeKey = strategyRowKey(source);
             const removeLocal = () => {
-              setMyStrategies(prev=>prev.filter(s=>s.id!==source.id));
-              if (stratShareStrat?.id === source.id) setStratShareStrat(null);
-              if (stratEditId === source.id) {
+              setMyStrategies(prev=>prev.filter(s=>strategyRowKey(s)!==removeKey));
+              if (stratShareStrat && sameStrategyRowId(stratShareStrat, source)) setStratShareStrat(null);
+              if (stratEditId != null && sameStrategyRowId({ id: stratEditId }, source)) {
                 setStratBuilderOpen(false);
                 setStratEditId(null);
               }
             };
             const deleter = typeof window !== "undefined" ? window.__TALARIA_V16_DELETE_STRATEGY__ : null;
             if (isV16LiveBoot() && apiId != null && typeof deleter === "function") {
-              deleter(apiId).then(removeLocal).catch((err) => {
+              removeLocal();
+              deleter(apiId).catch((err) => {
                 console.error("[V16] strategy delete failed", err);
                 window.alert(err?.message || "Could not delete strategy.");
+                const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
+                if (typeof refresh === "function") refresh().catch(() => {});
               });
               return;
             }
@@ -35578,12 +35599,12 @@ const TalariaV8b = () => {
               supportInst: (stratBSupportInst||[]).length ? stratBSupportInst : undefined,
               canvasNodes: canvasNodes,
               canvasEdges: canvasEdges,
-              createdAt: stratEditId ? (myStrategies.find(s=>s.id===stratEditId)?.createdAt||new Date().toISOString()) : new Date().toISOString(),
+              createdAt: stratEditId ? (myStrategies.find(s=>sameStrategyRowId(s,{id:stratEditId}))?.createdAt||new Date().toISOString()) : new Date().toISOString(),
             };
             const applySavedRow = (savedRow) => {
               const row = savedRow || strat;
               if (stratEditId) {
-                setMyStrategies(prev=>prev.map(s=>s.id===stratEditId?row:s));
+                setMyStrategies(prev=>prev.map(s=>sameStrategyRowId(s,{id:stratEditId})?row:s));
               } else {
                 setMyStrategies(prev=>[row,...prev]);
               }
@@ -35773,16 +35794,16 @@ const TalariaV8b = () => {
                       stratLayoutMode==="rows"?(
                         <StrategyRows items={filteredMine} isMine={!minePreviewMode}
                           onEdit={s=>openBuilder(s)}
-                          onDelete={id=>deleteStrategyFromBank({id})}
+                          onDelete={s=>deleteStrategyFromBank(s)}
                           onDuplicate={s=>copyStrategyIntoBank(s)}
                           onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
                           onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
                       ):(
                         <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                           {filteredMine.map(strat=>(
-                            <StratCard key={strat.id} strat={strat} isMine={!minePreviewMode}
+                            <StratCard key={strategyRowKey(strat)||strat.id} strat={strat} isMine={!minePreviewMode}
                               onEdit={s=>openBuilder(s)}
-                              onDelete={id=>deleteStrategyFromBank({id})}
+                              onDelete={s=>deleteStrategyFromBank(s)}
                               onDuplicate={s=>copyStrategyIntoBank(s)}
                               onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
                               onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
@@ -35976,7 +35997,7 @@ const TalariaV8b = () => {
                   saveError={stratBuilderSaveError}
                   sessions={strategyReviewSessions}
                   onSave={saveBuilder}
-                  onClose={()=>{if(!stratBuilderSaving)setStratBuilderOpen(false);}}
+                  onClose={()=>{if(!stratBuilderSaving){setStratBuilderOpen(false);setStratEditId(null);}}}
                   onOpenTemplates={()=>setStratTemplatePickerOpen(true)}
                 />
               )}

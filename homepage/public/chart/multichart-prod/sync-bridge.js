@@ -172,6 +172,41 @@
     }
 
     /**
+     * Same-pair embed already sharing host data: pan drag only needs offset +
+     * candleWidth — no history fetch, bar refit, or parent array copy per frame.
+     * @returns {boolean}
+     */
+    function applyLightweightPanFollow(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        const srcCw = Number(m.candleWidth);
+        if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+
+        chart.candleWidth = srcCw;
+        if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+            chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+        }
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        if (!Number.isFinite(m.offsetX)) return false;
+        const sw = Number(m.plotWidthPx);
+        chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+
+        if (typeof chart._constrainOffsetDuringDrag === 'function') {
+            try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
+        }
+
+        chart._chartViewRestored = true;
+        chart._panSyncBurstUntil = performance.now() + 64;
+        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        else if (typeof chart.render === 'function') chart.render();
+        return true;
+    }
+
+    /**
      * Active pan drag: mirror leader zoom + right-edge time anchor (not raw
      * offsetX scaling — that pushed follower panels off-screen when plot
      * widths or loaded data slices differ).
@@ -202,7 +237,13 @@
         const sameTf = sameTimeframeMessage(chart, m);
         const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
             && m.endTime > m.startTime;
-        ensureHistoryForVisibleStart(chart, m);
+        const panSync = !!m.panSync;
+        if (panSync && chart._multichartViewportMirroredWithHost) {
+            return applyLightweightPanFollow(chart, m);
+        }
+        if (!panSync) {
+            ensureHistoryForVisibleStart(chart, m);
+        }
 
         if (preferOffsetFirst && Number.isFinite(m.offsetX)) {
             const sw = Number(m.plotWidthPx);
@@ -237,8 +278,8 @@
 
         chart._chartViewRestored = true;
         chart._panSyncBurstUntil = performance.now() + 64;
-        if (typeof chart.render === 'function') chart.render();
-        else if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        else if (typeof chart.render === 'function') chart.render();
         return true;
     }
 
@@ -551,7 +592,8 @@
         chart._chartViewRestored = countVisibleBars(chart) > 0;
         if (panSync) {
             chart._panSyncBurstUntil = performance.now() + 48;
-            if (typeof chart.render === 'function') chart.render();
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            else if (typeof chart.render === 'function') chart.render();
         } else if (typeof chart.scheduleRender === 'function') {
             chart.scheduleRender();
         }
@@ -1078,26 +1120,9 @@
                 zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
                 plotWidthPx: plotWidthPx > 0 ? plotWidthPx : undefined,
             };
-            if (d.panSync) {
-                send({
-                    type: 'visibleRange',
-                    startTime: rangePayload.startSec,
-                    endTime: rangePayload.endSec,
-                    startIndex: rangePayload.startIndex,
-                    endIndex: rangePayload.endIndex,
-                    visibleBarCount: rangePayload.visibleBarCount,
-                    rightEdgeBarIndex: rangePayload.rightEdgeBarIndex,
-                    sourceTimeframe: rangePayload.sourceTimeframe,
-                    panSync: true,
-                    offsetX: rangePayload.offsetX,
-                    candleWidth: rangePayload.candleWidth,
-                    zoomLevelIndex: rangePayload.zoomLevelIndex,
-                    plotWidthPx: rangePayload.plotWidthPx,
-                });
-            } else {
-                pending.visibleRange = rangePayload;
-                scheduleFlush();
-            }
+            // Coalesce pan + release into one outbound envelope per frame (TradingView-style).
+            pending.visibleRange = rangePayload;
+            scheduleFlush();
             // After iframe-led pan release, re-sync data slice from host tile A.
             if (!d.panSync && chart._multichartVisibleRangeSyncOn && isEmbedPanelChart()) {
                 requestAnimationFrame(function () {
@@ -1763,6 +1788,7 @@
             var mirrored = false;
             if (chart._multichartVisibleRangeSyncOn
                 && !isLocalPanDragActive()
+                && !chart._multichartViewportMirroredWithHost
                 && typeof chart._multichartMirrorViewportFromHost === 'function') {
                 try { mirrored = !!chart._multichartMirrorViewportFromHost(); } catch (_) {}
             }
@@ -1812,11 +1838,31 @@
             state.applied.add(m.causationId);
             beginApplying(panSync);
 
-            // Host-led range only: mirror tile A data + scroll. Iframe-initiated pans
-            // apply the incoming envelope below so the dragging panel is not snapped back.
+            // Live pan drag on same-pair embeds: offset + zoom only (no parent data copy / render storm).
+            if (panSync
+                && chart._multichartVisibleRangeSyncOn
+                && isEmbedPanelChart()) {
+                if (!chart._multichartViewportMirroredWithHost
+                    && isHostLedRangeMessage(m)
+                    && typeof chart._multichartMirrorViewportFromHost === 'function') {
+                    try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
+                }
+                if (chart._multichartViewportMirroredWithHost && applyLightweightPanFollow(chart, m)) {
+                    var tSilFast = (typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now();
+                    state.suppressRangeScrollEchoUntil = tSilFast + 120;
+                    state.suppressRangeScrollEchoLeft = 4;
+                    return;
+                }
+            }
+
+            // Host-led range only: mirror tile A data + scroll on pan release / initial snap.
+            // Iframe-initiated pans apply the incoming envelope below so the dragging panel is not snapped back.
             if (chart._multichartVisibleRangeSyncOn
                 && isEmbedPanelChart()
                 && isHostLedRangeMessage(m)
+                && !panSync
                 && typeof chart._multichartMirrorViewportFromHost === 'function'
                 && chart._multichartMirrorViewportFromHost()) {
                 finishViewportApply(chart, panSync);

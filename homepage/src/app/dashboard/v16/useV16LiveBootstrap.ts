@@ -124,9 +124,7 @@ export function useV16LiveBootstrap(): BootState {
         await refresh().catch(() => {
           if (window.__TALARIA_V16_BOOT__) {
             const bank = window.__TALARIA_V16_BOOT__.strategyBank || [];
-            const idx = bank.findIndex(
-              (row) => String(row?.id) === String(saved.id) || String(row?.name) === String(saved.name)
-            );
+            const idx = bank.findIndex((row) => String(row?.id) === String(saved.id));
             const next = idx >= 0 ? bank.map((row, i) => (i === idx ? saved : row)) : [saved, ...bank];
             window.__TALARIA_V16_BOOT__.strategyBank = next;
             window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
