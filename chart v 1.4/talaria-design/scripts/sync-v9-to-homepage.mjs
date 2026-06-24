@@ -11,6 +11,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { spawnSync } from "child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = path.resolve(__dirname, "../../chart/dist-v9");
@@ -121,6 +122,20 @@ for (const targetRoot of pwaTargets) {
     fs.cpSync(pwaDirFrom, pwaDirTo, { recursive: true });
   }
   console.log("[sync-v9-to-homepage] Copied PWA assets →", targetRoot);
+}
+
+// Re-apply ?v= to homepage mirror (dist was already bumped; homepage copy must match).
+const bumpScript = path.resolve(__dirname, "bump-dist-v9-cache.mjs");
+try {
+  const r = spawnSync(process.execPath, [bumpScript, "--dist"], {
+    stdio: "inherit",
+    env: { ...process.env },
+  });
+  if (r.status !== 0) {
+    console.warn("[sync-v9-to-homepage] bump-dist-v9-cache --dist exited", r.status);
+  }
+} catch (e) {
+  console.warn("[sync-v9-to-homepage] bump-dist-v9-cache failed:", e && e.message || e);
 }
 
 // Regenerate opaque transparent-background icons from logo-04.png (run scripts/generate-pwa-icons.ps1 before release).

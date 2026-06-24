@@ -638,6 +638,11 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     // Without sessionId, the iframe looks under `chart_drawings_<fileId>`
     // and finds nothing, even though the parent has been saving the
     // user's drawings under the session-scoped key for hours.
+    const buildV =
+        (typeof window !== "undefined" && window.__TALARIA_CHART_BUILD_ID)
+            ? String(window.__TALARIA_CHART_BUILD_ID)
+            : "";
+    if (buildV) params.set("v", buildV);
     return "/chart/dist-v9/index.html?" + params.toString();
 }
 
