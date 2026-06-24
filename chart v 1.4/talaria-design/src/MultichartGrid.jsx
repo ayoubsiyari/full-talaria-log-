@@ -2318,12 +2318,21 @@ export default function MultichartGrid({
             // fan-out. `layoutSync.interval`, `indicators`, and `chartType` are
             // handled elsewhere (React timeframe listener; legacy panelManager;
             // indicator chips always target the focused panel in V9).
+            const dateRangeOn = !!(layoutSync && layoutSync.dateRange);
+            const timeOn = !!(layoutSync && layoutSync.time);
+            // Date Range = continuous TradingView wall-clock sync (wins when both on).
+            // Time only = discrete right-edge sync per timeframe (5m jumps every 5m).
             mgr.setSyncMode({
                 crosshair:    !!(layoutSync && layoutSync.crosshair),
-                visibleRange: !!(layoutSync && (layoutSync.dateRange || layoutSync.time)),
+                visibleRange: dateRangeOn,
+                timeSync:     timeOn && !dateRangeOn,
                 symbol:       !!(layoutSync && layoutSync.symbol),
                 drawings:     !!(layoutSync && layoutSync.drawings),
             });
+            const hostBridge = typeof window !== "undefined" ? window.__multichartHostBridge : null;
+            if (hostBridge && typeof hostBridge.refreshSyncFlags === "function") {
+                try { hostBridge.refreshSyncFlags(); } catch (_) {}
+            }
         } catch (_) {}
     }, [layoutSync, managerReady]);
 

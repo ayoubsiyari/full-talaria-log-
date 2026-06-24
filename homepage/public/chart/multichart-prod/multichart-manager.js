@@ -96,6 +96,7 @@
         this.syncMode = {
             crosshair:    true,
             visibleRange: false,
+            timeSync:     false,
             symbol:       false,
             drawings:     true,
         };
@@ -154,6 +155,7 @@
         Object.assign(this.syncMode, mode || {});
         this._log('info', 'syncMode = ' + JSON.stringify(this.syncMode));
         this._pushSyncModeToAll();
+        this._refreshHostBridgeSyncFlags();
 
         // When the user toggles visibleRange (Time / Date Range) sync ON
         // from OFF, immediately push the host's CURRENT view to every
@@ -162,7 +164,9 @@
         // user's natural test ("I turned sync on, why didn't anything
         // happen?") fails. After this snap, ongoing pan/zoom flows
         // through normal _fanOut.
-        if (this.syncMode.visibleRange && !prev.visibleRange) {
+        const rangeNow = !!(this.syncMode.visibleRange || this.syncMode.timeSync);
+        const rangeWas = !!(prev.visibleRange || prev.timeSync);
+        if (rangeNow && !rangeWas) {
             const self = this;
             setTimeout(function () {
                 for (const c of self.charts.values()) {
@@ -178,11 +182,19 @@
      * object refs — iframes keep a local copy for outbound crosshair envelope
      * and inbound viewport coupling).
      */
+    MultichartManager.prototype._refreshHostBridgeSyncFlags = function () {
+        for (const c of this.charts.values()) {
+            if (!c.host || typeof c.bridgeRefreshSync !== 'function') continue;
+            try { c.bridgeRefreshSync(); } catch (_) {}
+        }
+    };
+
     MultichartManager.prototype._pushSyncModeToAll = function () {
         const patch = {
             syncMode: {
                 crosshair:    !!this.syncMode.crosshair,
                 visibleRange: !!this.syncMode.visibleRange,
+                timeSync:     !!this.syncMode.timeSync,
                 symbol:       !!this.syncMode.symbol,
                 drawings:     !!this.syncMode.drawings,
             },
@@ -199,6 +211,7 @@
             syncMode: {
                 crosshair:    !!this.syncMode.crosshair,
                 visibleRange: !!this.syncMode.visibleRange,
+                timeSync:     !!this.syncMode.timeSync,
                 symbol:       !!this.syncMode.symbol,
                 drawings:     !!this.syncMode.drawings,
             },
@@ -461,6 +474,9 @@
             // _initialSyncToHost when a new iframe panel goes ready).
             directRead: (typeof hostBridge.readVisibleTimeRange === 'function')
                 ? hostBridge.readVisibleTimeRange
+                : null,
+            bridgeRefreshSync: (typeof hostBridge.refreshSyncFlags === 'function')
+                ? hostBridge.refreshSyncFlags
                 : null,
             overlay: null,
             // Host bridge is already installed and emitting events — mark
@@ -958,7 +974,7 @@
         if (t === 'crosshair' || t === 'crosshair-clear') {
             if (!this.syncMode.crosshair) return;
         } else if (t === 'visibleRange') {
-            if (!this.syncMode.visibleRange) return;
+            if (!this.syncMode.visibleRange && !this.syncMode.timeSync) return;
         } else if (t === 'symbol') {
             if (!this.syncMode.symbol) return;
         } else if (t === 'drawing-add' || t === 'drawing-update'

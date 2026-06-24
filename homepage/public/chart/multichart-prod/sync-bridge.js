@@ -471,6 +471,44 @@
         return applyPanDragFollow(chart, m);
     }
 
+    /**
+     * Time sync only (not Date Range): align follower right-edge to leader time
+     * using each panel's own zoom — 5m jumps every 5m, 1m every 1m (TradingView).
+     * @returns {boolean}
+     */
+    function applyDiscreteTimeSync(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.endTime)) return false;
+        const endMs = toMillis(m.endTime);
+        let targetIdx = -1;
+        if (typeof chart.findGoToTargetIndex === 'function') {
+            try { targetIdx = chart.findGoToTargetIndex(chart.data, endMs); } catch (_) {}
+        }
+        if (!Number.isFinite(targetIdx) || targetIdx < 0) {
+            targetIdx = findLastAtOrBefore(chart.data, endMs, chart);
+        }
+        if (!Number.isFinite(targetIdx) || targetIdx < 0) return false;
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+        const visibleCandles = Math.max(1, Math.floor(plotW / spacing));
+
+        chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing;
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
+        }
+        chart._chartViewRestored = true;
+        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        else if (typeof chart.render === 'function') chart.render();
+        return true;
+    }
+
     function countVisibleBars(chart) {
         if (!chart || !chart.data || !chart.data.length) return 0;
         const m = chart.margin || { l: 60, r: 60 };
@@ -1008,6 +1046,8 @@
             }
             if (pending.visibleRange) {
                 const r = pending.visibleRange; pending.visibleRange = null;
+                const smOut = effectiveSyncMode();
+                if (!smOut || (!smOut.visibleRange && !smOut.timeSync)) return;
                 send({
                     type: 'visibleRange',
                     startTime: r.startSec,
@@ -1097,6 +1137,7 @@
             }
             const d = ev.detail || {};
             if (d.chart !== chart) return;
+            if (!isRangeSyncEnabled()) return;
 
             const startT = d.startTimestamp;
             const endT   = d.timeSyncEndTimestamp || d.endTimestamp;
@@ -1438,7 +1479,7 @@
             if (syncModeGate) {
                 var mt = msg.type;
                 if ((mt === 'crosshair' || mt === 'crosshair-clear') && !syncModeGate.crosshair) return;
-                if (mt === 'visibleRange' && !syncModeGate.visibleRange) {
+                if (mt === 'visibleRange' && !syncModeGate.visibleRange && !syncModeGate.timeSync) {
                     if (!msg.forceInitialSync
                         && !(msg.causationId && String(msg.causationId).indexOf('host-init-') === 0)) {
                         return;
@@ -1727,6 +1768,7 @@
         var localSyncMode = {
             crosshair: true,
             visibleRange: false,
+            timeSync: false,
             symbol: false,
             drawings: true,
         };
@@ -1735,9 +1777,24 @@
             return syncModeGate || localSyncMode;
         }
 
+        function isRangeSyncEnabled() {
+            const sm = effectiveSyncMode();
+            return !!(sm && (sm.visibleRange || sm.timeSync));
+        }
+
+        function isDateRangeSyncEnabled() {
+            const sm = effectiveSyncMode();
+            return !!(sm && sm.visibleRange);
+        }
+
+        function isTimeOnlySyncEnabled() {
+            const sm = effectiveSyncMode();
+            return !!(sm && sm.timeSync && !sm.visibleRange);
+        }
+
         function refreshChartSyncCrosshairFlag() {
             const sm = syncModeGate || localSyncMode;
-            const nextOn = !!sm.visibleRange;
+            const nextOn = !!(sm.visibleRange || sm.timeSync);
             const wasOn = !!chart._multichartVisibleRangeSyncWasOn;
             chart.syncCrosshair = !!(sm.crosshair || sm.visibleRange);
             chart._multichartVisibleRangeSyncOn = nextOn;
@@ -1827,7 +1884,7 @@
             // its viewport — ignore stray peer ranges so it doesn't snap back to
             // the playhead (matches the main chart: a manual pan stops follow).
             const rsOwn = chart.replaySystem;
-            if (!chart._multichartVisibleRangeSyncOn
+            if (!isRangeSyncEnabled()
                 && rsOwn && rsOwn.isActive
                 && (rsOwn.userHasPanned || !rsOwn.autoScrollEnabled)) {
                 if (m && m.causationId) state.applied.add(m.causationId);
@@ -1838,9 +1895,21 @@
             state.applied.add(m.causationId);
             beginApplying(panSync);
 
+            // Peer-led pan (B/C/D → A and cross-iframe): lightweight offset mirror on every panel.
+            if (panSync && isPeerLedRangeMessage(m) && isRangeSyncEnabled()) {
+                if (applyLightweightPanFollow(chart, m)) {
+                    var tSilPeer = (typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now();
+                    state.suppressRangeScrollEchoUntil = tSilPeer + 120;
+                    state.suppressRangeScrollEchoLeft = 4;
+                    return;
+                }
+            }
+
             // Live pan drag on same-pair embeds: offset + zoom only (no parent data copy / render storm).
             if (panSync
-                && chart._multichartVisibleRangeSyncOn
+                && isRangeSyncEnabled()
                 && isEmbedPanelChart()) {
                 if (!chart._multichartViewportMirroredWithHost
                     && isHostLedRangeMessage(m)
@@ -1893,7 +1962,9 @@
                 && Number.isFinite(m.candleWidth)
                 && (Number.isFinite(m.visibleBarCount) || hasWallClock);
 
-            ensureHistoryForVisibleStart(chart, m);
+            if (!panSync) {
+                ensureHistoryForVisibleStart(chart, m);
+            }
 
             const peerLed = isPeerLedRangeMessage(m);
             const panFollowOpts = peerLed ? { preferOffsetFirst: true } : null;
@@ -1915,6 +1986,8 @@
                 if (!applied) {
                     applied = applyFastPanSync(chart, m);
                 }
+            } else if (isTimeOnlySyncEnabled()) {
+                applied = applyDiscreteTimeSync(chart, m);
             } else if (canMatchViewport) {
                 applied = applyMatchedViewport(chart, m);
             }
@@ -2043,6 +2116,7 @@
                 syncModeGate = ref || null;
                 refreshChartSyncCrosshairFlag();
             },
+            refreshSyncFlags: refreshChartSyncCrosshairFlag,
         };
     }
 

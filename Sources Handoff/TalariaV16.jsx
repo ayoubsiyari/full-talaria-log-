@@ -4894,7 +4894,10 @@ function GeneralInfoStepContent({ c, F,
   const [tfCustomUnit, setTfCustomUnit] = React.useState('m');
   const [sbTfCustom, setSbTfCustom] = React.useState([]);
   const [tfUnitOpen, setTfUnitOpen] = React.useState(false);
+  const [tfUnitPos, setTfUnitPos] = React.useState({ top: 0, left: 0, width: 120 });
   const tfPickWrapRef = React.useRef(null);
+  const tfUnitBtnRef = React.useRef(null);
+  const tfUnitMenuRef = React.useRef(null);
   const [emojiOpen, setEmojiOpen]     = React.useState(false);
   const [emojiSearch, setEmojiSearch] = React.useState('');
   const [emojiCat, setEmojiCat]       = React.useState('finance');
@@ -4985,10 +4988,46 @@ function GeneralInfoStepContent({ c, F,
   }, [supPickOpen]);
   const toggleInst = id => { const cur=stratBInstruments||[]; if(!cur.includes(id)&&cur.length>=10)return; setStratBInstruments(cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]); };
   const tfs        = Array.isArray(stratBTimeframes)?stratBTimeframes:[stratBTimeframes].filter(Boolean);
-  const toggleTf   = id => { if(!tfs.includes(id)&&tfs.length>=6)return; setStratBTimeframes(tfs.includes(id)?tfs.filter(x=>x!==id):[...tfs,id]); };
+  const MAX_STRATEGY_TIMEFRAMES = 16;
+  const toggleTf   = id => { if(!tfs.includes(id)&&tfs.length>=MAX_STRATEGY_TIMEFRAMES)return; setStratBTimeframes(tfs.includes(id)?tfs.filter(x=>x!==id):[...tfs,id]); };
 
   const tfSortItems = items=>[...items].sort((a,b)=>{const nA=parseInt(a)||0,nB=parseInt(b)||0;return nA-nB;});
-  const tfDefaults={minutes:["1m","5m","15m","30m"],hours:["1H","4H"],days:["1D"],weeks:["1W"],months:["1M"]};
+  const tfDefaults={
+    minutes:["1m","2m","3m","5m","10m","15m","30m"],
+    hours:["1H","2H","4H"],
+    days:["1D"],
+    weeks:["1W"],
+    months:["1M"],
+  };
+  const allTfPresetItems = React.useMemo(
+    () => tfSortItems([...new Set([...Object.values(tfDefaults).flat(), ...sbTfCustom])]),
+    [sbTfCustom]
+  );
+  const allTfsSelected = allTfPresetItems.length > 0 && allTfPresetItems.every(t => tfs.includes(t));
+  const toggleAllTfs = () => {
+    setStratBTimeframes(allTfsSelected ? [] : [...allTfPresetItems]);
+  };
+  const openTfUnitMenu = e => {
+    e.stopPropagation();
+    if (tfUnitOpen) { setTfUnitOpen(false); return; }
+    const r = tfUnitBtnRef.current?.getBoundingClientRect();
+    if (r) {
+      const z = getAppZoom();
+      const rb = r.bottom / z;
+      const rt = r.top / z;
+      const rl = r.left / z;
+      const rw = r.width / z;
+      const menuH = 142;
+      const below = window.innerHeight / z - rb;
+      const flip = below < menuH + 12;
+      setTfUnitPos({
+        top: flip ? Math.max(8, rt - menuH - 3) : rb + 3,
+        left: rl,
+        width: Math.max(rw, 108),
+      });
+    }
+    setTfUnitOpen(true);
+  };
   const tfCategories={
     minutes:{label:"Minutes",items:tfSortItems([...tfDefaults.minutes,...sbTfCustom.filter(x=>x.endsWith("m"))])},
     hours:{label:"Hours",items:tfSortItems([...tfDefaults.hours,...sbTfCustom.filter(x=>x.endsWith("H"))])},
@@ -5008,11 +5047,16 @@ function GeneralInfoStepContent({ c, F,
   };
 
   React.useEffect(()=>{
-    if(!tfPickOpen)return;
-    const h=e=>{if(tfPickWrapRef.current&&!tfPickWrapRef.current.contains(e.target))setTfPickOpen(false);};
+    if(!tfPickOpen && !tfUnitOpen) return;
+    const h=e=>{
+      if(tfPickWrapRef.current?.contains(e.target)) return;
+      if(tfUnitMenuRef.current?.contains(e.target)) return;
+      setTfPickOpen(false);
+      setTfUnitOpen(false);
+    };
     document.addEventListener('mousedown',h);
     return()=>document.removeEventListener('mousedown',h);
-  },[tfPickOpen]);
+  },[tfPickOpen, tfUnitOpen]);
 
   const ToggleRow = ({label,opts,value,onChange}) => (
     <div style={{marginBottom:22}}>
@@ -5484,7 +5528,7 @@ function GeneralInfoStepContent({ c, F,
           <div style={lbl}>Timeframes to use <span style={{color:c.rd}}>*</span></div>
           <div style={{display:'flex',alignItems:'flex-start',gap:5,flexWrap:'wrap'}}>
             <div ref={tfPickWrapRef} style={{position:'relative',flexShrink:0}}>
-              <div onClick={e=>{e.stopPropagation();if(tfPickOpen){setTfPickOpen(false);}else{const pos=dropPos(tfPickWrapRef,200,120,360,true);if(pos)setTfPickPos(pos);setTfPickOpen(true);}}}
+              <div onClick={e=>{e.stopPropagation();if(tfPickOpen){setTfPickOpen(false);setTfUnitOpen(false);}else{const pos=dropPos(tfPickWrapRef,200,220,360,true);if(pos)setTfPickPos(pos);setTfPickOpen(true);}}}
                 style={{width:26,height:26,display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#1e38e8,#4A6AFF)',cursor:'default',transition:'filter 0.12s',boxShadow:'0 2px 8px rgba(38,67,247,0.35)'}}
                 onMouseEnter={e=>e.currentTarget.style.filter='brightness(1.12)'}
                 onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
@@ -5494,9 +5538,20 @@ function GeneralInfoStepContent({ c, F,
                 </svg>
               </div>
               {tfPickOpen&&(
-                <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:tfPickPos.top,left:tfPickPos.left,width:200,maxHeight:tfPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:`1px solid ${c.brH}`,boxShadow:'0 8px 32px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
+                <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:tfPickPos.top,left:tfPickPos.left,width:200,maxHeight:tfPickPos.maxH,display:'flex',flexDirection:'column',background:c.sf,border:`1px solid ${c.brH}`,boxShadow:'0 8px 32px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F,overflow:'hidden'}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
-                  <div className="tlr-scroll" style={{overflowY:'auto',flex:1,padding:'4px 0'}}>
+                  <div
+                    onClick={toggleAllTfs}
+                    onMouseEnter={()=>setTfPickHov('tf-all')}
+                    onMouseLeave={()=>setTfPickHov(null)}
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'6px 10px',cursor:'default',flexShrink:0,position:'relative',
+                      background:allTfsSelected?c.acD:tfPickHov==='tf-all'?'rgba(255,255,255,0.025)':'transparent',
+                      borderBottom:`1px solid ${c.brH}`,transition:'background 0.1s'}}>
+                    {allTfsSelected&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                    <span style={{flex:1,color:allTfsSelected?c.acL:c.ts,fontSize:12,fontWeight:800,fontFamily:F,letterSpacing:'0.03em'}}>All timeframes</span>
+                    <span style={{fontSize:9,color:c.tm,fontFamily:F}}>{allTfPresetItems.length}</span>
+                  </div>
+                  <div className="tlr-scroll" style={{overflowY:'auto',flex:1,padding:'4px 0',minHeight:0}}>
                     {Object.entries(tfCategories).map(([catId,{label,items}],ci)=>(
                       <div key={catId}>
                         {ci>0&&<div style={{height:1,margin:'3px 0',background:`linear-gradient(90deg,transparent,${c.br},transparent)`}}/>}
@@ -5546,17 +5601,17 @@ function GeneralInfoStepContent({ c, F,
                       const unitLabels={m:'Minutes',H:'Hours',D:'Days',W:'Weeks',M:'Months'};
                       return(
                         <div style={{flex:1,position:'relative'}}>
-                          <div onMouseEnter={()=>setTfPickHov('tf-unit-btn')} onMouseLeave={()=>setTfPickHov(null)}
-                            onClick={e=>{e.stopPropagation();setTfUnitOpen(v=>!v);}}
+                          <div ref={tfUnitBtnRef} onMouseEnter={()=>setTfPickHov('tf-unit-btn')} onMouseLeave={()=>setTfPickHov(null)}
+                            onClick={openTfUnitMenu}
                             style={{display:'flex',alignItems:'center',gap:4,padding:'0 6px',height:22,cursor:'default',
                               background:tfPickHov==='tf-unit-btn'||tfUnitOpen?'rgba(140,160,255,0.08)':'rgba(140,160,255,0.04)',
                               border:`1px solid ${tfPickHov==='tf-unit-btn'||tfUnitOpen?'rgba(140,160,255,0.22)':'rgba(140,160,255,0.10)'}`,transition:'all 0.12s'}}>
                             <span style={{flex:1,fontSize:11,color:c.ts,fontFamily:F,whiteSpace:'nowrap'}}>{unitLabels[tfCustomUnit]}</span>
                             <svg width={7} height={5} viewBox="0 0 7 5"><path d="M0,0 L3.5,4.5 L7,0" stroke={c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           </div>
-                          {tfUnitOpen&&(
-                            <div onClick={e=>e.stopPropagation()}
-                              style={{position:'absolute',top:'calc(100% + 3px)',left:0,right:0,zIndex:100030,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:'0 6px 20px rgba(0,0,0,0.6)'}}>
+                          {tfUnitOpen&&createPortal(
+                            <div ref={tfUnitMenuRef} onClick={e=>e.stopPropagation()}
+                              style={{position:'fixed',top:tfUnitPos.top,left:tfUnitPos.left,width:tfUnitPos.width,zIndex:100060,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:'0 10px 28px rgba(0,0,0,0.78)'}}>
                               <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                               {[['m','Minutes'],['H','Hours'],['D','Days'],['W','Weeks'],['M','Months']].map(([u,lbl])=>{
                                 const isU=tfCustomUnit===u;
@@ -5571,7 +5626,8 @@ function GeneralInfoStepContent({ c, F,
                                   </div>
                                 );
                               })}
-                            </div>
+                            </div>,
+                            document.body
                           )}
                         </div>
                       );
