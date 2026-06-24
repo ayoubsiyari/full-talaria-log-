@@ -146,8 +146,14 @@
         if (!Number.isFinite(firstMs) || startMs >= firstMs - 60_000) return;
         if (typeof chart._tryExtendReplayMasterFromParent === 'function') {
             try {
-                if (chart._tryExtendReplayMasterFromParent()) return;
+                if (chart._tryExtendReplayMasterFromParent({ lite: true })) return;
             } catch (_) {}
+        }
+        if (isSamePairSyncedEmbed(chart)) {
+            if (typeof chart._delegateSamePairPanLoadToHost === 'function') {
+                try { chart._delegateSamePairPanLoadToHost(true); } catch (_) {}
+            }
+            return;
         }
         if (typeof chart._scheduleReplayPanLoadLeft === 'function') {
             try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
@@ -250,7 +256,7 @@
         const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
             && m.endTime > m.startTime;
         const panSync = !!m.panSync;
-        if (panSync && chart._multichartViewportMirroredWithHost) {
+        if (panSync && (chart._multichartViewportMirroredWithHost || isSamePairSyncedEmbed(chart))) {
             return applyLightweightPanFollow(chart, m);
         }
         if (!panSync) {
@@ -503,6 +509,21 @@
             rs.autoScrollEnabled = false;
             rs.userHasPanned = true;
         }
+    }
+
+    /** Same-pair iframe with date/time range sync — lite offset pan only. */
+    function isSamePairSyncedEmbed(chart) {
+        if (!chart || !chart._multichartVisibleRangeSyncOn) return false;
+        if (typeof chart._isMultichartEmbedPanel !== 'function' || !chart._isMultichartEmbedPanel()) {
+            return false;
+        }
+        if (typeof chart._multichartSamePairAsHost !== 'function') return false;
+        if (!chart._multichartSamePairAsHost(chart.currentFileId)) return false;
+        if (typeof chart._isIndependentMultichartPair === 'function'
+            && chart._isIndependentMultichartPair()) {
+            return false;
+        }
+        return true;
     }
 
     /** Low-latency pan follow: offset mirror only + immediate paint (no bar-count refit). */

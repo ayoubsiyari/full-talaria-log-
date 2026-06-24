@@ -2079,6 +2079,91 @@ class Chart {
         }
     }
 
+    _multichartGetHostChart() {
+        try {
+            if (!this._isMultichartEmbedPanel()) return null;
+            if (!window.parent || window.parent === window) return null;
+            return window.parent.chart || null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    /** Date-range sync ON + same symbol as tile A (not an independent pair). */
+    _multichartSamePairSyncActive() {
+        if (!this._multichartVisibleRangeSyncOn) return false;
+        if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        if (typeof this._isIndependentMultichartPair === 'function'
+            && this._isIndependentMultichartPair()) {
+            return false;
+        }
+        return true;
+    }
+
+    _isMultichartLocalPanLeader() {
+        return !!(this.drag && this.drag.active && this.drag.type === 'pan');
+    }
+
+    /**
+     * Same-pair synced pan: tile A fetches left history once; B/C/D mirror from A.
+     * @param {boolean} [force]
+     * @returns {boolean}
+     */
+    _delegateSamePairPanLoadToHost(force) {
+        if (!this._multichartSamePairSyncActive()) return false;
+        const host = this._multichartGetHostChart();
+        if (!host) return false;
+        if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+            try {
+                if (this._tryExtendReplayMasterFromParent({ lite: true })) {
+                    this._scheduleMultichartHostMasterSyncPoll();
+                    return true;
+                }
+            } catch (_) { /* ignore */ }
+        }
+        if (!host._panLoading && typeof host.checkViewportLoadMore === 'function') {
+            try { host.checkViewportLoadMore('backward', !!force); } catch (_) { /* ignore */ }
+        }
+        this._scheduleMultichartHostMasterSyncPoll();
+        return true;
+    }
+
+    /** While panning, poll host master growth and extend locally (no per-tile /bars). */
+    _scheduleMultichartHostMasterSyncPoll() {
+        if (this._mcHostMasterSyncRaf != null) return;
+        const self = this;
+        const poll = () => {
+            self._mcHostMasterSyncRaf = null;
+            if (!self._multichartSamePairSyncActive()) return;
+            const stillPan = self._isMultichartLocalPanLeader()
+                || (typeof self._isPanSyncFollowBurst === 'function' && self._isPanSyncFollowBurst());
+            const host = self._multichartGetHostChart();
+            const hostBusy = !!(host && host._panLoading);
+            let extended = false;
+            if (typeof self._tryExtendReplayMasterFromParent === 'function') {
+                try { extended = !!self._tryExtendReplayMasterFromParent({ lite: true }); } catch (_) {}
+            }
+            if (stillPan || hostBusy) {
+                self._mcHostMasterSyncRaf = requestAnimationFrame(poll);
+            } else if (self._multichartPendingMasterResample) {
+                self._flushMultichartPendingMasterResample();
+            } else if (extended && typeof self.render === 'function') {
+                self.render();
+            }
+        };
+        this._mcHostMasterSyncRaf = requestAnimationFrame(poll);
+    }
+
+    _flushMultichartPendingMasterResample() {
+        if (!this._multichartPendingMasterResample) return;
+        this._multichartPendingMasterResample = false;
+        const rs = this.replaySystem;
+        if (rs?.isActive && typeof rs.updateChartData === 'function') {
+            try { rs.updateChartData(false); } catch (_) { /* ignore */ }
+        }
+        if (typeof this.render === 'function') this.render();
+    }
+
     /**
      * Same-pair iframe under date-range sync: mirror host tile A's loaded bars +
      * scroll so bar index N is the same candle on both panels (TradingView parity).
@@ -2749,6 +2834,10 @@ class Chart {
                     try {
                         mirroredHostViewport = !!this._multichartMirrorViewportFromHost();
                     } catch (_mirrorVp) { /* ignore */ }
+                }
+                if (samePairEmbedMc
+                    && typeof this._tryExtendReplayMasterFromParent === 'function') {
+                    try { this._tryExtendReplayMasterFromParent(); } catch (_extMc) { /* ignore */ }
                 }
                 if (!mirroredHostViewport && typeof this._resetViewportToDefault === 'function') {
                     // Pair switch / independent panel: default right-anchored view.
@@ -3440,8 +3529,9 @@ class Chart {
      * extends further left/right than this panel (instant pan-fill, no /bars wait).
      * @returns {boolean}
      */
-    _tryExtendReplayMasterFromParent() {
+    _tryExtendReplayMasterFromParent(opts = {}) {
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        const lite = !!(opts && opts.lite);
         const replay = this.replaySystem;
         if (!replay?.isActive) return false;
         try {
@@ -3520,12 +3610,42 @@ class Chart {
             }
 
             if (typeof replay.updateChartData === 'function') {
-                replay.updateChartData(false);
+                const inFastPan = lite && (
+                    (typeof this._isPanSyncFollowBurst === 'function' && this._isPanSyncFollowBurst())
+                    || this._isMultichartLocalPanLeader()
+                );
+                if (inFastPan && this._multichartViewportMirroredWithHost) {
+                    try {
+                        const parent = window.parent.chart;
+                        if (parent) {
+                            this.rawData = parent.rawData;
+                            this.data = parent.data;
+                        }
+                    } catch (_) { /* ignore */ }
+                    if (typeof this._schedulePanSyncFollowRender === 'function') {
+                        this._schedulePanSyncFollowRender();
+                    }
+                } else if (inFastPan) {
+                    this._multichartPendingMasterResample = true;
+                    if (typeof this._schedulePanSyncFollowRender === 'function') {
+                        this._schedulePanSyncFollowRender();
+                    }
+                } else {
+                    replay.updateChartData(false);
+                }
             }
-            if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
+            if (!lite && typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
                 this._syncReplayPanCursorsFromFullRaw();
             }
-            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+            if (lite) {
+                if (typeof this._schedulePanSyncFollowRender === 'function') {
+                    this._schedulePanSyncFollowRender();
+                } else if (typeof this.scheduleRender === 'function') {
+                    this.scheduleRender();
+                }
+            } else if (typeof this.scheduleRender === 'function') {
+                this.scheduleRender();
+            }
             return true;
         } catch (_e) {
             return false;
@@ -18430,6 +18550,21 @@ class Chart {
         if (!this.currentFileId) return false;
         if (!this._serverCursors) return false;
 
+        if (direction === 'backward'
+            && typeof this._multichartSamePairSyncActive === 'function'
+            && this._multichartSamePairSyncActive()
+            && this._isMultichartEmbedPanel()) {
+            if (!this._isMultichartLocalPanLeader()) {
+                if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+                    try { this._tryExtendReplayMasterFromParent({ lite: true }); } catch (_) { /* ignore */ }
+                }
+                return false;
+            }
+            if (typeof this._delegateSamePairPanLoadToHost === 'function') {
+                return this._delegateSamePairPanLoadToHost(force);
+            }
+        }
+
         const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
 
         // Follower tiles use their own ReplaySystem (usually inactive). Forward pan-load then
@@ -19745,6 +19880,13 @@ class Chart {
             cancelAnimationFrame(this._panSyncFollowRenderRaf);
             this._panSyncFollowRenderRaf = null;
         }
+        if (this._mcHostMasterSyncRaf != null) {
+            cancelAnimationFrame(this._mcHostMasterSyncRaf);
+            this._mcHostMasterSyncRaf = null;
+        }
+        if (this._multichartPendingMasterResample) {
+            this._flushMultichartPendingMasterResample();
+        }
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;
         this._panSnapPriceZoom = null;
@@ -20728,6 +20870,22 @@ class Chart {
         const nearLoadedLeft = spacing > 0 && this.offsetX > maxOffset - spacing * 10;
         const forceProbe = gapOnLeft || nearLoadedLeft || spanNeedsHistory || zoomOutNeeds;
         if (!forceProbe && !this._needsReplayHistoryLoadLeft()) return;
+
+        if (typeof this._multichartSamePairSyncActive === 'function'
+            && this._multichartSamePairSyncActive()) {
+            if (!this._isMultichartLocalPanLeader()) {
+                if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+                    try { this._tryExtendReplayMasterFromParent({ lite: true }); } catch (_) { /* ignore */ }
+                }
+                return;
+            }
+            if (this._isMultichartEmbedPanel()
+                && typeof this._delegateSamePairPanLoadToHost === 'function'
+                && this._delegateSamePairPanLoadToHost(forceProbe)) {
+                return;
+            }
+        }
+
         if (typeof this._tryExtendReplayMasterFromParent === 'function'
             && this._tryExtendReplayMasterFromParent()) {
             return;
