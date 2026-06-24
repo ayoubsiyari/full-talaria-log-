@@ -4711,6 +4711,17 @@ function compressCoverImage(file, maxW, maxH, quality) {
   });
 }
 
+/** Resolve builder/review image entry (data URL string or `{ src, name }`) for `<img src>`. */
+function strategyImageUrl(item) {
+  if (!item) return '';
+  if (typeof item === 'string') return item;
+  if (typeof item === 'object') {
+    const src = item.src || item.url || item.dataUrl || item.thumb || item.thumbnail;
+    return typeof src === 'string' ? src : '';
+  }
+  return '';
+}
+
 function InstrumentMultiSelect({ c, F, selectedIds, onToggle, marketCategories }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef(null);
@@ -5578,7 +5589,10 @@ function GeneralInfoStepContent({ c, F,
           <div style={lbl}>Strategy Image</div>
           <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={pickCover}/>
           <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-            {(stratBImages||[]).map((src,i)=>(
+            {(stratBImages||[]).map((item,i)=>{
+              const src = strategyImageUrl(item);
+              if (!src) return null;
+              return (
               <div key={i}
                 style={{position:'relative',width:100,height:70,flexShrink:0}}
                 onMouseEnter={()=>setImgHovIdx(i)}
@@ -5611,7 +5625,8 @@ function GeneralInfoStepContent({ c, F,
                   </svg>
                 </div>
               </div>
-            ))}
+              );
+            })}
             {(stratBImages||[]).length < 6 && (
               <div onClick={()=>!imgBusy&&fileRef.current?.click()}
                 style={{width:100,height:70,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
@@ -6119,15 +6134,21 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
       <span style={{fontSize:9,fontWeight:850,color:c.tm,fontFamily:F,letterSpacing:'0.08em',textTransform:'uppercase'}}>{label}</span>
     </div>
   );
-  const imageStrip = (images) => (images||[]).length ? (
+  const imageStrip = (images) => {
+    const entries = (images || [])
+      .map((item, i) => ({ url: strategyImageUrl(item), key: i }))
+      .filter(entry => entry.url);
+    if (!entries.length) return null;
+    return (
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(112px,1fr))',gap:8,marginTop:10}}>
-      {images.slice(0,6).map((src,i)=>(
-        <div key={`${src}-${i}`} style={{height:72,border:`1px solid ${c.brH}`,background:c.el,overflow:'hidden'}}>
-          <img src={src} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+      {entries.slice(0,6).map((entry,i)=>(
+        <div key={`${entry.key}-${i}`} style={{height:72,border:`1px solid ${c.brH}`,background:c.el,overflow:'hidden'}}>
+          <img src={entry.url} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
         </div>
       ))}
     </div>
-  ) : null;
+    );
+  };
   const renderTradeTagRows = (items, accent) => (
     <div style={{display:'grid',gap:0}}>
       {items.length===0 ? <div style={emptyText}>No tags defined.</div> : items.map((v,i)=>{
