@@ -1,6 +1,25 @@
 # Homepage - Next.js Static Build
 # Build context = repository root (see docker-compose.yml) so TalariaV16.jsx is available
 # at ../Sources Handoff relative to this folder (webpack alias in next.config.mjs).
+#
+# Chart static (/chart/dist-v9, /chart/modules, chart.js) is built in chart_assets
+# so nginx serves the same versions as trading-chart — not stale committed public/chart.
+
+FROM node:20-alpine AS chart_assets
+WORKDIR /build
+ARG GIT_COMMIT=
+ENV BUILD_ID=${GIT_COMMIT}
+COPY ["chart v 1.4/talaria-design/package.json", "chart v 1.4/talaria-design/package-lock.json", "./talaria-design/"]
+WORKDIR /build/talaria-design
+ENV npm_config_foreground_scripts=true
+RUN npm ci
+WORKDIR /build
+COPY ["chart v 1.4/talaria-design", "./talaria-design/"]
+COPY ["chart v 1.4/chart", "./chart/"]
+WORKDIR /build/talaria-design
+ENV NODE_ENV=production
+RUN npm run build:live:chart
+
 FROM node:18-alpine AS builder
 
 WORKDIR /app/homepage
@@ -18,6 +37,13 @@ RUN npm ci
 
 # Homepage app sources
 COPY homepage/ ./
+
+# Fresh chart bundle (overwrites committed homepage/public/chart/*)
+COPY --from=chart_assets /build/chart/dist-v9 ./public/chart/dist-v9
+COPY --from=chart_assets /build/chart/modules ./public/chart/modules
+COPY --from=chart_assets /build/chart/chart.js ./public/chart/chart.js
+COPY --from=chart_assets /build/chart/multichart-prod ./public/chart/multichart-prod
+COPY --from=chart_assets /build/chart/workers ./public/chart/workers
 
 # V16 dashboard monolith + score engine (imported by TalariaV16.jsx)
 COPY ["Sources Handoff/TalariaV16.jsx", "/app/Sources Handoff/TalariaV16.jsx"]

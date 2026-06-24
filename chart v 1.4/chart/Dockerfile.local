@@ -55,6 +55,12 @@ RUN test -f ./analytics_backend/backtest_whatif.py \
 
 # Overwrite committed dist-v9 with freshly built + bump-dist-v9-cache output.
 COPY --from=v9_react /build/chart/dist-v9 ./dist-v9
+# index.html references /chart/modules/* and /chart/chart.js — must match the
+# same build as dist-v9 (stale modules caused "updateSLTPLines" log spam on VPS).
+COPY --from=v9_react /build/chart/modules ./modules
+COPY --from=v9_react /build/chart/chart.js ./chart.js
+COPY --from=v9_react /build/chart/multichart-prod ./multichart-prod
+COPY --from=v9_react /build/chart/workers ./workers
 
 # The legacy minified bundle (dist/) is ONLY a fallback for /chart/index.html when
 # dist-v9 is absent (see api_server.py). dist-v9 is always built above and is the
