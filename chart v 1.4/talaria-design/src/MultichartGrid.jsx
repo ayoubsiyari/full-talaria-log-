@@ -1434,8 +1434,20 @@ export default function MultichartGrid({
     const samePairCacheBootRef = useRef(false);
     /** Freeze host viewport re-anchor until every iframe has bars (no shake mid-boot). */
     const hostViewportFrozenRef = useRef(false);
-    const OVERLAY_SETTLE_HOLD_CACHE_MS = 0;
-    const OVERLAY_SETTLE_HOLD_DEFAULT_MS = 300;
+    // The iframe chart keeps re-anchoring its viewport for a while AFTER its
+    // first bars arrive: the canvas resizes 0→real width, a delayed re-mirror
+    // runs (~400ms), and _finalizeMultichartPanelAfterPairLoad /
+    // _markMultichartViewportSettled hold a settle guard for ~1200ms. Every one
+    // of those passes recomputes offsetX from a width that is still changing, so
+    // the candles visibly step left/right ("shaking") until it stabilises.
+    // The loading overlay exists to hide exactly that — so the hold MUST span
+    // the full settle window, not just the first-bars moment. Lifting at 300ms
+    // (or 0ms on same-pair cache boot) uncovered the chart mid-reposition, which
+    // is what the user saw as "all panels shake/move until render finishes".
+    // We now hold across the settle guard (+buffer); OVERLAY_FALLBACK_MS is the
+    // hard safety cap so a panel never spins forever.
+    const OVERLAY_SETTLE_HOLD_CACHE_MS = 900;
+    const OVERLAY_SETTLE_HOLD_DEFAULT_MS = 1400;
     const OVERLAY_FALLBACK_MS = 4000;
     useEffect(() => {
         return () => {
@@ -1748,13 +1760,22 @@ export default function MultichartGrid({
                     });
                 },
                 onPanelCacheReady: function (id) {
+                    // Same-pair cache boot: the host's bars are cloned instantly,
+                    // but the panel still re-anchors its viewport for ~1s after
+                    // (canvas 0→real width, +400ms re-mirror, finalize pass), and
+                    // each pass recomputes offsetX from a still-changing width.
+                    // Revealing the frame here (immediate showPanelFrame + opacity
+                    // 1) let the user watch that re-anchor as the "all panels shake
+                    // and move until render finishes" symptom. Route through the
+                    // HELD markPanelDataReady (no `immediate`) so the frame stays
+                    // hidden (opacity 0 over the dark cell) across the settle hold
+                    // and only fades in — via showPanelFrame inside its apply() —
+                    // once the viewport is stable. The OVERLAY_FALLBACK_MS safety
+                    // net + the host re-anchor effect still reveal it if anything
+                    // races, so it can never stay hidden forever.
                     const fn = markPanelDataReadyRef.current;
                     if (typeof fn === "function") {
-                        try { fn(id, { immediate: true }); } catch (_) {}
-                    }
-                    const mgr = managerRef.current;
-                    if (mgr && typeof mgr.showPanelFrame === "function") {
-                        try { mgr.showPanelFrame(id); } catch (_) {}
+                        try { fn(id); } catch (_) {}
                     }
                 },
                 onChartReady: function (id) {
@@ -3391,19 +3412,12 @@ export default function MultichartGrid({
             && id !== HOST_PANEL_ID
             && !dataReadyPanels.has(id)
             && !overlayHoldTimersRef.current[id]) {
-            const hostNt = readHostChartFileAndTf();
-            const cacheBoot = samePairCacheBootRef.current && hostHasCloneableBars(hostNt.fileId);
-            const holdMs = cacheBoot
-                ? OVERLAY_SETTLE_HOLD_CACHE_MS
-                : OVERLAY_SETTLE_HOLD_DEFAULT_MS;
-            if (holdMs <= 0) {
-                markPanelDataReadyRef.current(id, { immediate: true });
-            } else {
-                overlayHoldTimersRef.current[id] = setTimeout(() => {
-                    delete overlayHoldTimersRef.current[id];
-                    markPanelDataReadyRef.current(id);
-                }, holdMs);
-            }
+            // Delegate straight to markPanelDataReady, which owns the single
+            // settle-hold timer (CACHE vs DEFAULT). Previously this set its OWN
+            // hold timer and THEN called markPanelDataReady, which set a SECOND
+            // hold — doubling the delay. Harmless at 300ms, but it would stack to
+            // ~2.8s with the longer settle holds, so route through one timer.
+            markPanelDataReadyRef.current(id);
         }
 
         // (a) focus mirror
