@@ -9538,7 +9538,6 @@ const TalariaV8b = () => {
   const [canvasMiniMap, setCanvasMiniMap] = useState(true);
   const [canvasPaletteCollapsed, setCanvasPaletteCollapsed] = useState(false);
   const [canvasInspectorCollapsed, setCanvasInspectorCollapsed] = useState(false);
-  const [stratPerfStrat, setStratPerfStrat] = useState(null);
   const [stratShareStrat, setStratShareStrat] = useState(null);
   const [stratCardHov, setStratCardHov] = useState(null);
   const [stratActMenu, setStratActMenu] = useState(null);
@@ -35058,7 +35057,7 @@ const TalariaV8b = () => {
           });
 
           /* ─── Strategy card (shared) ─── */
-          const StratCard = ({strat,isMine,inSavedTab,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate}) => {
+          const StratCard = ({strat,isMine,inSavedTab,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate}) => {
             const isH=stratCardHov===strat.id;
             const cardIcon = strat.icon || strat.template?.icon || "◎";
             const marketItems = (strat.markets||[]).length
@@ -35197,12 +35196,6 @@ const TalariaV8b = () => {
                         onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                         <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="13" height="13" rx="1" stroke="currentColor" strokeWidth="1.8"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
                       </div>
-                      <div title="Performance" onClick={()=>onPerf&&onPerf(strat)}
-                        style={{width:36,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:c.sf,cursor:"default",color:c.acL,transition:"filter 0.12s",borderRight:`1px solid ${c.brL}`}}
-                        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.2)"}
-                        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
-                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                      </div>
                       <div title="Delete" onClick={()=>onDelete&&onDelete(strat.id)}
                         style={{width:36,height:32,display:"flex",alignItems:"center",justifyContent:"center",background:c.sf,cursor:"default",color:c.rd,transition:"filter 0.12s"}}
                         onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.25)"}
@@ -35314,7 +35307,7 @@ const TalariaV8b = () => {
               </div>
             );
           };
-          const StrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onPerf,onUseTemplate}) => (
+          const StrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate}) => (
             <div style={{width:1288,margin:"0 auto",display:"flex",flexDirection:"column",padding:"4px 0 24px"}}>
               <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,borderBottom:`1px solid ${c.brH}`}}>
                 {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,colIdx)=>(
@@ -35526,7 +35519,6 @@ const TalariaV8b = () => {
             const apiId = parseStratApiId(source.id);
             const removeLocal = () => {
               setMyStrategies(prev=>prev.filter(s=>s.id!==source.id));
-              if (stratPerfStrat?.id === source.id) setStratPerfStrat(null);
               if (stratShareStrat?.id === source.id) setStratShareStrat(null);
               if (stratEditId === source.id) {
                 setStratBuilderOpen(false);
@@ -35762,7 +35754,6 @@ const TalariaV8b = () => {
                           onEdit={s=>openBuilder(s)}
                           onDelete={id=>deleteStrategyFromBank({id})}
                           onDuplicate={s=>copyStrategyIntoBank(s)}
-                          onPerf={s=>setStratPerfStrat(s)}
                           onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
                           onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
                       ):(
@@ -35772,7 +35763,6 @@ const TalariaV8b = () => {
                               onEdit={s=>openBuilder(s)}
                               onDelete={id=>deleteStrategyFromBank({id})}
                               onDuplicate={s=>copyStrategyIntoBank(s)}
-                              onPerf={s=>setStratPerfStrat(s)}
                               onSave={s=>minePreviewMode?saveTemplateReference(s):undefined}
                               onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
                           ))}
@@ -35855,7 +35845,7 @@ const TalariaV8b = () => {
                 const isMineMenu=!!stratActMenu.isMine&&!isTemplate;
                 const isSavedMenu=!!stratActMenu.inSavedTab;
                 const isSavedNow=savedCommunityIds.has(ms.id);
-                const menuW=126, menuH=(isMineMenu||isTemplate)?132:104;
+                const menuW=126, menuH=(isMineMenu||isTemplate)?104:78;
                 const vpW=window.innerWidth/Z, vpH=window.innerHeight/Z;
                 const menuLeft=Math.max(8,Math.min(stratActMenu.x-menuW,vpW-menuW-8));
                 const menuTop=Math.max(8,Math.min(stratActMenu.y+2,vpH-menuH-8));
@@ -35879,7 +35869,6 @@ const TalariaV8b = () => {
                 const deleteStrategy=()=>deleteStrategyFromBank(ms);
                 const actions=[
                   {label:"New Session",handler:startStrategy,col:c.acL,icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
-                  {label:"Dashboard",handler:()=>setStratPerfStrat(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
                   {label:"divider"},
                   ...(isTemplate?[
                     {label:"Edit",handler:()=>applyTemplateToBuilder(ms.template),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
@@ -35969,50 +35958,6 @@ const TalariaV8b = () => {
                   onClose={()=>{if(!stratBuilderSaving)setStratBuilderOpen(false);}}
                   onOpenTemplates={()=>setStratTemplatePickerOpen(true)}
                 />
-              )}
-
-              {/* ─ Performance Dashboard Overlay ─ */}
-              {stratPerfStrat&&(
-                <div style={{position:"fixed",inset:0,zIndex:100001,background:"rgba(4,5,15,0.85)",display:"flex",alignItems:"center",justifyContent:"center"}}
-                  onClick={e=>{if(e.target===e.currentTarget)setStratPerfStrat(null);}}>
-                  <div style={{width:"min(700px,94vw)",maxHeight:"85vh",background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 24px 60px rgba(0,0,0,0.75)",display:"flex",flexDirection:"column",overflowY:"auto"}} className="tlr-scroll" onClick={e=>e.stopPropagation()}>
-                    <div style={{height:52,flexShrink:0,display:"flex",alignItems:"center",gap:12,padding:"0 20px",borderBottom:`1px solid ${c.brH}`}}>
-                      <div style={{width:36,height:36,borderRadius:4,background:"rgba(74,106,255,0.18)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" style={{color:c.acL}}><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                      </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:11,fontWeight:800,color:c.tx,fontFamily:F}}>{stratPerfStrat.name}</div>
-                        <div style={{fontSize:8,fontWeight:600,color:c.tm,fontFamily:F}}>Strategy performance · journal trades linked to this strategy</div>
-                      </div>
-                      <div onClick={()=>setStratPerfStrat(null)} style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:c.tm,fontSize:16,transition:"color 0.12s"}}
-                        onMouseEnter={e=>e.currentTarget.style.color=c.tx} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</div>
-                    </div>
-                    <div style={{padding:"24px 20px"}}>
-                      {/* 6 metric tiles */}
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
-                        {[
-                          {l:"Total Trades",v:"0",sub:"Closed trades linked to this strategy",accent:c.acL,bg:"rgba(74,106,255,0.07)"},
-                          {l:"Win Rate",v:"—",sub:"Winning trades ÷ total",accent:"#06B6D4",bg:"rgba(6,182,212,0.07)"},
-                          {l:"Total P&L",v:"—",sub:"Sum of P&L on linked trades",accent:c.gn,bg:"rgba(0,212,161,0.07)"},
-                          {l:"Profit Factor",v:"—",sub:"Gross profit ÷ gross loss",accent:"#A855F7",bg:"rgba(168,85,247,0.07)"},
-                          {l:"Avg Win",v:"—",sub:"Average of winning trades",accent:c.gn,bg:"rgba(0,212,161,0.06)"},
-                          {l:"Avg Loss",v:"—",sub:"Average of losing trades",accent:c.rd,bg:"rgba(255,80,104,0.07)"},
-                        ].map(({l,v,sub,accent,bg})=>(
-                          <div key={l} style={{padding:"14px 16px",border:`1px solid ${accent}33`,background:bg}}>
-                            <div style={{fontSize:7,fontWeight:800,color:c.tm,textTransform:"uppercase",letterSpacing:"0.07em",fontFamily:F,marginBottom:8}}>{l}</div>
-                            <div style={{fontSize:22,fontWeight:800,color:c.tx,fontFamily:F,fontVariantNumeric:"tabular-nums",marginBottom:5}}>{v}</div>
-                            <div style={{fontSize:7,fontWeight:500,color:c.tm,fontFamily:F}}>{sub}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"20px 0",border:`1px dashed ${c.br}`,background:"rgba(255,255,255,0.01)"}}>
-                        <svg width={40} height={40} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.2"/><path d="M12 8v4l3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                        <div style={{fontSize:11,fontWeight:700,color:c.ts,fontFamily:F}}>No trades yet</div>
-                        <div style={{fontSize:9,fontWeight:500,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>Tag journal trades with this strategy. When trades exist, win rate, P&L, and profit factor will populate here.</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               )}
 
               {/* ─ Share to Community Modal ─ */}
