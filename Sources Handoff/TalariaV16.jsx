@@ -3628,7 +3628,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         });
       }, 320);
     });
-  }, [setCanvasNodes, setCanvasEdges]);
+  }, [setCanvasNodes, setCanvasEdges, showOutlineImageError]);
 
   const insertSectionAfter = useCallback((afterSectionId) => {
     setSliding(true);
@@ -4567,6 +4567,18 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
           >
             <CanvasScrollbar rfTransform={rfTransform} contentBotGraph={displayGapData.contentBotGraph} canvasH={canvasH} rfRef={rfRef} />
           </div>
+          {sections.length===0 && (
+            <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',zIndex:12,pointerEvents:'none'}}>
+              <div style={{pointerEvents:'auto',display:'flex',flexDirection:'column',alignItems:'center',gap:12,padding:'22px 26px',background:'rgba(8,10,18,0.88)',border:'1px dashed rgba(201,168,76,0.45)',boxShadow:'0 16px 40px rgba(0,0,0,0.45)'}}>
+                <div style={{fontSize:12,fontWeight:650,color:'var(--tlc-ts)',fontFamily:F}}>Add at least one group to build your strategy flow.</div>
+                <button type="button" onClick={addSection}
+                  style={{height:32,padding:'0 14px',display:'inline-flex',alignItems:'center',gap:7,border:'none',background:'rgba(201,168,76,0.16)',color:GOLD,fontSize:11,fontWeight:800,letterSpacing:'0.06em',textTransform:'uppercase',fontFamily:F,cursor:'default'}}>
+                  <span style={{fontSize:16,lineHeight:1}}>+</span>
+                  Add Group
+                </button>
+              </div>
+            </div>
+          )}
           {rfNodesEl && createPortal(
             <>
               {displayGapData.topEdge && (
@@ -4756,7 +4768,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         <div style={{display:'flex',gap:5}}>
           {[1,2,3,4].map(d=>(<div key={d} style={{width:6,height:6,borderRadius:'50%',background:d===2?'var(--tlc-ac)':'var(--tlc-brh)'}}/>))}
         </div>
-        <button type="button" onClick={goNext} style={primaryBtnStyle(true)} onMouseEnter={e=>onPrimaryEnter(e,true)} onMouseLeave={e=>onPrimaryLeave(e,true)} onMouseDown={e=>onPrimaryDown(e,true)} onMouseUp={e=>onPrimaryUp(e,true)}>
+        <button type="button" onClick={goNext} style={primaryBtnStyle(canNext)} onMouseEnter={e=>onPrimaryEnter(e,canNext)} onMouseLeave={e=>onPrimaryLeave(e,canNext)} onMouseDown={e=>onPrimaryDown(e,canNext)} onMouseUp={e=>onPrimaryUp(e,canNext)}>
           Next
           <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
@@ -6856,6 +6868,10 @@ function StrategyBuilderModal(props) {
     return issues;
   }, [stratBName, strategyBankRows, stratEditId, props.stratBMarkets, props.stratBInstruments, props.stratBSupportInst, props.stratBTimeframes]);
   const generalInfoReady = generalInfoIssues.length === 0;
+  const flowGroupCount = React.useMemo(
+    () => countStrategyFlowGroups(props.canvasNodes),
+    [props.canvasNodes]
+  );
   React.useEffect(() => {
     if (generalInfoReady) setShowGeneralInfoRequired(false);
   }, [generalInfoReady]);
@@ -6888,17 +6904,26 @@ function StrategyBuilderModal(props) {
     setStratWizardStep(1);
     return false;
   };
-  const stepComplete = step => step===1 ? generalInfoReady : true;
+  const stepComplete = step => {
+    if (step === 1) return generalInfoReady;
+    if (step === 2) return flowGroupCount >= MIN_STRATEGY_FLOW_GROUPS;
+    return true;
+  };
   const canNext = stepComplete(stratWizardStep);
   const canGoTo = id => { for(let i=1;i<id;i++){if(!stepComplete(i))return false;} return true; };
 
   const goNext = () => {
     if (stratWizardStep >= 1 && !requireGeneralInfo()) return;
+    if (stratWizardStep === 2 && flowGroupCount < MIN_STRATEGY_FLOW_GROUPS) return;
     setStratWizardStep(s => Math.min(4, s + 1));
   };
   const goPrev = () => setStratWizardStep(s => Math.max(1, s - 1));
   const goToStep = id => {
     if (id > 1 && !requireGeneralInfo()) return;
+    if (id === 2 && props.setCanvasNodes && countStrategyFlowGroups(props.canvasNodes) === 0) {
+      props.setCanvasNodes(buildSingleStrategyGroup());
+      props.setCanvasEdges?.([]);
+    }
     if (id <= stratWizardStep || canGoTo(id)) setStratWizardStep(id);
   };
   const secondaryBtnStyle = {
