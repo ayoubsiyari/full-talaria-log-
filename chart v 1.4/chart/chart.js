@@ -3764,7 +3764,10 @@ class Chart {
                 : Math.max(0, localMaster.length - 1);
 
             replay.fullRawData = merged;
-            this._panelFullRawData = merged.slice();
+            // Share the freshly-built master by reference instead of a second full
+            // copy — these arrays are always reassigned wholesale (never mutated in
+            // place), so one allocation serves both. Halves per-panel history memory.
+            this._panelFullRawData = merged;
             this._nativeRawFetchTf = '1m';
             if (parent._serverCursors) {
                 this._serverCursors = Object.assign({}, parent._serverCursors);
@@ -25658,7 +25661,9 @@ class Chart {
                 }
             }
             // Mirroring is instant; poll quickly to catch the host's fetch result.
-            pollMs = pulled ? 40 : 140;
+            // Match the single-chart cadence (90ms) when waiting on the host's
+            // shared fetch so panel TF-switch backfill is as fast as the main chart.
+            pollMs = pulled ? 40 : 90;
         } else if (replay && replay.isActive) {
             // Single chart / independent tile. Drive the forced backward fetch
             // directly (skip the loader's 40ms debounce indirection) so chunks

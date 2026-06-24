@@ -884,7 +884,7 @@ const LOAD_QUOTES = [
 // ── Canvas Strategy Builder ─────────────────────────────────────────────────
 
 // Module-level callback ref so section node buttons can trigger state changes
-const _cvCb = { addCondition: null, deleteSection: null, insertSection: null, renameSection: null, resizeSection: null, updateDesc: null, setDescPanelOpen: null, startDrag: null, deleteCondition: null, updateCondition: null, showImageError: null };
+const _cvCb = { addCondition: null, deleteSection: null, insertSection: null, renameSection: null, resizeSection: null, updateDesc: null, setDescPanelOpen: null, startDrag: null, deleteCondition: null, updateCondition: null, showImageError: null, showFlowNotice: null, canDeleteSection: null };
 
 /* ── Node: Section Lane ── */
 const GOLD = 'rgba(201,168,76,0.9)';
@@ -1305,7 +1305,14 @@ const SectionNode = ({ id, data }) => {
           {/* Delete bin */}
           <div
             data-nodrag="1"
-            onClick={e=>{e.stopPropagation();_cvCb.deleteSection&&_cvCb.deleteSection(data.sectionId);}}
+            onClick={e=>{
+              e.stopPropagation();
+              if (_cvCb.canDeleteSection && !_cvCb.canDeleteSection()) {
+                _cvCb.showFlowNotice?.('At least one group is required.');
+                return;
+              }
+              _cvCb.deleteSection&&_cvCb.deleteSection(data.sectionId);
+            }}
             onMouseEnter={()=>setHD(true)} onMouseLeave={()=>setHD(false)}
             style={{
               position:'absolute',top:'50%',transform:'translateY(-50%)',right:10,
@@ -2400,6 +2407,24 @@ function buildInitialSections() {
     zIndex: -1,
   }));
 }
+const MIN_STRATEGY_FLOW_GROUPS = 1;
+function buildSingleStrategyGroup() {
+  const id = `sec_${Date.now()}`;
+  const colorScheme = SECTION_COLOR_CYCLE[0];
+  const h = getSectionHeight(0);
+  return [{
+    id, type: 'section',
+    position: { x: SEC_X, y: 0 },
+    style: { width: SEC_W, height: h },
+    width: SEC_W, height: h,
+    draggable: false, selectable: false, focusable: false,
+    data: { ...colorScheme, sectionId: id, label: 'NEW GROUP', condCount: 0, filledSlots: [] },
+    zIndex: -1,
+  }];
+}
+function countStrategyFlowGroups(nodes = []) {
+  return (nodes || []).filter(n => n?.type === 'section').length;
+}
 
 /* ── Strategy Templates ── */
 const templateDemoImage = (title, subtitle, color = '#2643F7') => ({
@@ -3424,15 +3449,6 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
   const { screenToFlowPosition } = useReactFlow();
 
-  useEffect(() => {
-    if (canvasNodes.length === 0) {
-      const initNodes = buildInitialSections();
-      setCanvasNodes(initNodes);
-      setHistory([{ nodes: initNodes, edges: [] }]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const pushHistory = useCallback((nodes, edges) => {
     setHistory(prev => [...prev.slice(0, histIdx + 1), { nodes, edges }]);
     setHistIdx(prev => prev + 1);
@@ -3581,6 +3597,11 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   }, [setCanvasNodes]);
 
   const doDeleteSection = useCallback((sectionId) => {
+    const sectionCount = canvasNodesRef.current.filter(n => n.type === 'section').length;
+    if (sectionCount <= MIN_STRATEGY_FLOW_GROUPS) {
+      showOutlineImageError('At least one group is required.');
+      return;
+    }
     setSliding(true);
     requestAnimationFrame(() => {
       setCanvasNodes(nds => {
@@ -4053,6 +4074,8 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   _cvCb.updateDesc = updateSectionDesc;
   _cvCb.setDescPanelOpen = setDescPanelOpen;
   _cvCb.startDrag = startSectionDrag;
+  _cvCb.showFlowNotice = showOutlineImageError;
+  _cvCb.canDeleteSection = () => canvasNodesRef.current.filter(n => n.type === 'section').length > MIN_STRATEGY_FLOW_GROUPS;
 
   const sections = useMemo(() => canvasNodes.filter(n => n.type === 'section'), [canvasNodes]);
   const conditions = useMemo(() => canvasNodes.filter(n => n.type === 'condition'), [canvasNodes]);
@@ -4420,6 +4443,25 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               </button>
             );
           })}
+          <button
+            type="button"
+            aria-label="Add group"
+            disabled={sections.length >= 10}
+            onClick={addSection}
+            onMouseEnter={e=>{setBtnHov('flow-add-group');showOutlineTip('Add Group', e.currentTarget);}}
+            onMouseLeave={()=>{setBtnHov(null);hideOutlineTip();}}
+            onMouseDown={()=>setOutlinePress('flow-add-group')}
+            onMouseUp={()=>setOutlinePress(null)}
+            style={{height:22,marginLeft:4,padding:'0 10px',display:'inline-flex',alignItems:'center',gap:5,border:'none',
+              background:outlinePress==='flow-add-group'?'rgba(201,168,76,0.22)':btnHov==='flow-add-group'?'rgba(201,168,76,0.14)':'rgba(201,168,76,0.08)',
+              color:sections.length>=10?'var(--tlc-tm)':btnHov==='flow-add-group'?GOLD:'rgba(201,168,76,0.92)',
+              fontSize:10,fontWeight:800,letterSpacing:'0.05em',textTransform:'uppercase',fontFamily:F,cursor:'default',
+              opacity:sections.length>=10?0.45:1,transform:outlinePress==='flow-add-group'?'translateY(1px) scale(0.97)':'translateY(0) scale(1)',
+              transition:'background 0.12s, color 0.12s, transform 0.08s, opacity 0.12s'}}
+          >
+            <span style={{fontSize:14,lineHeight:1}}>+</span>
+            Add Group
+          </button>
         </div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end'}}>
           {flowViewMode === 'outline' && (
@@ -4554,8 +4596,13 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               </div>
             </div>
             {outlineGroups.length===0 ? (
-              <div style={{height:180,display:'flex',alignItems:'center',justifyContent:'center',border:'1px dashed #C7D0E0',background:'#F8FAFC',color:'#667085',fontSize:13,fontFamily:F}}>
-                No strategy flow yet.
+              <div style={{minHeight:220,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,border:'1px dashed #C7D0E0',background:'#F8FAFC',color:'#667085',fontFamily:F,padding:'24px 16px'}}>
+                <div style={{fontSize:13,fontWeight:600,color:'#667085'}}>No strategy groups yet.</div>
+                <button type="button" onClick={addSection}
+                  style={{height:34,padding:'0 16px',display:'inline-flex',alignItems:'center',gap:7,border:'none',background:'rgba(201,168,76,0.14)',color:'#8A6A1A',fontSize:11,fontWeight:800,letterSpacing:'0.06em',textTransform:'uppercase',fontFamily:F,cursor:'default'}}>
+                  <span style={{fontSize:16,lineHeight:1}}>+</span>
+                  Add Group
+                </button>
               </div>
             ) : outlineGroups.map((group, gi) => (
               <section key={group.id} style={{position:'relative',padding:'18px 0 0',marginTop:gi===0?0:22,borderTop:`1px solid rgba(201,168,76,0.55)`,breakInside:'avoid'}}>
