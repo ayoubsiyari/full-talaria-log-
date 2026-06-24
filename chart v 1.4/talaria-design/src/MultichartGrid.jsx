@@ -2077,6 +2077,7 @@ export default function MultichartGrid({
             if (typeof mgr.flushPendingRangeSync === "function") {
                 try { mgr.flushPendingRangeSync(); } catch (_) {}
             }
+            syncAllIframesToHost(mgr);
             for (const id of expected) {
                 if (typeof mgr.showPanelFrame === "function") {
                     try { mgr.showPanelFrame(id); } catch (_) {}
@@ -2093,6 +2094,7 @@ export default function MultichartGrid({
                     if (ch) delete ch._multichartSkipResizeOffsetAdjust;
                     if (cellA) applyHostSlot(cellA, { reanchor: false });
                 } catch (_) {}
+                syncAllIframesToHost(mgr);
                 return;
             }
             scheduleAlignHostOnly(mgr, 0);

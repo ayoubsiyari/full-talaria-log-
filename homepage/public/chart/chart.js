@@ -2740,9 +2740,18 @@ class Chart {
                 }
 
                 this.resize();
-                if (typeof this._resetViewportToDefault === 'function') {
-                    // Pair switch: clean right-anchored, auto-scaled view (latest
-                    // candle at the right edge, like TradingView) — not centered.
+                const samePairEmbedMc = samePairAsHost && !independentPair
+                    && typeof this._isMultichartEmbedPanel === 'function'
+                    && this._isMultichartEmbedPanel();
+                let mirroredHostViewport = false;
+                if (samePairEmbedMc
+                    && typeof this._multichartMirrorViewportFromHost === 'function') {
+                    try {
+                        mirroredHostViewport = !!this._multichartMirrorViewportFromHost();
+                    } catch (_mirrorVp) { /* ignore */ }
+                }
+                if (!mirroredHostViewport && typeof this._resetViewportToDefault === 'function') {
+                    // Pair switch / independent panel: default right-anchored view.
                     this._resetViewportToDefault({
                         centerPlayhead: false,
                         forceRecenter: true,
@@ -2766,6 +2775,13 @@ class Chart {
                 const samePairEmbed = !this._isIndependentMultichartPair();
                 setTimeout(function () {
                     if (String(selfMc.currentFileId) !== String(fidMc)) return;
+                    if (samePairEmbed && typeof selfMc._multichartMirrorViewportFromHost === 'function') {
+                        try {
+                            if (selfMc._multichartMirrorViewportFromHost() && typeof selfMc.render === 'function') {
+                                selfMc.render();
+                            }
+                        } catch (_mirrorLate) { /* ignore */ }
+                    }
                     if (samePairEmbed && typeof selfMc._warmBtTfCacheFromParent === 'function') {
                         selfMc._warmBtTfCacheFromParent();
                     } else if (typeof selfMc._scheduleBacktestTimeframePrefetch === 'function') {

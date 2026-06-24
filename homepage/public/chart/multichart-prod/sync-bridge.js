@@ -1119,7 +1119,9 @@
             : null;
         chart.broadcastCrosshairSync = function (timestamp, price) {
             // Bridge fan-out (cross-chart) — gated by the applying window.
-            if (!state.applying) {
+            // During pan drag, visible-range sync carries the viewport — skip
+            // crosshair postMessage storms (major 4-up lag source).
+            if (!state.applying && !isLocalPanDragActive()) {
                 if (timestamp === null || timestamp === undefined) {
                     // Pan/zoom: pointer often leaves the plot box every frame — do not
                     // fan crosshair-clear to every peer on each mousemove.
@@ -1890,6 +1892,11 @@
         }
 
         function applyCrosshair(m) {
+            if (isLocalPanDragActive()
+                || (typeof chart._isPanSyncFollowBurst === 'function' && chart._isPanSyncFollowBurst())) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
             state.applied.add(m.causationId);
             beginApplying(true);
             // Same-pair iframe: mirror host before crosshair unless this tile is mid-pan.
@@ -1949,6 +1956,14 @@
             state.applied.add(m.causationId);
             beginApplying(panSync);
 
+            // Split / boot snap: always mirror host tile A (even when Date Range toggle is off).
+            if (!panSync && m.forceInitialSync && isEmbedPanelChart()
+                && typeof chart._multichartMirrorViewportFromHost === 'function'
+                && chart._multichartMirrorViewportFromHost()) {
+                finishViewportApply(chart, false);
+                return;
+            }
+
             // Live pan drag: offset + zoom mirror on every follower (same lite path as leader).
             if (panSync && isRangeSyncEnabled()
                 && Number.isFinite(m.offsetX) && Number.isFinite(m.candleWidth)
@@ -1979,12 +1994,11 @@
                 }
             }
 
-            // Host-led range only: mirror tile A data + scroll on pan release / initial snap.
-            // Iframe-initiated pans apply the incoming envelope below so the dragging panel is not snapped back.
-            if (chart._multichartVisibleRangeSyncOn
-                && isEmbedPanelChart()
+            // Host-led range: mirror tile A data + scroll on pan release / ongoing date-range sync.
+            if (isEmbedPanelChart()
                 && isHostLedRangeMessage(m)
                 && !panSync
+                && (chart._multichartVisibleRangeSyncOn || m.forceInitialSync)
                 && typeof chart._multichartMirrorViewportFromHost === 'function'
                 && chart._multichartMirrorViewportFromHost()) {
                 finishViewportApply(chart, panSync);

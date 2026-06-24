@@ -345,6 +345,17 @@ export function mapApiSessionToV16(
     avgRR,
     tradingMode,
     progress: sessionProgress(sess, kpis),
+    elapsedDays: (() => {
+      const replayDash = sess.replay_dashboard;
+      if (
+        replayDash &&
+        typeof replayDash.elapsed_days === "number" &&
+        Number.isFinite(replayDash.elapsed_days)
+      ) {
+        return Math.max(0, Math.round(replayDash.elapsed_days));
+      }
+      return null;
+    })(),
     rollbackAllowed: true,
     assetClasses: assetClasses.length ? assetClasses : ["Futures"],
     leverage: cfgString(cfg, "leverage") || "1:10",

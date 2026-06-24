@@ -11663,6 +11663,32 @@ const TalariaV8b = () => {
       .map(mapJournalAccountToSessionRow);
     return [...journalRows, ...backtests];
   };
+  const sessionConfiguredRangeDays = (sess) => {
+    if (!sess?.startDate || !sess?.endDate) return 0;
+    return Math.max(0, Math.round((new Date(sess.endDate) - new Date(sess.startDate)) / 86400000));
+  };
+  const sessionTestedDays = (sess) => {
+    if (sess?.isJournalSession) {
+      if (!sess.startDate || !(sess.trades > 0)) return 0;
+      return Math.max(0, Math.round((Date.now() - new Date(sess.startDate)) / 86400000));
+    }
+    if (typeof sess?.elapsedDays === "number" && Number.isFinite(sess.elapsedDays) && sess.elapsedDays >= 0) {
+      return Math.round(sess.elapsedDays);
+    }
+    const rangeDays = sessionConfiguredRangeDays(sess);
+    const progress = sess?.progress || 0;
+    if (progress > 0 && rangeDays > 0) return Math.round((rangeDays * progress) / 100);
+    return 0;
+  };
+  const formatSessionTestedDurationLabel = (days) => {
+    if (!days || days < 1) return "0d";
+    if (days >= 365) {
+      const yrs = days / 365;
+      return `${yrs >= 10 ? Math.round(yrs) : yrs.toFixed(1).replace(/\.0$/, "")}y`;
+    }
+    if (days >= 30) return `${Math.round(days / 30.44)}mo`;
+    return `${days}d`;
+  };
   const getSessionRowStripeMeta = (sess) => {
     const isJournal = !!sess?.isJournalSession;
     const isPropJournal = isJournal && (sess?.accountTypeKey === "prop" || sess?.tradingMode === "journal-prop");
@@ -12493,10 +12519,7 @@ const TalariaV8b = () => {
                 const totalTrades=sessionsPageRows.reduce((a,s)=>a+(s.trades||0),0);
                 const profSess=withPnl.filter(s=>s.pnl>0).length;
                 const profPct=withPnl.length?Math.round(profSess/withPnl.length*100):0;
-                const totalDays=sessionsPageRows.reduce((a,s)=>{
-                  if(!s.startDate||!s.endDate)return a;
-                  return a+Math.max(0,Math.round((new Date(s.endDate)-new Date(s.startDate))/86400000));
-                },0);
+                const totalDays=sessionsPageRows.reduce((a,s)=>a+sessionTestedDays(s),0);
                 const tickerFreq={};
                 sessionsPageRows.forEach(s=>(s.tickers||[]).forEach(t=>{tickerFreq[t]=(tickerFreq[t]||0)+1;}));
                 const uniqueTickers=Object.keys(tickerFreq).length;
@@ -12972,9 +12995,8 @@ const TalariaV8b = () => {
                           ):sess.startDate&&sess.endDate?(()=>{
                             const parse=d=>{const[y,mo,day]=d.split("-");return{y,mo:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mo-1],day:Number(day)};};
                             const sd=parse(sess.startDate),ed=parse(sess.endDate);
-                            const durMs=new Date(sess.endDate)-new Date(sess.startDate);
-                            const durMo=Math.round(durMs/1000/60/60/24/30.44);
-                            const durLabel=durMo>=12?`${Math.round(durMo/12)}y`:`${durMo}mo`;
+                            const testedDays=sessionTestedDays(sess);
+                            const durLabel=formatSessionTestedDurationLabel(testedDays);
                             return(
                               <div style={{display:"flex",flexDirection:"column",gap:3,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>
                                 <div style={{display:"flex",justifyContent:"space-between"}}>
@@ -13145,9 +13167,8 @@ const TalariaV8b = () => {
                           ):sess.startDate&&sess.endDate?(()=>{
                             const parse=d=>{const[y,mo,day]=d.split("-");return{y,mo:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mo-1],day:Number(day)};};
                             const s=parse(sess.startDate),e=parse(sess.endDate);
-                            const durMs=new Date(sess.endDate)-new Date(sess.startDate);
-                            const durMo=Math.round(durMs/1000/60/60/24/30.44);
-                            const durLabel=durMo>=12?`${Math.round(durMo/12)}y`:`${durMo}mo`;
+                            const testedDays=sessionTestedDays(sess);
+                            const durLabel=formatSessionTestedDurationLabel(testedDays);
                             return(
                               <div style={{display:"flex",flexDirection:"column",gap:3,width:"100%",fontFamily:F,fontVariantNumeric:"tabular-nums"}}>
                                 <div style={{display:"flex",justifyContent:"space-between"}}>
