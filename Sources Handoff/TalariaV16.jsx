@@ -65,6 +65,15 @@ const getV16StrategyBankRows = (localRows = []) => {
   if (!isV16LiveBoot()) return Array.isArray(localRows) ? localRows : [];
   return mergeV16StrategyBankRows(getV16StrategyBank(), localRows);
 };
+const STARTING_BALANCE_MAX_DIGITS = 6;
+const sanitizeStartingBalanceInput = (raw) =>
+  String(raw ?? "").replace(/\D/g, "").slice(0, STARTING_BALANCE_MAX_DIGITS);
+const parseStartingBalanceInput = (raw) => {
+  const digits = sanitizeStartingBalanceInput(raw);
+  if (!digits) return null;
+  const value = Number(digits);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
 const DASH_PLAN_REVIEW_LABELS = {
   according_to_plan: "According to Plan",
   out_of_plan: "Out of Plan",
@@ -11821,7 +11830,7 @@ const TalariaV8b = () => {
       timeframe: newSessTf,
       startDate: newSessStart,
       endDate: newSessEnd,
-      capital: parseFloat(newSessCapital) || 100000,
+      capital: parseStartingBalanceInput(newSessCapital) || 100000,
       createdAt: new Date().toISOString(),
       trades: 0,
       pnl: null,
@@ -11836,7 +11845,7 @@ const TalariaV8b = () => {
     if (editSessId) {
       const updated = sessions.map(s => s.id === editSessId ? {
         ...s, name, timeframe: newSessTf, startDate: newSessStart, endDate: newSessEnd,
-        capital: parseFloat(newSessCapital) || 100000, tickers: newSessTickers,
+        capital: parseStartingBalanceInput(newSessCapital) || 100000, tickers: newSessTickers,
         assetClasses: [newSessAssetClass], rollbackAllowed: newSessRollback,
         strategyName: newSessPlaybook, strategyDesc: newSessDescription,
         tradingMode: sessTradingMode, leverage: sessLeverage, riskVal: sessRiskVal,
@@ -11853,7 +11862,7 @@ const TalariaV8b = () => {
       setEditSessId(null);
       closeNewSess();
     } else {
-      const sess = { id: Date.now(), name, symbol: (newSessSymbol.trim() || "NQ").toUpperCase(), timeframe: newSessTf, startDate: newSessStart, endDate: newSessEnd, capital: parseFloat(newSessCapital) || 100000, createdAt: new Date().toISOString(), trades: 0, pnl: null, commission: newSessTradingCostsEnabled ? (sessCommission || "Per Lot") : "None", realWorldCostsEnabled: newSessTradingCostsEnabled, costsEnabled: newSessTradingCostsEnabled, costSettings: newSessCosts, symbolSpreads: newSessSymbolSpreads, futuresCosts: newSessFuturesData };
+      const sess = { id: Date.now(), name, symbol: (newSessSymbol.trim() || "NQ").toUpperCase(), timeframe: newSessTf, startDate: newSessStart, endDate: newSessEnd, capital: parseStartingBalanceInput(newSessCapital) || 100000, createdAt: new Date().toISOString(), trades: 0, pnl: null, commission: newSessTradingCostsEnabled ? (sessCommission || "Per Lot") : "None", realWorldCostsEnabled: newSessTradingCostsEnabled, costsEnabled: newSessTradingCostsEnabled, costSettings: newSessCosts, symbolSpreads: newSessSymbolSpreads, futuresCosts: newSessFuturesData };
       const updated = [sess, ...sessions];
       setSessions(updated);
       try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
@@ -11994,7 +12003,7 @@ const TalariaV8b = () => {
     setNewSessEnd(sess.endDate || "");
     setNewSessStartInput(sess.startDate ? sess.startDate.split("T")[0] : "");
     setNewSessEndInput(sess.endDate ? sess.endDate.split("T")[0] : "");
-    setNewSessCapital(String(sess.capital || "50000"));
+    setNewSessCapital(sanitizeStartingBalanceInput(String(sess.capital || "50000")));
     setNewSessTickers(sess.tickers || []);
     setNewSessAssetClass((sess.assetClasses && sess.assetClasses[0]) || "Forex");
     setNewSessRollback(!!sess.rollbackAllowed);
@@ -12384,7 +12393,7 @@ const TalariaV8b = () => {
         const instrRows=newSessFiles.map(fid=>{const f=availFiles.find(a=>a.id===fid);if(!f)return null;const def=instrDefaults[f.asset]||instrDefaults.Forex;return{...f,...def};}).filter(Boolean);
         const autoAsset=instrRows.length>0?instrRows[0].asset:"—";
         const dateRangeHint=newSessFiles.length>0?(()=>{const files=newSessFiles.map(id=>availFiles.find(f=>f.id===id)).filter(Boolean);const minFrom=files.reduce((a,f)=>f.from<a?f.from:a,files[0].from);const maxTo=files.reduce((a,f)=>f.to>a?f.to:a,files[0].to);return`Available: ${minFrom} → ${maxTo}`;})():"Select a data file to see available date range";
-        const isValid2=!!(newSessName&&newSessTickers.length>0&&newSessStart&&newSessEnd&&newSessCapital);
+        const isValid2=!!(newSessName&&newSessTickers.length>0&&newSessStart&&newSessEnd&&parseStartingBalanceInput(newSessCapital));
         const playbookOpts=["","Momentum Breakout","EMA Mean Reversion","London Session Scalp","Volume Breakout","Golden Cross Trend","Custom label…"];
         const protectPresets=[["none","— None (Configure in chart) —"],["be","Breakeven only"],["trailing","Trailing stop"],["full","Breakeven + Trailing + TP"]];
         const diamondChk=(val,setter)=>(
@@ -14662,7 +14671,7 @@ const TalariaV8b = () => {
                             <span style={{position:"absolute",left:0,top:0,bottom:0,width:24,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:c.ts,fontWeight:700,borderRight:`1px solid ${c.br}`,pointerEvents:"none",fontFamily:F}}>
                               {{"USD":"$","EUR":"€","GBP":"£","JPY":"¥","CHF":"₣","AUD":"A$","CAD":"C$"}[newSessCurrency]||"$"}
                             </span>
-                            <input type="number" value={newSessCapital} onChange={e=>setNewSessCapital(e.target.value)} className="tlr-nospinner" style={{...inp({fontSize:11,fontWeight:800,paddingLeft:26,fontVariantNumeric:"tabular-nums"})}}/>
+                            <input type="text" inputMode="numeric" pattern="[0-9]*" value={newSessCapital} onChange={e=>setNewSessCapital(sanitizeStartingBalanceInput(e.target.value))} className="tlr-nospinner" style={{...inp({fontSize:11,fontWeight:800,paddingLeft:26,fontVariantNumeric:"tabular-nums"})}}/>
                           </div>
                           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                             {(()=>{
@@ -14725,7 +14734,7 @@ const TalariaV8b = () => {
 
                       {/* Prop Firm rules — only shown in prop mode */}
                       {sessTradingMode==="prop"&&(()=>{
-                        const cap=parseFloat(newSessCapital)||10000;
+                        const cap=parseStartingBalanceInput(newSessCapital)||10000;
                         const fieldLbl=(text)=><div style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,marginBottom:3}}>{text}</div>;
                         const pctArrows=(val,setter,step=0.1)=>(
                           <div style={{position:"absolute",right:0,top:0,bottom:0,width:14,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
@@ -15044,7 +15053,7 @@ const TalariaV8b = () => {
                       {[
                         [newSessAssetClass||"—",c.ts],
                         [sessTradingMode==="prop"?"Prop Firm":"Standard",sessTradingMode==="prop"?c.gold:c.ts],
-                        [(()=>{const sym={"USD":"$","EUR":"€","GBP":"£","JPY":"¥"};return`${sym[newSessCurrency]||"$"}${(parseFloat(newSessCapital)||0).toLocaleString()}`;})(),c.ts],
+                        [(()=>{const sym={"USD":"$","EUR":"€","GBP":"£","JPY":"¥"};return`${sym[newSessCurrency]||"$"}${(parseStartingBalanceInput(newSessCapital)||0).toLocaleString()}`;})(),c.ts],
                         [newSessStart&&newSessEnd?`${newSessStart.split("T")[0]} → ${newSessEnd.split("T")[0]}`:"No date set",newSessStart&&newSessEnd?c.ts:c.tm],
                       ].map(([val,col],i,arr)=>(
                         <span key={i} style={{display:"flex",alignItems:"center",gap:0,overflow:"hidden",minWidth:0,flexShrink:i===arr.length-1?1:0}}>

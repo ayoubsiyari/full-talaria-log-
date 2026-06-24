@@ -20412,7 +20412,18 @@ class Chart {
         const dm = this.drawingManager;
         // Re-resolve timestamp anchors once at pan start (e.g. after 1D→1m→1D) then freeze
         // indices for the drag — per-frame resolve during pan caused shapes to snap/jump.
-        if (dm && dm.drawings && dm.drawings.length > 0
+        // Skip in multichart: tfRefresh over every drawing stalls the first pan frame.
+        let skipHeavyDrawingSync = false;
+        try {
+            skipHeavyDrawingSync = (typeof document !== 'undefined'
+                    && document.documentElement
+                    && document.documentElement.classList.contains('multichart-embed'))
+                || (typeof window !== 'undefined' && !!window.__multichartGrid)
+                || (typeof window !== 'undefined' && window.parent
+                    && window.parent !== window && !!window.parent.__multichartGrid);
+        } catch (_) { /* ignore */ }
+        if (!skipHeavyDrawingSync
+            && dm && dm.drawings && dm.drawings.length > 0
             && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
             dm.drawings.forEach((drawing) => {
                 if (drawing) {

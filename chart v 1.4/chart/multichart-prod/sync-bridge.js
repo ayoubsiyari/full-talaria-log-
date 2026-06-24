@@ -212,6 +212,9 @@
         } else if (typeof chart.render === 'function') {
             chart.render();
         }
+        if (m && isPeerLedRangeMessage(m)) {
+            markReplayViewportForSyncFollow(chart);
+        }
         return true;
     }
 
@@ -488,6 +491,18 @@
         if (m.forceInitialSync) return false;
         const src = m.source != null ? String(m.source).trim().toUpperCase() : '';
         return src.length > 0 && src !== 'A';
+    }
+
+    /** Replay auto-scroll on tile A must not fight peer-led synced pans. */
+    function markReplayViewportForSyncFollow(chart) {
+        const rs = chart && chart.replaySystem;
+        if (!rs || !rs.isActive || rs.userHasPanned) return;
+        if (typeof rs.onUserPan === 'function') {
+            try { rs.onUserPan(); } catch (_) {}
+        } else {
+            rs.autoScrollEnabled = false;
+            rs.userHasPanned = true;
+        }
     }
 
     /** Low-latency pan follow: offset mirror only + immediate paint (no bar-count refit). */
@@ -1190,7 +1205,7 @@
                 visibleBarCount: Math.max(1, ei - si + 1),
                 rightEdgeBarIndex: Number.isFinite(d.rightEdgeBarIndex) ? d.rightEdgeBarIndex : ei,
                 sourceTimeframe: chart.currentTimeframe || null,
-                panSync: !!d.panSync,
+                panSync: !!(d.panSync || isLocalPanDragActive()),
                 offsetX: d.offsetX,
                 candleWidth: d.candleWidth,
                 zoomLevelIndex: chart.zoomLevel?.candleWidthIndex,
@@ -1299,6 +1314,44 @@
                 try { __origDispatchScrollSync(force); } catch (_) { /* native no-op in multichart env */ }
             }
         };
+
+        function sendImmediatePanSyncRange() {
+            if (!isRangeSyncEnabled()) return;
+            const r = readVisibleTimeRange(chart);
+            if (!r) return;
+            const smOut = effectiveSyncMode();
+            if (!smOut || (!smOut.visibleRange && !smOut.timeSync)) return;
+            send({
+                type: 'visibleRange',
+                startTime: r.startSec,
+                endTime: r.endSec,
+                startIndex: r.startIndex,
+                endIndex: r.endIndex,
+                visibleBarCount: r.visibleBarCount,
+                rightEdgeBarIndex: r.rightEdgeBarIndex,
+                sourceTimeframe: r.sourceTimeframe,
+                panSync: true,
+                offsetX: r.offsetX,
+                candleWidth: r.candleWidth,
+                zoomLevelIndex: r.zoomLevelIndex,
+                plotWidthPx: r.plotWidthPx,
+            });
+        }
+
+        const __origSnapshotPanDrawingsLayer = (typeof chart._snapshotPanDrawingsLayer === 'function')
+            ? chart._snapshotPanDrawingsLayer.bind(chart)
+            : null;
+        if (__origSnapshotPanDrawingsLayer) {
+            chart._snapshotPanDrawingsLayer = function () {
+                const panStart = !!(chart.drag && chart.drag.active && chart.drag.type === 'pan');
+                __origSnapshotPanDrawingsLayer();
+                if (!panStart || !isRangeSyncEnabled()) return;
+                if (typeof chart._armPanSyncFollowBurst === 'function') {
+                    try { chart._armPanSyncFollowBurst(); } catch (_) {}
+                }
+                sendImmediatePanSyncRange();
+            };
+        }
 
         // 3) Symbol / data load — re-emit chart-state, NOT a sync event.
         //    v10.3: also include firstBarMs/lastBarMs so the shell can detect
@@ -1955,6 +2008,9 @@
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
             beginApplying(panSync);
+            if (isPeerLedRangeMessage(m) && isRangeSyncEnabled()) {
+                markReplayViewportForSyncFollow(chart);
+            }
 
             // Split / boot snap: always mirror host tile A (even when Date Range toggle is off).
             if (!panSync && m.forceInitialSync && isEmbedPanelChart()

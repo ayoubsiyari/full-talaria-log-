@@ -22,6 +22,17 @@ import { type SessionLimitGateData } from "./sessionLimitGate";
 
 const F = "'Exo 2', sans-serif";
 
+const STARTING_BALANCE_MAX_DIGITS = 6;
+function sanitizeStartingBalanceInput(raw: string): string {
+  return String(raw ?? "").replace(/\D/g, "").slice(0, STARTING_BALANCE_MAX_DIGITS);
+}
+function parseStartingBalanceInput(raw: string): number | null {
+  const digits = sanitizeStartingBalanceInput(raw);
+  if (!digits) return null;
+  const value = Number(digits);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 function IconI({ n, s = 18, cl = "currentColor" }: { n: string; s?: number; cl?: string }) {
   if (n === "x") {
     return (
@@ -475,7 +486,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setNewSessEnd(endDate);
     setNewSessStartInput(startDate);
     setNewSessEndInput(endDate);
-    setNewSessCapital(capital);
+    setNewSessCapital(sanitizeStartingBalanceInput(capital));
     setNewSessCurrency(String(cfg.account_currency || cfg.currency || "USD"));
     setNewSessAssetClass(String(cfg.asset_class || cfg.assetClass || "Forex"));
     setSessTradingMode(isProp ? "prop" : "standard");
@@ -724,7 +735,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
   const lockedBox = { opacity: 0.35, pointerEvents: "none" as const, userSelect: "none" as const };
   const activeBox = {};
-  const isValid2 = !!(newSessName && newSessTickers.length > 0 && newSessStart && newSessEnd && newSessCapital && !atSessionCap);
+  const isValid2 = !!(newSessName && newSessTickers.length > 0 && newSessStart && newSessEnd && parseStartingBalanceInput(newSessCapital) && !atSessionCap);
 
   const TlChk = (on: boolean, hKey: string, label: string | null, toggle: any, accent?: string) => {
     const ac = accent || c.acL;
@@ -903,7 +914,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       ],
       startDate,
       endDate,
-      startBalance: String(newSessCapital || "10000"),
+      startBalance: String(parseStartingBalanceInput(newSessCapital) || "10000"),
       account_currency: newSessCurrency,
       leverage: sessionLeverage,
       margin_call_level: parseFloat(newSessMarginCall || "100"),
@@ -2069,7 +2080,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                             <span style={{position:"absolute",left:0,top:0,bottom:0,width:24,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:c.ts,fontWeight:700,borderRight:`1px solid ${c.br}`,pointerEvents:"none",fontFamily:F}}>
                               {{"USD":"$","EUR":"€","GBP":"£","JPY":"¥","CHF":"₣","AUD":"A$","CAD":"C$"}[newSessCurrency]||"$"}
                             </span>
-                            <input type="number" value={newSessCapital} onChange={e=>setNewSessCapital(e.target.value)} className="tlr-nospinner" style={{...inp({fontSize:11,fontWeight:800,paddingLeft:26,fontVariantNumeric:"tabular-nums"})}}/>
+                            <input type="text" inputMode="numeric" pattern="[0-9]*" value={newSessCapital} onChange={e=>setNewSessCapital(sanitizeStartingBalanceInput(e.target.value))} className="tlr-nospinner" style={{...inp({fontSize:11,fontWeight:800,paddingLeft:26,fontVariantNumeric:"tabular-nums"})}}/>
                           </div>
                           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                             {(()=>{
@@ -2132,7 +2143,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
 
                       {/* Prop Firm rules — only shown in prop mode */}
                       {sessTradingMode==="prop"&&(()=>{
-                        const cap=parseFloat(newSessCapital)||10000;
+                        const cap=parseStartingBalanceInput(newSessCapital)||10000;
                         const fieldLbl=(text)=><div style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,marginBottom:3}}>{text}</div>;
                         const pctArrows=(val,setter,step=0.1)=>(
                           <div style={{position:"absolute",right:0,top:0,bottom:0,width:14,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
@@ -2451,7 +2462,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                       {[
                         [newSessAssetClass||"—",c.ts],
                         [sessTradingMode==="prop"?"Prop Firm":"Standard",sessTradingMode==="prop"?c.gold:c.ts],
-                        [(()=>{const sym={"USD":"$","EUR":"€","GBP":"£","JPY":"¥"};return`${sym[newSessCurrency]||"$"}${(parseFloat(newSessCapital)||0).toLocaleString()}`;})(),c.ts],
+                        [(()=>{const sym={"USD":"$","EUR":"€","GBP":"£","JPY":"¥"};return`${sym[newSessCurrency]||"$"}${(parseStartingBalanceInput(newSessCapital)||0).toLocaleString()}`;})(),c.ts],
                         [newSessStart&&newSessEnd?`${newSessStart.split("T")[0]} → ${newSessEnd.split("T")[0]}`:"No date set",newSessStart&&newSessEnd?c.ts:c.tm],
                       ].map(([val,col],i,arr)=>(
                         <span key={i} style={{display:"flex",alignItems:"center",gap:0,overflow:"hidden",minWidth:0,flexShrink:i===arr.length-1?1:0}}>
