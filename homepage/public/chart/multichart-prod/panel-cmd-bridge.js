@@ -1044,25 +1044,46 @@
                     }
                     // Multichart backtest: refetch window must anchor on host A's
                     // replay playhead (same as panel A's _refetchBacktestTimeframe).
+                    // Capture the host playhead so we can BOTH seed it before the
+                    // switch AND re-center on it after (see followAfterTfSwitch).
+                    var tfHostPlayheadTs = null;
                     try {
                         var parentPcTf = (global.parent && global.parent !== global)
                             ? global.parent.chart : null;
                         var prsTf = parentPcTf && parentPcTf.replaySystem;
-                        if (ch.isBacktestMode && ch.replaySystem && ch.replaySystem.isActive
-                            && prsTf && prsTf.isActive
+                        if (prsTf && prsTf.isActive
                             && Number.isFinite(Number(prsTf.replayTimestamp))) {
-                            ch.replaySystem.replayTimestamp = Number(prsTf.replayTimestamp);
+                            tfHostPlayheadTs = Number(prsTf.replayTimestamp);
+                        }
+                        if (ch.isBacktestMode && ch.replaySystem && ch.replaySystem.isActive
+                            && tfHostPlayheadTs != null) {
+                            ch.replaySystem.replayTimestamp = tfHostPlayheadTs;
                         }
                     } catch (_) {}
+                    // After the TF refetch, the panel would otherwise only
+                    // re-enable auto-scroll — which leaves the new-TF chart
+                    // zoomed out with the playhead pinned to the far LEFT and a
+                    // huge empty future span on the right (the "switching TF
+                    // jumps back / wrong position" report). Explicitly re-seek to
+                    // the host playhead and center it (isEnter=true →
+                    // centerOnCandle + price refit), exactly how panel A settles
+                    // after its own TF switch. Fall back to a plain follow when
+                    // there's no host playhead (live mode / replay inactive).
+                    var followAfterTfSwitch = function () {
+                        if (tfHostPlayheadTs != null
+                            && ch.replaySystem && ch.replaySystem.isActive) {
+                            try {
+                                forceReplaySeek(ch, tfHostPlayheadTs, true);
+                                return;
+                            } catch (_) {}
+                        }
+                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                    };
                     var sw = ch.setTimeframe(tf);
                     if (sw && typeof sw.then === 'function') {
-                        return sw.then(function () {
-                            try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
-                        });
+                        return sw.then(followAfterTfSwitch);
                     }
-                    setTimeout(function () {
-                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
-                    }, 0);
+                    setTimeout(followAfterTfSwitch, 0);
                     return;
                 }
 
