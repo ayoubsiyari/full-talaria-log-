@@ -595,6 +595,82 @@ function v9IsMultiPanelLayoutActive() {
   return !!(g && typeof g.runCommand === "function");
 }
 
+/** Hide/show drawings, indicators, positions, or all on every multichart tile. */
+function v9ApplyVisibilityMenuAction(action) {
+  const ch =
+    typeof window.getActiveChart === "function"
+      ? window.getActiveChart()
+      : window.chart;
+  if (!ch) return;
+  if (typeof ch.computeVisibilityMenuAction !== "function" || typeof ch.applyVisibilityMenuState !== "function") {
+    if (typeof ch.handleVisibilityMenuAction === "function") {
+      ch.handleVisibilityMenuAction(action);
+    }
+    return;
+  }
+  const result = ch.computeVisibilityMenuAction(action);
+  if (!result.ok) {
+    if (result.message && typeof ch.showNotification === "function") {
+      ch.showNotification(result.message);
+    }
+    try {
+      if (typeof ch.updateVisibilityMenuItems === "function") ch.updateVisibilityMenuItems();
+      if (typeof ch.hideVisibilityMenu === "function") ch.hideVisibilityMenu();
+    } catch (_) {}
+    return;
+  }
+  const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+  if (grid && typeof grid.runCommandOnAllPanels === "function" && v9IsMultiPanelLayoutActive()) {
+    grid.runCommandOnAllPanels("setVisibilityMenuState", { state: result.state, silent: true }).catch(() => {});
+  } else {
+    ch.applyVisibilityMenuState(result.state);
+  }
+  if (result.message && typeof ch.showNotification === "function") {
+    ch.showNotification(result.message);
+  }
+  try {
+    if (typeof ch.updateVisibilityMenuItems === "function") ch.updateVisibilityMenuItems();
+    if (typeof ch.hideVisibilityMenu === "function") ch.hideVisibilityMenu();
+  } catch (_) {}
+}
+
+/** Undo/redo on the focused multichart tile (or any tile that holds history). */
+function v9ExecuteUndoRedo(kind) {
+  const isUndo = kind === "undo";
+  const managers = enumerateV9DrawingManagersActiveFirst();
+  for (const dm of managers) {
+    const hist = dm && dm.history;
+    if (!hist) continue;
+    const hasStack = isUndo
+      ? Array.isArray(hist.undoStack) && hist.undoStack.length > 0
+      : Array.isArray(hist.redoStack) && hist.redoStack.length > 0;
+    if (!hasStack) continue;
+    try {
+      if (isUndo && typeof dm.undo === "function") dm.undo();
+      else if (!isUndo && typeof dm.redo === "function") dm.redo();
+    } catch (err) {
+      console.warn("[V9] undo/redo failed:", err);
+    }
+    return;
+  }
+  const ch =
+    typeof window.getActiveChart === "function"
+      ? window.getActiveChart()
+      : window.chart;
+  const dm = ch && ch.drawingManager;
+  if (!dm) return;
+  try {
+    if (isUndo && typeof dm.undo === "function") dm.undo();
+    else if (!isUndo && typeof dm.redo === "function") dm.redo();
+    else if (dm.history) {
+      if (isUndo && typeof dm.history.undo === "function") dm.history.undo();
+      else if (!isUndo && typeof dm.history.redo === "function") dm.history.redo();
+    }
+  } catch (err) {
+    console.warn("[V9] undo/redo failed:", err);
+  }
+}
+
 /** Delete drawings / indicators / both on every multichart tile (host + iframes). */
 function v9ClearObjectsOnAllPanels(action) {
   const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
@@ -21268,12 +21344,10 @@ const TalariaV8bLive = () => {
           const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
           if (t.id === "pinbar") { setPinnedBarOpen(v => !v); return; }
           if (t.action) {
-            const dm = window.chart && window.chart.drawingManager;
-            const hist = dm && dm.history;
-            try {
-              if (t.id === "undo" && hist && hist.undo) hist.undo();
-              else if (t.id === "redo" && hist && hist.redo) hist.redo();
-            } catch (err) { console.warn('[V9] undo/redo failed:', err); }
+            if (t.id === "undo" || t.id === "redo") {
+              v9ExecuteUndoRedo(t.id);
+              return;
+            }
             return;
           }
           if (t.id === "lock") {
@@ -29686,13 +29760,19 @@ const TalariaV8bLive = () => {
                       typeof window.getActiveChart === "function"
                         ? window.getActiveChart()
                         : window.chart;
-                    if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
-                      if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
-                      else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
-                      else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
-                      setGroupSelected(p => v9SanitizeGroupSelected({ ...p, eye: item }));
-                      closeDropdown();
-                      return;
+                    if (activeKey === "eye") {
+                      const visAction =
+                        item.icon === "eyeAll" ? "drawings"
+                        : item.icon === "eyeInd" ? "indicators"
+                        : item.icon === "eyePos" ? "positions"
+                        : item.icon === "eyeHide" ? "all"
+                        : null;
+                      if (visAction) {
+                        v9ApplyVisibilityMenuAction(visAction);
+                        setGroupSelected(p => v9SanitizeGroupSelected({ ...p, eye: item }));
+                        closeDropdown();
+                        return;
+                      }
                     }
                     if (activeKey === "magnet") {
                       applyV9MagnetMode(item);

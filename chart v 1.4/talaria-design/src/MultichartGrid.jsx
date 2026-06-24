@@ -3602,6 +3602,15 @@ export default function MultichartGrid({
                             indicators: list.map((i) => ({ id: i.id, type: i.type || i.name || null })),
                         });
                     }
+                    case "setVisibilityMenuState": {
+                        const visState = (args && args.state) || {};
+                        const visSilent = !!(args && args.silent);
+                        if (typeof ch.applyVisibilityMenuState === "function") {
+                            ch.applyVisibilityMenuState(visState, { silent: visSilent });
+                        }
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        return Promise.resolve(null);
+                    }
                     case "clearOnlyDrawings": {
                         if (typeof ch.clearOnlyDrawings === "function") {
                             ch.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });

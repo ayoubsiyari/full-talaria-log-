@@ -87,6 +87,32 @@ const formatSessionNetPnlDisplay = (pnl, theme) => {
   if (n > 0) return { text: `+$${n.toLocaleString()}`, color: theme.gn };
   return { text: `-$${Math.abs(n).toLocaleString()}`, color: theme.rd };
 };
+const estimateActionMenuHeight = (actions, { rowH = 30, dividerH = 5, accentH = 2 } = {}) =>
+  accentH + (actions || []).reduce((sum, action) => sum + (action?.label === "divider" ? dividerH : rowH), 0);
+const computeAnchoredDropdownPos = ({
+  anchorTop,
+  anchorBottom,
+  anchorLeft,
+  anchorRight,
+  menuW,
+  menuH,
+  zoom = 1,
+  gap = 4,
+  margin = 8,
+  rightAlign = true,
+}) => {
+  const vpW = window.innerWidth / zoom;
+  const vpH = window.innerHeight / zoom;
+  const belowSpace = vpH - anchorBottom - gap;
+  const aboveSpace = anchorTop - gap;
+  const flipAbove = belowSpace < menuH + margin && aboveSpace > belowSpace;
+  let left = rightAlign ? anchorRight - menuW : anchorLeft;
+  left = Math.max(margin, Math.min(left, vpW - menuW - margin));
+  if (flipAbove) {
+    return { left, top: Math.max(margin, anchorTop - gap - menuH), flipAbove: true };
+  }
+  return { left, top: Math.max(margin, Math.min(anchorBottom + gap, vpH - menuH - margin)), flipAbove: false };
+};
 const STRAT_LAYOUT_STORAGE_KEY = "talaria_strat_layout_mode";
 const readStoredStratLayoutMode = () => {
   try {
@@ -13006,7 +13032,7 @@ const TalariaV8b = () => {
                     const {isJournal,isProp,stripeCol,hoverBorder,hoverShadow}=getSessionRowStripeMeta(sess);
                     const hasPnl=sess.pnl!=null;
                     const pnlDisplay=formatSessionNetPnlDisplay(sess.pnl,c);
-                    const pnlPos=hasPnl&&!sessionNetPnlIsZero(sess.pnl)&&Number(sess.pnl)>0;
+                    const pnlPassedOutcome=hasPnl&&Number(sess.pnl)>=0;
                     const createdStr=sess.createdAt?new Date(sess.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"—";
                     const progress=sess.progress??0;
                     const pnlCol=pnlDisplay.color;
@@ -13014,8 +13040,8 @@ const TalariaV8b = () => {
                     const optLines=sess.isJournalSession
                       ? [{label:"Manual",on:true},{label:sess.platform||"Journal",on:!!sess.platform}]
                       : [{label:"Rollback",on:!!sess.rollbackAllowed},{label:"Costs",on:!!(sess.commission&&sess.commission!=="None")}];
-                    const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPos?"Passed":"Lost"):"Done"):`${progress}%`);
-                    const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm);
+                    const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPassedOutcome?"Passed":"Lost"):"Done"):`${progress}%`);
+                    const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPassedOutcome?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm);
                     return(
                       <div key={sess.id}
                         onMouseEnter={()=>setSessHov(sess.id)} onMouseLeave={()=>setSessHov(null)}
@@ -13141,7 +13167,7 @@ const TalariaV8b = () => {
                         {/* Row 7: Progress */}
                         <div style={{padding:"6px 10px 8px",display:"flex",alignItems:"center",gap:8}}>
                           <div style={{flex:1,height:2,background:"rgba(255,255,255,0.07)",overflow:"hidden"}}>
-                            <div style={{width:`${Math.min(progress,100)}%`,height:"100%",background:isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):c.acL),transition:"width 0.3s ease"}}/>
+                            <div style={{width:`${Math.min(progress,100)}%`,height:"100%",background:isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPassedOutcome?c.gn:c.rd):c.gn):c.acL),transition:"width 0.3s ease"}}/>
                           </div>
                           <span style={{fontSize:10,fontWeight:800,color:progressColor,fontVariantNumeric:"tabular-nums",fontFamily:F,flexShrink:0}}>{progressLabel}</span>
                         </div>
@@ -13174,17 +13200,18 @@ const TalariaV8b = () => {
                   const isH=sessHov===sess.id;
                   const {isJournal,isProp,stripeCol,hoverBorder,hoverShadow}=getSessionRowStripeMeta(sess);
                   const hasPnl=sess.pnl!=null;
-                  const pnlPos=hasPnl&&sess.pnl>=0;
+                  const pnlDisplay=formatSessionNetPnlDisplay(sess.pnl,c);
+                  const pnlPassedOutcome=hasPnl&&Number(sess.pnl)>=0;
                   const createdStr=sess.createdAt?new Date(sess.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"—";
                   const progress=sess.progress??0;
                   const hasStarted=progress>0;
-                  const pnlCol=hasPnl?(pnlPos?c.gn:c.rd):c.tm;
+                  const pnlCol=pnlDisplay.color;
                   const fmtD=d=>{if(!d)return"—";const[y,mo,day]=d.split("-");return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mo-1]+" "+Number(day)+", "+y;};
-                  const pnlVal=hasPnl?`${pnlPos?"+":""}$${sess.pnl.toLocaleString()}`:"—";
+                  const pnlVal=pnlDisplay.text;
                   const modeLabel=getSessionRowModeLabel(sess);
                   const modeColor=isJournal?c.gn:(isProp?c.gold:c.acL);
-                  const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPos?"Passed":"Lost"):"Done"):`${progress}%`);
-                  const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm);
+                  const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPassedOutcome?"Passed":"Lost"):"Done"):`${progress}%`);
+                  const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPassedOutcome?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm);
                   const colCell=(label,val,w,valCol=c.ts)=>(
                     <div style={{width:w,flexShrink:0,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",borderRight:"none",overflow:"hidden"}}>
                       <div style={{fontSize:10,fontWeight:700,color:valCol,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums",fontFamily:F,textAlign:"center"}}>{val}</div>
@@ -13313,7 +13340,7 @@ const TalariaV8b = () => {
                         <div style={{width:66,flexShrink:0,padding:"0 8px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,borderRight:"none",overflow:"hidden"}}>
                           <span style={{fontSize:10,fontWeight:800,color:progressColor,fontVariantNumeric:"tabular-nums",fontFamily:F}}>{progressLabel}</span>
                           <div style={{width:"100%",height:2,background:"rgba(255,255,255,0.07)",overflow:"hidden"}}>
-                            <div style={{width:`${Math.min(progress,100)}%`,height:"100%",background:isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPos?c.gn:c.rd):c.gn):c.acL),transition:"width 0.3s ease"}}/>
+                            <div style={{width:`${Math.min(progress,100)}%`,height:"100%",background:isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPassedOutcome?c.gn:c.rd):c.gn):c.acL),transition:"width 0.3s ease"}}/>
                           </div>
                         </div>
 
@@ -35366,7 +35393,7 @@ const TalariaV8b = () => {
                       <div title={strat.name} style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.2,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word"}}>{strat.name}</div>
                     </div>
                     <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
-                      onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:r.right/Z,y:r.bottom/Z});}}
+                      onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,anchorTop:r.top/Z,anchorBottom:r.bottom/Z,anchorLeft:r.left/Z,anchorRight:r.right/Z});}}
                       onDoubleClick={e=>e.stopPropagation()}
                       style={{width:32,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:stratActMenu?.id===strat.id?c.acL:c.ts,background:"transparent",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
                       onMouseEnter={e=>{e.currentTarget.style.color=stratActMenu?.id===strat.id?c.acL:c.tx;e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
@@ -35625,7 +35652,7 @@ const TalariaV8b = () => {
                     </div>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>
                       <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
-                        title="Actions" onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:r.right/Z,y:r.bottom/Z});}}
+                        title="Actions" onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,anchorTop:r.top/Z,anchorBottom:r.bottom/Z,anchorLeft:r.left/Z,anchorRight:r.right/Z});}}
                         onDoubleClick={e=>e.stopPropagation()}
                         style={{width:32,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:stratActMenu?.id===strat.id?c.acL:c.ts,background:"transparent",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
                         onMouseEnter={e=>{e.currentTarget.style.color=stratActMenu?.id===strat.id?c.acL:c.tx;e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
@@ -36178,10 +36205,6 @@ const TalariaV8b = () => {
                 const isMineMenu=!!stratActMenu.isMine&&!isTemplate;
                 const isSavedMenu=!!stratActMenu.inSavedTab;
                 const isSavedNow=savedCommunityIds.has(ms.id);
-                const menuW=126, menuH=(isMineMenu||isTemplate)?104:78;
-                const vpW=window.innerWidth/Z, vpH=window.innerHeight/Z;
-                const menuLeft=Math.max(8,Math.min(stratActMenu.x-menuW,vpW-menuW-8));
-                const menuTop=Math.max(8,Math.min(stratActMenu.y+2,vpH-menuH-8));
                 const closeMenu=()=>setStratActMenu(null);
                 const run=fn=>e=>{e.stopPropagation();fn&&fn();closeMenu();};
                 const startStrategy=()=>{
@@ -36217,9 +36240,16 @@ const TalariaV8b = () => {
                     {label:isSavedNow?"Saved":"Save",handler:()=>saveCommunity(ms),col:isSavedNow?c.acL:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill={isSavedNow?c.acL:"none"}><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.7"/></svg>},
                   ]),
                 ];
+                const menuW=160;
+                const menuH=estimateActionMenuHeight(actions);
+                const anchorTop=stratActMenu.anchorTop??stratActMenu.y??0;
+                const anchorBottom=stratActMenu.anchorBottom??stratActMenu.y??anchorTop;
+                const anchorLeft=stratActMenu.anchorLeft??((stratActMenu.x??0)-32);
+                const anchorRight=stratActMenu.anchorRight??stratActMenu.x??anchorLeft+32;
+                const menuPos=computeAnchoredDropdownPos({anchorTop,anchorBottom,anchorLeft,anchorRight,menuW,menuH,zoom:Z,rightAlign:true});
                 return(<>
                   <div style={{position:"fixed",inset:0,zIndex:100000}} onClick={e=>{e.stopPropagation();closeMenu();}}/>
-                  <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:menuTop,left:menuLeft,zIndex:100001,width:menuW,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
+                  <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:menuPos.top,left:menuPos.left,zIndex:100001,width:menuW,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                     {actions.map(({label,handler,col,danger,icon})=>{
                       if(label==="divider")return <div key="div" style={{height:1,background:c.br,margin:"2px 0"}}/>;

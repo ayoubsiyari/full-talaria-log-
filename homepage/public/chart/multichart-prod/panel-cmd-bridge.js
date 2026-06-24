@@ -1219,6 +1219,15 @@
                     });
                     return { indicators: items };
                 }
+                case 'setVisibilityMenuState': {
+                    var visState = (args && args.state) || {};
+                    var visSilent = !!(args && args.silent);
+                    if (typeof ch.applyVisibilityMenuState === 'function') {
+                        ch.applyVisibilityMenuState(visState, { silent: visSilent });
+                    }
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    return;
+                }
                 case 'clearOnlyDrawings': {
                     if (typeof ch.clearOnlyDrawings === 'function') {
                         ch.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });

@@ -10033,61 +10033,92 @@ class Chart {
         }
     }
 
-    handleVisibilityMenuAction(action) {
+    computeVisibilityMenuAction(action) {
         const positionsCount = this.getPositionsCount();
+        const counts = this.getDrawingAndIndicatorCounts();
 
         if (action === 'drawings') {
-            if (!this.drawingsHidden && this.getDrawingAndIndicatorCounts().drawings === 0) {
-                this.showNotification('No drawings to hide');
-                this.updateVisibilityMenuItems();
-                this.hideVisibilityMenu();
-                return;
+            if (!this.drawingsHidden && counts.drawings === 0) {
+                return { ok: false, message: 'No drawings to hide' };
             }
-            this.setDrawingsHidden(!this.drawingsHidden);
-            this.showNotification(this.drawingsHidden ? 'Drawings hidden ✓' : 'Drawings shown ✓');
-        } else if (action === 'indicators') {
-            if (!this.indicatorsHidden && this.getDrawingAndIndicatorCounts().indicators === 0) {
-                this.showNotification('No indicators to hide');
-                this.updateVisibilityMenuItems();
-                this.hideVisibilityMenu();
-                return;
+            const next = !this.drawingsHidden;
+            return {
+                ok: true,
+                state: { drawingsHidden: next },
+                message: next ? 'Drawings hidden ✓' : 'Drawings shown ✓',
+            };
+        }
+        if (action === 'indicators') {
+            if (!this.indicatorsHidden && counts.indicators === 0) {
+                return { ok: false, message: 'No indicators to hide' };
             }
-            this.setIndicatorsHidden(!this.indicatorsHidden);
-            this.showNotification(this.indicatorsHidden ? 'Indicators hidden ✓' : 'Indicators shown ✓');
-        } else if (action === 'positions') {
+            const next = !this.indicatorsHidden;
+            return {
+                ok: true,
+                state: { indicatorsHidden: next },
+                message: next ? 'Indicators hidden ✓' : 'Indicators shown ✓',
+            };
+        }
+        if (action === 'positions') {
             if (!this.positionsHidden && positionsCount === 0) {
-                this.showNotification('No positions to hide');
-                this.updateVisibilityMenuItems();
-                this.hideVisibilityMenu();
-                return;
+                return { ok: false, message: 'No positions to hide' };
             }
-            this.setPositionsHidden(!this.positionsHidden);
-            this.showNotification(this.positionsHidden ? 'Positions hidden ✓' : 'Positions shown ✓');
-        } else if (action === 'all') {
-            const anyItems = this.getDrawingAndIndicatorCounts().drawings + this.getDrawingAndIndicatorCounts().indicators + positionsCount;
+            const next = !this.positionsHidden;
+            return {
+                ok: true,
+                state: { positionsHidden: next },
+                message: next ? 'Positions hidden ✓' : 'Positions shown ✓',
+            };
+        }
+        if (action === 'all') {
+            const anyItems = counts.drawings + counts.indicators + positionsCount;
             const currentlyAllHidden = this.drawingsHidden && this.indicatorsHidden && this.positionsHidden;
-
             if (!currentlyAllHidden) {
                 if (anyItems === 0) {
-                    this.showNotification('Nothing to hide');
-                    this.updateVisibilityMenuItems();
-                    this.hideVisibilityMenu();
-                    return;
+                    return { ok: false, message: 'Nothing to hide' };
                 }
-                this.setDrawingsHidden(true);
-                this.setIndicatorsHidden(true);
-                this.setPositionsHidden(true);
-                this.showNotification('All objects hidden ✓');
-            } else {
-                this.setDrawingsHidden(false);
-                this.setIndicatorsHidden(false);
-                this.setPositionsHidden(false);
-                this.showNotification('All objects shown ✓');
+                return {
+                    ok: true,
+                    state: { drawingsHidden: true, indicatorsHidden: true, positionsHidden: true },
+                    message: 'All objects hidden ✓',
+                };
             }
+            return {
+                ok: true,
+                state: { drawingsHidden: false, indicatorsHidden: false, positionsHidden: false },
+                message: 'All objects shown ✓',
+            };
         }
+        return { ok: false };
+    }
 
-        this.updateVisibilityMenuItems();
-        this.hideVisibilityMenu();
+    applyVisibilityMenuState(state, opts = {}) {
+        const silent = !!opts.silent;
+        if (!state || typeof state !== 'object') return;
+        if (state.drawingsHidden !== undefined) this.setDrawingsHidden(!!state.drawingsHidden);
+        if (state.indicatorsHidden !== undefined) this.setIndicatorsHidden(!!state.indicatorsHidden);
+        if (state.positionsHidden !== undefined) this.setPositionsHidden(!!state.positionsHidden);
+        if (!silent) {
+            this.updateVisibilityMenuItems();
+            this.hideVisibilityMenu();
+        }
+    }
+
+    handleVisibilityMenuAction(action, opts = {}) {
+        const result = this.computeVisibilityMenuAction(action);
+        if (!result.ok) {
+            if (!opts.silent && result.message) {
+                this.showNotification(result.message);
+                this.updateVisibilityMenuItems();
+                this.hideVisibilityMenu();
+            }
+            return result;
+        }
+        this.applyVisibilityMenuState(result.state, opts);
+        if (!opts.silent && result.message) {
+            this.showNotification(result.message);
+        }
+        return result;
     }
 
     setDrawingsHidden(hidden) {
