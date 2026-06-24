@@ -2635,7 +2635,15 @@ export default function MultichartGrid({
         let coalescedFrameDetail = null;
         let coalescedFrameScheduled = false;
         let lastReplayFrameBroadcastAt = 0;
-        const REPLAY_BROADCAST_MIN_MS = 1000 / 30;
+        // Cap iframe frame delivery. During play we stream at most one frame per
+        // display refresh (~60fps) and DROP intermediate sub-frames — at high
+        // playback speeds the host ticks many virtual candles per real frame, but
+        // each iframe can only paint once per refresh anyway. Sending every host
+        // tick just floods the iframe with slice+resample+render work it can't keep
+        // up with (the freeze). Paused (step/scrub) stays at ~30fps. TradingView
+        // likewise never repaints panes faster than the display.
+        const REPLAY_BROADCAST_MIN_MS_PLAY = 1000 / 60;
+        const REPLAY_BROADCAST_MIN_MS_PAUSED = 1000 / 30;
 
         const broadcastReplayFrameToIframes = (detail) => {
             const mgr = managerRef.current;
@@ -2659,8 +2667,13 @@ export default function MultichartGrid({
                 coalescedFrameDetail = null;
                 return;
             }
+            const hostRs = window.chart && window.chart.replaySystem;
+            const hostPlaying = !!(hostRs && hostRs.isActive && hostRs.isPlaying);
+            const minMs = hostPlaying
+                ? REPLAY_BROADCAST_MIN_MS_PLAY
+                : REPLAY_BROADCAST_MIN_MS_PAUSED;
             const now = performance.now();
-            if (now - lastReplayFrameBroadcastAt < REPLAY_BROADCAST_MIN_MS) {
+            if (now - lastReplayFrameBroadcastAt < minMs) {
                 coalescedFrameScheduled = true;
                 window.requestAnimationFrame(flushCoalescedReplayFrame);
                 return;
@@ -2673,14 +2686,9 @@ export default function MultichartGrid({
         const onMultichartReplayFrame = (ev) => {
             const detail = ev && ev.detail;
             if (!detail || !Number.isFinite(Number(detail.timestamp))) return;
-            const hostRs = window.chart && window.chart.replaySystem;
-            const hostPlaying = !!(hostRs && hostRs.isActive && hostRs.isPlaying);
-            // During play, stream every host animation frame so B/C/D match tile A.
-            // When paused (step/scrub), coalesce to ~30fps to limit iframe CPU.
-            if (hostPlaying) {
-                broadcastReplayFrameToIframes(detail);
-                return;
-            }
+            // Always coalesce to the display refresh — keep only the LATEST frame
+            // and drop everything in between. This caps per-iframe work to one
+            // mirror+render per refresh whether playing, stepping, or scrubbing.
             coalescedFrameDetail = detail;
             if (coalescedFrameScheduled) return;
             coalescedFrameScheduled = true;

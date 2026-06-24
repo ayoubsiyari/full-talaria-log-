@@ -5911,6 +5911,70 @@ class ReplaySystem {
     }
 
     /**
+     * Same-pair, same-TF iframe panel: mirror the host's already-resampled
+     * rawData/data by reference instead of re-slicing + resampling per frame.
+     * Returns false (caller falls back to the resample path) when this panel is
+     * the host, is an independent pair, the host TF differs, or host data is empty.
+     * @returns {boolean}
+     */
+    _tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim) {
+        try {
+            if (!chart
+                || typeof chart._isMultichartEmbedPanel !== 'function'
+                || !chart._isMultichartEmbedPanel()) {
+                return false;
+            }
+            if (typeof window === 'undefined' || !window.parent || window.parent === window) {
+                return false;
+            }
+            const parent = window.parent.chart;
+            if (!parent || parent === chart) return false;
+
+            const parentTf = String(parent.currentTimeframe || '').toLowerCase().trim();
+            const myTf = String(chart.currentTimeframe || '').toLowerCase().trim();
+            if (!parentTf || parentTf !== myTf) return false;
+
+            const pData = parent.data;
+            const pRaw = parent.rawData;
+            if (!Array.isArray(pData) || pData.length === 0) return false;
+
+            // Host updates these arrays in place every frame for the same replay
+            // timestamp — sharing by reference is exactly what we want to paint.
+            chart.rawData = pRaw;
+            chart.data = pData;
+
+            const pIdx = Number(detail && detail.currentIndex);
+            if (Number.isFinite(pIdx)) {
+                this.currentIndex = Math.max(this.sessionStartIndex || 0, pIdx);
+            }
+            this.replayTimestamp = ts;
+            if (Number.isFinite(detail && detail.tickElapsedMs)) {
+                this.tickElapsedMs = Number(detail.tickElapsedMs);
+            }
+            if (Number.isFinite(detail && detail.tickProgress)) {
+                this.tickProgress = Number(detail.tickProgress);
+            }
+
+            if (hasAnim) {
+                const pathTarget = (Array.isArray(this.fullRawData)
+                    && Number.isFinite(pIdx) && this.fullRawData[pIdx])
+                    ? this.fullRawData[pIdx]
+                    : null;
+                this._syncMirrorAnimatingCandleState(detail, anim, pathTarget);
+            } else {
+                this.tickProgress = 0;
+                this.animatingCandle = null;
+            }
+
+            if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
+            this._finishMultichartMirrorRender(chart);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
      * Multichart V9: apply one replay frame from parent tile A on this panel.
      * Resolves playhead by timestamp / forming-candle time — never copies parent index.
      * @returns {boolean} false when target bar is not in loaded fullRawData (caller may refetch)
@@ -5927,6 +5991,15 @@ class ReplaySystem {
         const sharesHostDataset = this._mirrorSharesHostDataset(chart, detail);
         const anim = detail.animatedCandle;
         const hasAnim = !!(anim && Number.isFinite(Number(anim.t)));
+
+        // FAST PATH (iframe, same file + same TF as host): the host already
+        // sliced + resampled this exact frame. Reuse its arrays by reference
+        // instead of re-slicing + resampling per frame on every panel — this is
+        // the single biggest replay-playback CPU saver in multichart.
+        if (sharesHostDataset
+            && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+            return true;
+        }
 
         if (hasAnim && !sharesHostDataset) {
             const indep = this._buildIndependentPairAnimatedCandle(frd, ts, detail);

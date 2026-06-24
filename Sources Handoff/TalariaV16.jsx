@@ -884,7 +884,7 @@ const LOAD_QUOTES = [
 // ── Canvas Strategy Builder ─────────────────────────────────────────────────
 
 // Module-level callback ref so section node buttons can trigger state changes
-const _cvCb = { addCondition: null, deleteSection: null, insertSection: null, renameSection: null, resizeSection: null, updateDesc: null, setDescPanelOpen: null, startDrag: null, deleteCondition: null, updateCondition: null };
+const _cvCb = { addCondition: null, deleteSection: null, insertSection: null, renameSection: null, resizeSection: null, updateDesc: null, setDescPanelOpen: null, startDrag: null, deleteCondition: null, updateCondition: null, showImageError: null };
 
 /* ── Node: Section Lane ── */
 const GOLD = 'rgba(201,168,76,0.9)';
@@ -1014,21 +1014,27 @@ const SectionNode = ({ id, data }) => {
   }, [descOpen]);
 
   const handleScreenshotClick = (idx) => { setActiveSlot(idx); if(fileInputRef.current) fileInputRef.current.click(); };
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if(!file || activeSlot===null) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const img = {src:ev.target.result, name:file.name};
+    const check = validateStrategyImageFile(file);
+    if (!check.ok) {
+      _cvCb.showImageError?.(check.error);
+      return;
+    }
+    try {
+      const src = await compressCoverImage(file);
+      const img = {src, name:file.name};
       setScreenshots(prev=>{
         const n=[...prev];
         n[activeSlot]=img;
         setNodes(nds => nds.map(node => node.id === id ? { ...node, data: { ...node.data, images:n } } : node));
         return n;
       });
-    };
-    reader.readAsDataURL(file);
-    e.target.value='';
+    } catch (err) {
+      _cvCb.showImageError?.(err instanceof Error ? err.message : 'Could not process image');
+    }
   };
 
   const cycleConnector = (idx) => {
@@ -1264,7 +1270,7 @@ const SectionNode = ({ id, data }) => {
             </div>
           );})}
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleFileChange}/>
+        <input ref={fileInputRef} type="file" accept={STRATEGY_IMAGE_ACCEPT} style={{display:'none'}} onChange={handleFileChange}/>
       </div>
 
       {/* Title strip */}
@@ -1848,16 +1854,22 @@ const ConditionCard = ({ id, data, selected }) => {
   };
 
   const handleScreenshotClick = (idx) => { setActiveSlot(idx); if(fileInputRef.current) fileInputRef.current.click(); };
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if(!file || activeSlot===null) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const img = {src:ev.target.result, name:file.name};
+    const check = validateStrategyImageFile(file);
+    if (!check.ok) {
+      _cvCb.showImageError?.(check.error);
+      return;
+    }
+    try {
+      const src = await compressCoverImage(file);
+      const img = {src, name:file.name};
       setScreenshots(prev=>{ const n=[...prev]; n[activeSlot]=img; _cvCb.updateCondition?.(id,{images:n}); return n; });
-    };
-    reader.readAsDataURL(file);
-    e.target.value='';
+    } catch (err) {
+      _cvCb.showImageError?.(err instanceof Error ? err.message : 'Could not process image');
+    }
   };
 
   const status = data.status || (data.mandatory === false ? 'optional' : 'mandatory');
@@ -1991,7 +2003,7 @@ const ConditionCard = ({ id, data, selected }) => {
             </div>
           );})}
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" style={{display:'none'}} onChange={handleFileChange}/>
+        <input ref={fileInputRef} type="file" accept={STRATEGY_IMAGE_ACCEPT} style={{display:'none'}} onChange={handleFileChange}/>
       </div>
 
       {/* Header strip — buttons */}
@@ -3314,6 +3326,8 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const [outlineStatusOpen, setOutlineStatusOpen] = useState(null);
   const [outlineTip, setOutlineTip] = useState(null);
   const [outlineImagePreview, setOutlineImagePreview] = useState(null);
+  const [outlineImgError, setOutlineImgError] = useState(null);
+  const outlineImgErrorTimerRef = useRef(null);
   const outlineTipTimerRef = useRef(null);
   const [canvasH, setCanvasH] = useState(0);
   const [sliding, setSliding] = useState(false);
@@ -3332,6 +3346,23 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const [templateToast, setTemplateToast] = useState(null);
   const [flowViewMode, setFlowViewMode] = useState('board');
   const [outlineZoom, setOutlineZoom] = useState(1);
+
+  const showOutlineImageError = useCallback((message) => {
+    const text = String(message || '').trim();
+    if (!text) return;
+    setOutlineImgError(text);
+    if (outlineImgErrorTimerRef.current) clearTimeout(outlineImgErrorTimerRef.current);
+    outlineImgErrorTimerRef.current = setTimeout(() => setOutlineImgError(null), 9000);
+  }, []);
+
+  useEffect(() => {
+    _cvCb.showImageError = showOutlineImageError;
+    return () => { _cvCb.showImageError = null; };
+  }, [showOutlineImageError]);
+
+  useEffect(() => () => {
+    if (outlineImgErrorTimerRef.current) clearTimeout(outlineImgErrorTimerRef.current);
+  }, []);
 
   const hasExistingGroups = canvasNodes.some(n => n.type === 'condition');
 
@@ -4192,15 +4223,22 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     }
     setOutlineTip(null);
   };
-  const handleOutlineImageFile = (nodeId, images, slot, file) => {
+  const handleOutlineImageFile = async (nodeId, images, slot, file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
+    const check = validateStrategyImageFile(file);
+    if (!check.ok) {
+      showOutlineImageError(check.error);
+      return;
+    }
+    try {
+      const src = await compressCoverImage(file);
       const next = Array.from({ length: 4 }, (_, i) => images?.[i] || null);
-      next[slot] = { src: ev.target.result, name: file.name };
+      next[slot] = { src, name: file.name };
       updateNodeImages(nodeId, next);
-    };
-    reader.readAsDataURL(file);
+      setOutlineImgError(null);
+    } catch (err) {
+      showOutlineImageError(err instanceof Error ? err.message : 'Could not process image');
+    }
   };
   const clearOutlineImage = (nodeId, images, slot) => {
     const next = Array.from({ length: 4 }, (_, i) => images?.[i] || null);
@@ -4305,7 +4343,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
               )}
               <input
                 type="file"
-                accept="image/*"
+                accept={STRATEGY_IMAGE_ACCEPT}
                 style={{display:'none'}}
                 onChange={e=>{handleOutlineImageFile(nodeId, images, slot, e.target.files?.[0]); e.target.value='';}}
               />
@@ -4313,6 +4351,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
             );
           })}
         </div>
+        <div style={{fontSize:9,color:'#98A2B3',fontFamily:F,letterSpacing:'0.02em'}}>{STRATEGY_IMAGE_FORMAT_HINT}</div>
       </div>
     );
   };
@@ -4405,6 +4444,20 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
 
       {/* Body */}
       <div style={{flex:1,minHeight:0,display:'flex',overflow:'hidden',position:'relative'}}>
+        {outlineImgError && (
+          <div role="alert" aria-live="polite"
+            style={{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',zIndex:120,maxWidth:'min(92%,560px)',display:'flex',alignItems:'flex-start',gap:10,padding:'10px 12px',background:'rgba(220,50,70,0.14)',border:'1px solid rgba(255,90,110,0.55)',boxShadow:'0 10px 28px rgba(0,0,0,0.45)',fontFamily:F}}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" style={{flexShrink:0,marginTop:1}}>
+              <circle cx="12" cy="12" r="9" stroke="#FF6B7A" strokeWidth="2"/>
+              <path d="M12 8v5" stroke="#FF6B7A" strokeWidth="2" strokeLinecap="round"/>
+              <circle cx="12" cy="16.5" r="1" fill="#FF6B7A"/>
+            </svg>
+            <div style={{flex:1,minWidth:0,fontSize:11,fontWeight:650,color:'#FFD0D6',lineHeight:1.45}}>{outlineImgError}</div>
+            <button type="button" aria-label="Dismiss image upload error"
+              onClick={()=>{setOutlineImgError(null);if(outlineImgErrorTimerRef.current)clearTimeout(outlineImgErrorTimerRef.current);}}
+              style={{border:'none',background:'transparent',color:'#FFB8C2',fontSize:16,lineHeight:1,cursor:'default',padding:0,flexShrink:0}}>×</button>
+          </div>
+        )}
         <div style={{position:'absolute',right:8,bottom:18,zIndex:55,display:'flex',flexDirection:'column',alignItems:'center',background:'transparent',border:'none',boxShadow:'none',padding:'2px 0'}}>
           <button
             type="button"
@@ -4776,7 +4829,40 @@ const deriveStrategyMarketsFromInstruments = (instrumentIds = [], supportIds = [
   });
   return MKT_CAT_OPTS.map(o => o.id).filter(id => markets.has(id));
 };
+const filterInstrumentsByMarketCategories = (instrumentIds = [], marketCategories = []) => {
+  const markets = marketCategories || [];
+  if (!markets.length) return [...(instrumentIds || [])];
+  const allowed = new Set(markets.map(m => String(m).toLowerCase()));
+  return (instrumentIds || []).filter(id => {
+    const cat = inferInstrumentMarketCategory(id);
+    return cat && allowed.has(cat);
+  });
+};
 const ALL_INSTRUMENTS = [...FOREX_INSTRUMENTS,...COMMODITY_CFD_INSTRUMENTS,...FUTURES_INSTRUMENTS,...CRYPTO_INSTRUMENTS,...STOCKS_INSTRUMENTS];
+const strategyInstrumentLabel = (rawId) => {
+  const id = String(rawId ?? "").trim().toLowerCase();
+  if (!id) return "";
+  const match = ALL_INSTRUMENTS.find(x => x.id === id);
+  if (match) return match.label;
+  const compact = id.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const byCompact = ALL_INSTRUMENTS.find(x => {
+    const xCompact = x.id.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    const labelCompact = x.label.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    return xCompact === compact || labelCompact === compact;
+  });
+  if (byCompact) return byCompact.label;
+  if (/^[a-z]{6}$/.test(compact)) return `${compact.slice(0, 3).toUpperCase()}/${compact.slice(3).toUpperCase()}`;
+  return id.toUpperCase();
+};
+const strategyBankScopeItems = (strat) => {
+  const instIds = [
+    ...(Array.isArray(strat?.instruments) ? strat.instruments : []),
+    ...(Array.isArray(strat?.supportInst) ? strat.supportInst : []),
+  ];
+  const normalized = [...new Set(instIds.map(x => String(x ?? "").trim().toLowerCase()).filter(Boolean))];
+  if (normalized.length) return normalized.map(strategyInstrumentLabel);
+  return (strat?.markets || []).map(m => MKT_CAT_OPTS.find(x => x.id === m)?.label || m);
+};
 
 const INST_SYM_DATA = {
   xauusd:{id:'XAUUSD'},xagusd:{id:'SI',col:'#B0BEC5',bg:'rgba(176,190,197,0.18)'},
@@ -4814,11 +4900,31 @@ const getInstFlags = id => {
   return null;
 };
 
+const STRATEGY_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const STRATEGY_IMAGE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp';
+const STRATEGY_IMAGE_FORMAT_HINT = 'JPEG, PNG, GIF, or WebP · max 5 MB';
+function validateStrategyImageFile(file) {
+  if (!file) return { ok: false, error: 'No file selected.' };
+  const mime = String(file.type || '').toLowerCase().split(';')[0].trim();
+  const extMatch = /\.([a-z0-9]+)$/i.exec(String(file.name || ''));
+  const ext = extMatch ? extMatch[1].toLowerCase() : '';
+  const allowedExt = { jpg: true, jpeg: true, png: true, gif: true, webp: true };
+  const allowedMime = { 'image/jpeg': true, 'image/png': true, 'image/gif': true, 'image/webp': true };
+  if (!allowedMime[mime] && !allowedExt[ext]) {
+    return { ok: false, error: 'Unsupported format. Use JPEG, PNG, GIF, or WebP.' };
+  }
+  if (file.size > STRATEGY_IMAGE_MAX_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    return { ok: false, error: `Image too large (${mb} MB). Maximum size is 5 MB.` };
+  }
+  return { ok: true };
+}
+
 function compressCoverImage(file, maxW, maxH, quality) {
   maxW = maxW||1200; maxH = maxH||630; quality = quality||0.82;
   return new Promise(function(resolve, reject) {
-    if (!file.type.startsWith('image/')) { reject(new Error('Not an image')); return; }
-    if (file.size > 12*1024*1024) { reject(new Error('Image too large (max 12 MB)')); return; }
+    const check = validateStrategyImageFile(file);
+    if (!check.ok) { reject(new Error(check.error)); return; }
     var reader = new FileReader();
     reader.onerror = function() { reject(new Error('Failed to read file')); };
     reader.onload = function(ev) {
@@ -4979,6 +5085,7 @@ function GeneralInfoStepContent({ c, F,
   const fileRef  = React.useRef(null);
   const emojiRef = React.useRef(null);
   const [imgBusy, setImgBusy]         = React.useState(false);
+  const [imgError, setImgError]       = React.useState('');
   const [imgHovIdx, setImgHovIdx]     = React.useState(null);
   const [imgPreview, setImgPreview]   = React.useState(null);
   const [mktDropOpen, setMktDropOpen] = React.useState(false);
@@ -5073,22 +5180,42 @@ function GeneralInfoStepContent({ c, F,
   const pickCover = async e => {
     const files = Array.from(e.target.files || []).slice(0, 1); e.target.value = '';
     if (!files.length) return;
+    const check = validateStrategyImageFile(files[0]);
+    if (!check.ok) {
+      setImgError(check.error);
+      return;
+    }
+    setImgError('');
     setImgBusy(true);
     try {
-      const results = await Promise.all(files.map(f => compressCoverImage(f).catch(() => null)));
+      const results = await Promise.all(files.map(f => compressCoverImage(f)));
       setStratBImages(prev => {
         const next = [...(prev||[]), ...results.filter(Boolean)];
         return next.slice(0, 6);
       });
     }
-    catch (err) { alert(err instanceof Error ? err.message : 'Could not process image'); }
+    catch (err) { setImgError(err instanceof Error ? err.message : 'Could not process image'); }
     finally { setImgBusy(false); }
   };
 
 
+  const pruneInstrumentsToMarkets = markets => {
+    if (!(markets || []).length) return;
+    setStratBInstruments(prev => {
+      const next = filterInstrumentsByMarketCategories(prev, markets);
+      return next.length === (prev || []).length && next.every((id, i) => id === (prev || [])[i]) ? prev : next;
+    });
+    setStratBSupportInst(prev => {
+      const next = filterInstrumentsByMarketCategories(prev, markets);
+      return next.length === (prev || []).length && next.every((id, i) => id === (prev || [])[i]) ? prev : next;
+    });
+  };
+
   const toggleMkt  = id => {
     const cur=stratBMarkets||[];
-    setStratBMarkets(cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]);
+    const next=cur.includes(id)?cur.filter(x=>x!==id):[...cur,id];
+    setStratBMarkets(next);
+    pruneInstrumentsToMarkets(next);
   };
   const effectiveMarkets = React.useMemo(
     () => (stratBMarkets||[]).length > 0
@@ -5113,6 +5240,9 @@ function GeneralInfoStepContent({ c, F,
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [mktDropOpen]);
+  React.useEffect(() => {
+    pruneInstrumentsToMarkets(stratBMarkets);
+  }, [stratBMarkets]);
   React.useEffect(()=>{
     if(!trdPickOpen) return;
     const handler = e => { if(trdWrapRef.current && !trdWrapRef.current.contains(e.target)) setTrdPickOpen(false); };
@@ -5827,9 +5957,17 @@ function GeneralInfoStepContent({ c, F,
         </div>
 
         {/* ── Section: Strategy Image ── */}
-        <div style={{marginBottom:14,background:c.sf,border:`1px solid ${c.brH}`,padding:'14px 16px'}}>
-          <div style={lbl}>Strategy Image</div>
-          <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={pickCover}/>
+        <div style={{marginBottom:14,background:c.sf,border:`1px solid ${imgError?'rgba(255,90,110,0.55)':c.brH}`,padding:'14px 16px'}}>
+          <div style={{...lbl,display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:8,marginBottom:7}}>
+            <span>Strategy Image</span>
+            <span style={{fontSize:8,fontWeight:600,color:c.tm,letterSpacing:'0.04em',textTransform:'none'}}>{STRATEGY_IMAGE_FORMAT_HINT}</span>
+          </div>
+          <input ref={fileRef} type="file" accept={STRATEGY_IMAGE_ACCEPT} style={{display:'none'}} onChange={pickCover}/>
+          {imgError && (
+            <div role="alert" style={{marginBottom:8,padding:'8px 10px',background:'rgba(220,50,70,0.12)',border:'1px solid rgba(255,90,110,0.45)',fontSize:11,fontWeight:650,color:'#FFB8C2',fontFamily:F,lineHeight:1.4}}>
+              {imgError}
+            </div>
+          )}
           <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
             {(stratBImages||[]).map((item,i)=>{
               const src = strategyImageUrl(item);
@@ -35463,9 +35601,7 @@ const TalariaV8b = () => {
           const StratCard = ({strat,isMine,inSavedTab,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => {
             const isH=stratCardHov===strat.id;
             const cardIcon = strat.icon || strat.template?.icon || "◎";
-            const marketItems = (strat.markets||[]).length
-              ? (strat.markets||[]).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m))
-              : (strat.instruments||[]);
+            const marketItems = strategyBankScopeItems(strat);
             const cardIsSaved = typeof isSaved === "function" ? isSaved(strat.id) : !!isSaved;
             const backtestSessions = strat.backtestSessions || [];
             const backtestCompleted = backtestSessions.filter(s=>(s.progress||0)===100).length;
@@ -35650,9 +35786,7 @@ const TalariaV8b = () => {
             );
           };
 
-          const stratMarkets = strat => (strat.markets||[]).length
-            ? (strat.markets||[]).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m))
-            : (strat.instruments||[]);
+          const stratMarkets = strat => strategyBankScopeItems(strat);
           const GlowText = ({children,accent=false,keyName,maxWidth=124}) => (
             <span key={keyName||children} title={typeof children === "string" ? children : undefined} style={{position:"relative",display:"inline-flex",alignItems:"center",height:17,padding:"0 3px 4px",fontSize:9.5,fontWeight:790,color:accent?c.acL:c.ts,letterSpacing:"0.01em",textTransform:"uppercase",whiteSpace:"nowrap",fontFamily:F,maxWidth,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>
               {children}

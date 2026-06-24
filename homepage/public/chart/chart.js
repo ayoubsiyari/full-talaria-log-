@@ -2112,9 +2112,36 @@ class Chart {
 
     _syncIndicatorsAfterMultichartDataShare() {
         if (this._timeframeSwitching || this._pairSwitchLoading) return;
-        if (typeof this.recalculateIndicators === 'function') {
-            try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+        if (typeof this.recalculateIndicators !== 'function') return;
+        if (!this.indicators || !Array.isArray(this.indicators.active)
+            || this.indicators.active.length === 0) {
+            return;
         }
+        // Throttle: rapid master-extend / pan-release / replay-frame bursts must
+        // not each trigger a full per-panel recalc. Run at most once per window
+        // and schedule a single trailing pass so the final state stays correct.
+        const THROTTLE_MS = 120;
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        const last = this._mcIndicatorRecalcAt || 0;
+        if (now - last < THROTTLE_MS) {
+            if (this._mcIndicatorRecalcTrailing != null) return;
+            const self = this;
+            const wait = THROTTLE_MS - (now - last);
+            this._mcIndicatorRecalcTrailing = setTimeout(() => {
+                self._mcIndicatorRecalcTrailing = null;
+                if (self._timeframeSwitching || self._pairSwitchLoading) return;
+                self._mcIndicatorRecalcAt = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                try { self.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+                if (typeof self.scheduleRender === 'function') self.scheduleRender();
+            }, Math.max(0, wait));
+            return;
+        }
+        this._mcIndicatorRecalcAt = now;
+        try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
     }
 
     _isMultichartLocalPanLeader() {
