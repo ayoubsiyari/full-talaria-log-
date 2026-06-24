@@ -15594,7 +15594,13 @@ const TalariaV8bLive = () => {
       // previous panel was the host (prevId === hid). Excluding hid left host
       // preview lines visible after switching to an iframe tile.
       if (prevId != null && String(prevId) !== String(fid)) {
-        try { grid.runCommand("clearDraftPreview", null, { panelId: prevId }).catch(() => {}); } catch (_) {}
+        try {
+          if (typeof grid.broadcastClearDraftPreview === "function") {
+            grid.broadcastClearDraftPreview(prevId);
+          } else {
+            grid.runCommand("clearDraftPreview", null, { panelId: prevId }).catch(() => {});
+          }
+        } catch (_) {}
       }
       if (!orderPanelOpen) return;
       if (fid == null || String(fid) === String(hid)) return;

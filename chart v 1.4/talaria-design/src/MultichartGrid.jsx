@@ -4649,6 +4649,7 @@ export default function MultichartGrid({
             getPanelPlotBoundsForDrawingManager,
             enumerateDrawingManagers: enumerateMultichartDrawingManagers,
             hostPanelId: HOST_PANEL_ID,
+            broadcastClearDraftPreview,
         };
         window.__multichartOpenShapeSettings = function multichartOpenShapeSettings(sourceId, drawingOrId, x, y) {
             return openDrawingSettingsForPanel(sourceId, drawingOrId, x, y);
@@ -4885,11 +4886,9 @@ export default function MultichartGrid({
         function broadcastClearDraftPreview(sourceId) {
             const sid = sourceId != null ? String(sourceId) : "";
             if (!sid) return;
-            const grid = window.__multichartGrid;
-            if (!grid || typeof grid.runCommand !== "function") return;
+            const mgr = managerRef.current;
             const targets = [];
             if (HOST_PANEL_ID !== sid) targets.push(HOST_PANEL_ID);
-            const mgr = managerRef.current;
             if (mgr && mgr.charts) {
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.id) continue;
@@ -4899,12 +4898,12 @@ export default function MultichartGrid({
             }
             for (const tid of targets) {
                 try {
-                    grid.runCommand("clearDraftPreview", null, { panelId: tid }).catch((e) => {
-                        console.warn("[MultichartGrid] clearDraftPreview", tid, "failed:", e && e.message || e);
-                    });
-                } catch (e) {
-                    console.warn("[MultichartGrid] clearDraftPreview", tid, "threw:", e);
-                }
+                    if (tid === HOST_PANEL_ID) {
+                        applyHostCommand("clearDraftPreview", null).catch(() => {});
+                    } else if (mgr && typeof mgr.sendCommandNoReply === "function") {
+                        mgr.sendCommandNoReply(tid, "clearDraftPreview", {});
+                    }
+                } catch (_) { /* ignore */ }
             }
         }
 

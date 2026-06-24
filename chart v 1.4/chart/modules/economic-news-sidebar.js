@@ -1040,6 +1040,12 @@
             var r = await fetch(url, { method: 'GET', credentials: 'include' });
             var j = await r.json().catch(function () { return {}; });
             if (!r.ok) {
+                if (r.status === 503 || r.status >= 500) {
+                    console.warn('[economic-news] historical news unavailable (HTTP ' + r.status + ')');
+                    newsChunkCache[cacheKey] = [];
+                    cursor = chunkEnd + 1;
+                    continue;
+                }
                 throw new Error(detailFromJson(j, r.status));
             }
             var items = (j && j.items) || [];
@@ -1058,6 +1064,10 @@
     }
 
     async function loadCalendar(force) {
+        if (canUseParentCalendarSource()) {
+            requestChartMarkerRedraw();
+            return;
+        }
         if (state.loading && !force) return;
         if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
         var myId = ++calendarLoadId;
@@ -1339,6 +1349,11 @@
         bindNewsSearchInputs();
         bindNewsFilters();
         syncFilterControlsToDom();
+        if (canUseParentCalendarSource()) {
+            render();
+            requestChartMarkerRedraw();
+            return;
+        }
         var rng = getCalendarFetchRange();
         if (!state.loaded || state.loadedRangeKey !== rng.rangeKey) {
             loadCalendar();
@@ -1366,6 +1381,7 @@
         state.replayDayReloadTimer = setTimeout(function () {
             state.replayDayReloadTimer = null;
             requestChartMarkerRedraw();
+            if (canUseParentCalendarSource()) return;
             var rng = getCalendarFetchRange();
             if (state.loaded && state.loadedRangeKey === rng.rangeKey) {
                 if (newsPanelIsActive()) {
@@ -1416,6 +1432,7 @@
     window.__economicCalendarNotifyChartRender = function (chart) {
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
+        if (canUseParentCalendarSource()) return;
         if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
         calendarPanDebounceTimer = setTimeout(function () {
             calendarPanDebounceTimer = null;

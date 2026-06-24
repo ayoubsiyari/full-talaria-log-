@@ -3240,7 +3240,7 @@ const CanvasScrollbar = ({ rfTransform, contentBotGraph, canvasH, rfRef }) => {
   );
 };
 
-function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp }) {
+function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp, applyStrategyTemplate }) {
   const rfRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -3273,24 +3273,31 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
   const hasExistingGroups = canvasNodes.some(n => n.type === 'condition');
 
   const loadTemplate = useCallback((tpl) => {
-    if (!tpl) {
+    if (typeof applyStrategyTemplate === "function") {
+      applyStrategyTemplate(tpl);
+    } else if (!tpl) {
       setCanvasNodes(buildInitialSections());
       setCanvasEdges([]);
+      setStratBName?.("");
+      setStratBDesc?.("");
+      setStratBMarkets?.([]);
+      setStratBTimeframes?.([]);
+      setStratBTags?.([]);
     } else {
       setCanvasNodes(buildNodesFromTemplate(tpl));
       setCanvasEdges([]);
-      if (setStratBName && (!stratBName || !stratBName.trim())) {
-        setStratBName(`${tpl.name} (my version)`);
-      }
-      if (setStratBDesc && tpl.description) setStratBDesc(tpl.description);
-      if (setStratBMarkets && tpl.markets && tpl.markets.length) setStratBMarkets(tpl.markets);
-      if (setStratBTimeframes && tpl.timeframes && tpl.timeframes.length) setStratBTimeframes(tpl.timeframes);
-      if (setStratBTags && tpl.tags && tpl.tags.length) setStratBTags(tpl.tags);
+      setStratBName?.(`${tpl.name} (my version)`);
+      if (tpl.description) setStratBDesc?.(tpl.description);
+      if (tpl.markets?.length) setStratBMarkets?.(tpl.markets);
+      if (tpl.timeframes?.length) setStratBTimeframes?.(tpl.timeframes);
+      if (tpl.tags?.length) setStratBTags?.(tpl.tags);
+    }
+    if (tpl) {
       setTemplateToast(`Template '${tpl.name}' loaded — customize as needed`);
       setTimeout(() => setTemplateToast(null), 4000);
     }
     setTemplatePickerOpen(false);
-  }, [setCanvasNodes, setCanvasEdges, setStratBName, stratBName, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags]);
+  }, [applyStrategyTemplate, setCanvasNodes, setCanvasEdges, setStratBName, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags]);
 
   const applySecSize = useCallback(() => {
     const el = canvasContainerRef.current;
@@ -35619,6 +35626,75 @@ const TalariaV8b = () => {
           );
 
           /* ─── Builder modal open/close helper ─── */
+          const resetStrategyBuilderForm = () => {
+            setStratEditId(null);
+            setStratBuilderSaveError("");
+            setStratBName("");
+            setStratBStyle("Trend Following");
+            setStratBDesc("");
+            setStratBInstruments([]);
+            setStratBTimeframes([]);
+            setStratBTags([]);
+            setStratBComplexity("Medium");
+            setStratBDirection("both");
+            setStratBMarkets([]);
+            setStratBConditions([]);
+            setStratBVariables([{type:"divider",id:"div0"}]);
+            setStratBImages([]);
+            setStratBSupportInst([]);
+            setStratBLogoEmoji("");
+            setStratBLogoMenuOpen(false);
+            setStratBLogoMenuMode(null);
+            setStratBInstInput("");
+            setStratBTagInput("");
+            setStratBInstDropOpen(false);
+            setStratBInstSearch("");
+            setStratBTfDropOpen(false);
+            setStratBCustomTfs([]);
+            setStratBCustomTfVal("");
+            setStratBCustomTfUnit("m");
+            setStratBTfUnitOpen(false);
+            setStratBMktDropOpen(false);
+            setStratWizardStep(1);
+            setCanvasNodes(buildInitialSections());
+            setCanvasEdges([]);
+          };
+          const fillStrategyBuilderFromTemplate = (tpl) => {
+            if (!tpl) {
+              resetStrategyBuilderForm();
+              return;
+            }
+            setStratEditId(null);
+            setStratBuilderSaveError("");
+            setStratBName(`${tpl.name} (my version)`);
+            setStratBStyle((tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Trend Following");
+            setStratBDesc(tpl.description || "");
+            setStratBInstruments([]);
+            setStratBTimeframes([...(tpl.timeframes || [])]);
+            setStratBTags([...(tpl.tags || [])]);
+            setStratBComplexity((tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium");
+            setStratBDirection("both");
+            setStratBMarkets([...(tpl.markets || [])]);
+            setStratBConditions([]);
+            setStratBVariables([{type:"divider",id:"div0"}]);
+            setStratBImages([]);
+            setStratBSupportInst([]);
+            setStratBLogoEmoji(tpl.icon || "");
+            setStratBInstInput("");
+            setStratBTagInput("");
+            setStratBInstDropOpen(false);
+            setStratBInstSearch("");
+            setStratBTfDropOpen(false);
+            setStratBCustomTfs([]);
+            setStratBCustomTfVal("");
+            setStratBCustomTfUnit("m");
+            setStratBTfUnitOpen(false);
+            setStratBMktDropOpen(false);
+            setStratWizardStep(1);
+            setCanvasNodes(buildNodesFromTemplate(tpl));
+            setCanvasEdges([]);
+          };
+
           const openBuilder = (editStrat=null) => {
             setStratBuilderSaveError("");
             if(editStrat){
@@ -35636,23 +35712,25 @@ const TalariaV8b = () => {
               setStratBVariables(editStrat.variables||[{type:"divider",id:"div0"}]);
               setStratBImages(editStrat.images||[]);
               setStratBSupportInst(editStrat.supportInst||[]);
+              setStratBLogoEmoji(editStrat.icon||"");
+              setStratBLogoMenuOpen(false);
+              setStratBLogoMenuMode(null);
+              setStratBInstInput("");
+              setStratBTagInput("");
+              setStratBInstDropOpen(false);
+              setStratBInstSearch("");
+              setStratBTfDropOpen(false);
+              setStratBCustomTfs([]);
+              setStratBCustomTfVal("");
+              setStratBCustomTfUnit("m");
+              setStratBTfUnitOpen(false);
+              setStratBMktDropOpen(false);
+              setStratWizardStep(1);
+              setCanvasNodes(editStrat.canvasNodes||[]);
+              setCanvasEdges(editStrat.canvasEdges||[]);
             } else {
-              setStratEditId(null);
-              setStratBName(""); setStratBStyle("Trend Following"); setStratBDesc("");
-              setStratBInstruments([]); setStratBTimeframes([]); setStratBTags([]);
-              setStratBComplexity("Medium"); setStratBDirection("both"); setStratBMarkets([]);
-              setStratBConditions([]); setStratBVariables([{type:"divider",id:"div0"}]);
-              setStratBImages([]); setStratBSupportInst([]);
+              resetStrategyBuilderForm();
             }
-            setStratBLogoEmoji(editStrat ? (editStrat.icon||"") : ""); setStratBLogoMenuOpen(false); setStratBLogoMenuMode(null);
-            setStratBInstInput(""); setStratBTagInput("");
-            setStratBInstDropOpen(false); setStratBInstSearch("");
-            setStratBTfDropOpen(false);
-            setStratBCustomTfs([]); setStratBCustomTfVal(""); setStratBCustomTfUnit("m"); setStratBTfUnitOpen(false);
-            setStratBMktDropOpen(false);
-            setStratWizardStep(1);
-            setCanvasNodes(editStrat ? (editStrat.canvasNodes||[]) : []);
-            setCanvasEdges(editStrat ? (editStrat.canvasEdges||[]) : []);
             if (editStrat) {
               setStratBuilderOpen(true);
             } else {
@@ -35667,25 +35745,7 @@ const TalariaV8b = () => {
           };
 
           const applyTemplateToBuilder = (tpl) => {
-            if (!tpl) return;
-            setStratEditId(null);
-            setStratBName(`${tpl.name} (my version)`);
-            setStratBStyle((tpl.tags||[]).find(t=>STYLES.includes(t)) || (tpl.tags||[])[0] || "Trend Following");
-            setStratBDesc(tpl.description || "");
-            setStratBInstruments([]);
-            setStratBTimeframes(tpl.timeframes || []);
-            setStratBTags(tpl.tags || []);
-            setStratBComplexity((tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium");
-            setStratBDirection("both");
-            setStratBMarkets(tpl.markets || []);
-            setStratBConditions([]);
-            setStratBVariables([{type:"divider",id:"div0"}]);
-            setStratBImages([]);
-            setStratBSupportInst([]);
-            setStratBLogoEmoji(tpl.icon || "");
-            setCanvasNodes(buildNodesFromTemplate(tpl));
-            setCanvasEdges([]);
-            setStratWizardStep(1);
+            fillStrategyBuilderFromTemplate(tpl);
             setStratBuilderOpen(true);
           };
 
@@ -36168,18 +36228,7 @@ const TalariaV8b = () => {
               <TemplatePickerModal open={stratTemplatePickerOpen&&!(sessView==="stratbank"&&dashBootLoading)} c={c} F={F} hasExistingGroups={false}
                 onPick={(tpl)=>{
                   setStratTemplatePickerOpen(false);
-                  if (tpl) {
-                    setCanvasNodes(buildNodesFromTemplate(tpl));
-                    setCanvasEdges([]);
-                    if (!stratBName || !stratBName.trim()) setStratBName(`${tpl.name} (my version)`);
-                    if (tpl.description) setStratBDesc(tpl.description);
-                    if (tpl.markets && tpl.markets.length) setStratBMarkets(tpl.markets);
-                    if (tpl.timeframes && tpl.timeframes.length) setStratBTimeframes(tpl.timeframes);
-                    if (tpl.tags && tpl.tags.length) setStratBTags(tpl.tags);
-                  } else {
-                    setCanvasNodes(buildInitialSections());
-                    setCanvasEdges([]);
-                  }
+                  fillStrategyBuilderFromTemplate(tpl);
                   setStratBuilderOpen(true);
                 }}
                 onCancel={()=>setStratTemplatePickerOpen(false)}/>
@@ -36214,6 +36263,7 @@ const TalariaV8b = () => {
                   onSave={saveBuilder}
                   onClose={()=>{if(!stratBuilderSaving){setStratBuilderOpen(false);setStratEditId(null);}}}
                   onOpenTemplates={()=>setStratTemplatePickerOpen(true)}
+                  applyStrategyTemplate={fillStrategyBuilderFromTemplate}
                 />
               )}
 
