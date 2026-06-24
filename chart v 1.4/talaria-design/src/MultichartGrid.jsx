@@ -528,6 +528,19 @@ function readHostChartFileAndTf() {
     }
 }
 
+/** Host tile A already has bars the iframe can clone (backtest master or live data). */
+function hostHasCloneableBars(fileId) {
+    try {
+        const ch = window.chart;
+        if (!ch || !fileId || String(ch.currentFileId) !== String(fileId)) return false;
+        const prs = ch.replaySystem;
+        if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) return true;
+        return Array.isArray(ch.data) && ch.data.length > 0;
+    } catch (_) {
+        return false;
+    }
+}
+
 /**
  * Resolve `mode=` for iframe URLs from the **parent page URL only**.
  *
@@ -1341,7 +1354,11 @@ export default function MultichartGrid({
     // We hold the overlay across the settle window so the reposition happens
     // behind it; the chart only becomes visible once it's stable.
     const overlayHoldTimersRef = useRef({});
-    const OVERLAY_SETTLE_HOLD_MS = 1300;
+    /** True while splitting 1→N with host already holding cloneable bars for effFile. */
+    const samePairCacheBootRef = useRef(false);
+    const OVERLAY_SETTLE_HOLD_CACHE_MS = 0;
+    const OVERLAY_SETTLE_HOLD_DEFAULT_MS = 300;
+    const OVERLAY_FALLBACK_MS = 4000;
     useEffect(() => {
         return () => {
             const timers = overlayHoldTimersRef.current || {};
@@ -1388,6 +1405,43 @@ export default function MultichartGrid({
     const focusPanelByIdRef = useRef(focusPanelById);
     focusPanelByIdRef.current = focusPanelById;
     const onStateAnyRef = useRef(null);
+
+    const markPanelDataReady = useCallback((id, { immediate = false } = {}) => {
+        if (!id || id === HOST_PANEL_ID) return;
+        const hostNt = readHostChartFileAndTf();
+        const cacheBoot = samePairCacheBootRef.current && hostHasCloneableBars(hostNt.fileId);
+        const holdMs = immediate || cacheBoot
+            ? OVERLAY_SETTLE_HOLD_CACHE_MS
+            : OVERLAY_SETTLE_HOLD_DEFAULT_MS;
+        if (overlayHoldTimersRef.current[id]) {
+            clearTimeout(overlayHoldTimersRef.current[id]);
+            delete overlayHoldTimersRef.current[id];
+        }
+        const apply = () => {
+            setDataReadyPanels((prev) => {
+                if (prev.has(id)) return prev;
+                const next = new Set(prev);
+                next.add(id);
+                return next;
+            });
+            setOverlayFallbackPanels((prev) => {
+                if (prev.has(id)) return prev;
+                const next = new Set(prev);
+                next.add(id);
+                return next;
+            });
+        };
+        if (holdMs <= 0) {
+            apply();
+            return;
+        }
+        overlayHoldTimersRef.current[id] = setTimeout(() => {
+            delete overlayHoldTimersRef.current[id];
+            apply();
+        }, holdMs);
+    }, []);
+    const markPanelDataReadyRef = useRef(markPanelDataReady);
+    markPanelDataReadyRef.current = markPanelDataReady;
 
     // ─── per-host order forwarding state ──────────────────────────────
     //
@@ -1601,6 +1655,12 @@ export default function MultichartGrid({
                         return next;
                     });
                 },
+                onPanelCacheReady: function (id) {
+                    const fn = markPanelDataReadyRef.current;
+                    if (typeof fn === "function") {
+                        try { fn(id, { immediate: true }); } catch (_) {}
+                    }
+                },
                 onChartReady: function (id) {
                     setReadyPanels((prev) => {
                         if (prev.has(id)) return prev;
@@ -1618,7 +1678,7 @@ export default function MultichartGrid({
                                 next.add(id);
                                 return next;
                             });
-                        }, 12000);
+                        }, OVERLAY_FALLBACK_MS);
                     }
                     // A panel that recovered after a prior boot failure clears
                     // its error overlay here.
@@ -1821,7 +1881,7 @@ export default function MultichartGrid({
         // Stagger spawns slightly: each iframe loads the full dist-v9 bundle;
         // firing 3× addChart in one tick makes B/C/D fight for CPU + HTTP/2
         // streams so the last panel often misses the old 5s bridge-ready gate.
-        const IFRAME_ADD_STAGGER_MS = 700;
+        // Same-pair cache boot: spawn all iframes in parallel (host already has bars).
         const hostNt = readHostChartFileAndTf();
         const propFid = initialFileIdRef.current && String(initialFileIdRef.current).trim();
         const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
@@ -1829,6 +1889,8 @@ export default function MultichartGrid({
         const effTf = propTf || hostNt.tf || "1m";
         const effMode = initialModeRef.current || readUrlChartMode();
         const sessId = initialSessionIdRef.current || null;
+        const IFRAME_ADD_STAGGER_MS = hostHasCloneableBars(effFile) ? 0 : 700;
+        samePairCacheBootRef.current = hostHasCloneableBars(effFile);
 
         const staggerTimeouts = [];
         let staggerCancelled = false;
@@ -3155,21 +3217,19 @@ export default function MultichartGrid({
             && id !== HOST_PANEL_ID
             && !dataReadyPanels.has(id)
             && !overlayHoldTimersRef.current[id]) {
-            overlayHoldTimersRef.current[id] = setTimeout(() => {
-                delete overlayHoldTimersRef.current[id];
-                setDataReadyPanels((prev) => {
-                    if (prev.has(id)) return prev;
-                    const next = new Set(prev);
-                    next.add(id);
-                    return next;
-                });
-                setOverlayFallbackPanels((prev) => {
-                    if (prev.has(id)) return prev;
-                    const next = new Set(prev);
-                    next.add(id);
-                    return next;
-                });
-            }, OVERLAY_SETTLE_HOLD_MS);
+            const hostNt = readHostChartFileAndTf();
+            const cacheBoot = samePairCacheBootRef.current && hostHasCloneableBars(hostNt.fileId);
+            const holdMs = cacheBoot
+                ? OVERLAY_SETTLE_HOLD_CACHE_MS
+                : OVERLAY_SETTLE_HOLD_DEFAULT_MS;
+            if (holdMs <= 0) {
+                markPanelDataReadyRef.current(id, { immediate: true });
+            } else {
+                overlayHoldTimersRef.current[id] = setTimeout(() => {
+                    delete overlayHoldTimersRef.current[id];
+                    markPanelDataReadyRef.current(id);
+                }, holdMs);
+            }
         }
 
         // (a) focus mirror
@@ -5388,6 +5448,10 @@ export default function MultichartGrid({
                 const isReady   = isHost || dataReadyPanels.has(tile.id)
                     || overlayFallbackPanels.has(tile.id);
                 const failure   = isHost ? null : failedPanels.get(tile.id);
+                const hostNtOverlay = readHostChartFileAndTf();
+                const skipLoadingOverlay = !isHost
+                    && samePairCacheBootRef.current
+                    && hostHasCloneableBars(hostNtOverlay.fileId);
                 return (
                     <div
                         key={tile.id}
@@ -5441,7 +5505,7 @@ export default function MultichartGrid({
                              once chart-state reports candleCount > 0.
                              Skipped for the host cell — parent chart is
                              already loaded with full state. */}
-                        {!isReady && !failure && (
+                        {!isReady && !failure && !skipLoadingOverlay && (
                             <div className="multichart-loading-overlay" aria-hidden="true">
                                 <div className="multichart-loading-dots">
                                     <span/><span/><span/>

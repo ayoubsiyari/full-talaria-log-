@@ -60,6 +60,9 @@
         this.onChartReady = (typeof opts.onChartReady === 'function')
             ? opts.onChartReady
             : function () {};
+        this.onPanelCacheReady = (typeof opts.onPanelCacheReady === 'function')
+            ? opts.onPanelCacheReady
+            : function () {};
         // Phase 7.2.4: fired with the panelId whenever a user action
         // inside an iframe (pointerdown / mousedown / focusin) is
         // reported via `panel-focus`. The React grid wires this to
@@ -695,6 +698,15 @@
                         self._pushSyncModeToChart(sourceChart);
                         self._initialSyncToHost(sourceChart);
                     }, 0);
+                }
+                return;
+
+            case 'panel-cache-ready':
+                if (sourceChart) {
+                    this._log('info', 'panel cache ready: ' + sourceId);
+                    try { this.onPanelCacheReady(sourceId); } catch (e) {
+                        this._log('warn', 'onPanelCacheReady threw: ' + (e && e.message || e));
+                    }
                 }
                 return;
 

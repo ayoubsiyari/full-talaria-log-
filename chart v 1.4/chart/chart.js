@@ -1288,7 +1288,6 @@ class Chart {
         return null;
     }
 
-    
     _formatPairTicker(rawTicker, rawFileName) {
         const ccys = new Set(['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG']);
         const tryFormat = (s) => {
@@ -1304,6 +1303,23 @@ class Chart {
             return null;
         };
         return tryFormat(rawTicker) || tryFormat(rawFileName) || String(rawTicker || rawFileName || '').toUpperCase();
+    }
+
+    /** Session/chart label: NQ1 → NQ for known CME roots; never derive from filename alone. */
+    _displaySessionFuturesSymbol(sym) {
+        const k = String(sym || '').replace(/[\/\s_.-]/g, '').toUpperCase();
+        if (!k) return k;
+        const roots = new Set([
+            'ES', 'NQ', 'YM', 'RTY', 'CL', 'GC', 'SI', 'NG', 'HG', 'PL', 'RB', 'HO',
+            'MNQ', 'MES', 'MYM', 'M2K', 'MGC', 'MCL', '6E', '6B', '6J', '6A', '6C', '6N', '6S',
+            'ZB', 'ZN', 'ZF', 'ZT', 'NKD', 'MBT', 'MET',
+        ]);
+        if (/^[A-Z0-9]{1,5}\d$/.test(k)) {
+            const root = k.slice(0, -1);
+            if (roots.has(root)) return root;
+        }
+        if (roots.has(k)) return k;
+        return k;
     }
 
     resolveSessionTickerForFileId(session, fileId) {
@@ -2260,6 +2276,29 @@ class Chart {
     }
 
     /**
+     * Poll host replay master clone for same-pair iframe boot (avoids racing host load).
+     * @param {string} fileId
+     * @param {number} loadSeq
+     * @param {number} [maxWaitMs]
+     * @returns {Promise<object|null>}
+     */
+    async _pollTakeParentNativeMasterSmartWindow(fileId, loadSeq, maxWaitMs = 8000) {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < maxWaitMs) {
+            if (loadSeq != null && this._multichartPanelLoadSeq !== loadSeq) return null;
+            if (typeof this._takeParentNativeMasterSmartWindow === 'function') {
+                const result = this._takeParentNativeMasterSmartWindow(fileId);
+                if (result) return result;
+            }
+            await new Promise((r) => setTimeout(r, 60));
+        }
+        if (loadSeq != null && this._multichartPanelLoadSeq !== loadSeq) return null;
+        return typeof this._takeParentNativeMasterSmartWindow === 'function'
+            ? this._takeParentNativeMasterSmartWindow(fileId)
+            : null;
+    }
+
+    /**
      * Synchronized pair switch (symbol sync ON): the host (tile A) and EVERY embed panel
      * switch pair at the same instant. Classifying same-pair vs independent — and the fast
      * "clone host 1m master" path — reads window.parent.chart.currentFileId. If the host
@@ -2354,9 +2393,15 @@ class Chart {
             // Must use the host replay master — parent.rawData is only the visible
             // playhead slice and would leave this tile on the wrong time range.
             const prs = parent.replaySystem;
-            const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
+            let masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
                 ? prs.fullRawData
                 : null;
+            if (!masterRaw || masterRaw.length === 0) {
+                const liveRaw = Array.isArray(parent.rawData) && parent.rawData.length > 0
+                    ? parent.rawData
+                    : (Array.isArray(parent.data) && parent.data.length > 0 ? parent.data : null);
+                if (liveRaw) masterRaw = liveRaw;
+            }
             if (!masterRaw || masterRaw.length === 0) return null;
 
             const tf = this._normalizeBacktestTimeframe(displayTf) || displayTf || '1m';
@@ -2506,6 +2551,9 @@ class Chart {
                     try { this._warmBtTfCacheFromParent(); } catch (_warmMc) { /* ignore */ }
                 }
                 if (samePairAsHost && !independentPair
+                    && typeof this._pollTakeParentNativeMasterSmartWindow === 'function') {
+                    result = await this._pollTakeParentNativeMasterSmartWindow(fileId, loadSeq);
+                } else if (samePairAsHost && !independentPair
                     && typeof this._takeParentNativeMasterSmartWindow === 'function') {
                     result = this._takeParentNativeMasterSmartWindow(fileId);
                 }
@@ -2557,6 +2605,11 @@ class Chart {
                     }
                 }
                 if (!result) {
+                    if (samePairAsHost && !independentPair) {
+                        throw new Error(
+                            'loadMultichartPanelFromHost: same-pair host master clone failed after retry'
+                        );
+                    }
                     let range;
                     if (independentPair && sessionEndMs != null) {
                         range = { endTs: sessionEndMs };
@@ -12726,7 +12779,9 @@ class Chart {
                     if (!fileId) return;
                     const rawTicker = String(row.ticker || tickerKey || '');
                     const rawName = row.fileName || row.name || '';
-                    const displayTicker = this._formatPairTicker(rawTicker, rawName);
+                    const displayTicker = this._displaySessionFuturesSymbol(
+                        rawTicker || this._formatPairTicker(rawTicker, rawName)
+                    );
                     addEntry(
                         fileId,
                         displayTicker || rawTicker.toUpperCase() || String(fileId),
@@ -12758,7 +12813,9 @@ class Chart {
                     if (fileId == null) return;
                     const sym = String(row.symbolName || row.ticker || row.symbol || '').trim();
                     const rawName = row.fileName || row.name || '';
-                    const displayTicker = this._formatPairTicker(sym, rawName) || sym.toUpperCase() || String(fileId);
+                    const displayTicker = this._displaySessionFuturesSymbol(
+                        sym || this._formatPairTicker(sym, rawName)
+                    ) || sym.toUpperCase() || String(fileId);
                     const isViewOnly = row.view_only === true || row.tradable === false;
                     addEntry(
                         fileId,

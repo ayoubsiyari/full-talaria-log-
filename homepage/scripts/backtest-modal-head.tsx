@@ -236,7 +236,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState }
     return apiFiles.find((f) => {
       const ft = normSessionSym(String(f.ticker || ""));
       const fromName = normSessionSym(String(f.original_name || f.name || "").replace(/\.csv$/i, ""));
-      return ft === key || fromName === key || fromName.startsWith(key) || key.startsWith(ft);
+      if (ft === key || fromName === key) return true;
+      const aliases = new Set([key]);
+      if (/^[A-Z0-9]{1,5}\d$/.test(key)) aliases.add(key.slice(0, -1));
+      else if (/^[A-Z0-9]{1,5}$/.test(key)) aliases.add(key + "1");
+      return aliases.has(ft) || aliases.has(fromName);
     }) || null;
   }
 

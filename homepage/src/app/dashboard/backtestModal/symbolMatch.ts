@@ -28,9 +28,23 @@ export function extractTickerStemFromDatasetName(raw: string): string {
 export function datasetSymbolAliases(requested: string): Set<string> {
   const key = normSymbolKey(requested);
   const out = new Set<string>([key]);
-  if (/^[A-Z]{1,5}\d$/.test(key)) out.add(key.slice(0, -1));
-  else if (/^[A-Z]{1,5}$/.test(key)) out.add(key + "1");
+  if (/^[A-Z0-9]{1,5}\d$/.test(key)) out.add(key.slice(0, -1));
+  else if (/^[A-Z0-9]{1,5}$/.test(key)) out.add(key + "1");
   return out;
+}
+
+/** True when `segment` is the same futures root as `token` (never ES → ESG). */
+export function futuresSegmentMatchesToken(token: string, segment: string): boolean {
+  const tok = normSymbolKey(token);
+  const seg = normSymbolKey(segment);
+  if (!tok || !seg) return false;
+  if (seg === tok) return true;
+  const aliases = datasetSymbolAliases(tok);
+  if (aliases.has(seg)) return true;
+  // CME month code + optional year digits (ESM24, CLH5) — not a bare extra letter (ESG).
+  const monthRest = seg.slice(tok.length);
+  if (seg.startsWith(tok) && /^[FGHJKMNQUVXZ]\d{0,4}$/i.test(monthRest)) return true;
+  return false;
 }
 
 export function fileMatchesRequestedSymbol(
@@ -38,11 +52,15 @@ export function fileMatchesRequestedSymbol(
   f: Record<string, unknown> | null | undefined,
 ): boolean {
   if (!f) return false;
-  const aliases = datasetSymbolAliases(requested);
+  const key = normSymbolKey(requested);
+  const aliases = datasetSymbolAliases(key);
   const ft = normSymbolKey(String(f.ticker || ""));
   if (aliases.has(ft)) return true;
   const stem = extractTickerStemFromDatasetName(String(f.original_name || f.name || ""));
-  return stem ? aliases.has(stem) : false;
+  if (stem && aliases.has(stem)) return true;
+  if (stem && futuresSegmentMatchesToken(key, stem)) return true;
+  if (ft && futuresSegmentMatchesToken(key, ft)) return true;
+  return false;
 }
 
 export function findDatasetFileForSymbol(

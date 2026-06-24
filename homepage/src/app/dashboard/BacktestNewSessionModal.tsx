@@ -9,6 +9,12 @@ import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
 import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso } from "./backtestModal/dateRangeUtils";
 import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
+import {
+  displaySessionSymbol,
+  extractTickerStemFromDatasetName,
+  findDatasetFileForSymbol,
+  normSymbolKey,
+} from "./backtestModal/symbolMatch";
 import { JOURNAL_API_BASE, journalAuthHeaders } from "@/lib/journalApi";
 import { apiStrategyToBankRow, extractStrategyVariablesFromDefinition } from "./strategies/strategyLabV9Mappers";
 
@@ -354,19 +360,17 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   }
 
   function findApiFileForSymbol(sym: string, apiFiles: Record<string, unknown>[]) {
-    const key = normSessionSym(sym);
-    return apiFiles.find((f) => {
-      const ft = normSessionSym(String(f.ticker || ""));
-      const fromName = normSessionSym(String(f.original_name || f.name || "").replace(/\.csv$/i, ""));
-      return ft === key || fromName === key || fromName.startsWith(key) || key.startsWith(ft);
-    }) || null;
+    return findDatasetFileForSymbol(sym, apiFiles);
   }
 
   const sessionDatasetSymbols = useMemo(() => {
     const seen = new Set<string>();
     const out: { sym: string; cat: string }[] = [];
     sessionApiFiles.forEach((f) => {
-      const sym = normSessionSym(String(f.ticker || ""));
+      const stem =
+        normSymbolKey(String(f.ticker || "")) ||
+        extractTickerStemFromDatasetName(String(f.original_name || f.name || ""));
+      const sym = displaySessionSymbol(stem);
       if (!sym || seen.has(sym)) return;
       seen.add(sym);
       out.push({ sym, cat: assetClassToPickerCat(String(f.asset_class || "")) });

@@ -3312,14 +3312,14 @@ def _token_matches_firstrate_stem(tok: str, stem: str) -> bool:
         if compact.startswith(tok_up) or (tok_up in compact):
             return True
     # Short root tokens (2–5 chars, e.g. futures roots "ES", "NQ", metal "GC") should also match
-    # continuous contract codes like `ESM2024` / `CLH25` where the root prefixes the first segment.
+    # continuous contract codes like `ESM2024` / `CLH25` / `ES1` — never prefix-only (ES ≠ ESG).
     if segments and segments[0].startswith(tok_up):
         rest = segments[0][len(tok_up):]
         if not rest:
             return True
-        # Accept extensions like ESM2024 (alphanumeric contract code) but avoid false positives
-        # (e.g. token "ES" against "ESTOX50" — length diff > 7 is unlikely to be a futures code).
-        if len(rest) <= 6:
+        if rest.isdigit() and len(rest) == 1:
+            return True
+        if re.fullmatch(r"[FGHJKMNQUVXZ]\d{0,4}", rest, re.IGNORECASE):
             return True
     # Crypto pair fallback — FirstRate ships crypto as `<BASE>_full_1min.txt` (implicit USD) or
     # `<BASE>-<QUOTE>_full_1min.txt` (explicit non-USD). Accept common user-typed suffixes.

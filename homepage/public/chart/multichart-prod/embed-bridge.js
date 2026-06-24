@@ -48,6 +48,15 @@
         try { fn.call(console, '[multichart-embed:' + chartId + ']', text); } catch (_) {}
     }
 
+    function notifyPanelCacheReady() {
+        try {
+            window.parent.postMessage({
+                type: 'panel-cache-ready',
+                source: chartId,
+            }, '*');
+        } catch (_) {}
+    }
+
     function markViewportBootSettle(chart, ms) {
         if (!chart) return;
         var now = (typeof performance !== 'undefined' && performance.now)
@@ -236,6 +245,23 @@
             } catch (_) {}
             return null;
         };
+        var hostReadyForPanelClone = function () {
+            var pc = readParentChart();
+            if (!pc) return false;
+            var fid = fileId || (pc.currentFileId != null ? String(pc.currentFileId) : '');
+            if (!fid || String(pc.currentFileId || '') !== String(fid)) return false;
+            var prs = pc.replaySystem;
+            if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) return true;
+            return Array.isArray(pc.data) && pc.data.length > 0;
+        };
+        var hostReadyForMirror = function () {
+            var pc = readParentChart();
+            if (!pc) return true;
+            var fid = fileId || (pc.currentFileId != null ? String(pc.currentFileId) : '');
+            if (!fid || String(pc.currentFileId || '') !== String(fid)) return true;
+            var prs = pc.replaySystem;
+            return !!(prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0);
+        };
 
         if (!fileId) {
             var pcFid = readParentChart();
@@ -271,7 +297,7 @@
             return;
         }
         try {
-            markViewportBootSettle(ch, 2800);
+            markViewportBootSettle(ch, hostReadyForPanelClone() ? 400 : 2800);
             // Hint timeframe BEFORE load so first-paint resamples to the
             // correct tf instead of paint-then-resample.
             if (tf && typeof ch.currentTimeframe === 'string') {
@@ -910,7 +936,12 @@
                         : ch.loadFileData(String(loadFid));
                     var bootReplay = function () {
                         ch._multichartPairLoadInFlight = false;
-                        markViewportBootSettle(ch, 500);
+                        if (samePairBoot) {
+                            notifyPanelCacheReady();
+                            markViewportBootSettle(ch, 400);
+                        } else {
+                            markViewportBootSettle(ch, 500);
+                        }
                         if (useMcBoot) {
                             afterLoad();
                             return;
@@ -945,32 +976,65 @@
                         bootReplay();
                     }
                 };
-                var hostReadyForMirror = function () {
-                    var pc = readParentChart();
-                    if (!pc) return true;
-                    var fid = fileId || (pc.currentFileId != null ? String(pc.currentFileId) : '');
-                    if (!fid || String(pc.currentFileId || '') !== String(fid)) return true;
-                    var prs = pc.replaySystem;
-                    return !!(prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0);
-                };
                 if (hostReadyForMirror()) {
                     runPanelLoad();
                 } else {
                     // Wait for tile A's replay master before boot — avoids tiny seek-buffer islands.
-                    pollFor(hostReadyForMirror, 100, 12000, runPanelLoad, runPanelLoad);
+                    pollFor(hostReadyForMirror, 100, 8000, runPanelLoad, runPanelLoad);
                 }
                 return;
             }
 
-            // Live / no session — plain loadFileData
-            p = ch.loadFileData(fileId);
-            if (p && typeof p.then === 'function') {
-                p.then(afterLoad, function (err) {
-                    reportToShell('error', 'loadFileData failed: '
-                        + (err && err.message || err));
-                });
+            // Live / no session — clone host memory when same pair, else loadFileData
+            var runLivePanelLoad = function () {
+                var pc = readParentChart();
+                var loadFid = fileId || (pc && pc.currentFileId != null ? String(pc.currentFileId) : '');
+                if (!loadFid) {
+                    reportToShell('warn', 'loadFileData: no fileId');
+                    return;
+                }
+                var samePairBoot = pc && String(pc.currentFileId || '') === String(loadFid);
+                try {
+                    ch.currentFileId = loadFid;
+                    if (tf && typeof ch.currentTimeframe === 'string') {
+                        ch.currentTimeframe = tf;
+                    }
+                } catch (_) {}
+                if (samePairBoot
+                    && typeof ch._multichartMirrorViewportFromHost === 'function'
+                    && ch._multichartMirrorViewportFromHost()) {
+                    reportToShell('info', 'boot: parent mirror viewport (no fetch) fileId=' + loadFid);
+                    notifyPanelCacheReady();
+                    markViewportBootSettle(ch, 400);
+                    try {
+                        if (typeof ch.render === 'function') ch.render();
+                    } catch (_) {}
+                    try {
+                        global.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                            detail: { fileId: loadFid, source: 'parent-mirror-viewport' },
+                        }));
+                    } catch (_) {}
+                    afterLoad();
+                    return;
+                }
+                p = ch.loadFileData(loadFid);
+                if (p && typeof p.then === 'function') {
+                    p.then(function () {
+                        if (samePairBoot) notifyPanelCacheReady();
+                        afterLoad();
+                    }, function (err) {
+                        reportToShell('error', 'loadFileData failed: '
+                            + (err && err.message || err));
+                    });
+                } else {
+                    if (samePairBoot) notifyPanelCacheReady();
+                    afterLoad();
+                }
+            };
+            if (hostReadyForPanelClone()) {
+                runLivePanelLoad();
             } else {
-                afterLoad();
+                pollFor(hostReadyForPanelClone, 100, 8000, runLivePanelLoad, runLivePanelLoad);
             }
         } catch (e) {
             reportToShell('error', 'applyInitialContext threw: ' + (e && e.message || e));
