@@ -31,7 +31,8 @@ class PropFirmTracker {
         this.violations = {
             dailyLoss: false,
             totalLoss: false,
-            consistency: false
+            consistency: false,
+            weekendHold: false
         };
         this.tradingDisabled = false;
         this.profitTargetReachedShown = false;
@@ -99,32 +100,54 @@ class PropFirmTracker {
     _applyPhaseRulesFromSession(session, phase) {
         const pr = session.prop_rules || {};
         const phaseNum = phase === 2 ? 2 : 1;
+        const cap = this.startBalance > 0 ? this.startBalance : 10000;
+        const p1Pct = pr.p1Pct || {};
+        const p1Amt = pr.p1Amt || {};
+        const p2Pct = pr.p2Pct || {};
+        const p2Amt = pr.p2Amt || {};
         let md;
         let mt;
         let minDays;
         let profitTarget;
 
         if (phaseNum === 2 && Number(pr.numPhases) >= 2) {
-            const p2 = pr.p2Pct || {};
-            const p2a = pr.p2Amt || {};
-            md = { percent: p2.dl, dollar: p2a.dl };
-            mt = { percent: p2.dd, dollar: p2a.dd };
-            profitTarget = Number(p2.pt);
+            md = {
+                percent: Number(p2Pct.dl),
+                dollar: Number(p2Amt.dl)
+            };
+            mt = {
+                percent: Number(p2Pct.dd),
+                dollar: Number(p2Amt.dd)
+            };
+            profitTarget = Number(p2Pct.pt);
+            if (!Number.isFinite(profitTarget) && Number.isFinite(Number(p2Amt.pt)) && cap > 0) {
+                profitTarget = (Number(p2Amt.pt) / cap) * 100;
+            }
             minDays = pr.p2MinDays ?? 0;
         } else {
             md = session.maxDailyLoss || {};
             mt = session.maxTotalLoss || {};
-            const p1 = pr.p1Pct || {};
+            if ((!md.percent && !md.dollar) && (p1Pct.dl != null || p1Amt.dl != null)) {
+                md = { percent: p1Pct.dl, dollar: p1Amt.dl };
+            }
+            if ((!mt.percent && !mt.dollar) && (p1Pct.dd != null || p1Amt.dd != null)) {
+                mt = { percent: p1Pct.dd, dollar: p1Amt.dd };
+            }
             minDays = session.minTradingDays ?? pr.minTradingDays ?? pr.p1MinDays ?? 1;
-            profitTarget = session.profitTarget ?? p1.pt ?? 10;
+            if (session.minTradingDaysEnabled === false) minDays = 0;
+            profitTarget = session.profitTarget ?? p1Pct.pt;
+            if (!Number.isFinite(Number(profitTarget))) {
+                const ptUsd = Number(session.profitTargetUsd ?? p1Amt.pt);
+                if (Number.isFinite(ptUsd) && cap > 0) profitTarget = (ptUsd / cap) * 100;
+            }
         }
 
         const mdp = Number(md.percent);
         const mtp = Number(mt.percent);
         const mdd = Number(md.dollar);
         const mtd = Number(mt.dollar);
-        const dailyPct = Number.isFinite(mdp) ? mdp : 5;
-        const totalPct = Number.isFinite(mtp) ? mtp : 10;
+        const dailyPct = Number.isFinite(mdp) ? mdp : (Number.isFinite(mdd) && cap > 0 ? (mdd / cap) * 100 : 5);
+        const totalPct = Number.isFinite(mtp) ? mtp : (Number.isFinite(mtd) && cap > 0 ? (mtd / cap) * 100 : 10);
         const profitPct = Number.isFinite(Number(profitTarget)) ? Number(profitTarget) : 10;
 
         this.rules = {
@@ -139,8 +162,154 @@ class PropFirmTracker {
             consistencyRule: !!(session.consistencyRule ?? pr.consistencyRule),
             consistencyPct: Number(session.consistencyPct ?? pr.consistencyPct) || 0,
             numPhases: Number(pr.numPhases) || 1,
-            weekendHold: !!(session.weekendHold ?? pr.weekendHold)
+            weekendHold: !!(session.weekendHold ?? pr.weekendHold),
+            maxContracts: Number(pr.maxContracts) || 0,
+            maxContractsEnabled: pr.maxContractsEnabled !== false,
+            maxPosition: Number(pr.maxPosition) || Number(pr.maxContracts) || 0,
+            maxPositionEnabled: !!(pr.maxPositionEnabled ?? pr.maxContractsEnabled),
+            maxPositionUnit: String(pr.maxPositionUnit || 'lots').toLowerCase()
         };
+    }
+
+    _getReplayMs() {
+        try {
+            const rs = window.chart && window.chart.replaySystem;
+            if (rs && Number.isFinite(rs.replayTimestamp)) {
+                const elapsed = Number(rs.tickElapsedMs) || 0;
+                return rs.replayTimestamp + elapsed;
+            }
+        } catch (e) {}
+        return Date.now();
+    }
+
+    _getOpenUnrealizedPnL() {
+        try {
+            const om = window.chart && window.chart.orderManager;
+            if (!om || !Array.isArray(om.openPositions)) return 0;
+            return om.openPositions.reduce((sum, p) => sum + (Number(p.unrealizedPnL) || 0), 0);
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    _getLatestTradingDayKey() {
+        const tradingDaysArray = Array.from(this.tradingDays).sort();
+        if (tradingDaysArray.length) return tradingDaysArray[tradingDaysArray.length - 1];
+        return this.getDateKey(this._getReplayMs());
+    }
+
+    _getDailyLossPercentIncludingUnrealized() {
+        const dateKey = this._getLatestTradingDayKey();
+        const closedPct = this.getDailyPnLPercent(dateKey);
+        const unrealized = this._getOpenUnrealizedPnL();
+        if (unrealized >= 0) return Math.abs(Math.min(0, closedPct));
+        const floatPct = (unrealized / this.startBalance) * 100;
+        return Math.abs(Math.min(0, closedPct) + Math.min(0, floatPct));
+    }
+
+    _getTotalLossPercentIncludingUnrealized() {
+        const balWithFloat = this.currentBalance + this._getOpenUnrealizedPnL();
+        if (this.rules.trailingDrawdown) {
+            const peak = Math.max(this.peakBalance, balWithFloat);
+            const dd = peak - balWithFloat;
+            if (dd <= 0) return 0;
+            return (dd / this.startBalance) * 100;
+        }
+        if (balWithFloat >= this.startBalance) return 0;
+        return ((this.startBalance - balWithFloat) / this.startBalance) * 100;
+    }
+
+    /** Max position size for current market (lots or contracts); null = unlimited. */
+    getMaxPositionQuantity(orderManager) {
+        if (!this._isPropFirmChallenge()) return null;
+        const om = orderManager || (window.chart && window.chart.orderManager);
+        const isFutures = om && om.marketType === 'futures';
+        if (isFutures) {
+            if (this.rules.maxContractsEnabled === false) return null;
+            const n = Number(this.rules.maxContracts || this.rules.maxPosition);
+            return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+        }
+        if (!this.rules.maxPositionEnabled) return null;
+        const n = Number(this.rules.maxPosition);
+        if (!Number.isFinite(n) || n <= 0) return null;
+        const unit = String(this.rules.maxPositionUnit || 'lots').toLowerCase();
+        if (unit === '%' && om) {
+            const eq = Number(om.equity) || this.currentBalance || this.startBalance;
+            let price = 0;
+            try {
+                const candle = typeof om.getCurrentCandle === 'function' ? om.getCurrentCandle() : null;
+                price = Number(candle && candle.c) || 0;
+            } catch (e) {}
+            const cs = Number(om.contractSize) || 100000;
+            if (eq > 0 && price > 0 && cs > 0) {
+                const maxNotional = eq * (n / 100);
+                return Math.max(0, maxNotional / (cs * price));
+            }
+            return null;
+        }
+        return n;
+    }
+
+    isWeekendExposureBreached(replayMs) {
+        if (this.rules.weekendHold) return false;
+        const om = window.chart && window.chart.orderManager;
+        if (!om || !Array.isArray(om.openPositions) || !om.openPositions.length) return false;
+        const open = om.openPositions.filter((p) => p && String(p.status || '').toUpperCase() === 'OPEN');
+        if (!open.length) return false;
+        const ms = Number.isFinite(replayMs) ? replayMs : this._getReplayMs();
+        const dow = new Date(ms).getUTCDay();
+        return dow === 0 || dow === 6;
+    }
+
+    onReplayTimeAdvance(replayMs) {
+        if (!this._isPropFirmChallenge() || this.tradingDisabled) return;
+        if (this.isWeekendExposureBreached(replayMs)) {
+            this.violations.weekendHold = true;
+            this.showChallengeFailedModal('Weekend Holding');
+        }
+    }
+
+    validateBeforeOrder(quantity, orderManager) {
+        if (!this._isPropFirmChallenge()) return { ok: true };
+        if (this.tradingDisabled) {
+            return { ok: false, reason: 'Trading disabled — challenge rule violated' };
+        }
+        if (this.isWeekendExposureBreached()) {
+            return { ok: false, reason: 'Weekend holding is not allowed' };
+        }
+        const maxQty = this.getMaxPositionQuantity(orderManager);
+        const q = parseFloat(quantity);
+        if (maxQty != null && Number.isFinite(q) && q > maxQty) {
+            const om = orderManager || window.chart?.orderManager;
+            const unit = om && om.marketType === 'futures' ? 'contracts' : 'lots';
+            return { ok: false, reason: `Max position ${maxQty} ${unit}` };
+        }
+        const dailyPct = this._getDailyLossPercentIncludingUnrealized();
+        const dailyUsd = Math.abs(Math.min(0, this.getDailyPnL(this._getLatestTradingDayKey()) + this._getOpenUnrealizedPnL()));
+        const dailyUsdCap = this.rules.maxDailyLossUsd != null
+            ? this.rules.maxDailyLossUsd
+            : (this.startBalance * this.rules.maxDailyLoss / 100);
+        if (this.rules.dailyLossEnabled && (dailyPct >= this.rules.maxDailyLoss || dailyUsd >= dailyUsdCap)) {
+            return { ok: false, reason: 'Daily loss limit reached' };
+        }
+        const totalPct = this._getTotalLossPercentIncludingUnrealized();
+        const totalUsd = this._getTotalLossUsd() + (this._getOpenUnrealizedPnL() < 0 ? Math.abs(this._getOpenUnrealizedPnL()) : 0);
+        const totalUsdCap = this.rules.maxTotalLossUsd != null
+            ? this.rules.maxTotalLossUsd
+            : (this.startBalance * this.rules.maxTotalLoss / 100);
+        if (totalPct >= this.rules.maxTotalLoss || totalUsd >= totalUsdCap) {
+            return { ok: false, reason: 'Max drawdown limit reached' };
+        }
+        return { ok: true };
+    }
+
+    _failChallenge(ruleName, message) {
+        if (!this.failedModalShown) {
+            this.showChallengeFailedModal(ruleName);
+        } else if (typeof window.showNotification === 'function') {
+            window.showNotification(message || `Challenge failed: ${ruleName}`, 'error', 8000);
+        }
+        this.tradingDisabled = true;
     }
 
     // Record a trade
@@ -230,12 +399,24 @@ class PropFirmTracker {
         return this.tradingDays.size;
     }
 
-    // Calculate profit percentage (phase 2 measures from phase baseline)
+    // Calculate profit percentage (phase 2 measures gain from phase baseline; % is vs initial account)
     getProfitPercent() {
         const baseline = (this.currentPhase >= 2 && Number.isFinite(this.phaseStartBalance))
             ? this.phaseStartBalance
             : this.startBalance;
+        if (!this.startBalance || this.startBalance <= 0) return 0;
         return ((this.currentBalance - baseline) / this.startBalance) * 100;
+    }
+
+    _getProfitTargetUsd() {
+        return (this.startBalance * (this.rules.profitTarget || 0)) / 100;
+    }
+
+    _isChallengeFullyPassed() {
+        const numPhases = this.rules.numPhases || 1;
+        if (numPhases >= 2 && this.currentPhase < 2) return false;
+        const daysOk = this._getTradingDaysRequired() <= 0 || this.isTradingDaysComplete();
+        return this.isProfitTargetReached() && daysOk;
     }
 
     // Calculate daily P&L for specific day
@@ -329,20 +510,16 @@ class PropFirmTracker {
     // Check if daily loss limit is breached
     isDailyLossBreached() {
         if (!this.rules.dailyLossEnabled) return false;
-        const tradingDaysArray = Array.from(this.tradingDays).sort();
-        const latest = tradingDaysArray[tradingDaysArray.length - 1];
-        if (!latest) return false;
-        const dailyPnL = this.getDailyPnL(latest);
-        const lossUsd = dailyPnL < 0 ? Math.abs(dailyPnL) : 0;
-        const lossPct = Math.abs(Math.min(0, this.getDailyPnLPercent(latest)));
+        const dailyPct = this._getDailyLossPercentIncludingUnrealized();
+        const dailyUsd = Math.abs(Math.min(0, this.getDailyPnL(this._getLatestTradingDayKey()) + this._getOpenUnrealizedPnL()));
         const usdCap = this.rules.maxDailyLossUsd != null ? this.rules.maxDailyLossUsd : (this.startBalance * this.rules.maxDailyLoss / 100);
-        return lossPct >= this.rules.maxDailyLoss || lossUsd >= usdCap;
+        return dailyPct >= this.rules.maxDailyLoss || dailyUsd >= usdCap;
     }
 
     // Check if total loss limit is breached
     isTotalLossBreached() {
-        const lossPct = this.getTotalLossPercent();
-        const lossUsd = this.getTotalLossUsd();
+        const lossPct = this._getTotalLossPercentIncludingUnrealized();
+        const lossUsd = this._getTotalLossUsd() + (this._getOpenUnrealizedPnL() < 0 ? Math.abs(this._getOpenUnrealizedPnL()) : 0);
         const usdCap = this.rules.maxTotalLossUsd != null ? this.rules.maxTotalLossUsd : (this.startBalance * this.rules.maxTotalLoss / 100);
         return lossPct >= this.rules.maxTotalLoss || lossUsd >= usdCap;
     }
@@ -360,9 +537,15 @@ class PropFirmTracker {
         const dailyBreached = this.isDailyLossBreached();
         const totalBreached = this.isTotalLossBreached();
         const consistencyBreached = this.isConsistencyBreached();
+        const weekendBreached = this.isWeekendExposureBreached();
         this.violations.dailyLoss = dailyBreached;
         this.violations.totalLoss = totalBreached;
         this.violations.consistency = consistencyBreached;
+        this.violations.weekendHold = weekendBreached;
+
+        if (dailyBreached || totalBreached || consistencyBreached || weekendBreached) {
+            this.tradingDisabled = true;
+        }
 
         if (!skipModalTrigger && !this.failedModalShown) {
             if (dailyBreached) {
@@ -371,14 +554,16 @@ class PropFirmTracker {
                 this.showChallengeFailedModal('Maximum Total Loss');
             } else if (consistencyBreached) {
                 this.showChallengeFailedModal('Consistency Rule');
+            } else if (weekendBreached) {
+                this.showChallengeFailedModal('Weekend Holding');
             }
         }
 
-        if (!dailyBreached && !totalBreached && !consistencyBreached) {
+        if (!dailyBreached && !totalBreached && !consistencyBreached && !weekendBreached) {
             this._tryAdvancePhaseOrPass(skipModalTrigger);
         }
 
-        return !dailyBreached && !totalBreached && !consistencyBreached;
+        return !dailyBreached && !totalBreached && !consistencyBreached && !weekendBreached;
     }
 
     _tryAdvancePhaseOrPass(skipModalTrigger) {
@@ -390,12 +575,17 @@ class PropFirmTracker {
         if (this.currentPhase < 2 && numPhases >= 2) {
             this._advanceToPhase2();
             if (!skipModalTrigger && typeof window.showNotification === 'function') {
-                window.showNotification('Phase 1 complete — Phase 2 challenge started', 'success', 6000);
+                const pt = this.rules.profitTarget;
+                window.showNotification(
+                    `Phase 1 complete — Phase 2 started (${pt}% / ≈$${this._getProfitTargetUsd().toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
+                    'success',
+                    8000
+                );
             }
             return;
         }
 
-        if (!skipModalTrigger && !this.profitTargetReachedShown) {
+        if (!skipModalTrigger && !this.profitTargetReachedShown && this._isChallengeFullyPassed()) {
             this.showChallengePassedModal();
             this.profitTargetReachedShown = true;
         }
@@ -404,10 +594,47 @@ class PropFirmTracker {
     _advanceToPhase2() {
         this.currentPhase = 2;
         this.phaseStartBalance = this.currentBalance;
+        this.peakBalance = this.currentBalance;
         this.profitTargetReachedShown = false;
         this.tradingDays = new Set();
         this.dailyTrades = {};
+        this.violations = {
+            dailyLoss: false,
+            totalLoss: false,
+            consistency: false,
+            weekendHold: false
+        };
+        this.tradingDisabled = false;
         this._applyPhaseRulesFromSession(this.sessionData, 2);
+        this._queuePersistChallengeSnapshot();
+        this.updateUI();
+    }
+
+    /** Restore phase / breach state after session reload (from propfirm_challenge snapshot). */
+    hydrateFromPersistedSnapshot(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object' || !this._isPropFirmChallenge()) return;
+        const phase = Number(snapshot.currentPhase) || 1;
+        if (phase >= 2 && (this.rules.numPhases || 1) >= 2) {
+            this.currentPhase = 2;
+            const psb = Number(snapshot.phaseStartBalance);
+            this.phaseStartBalance = Number.isFinite(psb) && psb > 0 ? psb : this.currentBalance;
+            this.peakBalance = Math.max(this.peakBalance, this.currentBalance);
+            this._applyPhaseRulesFromSession(this.sessionData, 2);
+        }
+        if (snapshot.violations && typeof snapshot.violations === 'object') {
+            this.violations = {
+                ...this.violations,
+                ...snapshot.violations
+            };
+        }
+        const status = String(snapshot.status || '').toLowerCase();
+        if (status === 'breached' || this.violations.dailyLoss || this.violations.totalLoss || this.violations.consistency || this.violations.weekendHold) {
+            this.tradingDisabled = true;
+            this.failedModalShown = true;
+        }
+        if (status === 'passed' || this._isChallengeFullyPassed()) {
+            this.profitTargetReachedShown = true;
+        }
         this.updateUI();
     }
 
@@ -451,11 +678,9 @@ class PropFirmTracker {
             tradingDaysCount: this.getTradingDaysCount(),
             violations: { ...this.violations },
             summary: summary,
-            status: (this.violations.dailyLoss || this.violations.totalLoss || this.violations.consistency)
+            status: (this.violations.dailyLoss || this.violations.totalLoss || this.violations.consistency || this.violations.weekendHold)
                 ? 'breached'
-                : (this.isProfitTargetReached() && (this._getTradingDaysRequired() <= 0 || this.isTradingDaysComplete())
-                    ? 'passed'
-                    : 'active'),
+                : (this._isChallengeFullyPassed() ? 'passed' : 'active'),
             currentPhase: this.currentPhase,
             phaseStartBalance: this.phaseStartBalance
         };
@@ -515,6 +740,14 @@ class PropFirmTracker {
             ? 100
             : Math.min((this.getTradingDaysCount() / reqDays) * 100, 100);
         return {
+            phase: {
+                current: this.currentPhase,
+                total: this.rules.numPhases || 1,
+                baseline: (this.currentPhase >= 2 && Number.isFinite(this.phaseStartBalance))
+                    ? this.phaseStartBalance
+                    : this.startBalance,
+                profitTargetUsd: this._getProfitTargetUsd()
+            },
             tradingDays: {
                 current: this.getTradingDaysCount(),
                 required: reqDays,
@@ -524,23 +757,39 @@ class PropFirmTracker {
             profit: {
                 current: this.getProfitPercent(),
                 target: this.rules.profitTarget,
-                completed: this.isProfitTargetReached(),
+                completed: this._isChallengeFullyPassed(),
                 percent: this.getProfitPercent() >= 0 
-                    ? Math.min((this.getProfitPercent() / this.rules.profitTarget) * 100, 100)
+                    ? Math.min((this.getProfitPercent() / Math.max(0.0001, this.rules.profitTarget)) * 100, 100)
                     : 0
             },
             dailyLoss: {
-                current: Math.abs(Math.min(0, this.getTodayPnLPercent())),
-                limit: this.rules.maxDailyLoss,
+                current: this._getDailyLossPercentIncludingUnrealized(),
+                limit: this.rules.dailyLossEnabled ? this.rules.maxDailyLoss : 0,
                 breached: this.violations.dailyLoss,
-                percent: Math.min((Math.abs(Math.min(0, this.getTodayPnLPercent())) / Math.max(0.0001, this.rules.maxDailyLoss)) * 100, 100)
+                percent: this.rules.dailyLossEnabled
+                    ? Math.min((this._getDailyLossPercentIncludingUnrealized() / Math.max(0.0001, this.rules.maxDailyLoss)) * 100, 100)
+                    : 0
             },
             totalLoss: {
-                current: this.getTotalLossPercent(),
+                current: this._getTotalLossPercentIncludingUnrealized(),
                 limit: this.rules.maxTotalLoss,
                 breached: this.violations.totalLoss,
-                percent: Math.min((this.getTotalLossPercent() / Math.max(0.0001, this.rules.maxTotalLoss)) * 100, 100)
+                percent: Math.min((this._getTotalLossPercentIncludingUnrealized() / Math.max(0.0001, this.rules.maxTotalLoss)) * 100, 100)
             },
+            consistency: {
+                enabled: !!(this.rules.consistencyRule && this.rules.consistencyPct > 0),
+                limit: this.rules.consistencyPct,
+                breached: this.violations.consistency
+            },
+            maxPosition: {
+                limit: this.getMaxPositionQuantity(),
+                unit: (window.chart?.orderManager?.marketType === 'futures') ? 'contracts' : (this.rules.maxPositionUnit || 'lots')
+            },
+            weekendHold: {
+                allowed: !!this.rules.weekendHold,
+                breached: this.violations.weekendHold
+            },
+            tradingDisabled: !!this.tradingDisabled,
             balance: {
                 start: this.startBalance,
                 current: this.currentBalance,
@@ -713,40 +962,51 @@ class PropFirmTracker {
         if (!this._isPropFirmChallenge()) {
             return;
         }
-        // Don't show if already shown
         if (this.failedModalShown) {
             console.log('⚠️ Failed modal already shown, skipping');
             return;
         }
-        
-        const modal = document.getElementById('challengeFailedModal');
-        if (!modal) return;
+
+        this.tradingDisabled = true;
+        this.failedModalShown = true;
 
         const summary = this.getProgressSummary();
         const pnl = this.currentBalance - this.startBalance;
         const pnlPercent = this.getProfitPercent();
 
-        // Update modal content
         const reasonMessages = {
             'Daily Loss Limit': 'You have exceeded the maximum daily loss limit for this challenge.',
             'Maximum Total Loss': 'You have exceeded the maximum total loss limit for this challenge.',
-            'Consistency Rule': 'Your largest profitable day exceeds the allowed share of total profits for this challenge.'
+            'Consistency Rule': 'Your largest profitable day exceeds the allowed share of total profits for this challenge.',
+            'Weekend Holding': 'Open positions are not allowed over the weekend for this challenge.'
         };
-        document.getElementById('challengeFailedReason').textContent =
-            reasonMessages[ruleName] || 'A challenge rule was violated.';
+        const msg = reasonMessages[ruleName] || 'A challenge rule was violated.';
+        if (document.getElementById('challengeFailedReason')) {
+            document.getElementById('challengeFailedReason').textContent = msg;
+        }
 
-        document.getElementById('challengeFailedBalance').textContent = 
-            `$${this.currentBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        if (typeof window.showNotification === 'function') {
+            window.showNotification(`Challenge failed: ${ruleName}`, 'error', 8000);
+        }
 
-        document.getElementById('challengeFailedPnL').textContent = 
-            `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)`;
-
-        document.getElementById('challengeFailedRule').textContent = ruleName;
-        document.getElementById('challengeFailedDays').textContent = summary.tradingDays.current;
-
-        // Show modal
-        modal.classList.add('active');
-        this.failedModalShown = true;
+        const modal = document.getElementById('challengeFailedModal');
+        if (modal) {
+            if (document.getElementById('challengeFailedBalance')) {
+                document.getElementById('challengeFailedBalance').textContent =
+                    `$${this.currentBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            }
+            if (document.getElementById('challengeFailedPnL')) {
+                document.getElementById('challengeFailedPnL').textContent =
+                    `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)`;
+            }
+            if (document.getElementById('challengeFailedRule')) {
+                document.getElementById('challengeFailedRule').textContent = ruleName;
+            }
+            if (document.getElementById('challengeFailedDays')) {
+                document.getElementById('challengeFailedDays').textContent = summary.tradingDays.current;
+            }
+            modal.classList.add('active');
+        }
 
         // Pause replay if active
         if (window.chart && window.chart.replaySystem && window.chart.replaySystem.isActive) {
@@ -809,7 +1069,8 @@ class PropFirmTracker {
         this.violations = {
             dailyLoss: false,
             totalLoss: false,
-            consistency: false
+            consistency: false,
+            weekendHold: false
         };
         if (this.sessionData) {
             this._applyPhaseRulesFromSession(this.sessionData, 1);

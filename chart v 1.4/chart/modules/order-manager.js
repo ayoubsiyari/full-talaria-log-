@@ -3600,6 +3600,15 @@ class OrderManager {
                 this.orderService.recomputeSharedMarginState();
             }
         }
+        try {
+            if (window.propFirmTracker && typeof window.propFirmTracker.checkRules === 'function') {
+                const now = Date.now();
+                if (!this._lastPropRuleCheckMs || now - this._lastPropRuleCheckMs >= 300) {
+                    this._lastPropRuleCheckMs = now;
+                    window.propFirmTracker.checkRules();
+                }
+            }
+        } catch (e) {}
     }
 
     recomputeAccountFromJournal() {
@@ -4384,6 +4393,63 @@ class OrderManager {
             } catch (e) {}
         }
         console.log(`💰 Applied session starting balance: $${pb.toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
+    }
+
+    /** Prop firm: max position (contracts / lots / % equity); null = no cap. */
+    _getPropMaxPositionLimit() {
+        try {
+            if (window.propFirmTracker && typeof window.propFirmTracker.getMaxPositionQuantity === 'function') {
+                return window.propFirmTracker.getMaxPositionQuantity(this);
+            }
+            const session = this.chart && this.chart.backtestingSession;
+            if (!session || String(session.type || '').toLowerCase() !== 'propfirm') return null;
+            const pr = session.prop_rules || {};
+            if (this.marketType === 'futures') {
+                if (pr.maxContractsEnabled === false || pr.maxPositionEnabled === false) return null;
+                const n = Number(pr.maxContracts ?? pr.maxPosition);
+                if (!Number.isFinite(n) || n <= 0) return null;
+                return Math.floor(n);
+            }
+            if (!pr.maxPositionEnabled) return null;
+            const n = Number(pr.maxPosition);
+            if (!Number.isFinite(n) || n <= 0) return null;
+            const unit = String(pr.maxPositionUnit || 'lots').toLowerCase();
+            if (unit === '%') {
+                const eq = Number(this.equity) || Number(session.initial_balance) || 0;
+                const candle = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
+                const price = Number(candle && candle.c) || 0;
+                const cs = Number(this.contractSize) || 100000;
+                if (eq > 0 && price > 0 && cs > 0) {
+                    return Math.max(0, (eq * (n / 100)) / (cs * price));
+                }
+                return null;
+            }
+            return n;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /** @deprecated use _getPropMaxPositionLimit */
+    _getPropMaxContractsLimit() {
+        if (this.marketType !== 'futures') return null;
+        const max = this._getPropMaxPositionLimit();
+        return max != null ? Math.floor(max) : null;
+    }
+
+    _clampQtyToPropMax(qty) {
+        const max = this._getPropMaxPositionLimit();
+        if (max == null) return qty;
+        const q = parseFloat(qty);
+        if (!Number.isFinite(q) || q <= 0) return qty;
+        return Math.min(q, max);
+    }
+
+    _validatePropBeforeOrder(quantity) {
+        if (!window.propFirmTracker || typeof window.propFirmTracker.validateBeforeOrder !== 'function') {
+            return { ok: true };
+        }
+        return window.propFirmTracker.validateBeforeOrder(quantity, this);
     }
     
     /**
@@ -14830,6 +14896,19 @@ class OrderManager {
             } else if (this._futuresMultiTpAllocationErrors(entryPrice, quantity).length > 0) {
                 canPlace = false;
                 reason = 'Multi-TP: whole contracts only';
+            } else {
+                const propMax = this._getPropMaxPositionLimit();
+                if (propMax != null && quantity > propMax) {
+                    canPlace = false;
+                    const unit = this.marketType === 'futures' ? 'contracts' : 'lots';
+                    reason = `Max ${propMax} ${unit}`;
+                } else {
+                    const propValidation = this._validatePropBeforeOrder(quantity);
+                    if (!propValidation.ok) {
+                        canPlace = false;
+                        reason = propValidation.reason || 'Challenge rule violated';
+                    }
+                }
             }
             
             // Update button state
@@ -15017,7 +15096,7 @@ class OrderManager {
             
             // Update orderQuantity (instrument-aware formatting: futures = integer contracts).
             // Use floor-snap, not toFixed(0), so 0.8 futures contracts becomes invalid instead of rounding up to 1.
-            const snappedLotSize = this._roundQtyToStep(lotSize);
+            const snappedLotSize = this._clampQtyToPropMax(this._roundQtyToStep(lotSize));
             const qtyInput = document.getElementById('orderQuantity');
             if (qtyInput) {
                 qtyInput.value = this._formatQty(snappedLotSize);
@@ -23382,7 +23461,18 @@ class OrderManager {
         const marketFillTimeMs = this._marketFillOpenTimeMs(ctxChart, currentCandle);
         
         const currentPrice = currentCandle.c;
-        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        let quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        const propValidation = this._validatePropBeforeOrder(quantity);
+        if (!propValidation.ok) {
+            this.showNotification(propValidation.reason || 'Prop challenge rule violated', 'warning', 5000);
+            return;
+        }
+        const propMaxPosition = this._getPropMaxPositionLimit();
+        if (propMaxPosition != null && quantity > propMaxPosition) {
+            const unit = this.marketType === 'futures' ? 'contracts' : 'lots';
+            this.showNotification(`Max ${propMaxPosition} ${unit} (prop challenge rule)`, 'warning', 5000);
+            return;
+        }
         // `let` (not `const`) — tick-grid snap below re-assigns this value so all
         // downstream order-creation paths use the snapped price.
         let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);

@@ -9595,12 +9595,79 @@ function v9IsPartialDecimalInput(str) {
   return false;
 }
 
+/** Prop firm session: configured max position (# mode); null = unlimited. */
+function v9GetPropMaxPosition(symbolType) {
+  try {
+    const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
+    const om = window.chart?.orderManager;
+    if (tracker && typeof tracker.getMaxPositionQuantity === "function") {
+      return tracker.getMaxPositionQuantity(om);
+    }
+    const sess = window.chart?.backtestingSession;
+    if (!sess || String(sess.type || "").toLowerCase() !== "propfirm") return null;
+    const pr = sess.prop_rules || {};
+    if (symbolType === "futures") {
+      if (pr.maxContractsEnabled === false || pr.maxPositionEnabled === false) return null;
+      const n = Number(pr.maxContracts ?? pr.maxPosition);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return Math.floor(n);
+    }
+    if (!pr.maxPositionEnabled) return null;
+    const n = Number(pr.maxPosition);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const unit = String(pr.maxPositionUnit || "lots").toLowerCase();
+    if (unit === "%" && om) {
+      const eq = Number(om.equity) || Number(sess.initial_balance) || 0;
+      const candle = typeof om.getCurrentCandle === "function" ? om.getCurrentCandle() : null;
+      const price = Number(candle?.c) || 0;
+      const cs = Number(om.contractSize) || 100000;
+      if (eq > 0 && price > 0 && cs > 0) {
+        return Math.max(0, (eq * (n / 100)) / (cs * price));
+      }
+      return null;
+    }
+    return n;
+  } catch {
+    return null;
+  }
+}
+
+/** @deprecated — use v9GetPropMaxPosition */
+function v9GetPropMaxContracts() {
+  return v9GetPropMaxPosition("futures");
+}
+
+function v9CapPropPosition(n, symbolType, sizeMode = "#") {
+  if (sizeMode !== "#") return n;
+  const maxP = v9GetPropMaxPosition(symbolType);
+  const val =
+    symbolType === "futures"
+      ? Math.max(0, Math.floor(Number(n) || 0))
+      : Math.max(0, Number(n) || 0);
+  return maxP != null ? Math.min(val, maxP) : val;
+}
+
+function v9CapFuturesContracts(n, symbolType) {
+  return v9CapPropPosition(n, symbolType, "#");
+}
+
 /** SIZE rail input — allow free typing; cap fractional digits (default 3). */
 function v9SanitizeSizeInputRaw(raw, sizeMode, symbolType, maxDecimals = 3) {
   let v = String(raw ?? "");
-  if (sizeMode === "#" && symbolType === "futures") {
-    if (!/^\d*$/.test(v)) return null;
-    return v;
+  if (sizeMode === "#") {
+    if (symbolType === "futures") {
+      if (!/^\d*$/.test(v)) return null;
+    } else if (!/^-?\d*\.?\d*$/.test(v)) {
+      return null;
+    }
+    const maxP = v9GetPropMaxPosition(symbolType);
+    if (maxP != null && v !== "") {
+      const n = symbolType === "futures" ? parseInt(v, 10) : parseFloat(v);
+      if (Number.isFinite(n) && n > maxP) {
+        return symbolType === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
+      }
+    }
+    if (symbolType === "futures") return v;
   }
   if (!/^-?\d*\.?\d*$/.test(v)) return null;
   if (v.length > 18) return null;
@@ -9623,8 +9690,8 @@ function v9FormatSizeInputOnBlur(raw, sizeMode, symbolType, accountEquity) {
   if (s === "" || s === ".") return "0";
   const n = parseFloat(s);
   if (!Number.isFinite(n)) return "0";
-  if (sizeMode === "#" && symbolType === "futures") {
-    return String(Math.max(0, Math.floor(n)));
+  if (sizeMode === "#") {
+    return String(v9CapPropPosition(n, symbolType, "#"));
   }
   if (sizeMode === "%") {
     return String(Math.max(0, Math.min(100, parseFloat(n.toFixed(2)))));
@@ -9661,12 +9728,11 @@ function v9ApplySizeStepperDelta(rawVal, dir, sizeMode, symbolType, accountEquit
   if (sizeMode === "%") capped = Math.min(100, next);
   else if (sizeMode === "$" && Number.isFinite(accountEquity)) capped = Math.min(accountEquity, next);
 
-  if (sizeMode === "#" && symbolType === "futures") {
-    return String(Math.max(0, Math.floor(capped)));
-  }
   if (sizeMode === "#") {
+    const cappedQty = v9CapPropPosition(capped, symbolType, "#");
+    if (symbolType === "futures") return String(Math.max(0, Math.floor(cappedQty)));
     const dec = step >= 0.01 ? 2 : 3;
-    return String(parseFloat(capped.toFixed(dec)));
+    return String(parseFloat(Math.max(0, cappedQty).toFixed(dec)));
   }
   if (sizeMode === "$") {
     return String(parseFloat(capped.toFixed(3)));
@@ -9939,6 +10005,11 @@ const TalariaV8bLive = () => {
   const [buySell, setBuySell] = useState("buy");
   const [orderType, setOrderType] = useState("market");
   const [btmTab, setBtmTab] = useState("all");
+  const [isPropFirmMode, setIsPropFirmMode] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("mode") === "propfirm"; } catch { return false; }
+  });
+  const [propHud, setPropHud] = useState(null);
+  const propTabAutoOpenedRef = useRef(false);
   const [btmIndPos, setBtmIndPos] = useState(null);
   const [tblSort, setTblSort] = useState(null); // {col, dir:'asc'|'desc'}
   /** Bumps when chart orderManager trades / P&L change so the trades table stays live. */
@@ -10486,6 +10557,40 @@ const TalariaV8bLive = () => {
     });
     return undefined;
   }, [btmTab, omTradeRev]);
+
+  // Prop firm challenge progress — poll tracker when in propfirm session.
+  useEffect(() => {
+    const syncProp = () => {
+      let prop = false;
+      try {
+        if (new URLSearchParams(window.location.search).get("mode") === "propfirm") prop = true;
+      } catch (_) {}
+      try {
+        const sess = window.chart?.backtestingSession;
+        if (sess && String(sess.type || "").toLowerCase() === "propfirm") prop = true;
+      } catch (_) {}
+      setIsPropFirmMode(prop);
+      if (!prop) {
+        setPropHud(null);
+        return;
+      }
+      const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
+      if (tracker) {
+        if (!tracker.sessionData && typeof tracker.loadSession === "function") tracker.loadSession();
+        if (typeof tracker.getProgressSummary === "function") {
+          setPropHud(tracker.getProgressSummary());
+        }
+      }
+      if (!propTabAutoOpenedRef.current) {
+        propTabAutoOpenedRef.current = true;
+        setBtmTab("prop");
+        setBtmOpen(true);
+      }
+    };
+    syncProp();
+    const id = window.setInterval(syncProp, 1000);
+    return () => window.clearInterval(id);
+  }, [omTradeRev]);
 
   // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
   useEffect(() => {
@@ -13968,6 +14073,18 @@ const TalariaV8bLive = () => {
       return rows.slice(0, maxLegs);
     });
   }, [omOrderQtyTxt, riskVal, sizeMode, currentSymbol.type, tpRows.length]);
+
+  // Cap SIZE field when prop max-position rule is active (# mode).
+  useEffect(() => {
+    if (!isPropFirmMode || sizeMode !== "#") return;
+    const maxP = v9GetPropMaxPosition(currentSymbol.type);
+    if (maxP == null) return;
+    setRiskVal((prev) => {
+      const n = currentSymbol.type === "futures" ? parseInt(prev, 10) : parseFloat(prev);
+      if (!Number.isFinite(n) || n <= maxP) return prev;
+      return currentSymbol.type === "futures" ? String(Math.floor(maxP)) : String(parseFloat(maxP.toFixed(3)));
+    });
+  }, [isPropFirmMode, currentSymbol.type, sizeMode, omTradeRev]);
 
   /** Lot-size (#): SIZE (`riskVal`) is contracts/lots — sync single ENTRY + TP row values (legacy "100" was %). */
   useEffect(() => {
@@ -33584,7 +33701,14 @@ const TalariaV8bLive = () => {
               const nPend = rawCounts.filter((r) => r.status === "pending").length;
               const nOpen = rawCounts.filter((r) => r.status === "open").length;
               const nHist = rawCounts.filter((r) => r.status === "closed").length;
-              const ordTabs=[["all","All Trade",nAll],["pending","Pending",nPend],["open","Open Positions",nOpen],["history","History",nHist],["analytics","Analytics",null]];
+              const ordTabs=[
+                ["all","All Trade",nAll],
+                ["pending","Pending",nPend],
+                ["open","Open Positions",nOpen],
+                ["history","History",nHist],
+                ...(isPropFirmMode ? [["prop","Prop Challenge",null]] : []),
+                ["analytics","Analytics",null],
+              ];
               return(
               <div ref={btmTabBarRef} style={{display:"flex",flexShrink:0,borderBottom:`1px solid ${c.br}`,paddingLeft:10,position:"relative",alignItems:"center"}}>
                 {ordTabs.map(([id,label,cnt])=>{
@@ -33639,7 +33763,7 @@ const TalariaV8bLive = () => {
                   initTags._custom = trade.preTags.filter(t => !knownBools.has(t) && !knownOpts.has(t));
                   setTapTags(initTags); setTapJournal(""); setTapStrategy(""); setTapScreenshots([null,null]); setTapTagInput(""); setTradeActPopup(trade);
                 };
-                const filtered = btmTab==="all"?allTradesR : btmTab==="analytics"?[] : allTradesR.filter(r=>
+                const filtered = btmTab==="all"?allTradesR : (btmTab==="analytics"||btmTab==="prop")?[] : allTradesR.filter(r=>
                   btmTab==="pending"?r.status==="pending":
                   btmTab==="open"?r.status==="open":
                   btmTab==="history"?r.status==="closed":false
@@ -33671,6 +33795,79 @@ const TalariaV8bLive = () => {
                 const jMaxAbsCum = Math.max(1, ...jCum.map((x) => Math.abs(x.cum)));
                 const jStrats = (ja?.strategies || []).slice(0, 12);
                 const cols="minmax(0,0.7fr) minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.6fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr)";
+                if(btmTab==="prop") {
+                  const tracker = typeof window !== "undefined" ? window.propFirmTracker : null;
+                  const rules = tracker?.rules || {};
+                  const hud = propHud || (tracker && typeof tracker.getProgressSummary === "function" ? tracker.getProgressSummary() : null);
+                  const breached = !!(hud && (hud.dailyLoss?.breached || hud.totalLoss?.breached || hud.consistency?.breached || hud.weekendHold?.breached || hud.tradingDisabled));
+                  const phaseLbl = hud?.phase?.total > 1
+                    ? `Phase ${hud.phase.current} of ${hud.phase.total}`
+                    : "Single phase";
+                  const passed = !!(hud && hud.profit?.completed);
+                  const statusLbl = breached ? "FAILED" : passed ? "PASSED" : hud?.phase?.total > 1 && hud?.phase?.current === 1 && hud?.profit?.percent >= 100 ? "PHASE 1 DONE" : "IN PROGRESS";
+                  const statusCol = breached ? c.rd : passed ? c.gn : c.gold;
+                  const maxPosLbl = hud?.maxPosition?.limit != null
+                    ? `${Number(hud.maxPosition.limit).toFixed(hud.maxPosition.unit === "contracts" ? 0 : 2)} ${hud.maxPosition.unit}`
+                    : "—";
+                  const propRows = hud ? [
+                    { key: "days", label: "Trading days", cur: hud.tradingDays.required <= 0 ? `${hud.tradingDays.current}` : `${hud.tradingDays.current} / ${hud.tradingDays.required}`, pct: hud.tradingDays.percent, col: hud.tradingDays.completed ? c.gn : c.tx, breached: false },
+                    { key: "profit", label: hud.phase?.total > 1 ? `Profit target (P${hud.phase.current})` : "Profit target", cur: `${hud.profit.current.toFixed(2)}% / ${hud.profit.target}%${hud.phase?.profitTargetUsd ? ` (≈$${Number(hud.phase.profitTargetUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })})` : ""}`, pct: hud.profit.percent, col: hud.profit.completed ? c.gn : c.tx, breached: false },
+                    { key: "daily", label: "Daily loss", cur: `${hud.dailyLoss.current.toFixed(2)}% / ${hud.dailyLoss.limit}%`, pct: hud.dailyLoss.percent, col: hud.dailyLoss.breached ? c.rd : c.tx, breached: hud.dailyLoss.breached },
+                    { key: "dd", label: "Max drawdown", cur: `${hud.totalLoss.current.toFixed(2)}% / ${hud.totalLoss.limit}%`, pct: hud.totalLoss.percent, col: hud.totalLoss.breached ? c.rd : c.tx, breached: hud.totalLoss.breached },
+                    ...(hud.consistency?.enabled ? [{ key: "consistency", label: "Consistency", cur: `≤ ${hud.consistency.limit}% best day`, pct: hud.consistency.breached ? 100 : 0, col: hud.consistency.breached ? c.rd : c.tx, breached: hud.consistency.breached }] : []),
+                    ...(hud.maxPosition?.limit != null ? [{ key: "maxpos", label: "Max position", cur: maxPosLbl, pct: 0, col: c.tx, breached: false }] : []),
+                    ...(!hud.weekendHold?.allowed ? [{ key: "weekend", label: "Weekend hold", cur: hud.weekendHold.breached ? "VIOLATION" : "Not allowed", pct: hud.weekendHold.breached ? 100 : 0, col: hud.weekendHold.breached ? c.rd : c.tm, breached: hud.weekendHold.breached }] : []),
+                  ] : [];
+                  return(
+                    <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                        <div>
+                          <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em",marginBottom:4}}>PROP CHALLENGE</div>
+                          <div style={{fontSize:11,color:c.ts}}>
+                            {phaseLbl}
+                            {` · Account $${hud?.balance?.start != null ? Number(hud.balance.start).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}`}
+                            {hud?.phase?.total > 1 && hud?.phase?.current >= 2 && hud?.phase?.baseline != null
+                              ? ` · P2 base $${Number(hud.phase.baseline).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                              : ""}
+                            {rules.trailingDrawdown ? " · Trailing DD" : " · Static DD"}
+                            {rules.dailyLossEnabled === false ? " · No daily limit" : ""}
+                          </div>
+                        </div>
+                        <div style={{padding:"6px 12px",border:`1px solid ${statusCol}`,background:breached?"rgba(255,80,104,0.08)":passed?"rgba(0,212,161,0.08)":"rgba(201,168,76,0.08)"}}>
+                          <span style={{fontSize:10,fontWeight:800,color:statusCol,letterSpacing:"0.08em"}}>{statusLbl}</span>
+                        </div>
+                      </div>
+                      {!hud && (
+                        <div style={{fontSize:11,color:c.tm,padding:"8px 0"}}>Loading challenge rules…</div>
+                      )}
+                      {propRows.map((row) => (
+                        <div key={row.key} style={{background:c.bg,border:`1px solid ${row.breached?"rgba(255,80,104,0.35)":c.br}`,padding:"10px 12px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                            <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{row.label.toUpperCase()}</span>
+                            <span style={{fontSize:11,fontWeight:700,color:row.col,fontVariantNumeric:"tabular-nums"}}>{row.cur}</span>
+                          </div>
+                          <div style={{height:5,background:"rgba(140,160,255,0.07)",overflow:"hidden"}}>
+                            <div style={{width:`${Math.min(100, Math.max(0, row.pct))}%`,height:"100%",background:row.breached?c.rd:row.pct>=100?c.gn:c.gold,opacity:0.8,transition:"width 0.35s ease"}}/>
+                          </div>
+                        </div>
+                      ))}
+                      {hud && (
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
+                          {[
+                            { l: "Balance", v: `$${Number(hud.balance.current).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, col: c.tx },
+                            { l: "Peak", v: `$${Number(hud.balance.peak).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, col: c.tx },
+                            { l: "Net P&L", v: `${hud.profit.current >= 0 ? "+" : ""}${hud.profit.current.toFixed(2)}%`, col: hud.profit.current >= 0 ? c.gn : c.rd },
+                          ].map(({ l, v, col }) => (
+                            <div key={l} style={{background:c.bg,border:`1px solid ${c.br}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:5}}>
+                              <span style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.07em"}}>{l}</span>
+                              <span style={{fontSize:16,fontWeight:700,color:col,fontVariantNumeric:"tabular-nums"}}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
                 if(btmTab==="analytics") return(
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
                     {jMeta.loading&&(
@@ -35138,11 +35335,7 @@ const TalariaV8bLive = () => {
                             : String(Math.max(0, single))
                         );
                       } else if (total > 0) {
-                        setRiskVal(
-                          currentSymbol.type === "futures"
-                            ? String(Math.floor(total))
-                            : String(total)
-                        );
+                        setRiskVal(String(v9CapPropPosition(total, currentSymbol.type, sizeMode)));
                       }
                     } else if (sizeMode === "$") {
                       if (rowsAfter.length === 1) {
