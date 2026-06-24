@@ -63,7 +63,21 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260609b07";
+// Cache-bust key for the multichart bridge scripts (multichart-manager.js,
+// sync-bridge.js, panel-cmd-bridge.js, engine-api-guards.js). These are loaded
+// at runtime via injectScript("…?v=" + BRIDGE_VERSION), so they are NOT covered
+// by the build's HTML `?v=` rewrite (bump-dist-v9-cache.mjs only rewrites <script
+// src> tags + SW_VERSION). When this was a hardcoded constant it stayed frozen
+// across builds, so edits to the bridge scripts kept loading from the browser's
+// stale cache while chart.js got a fresh `?v=` every build — a version skew that
+// shows up as `panel-cmd timeout` (new chart.js talking to an old cached bridge).
+// Track the per-build id (set in live/index.html <head>, bumped every build) so
+// the bridge scripts cache-bust in lockstep with chart.js. Fallback keeps a
+// stable key if the global is ever missing.
+const BRIDGE_VERSION =
+    (typeof window !== "undefined" && window.__TALARIA_CHART_BUILD_ID)
+        ? String(window.__TALARIA_CHART_BUILD_ID)
+        : "20260609b07";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {

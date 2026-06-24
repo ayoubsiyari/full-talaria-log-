@@ -9322,7 +9322,9 @@ const TalariaV8b = () => {
   };
   const persistLiveJournalManualTrade = (source, trade) => {
     const saver = typeof window !== "undefined" ? window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ : null;
-    if (typeof saver !== "function") return Promise.resolve(false);
+    if (typeof saver !== "function") {
+      return Promise.reject(new Error("Journal save is unavailable. Refresh the page and try again."));
+    }
     const boot = getV16JournalBoot();
     const account = findDashLiveJournalBootAccount(source, boot);
     const enrichedSource = {
@@ -9332,12 +9334,10 @@ const TalariaV8b = () => {
       accountTypeKey: source?.accountTypeKey || account?.accountTypeKey,
     };
     if (!isDashLiveJournalAddTradeSource(enrichedSource)) {
-      console.error("[V16] live journal save blocked: source is not a live journal account");
-      return Promise.resolve(false);
+      return Promise.reject(new Error("This source is not a live journal account."));
     }
     if (enrichedSource.liveAccountId == null && enrichedSource.profileId == null) {
-      console.error("[V16] live journal save blocked: missing liveAccountId/profileId");
-      return Promise.resolve(false);
+      return Promise.reject(new Error("This journal account is missing profile information. Refresh the page and try again."));
     }
     return saver(enrichedSource, trade)
       .then((saved) => {
@@ -35672,6 +35672,15 @@ const TalariaV8b = () => {
 
           /* ─── Strategy card (shared) ─── */
           const STRAT_ROW_COLS = "44px 210px 320px 275px 135px 110px 150px 44px";
+          const StratRowsHeader = () => (
+            <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,flexShrink:0,borderBottom:`1px solid ${c.brH}`,background:c.bg}}>
+              {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,colIdx)=>(
+                <div key={`${label || "icon"}-${colIdx}`} style={{fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:label?"left":"center",padding:"0 10px"}}>
+                  {label}
+                </div>
+              ))}
+            </div>
+          );
           const StratMetricsSkeleton = ({compact=false}) => (
             compact ? (
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:5,minWidth:0}}>
@@ -35714,7 +35723,9 @@ const TalariaV8b = () => {
             </div>
           );
           const StratRowsSkeleton = () => (
-            <div style={{width:1288,margin:"0 auto",display:"flex",flexDirection:"column",padding:"4px 0 24px",gap:6}}>
+            <div style={{width:1288,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column",gap:6}}>
+              <StratRowsHeader/>
+              <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"4px 0 24px",display:"flex",flexDirection:"column",gap:6}}>
               {Array.from({length:4}).map((_,idx)=>(
                 <div key={idx} style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"stretch",height:80,minHeight:80,maxHeight:80,border:`1px solid ${c.brH}`,background:c.sf,overflow:"hidden"}}>
                   <div style={{padding:"0 8px",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -35729,6 +35740,7 @@ const TalariaV8b = () => {
                   <div/>
                 </div>
               ))}
+              </div>
             </div>
           );
 
@@ -35987,14 +35999,9 @@ const TalariaV8b = () => {
             );
           };
           const StrategyRows = ({items,isMine=false,inSavedTab=false,onEdit,onDelete,onSave,onRemove,isSaved,onDuplicate,onUseTemplate,metricsLoading=false}) => (
-            <div style={{width:1288,margin:"0 auto",display:"flex",flexDirection:"column",padding:"4px 0 24px"}}>
-              <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,borderBottom:`1px solid ${c.brH}`}}>
-                {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,colIdx)=>(
-                  <div key={`${label || "icon"}-${colIdx}`} style={{fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:label?"left":"center",padding:"0 10px"}}>
-                    {label}
-                  </div>
-                ))}
-              </div>
+            <div style={{width:1288,margin:"0 auto",flex:1,minHeight:0,display:"flex",flexDirection:"column"}}>
+              <StratRowsHeader/>
+              <div className="tlr-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"4px 0 24px"}}>
               {items.map((strat,idx)=>{
                 const isH=stratCardHov===strat.id;
                 const icon = strat.icon || strat.template?.icon || "◎";
@@ -36053,6 +36060,7 @@ const TalariaV8b = () => {
                   </div>
                 );
               })}
+              </div>
             </div>
           );
 
@@ -36189,56 +36197,75 @@ const TalariaV8b = () => {
             return next;
           };
           const cloneStrategyData = value => value == null ? value : JSON.parse(JSON.stringify(value));
+          const buildStrategyCopyRow = (source, existing) => {
+            if (!source) return null;
+            const tpl = source.templatePreview ? source.template : null;
+            const id = `m${Date.now()}_${Array.isArray(existing) ? existing.length : 0}`;
+            const createdAt = new Date().toISOString();
+            if (tpl) {
+              return {
+                id,
+                name: strategyCopyName(tpl.name, existing),
+                icon: tpl.icon,
+                style: source.style || (tpl.tags || []).find(t => STYLES.includes(t)) || "Trend Following",
+                desc: tpl.description || "",
+                instruments: [],
+                timeframes: [...(tpl.timeframes || [])],
+                tags: [...(tpl.tags || [])],
+                complexity: source.complexity || ((tpl.tags || []).some(t => /advanced/i.test(t)) ? "Hard" : (tpl.tags || []).some(t => /beginner/i.test(t)) ? "Easy" : "Medium"),
+                direction: "both",
+                markets: [...(tpl.markets || [])],
+                conditions: [],
+                variables: [{ type: "divider", id: "div0" }],
+                images: cloneStrategyData(tpl.images),
+                canvasNodes: buildNodesFromTemplate(tpl),
+                canvasEdges: [],
+                createdAt,
+              };
+            }
+            const copy = cloneStrategyData(source);
+            delete copy.backtestSessions;
+            delete copy.templatePreview;
+            delete copy.template;
+            delete copy.accent;
+            delete copy.author;
+            delete copy.authorBadge;
+            delete copy.saves;
+            delete copy.winRate;
+            delete copy.rr;
+            delete copy.trades;
+            delete copy.pnl;
+            delete copy.id;
+            delete copy.strategy_definition;
+            return {
+              ...copy,
+              id,
+              name: strategyCopyName(source.name, existing),
+              createdAt,
+            };
+          };
           const copyStrategyIntoBank = (source) => {
             if (!source) return;
             if (stratBuilderOpen) {
               setStratBuilderOpen(false);
               setStratEditId(null);
             }
-            const tpl = source.templatePreview ? source.template : null;
-            setMyStrategies(prev=>{
-              const id = `m${Date.now()}_${prev.length}`;
-              const createdAt = new Date().toISOString();
-              if (tpl) {
-                return [{
-                  id,
-                  name:strategyCopyName(tpl.name,prev),
-                  icon:tpl.icon,
-                  style:source.style || (tpl.tags||[]).find(t=>STYLES.includes(t)) || "Trend Following",
-                  desc:tpl.description || "",
-                  instruments:[],
-                  timeframes:[...(tpl.timeframes || [])],
-                  tags:[...(tpl.tags || [])],
-                  complexity:source.complexity || ((tpl.tags||[]).some(t=>/advanced/i.test(t))?"Hard":(tpl.tags||[]).some(t=>/beginner/i.test(t))?"Easy":"Medium"),
-                  direction:"both",
-                  markets:[...(tpl.markets || [])],
-                  conditions:[],
-                  variables:[{type:"divider",id:"div0"}],
-                  images:cloneStrategyData(tpl.images),
-                  canvasNodes:buildNodesFromTemplate(tpl),
-                  canvasEdges:[],
-                  createdAt,
-                },...prev];
-              }
-              const copy = cloneStrategyData(source);
-              delete copy.backtestSessions;
-              delete copy.templatePreview;
-              delete copy.template;
-              delete copy.accent;
-              delete copy.author;
-              delete copy.authorBadge;
-              delete copy.saves;
-              delete copy.winRate;
-              delete copy.rr;
-              delete copy.trades;
-              delete copy.pnl;
-              return [{
-                ...copy,
-                id,
-                name:strategyCopyName(source.name,prev),
-                createdAt,
-              },...prev];
-            });
+            const existing = getV16StrategyBankRows(myStrategies);
+            const copy = buildStrategyCopyRow(source, existing);
+            if (!copy) return;
+            const applySavedCopy = (savedRow) => {
+              const row = savedRow || copy;
+              setMyStrategies(prev => [row, ...prev.filter(s => !sameStrategyRowId(s, row))]);
+            };
+            const persist = typeof window !== "undefined" ? window.__TALARIA_V16_SAVE_STRATEGY__ : null;
+            if (isV16LiveBoot() && typeof persist === "function") {
+              persist(copy, null).then(applySavedCopy).catch((err) => {
+                console.error("[V16] strategy duplicate failed", err);
+                window.alert(err?.message || "Could not duplicate strategy.");
+              });
+              return;
+            }
+            applySavedCopy(copy);
           };
           const saveTemplateReference = (preview) => copyStrategyIntoBank(preview);
           const deleteStrategyFromBank = (source) => {
@@ -36373,9 +36400,9 @@ const TalariaV8b = () => {
               {/* ─ Body ─ */}
               <div style={{flex:1,display:"flex",overflow:"hidden"}}>
                 {navPanel}
-                <div className="tlr-scroll" style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",scrollbarGutter:"stable"}}>
+                <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minHeight:0}}>
                 {/* ─ Filter/search bar ─ */}
-                <div style={{flexShrink:0,background:c.bg,padding:"0 32px",position:"sticky",top:0,zIndex:3}}>
+                <div style={{flexShrink:0,background:c.bg,padding:"0 32px",zIndex:3}}>
                   <div style={{width:1288,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
                       {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length,disabled:true}].map(({k,l,ct,disabled})=>{
@@ -36473,7 +36500,11 @@ const TalariaV8b = () => {
                     )}
                   </div>
                 </div>
-                <div style={{flexShrink:0,padding:"24px 32px"}}>
+                <div style={{
+                  flex:1,minHeight:0,display:"flex",flexDirection:"column",
+                  padding:stratLayoutMode==="rows"?"0 32px 24px":"24px 32px",
+                  overflow:stratLayoutMode==="rows"?"hidden":"auto",
+                }} className={stratLayoutMode==="rows"?undefined:"tlr-scroll"}>
 
                   {/* MY STRATEGIES */}
                   {stratTab==="mine"&&(
