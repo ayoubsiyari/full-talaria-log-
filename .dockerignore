@@ -36,6 +36,7 @@ chart v 1.4/chart/*.log
 Sources Handoff/**
 !Sources Handoff/TalariaV16.jsx
 !Sources Handoff/scoreEngine.js
+!Sources Handoff/v16AppliedSourceStorage.js
 
 # Journal backend image builds from its own context
 journal-backend/**

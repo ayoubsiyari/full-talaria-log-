@@ -17,6 +17,7 @@ on:
       - "homepage/**"
       - "Sources Handoff/TalariaV16.jsx"
       - "Sources Handoff/scoreEngine.js"
+      - "Sources Handoff/v16AppliedSourceStorage.js"
       - "journal-backend/**"
       - "shared/**"
       - "docker-compose.yml"
