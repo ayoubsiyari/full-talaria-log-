@@ -933,6 +933,28 @@ let _hostViewportFrozenCheck = () => false;
 let _hostBootResizeTimer = 0;
 /** Debounced viewport re-sync after panel focus (drawing tool / click switch). */
 let _focusViewportSyncTimer = 0;
+/** Wired by the order-mirror effect when multichart mounts. */
+let _broadcastClearDraftPreviewImpl = null;
+
+/**
+ * Fan-out draft preview clear to every other multichart tile (host + iframes).
+ * @param {string} sourceId
+ */
+function broadcastClearDraftPreview(sourceId) {
+    if (typeof _broadcastClearDraftPreviewImpl === "function") {
+        try { _broadcastClearDraftPreviewImpl(sourceId); } catch (_) {}
+        return;
+    }
+    const sid = sourceId != null ? String(sourceId) : "";
+    if (!sid) return;
+    const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+    if (!grid || typeof grid.runCommand !== "function") return;
+    const hid = grid.hostPanelId != null ? grid.hostPanelId : "A";
+    if (String(sid) === String(hid)) return;
+    try {
+        grid.runCommand("clearDraftPreview", null, { panelId: sid }).catch(() => {});
+    } catch (_) {}
+}
 function setHostViewportFrozenCheck(fn) {
     _hostViewportFrozenCheck = typeof fn === "function" ? fn : () => false;
 }
@@ -3533,6 +3555,11 @@ export default function MultichartGrid({
                             return Promise.reject(new Error("drawingManager.setTool is not a function"));
                         }
                         if (dm.currentTool !== tool) dm.setTool(tool);
+                        try {
+                            if (typeof ch._syncMultichartViewportFromHost === "function") {
+                                ch._syncMultichartViewportFromHost();
+                            }
+                        } catch (_) {}
                         return Promise.resolve(null);
                     }
                     case "clearActiveDrawingTool": {
@@ -4921,7 +4948,7 @@ export default function MultichartGrid({
         }
 
         /** Fan-out draft preview clear to every other multichart tile (host + iframes). */
-        function broadcastClearDraftPreview(sourceId) {
+        _broadcastClearDraftPreviewImpl = function mcBroadcastClearDraftPreview(sourceId) {
             const sid = sourceId != null ? String(sourceId) : "";
             if (!sid) return;
             const mgr = managerRef.current;
@@ -5248,6 +5275,7 @@ export default function MultichartGrid({
         document.addEventListener("click", onPlaceOrderClickCapture, true);
 
         return () => {
+            _broadcastClearDraftPreviewImpl = null;
             document.removeEventListener("click", onPlaceOrderClickCapture, true);
             window.removeEventListener("multichart-clear-preview", onMultichartClearPreviewHost);
             window.removeEventListener("message", onIframeOrder);

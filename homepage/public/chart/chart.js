@@ -32142,6 +32142,12 @@ class Chart {
      */
     _findTargetIndexForTimestamp(ts) {
         if (!Number.isFinite(ts) || !this.data || this.data.length === 0) return 0;
+        if (typeof CoordinateUtils !== 'undefined' && typeof CoordinateUtils.timestampToIndex === 'function') {
+            try {
+                const idx = CoordinateUtils.timestampToIndex(ts, this.data, this.currentTimeframe);
+                if (Number.isFinite(idx)) return idx;
+            } catch (_) { /* fall through */ }
+        }
         if (typeof this.findLastDataIndexAtOrBeforeTime === 'function') {
             const i = this.findLastDataIndexAtOrBeforeTime(ts);
             if (Number.isFinite(i)) return Math.max(0, Math.min(i, this.data.length - 1));
@@ -32151,6 +32157,13 @@ class Chart {
             if (Number.isFinite(i)) return Math.max(0, Math.min(i, this.data.length - 1));
         }
         return 0;
+    }
+
+    _resolveDrawingSyncIndexFromAnchor(anchor) {
+        if (!anchor) return null;
+        if (Number.isFinite(anchor.fractionalIndex)) return anchor.fractionalIndex;
+        if (!Number.isFinite(anchor.timestamp)) return null;
+        return this._findTargetIndexForTimestamp(anchor.timestamp);
     }
 
     _nearestOhlcKeyAtIndex(idx, y) {
@@ -32186,14 +32199,31 @@ class Chart {
         const out = JSON.parse(JSON.stringify(drawingData));
         const mk = (x, y) => {
             if (!Number.isFinite(Number(x))) return null;
+            const rawX = Number(x);
+            const yNum = Number.isFinite(Number(y)) ? Number(y) : null;
+            if (typeof CoordinateUtils !== 'undefined' && typeof CoordinateUtils.indexToTimestamp === 'function') {
+                try {
+                    const ts = CoordinateUtils.indexToTimestamp(rawX, this.data, this.currentTimeframe);
+                    if (Number.isFinite(ts)) {
+                        const snapIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rawX)));
+                        return {
+                            timestamp: ts,
+                            fractionalIndex: rawX,
+                            ohlcKey: this._nearestOhlcKeyAtIndex(snapIdx, yNum),
+                            y: yNum
+                        };
+                    }
+                } catch (_) { /* fall through */ }
+            }
             // At-or-before source candle index (avoid nearest-candle drift on timeframe aggregation).
-            const idx = Math.max(0, Math.min(this.data.length - 1, Math.floor(Number(x))));
+            const idx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rawX)));
             const c = this.data[idx];
             if (!c || !Number.isFinite(c.t)) return null;
             return {
                 timestamp: c.t,
-                ohlcKey: this._nearestOhlcKeyAtIndex(idx, Number(y)),
-                y: Number.isFinite(Number(y)) ? Number(y) : null
+                fractionalIndex: rawX,
+                ohlcKey: this._nearestOhlcKeyAtIndex(idx, yNum),
+                y: yNum
             };
         };
         out.__syncAnchors = out.__syncAnchors || {};
@@ -32220,31 +32250,35 @@ class Chart {
         };
         const applyAnchor = (keyX, keyY) => {
             const a = out.__syncAnchors && out.__syncAnchors[keyX];
-            if (!a || !Number.isFinite(a.timestamp)) return;
-            const idx = this._findTargetIndexForTimestamp(a.timestamp);
+            if (!a) return;
+            const idx = this._resolveDrawingSyncIndexFromAnchor(a);
+            if (!Number.isFinite(idx)) return;
             out[keyX] = idx;
-            const yVal = readY(a, idx);
+            const yVal = readY(a, Math.floor(idx));
             if (keyY && yVal !== null) out[keyY] = yVal;
         };
         applyAnchor('x1', 'y1');
         applyAnchor('x2', 'y2');
         if (out.__syncAnchors && out.__syncAnchors.x) {
             const a = out.__syncAnchors.x;
-            const idx = this._findTargetIndexForTimestamp(a.timestamp);
-            out.x = idx;
-            const yVal = readY(a, idx);
-            if (yVal !== null) {
-                if (out.y !== undefined) out.y = yVal;
-                if (out.price !== undefined) out.price = yVal;
+            const idx = this._resolveDrawingSyncIndexFromAnchor(a);
+            if (Number.isFinite(idx)) {
+                out.x = idx;
+                const yVal = readY(a, Math.floor(idx));
+                if (yVal !== null) {
+                    if (out.y !== undefined) out.y = yVal;
+                    if (out.price !== undefined) out.price = yVal;
+                }
             }
         }
         if (Array.isArray(out.points) && Array.isArray(out.__syncPointAnchors)) {
             out.points.forEach((p, i) => {
                 const a = out.__syncPointAnchors[i];
-                if (!p || !a || !Number.isFinite(a.timestamp)) return;
-                const idx = this._findTargetIndexForTimestamp(a.timestamp);
+                if (!p || !a) return;
+                const idx = this._resolveDrawingSyncIndexFromAnchor(a);
+                if (!Number.isFinite(idx)) return;
                 p.x = idx;
-                const yVal = readY(a, idx);
+                const yVal = readY(a, Math.floor(idx));
                 if (yVal !== null) {
                     if (p.y !== undefined) p.y = yVal;
                     if (p.price !== undefined) p.price = yVal;
