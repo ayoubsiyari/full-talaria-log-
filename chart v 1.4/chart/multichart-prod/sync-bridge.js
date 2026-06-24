@@ -1020,6 +1020,9 @@
 
         // 2) Visible range — listen to chartScrolled (also rAF-coalesced)
         global.addEventListener('chartScrolled', function (ev) {
+            // Host tile A: do not broadcast range while multichart boot is frozen —
+            // iframe sync echoes were nudging the host viewport left/right.
+            if (chart._multichartHostViewportFrozen) return;
             // While this tile is the pan leader, keep broadcasting even if a peer
             // echo briefly set `applying` or suppressRangeScrollEcho*.
             if (state.applying && !isLocalPanDragActive()) return;

@@ -13879,6 +13879,10 @@ class Chart {
 	        }
 	        
 	        if (oldW && oldH) {
+	            // During multichart boot the host cell resizes several times before
+	            // iframes finish loading. Skipping the right-edge offsetX nudge keeps
+	            // panel A locked in place (TradingView-style) until boot completes.
+	            if (!this._multichartSkipResizeOffsetAdjust) {
 	            // Anchor the right edge of the plot area through resize.
 	            //
 	            // The previous version shifted offsetX by `deltaW * 0.5` to keep
@@ -13900,6 +13904,7 @@ class Chart {
 	            const deltaRightPx = newRightEdgePx - oldRightEdgePx;
 	            this.offsetX = Math.round((this.offsetX || 0) + deltaRightPx);
 	            this.constrainOffset();
+	            }
 	        } else {
 	            this.fitToView();
 	        }

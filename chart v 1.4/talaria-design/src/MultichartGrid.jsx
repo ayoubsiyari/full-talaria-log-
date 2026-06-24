@@ -847,6 +847,7 @@ function resolveHostReplayPlayheadMs(ch, mgr) {
 /** Re-enter backtest replay on tile A when layout split left it on full-file view. */
 function alignHostChartForMultichart(ch, mgr) {
     if (!ch) return;
+    if (_hostViewportFrozenCheck()) return;
     try {
         const rs = ch.replaySystem;
         // User panned this tile — don't recenter on playhead after split/resize.
@@ -929,8 +930,38 @@ function syncAllIframesToHost(mgr) {
 /** Coalesce host replay/viewport align only (no viewport stamp onto other pairs). */
 let _alignHostSyncTimer = 0;
 let _hostViewportFrozenCheck = () => false;
+let _hostBootResizeTimer = 0;
 function setHostViewportFrozenCheck(fn) {
     _hostViewportFrozenCheck = typeof fn === "function" ? fn : () => false;
+}
+function syncHostViewportFrozenFlag(frozen) {
+    try {
+        const ch = window.chart;
+        if (ch) {
+            ch._multichartHostViewportFrozen = !!frozen;
+            if (frozen) ch._multichartSkipResizeOffsetAdjust = true;
+            else delete ch._multichartSkipResizeOffsetAdjust;
+        }
+    } catch (_) {}
+}
+function scheduleHostBootResize(cellEl) {
+    applyHostSlotPositionOnly(cellEl);
+    if (_hostBootResizeTimer) clearTimeout(_hostBootResizeTimer);
+    _hostBootResizeTimer = setTimeout(() => {
+        _hostBootResizeTimer = 0;
+        if (!_hostViewportFrozenCheck()) return;
+        applyHostSlotPositionOnly(cellEl);
+        try {
+            const ch = window.chart;
+            if (ch && typeof ch.resize === "function") {
+                ch._multichartSkipResizeOffsetAdjust = true;
+                ch._lastResizeDpr = 0;
+                ch.resize();
+                if (typeof ch.constrainOffset === "function") ch.constrainOffset();
+                if (typeof ch.render === "function") ch.render();
+            }
+        } catch (_) {}
+    }, 320);
 }
 function scheduleAlignHostOnly(mgr, delayMs) {
     if (_hostViewportFrozenCheck()) return;
@@ -957,6 +988,10 @@ function applyHostSlot(cellEl, opts) {
     // settles, so the host still snaps to the correct replay window.
     const reanchor = !opts || opts.reanchor !== false;
     applyHostSlotPositionOnly(cellEl);
+    if (_hostViewportFrozenCheck()) {
+        scheduleHostBootResize(cellEl);
+        return;
+    }
     // Force chart.js to re-measure and repaint into the new bbox.
     try {
         const ch = window.chart;
@@ -1456,7 +1491,10 @@ export default function MultichartGrid({
 
     useEffect(() => {
         setHostViewportFrozenCheck(() => hostViewportFrozenRef.current);
-        return () => setHostViewportFrozenCheck(() => false);
+        return () => {
+            setHostViewportFrozenCheck(() => false);
+            syncHostViewportFrozenFlag(false);
+        };
     }, []);
 
     // ─── per-host order forwarding state ──────────────────────────────
@@ -1807,11 +1845,6 @@ export default function MultichartGrid({
                     if (typeof hostBridge.setSyncModeGate === "function") {
                         hostBridge.setSyncModeGate(managerRef.current.syncMode);
                     }
-                    setTimeout(function () {
-                        try {
-                            scheduleAlignHostOnly(managerRef.current, 200);
-                        } catch (_) {}
-                    }, 50);
                 } catch (e) {
                     console.error("[MultichartGrid] addHostChart failed:", e);
                 }
@@ -1915,6 +1948,7 @@ export default function MultichartGrid({
         samePairCacheBootRef.current = hostHasCloneableBars(effFile);
         if (layout.tiles.some((t) => t.id !== HOST_PANEL_ID)) {
             hostViewportFrozenRef.current = true;
+            syncHostViewportFrozenFlag(true);
         }
 
         const staggerTimeouts = [];
@@ -1967,6 +2001,13 @@ export default function MultichartGrid({
         };
     }, [layout.tiles, managerReady]);
 
+    // Freeze host viewport before any resize/re-anchor when multi-panel layout mounts.
+    useLayoutEffect(() => {
+        const hasIframes = layout.tiles.some((t) => t.id !== HOST_PANEL_ID);
+        hostViewportFrozenRef.current = hasIframes;
+        syncHostViewportFrozenFlag(hasIframes);
+    }, [layout.tiles]);
+
     // When layout shape changes (2v → 4, etc.), every cell gets new
     // dimensions — iframe charts must resize or they render at the old
     // pixel width (price axis clipped / black void beside the chart).
@@ -1981,18 +2022,24 @@ export default function MultichartGrid({
         raf1 = requestAnimationFrame(() => {
             raf2 = requestAnimationFrame(() => {
                 if (isDraggingRef.current) return;
-                // Resize the host canvas only — re-anchoring here would make
-                // the host chart jump horizontally mid-boot. The single
-                // intentional re-anchor is scheduled below + by the
-                // "all panels ready" effect.
-                repaintAllPanelSurfaces(container, cellA, { reanchor: false });
+                const cellA = cellRefs.current[HOST_PANEL_ID];
+                if (_hostViewportFrozenCheck() && cellA) {
+                    scheduleHostBootResize(cellA);
+                } else {
+                    repaintAllPanelSurfaces(container, cellA, { reanchor: false });
+                }
             });
         });
         const delay = 100 + iframeCount * 320;
         const t = setTimeout(() => {
             if (isDraggingRef.current) return;
             requestAnimationFrame(() => {
-                repaintAllPanelSurfaces(container, cellA, { reanchor: false });
+                const cellA = cellRefs.current[HOST_PANEL_ID];
+                if (_hostViewportFrozenCheck() && cellA) {
+                    scheduleHostBootResize(cellA);
+                } else {
+                    repaintAllPanelSurfaces(container, cellA, { reanchor: false });
+                }
                 if (computeFocusedRectRef.current) {
                     computeFocusedRectRef.current();
                 }
@@ -2022,8 +2069,10 @@ export default function MultichartGrid({
             dataReadyPanels.has(id) || overlayFallbackPanels.has(id)
         );
         hostViewportFrozenRef.current = !allDataReady;
+        syncHostViewportFrozenFlag(!allDataReady);
         if (!allDataReady) return;
         const mgr = managerRef.current;
+        const cellA = cellRefs.current[HOST_PANEL_ID];
         if (mgr) {
             if (typeof mgr.flushPendingRangeSync === "function") {
                 try { mgr.flushPendingRangeSync(); } catch (_) {}
@@ -2036,6 +2085,16 @@ export default function MultichartGrid({
         }
         const t = setTimeout(() => {
             if (isDraggingRef.current) return;
+            // Same-pair cache boot: host viewport was correct before split — only
+            // resize canvas to cell A once and sync iframes; never re-seek playhead.
+            if (samePairCacheBootRef.current) {
+                try {
+                    const ch = window.chart;
+                    if (ch) delete ch._multichartSkipResizeOffsetAdjust;
+                    if (cellA) applyHostSlot(cellA, { reanchor: false });
+                } catch (_) {}
+                return;
+            }
             scheduleAlignHostOnly(mgr, 0);
         }, 80);
         return () => clearTimeout(t);
@@ -2161,6 +2220,10 @@ export default function MultichartGrid({
             applyHostSlotPositionOnly(cellA);
         };
         const repaintHost = () => {
+            if (_hostViewportFrozenCheck()) {
+                scheduleHostBootResize(cellA);
+                return;
+            }
             // Resize/reposition only — do NOT re-anchor the viewport on every
             // ResizeObserver/window tick (that caused the host chart to drift
             // left/right while panels were loading). The intentional re-anchor
