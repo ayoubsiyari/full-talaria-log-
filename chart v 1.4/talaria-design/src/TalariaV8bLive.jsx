@@ -118,8 +118,7 @@ const LAYOUT_SYNC_ITEMS = [
 ];
 const LAYOUT_SYNC_HELP =
   "Crosshair, Symbol, Drawings, Time, and Date range control the items named on each row. " +
-  "Replay (playhead) is always shared across tiles. Indicators and Chart type switches apply to the classic panel manager only; " +
-  "multichart iframe tiles use the focused panel for new indicators until full fan-out is wired.";
+  "Replay (playhead) is always shared across tiles. With Indicators on, new indicators apply to every same-pair tile.";
 
 const V9_IND_WALL_CLOCK_STEP_MIN = 5;
 const V9_ARABIC_SCRIPT_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
@@ -669,6 +668,48 @@ function v9ExecuteUndoRedo(kind) {
   } catch (err) {
     console.warn("[V9] undo/redo failed:", err);
   }
+}
+
+function v9ListMultichartPanelIds() {
+  const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+  if (grid && typeof grid.getPanelIds === "function") {
+    return grid.getPanelIds();
+  }
+  return ["A"];
+}
+
+function v9RemoveIndicatorFromAllMultichartPanels(v9Id, grid, allMaps, idToType) {
+  const type = idToType[v9Id];
+  if (!type || !grid || typeof grid.runCommand !== "function") {
+    return Promise.resolve();
+  }
+  const typeToV9 = {};
+  for (const [id, t] of Object.entries(idToType)) typeToV9[t] = id;
+  const panelIds = v9ListMultichartPanelIds();
+  const proms = panelIds.map((panelId) => {
+    let map = allMaps.get(panelId);
+    if (!map) {
+      map = Object.create(null);
+      allMaps.set(panelId, map);
+    }
+    const cachedId = map[v9Id];
+    if (cachedId && cachedId !== "__pending__") {
+      delete map[v9Id];
+      return grid.runCommand("removeIndicator", { chartId: cachedId }, { panelId }).catch(() => {});
+    }
+    delete map[v9Id];
+    return grid.runCommand("getIndicators", null, { panelId })
+      .then((data) => {
+        const items = data && Array.isArray(data.indicators) ? data.indicators : [];
+        const match = items.find((it) => it && (it.type === type || typeToV9[it.type] === v9Id));
+        if (match && match.id) {
+          return grid.runCommand("removeIndicator", { chartId: match.id }, { panelId });
+        }
+        return null;
+      })
+      .catch(() => {});
+  });
+  return Promise.all(proms).then(() => undefined);
 }
 
 /** Delete drawings / indicators / both on every multichart tile (host + iframes). */
@@ -12345,7 +12386,7 @@ const TalariaV8bLive = () => {
   // directly below the button so it lines up like TradingView.
   // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
   // races re-enabling sync modes (especially `time`) unexpectedly.
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
+  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: true, chartType: false });
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);
@@ -13210,6 +13251,7 @@ const TalariaV8bLive = () => {
     const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
     if (grid && typeof grid.runCommand === "function") {
       const focused = grid.getFocusedPanelId() || "A";
+      const fanOutIndicators = !!layoutSync.indicators;
 
       if (!panelIndicatorMapsRef.current) {
         panelIndicatorMapsRef.current = new Map();
@@ -13258,10 +13300,14 @@ const TalariaV8bLive = () => {
       }
       if (userDismiss) indUserDismissRef.current = false;
 
-      // Remove indicators from focused panel that are no longer in the
-      // toolbar's active set.
+      // Remove indicators that are no longer in the toolbar's active set.
       for (const v9Id of prevSet) {
         if (nowSet.has(v9Id)) continue;
+        if (fanOutIndicators) {
+          v9RemoveIndicatorFromAllMultichartPanels(v9Id, grid, allMaps, ID_TO_TYPE)
+            .catch((err) => console.warn("[V9 ind multi] removeIndicator fan-out failed for", v9Id, err));
+          continue;
+        }
         const chartId = panelMap[v9Id];
         delete panelMap[v9Id];
         if (chartId) {
@@ -13269,12 +13315,29 @@ const TalariaV8bLive = () => {
               .catch((err) => console.warn("[V9 ind multi] removeIndicator failed for", v9Id, err));
         }
       }
-      // Add new indicators to focused panel.
+      // Add new indicators to focused panel (or every tile when sync is on).
       for (const v9Id of nowSet) {
         if (prevSet.has(v9Id)) continue;
         const type = ID_TO_TYPE[v9Id];
         if (!type) {
           console.warn("[V9 ind multi] indicator", v9Id, "is not yet supported by chart.js");
+          continue;
+        }
+        if (fanOutIndicators && typeof grid.runCommandOnAllPanels === "function") {
+          for (const pid of v9ListMultichartPanelIds()) {
+            let pmap = allMaps.get(pid);
+            if (!pmap) { pmap = Object.create(null); allMaps.set(pid, pmap); }
+            pmap[v9Id] = "__pending__";
+          }
+          grid.runCommandOnAllPanels("addIndicator", { type })
+            .then(() => syncIndUiFromMultichartFocus())
+            .catch((err) => {
+              console.warn("[V9 ind multi] addIndicator fan-out failed for", v9Id, err);
+              for (const pid of v9ListMultichartPanelIds()) {
+                const pmap = allMaps.get(pid);
+                if (pmap && pmap[v9Id] === "__pending__") delete pmap[v9Id];
+              }
+            });
           continue;
         }
         // Reserve the slot synchronously so a fast double-toggle doesn't
@@ -13444,7 +13507,7 @@ const TalariaV8bLive = () => {
     // crossing 1 ↔ N) so we switch between the legacy single-chart path
     // and the multichart per-panel routing branch above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indActive, layoutPanels.n]);
+  }, [indActive, layoutPanels.n, layoutSync.indicators]);
 
   const [indSearch, setIndSearch] = useState("");
   const [indPos, setIndPos] = useState({ x: 0, y: 0 });

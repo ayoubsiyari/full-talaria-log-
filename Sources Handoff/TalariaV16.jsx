@@ -113,6 +113,21 @@ const computeAnchoredDropdownPos = ({
   }
   return { left, top: Math.max(margin, Math.min(anchorBottom + gap, vpH - menuH - margin)), flipAbove: false };
 };
+const MAX_STRATEGY_TIMEFRAMES = 6;
+const MAX_CUSTOM_TF_DIGITS = 4;
+const CUSTOM_TF_VALUE_LIMITS = { m: 1440, H: 168, D: 365, W: 52, M: 12 };
+const sanitizeStrategyCustomTfInput = (raw, unit) => {
+  const digits = String(raw ?? "").replace(/\D/g, "").slice(0, MAX_CUSTOM_TF_DIGITS);
+  if (!digits) return "";
+  const max = CUSTOM_TF_VALUE_LIMITS[unit] ?? 9999;
+  const n = Math.min(parseInt(digits, 10), max);
+  return n > 0 ? String(n) : "";
+};
+const parseStrategyCustomTfValue = (raw, unit) => {
+  const text = sanitizeStrategyCustomTfInput(raw, unit);
+  const n = parseInt(text, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
 const STRAT_LAYOUT_STORAGE_KEY = "talaria_strat_layout_mode";
 const readStoredStratLayoutMode = () => {
   try {
@@ -5057,13 +5072,17 @@ function GeneralInfoStepContent({ c, F,
   }, [supPickOpen]);
   const toggleInst = id => { const cur=stratBInstruments||[]; if(!cur.includes(id)&&cur.length>=10)return; setStratBInstruments(cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]); };
   const tfs        = Array.isArray(stratBTimeframes)?stratBTimeframes:[stratBTimeframes].filter(Boolean);
-  const MAX_STRATEGY_TIMEFRAMES = 16;
-  const toggleTf   = id => { if(!tfs.includes(id)&&tfs.length>=MAX_STRATEGY_TIMEFRAMES)return; setStratBTimeframes(tfs.includes(id)?tfs.filter(x=>x!==id):[...tfs,id]); };
+  const tfAtMax    = tfs.length >= MAX_STRATEGY_TIMEFRAMES;
+  const toggleTf   = id => {
+    if (tfs.includes(id)) { setStratBTimeframes(tfs.filter(x => x !== id)); return; }
+    if (tfs.length >= MAX_STRATEGY_TIMEFRAMES) return;
+    setStratBTimeframes([...tfs, id]);
+  };
 
   const tfSortItems = items=>[...items].sort((a,b)=>{const nA=parseInt(a)||0,nB=parseInt(b)||0;return nA-nB;});
   const tfDefaults={
-    minutes:["1m","2m","3m","5m","10m","15m","30m"],
-    hours:["1H","2H","4H"],
+    minutes:["1m","5m","15m","30m"],
+    hours:["1H","4H"],
     days:["1D"],
     weeks:["1W"],
     months:["1M"],
@@ -5072,9 +5091,10 @@ function GeneralInfoStepContent({ c, F,
     () => tfSortItems([...new Set([...Object.values(tfDefaults).flat(), ...sbTfCustom])]),
     [sbTfCustom]
   );
-  const allTfsSelected = allTfPresetItems.length > 0 && allTfPresetItems.every(t => tfs.includes(t));
+  const selectablePresetBatch = allTfPresetItems.slice(0, MAX_STRATEGY_TIMEFRAMES);
+  const allTfsSelected = selectablePresetBatch.length > 0 && selectablePresetBatch.every(t => tfs.includes(t));
   const toggleAllTfs = () => {
-    setStratBTimeframes(allTfsSelected ? [] : [...allTfPresetItems]);
+    setStratBTimeframes(allTfsSelected ? [] : [...selectablePresetBatch]);
   };
   const openTfUnitMenu = e => {
     e.stopPropagation();
@@ -5105,8 +5125,9 @@ function GeneralInfoStepContent({ c, F,
     months:{label:"Months",items:tfSortItems([...tfDefaults.months,...sbTfCustom.filter(x=>x.endsWith("M")&&!x.endsWith("m"))])},
   };
   const addCustomTf=()=>{
-    const val=parseInt(tfCustomVal);
-    if(!val||val<=0)return;
+    if (tfAtMax) return;
+    const val=parseStrategyCustomTfValue(tfCustomVal, tfCustomUnit);
+    if(val==null)return;
     const key=`${val}${tfCustomUnit}`;
     const allDef=Object.values(tfDefaults).flat();
     if(sbTfCustom.includes(key)||allDef.includes(key))return;
@@ -5114,6 +5135,14 @@ function GeneralInfoStepContent({ c, F,
     setStratBTimeframes(prev=>(prev||[]).includes(key)?(prev||[]):[...(prev||[]),key]);
     setTfCustomVal('');
   };
+  const customTfReady = parseStrategyCustomTfValue(tfCustomVal, tfCustomUnit) != null;
+
+  React.useEffect(()=>{
+    const cur=Array.isArray(stratBTimeframes)?stratBTimeframes.filter(Boolean):[];
+    if(cur.length>MAX_STRATEGY_TIMEFRAMES){
+      setStratBTimeframes(cur.slice(0,MAX_STRATEGY_TIMEFRAMES));
+    }
+  },[]);
 
   React.useEffect(()=>{
     if(!tfPickOpen && !tfUnitOpen) return;
@@ -5594,7 +5623,7 @@ function GeneralInfoStepContent({ c, F,
 
         {/* ── Section: Timeframes ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${requiredBorder('timeframes')}`,padding:'14px 16px',boxShadow:requiredGlow('timeframes'),transition:'border-color 0.12s, box-shadow 0.12s'}}>
-          <div style={lbl}>Timeframes to use <span style={{color:c.rd}}>*</span></div>
+          <div style={lbl}>Timeframes to use <span style={{color:c.rd}}>*</span> <span style={{color:c.tm,fontWeight:600,letterSpacing:'0.04em'}}>· {tfs.length}/{MAX_STRATEGY_TIMEFRAMES}</span></div>
           <div style={{display:'flex',alignItems:'flex-start',gap:5,flexWrap:'wrap'}}>
             <div ref={tfPickWrapRef} style={{position:'relative',flexShrink:0}}>
               <div onClick={e=>{e.stopPropagation();if(tfPickOpen){setTfPickOpen(false);setTfUnitOpen(false);}else{const pos=dropPos(tfPickWrapRef,200,220,360,true);if(pos)setTfPickPos(pos);setTfPickOpen(true);}}}
@@ -5618,7 +5647,7 @@ function GeneralInfoStepContent({ c, F,
                       borderBottom:`1px solid ${c.brH}`,transition:'background 0.1s'}}>
                     {allTfsSelected&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                     <span style={{flex:1,color:allTfsSelected?c.acL:c.ts,fontSize:12,fontWeight:800,fontFamily:F,letterSpacing:'0.03em'}}>All timeframes</span>
-                    <span style={{fontSize:9,color:c.tm,fontFamily:F}}>{allTfPresetItems.length}</span>
+                    <span style={{fontSize:9,color:c.tm,fontFamily:F}}>{Math.min(MAX_STRATEGY_TIMEFRAMES, allTfPresetItems.length)}</span>
                   </div>
                   <div className="tlr-scroll" style={{overflowY:'auto',flex:1,padding:'4px 0',minHeight:0}}>
                     {Object.entries(tfCategories).map(([catId,{label,items}],ci)=>(
@@ -5628,13 +5657,14 @@ function GeneralInfoStepContent({ c, F,
                         {items.map(t=>{
                           const isChk=tfs.includes(t);
                           const isCustom=sbTfCustom.includes(t);
+                          const isDisabled=!isChk&&tfAtMax;
                           const isH=tfPickHov===`tf-${t}`;
                           const isDelH=tfPickHov===`tfdel-${t}`;
                           const isRowH=isH||isDelH;
                           return(
-                            <div key={t} onClick={()=>toggleTf(t)} onMouseEnter={()=>setTfPickHov(`tf-${t}`)} onMouseLeave={()=>setTfPickHov(null)}
-                              style={{display:'flex',alignItems:'center',padding:'3px 10px',gap:6,position:'relative',cursor:'default',
-                                background:isChk?c.acD:isRowH?'rgba(255,255,255,0.025)':'transparent',transition:'background 0.1s'}}>
+                            <div key={t} onClick={()=>{if(!isDisabled)toggleTf(t);}} onMouseEnter={()=>setTfPickHov(`tf-${t}`)} onMouseLeave={()=>setTfPickHov(null)}
+                              style={{display:'flex',alignItems:'center',padding:'3px 10px',gap:6,position:'relative',cursor:isDisabled?'default':'default',opacity:isDisabled?0.38:1,
+                                background:isChk?c.acD:isRowH?'rgba(255,255,255,0.025)':'transparent',transition:'background 0.1s, opacity 0.12s'}}>
                               {isChk&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                               <svg width={10} height={10} viewBox="0 0 10 10" style={{display:'block',overflow:'visible',flexShrink:0}}>
                                 <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={isChk?c.acL:isRowH?c.tx:c.ts} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
@@ -5660,8 +5690,8 @@ function GeneralInfoStepContent({ c, F,
                   <div style={{padding:'7px 10px 8px',display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
                     <div style={{position:'relative',width:34,height:22,flexShrink:0}}>
                       <input type="text" inputMode="numeric" value={tfCustomVal}
-                        onChange={e=>setTfCustomVal(e.target.value.replace(/[^0-9]/g,''))}
-                        onKeyDown={e=>{if(e.key==='Enter')addCustomTf();}}
+                        onChange={e=>setTfCustomVal(sanitizeStrategyCustomTfInput(e.target.value, tfCustomUnit))}
+                        onKeyDown={e=>{if(e.key==='Enter'&&customTfReady&&!tfAtMax)addCustomTf();}}
                         className="tlr-nospinner"
                         style={{width:34,height:22,background:c.hv,border:'1px solid rgba(140,160,255,0.22)',color:c.tx,fontSize:11,fontFamily:F,padding:'0 4px',outline:'none',textAlign:'center',boxSizing:'border-box',transition:'border-color 0.14s',caretColor:'transparent',position:'relative',zIndex:1}}/>
                       <div style={{position:'absolute',top:4,bottom:4,left:`calc(50% + ${tfCustomVal.length*3.3}px)`,width:1,background:'rgba(160,160,170,0.75)',animation:'tlrBlink 1.1s step-end infinite',zIndex:2,pointerEvents:'none'}}/>
@@ -5687,7 +5717,7 @@ function GeneralInfoStepContent({ c, F,
                                 const isHU=tfPickHov===`tf-unit-${u}`;
                                 return(
                                   <div key={u} onMouseEnter={()=>setTfPickHov(`tf-unit-${u}`)} onMouseLeave={()=>setTfPickHov(null)}
-                                    onClick={()=>{setTfCustomUnit(u);setTfUnitOpen(false);}}
+                                    onClick={()=>{setTfCustomUnit(u);setTfUnitOpen(false);setTfCustomVal(prev=>sanitizeStrategyCustomTfInput(prev,u));}}
                                     style={{padding:'4px 8px',cursor:'default',fontSize:11,fontFamily:F,position:'relative',
                                       color:isU?c.acL:isHU?c.tx:c.ts,background:isU?c.acD:isHU?'rgba(255,255,255,0.025)':'transparent',fontWeight:isU?700:500,transition:'background 0.1s'}}>
                                     {isU&&<div style={{position:'absolute',left:0,top:'15%',bottom:'15%',width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -5701,12 +5731,12 @@ function GeneralInfoStepContent({ c, F,
                         </div>
                       );
                     })()}
-                    <div onClick={addCustomTf}
-                      onMouseEnter={()=>setTfPickHov('tf-add')} onMouseLeave={()=>setTfPickHov(null)}
-                      style={{width:22,height:22,position:'relative',boxSizing:'border-box',cursor:'default',padding:0,flexShrink:0,
+                    <div onClick={()=>{if(customTfReady&&!tfAtMax)addCustomTf();}}
+                      onMouseEnter={()=>{if(customTfReady&&!tfAtMax)setTfPickHov('tf-add');}} onMouseLeave={()=>setTfPickHov(null)}
+                      style={{width:22,height:22,position:'relative',boxSizing:'border-box',cursor:'default',padding:0,flexShrink:0,opacity:customTfReady&&!tfAtMax?1:0.35,
                         background:tfPickHov==='tf-add'?'rgba(74,106,255,0.12)':'transparent',
                         border:`1px solid ${tfPickHov==='tf-add'?'rgba(74,106,255,0.55)':'rgba(140,160,255,0.28)'}`,
-                        transition:'background 0.12s,border-color 0.12s'}}>
+                        transition:'background 0.12s,border-color 0.12s,opacity 0.12s'}}>
                       <svg width={7} height={7} viewBox="0 0 10 10" fill="none"
                         stroke={tfPickHov==='tf-add'?c.acL:'rgba(140,160,255,0.55)'}
                         strokeWidth={2.2} strokeLinecap="round"

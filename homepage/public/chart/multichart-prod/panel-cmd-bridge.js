@@ -1192,6 +1192,7 @@
                     }
                     var ind = ch.addIndicator(indType);
                     try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    try { if (typeof ch.recalculateIndicators === 'function') ch.recalculateIndicators(); } catch (_) {}
                     try { if (typeof ch.updateOHLCIndicators === 'function') ch.updateOHLCIndicators(); } catch (_) {}
                     return { chartId: (ind && ind.id) ? ind.id : null, type: indType };
                 }

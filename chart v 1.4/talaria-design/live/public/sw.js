@@ -1,7 +1,7 @@
 /**
  * Minimal service worker for the V9 chart app — enables install-to-desktop.
  */
-const SW_VERSION = "talaria-chart-20260623b67";
+const SW_VERSION = "talaria-chart-20260623b69";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

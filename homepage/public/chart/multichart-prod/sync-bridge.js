@@ -149,7 +149,7 @@
                 if (chart._tryExtendReplayMasterFromParent({ lite: true })) return;
             } catch (_) {}
         }
-        if (isSamePairSyncedEmbed(chart)) {
+        if (isSamePairDataShareEmbed(chart)) {
             if (typeof chart._delegateSamePairPanLoadToHost === 'function') {
                 try { chart._delegateSamePairPanLoadToHost(true); } catch (_) {}
             }
@@ -509,6 +509,18 @@
             rs.autoScrollEnabled = false;
             rs.userHasPanned = true;
         }
+    }
+
+    /** Same-pair iframe sharing host replay master — lite offset pan only. */
+    function isSamePairDataShareEmbed(chart) {
+        if (!chart) return false;
+        if (typeof chart._isMultichartEmbedPanel !== 'function' || !chart._isMultichartEmbedPanel()) {
+            return false;
+        }
+        if (typeof chart._multichartSamePairDataShareActive === 'function') {
+            return chart._multichartSamePairDataShareActive();
+        }
+        return false;
     }
 
     /** Same-pair iframe with date/time range sync — lite offset pan only. */

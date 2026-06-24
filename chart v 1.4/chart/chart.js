@@ -2100,6 +2100,22 @@ class Chart {
         return true;
     }
 
+    /** Same backtest file as host — share replay master / pan-load without viewport sync. */
+    _multichartSamePairDataShareActive() {
+        if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        if (typeof this._isIndependentMultichartPair === 'function'
+            && this._isIndependentMultichartPair()) {
+            return false;
+        }
+        return true;
+    }
+
+    _syncIndicatorsAfterMultichartDataShare() {
+        if (typeof this.recalculateIndicators === 'function') {
+            try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+        }
+    }
+
     _isMultichartLocalPanLeader() {
         return !!(this.drag && this.drag.active && this.drag.type === 'pan');
     }
@@ -2110,7 +2126,7 @@ class Chart {
      * @returns {boolean}
      */
     _delegateSamePairPanLoadToHost(force) {
-        if (!this._multichartSamePairSyncActive()) return false;
+        if (!this._multichartSamePairDataShareActive()) return false;
         const host = this._multichartGetHostChart();
         if (!host) return false;
         if (typeof this._tryExtendReplayMasterFromParent === 'function') {
@@ -2134,7 +2150,7 @@ class Chart {
         const self = this;
         const poll = () => {
             self._mcHostMasterSyncRaf = null;
-            if (!self._multichartSamePairSyncActive()) return;
+            if (!self._multichartSamePairDataShareActive()) return;
             const stillPan = self._isMultichartLocalPanLeader()
                 || (typeof self._isPanSyncFollowBurst === 'function' && self._isPanSyncFollowBurst());
             const host = self._multichartGetHostChart();
@@ -2161,6 +2177,7 @@ class Chart {
         if (rs?.isActive && typeof rs.updateChartData === 'function') {
             try { rs.updateChartData(false); } catch (_) { /* ignore */ }
         }
+        this._syncIndicatorsAfterMultichartDataShare();
         if (typeof this.render === 'function') this.render();
     }
 
@@ -2313,6 +2330,7 @@ class Chart {
             try { this.constrainOffset(); } catch (_c) { /* ignore */ }
         }
         this._multichartViewportMirroredWithHost = true;
+        this._syncIndicatorsAfterMultichartDataShare();
         return true;
     }
 
@@ -2956,6 +2974,9 @@ class Chart {
                 }
                 if (typeof this.render === 'function') {
                     this.render();
+                }
+                if (samePairEmbedMc) {
+                    this._syncIndicatorsAfterMultichartDataShare();
                 }
                 if (pairLoadUiActive) {
                     try { this._endPairSwitchLoading(loadSeq); } catch (_pairUiEnd) { /* ignore */ }
@@ -3752,6 +3773,9 @@ class Chart {
                 }
             } else if (typeof this.scheduleRender === 'function') {
                 this.scheduleRender();
+            }
+            if (!lite) {
+                this._syncIndicatorsAfterMultichartDataShare();
             }
             return true;
         } catch (_e) {
@@ -18701,8 +18725,8 @@ class Chart {
         if (!this._serverCursors) return false;
 
         if (direction === 'backward'
-            && typeof this._multichartSamePairSyncActive === 'function'
-            && this._multichartSamePairSyncActive()
+            && typeof this._multichartSamePairDataShareActive === 'function'
+            && this._multichartSamePairDataShareActive()
             && this._isMultichartEmbedPanel()) {
             if (!this._isMultichartLocalPanLeader()) {
                 if (typeof this._tryExtendReplayMasterFromParent === 'function') {
@@ -19230,9 +19254,7 @@ class Chart {
                 
                 const replayPlaying = !!(isReplay && this.replaySystem && this.replaySystem.isPlaying);
                 if (!replayPlaying) {
-                    if (!(isReplay && direction === 'backward')) {
-                        this._scheduleIndicatorRecalcAfterInteraction();
-                    }
+                    this._scheduleIndicatorRecalcAfterInteraction();
                     this.scheduleRender();
                 }
                 
@@ -20038,6 +20060,8 @@ class Chart {
         }
         if (wasBurst && this._multichartPendingMasterResample) {
             this._flushMultichartPendingMasterResample();
+        } else if (wasBurst) {
+            this._syncIndicatorsAfterMultichartDataShare();
         }
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;

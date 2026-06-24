@@ -3576,6 +3576,7 @@ export default function MultichartGrid({
                         }
                         const ind = ch.addIndicator(type);
                         try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        try { if (typeof ch.recalculateIndicators === "function") ch.recalculateIndicators(); } catch (_) {}
                         try { if (typeof ch.updateOHLCIndicators === "function") ch.updateOHLCIndicators(); } catch (_) {}
                         return Promise.resolve({
                             chartId: (ind && ind.id) ? ind.id : null,
@@ -4709,6 +4710,17 @@ export default function MultichartGrid({
             isPersistentFreehandLegacyTool,
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
+            getPanelIds: () => {
+                const ids = [HOST_PANEL_ID];
+                const mgr = managerRef.current;
+                if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                    for (const c of mgr.charts.values()) {
+                        if (!c || c.host || !c.id) continue;
+                        if (!ids.includes(c.id)) ids.push(c.id);
+                    }
+                }
+                return ids;
+            },
             getChartForPanel: getChartForPanelId,
             resolveChartAtClientPoint,
             loadFileOnPanel,
