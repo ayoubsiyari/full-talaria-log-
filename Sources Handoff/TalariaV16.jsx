@@ -35239,7 +35239,7 @@ const TalariaV8b = () => {
           });
 
           /* ─── Strategy card (shared) ─── */
-          const STRAT_ROW_COLS = "44px 190px 330px 285px 135px 110px 150px 44px";
+          const STRAT_ROW_COLS = "44px 210px 320px 275px 135px 110px 150px 44px";
           const StratMetricsSkeleton = ({compact=false}) => (
             compact ? (
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:5,minWidth:0}}>
@@ -35325,8 +35325,8 @@ const TalariaV8b = () => {
                 {children}
               </div>
             );
-            const Pill = ({children,accent=false,keyName}) => (
-              <span key={keyName||children} style={{position:"relative",display:"inline-flex",alignItems:"center",height:18,padding:"0 3px 4px",fontSize:9.5,fontWeight:790,color:accent?c.acL:c.ts,background:"transparent",border:"none",letterSpacing:"0.01em",fontFamily:F,textTransform:"uppercase",whiteSpace:"nowrap",maxWidth:"100%"}}>
+            const Pill = ({children,accent=false,keyName,maxWidth=132}) => (
+              <span key={keyName||children} title={typeof children === "string" ? children : undefined} style={{position:"relative",display:"inline-flex",alignItems:"center",height:18,padding:"0 3px 4px",fontSize:9.5,fontWeight:790,color:accent?c.acL:c.ts,background:"transparent",border:"none",letterSpacing:"0.01em",fontFamily:F,textTransform:"uppercase",whiteSpace:"nowrap",maxWidth,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>
                 {children}
                 <span style={{position:"absolute",left:0,right:0,bottom:0,height:1.2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 5px ${c.acG}`,opacity:accent?0.95:0.7,pointerEvents:"none"}}/>
               </span>
@@ -35345,12 +35345,12 @@ const TalariaV8b = () => {
                 style={{position:"relative",width:"100%",minWidth:0,height:342,minHeight:342,maxHeight:342,padding:0,overflow:"hidden",background:isH?"rgba(140,160,255,0.045)":c.sf,border:`1px solid ${isH?c.brH:c.br}`,cursor:"default",userSelect:"none",boxShadow:isH?"0 8px 22px rgba(0,0,0,0.32)":"none",transition:"background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease",display:"flex",flexDirection:"column",boxSizing:"border-box",alignSelf:"stretch"}}>
                 <div style={{height:2,background:c.acL,boxShadow:`0 0 6px ${c.acG}`,flexShrink:0}}/>
                 <div style={{padding:"12px 14px 12px",flex:1,display:"flex",flexDirection:"column",gap:9}}>
-                  <div style={{display:"grid",gridTemplateColumns:"26px minmax(0,1fr) 32px",alignItems:"center",gap:9}}>
+                  <div style={{display:"grid",gridTemplateColumns:"26px minmax(0,1fr) 32px",alignItems:"start",gap:9}}>
                     <div style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",background:c.hv2,border:`1px solid ${isH?c.acB:c.brH}`,color:c.acL,boxSizing:"border-box",transition:"border-color 0.14s ease, background 0.14s ease"}}>
                       <span style={{fontSize:18,lineHeight:1,filter:"saturate(1.08)"}}>{cardIcon}</span>
                     </div>
                     <div style={{minWidth:0}}>
-                      <div style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.12,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
+                      <div title={strat.name} style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.2,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word"}}>{strat.name}</div>
                     </div>
                     <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
                       onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:r.right/Z,y:r.bottom/Z});}}
@@ -35493,8 +35493,8 @@ const TalariaV8b = () => {
           const stratMarkets = strat => (strat.markets||[]).length
             ? (strat.markets||[]).map(m=>(MKT_CAT_OPTS.find(x=>x.id===m)?.label||m))
             : (strat.instruments||[]);
-          const GlowText = ({children,accent=false,keyName}) => (
-            <span key={keyName||children} style={{position:"relative",display:"inline-flex",alignItems:"center",height:17,padding:"0 3px 4px",fontSize:9.5,fontWeight:790,color:accent?c.acL:c.ts,letterSpacing:"0.01em",textTransform:"uppercase",whiteSpace:"nowrap",fontFamily:F}}>
+          const GlowText = ({children,accent=false,keyName,maxWidth=124}) => (
+            <span key={keyName||children} title={typeof children === "string" ? children : undefined} style={{position:"relative",display:"inline-flex",alignItems:"center",height:17,padding:"0 3px 4px",fontSize:9.5,fontWeight:790,color:accent?c.acL:c.ts,letterSpacing:"0.01em",textTransform:"uppercase",whiteSpace:"nowrap",fontFamily:F,maxWidth,minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>
               {children}
               <span style={{position:"absolute",left:0,right:0,bottom:0,height:1.2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 5px ${c.acG}`,opacity:accent?0.95:0.7,pointerEvents:"none"}}/>
             </span>
@@ -35590,8 +35590,8 @@ const TalariaV8b = () => {
                         <span style={{fontSize:17,lineHeight:1,filter:"saturate(1.08)"}}>{icon}</span>
                       </div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}>
-                      <div style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{strat.name}</div>
+                    <div style={{display:"flex",alignItems:"flex-start",minWidth:0,padding:"8px 10px",height:"100%",boxSizing:"border-box"}}>
+                      <div title={strat.name} style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.25,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word"}}>{strat.name}</div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"0 10px"}}>
                       <div style={{fontSize:10.5,fontWeight:560,color:c.ts,fontFamily:F,lineHeight:1.35,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
@@ -36192,11 +36192,11 @@ const TalariaV8b = () => {
                   {label:"divider"},
                   ...(isTemplate?[
                     {label:"Edit",handler:()=>applyTemplateToBuilder(ms.template),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-                    {label:"Copy",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+                    {label:"Duplicate",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
                     {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isMineMenu?[
                     {label:"Edit",handler:()=>openBuilder(ms),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-                    {label:"Copy",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
+                    {label:"Duplicate",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
                     {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isSavedMenu?[
                     {label:"Remove",handler:()=>saveCommunity(ms),col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},

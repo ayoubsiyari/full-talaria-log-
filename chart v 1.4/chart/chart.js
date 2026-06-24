@@ -32437,7 +32437,7 @@ class Chart {
                         existingById.style = { ...(existingById.style || {}), ...drawingData.style };
                     }
                     dm.renderDrawing(existingById);
-                    dm.saveDrawings();
+                    if (!isLiveId) dm.saveDrawings();
                 } else {
                 
                 // CRITICAL: Convert timestamp points to indices for THIS panel's data
@@ -32510,7 +32510,7 @@ class Chart {
                             }
                         }, 200);
                     }
-                    dm.saveDrawings();
+                    if (!isLiveId) dm.saveDrawings();
                     
                 } else {
                 }
@@ -32572,12 +32572,14 @@ class Chart {
                     
                     dm.renderDrawing(existingDrawing);
 
+                    if (!isLiveId) {
                     // Debounce save during rapid live updates (drag/resize) to
                     // avoid serialising all drawings to localStorage on every frame.
                     clearTimeout(this._syncUpdateSaveTimer);
                     this._syncUpdateSaveTimer = setTimeout(() => {
                         dm.saveDrawings();
                     }, 300);
+                    }
                 } else {
                     // Robustness: if a panel missed the live "add", treat final update as add.
                     this.receiveDrawingChange('add', drawing, drawingIndex);

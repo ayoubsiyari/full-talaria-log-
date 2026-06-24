@@ -2734,17 +2734,32 @@ class DrawingToolsManager {
         if (!tempDrawing || !this.chart || !this.chart.broadcastDrawingChange) return;
         if (!this._isCrossPanelDrawingSyncEnabled()) return;
 
-        if (!this._liveSyncDrawingId) this._liveSyncDrawingId = this._nextLiveSyncId();
-        tempDrawing.id = this._liveSyncDrawingId;
+        this._pendingLiveSyncDrawing = tempDrawing;
+        if (this._liveSyncPreviewRaf != null) return;
+        this._liveSyncPreviewRaf = requestAnimationFrame(() => {
+            this._liveSyncPreviewRaf = null;
+            const td = this._pendingLiveSyncDrawing;
+            this._pendingLiveSyncDrawing = null;
+            if (!td || !this.chart || !this.chart.broadcastDrawingChange) return;
+            if (!this._isCrossPanelDrawingSyncEnabled()) return;
 
-        const payload = this._serializeDrawingForStorage(tempDrawing);
-        payload.id = this._liveSyncDrawingId;
+            if (!this._liveSyncDrawingId) this._liveSyncDrawingId = this._nextLiveSyncId();
+            td.id = this._liveSyncDrawingId;
 
-        this.chart.broadcastDrawingChange(this._liveSyncBroadcasted ? 'update' : 'add', payload);
-        this._liveSyncBroadcasted = true;
+            const payload = this._serializeDrawingForStorage(td);
+            payload.id = this._liveSyncDrawingId;
+
+            this.chart.broadcastDrawingChange(this._liveSyncBroadcasted ? 'update' : 'add', payload);
+            this._liveSyncBroadcasted = true;
+        });
     }
 
     _clearLiveSyncPreview() {
+        if (this._liveSyncPreviewRaf != null) {
+            cancelAnimationFrame(this._liveSyncPreviewRaf);
+            this._liveSyncPreviewRaf = null;
+        }
+        this._pendingLiveSyncDrawing = null;
         if (!this._liveSyncDrawingId) {
             this._liveSyncBroadcasted = false;
             return;

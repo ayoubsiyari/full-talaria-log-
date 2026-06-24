@@ -1012,6 +1012,11 @@
                     win.__multichartSyncApply(msg);
                     return;
                 }
+                if (msg && (msg.type === 'drawing-add' || msg.type === 'drawing-update'
+                        || msg.type === 'drawing-remove' || msg.type === 'drawing-clear')) {
+                    win.__multichartSyncApply(msg);
+                    return;
+                }
             }
             if (win) {
                 win.postMessage(msg, '*');

@@ -1059,8 +1059,36 @@
         // that rate make the peer chart visibly lag. Coalesce so at most one
         // crosshair postMessage goes out per animation frame, with the LATEST
         // value. Same for visible-range pan.
-        const pending = { crosshair: null, crosshairClear: false, visibleRange: null };
+        const pending = { crosshair: null, crosshairClear: false, visibleRange: null, drawing: null };
         let rafScheduled = false;
+
+        function isLiveDrawingPayload(drawing) {
+            const id = drawing && drawing.id;
+            return typeof id === 'string' && id.indexOf('live_') === 0;
+        }
+
+        function postDrawingSync(action, drawing, drawingIndex) {
+            let drawingData = null;
+            try {
+                if (drawing && typeof drawing.toJSON === 'function') {
+                    drawingData = drawing.toJSON();
+                } else if (drawing != null) {
+                    drawingData = JSON.parse(JSON.stringify(drawing));
+                }
+                if (drawingData && typeof chart._buildDrawingSyncAnchors === 'function') {
+                    drawingData = chart._buildDrawingSyncAnchors(drawingData);
+                }
+            } catch (e) {
+                warn('drawing serialize failed', action, e && e.message);
+                drawingData = null;
+            }
+            if (action !== 'clear' && !drawingData) return;
+            send({
+                type: 'drawing-' + action,
+                drawing: drawingData,
+                drawingIndex: (typeof drawingIndex === 'number') ? drawingIndex : null,
+            });
+        }
         function buildCrosshairEnvelope(timestampMs) {
             const payload = { type: 'crosshair', time: toSeconds(timestampMs) };
             const sm = effectiveSyncMode();
@@ -1116,22 +1144,28 @@
             if (pending.visibleRange) {
                 const r = pending.visibleRange; pending.visibleRange = null;
                 const smOut = effectiveSyncMode();
-                if (!smOut || (!smOut.visibleRange && !smOut.timeSync)) return;
-                send({
-                    type: 'visibleRange',
-                    startTime: r.startSec,
-                    endTime: r.endSec,
-                    startIndex: r.startIndex,
-                    endIndex: r.endIndex,
-                    visibleBarCount: r.visibleBarCount,
-                    rightEdgeBarIndex: r.rightEdgeBarIndex,
-                    sourceTimeframe: r.sourceTimeframe,
-                    panSync: r.panSync,
-                    offsetX: r.offsetX,
-                    candleWidth: r.candleWidth,
-                    zoomLevelIndex: r.zoomLevelIndex,
-                    plotWidthPx: r.plotWidthPx,
-                });
+                if (smOut && (smOut.visibleRange || smOut.timeSync)) {
+                    send({
+                        type: 'visibleRange',
+                        startTime: r.startSec,
+                        endTime: r.endSec,
+                        startIndex: r.startIndex,
+                        endIndex: r.endIndex,
+                        visibleBarCount: r.visibleBarCount,
+                        rightEdgeBarIndex: r.rightEdgeBarIndex,
+                        sourceTimeframe: r.sourceTimeframe,
+                        panSync: r.panSync,
+                        offsetX: r.offsetX,
+                        candleWidth: r.candleWidth,
+                        zoomLevelIndex: r.zoomLevelIndex,
+                        plotWidthPx: r.plotWidthPx,
+                    });
+                }
+            }
+            if (pending.drawing) {
+                const d = pending.drawing;
+                pending.drawing = null;
+                postDrawingSync(d.action, d.drawing, d.drawingIndex);
             }
         }
         function scheduleFlush() {
@@ -1473,48 +1507,21 @@
                 }
                 return;
             }
-            // Serialize drawing for transport. Use toJSON if the drawing
-            // class provides it (most do, see drawing-tools-base.js); else
-            // fall back to a JSON.parse(JSON.stringify) deep-clone so we
-            // don't accidentally postMessage a class instance with cyclic
-            // refs.
-            let drawingData = null;
-            try {
-                if (drawing && typeof drawing.toJSON === 'function') {
-                    drawingData = drawing.toJSON();
-                } else if (drawing != null) {
-                    drawingData = JSON.parse(JSON.stringify(drawing));
-                }
-                // Same anchor payload as chart.js native broadcastDrawingChange so
-                // live update/move on the host maps to each peer's local bar indices.
-                if (drawingData && typeof chart._buildDrawingSyncAnchors === 'function') {
-                    drawingData = chart._buildDrawingSyncAnchors(drawingData);
-                }
-            } catch (e) {
-                warn('drawing serialize failed', action, e && e.message);
-                drawingData = null;
-            }
-            if (action !== 'clear' && !drawingData) {
+            if (action === 'remove' || action === 'clear') {
+                pending.drawing = null;
+                postDrawingSync(action, drawing, drawingIndex);
                 if (__origBroadcastDrawingChange) {
                     try { __origBroadcastDrawingChange(action, drawing, drawingIndex); } catch (_) {}
                 }
                 return;
             }
-            try {
-                global.parent.postMessage({
-                    type:        'drawing-' + action, // 'drawing-add' | 'drawing-update' | 'drawing-remove' | 'drawing-clear'
-                    source:      chartId,
-                    causationId: uuid(),
-                    syncTick:    ++state.tick,
-                    drawing:     drawingData,
-                    drawingIndex: (typeof drawingIndex === 'number') ? drawingIndex : null,
-                }, parentOrigin);
-                log('out', 'drawing-' + action, drawingData && drawingData.id);
-            } catch (e) {
-                warn('drawing postMessage failed', e && e.message);
+            const isLive = isLiveDrawingPayload(drawing);
+            if (isLive || action === 'update') {
+                pending.drawing = { action, drawing, drawingIndex };
+                scheduleFlush();
+            } else {
+                postDrawingSync(action, drawing, drawingIndex);
             }
-            // Preserve original (no-op without panelManager but keeps
-            // behavior matching what chart.js expects).
             if (__origBroadcastDrawingChange) {
                 try { __origBroadcastDrawingChange(action, drawing, drawingIndex); } catch (_) {}
             }
@@ -1765,128 +1772,39 @@
             }
             const action = m.type.slice('drawing-'.length); // 'add' | 'update' | 'remove' | 'clear'
             state.applied.add(m.causationId);
-            // Decorate BEFORE handing to chart.js so both new-add and
-            // live-update branches see valid {x, y} on every point.
-            // chart.js's own pointsFromTimestamps call inside the new-add
-            // branch is then a no-op (point.x already finite → not
-            // re-converted).
             try { decorateDrawingPointsWithLocalIndices(m.drawing); }
             catch (e) { warn('decorateDrawingPoints threw', e && e.message); }
 
-            // ── Diagnostic snapshot BEFORE ────────────────────────────
-            // Drawings on this panel show price-axis labels but no shape =
-            // drawing entered dm.drawings (so showAxisHighlights ran) but
-            // its SVG group is empty / off-screen / clipped. Print the
-            // before/after state so we can see exactly what happened in
-            // the iframe DevTools console without rebuilding.
-            const dmBefore = (chart.drawingManager && chart.drawingManager.drawings)
-                ? chart.drawingManager.drawings.length : -1;
-            const incoming = m.drawing || {};
-            console.log('[bridge:' + chartId + '] drawing-' + action,
-                'id=' + (incoming.id || '?'),
-                'type=' + (incoming.type || '?'),
-                'cs=' + (incoming.coordinateSystem || '?'),
-                'pts=' + (Array.isArray(incoming.points) ? incoming.points.length : '0'),
-                'dm.drawings.before=' + dmBefore);
+            const isLive = isLiveDrawingPayload(m.drawing);
+            if (opts.verbose) {
+                const incoming = m.drawing || {};
+                log('drawing-' + action,
+                    'id=' + (incoming.id || '?'),
+                    'type=' + (incoming.type || '?'),
+                    'live=' + isLive);
+            }
 
-            // chart.js's receiveDrawingChange already sets _receivingDrawingSync
-            // around its internal work, but we set it again here so the
-            // wrapped broadcastDrawingChange (above) recognizes any nested
-            // re-broadcast and short-circuits. Belt-and-suspenders.
             const wasReceiving = chart._receivingDrawingSync;
             chart._receivingDrawingSync = true;
             try {
                 chart.receiveDrawingChange(action, m.drawing, m.drawingIndex);
             } catch (e) {
                 warn('receiveDrawingChange threw', action, e && e.message);
-                console.error('[bridge:' + chartId + '] receiveDrawingChange error stack:', e && e.stack);
             } finally {
                 chart._receivingDrawingSync = wasReceiving;
             }
 
-            // ── Diagnostic snapshot AFTER ─────────────────────────────
-            try {
-                const dm = chart.drawingManager;
-                const dmAfter = dm && dm.drawings ? dm.drawings.length : -1;
-                let last = null;
-                if (dm && dm.drawings) {
-                    last = dm.drawings.find(function (d) { return d && d.id === incoming.id; }) || null;
-                }
-                if (last) {
-                    const groupNode = last.group && last.group.node ? last.group.node() : null;
-                    const groupKids = groupNode ? groupNode.childNodes.length : -1;
-                    const firstPt = (last.points && last.points[0]) ? last.points[0] : null;
-                    console.log('[bridge:' + chartId + '] applied drawing-' + action,
-                        'dm.drawings.after=' + dmAfter,
-                        'group=' + (groupNode ? 'YES' : 'NO'),
-                        'group.children=' + groupKids,
-                        'firstPoint=' + (firstPt ? JSON.stringify(firstPt) : 'null'),
-                        'tsPoints=' + (last.timestampPoints ? last.timestampPoints.length : '0'));
-                } else {
-                    console.warn('[bridge:' + chartId + '] applied drawing-' + action
-                        + ' but drawing not in dm.drawings (id=' + (incoming.id || '?') + ')');
-                }
+            // Live preview: receiveDrawingChange already called renderDrawing —
+            // skip full-chart render + redrawAll (major multichart lag source).
+            if (isLive) return;
 
-                // ── KEY FIX (Phase 7.2.5 drawing render race) ──────
-                //
-                // Confirmed empirically: after receiveDrawingChange returns
-                // the drawing IS in dm.drawings AND the user can see its
-                // price-axis highlight labels (showAxisHighlights ran fine,
-                // proving y-coords are valid). But the actual line/path SVG
-                // is invisible until the user changes timeframe on this
-                // panel — at which point the line appears and stays.
-                //
-                // Why: receiveDrawingChange calls dm.renderDrawing which
-                // appends SVG nodes into dm.drawingsGroup. That group has
-                // a clip-path (#chart-clip-path) computed from chart.w /
-                // chart.h via dm.updateClipPath(). On a freshly-loaded
-                // iframe that just finished loadFileData, the clip rect
-                // was set during dm.init() at chart.canvas's INITIAL
-                // dimensions — usually still 800x600 defaults — before
-                // the iframe was sized into its grid cell and chart.js
-                // ran its resize cycle. So the SVG nodes ARE created at
-                // valid coordinates, but they're CLIPPED OUT by a stale
-                // clip rect that's smaller than the actual chart area.
-                //
-                // setTimeframe → resampleData → chart.render() eventually
-                // calls dm.redrawAll() which calls dm.updateClipPath()
-                // FIRST, fixing the clip rect, THEN re-renders every
-                // drawing — that's why a tf change makes them appear and
-                // stay.
-                //
-                // Fix: call dm.redrawAll() ourselves on the next animation
-                // frame. redrawAll updates the clip path AND re-renders
-                // all drawings in one shot, which is exactly the path the
-                // tf change uses.
-                if (typeof chart.scheduleRender === 'function') {
-                    chart.scheduleRender();
-                }
-
-                if (dm && typeof dm.redrawAll === 'function') {
-                    requestAnimationFrame(function () {
-                        try {
-                            dm.redrawAll();
-                        } catch (e) {
-                            console.warn('[bridge:' + chartId + '] redrawAll in rAF failed:', e && e.message);
-                            // Fallback: at least re-render the new drawing
-                            try {
-                                if (last && typeof dm.renderDrawing === 'function') {
-                                    dm.renderDrawing(last);
-                                }
-                            } catch (_) {}
-                        }
-                    });
-                } else if (last && dm && typeof dm.renderDrawing === 'function') {
-                    requestAnimationFrame(function () {
-                        try {
-                            dm.renderDrawing(last);
-                        } catch (e) {
-                            console.warn('[bridge:' + chartId + '] re-render in rAF failed:', e && e.message);
-                        }
-                    });
-                }
-            } catch (e) {
-                console.warn('[bridge:' + chartId + '] post-apply diagnostic threw:', e && e.message);
+            const dm = chart.drawingManager;
+            if (action === 'add' && dm && typeof dm.redrawAll === 'function') {
+                requestAnimationFrame(function () {
+                    try { dm.redrawAll(); } catch (e) {
+                        warn('redrawAll after drawing-add failed', e && e.message);
+                    }
+                });
             }
         }
 

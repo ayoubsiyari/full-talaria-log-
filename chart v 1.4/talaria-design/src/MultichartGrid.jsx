@@ -3555,11 +3555,6 @@ export default function MultichartGrid({
                             return Promise.reject(new Error("drawingManager.setTool is not a function"));
                         }
                         if (dm.currentTool !== tool) dm.setTool(tool);
-                        try {
-                            if (typeof ch._syncMultichartViewportFromHost === "function") {
-                                ch._syncMultichartViewportFromHost();
-                            }
-                        } catch (_) {}
                         return Promise.resolve(null);
                     }
                     case "clearActiveDrawingTool": {
