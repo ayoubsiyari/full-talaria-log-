@@ -176,6 +176,8 @@
 
     /** Marketaux API caps each request window (server-side); chunk long chart ranges. */
     var HISTORICAL_NEWS_CHUNK_MS = 31 * 86400000;
+    var _historicalNewsApiUnavailable = false;
+    var _historicalNews503Logged = false;
 
     /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
     var MAX_CALENDAR_FETCH_DAYS = 120;
@@ -491,6 +493,21 @@
         try {
             if (window.parent === window) return false;
             return new URLSearchParams(window.location.search || '').get('multichart') === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /** Multichart B/C/D tiles never call Marketaux — host tile A is the sole fetcher. */
+    function shouldSkipLocalNewsFetch() {
+        return isMultichartEmbedIframe();
+    }
+
+    function isMultichartHostTile() {
+        try {
+            if (shouldSkipLocalNewsFetch()) return false;
+            var grid = window.__multichartGrid;
+            return !!(grid && (grid.isMounted || typeof grid.runCommand === 'function'));
         } catch (e) {
             return false;
         }
@@ -1007,6 +1024,7 @@
     }
 
     async function fetchHistoricalNewsChunks(fromStr, toStr, symbol) {
+        if (_historicalNewsApiUnavailable) return [];
         var startMs = dateStrToMsStart(fromStr);
         var endMs = dateStrToMsEnd(toStr);
         if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
@@ -1041,10 +1059,13 @@
             var j = await r.json().catch(function () { return {}; });
             if (!r.ok) {
                 if (r.status === 503 || r.status >= 500) {
-                    console.warn('[economic-news] historical news unavailable (HTTP ' + r.status + ')');
+                    _historicalNewsApiUnavailable = true;
+                    if (!_historicalNews503Logged) {
+                        _historicalNews503Logged = true;
+                        console.warn('[economic-news] historical news unavailable (HTTP ' + r.status + ') — skipping further fetches this session');
+                    }
                     newsChunkCache[cacheKey] = [];
-                    cursor = chunkEnd + 1;
-                    continue;
+                    return all;
                 }
                 throw new Error(detailFromJson(j, r.status));
             }
@@ -1064,7 +1085,7 @@
     }
 
     async function loadCalendar(force) {
-        if (canUseParentCalendarSource()) {
+        if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) {
             requestChartMarkerRedraw();
             return;
         }
@@ -1343,15 +1364,29 @@
         });
     }
 
+    function waitForParentCalendarAndRedraw(attempts) {
+        if (!shouldSkipLocalNewsFetch()) return;
+        if (canUseParentCalendarSource()) {
+            render();
+            requestChartMarkerRedraw();
+            return;
+        }
+        if ((attempts || 0) > 48) return;
+        setTimeout(function () {
+            waitForParentCalendarAndRedraw((attempts || 0) + 1);
+        }, 250);
+    }
+
     window.loadEconomicNewsSidebar = function () {
         wireTabs();
         syncTabClasses();
         bindNewsSearchInputs();
         bindNewsFilters();
         syncFilterControlsToDom();
-        if (canUseParentCalendarSource()) {
+        if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) {
             render();
             requestChartMarkerRedraw();
+            waitForParentCalendarAndRedraw(0);
             return;
         }
         var rng = getCalendarFetchRange();
@@ -1365,6 +1400,10 @@
     };
 
     window.refreshEconomicNewsSidebar = function () {
+        if (shouldSkipLocalNewsFetch()) {
+            requestChartMarkerRedraw();
+            return;
+        }
         state.loaded = false;
         state.loadedRangeKey = null;
         clearChartMarkerCache();
@@ -1381,7 +1420,7 @@
         state.replayDayReloadTimer = setTimeout(function () {
             state.replayDayReloadTimer = null;
             requestChartMarkerRedraw();
-            if (canUseParentCalendarSource()) return;
+            if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) return;
             var rng = getCalendarFetchRange();
             if (state.loaded && state.loadedRangeKey === rng.rangeKey) {
                 if (newsPanelIsActive()) {
@@ -1397,13 +1436,25 @@
     });
 
     function onChartContextReady() {
-        if (canUseParentCalendarSource()) {
+        if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) {
             requestChartMarkerRedraw();
+            if (shouldSkipLocalNewsFetch()) waitForParentCalendarAndRedraw(0);
             return;
         }
         var rng = getCalendarFetchRange();
         // Load calendar for the chart bar range even when News is closed so time-axis markers work immediately.
         if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
+            if (isMultichartHostTile()) {
+                if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
+                calendarPanDebounceTimer = setTimeout(function () {
+                    calendarPanDebounceTimer = null;
+                    if (state.loading) return;
+                    var rng2 = getCalendarFetchRange();
+                    if (state.loaded && state.loadedRangeKey === rng2.rangeKey) return;
+                    loadCalendar();
+                }, 1600);
+                return;
+            }
             loadCalendar();
             return;
         }
@@ -1432,8 +1483,9 @@
     window.__economicCalendarNotifyChartRender = function (chart) {
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
-        if (canUseParentCalendarSource()) return;
+        if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) return;
         if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
+        var debounceMs = isMultichartHostTile() ? 2200 : 350;
         calendarPanDebounceTimer = setTimeout(function () {
             calendarPanDebounceTimer = null;
             try {
@@ -1445,9 +1497,13 @@
                     var parts = state.loadedRangeKey.split('|');
                     if (parts.length === 2 && rng.fromStr >= parts[0] && rng.toStr <= parts[1]) return;
                 }
+                if (isMultichartHostTile() && state.loaded && lastFetchFinishedAt
+                    && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) {
+                    return;
+                }
                 loadCalendar();
             } catch (err) {}
-        }, 350);
+        }, debounceMs);
     };
 
     /**

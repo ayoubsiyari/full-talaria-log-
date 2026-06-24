@@ -88,6 +88,13 @@ class ScreenshotManager {
         const useDarkBrand = this.isLightColor(backgroundColor);
         const toAbsoluteAssetUrl = (relativePath) => {
             try {
+                var rel = String(relativePath || '').replace(/^\//, '');
+                if (rel.indexOf('modules/') === 0) {
+                    var path = window.location && window.location.pathname ? window.location.pathname : '';
+                    if (path.indexOf('/dist-v9/') >= 0 || path.indexOf('/dist-v9') >= 0) {
+                        return new URL('/chart/' + rel, window.location.origin).href;
+                    }
+                }
                 return new URL(relativePath, window.location.href).href;
             } catch (error) {
                 return relativePath;
@@ -166,6 +173,13 @@ class ScreenshotManager {
 
     resolveAssetUrl(relativePath) {
         try {
+            var rel = String(relativePath || '').replace(/^\//, '');
+            if (rel.indexOf('modules/') === 0) {
+                var path = window.location && window.location.pathname ? window.location.pathname : '';
+                if (path.indexOf('/dist-v9/') >= 0 || path.indexOf('/dist-v9') >= 0) {
+                    return new URL('/chart/' + rel, window.location.origin).href;
+                }
+            }
             return new URL(relativePath, window.location.href).href;
         } catch (error) {
             return relativePath;

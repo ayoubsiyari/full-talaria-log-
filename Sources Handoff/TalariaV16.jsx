@@ -75,6 +75,18 @@ const parseStartingBalanceInput = (raw) => {
   return Number.isFinite(value) && value > 0 ? value : null;
 };
 const normalizeSearchQuery = (raw) => String(raw ?? "").trim().toLowerCase();
+const sessionNetPnlIsZero = (pnl) => {
+  const n = Number(pnl);
+  return Number.isFinite(n) && Math.abs(n) < 0.005;
+};
+const formatSessionNetPnlDisplay = (pnl, theme) => {
+  if (pnl == null) return { text: "—", color: theme.tm };
+  const n = Number(pnl);
+  if (!Number.isFinite(n)) return { text: "—", color: theme.tm };
+  if (sessionNetPnlIsZero(n)) return { text: "$0", color: theme.ts };
+  if (n > 0) return { text: `+$${n.toLocaleString()}`, color: theme.gn };
+  return { text: `-$${Math.abs(n).toLocaleString()}`, color: theme.rd };
+};
 const STRAT_LAYOUT_STORAGE_KEY = "talaria_strat_layout_mode";
 const readStoredStratLayoutMode = () => {
   try {
@@ -12688,7 +12700,7 @@ const TalariaV8b = () => {
                                   ["Strategy",hov.sess.strategyName||"—",c.ts],
                                   ["Progress",`${hov.sess.progress}%`,c.ts],
                                   ["Starting Balance",`$${(hov.sess.capital||0).toLocaleString()}`,c.ts],
-                                  ["Net P&L",hov.sess.pnl!=null?`${hov.sess.pnl>=0?"+":""}$${hov.sess.pnl.toLocaleString()}`:"—",hov.sess.pnl!=null?(hov.sess.pnl>=0?c.gn:c.rd):c.tm],
+                                  ["Net P&L",(()=>{const d=formatSessionNetPnlDisplay(hov.sess.pnl,c);return d.text;})(),(()=>formatSessionNetPnlDisplay(hov.sess.pnl,c).color)()],
                                   ["Win Rate",hov.sess.winRate!=null?`${hov.sess.winRate}%`:"—",hov.sess.winRate!=null?(hov.sess.winRate>=50?c.gn:c.rd):c.tm],
                                   ["Avg R:R",hov.sess.avgRR!=null?`1:${hov.sess.avgRR.toFixed(1)}`:"—",c.ts],
                                 ].map(([label,val,valCol])=>(
@@ -12993,11 +13005,12 @@ const TalariaV8b = () => {
                     const isH=sessHov===sess.id;
                     const {isJournal,isProp,stripeCol,hoverBorder,hoverShadow}=getSessionRowStripeMeta(sess);
                     const hasPnl=sess.pnl!=null;
-                    const pnlPos=hasPnl&&sess.pnl>=0;
+                    const pnlDisplay=formatSessionNetPnlDisplay(sess.pnl,c);
+                    const pnlPos=hasPnl&&!sessionNetPnlIsZero(sess.pnl)&&Number(sess.pnl)>0;
                     const createdStr=sess.createdAt?new Date(sess.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"—";
                     const progress=sess.progress??0;
-                    const pnlCol=hasPnl?(pnlPos?c.gn:c.rd):c.tm;
-                    const pnlVal=hasPnl?`${pnlPos?"+":""}$${sess.pnl.toLocaleString()}`:"—";
+                    const pnlCol=pnlDisplay.color;
+                    const pnlVal=pnlDisplay.text;
                     const optLines=sess.isJournalSession
                       ? [{label:"Manual",on:true},{label:sess.platform||"Journal",on:!!sess.platform}]
                       : [{label:"Rollback",on:!!sess.rollbackAllowed},{label:"Costs",on:!!(sess.commission&&sess.commission!=="None")}];
