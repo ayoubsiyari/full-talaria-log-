@@ -48,6 +48,7 @@
     var panelId = params.get('panelId') || params.get('id') || ('panel-' + Math.random().toString(36).slice(2, 6));
 
     function log() {
+        if (params.get('verbose') !== '1') return;
         try {
             var args = Array.prototype.slice.call(arguments);
             args.unshift('[panel-cmd:' + panelId + ']');

@@ -28780,6 +28780,32 @@ class Chart {
 
     updateCrosshair(e) {
         e = (e && e.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
+        // Multichart: document-level mousemove still runs on the parent page while
+        // the pointer is over grid chrome or another tile. Do not treat that as
+        // "leave plot" on this chart — it spammed crosshair-clear to every peer.
+        let mcGrid = null;
+        try {
+            mcGrid = (typeof window !== 'undefined' && window.__multichartGrid)
+                || (typeof window !== 'undefined' && window.parent && window.parent !== window
+                    && window.parent.__multichartGrid);
+        } catch (_mcGrid) { /* ignore */ }
+        if (mcGrid && e && typeof e.clientX === 'number' && typeof e.clientY === 'number' && this.canvas) {
+            let rect = null;
+            try {
+                rect = typeof this._pointerLayoutRect === 'function'
+                    ? this._pointerLayoutRect()
+                    : this.canvas.getBoundingClientRect();
+            } catch (_rect) { /* ignore */ }
+            if (rect) {
+                const insideTile = e.clientX >= rect.left && e.clientX <= rect.right
+                    && e.clientY >= rect.top && e.clientY <= rect.bottom;
+                if (!insideTile) {
+                    this.hideCrosshair();
+                    this.currentCrosshairTimestamp = null;
+                    return;
+                }
+            }
+        }
         // Auto-fix stale dimensions: compare the parent wrapper size (which CSS
         // already expanded) against the canvas/chart internal w/h.  When they
         // diverge a layout change happened and resize() hasn't caught up yet.
@@ -28808,8 +28834,8 @@ class Chart {
         if (x < m.l || x > this.w - m.r || y < m.t || y > this.h - m.b) {
             this.hideCrosshair();
             this.currentCrosshairTimestamp = null;
-            // Broadcast hide to other panels
-            if (this._crosshairPanelSyncAllowed()) {
+            // Broadcast hide to other panels (skip during pan — causes peer storms).
+            if (this._crosshairPanelSyncAllowed() && !(this.drag && this.drag.active)) {
                 this.broadcastCrosshairSync(null, null);
             }
             return;

@@ -139,7 +139,7 @@ function ensureHostBridge() {
         const bridge = window.MultichartBridge.installBridge(ch, {
             chartId:      HOST_PANEL_ID,
             parentOrigin: "*",
-            verbose:      true,
+            verbose:      false,
         });
         window.__multichartHostBridge = bridge;
         try { console.log("[MultichartGrid] host bridge installed on window.chart as", HOST_PANEL_ID); } catch (_) {}
@@ -1686,7 +1686,7 @@ export default function MultichartGrid({
                     const tag = "[multichart-mgr]";
                     if (entry.level === "error")      console.error(tag, entry.text);
                     else if (entry.level === "warn")  console.warn(tag, entry.text);
-                    else                              console.log(tag, entry.text);
+                    // Info/out spam (crosshair fan-out, cmd-result OK) tanks perf in 4-up.
                 },
                 onAssertion: function (msg) {
                     if (msg && msg.ok === false) {
@@ -2690,25 +2690,30 @@ export default function MultichartGrid({
         // session start" — no tick will fire until they hit play).
         _primeReplayFromParent();
 
-        // Hard guard: while parent is in replay, re-align iframe playheads.
-        const replayAlignGuardMs = 800;
+        // Hard guard: while parent is in replay, re-align iframe playheads only
+        // when the host is PLAYING and panels may drift. The old 800ms poll while
+        // paused sent syncReplayFromHost to every iframe continuously (cmd-result
+        // + render churn) even when the user was only panning charts.
+        const replayAlignGuardMs = 2500;
         const runReplayAlignGuard = () => {
             try {
                 const mgr = managerRef.current;
                 if (!mgr || !mgr.charts) return;
                 const ch = window.chart;
                 const rs = ch && ch.replaySystem;
-                if (!rs || !rs.isActive) return;
+                if (!rs || !rs.isActive || !rs.isPlaying) return;
                 const ts = Number(rs.replayTimestamp);
                 if (!Number.isFinite(ts)) return;
-                const hostPlaying = !!rs.isPlaying;
                 replayStateRef.current.lastBroadcastTs = ts;
                 replayStateRef.current.everEntered = true;
                 replayStateRef.current.parentEverEntered = true;
+                const send = typeof mgr.sendCommandNoReply === "function"
+                    ? mgr.sendCommandNoReply.bind(mgr)
+                    : mgr.sendCommand.bind(mgr);
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try {
-                        mgr.sendCommand(c.id, "syncReplayFromHost", { force: hostPlaying });
+                        send(c.id, "syncReplayFromHost", { force: true });
                     } catch (_) {}
                 }
             } catch (_) {}
@@ -3352,15 +3357,17 @@ export default function MultichartGrid({
             ? String(hostCh.currentFileId)
             : "";
         // When Symbol sync is on, pull a lagging iframe back to the host file.
-        // When Symbol sync is off, tiles may use different pairs during replay.
+        // Skip pull-back while userPairLoadGuard is active — that tile is
+        // mid user-initiated load and should fan out (below), not revert.
         if (sync.symbol && hostFid && state && state.fileId != null
             && String(state.fileId) !== hostFid) {
             const guardUntil = userPairLoadGuardRef.current[id];
-            if (!(guardUntil && performance.now() < guardUntil)) {
+            const userInitiated = !!(guardUntil && performance.now() < guardUntil);
+            if (!userInitiated) {
                 try { mgr.sendCommand(id, "loadFile", { fileId: hostFid }); } catch (_) {}
                 lastBroadcastFileRef.current[id] = hostFid;
+                return;
             }
-            return;
         }
 
         if (state && state.timeframe && sync.interval) {
@@ -3923,9 +3930,17 @@ export default function MultichartGrid({
             const o = opts && typeof opts === "object" ? opts : {};
             const fid = fileId != null ? String(fileId).trim() : "";
             if (!fid) return Promise.reject(new Error("loadFile: missing fileId"));
-            const pid = panelId || focusedPanelIdRef.current || HOST_PANEL_ID;
-
-            if (pid !== HOST_PANEL_ID) markUserPairLoadGuard(pid);
+            let pid = panelId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            // Symbol sync ON: tile A is the canonical data source — load there
+            // once; chartDataLoaded fans loadFile to every iframe (B/C/D).
+            // Without this, picking a symbol while focused on B/C/D only
+            // updated that tile and onState pull-back blocked fan-out.
+            const symSyncOn = !!(layoutSyncRef.current && layoutSyncRef.current.symbol);
+            if (symSyncOn && pid !== HOST_PANEL_ID) {
+                pid = HOST_PANEL_ID;
+            } else if (pid !== HOST_PANEL_ID) {
+                markUserPairLoadGuard(pid);
+            }
 
             if (pid === HOST_PANEL_ID) {
                 return applyHostCommand("loadFile", { fileId: fid, force: !!o.force }).then((data) => {

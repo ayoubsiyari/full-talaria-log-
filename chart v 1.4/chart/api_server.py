@@ -3618,6 +3618,7 @@ def _default_firstrate_schedule() -> dict:
         "last_run_date": None,            # YYYY-MM-DD UTC; resets per-day completion list
         "last_run_types_today": [],       # instrument_types successfully synced today (scheduled)
         "last_auto_repair_class": None,   # round-robin cursor for stale_auto (fx→futures→…)
+        "last_import_finished_at_by_type": {},  # ISO UTC — last successful import per class
         "vendor_last_update_by_type": {},  # last seen FirstRate last_update per type (incremental)
         "type_failure_cooldown_until": {},  # ISO UTC — backoff after a failed scheduled job
         "pairs": [],
@@ -4342,6 +4343,9 @@ def _firstrate_pick_auto_repair_candidate(
         hrs = _firstrate_hours_since_type_repair(cfg, it)
         if hrs is not None and hrs < cooldown_h:
             continue
+        finish_hrs = _firstrate_hours_since_type_import_finished(cfg, it)
+        if finish_hrs is not None and finish_hrs < cooldown_h:
+            continue
         _score, _it, _pairs, stats = by_class[it]
         pair_list, stats, _stale_only = _firstrate_auto_repair_pair_list(it)
         if not pair_list:
@@ -4466,6 +4470,61 @@ def _firstrate_hours_since_type_repair(cfg: dict, instrument_type: str) -> float
         return (datetime.utcnow() - dt).total_seconds() / 3600.0
     except Exception:
         return None
+
+
+def _firstrate_hours_since_type_import_finished(cfg: dict, instrument_type: str) -> float | None:
+    it = (instrument_type or "").strip().lower()
+    raw = (cfg.get("last_import_finished_at_by_type") or {}).get(it)
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", ""))
+        return (datetime.utcnow() - dt).total_seconds() / 3600.0
+    except Exception:
+        return None
+
+
+def _firstrate_note_import_finished_for_type(
+    instrument_type: str,
+    *,
+    files_done: int = 0,
+    trigger: str = "manual",
+) -> None:
+    """
+    After a successful import, record finish time per asset class.
+
+    Manual imports also mark the class as done for today's nightly rotation and
+    apply auto-repair cooldown so the scheduler does not immediately start another
+    fx/week job when health cards still show stale tickers.
+    """
+    it = (instrument_type or "").strip().lower()
+    if not it:
+        return
+    cfg = _load_firstrate_schedule()
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    finished_map = dict(cfg.get("last_import_finished_at_by_type") or {})
+    finished_map[it] = now_iso
+    cfg["last_import_finished_at_by_type"] = finished_map
+    trig = str(trigger or "manual").strip().lower()
+    if trig == "manual" and int(files_done or 0) > 0:
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        if str(cfg.get("last_run_date") or "") != today_str:
+            cfg["last_run_date"] = today_str
+            cfg["last_run_types_today"] = []
+        done = list(cfg.get("last_run_types_today") or [])
+        if it not in done:
+            done.append(it)
+        cfg["last_run_types_today"] = done
+        repair_map = dict(cfg.get("last_repair_queued_at_by_type") or {})
+        repair_map[it] = now_iso
+        cfg["last_repair_queued_at_by_type"] = repair_map
+        cool_h = _firstrate_repair_cooldown_hours(cfg)
+        cfg["last_message"] = (
+            f"Manual {it} import finished ({int(files_done)} file(s)) — "
+            f"nightly will not re-queue {it} again today; auto-repair paused "
+            f"{cool_h:.0f}h for this class."
+        )
+    _save_firstrate_schedule(cfg)
 
 
 def _firstrate_try_queue_auto_repair(cfg: dict) -> bool:
@@ -8529,6 +8588,14 @@ def _run_firstrate_import_job(job_id: str) -> None:
             f"{len(ranges_to_fetch)} bundle(s)"
         )
         _firstrate_write_job(job_id, state)
+        st_done = _firstrate_read_job(job_id) or state
+        it_done = str(st_done.get("instrument_type") or "").strip().lower()
+        if it_done:
+            _firstrate_note_import_finished_for_type(
+                it_done,
+                files_done=int(st_done.get("files_done") or 0),
+                trigger=str(st_done.get("trigger") or "manual"),
+            )
         _firstrate_schedule_after_job(job_id, success=True, error_message=None)
         try:
             trig = str(state.get("trigger") or "import")

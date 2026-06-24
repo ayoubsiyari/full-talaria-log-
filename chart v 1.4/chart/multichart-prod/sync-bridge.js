@@ -854,6 +854,8 @@
             // unrelated window (e.g. a few weeks / wrong year vs panel A).
             suppressRangeScrollEchoUntil: 0,
             suppressRangeScrollEchoLeft: 0,
+            /** Outbound dedupe — stops crosshair-clear postMessage storms. */
+            crosshairHidden: true,
         };
 
         global.__multichartBridgeState = state;
@@ -1004,13 +1006,26 @@
             // Bridge fan-out (cross-chart) — gated by the applying window.
             if (!state.applying) {
                 if (timestamp === null || timestamp === undefined) {
-                    pending.crosshair = null;
-                    pending.crosshairClear = true;
+                    // Pan/zoom: pointer often leaves the plot box every frame — do not
+                    // fan crosshair-clear to every peer on each mousemove.
+                    if (chart.drag && chart.drag.active) {
+                        // skip outbound clear
+                    } else if (state.crosshairHidden && !pending.crosshair) {
+                        // Already cleared on peers — suppress infinite clear loop.
+                    } else {
+                        pending.crosshair = null;
+                        pending.crosshairClear = true;
+                        state.crosshairHidden = true;
+                        scheduleFlush();
+                    }
                 } else {
                     pending.crosshair = timestamp;
                     pending.crosshairClear = false;
+                    state.crosshairHidden = false;
+                    scheduleFlush();
                 }
-                scheduleFlush();
+            } else if (timestamp !== null && timestamp !== undefined) {
+                state.crosshairHidden = false;
             }
             // Preserve original within-chart sub-panel sync if it existed.
             if (__origBroadcastCrosshairSync) {
@@ -1761,10 +1776,12 @@
                 sourceDataIndex: Number.isFinite(m.sourceDataIndex) ? m.sourceDataIndex : undefined,
                 labelText: (typeof m.labelText === 'string' && m.labelText) ? m.labelText : undefined,
             });
+            state.crosshairHidden = false;
         }
 
         function applyCrosshairClear(m) {
             state.applied.add(m.causationId);
+            state.crosshairHidden = true;
             beginApplying(true);
             chart.receiveCrosshairSync(null, null, null);
         }
