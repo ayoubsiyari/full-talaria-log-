@@ -931,6 +931,8 @@ function syncAllIframesToHost(mgr) {
 let _alignHostSyncTimer = 0;
 let _hostViewportFrozenCheck = () => false;
 let _hostBootResizeTimer = 0;
+/** Debounced viewport re-sync after panel focus (drawing tool / click switch). */
+let _focusViewportSyncTimer = 0;
 function setHostViewportFrozenCheck(fn) {
     _hostViewportFrozenCheck = typeof fn === "function" ? fn : () => false;
 }
@@ -1213,8 +1215,15 @@ function resizeIframeInCell(cell) {
     try {
         const ch = ifr.contentWindow && ifr.contentWindow.chart;
         if (ch && typeof ch.resize === "function") {
+            const oldW = ch.w;
+            const oldH = ch.h;
             ch._lastResizeDpr = 0;
             ch.resize();
+            if (typeof ch._syncMultichartViewportFromHost === "function") {
+                try { ch._syncMultichartViewportFromHost({ render: false }); } catch (_) {}
+            } else if (typeof ch._realignMultichartViewportAfterResize === "function") {
+                try { ch._realignMultichartViewportAfterResize(oldW, oldH); } catch (_) {}
+            }
             if (typeof ch.render === "function") ch.render();
         }
     } catch (_) {}
@@ -3289,6 +3298,22 @@ export default function MultichartGrid({
             } else if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
                 grid.deselectDrawingsOnNonFocusedPanels(focusedPanelId);
             }
+            const syncDate = !!(layoutSyncRef.current && layoutSyncRef.current.dateRange);
+            const mgr = managerRef.current;
+            if (syncDate && mgr) {
+                clearTimeout(_focusViewportSyncTimer);
+                _focusViewportSyncTimer = setTimeout(() => {
+                    try {
+                        const ch = window.chart;
+                        if (ch && typeof ch.dispatchScrollSync === "function") {
+                            ch.dispatchScrollSync(true);
+                        }
+                        if (mgr) {
+                            syncAllIframesToHost(mgr);
+                        }
+                    } catch (_) {}
+                }, 60);
+            }
         }, 0);
         return () => clearTimeout(t);
     }, [focusedPanelId]);
@@ -3612,7 +3637,16 @@ export default function MultichartGrid({
                                 dmDes.settingsPanel.hide();
                             }
                         }
-                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        try {
+                            if (typeof ch._syncMultichartViewportFromHost === 'function') {
+                                ch._syncMultichartViewportFromHost();
+                            } else {
+                                if (typeof ch._realignMultichartViewportAfterResize === 'function') {
+                                    ch._realignMultichartViewportAfterResize(ch.w, ch.h);
+                                }
+                                if (typeof ch.render === "function") ch.render();
+                            }
+                        } catch (_) {}
                         return Promise.resolve(null);
                     }
                     case "clearDrawingsAndIndicators": {
@@ -4381,6 +4415,10 @@ export default function MultichartGrid({
                     return applyHostCommand("clearActiveDrawingTool", null).catch(() => {});
                 }
                 if (!mgr) return Promise.resolve();
+                if (typeof mgr.sendCommandNoReply === "function") {
+                    mgr.sendCommandNoReply(panelId, "clearActiveDrawingTool", null);
+                    return Promise.resolve();
+                }
                 return mgr.sendCommand(panelId, "clearActiveDrawingTool", null).catch(() => {});
             }
 

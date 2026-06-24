@@ -1191,6 +1191,7 @@
             // Host tile A: do not broadcast range while multichart boot is frozen —
             // iframe sync echoes were nudging the host viewport left/right.
             if (chart._multichartHostViewportFrozen) return;
+            if (chart._multichartSuppressRangeEcho) return;
             // While this tile is the pan leader, keep broadcasting even if a peer
             // echo briefly set `applying` or suppressRangeScrollEcho*.
             if (state.applying && !isLocalPanDragActive()) return;
@@ -1272,7 +1273,7 @@
             : null;
         chart.dispatchScrollSync = function (force) {
             try {
-                if (chart.data && chart.data.length > 0) {
+                if (chart.data && chart.data.length > 0 && !chart._multichartSuppressRangeEcho) {
                     const startIndex = (typeof chart.getVisibleStartIndex === 'function')
                         ? chart.getVisibleStartIndex()
                         : 0;

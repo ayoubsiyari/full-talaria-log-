@@ -2165,6 +2165,71 @@ class Chart {
     }
 
     /**
+     * Date-range sync: preserve the host wall-clock window after local width changes.
+     * @param {number} oldW
+     * @param {number} oldH
+     * @returns {boolean}
+     */
+    _realignMultichartViewportAfterResize(oldW, oldH) {
+        void oldH;
+        void oldW;
+        if (!this._multichartVisibleRangeSyncOn) return false;
+        if (typeof this._multichartSamePairAsHost !== 'function'
+            || !this._multichartSamePairAsHost(this.currentFileId)) {
+            return false;
+        }
+        if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) {
+            return false;
+        }
+        if (typeof this._multichartMirrorViewportFromHost === 'function'
+            && this._multichartMirrorViewportFromHost()) {
+            return true;
+        }
+        const host = typeof this._multichartGetHostChart === 'function'
+            ? this._multichartGetHostChart()
+            : null;
+        if (!host || !Array.isArray(host.data) || !host.data.length) return false;
+        const m = this.margin || { l: 60, r: 60 };
+        const pm = host.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, (this.w || 0) - m.l - m.r);
+        const parentPlotW = Math.max(1, (host.w || 0) - pm.l - pm.r);
+        if (parentPlotW <= 0 || plotW <= 0) return false;
+        if (Number.isFinite(host.candleWidth) && host.candleWidth > 0) {
+            this.candleWidth = host.candleWidth;
+        }
+        if (host.zoomLevel && this.zoomLevel) {
+            this.zoomLevel.candleWidthIndex = host.zoomLevel.candleWidthIndex;
+        }
+        if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
+        const spacing = (typeof host.getCandleSpacing === 'function')
+            ? host.getCandleSpacing()
+            : host.candleWidth;
+        if (spacing > 0) {
+            let rightIdx = (typeof host.getVisibleEndIndex === 'function')
+                ? host.getVisibleEndIndex()
+                : host.data.length - 1;
+            rightIdx = Math.max(0, Math.min(rightIdx, (this.data && this.data.length) ? this.data.length - 1 : rightIdx));
+            this.offsetX = plotW - (rightIdx + 1) * spacing;
+        } else {
+            this.offsetX = Number(host.offsetX || 0) * (plotW / parentPlotW);
+        }
+        if (typeof this.constrainOffset === 'function') {
+            try { this.constrainOffset(); } catch (_) {}
+        }
+        return true;
+    }
+
+    /** Host tile A: fan-out visible range after resize so B/C/D stay aligned. */
+    _broadcastMultichartViewportIfHost() {
+        if (!this._multichartVisibleRangeSyncOn) return;
+        if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) {
+            return;
+        }
+        if (typeof this.dispatchScrollSync !== 'function') return;
+        try { this.dispatchScrollSync(true); } catch (_) {}
+    }
+
+    /**
      * Same-pair iframe under date-range sync: mirror host tile A's loaded bars +
      * scroll so bar index N is the same candle on both panels (TradingView parity).
      * @returns {boolean}
@@ -2228,15 +2293,57 @@ class Chart {
         if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
 
         const pm = this.margin || { l: 60, r: 60 };
-        const ppm = parent.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, (this.w || 0) - pm.l - pm.r);
-        const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
-        this.offsetX = parent.offsetX * (plotW / parentPlotW);
+        const spacing = (typeof parent.getCandleSpacing === 'function')
+            ? parent.getCandleSpacing()
+            : parent.candleWidth;
+        if (spacing > 0 && plotW > 0) {
+            let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
+                ? parent.getVisibleEndIndex()
+                : parent.data.length - 1;
+            rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
+            this.offsetX = plotW - (rightIdx + 1) * spacing;
+        } else {
+            const ppm = parent.margin || { l: 60, r: 60 };
+            const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
+            this.offsetX = parent.offsetX * (plotW / parentPlotW);
+        }
 
         if (typeof this.constrainOffset === 'function') {
             try { this.constrainOffset(); } catch (_c) { /* ignore */ }
         }
         this._multichartViewportMirroredWithHost = true;
+        return true;
+    }
+
+    /**
+     * Date-range sync: re-mirror tile A and paint without broadcasting a peer
+     * visibleRange echo (drawing focus / deselect housekeeping).
+     * @param {{ render?: boolean }} [opts]
+     * @returns {boolean}
+     */
+    _syncMultichartViewportFromHost(opts = {}) {
+        if (!this._multichartVisibleRangeSyncOn) return false;
+        const shouldRender = opts.render !== false;
+        if (typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel()) {
+            if (shouldRender && typeof this.render === 'function') {
+                try { this.render(); } catch (_) {}
+            }
+            if (typeof this._broadcastMultichartViewportIfHost === 'function') {
+                try { this._broadcastMultichartViewportIfHost(); } catch (_) {}
+            }
+            return true;
+        }
+        if (typeof this._multichartMirrorViewportFromHost !== 'function') return false;
+        let mirrored = false;
+        try { mirrored = !!this._multichartMirrorViewportFromHost(); } catch (_) {}
+        if (!mirrored) return false;
+        if (shouldRender && typeof this.render === 'function') {
+            this._multichartSuppressRangeEcho = true;
+            try { this.render(); } catch (_) {}
+            const self = this;
+            requestAnimationFrame(() => { self._multichartSuppressRangeEcho = false; });
+        }
         return true;
     }
 
@@ -14019,6 +14126,9 @@ class Chart {
 	            // iframes finish loading. Skipping the right-edge offsetX nudge keeps
 	            // panel A locked in place (TradingView-style) until boot completes.
 	            if (!this._multichartSkipResizeOffsetAdjust) {
+	            const realignedMc = typeof this._realignMultichartViewportAfterResize === 'function'
+	                && this._realignMultichartViewportAfterResize(oldW, oldH);
+	            if (!realignedMc) {
 	            // Anchor the right edge of the plot area through resize.
 	            //
 	            // The previous version shifted offsetX by `deltaW * 0.5` to keep
@@ -14041,8 +14151,17 @@ class Chart {
 	            this.offsetX = Math.round((this.offsetX || 0) + deltaRightPx);
 	            this.constrainOffset();
 	            }
+	            }
 	        } else {
 	            this.fitToView();
+	        }
+
+	        if (sizeChanged && oldW && oldH) {
+	            requestAnimationFrame(() => {
+	                if (typeof this._broadcastMultichartViewportIfHost === 'function') {
+	                    this._broadcastMultichartViewportIfHost();
+	                }
+	            });
 	        }
 	        
 	        this.render();
@@ -19875,6 +19994,8 @@ class Chart {
 
     /** Pan release — drop follow snap so the next full-quality paint can rescan. */
     _releasePanSyncFollowBurst() {
+        const wasBurst = typeof this._isPanSyncFollowBurst === 'function'
+            && this._isPanSyncFollowBurst();
         this._panSyncBurstUntil = 0;
         if (this._panSyncFollowRenderRaf != null) {
             cancelAnimationFrame(this._panSyncFollowRenderRaf);
@@ -19884,7 +20005,7 @@ class Chart {
             cancelAnimationFrame(this._mcHostMasterSyncRaf);
             this._mcHostMasterSyncRaf = null;
         }
-        if (this._multichartPendingMasterResample) {
+        if (wasBurst && this._multichartPendingMasterResample) {
             this._flushMultichartPendingMasterResample();
         }
         this._panSnapOffsetX = null;

@@ -1153,6 +1153,11 @@
                         throw new Error('drawingManager.setTool is not a function');
                     }
                     if (dm.currentTool !== tool) dm.setTool(tool);
+                    try {
+                        if (typeof ch._syncMultichartViewportFromHost === 'function') {
+                            ch._syncMultichartViewportFromHost();
+                        }
+                    } catch (_) {}
                     return;
                 }
                 case 'clearActiveDrawingTool': {
@@ -1276,7 +1281,16 @@
                             dmDes.settingsPanel.hide();
                         }
                     }
-                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    try {
+                        if (typeof ch._syncMultichartViewportFromHost === 'function') {
+                            ch._syncMultichartViewportFromHost();
+                        } else {
+                            if (typeof ch._realignMultichartViewportAfterResize === 'function') {
+                                ch._realignMultichartViewportAfterResize(ch.w, ch.h);
+                            }
+                            if (typeof ch.render === 'function') ch.render();
+                        }
+                    } catch (_) {}
                     return;
                 }
                 case 'clearDrawingsAndIndicators': {

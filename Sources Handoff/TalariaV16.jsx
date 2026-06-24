@@ -74,6 +74,7 @@ const parseStartingBalanceInput = (raw) => {
   const value = Number(digits);
   return Number.isFinite(value) && value > 0 ? value : null;
 };
+const normalizeSearchQuery = (raw) => String(raw ?? "").trim().toLowerCase();
 const STRAT_LAYOUT_STORAGE_KEY = "talaria_strat_layout_mode";
 const readStoredStratLayoutMode = () => {
   try {
@@ -11362,7 +11363,7 @@ const TalariaV8b = () => {
 
   const indFiltered = indicatorData
     .filter(i => indCat === "all" ? true : indCat === "pinned" ? indPinned.includes(i.id) : indCat === "active" ? indActive.includes(i.id) : i.cat === indCat)
-    .filter(i => !indSearch || i.name.toLowerCase().includes(indSearch.toLowerCase()) || i.abbr.toLowerCase().includes(indSearch.toLowerCase()));
+    .filter(i => { const q = normalizeSearchQuery(indSearch); return !q || i.name.toLowerCase().includes(q) || i.abbr.toLowerCase().includes(q); });
 
   const I = ({ n, s = 18, cl = "currentColor" }) => {
     const v = "0 -960 960 960";
@@ -12985,7 +12986,7 @@ const TalariaV8b = () => {
                 </div>
               ):sessLayoutMode==="cards"?(()=>{
                 const _applyFilter=(s)=>applySessionsPageFilter(s,sessFilter);
-                const _fss=[...sessionsPageRows].filter(s=>{if(!sessSearchQ)return true;const q=sessSearchQ.toLowerCase();return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(_applyFilter).sort((a,b)=>{if(!sessSortBy)return new Date(b.createdAt||0)-new Date(a.createdAt||0);const dir=sessSortDir==="asc"?1:-1;let cmp=0;if(sessSortBy==="name")cmp=a.name.localeCompare(b.name);else if(sessSortBy==="strategy")cmp=(a.strategyName||"").localeCompare(b.strategyName||"");else if(sessSortBy==="mode")cmp=(a.tradingMode||"").localeCompare(b.tradingMode||"");else if(sessSortBy==="asset")cmp=((a.assetClasses||[])[0]||"").localeCompare((b.assetClasses||[])[0]||"");else if(sessSortBy==="symbol")cmp=(a.tickers?.[0]||"").localeCompare(b.tickers?.[0]||"");else if(sessSortBy==="date")cmp=new Date(a.startDate||0)-new Date(b.startDate||0);else if(sessSortBy==="capital")cmp=(a.capital||0)-(b.capital||0);else if(sessSortBy==="pnl")cmp=(a.pnl??-Infinity)-(b.pnl??-Infinity);else if(sessSortBy==="winRate")cmp=(a.winRate??-1)-(b.winRate??-1);else if(sessSortBy==="avgRR")cmp=(a.avgRR??-1)-(b.avgRR??-1);else if(sessSortBy==="trades")cmp=(a.trades||0)-(b.trades||0);else if(sessSortBy==="progress")cmp=(a.progress||0)-(b.progress||0);return cmp*dir;});
+                const _fss=[...sessionsPageRows].filter(s=>{const q=normalizeSearchQuery(sessSearchQ);if(!q)return true;return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(_applyFilter).sort((a,b)=>{if(!sessSortBy)return new Date(b.createdAt||0)-new Date(a.createdAt||0);const dir=sessSortDir==="asc"?1:-1;let cmp=0;if(sessSortBy==="name")cmp=a.name.localeCompare(b.name);else if(sessSortBy==="strategy")cmp=(a.strategyName||"").localeCompare(b.strategyName||"");else if(sessSortBy==="mode")cmp=(a.tradingMode||"").localeCompare(b.tradingMode||"");else if(sessSortBy==="asset")cmp=((a.assetClasses||[])[0]||"").localeCompare((b.assetClasses||[])[0]||"");else if(sessSortBy==="symbol")cmp=(a.tickers?.[0]||"").localeCompare(b.tickers?.[0]||"");else if(sessSortBy==="date")cmp=new Date(a.startDate||0)-new Date(b.startDate||0);else if(sessSortBy==="capital")cmp=(a.capital||0)-(b.capital||0);else if(sessSortBy==="pnl")cmp=(a.pnl??-Infinity)-(b.pnl??-Infinity);else if(sessSortBy==="winRate")cmp=(a.winRate??-1)-(b.winRate??-1);else if(sessSortBy==="avgRR")cmp=(a.avgRR??-1)-(b.avgRR??-1);else if(sessSortBy==="trades")cmp=(a.trades||0)-(b.trades||0);else if(sessSortBy==="progress")cmp=(a.progress||0)-(b.progress||0);return cmp*dir;});
                 return(
                 <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                   {_fss.map(sess=>{
@@ -13139,7 +13140,7 @@ const TalariaV8b = () => {
                 );
               })():(
               <div style={{width:"fit-content",margin:"0 auto",display:"flex",flexDirection:"column"}}>
-              {[...sessionsPageRows].filter(s=>{if(!sessSearchQ)return true;const q=sessSearchQ.toLowerCase();return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(s=>applySessionsPageFilter(s,sessFilter)).sort((a,b)=>{
+              {[...sessionsPageRows].filter(s=>{const q=normalizeSearchQuery(sessSearchQ);if(!q)return true;return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(s=>applySessionsPageFilter(s,sessFilter)).sort((a,b)=>{
                   if(!sessSortBy) return new Date(b.createdAt||0)-new Date(a.createdAt||0);
                   const dir=sessSortDir==="asc"?1:-1;
                   let cmp=0;
@@ -13901,7 +13902,8 @@ const TalariaV8b = () => {
                                       <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
                                         {(()=>{
                                           const catKey=catMap[newSessAssetClass]||newSessAssetClass;
-                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase())));
+                                          const symQ=normalizeSearchQuery(newSessSymPickerSearch);
+                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!symQ||s.sym.toLowerCase().includes(symQ)));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
                                           return pool.map(s=>{
                                             const isChk=newSessTickers.includes(s.sym);
@@ -14010,7 +14012,8 @@ const TalariaV8b = () => {
                                       <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
                                         {(()=>{
                                           const catKey=catMap[newSessSupPickerCat]||newSessSupPickerCat;
-                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase())));
+                                          const supQ=normalizeSearchQuery(newSessSupPickerSearch);
+                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!supQ||s.sym.toLowerCase().includes(supQ)));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
                                           return pool.map(s=>{
                                             const isChk=newSessSupportTickers.includes(s.sym);
@@ -35205,7 +35208,7 @@ const TalariaV8b = () => {
           /* ─── Filter + sort community ─── */
           const filteredCommunity = communityPool
             .filter(s => {
-              const q = stratSearch.toLowerCase();
+              const q = normalizeSearchQuery(stratSearch);
               return !q || s.name.toLowerCase().includes(q) || s.author.toLowerCase().includes(q) || s.tags.some(t=>t.toLowerCase().includes(q));
             })
             .sort((a,b)=>{
@@ -35227,11 +35230,11 @@ const TalariaV8b = () => {
             : [...userStrategySource, ...templatePreviewStrategies];
           const filteredMine = mineSource
             .filter(s=>{
-              const q=stratSearch.toLowerCase();
+              const q=normalizeSearchQuery(stratSearch);
               return !q||s.name.toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
             });
           const filteredSavedCommunity = savedCommunityStrats.filter(s=>{
-            const q=stratSearch.toLowerCase();
+            const q=normalizeSearchQuery(stratSearch);
             return !q||s.name.toLowerCase().includes(q)||(s.author||"").toLowerCase().includes(q)||(s.tags||[]).some(t=>t.toLowerCase().includes(q));
           });
 
@@ -36051,9 +36054,9 @@ const TalariaV8b = () => {
                     ) : filteredMine.length===0?(
                       <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,height:340}}>
                         <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><rect x="3" y="3" width="18" height="18" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M9 12h6M12 9v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{stratSearch?"No strategies match":"No strategies yet"}</div>
-                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{stratSearch?"Try adjusting your search.":"Build your first strategy to keep track of your trading rules, instruments, and tags."}</div>
-                        {!stratSearch&&(
+                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?"No strategies match":"No strategies yet"}</div>
+                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:320}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Build your first strategy to keep track of your trading rules, instruments, and tags."}</div>
+                        {!normalizeSearchQuery(stratSearch)&&(
                           <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()}
                             style={{width:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,marginTop:4,transition:"filter 0.12s, transform 0.08s",boxSizing:"border-box"}}
                             onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
@@ -43768,7 +43771,7 @@ const TalariaV8b = () => {
                 {id:"#1008",sym:"EUR/GBP",side:"SHORT"},
                 {id:"#1009",sym:"USD/CHF",side:"LONG"},
               ];
-              const q=scLinkSearch.toLowerCase().trim();
+              const q=normalizeSearchQuery(scLinkSearch);
               const filtered=scTrades.filter(t=>t.id.toLowerCase().includes(q)||t.sym.toLowerCase().includes(q)||t.side.toLowerCase().includes(q));
               const isLH=swHov==="sc-link";
               const isLinked=!!scLinkedTrade;
@@ -43958,7 +43961,7 @@ const TalariaV8b = () => {
           </div>
           <div className="tlr-scroll" style={{maxHeight:320,overflowY:"auto",padding:"4px 0"}}>
             {SYMBOLS_DATA.map(({cat,items})=>{
-              const q=symbolSearch.toLowerCase();
+              const q=normalizeSearchQuery(symbolSearch);
               const filtered = items.filter(s=>!q||s.id.toLowerCase().startsWith(q)||s.name.toLowerCase().split(/[\s/\-]+/).some(w=>w.startsWith(q)));
               if(filtered.length===0) return null;
               return (
@@ -45417,7 +45420,7 @@ const TalariaV8b = () => {
                 {id:11,time:"09:30",country:"GB",impact:"high",title:"GDP m/m",date:"2026.04.11",actual:"0.5%",forecast:"0.1%",previous:"-0.1%",tab:"previous"},
                 {id:12,time:"14:00",country:"US",impact:"med",title:"Michigan Consumer Sentiment",date:"2026.04.11",actual:"50.8",forecast:"54.5",previous:"57.0",tab:"previous"},
               ];
-              const q = newsSearch.toLowerCase();
+              const q = normalizeSearchQuery(newsSearch);
               const filtered = newsData.filter(ev =>
                 ev.tab===newsTab &&
                 newsImpact.includes(ev.impact) &&
@@ -45695,9 +45698,9 @@ const TalariaV8b = () => {
             })()}
             {rightPanel==="layers" && (
               <div>
-                {(()=>{const visItems=layersSearch.trim()?layersItems.filter(x=>x.name.toLowerCase().includes(layersSearch.toLowerCase())):layersItems;
+                {(()=>{const layerQ=normalizeSearchQuery(layersSearch);const visItems=layerQ?layersItems.filter(x=>x.name.toLowerCase().includes(layerQ)):layersItems;
                 return visItems.length===0?(
-                  <div style={{padding:"28px 14px",textAlign:"center",color:c.tm,fontSize:11}}>{layersSearch.trim()?"No matching objects":"No objects on chart"}</div>
+                  <div style={{padding:"28px 14px",textAlign:"center",color:c.tm,fontSize:11}}>{layerQ?"No matching objects":"No objects on chart"}</div>
                 ):visItems.map(item=>{
                   const isH = swHov===`lyr-${item.id}`;
                   const isJumpH = swHov===`lyrJ-${item.id}`;
@@ -47084,7 +47087,7 @@ const TalariaV8b = () => {
             </div>
             <div className="tlr-scroll" style={{ maxHeight:280, overflowY:"auto", padding:"4px 0" }}>
               {SYMBOLS_DATA.map(({cat,items}) => {
-                const q = opSymSearch.toLowerCase();
+                const q = normalizeSearchQuery(opSymSearch);
                 const filtered = items.filter(s => !q || s.id.toLowerCase().startsWith(q) || s.name.toLowerCase().split(/[\s/\-]+/).some(w=>w.startsWith(q)));
                 if (!filtered.length) return null;
                 return (

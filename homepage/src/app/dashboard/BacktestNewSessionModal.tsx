@@ -22,6 +22,8 @@ import { type SessionLimitGateData } from "./sessionLimitGate";
 
 const F = "'Exo 2', sans-serif";
 
+const normalizeSearchQuery = (raw: string) => String(raw ?? "").trim().toLowerCase();
+
 const STARTING_BALANCE_MAX_DIGITS = 6;
 function sanitizeStartingBalanceInput(raw: string): string {
   return String(raw ?? "").replace(/\D/g, "").slice(0, STARTING_BALANCE_MAX_DIGITS);
@@ -1471,7 +1473,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                       <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
                                         {(()=>{
                                           const catKey=catMap[newSessAssetClass]||newSessAssetClass;
-                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSymPickerSearch||s.sym.toLowerCase().includes(newSessSymPickerSearch.toLowerCase())));
+                                          const symQ=normalizeSearchQuery(newSessSymPickerSearch);
+                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!symQ||s.sym.toLowerCase().includes(symQ)));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
                                           return pool.map(s=>{
                                             const isChk=newSessTickers.includes(s.sym);
@@ -1578,7 +1581,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                       <div className="tlr-scroll" style={{overflowY:"auto",flex:1}}>
                                         {(()=>{
                                           const catKey=catMap[newSessSupPickerCat]||newSessSupPickerCat;
-                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!newSessSupPickerSearch||s.sym.toLowerCase().includes(newSessSupPickerSearch.toLowerCase())));
+                                          const supQ=normalizeSearchQuery(newSessSupPickerSearch);
+                                          const pool=allSymbols.filter(s=>s.cat===catKey&&(!supQ||s.sym.toLowerCase().includes(supQ)));
                                           if(pool.length===0)return <div style={{padding:"8px 10px",fontSize:10,color:c.tm,fontFamily:F}}>No results</div>;
                                           return pool.map(s=>{
                                             const isChk=newSessSupportTickers.includes(s.sym);
