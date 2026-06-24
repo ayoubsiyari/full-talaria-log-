@@ -2283,6 +2283,12 @@ class Chart {
         if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) {
             return;
         }
+        // Only push master extends to idle peers when Date Range sync is ON. With
+        // it OFF (default), peers must stay perfectly still while the host loads
+        // history — auto-mirroring their viewport here is what made panels
+        // "shake"/jump around. Each panel still loads its own history (instantly,
+        // via same-pair host delegation) when the user pans THAT panel.
+        if (!this._multichartVisibleRangeSyncOn) return;
         if (!this.currentFileId) return;
         const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
         if (!grid || typeof grid.broadcastToIframesNoReply !== 'function') return;

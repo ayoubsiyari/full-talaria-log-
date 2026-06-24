@@ -12421,7 +12421,7 @@ const TalariaV8bLive = () => {
   // directly below the button so it lines up like TradingView.
   // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
   // races re-enabling sync modes (especially `time`) unexpectedly.
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: true, indicators: true, chartType: false });
+  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: true, chartType: false });
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);
