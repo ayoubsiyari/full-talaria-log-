@@ -200,9 +200,18 @@
         }
 
         chart._chartViewRestored = true;
-        chart._panSyncBurstUntil = performance.now() + 64;
-        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
-        else if (typeof chart.render === 'function') chart.render();
+        if (typeof chart._armPanSyncFollowBurst === 'function') {
+            try { chart._armPanSyncFollowBurst(); } catch (_) {}
+        } else {
+            chart._panSyncBurstUntil = performance.now() + 140;
+        }
+        if (typeof chart._schedulePanSyncFollowRender === 'function') {
+            chart._schedulePanSyncFollowRender();
+        } else if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        } else if (typeof chart.render === 'function') {
+            chart.render();
+        }
         return true;
     }
 
@@ -277,9 +286,24 @@
         }
 
         chart._chartViewRestored = true;
-        chart._panSyncBurstUntil = performance.now() + 64;
-        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
-        else if (typeof chart.render === 'function') chart.render();
+        if (panSync) {
+            if (typeof chart._armPanSyncFollowBurst === 'function') {
+                try { chart._armPanSyncFollowBurst(); } catch (_) {}
+            } else {
+                chart._panSyncBurstUntil = performance.now() + 140;
+            }
+            if (typeof chart._schedulePanSyncFollowRender === 'function') {
+                chart._schedulePanSyncFollowRender();
+            } else if (typeof chart.scheduleRender === 'function') {
+                chart.scheduleRender();
+            } else if (typeof chart.render === 'function') {
+                chart.render();
+            }
+        } else if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        } else if (typeof chart.render === 'function') {
+            chart.render();
+        }
         return true;
     }
 
@@ -629,9 +653,18 @@
         }
         chart._chartViewRestored = countVisibleBars(chart) > 0;
         if (panSync) {
-            chart._panSyncBurstUntil = performance.now() + 48;
-            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
-            else if (typeof chart.render === 'function') chart.render();
+            if (typeof chart._armPanSyncFollowBurst === 'function') {
+                try { chart._armPanSyncFollowBurst(); } catch (_) {}
+            } else {
+                chart._panSyncBurstUntil = performance.now() + 140;
+            }
+            if (typeof chart._schedulePanSyncFollowRender === 'function') {
+                chart._schedulePanSyncFollowRender();
+            } else if (typeof chart.scheduleRender === 'function') {
+                chart.scheduleRender();
+            } else if (typeof chart.render === 'function') {
+                chart.render();
+            }
         } else if (typeof chart.scheduleRender === 'function') {
             chart.scheduleRender();
         }
@@ -1452,6 +1485,19 @@
             'drawing-clear':   true,
         };
 
+        var pendingInboundPanRange = null;
+        var inboundPanRangeRaf = 0;
+        function scheduleInboundPanRangeApply(m) {
+            pendingInboundPanRange = m;
+            if (inboundPanRangeRaf) return;
+            inboundPanRangeRaf = requestAnimationFrame(function () {
+                inboundPanRangeRaf = 0;
+                const msg = pendingInboundPanRange;
+                pendingInboundPanRange = null;
+                if (msg) applyVisibleRange(msg);
+            });
+        }
+
         function applyInbound(msg) {
             if (!msg || typeof msg !== 'object') return;
             // Ignore messages we ourselves originated. For iframe bridges
@@ -1508,6 +1554,11 @@
             // applied (i.e. it's the echo of our OWN outbound).
             if (m.causationId && state.applied.has(m.causationId)) {
                 log('drop loop echo', m.type, m.causationId);
+                return;
+            }
+
+            if (m.type === 'visibleRange' && m.panSync) {
+                scheduleInboundPanRangeApply(m);
                 return;
             }
 
@@ -1876,6 +1927,10 @@
                 if (m && m.causationId) state.applied.add(m.causationId);
                 return;
             }
+            const panSync = !!m.panSync;
+            if (!panSync && typeof chart._releasePanSyncFollowBurst === 'function') {
+                try { chart._releasePanSyncFollowBurst(); } catch (_) {}
+            }
             // When visible-range / date-range sync is ON, this panel MUST follow
             // the host (panel A) — never refuse the incoming range. Self-echoes are
             // already dropped by the causationId loop guard below.
@@ -1890,37 +1945,35 @@
                 if (m && m.causationId) state.applied.add(m.causationId);
                 return;
             }
-            const panSync = !!m.panSync;
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
             beginApplying(panSync);
 
-            // Peer-led pan (B/C/D → A and cross-iframe): lightweight offset mirror on every panel.
-            if (panSync && isPeerLedRangeMessage(m) && isRangeSyncEnabled()) {
-                if (applyLightweightPanFollow(chart, m)) {
-                    var tSilPeer = (typeof performance !== 'undefined' && performance.now)
-                        ? performance.now()
-                        : Date.now();
-                    state.suppressRangeScrollEchoUntil = tSilPeer + 120;
-                    state.suppressRangeScrollEchoLeft = 4;
-                    return;
-                }
+            // Live pan drag: offset + zoom mirror on every follower (same lite path as leader).
+            if (panSync && isRangeSyncEnabled()
+                && Number.isFinite(m.offsetX) && Number.isFinite(m.candleWidth)
+                && applyLightweightPanFollow(chart, m)) {
+                var tSilLite = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                state.suppressRangeScrollEchoUntil = tSilLite + 120;
+                state.suppressRangeScrollEchoLeft = 4;
+                return;
             }
 
-            // Live pan drag on same-pair embeds: offset + zoom only (no parent data copy / render storm).
+            // Same-pair embed: one-time data mirror when host-led pan starts (not every frame).
             if (panSync
                 && isRangeSyncEnabled()
-                && isEmbedPanelChart()) {
-                if (!chart._multichartViewportMirroredWithHost
-                    && isHostLedRangeMessage(m)
-                    && typeof chart._multichartMirrorViewportFromHost === 'function') {
-                    try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
-                }
-                if (chart._multichartViewportMirroredWithHost && applyLightweightPanFollow(chart, m)) {
-                    var tSilFast = (typeof performance !== 'undefined' && performance.now)
+                && isEmbedPanelChart()
+                && !chart._multichartViewportMirroredWithHost
+                && isHostLedRangeMessage(m)
+                && typeof chart._multichartMirrorViewportFromHost === 'function') {
+                try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
+                if (applyLightweightPanFollow(chart, m)) {
+                    var tSilMir = (typeof performance !== 'undefined' && performance.now)
                         ? performance.now()
                         : Date.now();
-                    state.suppressRangeScrollEchoUntil = tSilFast + 120;
+                    state.suppressRangeScrollEchoUntil = tSilMir + 120;
                     state.suppressRangeScrollEchoLeft = 4;
                     return;
                 }

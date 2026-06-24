@@ -19316,7 +19316,8 @@ class Chart {
             this._normalizeVolumeIndicatorLayout();
         }
         // ZOOM-FIX-9: skip heavy OHLC scan on pan when Y domain can be derived from snap + priceOffset.
-        if (this._chartPanRenderLoopActive && this._panScalesCalculated && this.yScale && this.xScale) {
+        if ((this._chartPanRenderLoopActive || this._isPanSyncFollowBurst())
+            && this._panScalesCalculated && this.yScale && this.xScale) {
             const priceMoved = this.priceOffset !== this._panSnapPriceOffset
                 || this.priceZoom !== this._panSnapPriceZoom;
             const mPan = this.margin;
@@ -19685,8 +19686,65 @@ class Chart {
     _isChartViewPanning() {
         return !!(
             (this.drag && this.drag.active && this.drag.type === 'pan') ||
-            (this.inertia && this.inertia.active)
+            (this.inertia && this.inertia.active) ||
+            this._isPanSyncFollowBurst()
         );
+    }
+
+    /** Multichart follower: leader is mid-pan — use lite paint path (not full OHLC rescan). */
+    _isPanSyncFollowBurst() {
+        return typeof this._panSyncBurstUntil === 'number'
+            && performance.now() < this._panSyncBurstUntil;
+    }
+
+    /** Arm lite pan-follow on peer panels (offset mirror from sync-bridge). */
+    _armPanSyncFollowBurst() {
+        this._panSyncBurstUntil = performance.now() + 140;
+        if (this._panSnapOffsetX != null) return;
+        this._panSnapOffsetX = this.offsetX;
+        this._panSnapPriceOffset = this.priceOffset;
+        this._panSnapPriceZoom = this.priceZoom;
+        if (this.yScale && typeof this.yScale.domain === 'function') {
+            const d = this.yScale.domain();
+            this._panSnapYDomain = [Number(d[0]), Number(d[1])];
+        } else {
+            this._panSnapYDomain = null;
+        }
+        this._panScalesCalculated = true;
+        if (!this._panTimeTickCache && typeof this._buildTimeTicks === 'function') {
+            try {
+                const panTicks = this._buildTimeTicks({ panCache: true });
+                this._panTimeTickCache = {
+                    baseOffsetX: this.offsetX,
+                    ticks: panTicks.map((t) => ({ ...t })),
+                };
+            } catch (_) { /* ignore */ }
+        }
+    }
+
+    /** Pan release — drop follow snap so the next full-quality paint can rescan. */
+    _releasePanSyncFollowBurst() {
+        this._panSyncBurstUntil = 0;
+        if (this._panSyncFollowRenderRaf != null) {
+            cancelAnimationFrame(this._panSyncFollowRenderRaf);
+            this._panSyncFollowRenderRaf = null;
+        }
+        this._panSnapOffsetX = null;
+        this._panSnapPriceOffset = null;
+        this._panSnapPriceZoom = null;
+        this._panSnapYDomain = null;
+        this._panScalesCalculated = false;
+        this._clearPanTimeTickCache();
+    }
+
+    _schedulePanSyncFollowRender() {
+        if (this._panSyncFollowRenderRaf != null) return;
+        this._panSyncFollowRenderRaf = requestAnimationFrame(() => {
+            this._panSyncFollowRenderRaf = null;
+            if (!this._isPanSyncFollowBurst()) return;
+            this.renderPending = false;
+            this.render();
+        });
     }
 
     /** True while a wheel-zoom burst is active (coalesced fast paints). */
@@ -19697,6 +19755,7 @@ class Chart {
     /** Pan, inertia, wheel burst, axis drag, or panel resize — lightweight paint until interaction settles. */
     _isInteractionFastRender() {
         if (this._chartPanRenderLoopActive) return true;
+        if (this._isPanSyncFollowBurst()) return true;
         if (this._isChartViewPanning()) return true;
         if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass) return true;
         if (this._isAxisZoomDragging() && !this._axisZoomFinalizePass) return true;
@@ -20709,9 +20768,13 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
-        if (replayPlaying || inertialPan || panSyncBurst) {
+        if (replayPlaying || inertialPan) {
             this.renderPending = false;
             this.render();
+            return;
+        }
+        if (panSyncBurst) {
+            this._schedulePanSyncFollowRender();
             return;
         }
         if (wheelBurst) {
