@@ -940,11 +940,8 @@ const SectionNode = ({ id, data }) => {
   const lbImgAreaRef = React.useRef(null);
   const lbPanStartRef = React.useRef(null);
   const cancelRef = React.useRef(false);
-  const origHRef = React.useRef(null);
 
   const { setNodes } = useReactFlow();
-
-  const naturalH = () => getSectionHeight(data.condCount || 0);
 
   // Lift section above all others while description panel is open. Section's own background
   // is made transparent below so its conditions stay visible AND the opaque description panel
@@ -1049,8 +1046,7 @@ const SectionNode = ({ id, data }) => {
 
   const startEdit = (e) => {
     e.stopPropagation();
-    origHRef.current = naturalH();
-    setDraft(data.label || 'Group');
+    setDraft(strategyFlowEditLabel(data.label, 'group'));
     setTaH('auto');
     setEditing(true);
   };
@@ -1080,25 +1076,16 @@ const SectionNode = ({ id, data }) => {
     const sh = el.scrollHeight;
     el.style.height = sh + 'px';
     setTaH(sh + 'px');
-    const newH = Math.max(naturalH(), sh + 130);
-    _cvCb.resizeSection && _cvCb.resizeSection(data.sectionId, newH);
   };
 
   const commitEdit = () => {
     if (cancelRef.current) {
       cancelRef.current = false;
-      if (origHRef.current !== null) {
-        _cvCb.resizeSection && _cvCb.resizeSection(data.sectionId, origHRef.current);
-      }
       setEditing(false);
       return;
     }
-    const el = inputRef.current;
-    if (el) el.style.height = '1px';
-    const sh = el ? el.scrollHeight : 0;
-    const finalLabel = draft.trim() || (data.label || 'Group');
-    const finalH = Math.max(naturalH(), sh + 130);
-    _cvCb.renameSection && _cvCb.renameSection(data.sectionId, finalLabel, finalH);
+    const finalLabel = draft.trim() || DEFAULT_GROUP_LABEL;
+    _cvCb.renameSection && _cvCb.renameSection(data.sectionId, finalLabel);
     setEditing(false);
   };
 
@@ -1273,13 +1260,13 @@ const SectionNode = ({ id, data }) => {
         <input ref={fileInputRef} type="file" accept={STRATEGY_IMAGE_ACCEPT} style={{display:'none'}} onChange={handleFileChange}/>
       </div>
 
-      {/* Title strip */}
+      {/* Title strip — label block is vertically centered with the condition row */}
       <div
         className="tlc-strip"
-        style={{width:STRIP_W,flexShrink:0,background:'var(--tlc-el)',borderRight:'1px solid var(--tlc-brh)',display:'flex',flexDirection:'column',overflow:'hidden',paddingLeft:4}}
+        style={{width:STRIP_W,flexShrink:0,background:'var(--tlc-el)',borderRight:'1px solid var(--tlc-brh)',position:'relative',overflow:'hidden',paddingLeft:4,height:'100%'}}
       >
         {/* Button bar */}
-        <div style={{height:54,flexShrink:0,position:'relative',borderBottom:'1px solid var(--tlc-brh)'}}>
+        <div style={{height:54,flexShrink:0,position:'absolute',top:0,left:0,right:0,zIndex:2,borderBottom:'1px solid var(--tlc-brh)',background:'var(--tlc-el)'}}>
           {/* Drag handle */}
           <div
             onMouseDown={e=>{
@@ -1355,12 +1342,12 @@ const SectionNode = ({ id, data }) => {
           )}
         </div>
 
-        {/* Label — gold text, the primary gold accent */}
+        {/* Label — gold text, vertically centered with condition cards */}
         <div
           onDoubleClick={startEdit}
           onMouseEnter={()=>setHLabel(true)}
           onMouseLeave={()=>setHLabel(false)}
-          style={{flex:1,display:'flex',alignItems:'flex-start',justifyContent:'center',overflow:'hidden',padding:'10px 16px',cursor:'default'}}
+          style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',padding:'54px 16px 10px',cursor:'default',boxSizing:'border-box'}}
         >
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,width:'100%'}}>
             {editing ? (
@@ -1847,16 +1834,23 @@ const ConditionCard = ({ id, data, selected }) => {
   React.useEffect(() => {
     if (editingTitle && titleRef.current) {
       titleRef.current.focus();
+      titleRef.current.select();
       titleRef.current.style.height = '1px';
       const sh = titleRef.current.scrollHeight;
       titleRef.current.style.height = sh + 'px';
       setTaH(sh + 'px');
     }
-  }, [editingTitle, titleDraft]);
+  }, [editingTitle]);
+
+  const startTitleEdit = () => {
+    setTitleDraft(strategyFlowEditLabel(data.label, 'condition'));
+    setEditingTitle(true);
+  };
 
   const commitTitle = () => {
     const t = titleDraft.trim();
-    if (t) _cvCb.updateCondition?.(id, { label: t });
+    const finalLabel = t || DEFAULT_CONDITION_LABEL;
+    _cvCb.updateCondition?.(id, { label: finalLabel });
     setEditingTitle(false);
   };
 
@@ -2152,15 +2146,15 @@ const ConditionCard = ({ id, data, selected }) => {
                 style={{width:'100%', height:taH, fontSize:22, fontWeight:700, background:'transparent', border:'none', borderBottom:'1px solid rgba(255,255,255,0.45)', outline:'none', color:'#fff', padding:'2px 0', fontFamily:'inherit', lineHeight:1.3, textAlign:'center', resize:'none', caretColor:'#fff', overflow:'hidden'}}
               />
             ) : (
-              <div data-nodrag="1" onDoubleClick={e=>{ e.stopPropagation(); setTitleDraft(data.label||''); setEditingTitle(true); }}
+              <div data-nodrag="1" onDoubleClick={e=>{ e.stopPropagation(); startTitleEdit(); }}
                 style={{fontSize:22, fontWeight:700, color:'rgba(255,255,255,0.95)', lineHeight:1.35, cursor:'default', wordBreak:'break-word', textAlign:'center', userSelect:'none', width:'100%'}}>
-                {data.label||'Condition'}
+                {data.label||DEFAULT_CONDITION_LABEL}
               </div>
             )}
             <div
               data-nodrag="1"
               onMouseDown={e=>{ e.preventDefault(); }}
-              onClick={e=>{ e.stopPropagation(); if(editingTitle){ commitTitle(); } else { setTitleDraft(data.label||''); setEditingTitle(true); } }}
+              onClick={e=>{ e.stopPropagation(); if(editingTitle){ commitTitle(); } else { startTitleEdit(); } }}
               style={{display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36, borderRadius:4, cursor:'default', transition:'background 0.12s',
                 background: editingTitle ? 'rgba(255,255,255,0.18)' : hTitle ? 'rgba(255,255,255,0.14)' : 'transparent',
                 visibility: (editingTitle||hTitle) ? 'visible' : 'hidden'}}
@@ -2351,6 +2345,22 @@ const SECTION_COLOR_CYCLE = [
 ];
 const COND_W = 220, COND_H = 275, COND_COLS = 6;
 const STRIP_W = 200;
+const DEFAULT_GROUP_LABEL = 'NEW GROUP';
+const DEFAULT_CONDITION_LABEL = 'New condition';
+const isDefaultStrategyFlowGroupLabel = (label) => {
+  const v = String(label || '').trim();
+  return !v || /^new group$/i.test(v) || /^group$/i.test(v);
+};
+const isDefaultStrategyFlowConditionLabel = (label) => {
+  const v = String(label || '').trim();
+  return !v || /^new condition$/i.test(v) || /^condition$/i.test(v);
+};
+const strategyFlowEditLabel = (label, kind) => {
+  const isDefault = kind === 'group'
+    ? isDefaultStrategyFlowGroupLabel(label)
+    : isDefaultStrategyFlowConditionLabel(label);
+  return isDefault ? '' : String(label || '');
+};
 let SEC_W = 1400, SEC_X = 0; const SEC_H = 325, SEC_GAP = 72;
 const BASE_ZOOM = 0.64;
 const COND_COL_GAP = 96;
@@ -2390,6 +2400,20 @@ function restackAll(nds) {
     y += SEC_H + SEC_GAP;
   }
   return [...nds.filter(n => n.type !== 'section' && n.type !== 'condition'), ...result];
+}
+
+function normalizeCanvasFlowNodes(nds) {
+  const mapped = (Array.isArray(nds) ? nds : []).map(n => {
+    if (n.type !== 'section') return n;
+    return {
+      ...n,
+      position: { x: SEC_X, y: n.position?.y ?? 0 },
+      style: { ...(n.style || {}), width: SEC_W, height: SEC_H },
+      width: SEC_W,
+      height: SEC_H,
+    };
+  });
+  return restackAll(mapped);
 }
 
 function buildInitialSections() {
@@ -3748,24 +3772,17 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
     return canvasNodes.find(n => n.id === selectedIds[0] && n.type === 'condition') || null;
   }, [selectedIds, canvasNodes]);
 
-  const renameSection = useCallback((sectionId, newLabel, newH) => {
-    setCanvasNodes(nds => {
-      if (newH === undefined) {
-        return nds.map(n => n.id === sectionId ? { ...n, data: { ...n.data, label: newLabel } } : n);
-      }
-      const secs = nds.filter(n => n.type === 'section').sort((a,b) => a.position.y - b.position.y);
-      const idx = secs.findIndex(s => s.id === sectionId);
-      if (idx < 0) return nds.map(n => n.id === sectionId ? { ...n, data: { ...n.data, label: newLabel } } : n);
-      const oldH = secs[idx].style?.height ?? SEC_H;
-      const delta = newH - oldH;
-      const shiftedSecIds = new Set(secs.slice(idx + 1).map(s => s.id));
-      return nds.map(n => {
-        if (n.id === sectionId) return { ...n, data: { ...n.data, label: newLabel }, style: { ...n.style, height: newH }, height: newH };
-        if (n.type === 'section' && shiftedSecIds.has(n.id)) return { ...n, position: { ...n.position, y: n.position.y + delta } };
-        if (n.type === 'condition' && shiftedSecIds.has(n.data?.sectionId)) return { ...n, position: { ...n.position, y: n.position.y + delta } };
-        return n;
-      });
-    });
+  const renameSection = useCallback((sectionId, newLabel) => {
+    setCanvasNodes(nds => nds.map(n => {
+      if (n.id !== sectionId) return n;
+      return {
+        ...n,
+        data: { ...n.data, label: newLabel },
+        style: { ...n.style, width: SEC_W, height: SEC_H },
+        width: SEC_W,
+        height: SEC_H,
+      };
+    }));
   }, [setCanvasNodes]);
 
   const resizeSectionLive = useCallback((sectionId, newH) => {
@@ -4630,7 +4647,10 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
                       <input
                         value={group.label}
                         onChange={e=>renameSection(group.id, e.target.value)}
-                        onFocus={outlineFocusStyle}
+                        onFocus={e=>{
+                          outlineFocusStyle(e);
+                          if (isDefaultStrategyFlowGroupLabel(group.label)) renameSection(group.id, '');
+                        }}
                         onBlur={outlineBlurStyle}
                         onMouseEnter={e=>showOutlineTip('Group Name', e.currentTarget)}
                         onMouseLeave={hideOutlineTip}
@@ -4672,7 +4692,10 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
                               <input
                                 value={cond.label}
                                 onChange={e=>updateConditionData(cond.id, { label: e.target.value })}
-                                onFocus={outlineFocusStyle}
+                                onFocus={e=>{
+                                  outlineFocusStyle(e);
+                                  if (isDefaultStrategyFlowConditionLabel(cond.label)) updateConditionData(cond.id, { label: '' });
+                                }}
                                 onBlur={outlineBlurStyle}
                                 onMouseEnter={e=>showOutlineTip('Condition Name', e.currentTarget)}
                                 onMouseLeave={hideOutlineTip}
@@ -36165,7 +36188,7 @@ const TalariaV8b = () => {
               setStratBTfUnitOpen(false);
               setStratBMktDropOpen(false);
               setStratWizardStep(1);
-              setCanvasNodes(editStrat.canvasNodes||[]);
+              setCanvasNodes(normalizeCanvasFlowNodes(editStrat.canvasNodes || []));
               setCanvasEdges(editStrat.canvasEdges||[]);
             } else {
               resetStrategyBuilderForm();
