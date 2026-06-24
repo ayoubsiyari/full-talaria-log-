@@ -568,6 +568,63 @@ export function buildStrategyGroups(
   return [...byName.values()].sort((a, b) => b.sessionCount - a.sessionCount || a.label.localeCompare(b.label));
 }
 
+/** Merge a freshly saved journal entry into the embedded V16 boot (instant UI update). */
+export function mergeLiveJournalTradeIntoBoot(
+  source: { liveAccountId?: number | null; profileId?: number | null },
+  entry: ApiJournalEntry
+): void {
+  if (typeof window === "undefined") return;
+  const boot = window.__TALARIA_V16_BOOT__;
+  if (!boot?.journal) return;
+
+  const journal = boot.journal;
+  const account = journal.accounts.find(
+    (a) =>
+      (source.liveAccountId != null && a.liveAccountId === source.liveAccountId) ||
+      (source.profileId != null && a.profileId === source.profileId)
+  );
+  const accountKey =
+    account?.id ??
+    (source.liveAccountId != null ? `live-account-${source.liveAccountId}` : null);
+  if (!accountKey) return;
+
+  const entryId = String(entry.id);
+  const existingIdx = journal.libraryTrades.findIndex(
+    (t) => String(t.tradeId) === entryId || String(t.id) === `live-${entryId}`
+  );
+  const bucketSize = journal.libraryTrades.filter((t) => {
+    const tid = String(t.tradeId ?? "").replace(/^live-/, "");
+    const key = journal.tradeToAccountKey[tid] || journal.tradeToAccountKey[`live-${tid}`];
+    return key === accountKey;
+  }).length;
+  const mapped = mapLiveJournalEntryToV16Trade(entry, existingIdx >= 0 ? existingIdx : bucketSize, accountKey);
+
+  if (existingIdx >= 0) {
+    journal.libraryTrades[existingIdx] = mapped;
+  } else {
+    journal.libraryTrades.push(mapped);
+  }
+  journal.tradeToAccountKey[entryId] = accountKey;
+  journal.tradeToAccountKey[`live-${entryId}`] = accountKey;
+
+  if (account) {
+    const bucketTrades = journal.libraryTrades.filter((t) => {
+      const tid = String(t.tradeId ?? "").replace(/^live-/, "");
+      const key = journal.tradeToAccountKey[tid] || journal.tradeToAccountKey[`live-${tid}`];
+      return key === accountKey;
+    });
+    account.trades = bucketTrades.length;
+    account.totalTrades = bucketTrades.length;
+    account.pnl = bucketTrades.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
+    if (account.startingBalance) {
+      account.pnlPct = (account.pnl / Number(account.startingBalance)) * 100;
+    }
+    account.hasEditedTrades = bucketTrades.some((t) => Boolean(t.hasEditedTrade));
+  }
+
+  window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
+}
+
 export function buildAppliedSourceForSession(
   session: Record<string, unknown> | undefined
 ): V16AppliedSource | null {

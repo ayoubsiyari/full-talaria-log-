@@ -1,5 +1,9 @@
 import { JOURNAL_API_BASE, syncJournalTokenFromSession } from "@/lib/journalApi";
-import { authHeaders } from "@/app/dashboard/strategies/strategyLabV9Auth";
+import { fetchHeadersJson } from "@/app/dashboard/strategies/strategyLabV9Auth";
+import {
+  mergeLiveJournalTradeIntoBoot,
+} from "./v16JournalMappers";
+import type { ApiJournalEntry } from "./v16SourceTypes";
 
 export type LiveJournalAddTradeSource = {
   key?: string;
@@ -10,23 +14,50 @@ export type LiveJournalAddTradeSource = {
   accountTypeKey?: "personal" | "prop" | string;
 };
 
+async function requireJournalAuthHeaders(): Promise<Record<string, string>> {
+  const token = await syncJournalTokenFromSession();
+  if (!token) {
+    throw new Error("Could not authenticate with the journal API. Please refresh and try again.");
+  }
+  return fetchHeadersJson();
+}
+
 async function activateLiveJournalProfile(source: LiveJournalAddTradeSource): Promise<void> {
-  await syncJournalTokenFromSession();
-  const headers = authHeaders();
+  const headers = await requireJournalAuthHeaders();
 
   if (source.liveAccountId != null) {
-    await fetch(`${JOURNAL_API_BASE}/journal/live-accounts/${source.liveAccountId}/activate`, {
+    const res = await fetch(`${JOURNAL_API_BASE}/journal/live-accounts/${source.liveAccountId}/activate`, {
       method: "POST",
       headers,
     });
+    if (!res.ok) {
+      let detail = `Could not activate journal account (HTTP ${res.status})`;
+      try {
+        const body = (await res.json()) as { error?: string };
+        if (body.error) detail = body.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
     return;
   }
 
   if (source.profileId != null) {
-    await fetch(`${JOURNAL_API_BASE}/profile/profiles/${source.profileId}/activate`, {
+    const res = await fetch(`${JOURNAL_API_BASE}/profile/profiles/${source.profileId}/activate`, {
       method: "POST",
       headers,
     });
+    if (!res.ok) {
+      let detail = `Could not activate journal profile (HTTP ${res.status})`;
+      try {
+        const body = (await res.json()) as { error?: string };
+        if (body.error) detail = body.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
   }
 }
 
@@ -85,7 +116,10 @@ function mergeNotes(trade: Record<string, unknown>): string | null {
 }
 
 /** Map dashboard Add Trade row → journal-backend POST /journal/add body. */
-export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>): Record<string, unknown> {
+export function mapManualTradeToJournalAddPayload(
+  trade: Record<string, unknown>,
+  source?: LiveJournalAddTradeSource
+): Record<string, unknown> {
   const side = String(trade.side || trade.direction || "Long").toLowerCase();
   const entryPrice = Number(trade.entryPrice ?? trade.entry ?? 0);
   const exitPriceRaw = trade.exitPrice ?? trade.exit;
@@ -149,9 +183,10 @@ export function mapManualTradeToJournalAddPayload(trade: Record<string, unknown>
     risk_amount: trade.risk_amount ?? trade.riskAmount ?? null,
     notes: mergeNotes(trade),
     variables,
+    ...(source?.profileId != null ? { profile_id: source.profileId } : {}),
     extra_data: {
       manual_dashboard: true,
-      source_key: trade.sourceKey ?? trade.sourceFilterKey ?? null,
+      source_key: trade.sourceKey ?? trade.sourceFilterKey ?? source?.key ?? null,
       trade_id: trade.trade_id ?? trade.id ?? null,
       asset_class: market || null,
       market: market || null,
@@ -188,24 +223,33 @@ export async function saveManualTradeToLiveJournal(
   source: LiveJournalAddTradeSource,
   trade: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
+  if (source.liveAccountId == null && source.profileId == null) {
+    throw new Error("This journal account is missing profile information. Refresh the page and try again.");
+  }
+
   await activateLiveJournalProfile(source);
 
-  const payload = mapManualTradeToJournalAddPayload(trade);
-  const headers = authHeaders();
+  const payload = mapManualTradeToJournalAddPayload(trade, source);
+  const headers = await requireJournalAuthHeaders();
   const res = await fetch(`${JOURNAL_API_BASE}/journal/add`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
-  const data = (await res.json()) as { trade?: Record<string, unknown>; error?: string };
+  const data = (await res.json()) as { trade?: ApiJournalEntry; error?: string };
   if (!res.ok) {
     throw new Error(data.error || `Could not save journal trade (HTTP ${res.status})`);
+  }
+
+  const saved = data.trade;
+  if (saved && typeof saved.id === "number") {
+    mergeLiveJournalTradeIntoBoot(source, saved);
   }
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
   }
 
-  return data.trade ?? trade;
+  return saved ?? trade;
 }

@@ -6,7 +6,7 @@ Handles: add, list, update, delete trades
 
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, JournalEntry, User
+from models import db, JournalEntry, User, Profile
 from datetime import datetime, timezone
 from . import journal_bp
 from .filters import (
@@ -93,9 +93,21 @@ def parse_datetime_field(field_name, field_value):
 def add_entry():
     try:
         user_id = int(get_jwt_identity())
-        profile_id = get_active_profile_id(user_id)
         data = request.get_json()
         print(f"🔍 Backend received data: {data}")
+
+        requested_profile = data.get("profile_id") if isinstance(data, dict) else None
+        if requested_profile is not None:
+            try:
+                requested_profile = int(requested_profile)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid profile_id"}), 400
+            prof = Profile.query.filter_by(id=requested_profile, user_id=user_id).first()
+            if not prof:
+                return jsonify({"error": "Profile not found"}), 404
+            profile_id = requested_profile
+        else:
+            profile_id = get_active_profile_id(user_id)
 
         required_fields = ['symbol', 'direction', 'entry_price', 'exit_price', 'quantity']
         for field in required_fields:

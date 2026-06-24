@@ -9340,10 +9340,18 @@ const TalariaV8b = () => {
       return Promise.resolve(false);
     }
     return saver(enrichedSource, trade)
-      .then(() => true)
+      .then((saved) => {
+        const tradeId = String(trade?.trade_id || trade?.id || "");
+        if (tradeId) {
+          setDashManualTrades((prev) =>
+            prev.filter((row) => String(row?.trade_id || row?.id || "") !== tradeId)
+          );
+        }
+        return saved;
+      })
       .catch((err) => {
         console.error("[V16] live journal manual trade save failed", err);
-        return false;
+        throw err;
       });
   };
   const liveJournalAddTradeBridgeRef = useRef({ open: null });
@@ -9660,6 +9668,27 @@ const TalariaV8b = () => {
   const [dashTradesCustomName, setDashTradesCustomName] = useState("");
   const [dashTradesSort, setDashTradesSort] = useState({key:null, dir:null});
   const [dashTradesExpandedRows, setDashTradesExpandedRows] = useState(() => new Set());
+  const dashTradesSourceKeyRef = useRef(null);
+  useEffect(() => {
+    const applied = dashLibraryAppliedSelection;
+    const key = applied?.kind && applied?.id != null
+      ? `${applied.kind}:${applied.id}`
+      : dashSessId != null
+        ? `session:${dashSessId}`
+        : dashStrategyId
+          ? `strategy:${dashStrategyId}`
+          : (Array.isArray(dashLibraryAppliedMultiSelection) && dashLibraryAppliedMultiSelection.length
+              ? [...dashLibraryAppliedMultiSelection].sort().join("|")
+              : "default");
+    if (dashTradesSourceKeyRef.current === null) {
+      dashTradesSourceKeyRef.current = key;
+      return;
+    }
+    if (dashTradesSourceKeyRef.current !== key) {
+      dashTradesSourceKeyRef.current = key;
+      setDashTradesExpandedRows(new Set());
+    }
+  }, [dashLibraryAppliedSelection, dashSessId, dashStrategyId, dashLibraryAppliedMultiSelection]);
   const [dashTradesImportBusy, setDashTradesImportBusy] = useState(false);
   const [dashTradesImportProgress, setDashTradesImportProgress] = useState(null);
   const dashTradesImportDismissRef = useRef(null);
@@ -15734,10 +15763,30 @@ const TalariaV8b = () => {
                     sourceDashboardKind:"journal",
                     sourceType:"live-journal",
                   }));
+                const manualJournalTrades = dashManualTrades
+                  .filter(trade => {
+                    const sourceKey = String(trade?.sourceKey || trade?.sourceFilterKey || "");
+                    if (!sourceKey) return false;
+                    if (sourceKey === key) return true;
+                    if (sourceKey === `journalAccount:${accountId}`) return true;
+                    if (account?.liveAccountId != null && sourceKey === `journalAccount:${account.liveAccountId}`) return true;
+                    if (String(trade?.journalAccountKey || "") === String(account?.id || accountId)) return true;
+                    return false;
+                  })
+                  .map((trade, index) => ({
+                    ...trade,
+                    id:`${key}-manual-${trade.trade_id || trade.id || index}`,
+                    sourceFilterKey:key,
+                    sourceFilterLabel:label,
+                    sourceDashboardKind:"journal",
+                    sourceType:"live-journal",
+                    journalAccountKey:account?.id || accountId,
+                  }));
+                const mergedTrades = [...manualJournalTrades, ...trades];
                 return {
                   key,kind,label,typeLabel:dashTxt("Journal","يومية"),
                   color:account?.accountTypeKey === "prop" ? c.gold : c.gn,
-                  trades,sessions:[],liveAccountId:account?.liveAccountId,profileId:account?.profileId,statusKind:"journal",
+                  trades:mergedTrades,sessions:[],liveAccountId:account?.liveAccountId,profileId:account?.profileId,statusKind:"journal",
                   accountTypeKey:account?.accountTypeKey,
                   startingBalance:account?.startingBalance,
                   market:account?.market,
@@ -30610,23 +30659,41 @@ const TalariaV8b = () => {
             const isLiveJournalManualTrade = isDashLiveJournalAddTradeSource(dashAddTradeEditorSource);
             const canPersistToJournal = isLiveJournalManualTrade && typeof window !== "undefined" && typeof window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ === "function";
             const canPersistToBacktestSession = isV16LiveBoot() && sourceSessionId && !isLiveJournalManualTrade;
+            const closeAddTradeEditor = () => {
+              setDashAddTradeEditorOpen(false);
+              setDashAddTradeEditorPage("trade");
+              setDashAddTradeEditorSource(null);
+              setDashAddTradeDraft(null);
+              setDashAddTradeEditMeta(null);
+              setDashAddTradeValidationError("");
+              setDashAddTradeExcursionOpen(false);
+            };
             const applyLocalManualTrade = (tradeRow) => {
               setDashManualTrades((prev) => [tradeRow, ...prev]);
+              closeAddTradeEditor();
+            };
+            const handlePersistFailure = (err, fallbackMessage) => {
+              const message = err instanceof Error && err.message ? err.message : fallbackMessage;
+              setDashAddTradeValidationError(message);
+              setDashAddTradeEditorPage("trade");
             };
             const persistOrLocalManualTrade = (tradeRow, onLocal) => {
               if (canPersistToJournal) {
-                persistLiveJournalManualTrade(dashAddTradeEditorSource, tradeRow).then((ok) => {
-                  if (!ok) onLocal();
-                });
+                persistLiveJournalManualTrade(dashAddTradeEditorSource, tradeRow)
+                  .then(() => closeAddTradeEditor())
+                  .catch((err) => handlePersistFailure(err, dashTxt("Could not save trade to this journal. Please try again.","تعذر حفظ الصفقة في هذه اليومية. حاول مرة أخرى.")));
                 return;
               }
               if (!canPersistToBacktestSession) {
                 onLocal();
                 return;
               }
-              persistLiveManualTradeToSession(sourceSessionId, tradeRow).then((ok) => {
-                if (!ok) onLocal();
-              });
+              persistLiveManualTradeToSession(sourceSessionId, tradeRow)
+                .then((ok) => {
+                  if (ok) closeAddTradeEditor();
+                  else onLocal();
+                })
+                .catch((err) => handlePersistFailure(err, dashTxt("Could not save trade to this session. Please try again.","تعذر حفظ الصفقة في هذه الجلسة. حاول مرة أخرى.")));
             };
             if (dashAddTradeEditMeta) {
               const sourceKind = dashAddTradeEditMeta.sourceKind || (isDashManualSourceTrade(dashAddTradeEditMeta.trade) ? "manual" : "auto");
@@ -30665,20 +30732,15 @@ const TalariaV8b = () => {
                     });
                     return replaced ? next : [editedTrade, ...next];
                   });
+                  closeAddTradeEditor();
                 });
               } else {
                 setDashTradesEditedOverrides(prev => ({...prev, [dashAddTradeEditMeta.rowKey]:editedTrade}));
+                closeAddTradeEditor();
               }
             } else {
               persistOrLocalManualTrade(manualTrade, () => applyLocalManualTrade(manualTrade));
             }
-            setDashAddTradeEditorOpen(false);
-            setDashAddTradeEditorPage("trade");
-            setDashAddTradeEditorSource(null);
-            setDashAddTradeDraft(null);
-            setDashAddTradeEditMeta(null);
-            setDashAddTradeValidationError("");
-            setDashAddTradeExcursionOpen(false);
           };
           const DashboardUnitToggle = () => {
             const privacyActive = dashValueMode === "privacy";
