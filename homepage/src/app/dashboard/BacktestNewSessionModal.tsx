@@ -720,6 +720,25 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     onClose();
   };
 
+  const newSessPanelRef = React.useRef<HTMLDivElement>(null);
+  const newSessBackdropDismissRef = React.useRef(false);
+  const handleNewSessOverlayPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    newSessBackdropDismissRef.current = !newSessPanelRef.current?.contains(e.target as Node);
+  };
+  const handleNewSessOverlayPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!newSessBackdropDismissRef.current) return;
+    if (newSessPanelRef.current?.contains(e.target as Node)) {
+      newSessBackdropDismissRef.current = false;
+      return;
+    }
+    newSessBackdropDismissRef.current = false;
+    closeNewSess();
+  };
+  const handleNewSessPanelPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    newSessBackdropDismissRef.current = false;
+    e.stopPropagation();
+  };
+
   const openNewStrategyLab = () => {
     closeNewSess();
     router.push("/dashboard/?view=stratbank&create=1");
@@ -1151,11 +1170,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     <>
             {/* ── NEW SESSION MODAL overlay ── */}
             {open && (
-              <div style={{position:"fixed",inset:0,zIndex:500000,display:"flex",alignItems:"center",justifyContent:"center",visibility:"visible"}} onClick={closeNewSess}>
+              <div style={{position:"fixed",inset:0,zIndex:500000,display:"flex",alignItems:"center",justifyContent:"center",visibility:"visible"}} onPointerDown={handleNewSessOverlayPointerDown} onPointerUp={handleNewSessOverlayPointerUp}>
                 {/* Backdrop */}
                 <div style={{position:"absolute",inset:0,background:"rgba(4,5,10,0.72)",backdropFilter:"blur(3px)"}}/>
                 {/* Panel */}
-                <div onClick={e=>e.stopPropagation()}
+                <div ref={newSessPanelRef} onPointerDown={handleNewSessPanelPointerDown}
                   style={{position:"relative",width:"min(680px,90vw)",height:"min(88vh,660px)",background:c.sf,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",animation:"tlrPopIn 0.18s ease",boxShadow:"0 24px 72px rgba(0,0,0,0.9)",fontFamily:F}}>
                   {/* Top accent */}
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>

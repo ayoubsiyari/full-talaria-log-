@@ -392,6 +392,7 @@ export function tradeRowPnl(row: Record<string, unknown>): number | null {
     "FINALCLOSEPNL",
     "finalclosepnl",
     "net_pnl",
+    "netPnL",
     "netPnl",
     "profit",
     "realizedPnl",
@@ -473,6 +474,42 @@ export function tradeRowTimestamp(row: Record<string, unknown>): number {
     if (Number.isFinite(d)) return d;
   }
   return 0;
+}
+
+function parseTradeTimestampMs(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 1e12 ? value : value * 1000;
+  }
+  const d = Date.parse(String(value));
+  return Number.isFinite(d) ? d : null;
+}
+
+/** Minutes held — prefers chart order-manager fields (holdingTimeMs, entry/exit times). */
+export function tradeRowDurationMinutes(row: Record<string, unknown>): number | null {
+  const ms = Number(row.holdingTimeMs ?? row.holding_time_ms ?? NaN);
+  if (Number.isFinite(ms) && ms > 0) return Math.max(1, Math.round(ms / 60000));
+  const hours = Number(row.holdingTimeHours ?? row.holding_time_hours ?? NaN);
+  if (Number.isFinite(hours) && hours > 0) return Math.max(1, Math.round(hours * 60));
+  for (const key of ["duration", "durationMinutes", "timeHeldMinutes", "hold_minutes"]) {
+    const raw = row[key];
+    if (raw == null || raw === "") continue;
+    if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw));
+    const s = String(raw).trim();
+    const asNum = Number(s);
+    if (Number.isFinite(asNum) && /^\d+(\.\d+)?$/.test(s)) return Math.max(1, Math.round(asNum));
+    const hm = s.match(/(\d+)\s*h/i);
+    const mm = s.match(/(\d+)\s*m/i);
+    const h = hm ? Number(hm[1]) : 0;
+    const m = mm ? Number(mm[1]) : 0;
+    if (h || m) return Math.max(1, h * 60 + m);
+  }
+  const openMs = parseTradeTimestampMs(row.openTime ?? row.entryTime ?? row.open_time);
+  const closeMs = parseTradeTimestampMs(row.closeTime ?? row.exitTime ?? row.close_time);
+  if (openMs != null && closeMs != null && closeMs >= openMs) {
+    return Math.max(1, Math.round((closeMs - openMs) / 60000));
+  }
+  return null;
 }
 
 export type TradeSortPreset = "date" | "pnl" | "symbol" | "session";

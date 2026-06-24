@@ -1,5 +1,6 @@
 import {
   flattenJournalApiTrade,
+  tradeRowDurationMinutes,
   tradeRowPnl,
   tradeRowSide,
   tradeRowSymbol,
@@ -95,8 +96,8 @@ function isoDay(ms: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function parseDurationMinutes(raw: unknown): number {
-  if (raw == null || raw === "") return 30;
+function parseDurationMinutes(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
   if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(1, Math.round(raw));
   const s = String(raw).trim();
   const asNum = Number(s);
@@ -106,7 +107,7 @@ function parseDurationMinutes(raw: unknown): number {
   const h = hm ? Number(hm[1]) : 0;
   const m = mm ? Number(mm[1]) : 0;
   if (h || m) return Math.max(1, h * 60 + m);
-  return 30;
+  return null;
 }
 
 function sideLabel(side: "long" | "short" | ""): string {
@@ -202,9 +203,7 @@ export function mapJournalRowToV16Trade(
     session: row.session || "Session",
     tag: row.tag || tag,
     rMultiple: Number.isFinite(r) ? r : Number(row.rMultiple) || 0,
-    duration:
-      parseDurationMinutes(row.duration ?? row.hold_minutes ?? row.durationMinutes) ??
-      row.duration,
+    duration: tradeRowDurationMinutes(row) ?? parseDurationMinutes(row.duration ?? row.hold_minutes ?? row.durationMinutes) ?? 0,
     pnl: resolvedPnl != null ? resolvedPnl : Number(row.pnl) || 0,
     mae:
       row.mae ??

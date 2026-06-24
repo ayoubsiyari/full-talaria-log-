@@ -39,6 +39,14 @@ export default function TalariaV16Dashboard() {
       const base = pathname.endsWith("/") ? pathname : `${pathname}/`;
       router.replace(`${base}?${params.toString()}`, { scroll: false });
     };
+    window.__TALARIA_V16_CLEAR_SESSION_URL__ = () => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (!params.has("sessionId")) return;
+      params.delete("sessionId");
+      const base = pathname.endsWith("/") ? pathname : `${pathname}/`;
+      const qs = params.toString();
+      router.replace(qs ? `${base}?${qs}` : base, { scroll: false });
+    };
     window.__TALARIA_V16_SYNC_VIEW_URL__ = (view) => {
       const normalized = normalizeV16DashboardView(view) || "dashboard";
       const params = new URLSearchParams(searchParams.toString());
@@ -80,6 +88,7 @@ export default function TalariaV16Dashboard() {
     };
     return () => {
       delete window.__TALARIA_V16_SYNC_SESSION_URL__;
+      delete window.__TALARIA_V16_CLEAR_SESSION_URL__;
       delete window.__TALARIA_V16_SYNC_VIEW_URL__;
       delete window.__TALARIA_V16_OPEN_PROFILE__;
     };

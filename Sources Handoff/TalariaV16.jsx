@@ -12,6 +12,11 @@ import {
   upsertV9ChartTemplateList,
 } from "./v9ChartTemplatesStorage.js";
 import { readV9UiSettingsLocal, persistV9UiSettings } from "./v9UiSettingsStorage.js";
+import {
+  readPersistedAppliedSource,
+  writePersistedAppliedSource,
+  validateAppliedSourceAgainstBoot,
+} from "./v16AppliedSourceStorage.js";
 
 const isV16Embedded = () => typeof window !== "undefined" && !!window.__TALARIA_V16_EMBEDDED__;
 const isV16LiveBoot = () =>
@@ -195,7 +200,33 @@ const dashTradeDisciplineAccent = (label, palette) => {
   if (lower.includes("out of")) return palette.rd;
   return palette.acL;
 };
+/** Chart/backtest rows use BUY/SELL; manual rows use Long/Short. */
+const normalizeDashTradeSideLabel = (value, fallback = "Long") => {
+  const t = String(value ?? fallback).trim().toLowerCase();
+  if (t.includes("short") || t === "sell" || t === "s") return "Short";
+  if (t.includes("long") || t === "buy" || t === "b") return "Long";
+  return String(fallback).toLowerCase().includes("short") ? "Short" : "Long";
+};
+const isDashShortSide = (value) => normalizeDashTradeSideLabel(value) === "Short";
 const getV16AppliedSourceBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.appliedSource : null);
+const persistAppliedLibrarySource = (sel) => {
+  if (!isV16Embedded() || !sel?.kind || sel.id == null) return;
+  writePersistedAppliedSource(sel);
+  if (sel.kind === "journalAccount" || sel.kind === "journalEntry" || sel.kind === "strategyJournal") {
+    const fn = typeof window !== "undefined" ? window.__TALARIA_V16_CLEAR_SESSION_URL__ : null;
+    if (typeof fn === "function") fn();
+  }
+};
+const resolvePersistedAppliedLibrarySource = () => {
+  const raw = readPersistedAppliedSource();
+  if (!raw || !isV16LiveBoot()) return raw;
+  const boot = window.__TALARIA_V16_BOOT__;
+  return validateAppliedSourceAgainstBoot(raw, {
+    sessions: boot?.sessions,
+    journal: boot?.journal,
+    strategies: boot?.strategies,
+  }) || raw;
+};
 const resolveLiveJournalAccountTarget = (accountOrApi, boot = getV16JournalBoot()) => {
   if (!accountOrApi) return null;
   if (accountOrApi.id != null && (accountOrApi.liveAccountId != null || accountOrApi.isLiveJournalAccount || String(accountOrApi.id).startsWith("live-account-"))) {
@@ -7611,7 +7642,7 @@ const btDashStopRiskWidened = (trade = {}, mod = {}) => {
   const newValue = btDashNumber(mod.new ?? mod.newValue ?? mod.to);
   if (oldValue == null || newValue == null) return false;
   const side = String(trade.side || trade.direction || "").toLowerCase();
-  return side.includes("short") ? newValue > oldValue : newValue < oldValue;
+  return side.includes("short") || side === "sell" || side === "s" ? newValue > oldValue : newValue < oldValue;
 };
 const btDashJournalOutcome = (trade = {}) => {
   const notes = trade.postTradeNotes || trade.post_trade_notes || {};
@@ -9452,7 +9483,7 @@ const TalariaV8b = () => {
   const [dashLibrarySelection, setDashLibrarySelection] = useState(null);
   const [dashLibraryStrategyChildSelection, setDashLibraryStrategyChildSelection] = useState({});
   const [dashLibraryAppliedSelection, setDashLibraryAppliedSelection] = useState(() => {
-    const applied = getV16AppliedSourceBoot();
+    const applied = getV16AppliedSourceBoot() || resolvePersistedAppliedLibrarySource();
     if (applied) return applied;
     return null;
   });
@@ -9531,9 +9562,12 @@ const TalariaV8b = () => {
             if (isDashJournalLibraryKind(applied.kind)) {
               setDashSessId(null);
               setDashStrategyId(null);
+              if (applied.liveAccountId) activateLiveJournalAccount(applied.liveAccountId);
             }
           }
         }
+      } else if (hasExplicitUserSource && isDashJournalLibraryKind(userAppliedSource.kind) && userAppliedSource.liveAccountId) {
+        activateLiveJournalAccount(userAppliedSource.liveAccountId);
       }
     };
     syncBoot();
@@ -9893,6 +9927,8 @@ const TalariaV8b = () => {
   const [newSessNavEnabled, setNewSessNavEnabled] = useState(true);
   const [newSessFilePickerOpen, setNewSessFilePickerOpen] = useState(false);
   const [newSessOpen, setNewSessOpen] = useState(false);
+  const newSessPanelRef = useRef(null);
+  const newSessBackdropDismissRef = useRef(false);
   const [editSessId, setEditSessId] = useState(null);
   const [newSessTickers, setNewSessTickers] = useState([]);
   const [newSessTickerInput, setNewSessTickerInput] = useState("");
@@ -12104,6 +12140,7 @@ const TalariaV8b = () => {
     setDashOutcomeFilter("all");
     setDashLibraryAppliedSelection(applied);
     dashLibraryAppliedSelectionRef.current = applied;
+    persistAppliedLibrarySource(applied);
     setSessView("dashboard");
     syncV16SessionUrl(session.id);
   };
@@ -12244,6 +12281,7 @@ const TalariaV8b = () => {
     dashLibraryAppliedMultiSelectionRef.current = [key];
     setDashLibraryAppliedMultiSelection([key]);
     setDashSourceFilterKeys([]);
+    persistAppliedLibrarySource(sel);
     if (target.liveAccountId) activateLiveJournalAccount(target.liveAccountId);
   };
   const pinEmbeddedJournalAccount = (account) => {
@@ -14027,11 +14065,19 @@ const TalariaV8b = () => {
 
             {/* ── NEW SESSION MODAL overlay ── */}
             {newSessOpen&&(
-              <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={closeNewSess}>
+              <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center"}}
+                onPointerDown={e=>{newSessBackdropDismissRef.current=!newSessPanelRef.current?.contains(e.target);}}
+                onPointerUp={e=>{
+                  if(!newSessBackdropDismissRef.current)return;
+                  if(newSessPanelRef.current?.contains(e.target)){newSessBackdropDismissRef.current=false;return;}
+                  newSessBackdropDismissRef.current=false;
+                  closeNewSess();
+                }}>
                 {/* Backdrop */}
                 <div style={{position:"absolute",inset:0,background:"rgba(4,5,10,0.72)",backdropFilter:"blur(3px)"}}/>
                 {/* Panel */}
-                <div onClick={e=>e.stopPropagation()}
+                <div ref={newSessPanelRef}
+                  onPointerDown={e=>{newSessBackdropDismissRef.current=false;e.stopPropagation();}}
                   style={{position:"relative",width:"min(680px,90vw)",height:"min(88vh,660px)",background:c.sf,border:`1px solid ${c.brH}`,display:"flex",flexDirection:"column",animation:"tlrPopIn 0.18s ease",boxShadow:"0 24px 72px rgba(0,0,0,0.9)",fontFamily:F}}>
                   {/* Top accent */}
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
@@ -19582,8 +19628,18 @@ const TalariaV8b = () => {
             if (id === "rules") { setDashOutcomeFilter("all"); openDashSubWindow("rule-adherence",dashTxt("Rule Adherence","الالتزام بالقواعد")); return; }
             openDashSubWindow("trade-journal",dashTxt("Live Journal","اليوميات الحية"));
           };
-          const applyLibraryJournalSource = () => {
+          const applyLibraryJournalSource = (sel) => {
             setDashLibraryOpen(false);
+            if (!sel) return;
+            if (sel.kind === "journalAccount") {
+              const boot = getV16JournalBoot();
+              const account = boot?.accounts?.find((a) => String(a.id) === String(sel.id));
+              if (account) {
+                applyEmbeddedJournalSelection(account);
+                return;
+              }
+              if (sel.liveAccountId) activateLiveJournalAccount(sel.liveAccountId);
+            }
           };
           const openLibraryStrategyJournal = (session) => {
             if (!session?.id) return;
@@ -19839,6 +19895,7 @@ const TalariaV8b = () => {
             setDashLibraryAppliedSelection(sel);
             setDashLibraryAppliedMultiSelection(dashLibraryAppliedMultiSelectionRef.current);
             setDashSourceFilterKeys([]);
+            persistAppliedLibrarySource(sel);
             if (sel.kind === "journalAccount" || sel.kind === "journalEntry" || sel.kind === "strategyJournal") {
               setDashSessId(null);
               setDashStrategyId(null);
@@ -19865,7 +19922,7 @@ const TalariaV8b = () => {
               return;
             }
             if (sel.kind === "journalAccount" || sel.kind === "journalEntry") {
-              applyLibraryJournalSource();
+              applyLibraryJournalSource(sel);
             }
           };
           const resetLibraryPendingToApplied = () => {
@@ -22022,8 +22079,20 @@ const TalariaV8b = () => {
               return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`;
             };
             const fmtDuration = (trade) => {
-              const minutes = Number(firstValue(trade, ["duration","durationMinutes","timeHeldMinutes"], 0));
-              if (!Number.isFinite(minutes) || minutes <= 0) return trade?.durationText || trade?.dur || "-";
+              const minutes = Number(firstValue(trade, ["duration","durationMinutes","timeHeldMinutes","holdingTimeMinutes"], 0));
+              if (!Number.isFinite(minutes) || minutes <= 0) {
+                const ms = Number(firstValue(trade, ["holdingTimeMs","holding_time_ms"], NaN));
+                if (Number.isFinite(ms) && ms > 0) {
+                  const fromMs = Math.max(1, Math.round(ms / 60000));
+                  return fmtDuration({...trade, duration: fromMs});
+                }
+                const hours = Number(firstValue(trade, ["holdingTimeHours","holding_time_hours"], NaN));
+                if (Number.isFinite(hours) && hours > 0) {
+                  const fromHours = Math.max(1, Math.round(hours * 60));
+                  return fmtDuration({...trade, duration: fromHours});
+                }
+                return trade?.durationText || trade?.dur || "-";
+              }
               if (minutes >= 1440) {
                 const days = Math.floor(minutes / 1440);
                 const hours = Math.floor((minutes % 1440) / 60);
@@ -22035,6 +22104,32 @@ const TalariaV8b = () => {
                 return `${hours}h${mins ? ` ${mins}m` : ""}`;
               }
               return `${Math.round(minutes)}m`;
+            };
+            const dashTradeTimestampMs = (value) => {
+              if (value == null || value === "") return null;
+              if (typeof value === "number" && Number.isFinite(value)) return value > 1e12 ? value : value * 1000;
+              const d = Date.parse(String(value));
+              return Number.isFinite(d) ? d : null;
+            };
+            const dashTradeDurationMinutes = (trade) => {
+              const ms = Number(firstValue(trade, ["holdingTimeMs","holding_time_ms"], NaN));
+              if (Number.isFinite(ms) && ms > 0) return Math.max(1, Math.round(ms / 60000));
+              const hours = Number(firstValue(trade, ["holdingTimeHours","holding_time_hours"], NaN));
+              if (Number.isFinite(hours) && hours > 0) return Math.max(1, Math.round(hours * 60));
+              const direct = Number(firstValue(trade, ["duration","durationMinutes","timeHeldMinutes"], NaN));
+              if (Number.isFinite(direct) && direct > 0) return Math.round(direct);
+              const openMs = dashTradeTimestampMs(firstValue(trade, ["openTime","entryTime","open_time"], null));
+              const closeMs = dashTradeTimestampMs(firstValue(trade, ["closeTime","exitTime","close_time"], null));
+              if (openMs != null && closeMs != null && closeMs >= openMs) return Math.max(1, Math.round((closeMs - openMs) / 60000));
+              return null;
+            };
+            const dashStoredTradePnl = (trade) => {
+              const n = Number(firstValue(trade, ["pnl_currency_net","netPnL","netPnl","net_pnl","realizedPnL","realized_pnl","pnl"], NaN));
+              return Number.isFinite(n) ? n : null;
+            };
+            const dashStoredTradeR = (trade) => {
+              const n = Number(firstValue(trade, ["rMultiple","r_multiple","actual_rr_net","actualRR","rr","R"], NaN));
+              return Number.isFinite(n) ? n : null;
             };
             const joinList = (value, fallback="-") => {
               const list = Array.isArray(value) ? value : (value ? [value] : []);
@@ -22179,7 +22274,7 @@ const TalariaV8b = () => {
               const slippageSourceValue = lockedCostSource
                 ? costSettings.slippage
                 : firstValue(trade, ["slippage","slippage_points"], costSettings.slippage);
-              const side = String(firstValue(trade, ["direction","side"], "Long")).toLowerCase().includes("short") ? "Short" : "Long";
+              const side = normalizeDashTradeSideLabel(firstValue(trade, ["direction","side"], "Long"));
               const qty = Number(firstValue(trade, ["quantity","positionSize","position_size","size"], 1));
               const entryStamp = buildLedgerDateTime(firstValue(trade, ["entryTime","openTime","entryDateTime"], null), firstValue(trade, ["entryClock","time","entryTimeText"], null));
               const exitStamp = buildLedgerDateTime(firstValue(trade, ["closeTime","exitDateTime","exitTimestamp"], null), firstValue(trade, ["exitTime","exitClock"], null));
@@ -22313,6 +22408,14 @@ const TalariaV8b = () => {
             const activeColumnKeys = activeView.id === "overview" ? rawActiveColumnKeys.slice(0, overviewColumnMax) : rawActiveColumnKeys;
             const overviewColumnLimitHit = activeView.id === "overview" && activeColumnKeys.length >= overviewColumnMax;
             const activeSort = dashTradesSort?.key && activeColumnKeys.includes(dashTradesSort.key) ? dashTradesSort : {key:null, dir:null};
+            const dashCloseTypeAccent = (text) => {
+              const t = String(text || "").trim().toLowerCase().replace(/_/g, " ");
+              if (!t || t === "-") return c.acL;
+              if (t.includes("stop") || t === "sl") return c.rd;
+              if (t.includes("target") || t.includes("take profit") || t === "tp") return c.gn;
+              if (t.includes("trail")) return c.gold;
+              return c.acL;
+            };
             const tradeValue = (trade, index) => {
               const baseKey = getDashTradeRowKey(trade, index);
               const override = dashTradesEditedOverrides[baseKey];
@@ -22321,9 +22424,9 @@ const TalariaV8b = () => {
               const sourceKind = isDashManualSourceTrade(t) ? "manual" : "auto";
               const edited = String(t?.integrity || "").toLowerCase() === "edited" || !!t?.editedAt || !!override;
               const sideText = String(firstValue(t, ["direction","side"], "-"));
-              const short = sideText.toLowerCase().includes("short");
+              const short = isDashShortSide(sideText);
               const statusText = String(firstValue(t, ["status"], t?.closeTime || t?.exitTime ? "Closed" : "Open"));
-              const pnl = Number(firstValue(t, ["pnl_currency_net","netPnl","pnl"], NaN));
+              const pnl = Number(firstValue(t, ["pnl_currency_net","netPnL","netPnl","net_pnl","realizedPnL","pnl"], NaN));
               const rVal = Number(firstValue(t, ["rMultiple","rr","actual_rr_net","actualRR"], NaN));
               const mfe = firstValue(t, ["mfe","total_mfe","mfe_points"], null);
               const mae = firstValue(t, ["mae","total_mae","mae_points"], null);
@@ -22343,18 +22446,37 @@ const TalariaV8b = () => {
               const calculated = derived?.calculated || {};
               const currency = derived?.currency || {};
               const excursion = derived?.excursion || {};
-              const derivedPnl = ledgerFiniteNumber(currency.net) ?? pnl;
-              const derivedR = ledgerFiniteNumber(calculated.rrValue) ?? rVal;
+              const preferStoredMetrics = sourceKind === "auto";
+              const storedPnl = dashStoredTradePnl(t);
+              const storedR = dashStoredTradeR(t);
+              const storedDuration = dashTradeDurationMinutes(t);
+              const storedEntry = Number(firstValue(t, ["entryPrice","entry","openPrice"], NaN));
+              const storedExit = Number(firstValue(t, ["exitPrice","exit","closePrice"], NaN));
+              const storedRisk = Number(firstValue(t, ["riskPerTrade","riskAmount","risk_amount","originalRiskAmount"], NaN));
+              const derivedPnl = preferStoredMetrics && storedPnl != null
+                ? storedPnl
+                : (ledgerFiniteNumber(currency.net) ?? storedPnl ?? pnl);
+              const derivedR = preferStoredMetrics && storedR != null
+                ? storedR
+                : (ledgerFiniteNumber(calculated.rrValue) ?? storedR ?? rVal);
               const derivedPlannedR = btDashTradePlannedR(t) ?? ledgerFiniteNumber(calculated.plannedRrValue) ?? Number(firstValue(t, ["plannedRR","planned_rr","rewardToRiskRatio"], NaN));
-              const derivedRisk = ledgerFiniteNumber(currency.riskCurrency) != null ? Math.abs(ledgerFiniteNumber(currency.riskCurrency)) : Number(firstValue(t, ["riskAmount","risk_amount","riskPerTrade"], NaN));
+              const derivedRisk = preferStoredMetrics && Number.isFinite(storedRisk)
+                ? Math.abs(storedRisk)
+                : (ledgerFiniteNumber(currency.riskCurrency) != null ? Math.abs(ledgerFiniteNumber(currency.riskCurrency)) : Number(firstValue(t, ["riskAmount","risk_amount","riskPerTrade"], NaN)));
               const derivedCost = derived ? Number(derived.costTotal || 0) : Number(firstValue(t, ["cost_friction_total","commission_total","commissionCost"], 0));
               const derivedStatus = derived ? (derived.closed ? "Closed" : "Open") : statusText;
               const derivedQuantity = ledgerFiniteNumber(calculated.totalSize) != null && Number(calculated.totalSize) > 0 ? Number(calculated.totalSize) : Number(firstValue(t, ["quantity","positionSize","position_size","size"], 0));
-              const derivedEntry = ledgerFiniteNumber(calculated.avgEntry) ?? Number(firstValue(t, ["entryPrice","entry"], NaN));
+              const derivedEntry = preferStoredMetrics && Number.isFinite(storedEntry)
+                ? storedEntry
+                : (ledgerFiniteNumber(calculated.avgEntry) ?? Number(firstValue(t, ["entryPrice","entry"], NaN)));
               const derivedTarget = ledgerFiniteNumber(calculated.avgTarget) ?? Number(firstValue(t, ["takeProfit","target","tp"], NaN));
-              const derivedExit = ledgerFiniteNumber(calculated.avgExit) ?? Number(firstValue(t, ["exitPrice","exit"], NaN));
+              const derivedExit = preferStoredMetrics && Number.isFinite(storedExit)
+                ? storedExit
+                : (ledgerFiniteNumber(calculated.avgExit) ?? Number(firstValue(t, ["exitPrice","exit"], NaN)));
               const derivedStop = Number(firstValue(t, ["stopLoss","planned_sl","sl"], NaN));
-              const derivedDuration = ledgerFiniteNumber(calculated.durationMinutes) ?? Number(firstValue(t, ["duration","durationMinutes","timeHeldMinutes"], 0));
+              const derivedDuration = preferStoredMetrics && storedDuration != null
+                ? storedDuration
+                : (ledgerFiniteNumber(calculated.durationMinutes) ?? storedDuration ?? Number(firstValue(t, ["duration","durationMinutes","timeHeldMinutes"], 0)));
               const derivedMfeR = ledgerFiniteNumber(excursion.total_mfe_r ?? excursion.mfe_r) ?? ledgerFiniteNumber(mfeR) ?? NaN;
               const derivedMaeR = ledgerFiniteNumber(excursion.mae_r) ?? ledgerFiniteNumber(maeRDisplay) ?? NaN;
               const derivedMfe = ledgerFiniteNumber(excursion.mfe) ?? ledgerFiniteNumber(mfe) ?? NaN;
@@ -22416,7 +22538,7 @@ const TalariaV8b = () => {
                   netPnl:{text:fmtSignedMoney(derivedPnl), color:Number.isFinite(derivedPnl) ? (derivedPnl>=0?c.gn:c.rd) : c.ts, raw:derivedPnl},
                   rMultiple:{text:Number.isFinite(derivedR) ? `${fmtNum(derivedR, 2)}R` : "-", color:Number.isFinite(derivedR) ? (derivedR>=0?c.gn:c.rd) : c.ts, raw:derivedR},
                   actualRisk:{text:Number.isFinite(derivedPlannedR) ? `${fmtNum(derivedPlannedR, 2)}R` : "-", color:c.acL, raw:Number.isFinite(derivedPlannedR) ? derivedPlannedR : ""},
-                  closeType:{text:derivedCloseType, raw:derivedCloseType},
+                  closeType:{text:derivedCloseType, raw:derivedCloseType, color:dashCloseTypeAccent(derivedCloseType)},
                   entryPrice:{text:entryRows.length > 1 ? entrySummary : fmtPrice(derivedEntry), color:c.acL, raw:derivedEntry},
                   exitPrice:{text:exitRows.length > 1 ? exitSummary : fmtPrice(derivedExit), color:c.gold, raw:derivedExit},
                   stopLoss:{text:fmtPrice(derivedStop), color:c.rd, raw:derivedStop},
@@ -22611,7 +22733,7 @@ const TalariaV8b = () => {
               const mfeR = mfeRRaw == null ? null : Math.max(0, mfeRRaw);
               const maeR = maeRRaw == null ? null : -Math.abs(maeRRaw);
               const explicitRiskDollars = firstUsableNumber(record.values.riskAmount.raw, firstValue(trade, ["riskAmount","risk_amount","riskPerTrade","originalRisk","planned_risk_amount"], null));
-              const netPnlValue = firstUsableNumber(record.values.netPnl.raw, firstValue(trade, ["pnl_currency_net","netPnl","net_pnl","pnl"], null));
+              const netPnlValue = firstUsableNumber(record.values.netPnl.raw, firstValue(trade, ["pnl_currency_net","netPnL","netPnl","net_pnl","pnl"], null));
               const derivedRiskDollars = actualR != null && Math.abs(actualR) > 0.000001 && netPnlValue != null ? Math.abs(netPnlValue / actualR) : null;
               const detailRiskDollars = explicitRiskDollars != null && Math.abs(explicitRiskDollars) > 0.000001 ? Math.abs(explicitRiskDollars) : derivedRiskDollars;
               const detailMoneyFromR = (rValue, explicitValue=null) => {
@@ -22723,7 +22845,7 @@ const TalariaV8b = () => {
                       {detailBadge(`ID ${record.values.tradeId.text}`, c.tm, true)}
                       {sourceBadge(record)}
                       {detailBadge(record.edited ? "Edited" : "Original", record.edited ? c.gold : c.gn, false, integrityTitle)}
-                      {detailBadge(record.values.closeType.text, c.acL, true)}
+                      {detailBadge(record.values.closeType.text, record.values.closeType.color || dashCloseTypeAccent(record.values.closeType.text), true)}
                       {detailBadge(outcomeText, outcomeText === "Loss" ? c.rd : c.gn, true)}
                     </div>
                     <div className="tlr-library-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashTradeEditorFromTrade(record.trade, record.key))} onKeyDown={libraryKeyActivate(()=>openDashTradeEditorFromTrade(record.trade, record.key))}
@@ -28998,7 +29120,7 @@ const TalariaV8b = () => {
               trade_id:tradeId,
               symbol,
               assetClass:instrumentSpec.assetClass || assetClass,
-              side:side.toLowerCase().includes("short") ? "Short" : "Long",
+              side:normalizeDashTradeSideLabel(side),
               orderType:"Limit",
               status:"Open",
               date:isoDay,
@@ -29308,7 +29430,7 @@ const TalariaV8b = () => {
             };
             const entryStamp = parseDateTime(trade.entryTime || trade.openTime || trade.entryDate || trade.date, draftBase.date, draftBase.time);
             const exitStamp = parseDateTime(trade.closeTime || trade.exitDate || trade.exitTime, "", "");
-            const side = String(trade.direction || trade.side || draftBase.side || "Long").toLowerCase().includes("short") ? "Short" : "Long";
+            const side = normalizeDashTradeSideLabel(trade.direction || trade.side || draftBase.side || "Long");
             const symbol = String(trade.symbol || trade.ticker || draftBase.symbol || "").toUpperCase();
             const market = trade.market || trade.asset_class || draftBase.assetClass;
             const qty = trade.quantity || trade.positionSize || trade.position_size || trade.size || "1";
@@ -29769,7 +29891,7 @@ const TalariaV8b = () => {
             const requestedExitSize = calcDashRowSizeTotal(validExitRows);
             const stop = parseDashTradeNumber(draft?.stopLoss);
             const singleExit = parseDashTradeNumber(draft?.exit);
-            const sideSign = String(draft?.side || "Long").toLowerCase().includes("short") ? -1 : 1;
+            const sideSign = isDashShortSide(draft?.side) ? -1 : 1;
             const totalSize = entryCalc.size || 0;
             const legacyClosed = String(draft?.status || "Open") === "Closed";
             const exitedSize = exitCalc.size || (legacyClosed && singleExit > 0 ? totalSize : 0);
@@ -29852,7 +29974,7 @@ const TalariaV8b = () => {
             const postHigh = parseDashTradeNumber(draft?.postExitHighest);
             const postLow = parseDashTradeNumber(draft?.postExitLowest);
             const mode = String(draft?.excursionMode || "none");
-            const sideShort = String(draft?.side || "Long").toLowerCase().includes("short");
+            const sideShort = isDashShortSide(draft?.side);
             const risk = Number(calculated?.riskPerUnit);
             const blank = {mae:null,mfe:null,mae_r:null,mfe_r:null,total_mfe_r:null,post_mfe_r:null,post_mae_r:null,capture_ratio:null,capture_efficiency:null,management_gap:null,exit_timing_gap:null};
             const savedMfeRaw = dashFirstFiniteNumber(draft?.total_mfe_r, draft?.totalMfeR, draft?.mfe_r, draft?.mfeR, draft?.mfe, draft?.total_mfe, draft?.totalMfe);
@@ -29927,7 +30049,7 @@ const TalariaV8b = () => {
             const postHigh = parseDashTradeNumber(draft?.postExitHighest);
             const postLow = parseDashTradeNumber(draft?.postExitLowest);
             const postWindow = parseDashTradeNumber(draft?.postExitWindow);
-            const sideShort = String(draft?.side || "Long").toLowerCase().includes("short");
+            const sideShort = isDashShortSide(draft?.side);
             const maxExcursionR = 500;
             const rangeFields = ["highestPrice", "lowestPrice"];
             const postRangeFields = ["postExitHighest", "postExitLowest"];
@@ -29981,7 +30103,7 @@ const TalariaV8b = () => {
             const exit = Number(calculated?.avgExit);
             const stop = parseDashTradeNumber(draft?.stopLoss);
             if (![entry, target, exit].every(Number.isFinite) || !(stop > 0)) return null;
-            const sideShort = String(draft?.side || "Long").toLowerCase().includes("short");
+            const sideShort = isDashShortSide(draft?.side);
             const favorableDenom = sideShort ? entry - target : target - entry;
             const adverseDenom = sideShort ? stop - entry : entry - stop;
             if (!(favorableDenom > 0) || !(adverseDenom > 0)) return null;
@@ -29999,7 +30121,7 @@ const TalariaV8b = () => {
             const hasExitTiming = dashAddTradeHasExitTiming(draft);
             const hasActualExitRows = exitRows.some(row => String(row.price || "").trim());
             const closed = hasExitTiming && calculated.totalSize > 0 && calculated.exitedSize > 0 && calculated.openSize <= 0.000001;
-            const sideShort = String(draft?.side || "Long").toLowerCase().includes("short");
+            const sideShort = isDashShortSide(draft?.side);
             const sideSign = sideShort ? -1 : 1;
             const startMs = Date.parse(`${draft?.date || ""}T${draft?.time || "00:00"}`);
             const endMs = hasExitTiming ? Date.parse(`${draft?.exitDate || ""}T${draft?.exitTime || ""}`) : NaN;
@@ -30115,7 +30237,7 @@ const TalariaV8b = () => {
             const spec = getDashInstrumentSpec(source, draft?.symbol, draft?.assetClass);
             const entry = Number(calculated?.avgEntry);
             const size = Number(calculated?.exitedSize || calculated?.totalSize || parseDashTradeNumber(draft?.size) || 0);
-            const sideSign = String(draft?.side || "Long").toLowerCase().includes("short") ? -1 : 1;
+            const sideSign = isDashShortSide(draft?.side) ? -1 : 1;
             const riskMove = Number(calculated?.riskPerUnit);
             const commissionInput = Math.max(0, parseDashTradeNumber(draft?.commission) || 0);
             const lockedSourceCosts = !!draft?.costsLockedFromSource || !isDashJournalAddTradeSource(source);
@@ -30453,7 +30575,7 @@ const TalariaV8b = () => {
             const targetPrices = targetRows.map(row => parseDashTradeNumber(row.price)).filter(price => price > 0);
             const stop = parseDashTradeNumber(draft.stopLoss);
             if (!entryPrices.length || !(stop > 0)) return null;
-            const sideShort = String(draft.side || "Long").toLowerCase().includes("short");
+            const sideShort = isDashShortSide(draft.side);
             const lowestEntry = Math.min(...entryPrices);
             const highestEntry = Math.max(...entryPrices);
             const hasBreach = sideShort
@@ -34135,7 +34257,7 @@ const TalariaV8b = () => {
                 const addTradeValidEntryCount = countAddTradeWeightedRows(entryRows);
                 const addTradeValidTargetCount = countAddTradeWeightedRows(targetRows);
                 const addTradeValidExitCount = countAddTradeWeightedRows(exitRows);
-                const addTradeDirectionIsShort = String(dashAddTradeDraft.side || "Long").toLowerCase().includes("short");
+                const addTradeDirectionIsShort = isDashShortSide(dashAddTradeDraft.side);
                 const addTradeValidEntryPrices = entryRows.map(row => parseDashTradeNumber(row.price)).filter(price => price > 0);
                 const addTradeValidTargetPrices = targetRows.map(row => parseDashTradeNumber(row.price)).filter(price => price > 0);
                 const addTradeLowestEntry = addTradeValidEntryPrices.length ? Math.min(...addTradeValidEntryPrices) : null;

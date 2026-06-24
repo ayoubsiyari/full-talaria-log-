@@ -5,12 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { fetchJson } from "../analytics/SessionAnalyticsPanel";
 import { resolveSessionIdForUser, type Session } from "../analytics/sessionSelection";
 import type { V16LiveBoot } from "./v16LiveGlobals";
+import type { V16AppliedSource } from "./v16SourceTypes";
 import {
   buildAppliedSourceForSession,
   buildJournalBootFromApi,
   buildStrategyGroups,
   fetchJournalApiData,
 } from "./v16JournalMappers";
+import { resolvePersistedAppliedSourceForBoot } from "talaria-handoff/v16AppliedSourceStorage.js";
 import {
   enrichV16SessionFromStrategyBank,
   fetchAndMapTradesForSession,
@@ -210,13 +212,23 @@ export function useV16LiveBootstrap(): BootState {
         );
 
         const openV16Session = v16Sessions.find((s) => String(s.id) === String(openSessionId));
+        const persistedApplied = resolvePersistedAppliedSourceForBoot({
+          sessions: v16Sessions,
+          journal,
+          strategies,
+        }) as V16AppliedSource | null;
+        const firstLiveJournal = journal.accounts.find((a) => a?.isLiveJournalAccount) ?? journal.accounts[0];
         const appliedSource =
+          persistedApplied ||
           buildAppliedSourceForSession(openV16Session) ||
-          (journal.accounts[0]
+          (firstLiveJournal
             ? {
                 kind: "journalAccount" as const,
-                id: journal.accounts[0].id,
-                label: journal.accounts[0].name,
+                id: firstLiveJournal.id,
+                label: String(firstLiveJournal.name || "Journal").split(" / ")[0],
+                liveAccountId: firstLiveJournal.liveAccountId,
+                profileId: firstLiveJournal.profileId,
+                accountTypeKey: firstLiveJournal.accountTypeKey,
               }
             : null);
 
