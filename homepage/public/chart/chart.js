@@ -21765,10 +21765,13 @@ class Chart {
             const yTicks = this._getYPriceTicks(numYTicks);
             
             yTicks.forEach(price => {
-                const y = this.yScale(price);
+                const yRaw = this.yScale(price);
                 
                 // Only draw lines in the price area (not in volume area)
-                if (y > m.t && y < m.t + priceHeight) {
+                if (yRaw > m.t && yRaw < m.t + priceHeight) {
+                    // Snap to a crisp pixel row (+0.5) so 1px grid lines don't
+                    // anti-alias-shimmer as the price domain shifts each frame.
+                    const y = Math.round(yRaw) + 0.5;
                     this.ctx.beginPath();
                     this.ctx.moveTo(m.l, y);
                     this.ctx.lineTo(this.w - m.r, y);
@@ -21785,8 +21788,11 @@ class Chart {
             const indPanelH = plotLayout ? plotLayout.indPanelH : (this.separateIndicatorPanelHeight || 0);
             const gridBottom = indPanelH > 0 ? (this.h - m.b) : pricePlotBottom;
             for (let i = 0; i < this._timeTicks.length; i++) {
-                const x = this._timeTicks[i].x;
-                if (x >= m.l && x <= this.w - m.r) {
+                const xRaw = this._timeTicks[i].x;
+                if (xRaw >= m.l && xRaw <= this.w - m.r) {
+                    // Snap to a crisp pixel column (+0.5) — fractional offsetX
+                    // otherwise blurs/shimmers the vertical grid during pan.
+                    const x = Math.round(xRaw) + 0.5;
                     this.ctx.beginPath();
                     this.ctx.moveTo(x, m.t);
                     this.ctx.lineTo(x, gridBottom);
@@ -21848,17 +21854,19 @@ class Chart {
             }
         };
         
-        // Draw Y-axis border line
+        // Draw Y-axis border line (crisp 1px column)
         applyScaleLineStyle();
+        const axisBorderXc = Math.round(axisBorderX) + 0.5;
         this.ctx.beginPath();
-        this.ctx.moveTo(axisBorderX, 0);
-        this.ctx.lineTo(axisBorderX, this.h);
+        this.ctx.moveTo(axisBorderXc, 0);
+        this.ctx.lineTo(axisBorderXc, this.h);
         this.ctx.stroke();
         
-        // Draw X-axis border line (top edge of time axis) - subtle gray
+        // Draw X-axis border line (top edge of time axis) - subtle gray, crisp row
+        const axisBorderYc = Math.round(this.h - m.b) + 0.5;
         this.ctx.beginPath();
-        this.ctx.moveTo(0, this.h - m.b);
-        this.ctx.lineTo(this.w, this.h - m.b);
+        this.ctx.moveTo(0, axisBorderYc);
+        this.ctx.lineTo(this.w, axisBorderYc);
         this.ctx.stroke();
         
         const scaleFont = `${this.chartSettings.scaleTextSize}px Roboto`;
@@ -21881,7 +21889,7 @@ class Chart {
             if (y > m.t + 8 && y < pricePlotBottom - 8) {
                 const text = this._formatAxisPrice(price, yTicks, Math.abs(priceRange));
                 this.ctx.fillStyle = axisTextColor;
-                this.ctx.fillText(text, axisMidX, y + 4);
+                this.ctx.fillText(text, axisMidX, Math.round(y) + 4);
             }
         });
         
@@ -21902,8 +21910,10 @@ class Chart {
             this.ctx.textBaseline = 'middle';
             for (let i = 0; i < this._timeTicks.length; i++) {
                 const tick = this._timeTicks[i];
-                const xLine = tick.x;
-                const labelX = xLine;
+                // Snap tick mark to a crisp column and the label to a whole pixel
+                // so neither shimmers/reflows as offsetX drifts during pan.
+                const xLine = Math.round(tick.x) + 0.5;
+                const labelX = Math.round(tick.x);
                 applyScaleLineStyle();
                 this.ctx.beginPath();
                 this.ctx.moveTo(xLine, this.h - m.b);
