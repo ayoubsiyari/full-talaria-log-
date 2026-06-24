@@ -523,66 +523,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       setNewSessSupportTickers(cfg.supporting_tickers as string[]);
       setNewSessSupportEnabled((cfg.supporting_tickers as string[]).length > 0);
     }
-    const pr = cfg.prop_rules && typeof cfg.prop_rules === "object"
-      ? (cfg.prop_rules as Record<string, unknown>)
-      : {};
-    if (isProp) {
-      if (pr.numPhases != null) setSessNumPhases(Number(pr.numPhases) || 1);
-      if (pr.challengeType) setSessChallengeType(String(pr.challengeType));
-      else if (cfg.challengeType) setSessChallengeType(String(cfg.challengeType));
-      const p1p = (pr.p1Pct && typeof pr.p1Pct === "object") ? pr.p1Pct as Record<string, unknown> : {};
-      const p2p = (pr.p2Pct && typeof pr.p2Pct === "object") ? pr.p2Pct as Record<string, unknown> : {};
-      const p1a = (pr.p1Amt && typeof pr.p1Amt === "object") ? pr.p1Amt as Record<string, unknown> : {};
-      const p2a = (pr.p2Amt && typeof pr.p2Amt === "object") ? pr.p2Amt as Record<string, unknown> : {};
-      const mdl = cfg.maxDailyLoss && typeof cfg.maxDailyLoss === "object" ? cfg.maxDailyLoss as Record<string, unknown> : {};
-      const mtl = cfg.maxTotalLoss && typeof cfg.maxTotalLoss === "object" ? cfg.maxTotalLoss as Record<string, unknown> : {};
-      if (p1p.dl != null || mdl.percent != null) setSessP1DailyLossPct(String(p1p.dl ?? mdl.percent ?? "5"));
-      if (p1p.dd != null || mtl.percent != null) setSessP1TotalDDPct(String(p1p.dd ?? mtl.percent ?? "10"));
-      if (p1p.pt != null || cfg.profitTarget != null) setSessP1ProfitTargetPct(String(p1p.pt ?? cfg.profitTarget ?? "10"));
-      if (p2p.dl != null) setSessP2DailyLossPct(String(p2p.dl));
-      if (p2p.dd != null) setSessP2TotalDDPct(String(p2p.dd));
-      if (p2p.pt != null) setSessP2ProfitTargetPct(String(p2p.pt));
-      if (p1a.dl != null || mdl.dollar != null) setSessP1DailyLossAmt(String(p1a.dl ?? mdl.dollar ?? ""));
-      if (p1a.dd != null || mtl.dollar != null) setSessP1MaxDDAmt(String(p1a.dd ?? mtl.dollar ?? ""));
-      if (p1a.pt != null || cfg.profitTargetUsd != null) setSessP1ProfitTargetAmt(String(p1a.pt ?? cfg.profitTargetUsd ?? ""));
-      if (p2a.dl != null) setSessP2DailyLossAmt(String(p2a.dl));
-      if (p2a.dd != null) setSessP2MaxDDAmt(String(p2a.dd));
-      if (p2a.pt != null) setSessP2ProfitTargetAmt(String(p2a.pt));
-      const minD = pr.minTradingDays ?? pr.p1MinDays ?? cfg.minTradingDays;
-      if (minD != null) {
-        const n = parseInt(String(minD), 10);
-        setSessP1MinDays(String(Number.isFinite(n) ? n : 4));
-        setSessFutMinDays(String(Number.isFinite(n) ? n : 2));
-        const enabled = cfg.minTradingDaysEnabled !== false && n > 0;
-        setSessP1MinDaysEnabled(enabled);
-        setSessFutMinDaysEnabled(enabled);
-      }
-      if (pr.p2MinDays != null) {
-        const n2 = parseInt(String(pr.p2MinDays), 10);
-        setSessP2MinDays(String(Number.isFinite(n2) ? n2 : 4));
-        setSessP2MinDaysEnabled(n2 > 0);
-      }
-      if (pr.trailingDrawdown != null || cfg.trailingDrawdown != null) {
-        setSessTrailingDrawdown(!!(pr.trailingDrawdown ?? cfg.trailingDrawdown));
-      }
-      if (pr.dailyLossEnabled != null || cfg.dailyLossEnabled != null) {
-        setSessDailyLossEnabled(!!(pr.dailyLossEnabled ?? cfg.dailyLossEnabled));
-      }
-      if (pr.consistencyRule != null || cfg.consistencyRule != null) {
-        setSessConsistencyRule(!!(pr.consistencyRule ?? cfg.consistencyRule));
-      }
-      if (pr.consistencyPct != null || cfg.consistencyPct != null) {
-        setSessConsistencyPct(String(pr.consistencyPct ?? cfg.consistencyPct ?? "30"));
-      }
-      if (pr.weekendHold != null || cfg.weekendHold != null) {
-        setSessWeekendHold(!!(pr.weekendHold ?? cfg.weekendHold));
-      }
-      if (pr.maxContracts != null) setSessMaxContracts(String(pr.maxContracts));
-      if (pr.maxContractsEnabled != null) setSessMaxContractsEnabled(!!pr.maxContractsEnabled);
-      if (pr.maxPosition != null) setSessMaxLotSize(String(pr.maxPosition));
-      if (pr.maxPositionEnabled != null) setSessMaxPosEnabled(!!pr.maxPositionEnabled);
-      if (pr.maxPositionUnit) setSessMaxPosUnit(String(pr.maxPositionUnit));
-    }
   }, []);
 
   useEffect(() => {
@@ -926,61 +866,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
         )
       : [];
 
-    const cap = parseFloat(newSessCapital) || 10000;
-    const isFutProp = sessTradingMode === "prop" && newSessAssetClass === "Futures";
-    const p1DlPct = parseFloat(sessP1DailyLossPct) || 5;
-    const p1DdPct = parseFloat(sessP1TotalDDPct) || 10;
-    const p1PtPct = parseFloat(sessP1ProfitTargetPct) || 10;
-    const p2DlPct = parseFloat(sessP2DailyLossPct) || p1DlPct;
-    const p2DdPct = parseFloat(sessP2TotalDDPct) || p1DdPct;
-    const p2PtPct = parseFloat(sessP2ProfitTargetPct) || 5;
-    const p1DlAmt = parseFloat(sessP1DailyLossAmt) || Math.round(cap * p1DlPct / 100);
-    const p1DdAmt = parseFloat(sessP1MaxDDAmt) || Math.round(cap * p1DdPct / 100);
-    const p1PtAmt = parseFloat(sessP1ProfitTargetAmt) || Math.round(cap * p1PtPct / 100);
-    const p2DlAmt = parseFloat(sessP2DailyLossAmt) || Math.round(cap * p2DlPct / 100);
-    const p2DdAmt = parseFloat(sessP2MaxDDAmt) || Math.round(cap * p2DdPct / 100);
-    const p2PtAmt = parseFloat(sessP2ProfitTargetAmt) || Math.round(cap * p2PtPct / 100);
-    const effP1DlPct = isFutProp && p1DlAmt > 0 ? (p1DlAmt / cap) * 100 : p1DlPct;
-    const effP1DdPct = isFutProp && p1DdAmt > 0 ? (p1DdAmt / cap) * 100 : p1DdPct;
-    const effP1PtPct = isFutProp && p1PtAmt > 0 ? (p1PtAmt / cap) * 100 : p1PtPct;
-    const effP2DlPct = isFutProp && p2DlAmt > 0 ? (p2DlAmt / cap) * 100 : p2DlPct;
-    const effP2DdPct = isFutProp && p2DdAmt > 0 ? (p2DdAmt / cap) * 100 : p2DdPct;
-    const effP2PtPct = isFutProp && p2PtAmt > 0 ? (p2PtAmt / cap) * 100 : p2PtPct;
-    const minDays = isFutProp
-      ? (sessFutMinDaysEnabled ? parseInt(sessFutMinDays, 10) || 0 : 0)
-      : (sessP1MinDaysEnabled ? parseInt(sessP1MinDays, 10) || 0 : 0);
-    const p2MinDays = sessP2MinDaysEnabled ? parseInt(sessP2MinDays, 10) || 0 : 0;
-    const levNum = (() => {
-      const m = String(sessLeverage || "").match(/(\d+)\s*:\s*(\d+)/);
-      if (m) return parseInt(m[2], 10) || 100;
-      const n = parseInt(sessLeverage, 10);
-      return Number.isFinite(n) && n > 0 ? n : 100;
-    })();
-    const propRules = sessTradingMode === "prop" ? {
-      numPhases: sessNumPhases,
-      challengeType: sessChallengeType,
-      p1Pct: { dl: effP1DlPct, dd: effP1DdPct, pt: effP1PtPct },
-      p2Pct: { dl: effP2DlPct, dd: effP2DdPct, pt: effP2PtPct },
-      p1Amt: { dl: p1DlAmt, dd: p1DdAmt, pt: p1PtAmt },
-      p2Amt: { dl: p2DlAmt, dd: p2DdAmt, pt: p2PtAmt },
-      p1MinDays: minDays,
-      p2MinDays,
-      minTradingDays: minDays,
-      minTradingDaysEnabled: minDays > 0,
-      trailingDrawdown: sessTrailingDrawdown,
-      dailyLossEnabled: isFutProp ? sessDailyLossEnabled : true,
-      consistencyRule: sessConsistencyRule,
-      consistencyPct: parseFloat(sessConsistencyPct) || 30,
-      weekendHold: sessWeekendHold,
-      maxContracts: parseInt(sessMaxContracts, 10) || 0,
-      maxContractsEnabled: sessMaxContractsEnabled,
-      maxPosition: parseFloat(sessMaxLotSize) || parseInt(sessMaxContracts, 10) || 0,
-      maxPositionEnabled: sessMaxPosEnabled || sessMaxContractsEnabled,
-      maxPositionUnit: sessMaxPosUnit || (isFutProp ? "contracts" : "lots"),
-      leverage: `1:${levNum}`,
-      leverageNumber: levNum,
-    } : null;
-
     return {
       type: modeType,
       sessionName,
@@ -1060,26 +945,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
             spread_semantics: "mid_to_side",
           }
         : null,
-      ...(sessTradingMode === "prop" ? {
-        challenge: true,
+      prop_rules: sessTradingMode === "prop" ? {
+        numPhases: sessNumPhases,
         challengeType: sessChallengeType,
-        minTradingDays: minDays,
-        minTradingDaysEnabled: minDays > 0,
-        profitTarget: effP1PtPct,
-        profitTargetUsd: p1PtAmt,
-        maxDailyLoss: { percent: effP1DlPct, dollar: p1DlAmt },
-        maxTotalLoss: { percent: effP1DdPct, dollar: p1DdAmt },
-        maxDailyLossPercent: effP1DlPct,
-        maxDailyLossDollar: p1DlAmt,
-        maxTotalLossPercent: effP1DdPct,
-        maxTotalLossDollar: p1DdAmt,
-        trailingDrawdown: sessTrailingDrawdown,
-        dailyLossEnabled: isFutProp ? sessDailyLossEnabled : true,
-        consistencyRule: sessConsistencyRule,
-        consistencyPct: parseFloat(sessConsistencyPct) || 30,
-        weekendHold: sessWeekendHold,
-        prop_rules: propRules,
-      } : { prop_rules: null }),
+        p1Pct: { dl: sessP1DailyLossPct, dd: sessP1TotalDDPct, pt: sessP1ProfitTargetPct },
+        p2Pct: { dl: sessP2DailyLossPct, dd: sessP2TotalDDPct, pt: sessP2ProfitTargetPct },
+        p1Amt: { dl: sessP1DailyLossAmt, dd: sessP1MaxDDAmt, pt: sessP1ProfitTargetAmt },
+        p2Amt: { dl: sessP2DailyLossAmt, dd: sessP2MaxDDAmt, pt: sessP2ProfitTargetAmt },
+      } : null,
     };
   }
 

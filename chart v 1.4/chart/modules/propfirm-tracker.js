@@ -99,54 +99,32 @@ class PropFirmTracker {
     _applyPhaseRulesFromSession(session, phase) {
         const pr = session.prop_rules || {};
         const phaseNum = phase === 2 ? 2 : 1;
-        const cap = this.startBalance > 0 ? this.startBalance : 10000;
-        const p1Pct = pr.p1Pct || {};
-        const p1Amt = pr.p1Amt || {};
-        const p2Pct = pr.p2Pct || {};
-        const p2Amt = pr.p2Amt || {};
         let md;
         let mt;
         let minDays;
         let profitTarget;
 
         if (phaseNum === 2 && Number(pr.numPhases) >= 2) {
-            md = {
-                percent: Number(p2Pct.dl),
-                dollar: Number(p2Amt.dl)
-            };
-            mt = {
-                percent: Number(p2Pct.dd),
-                dollar: Number(p2Amt.dd)
-            };
-            profitTarget = Number(p2Pct.pt);
-            if (!Number.isFinite(profitTarget) && Number.isFinite(Number(p2Amt.pt)) && cap > 0) {
-                profitTarget = (Number(p2Amt.pt) / cap) * 100;
-            }
+            const p2 = pr.p2Pct || {};
+            const p2a = pr.p2Amt || {};
+            md = { percent: p2.dl, dollar: p2a.dl };
+            mt = { percent: p2.dd, dollar: p2a.dd };
+            profitTarget = Number(p2.pt);
             minDays = pr.p2MinDays ?? 0;
         } else {
             md = session.maxDailyLoss || {};
             mt = session.maxTotalLoss || {};
-            if ((!md.percent && !md.dollar) && (p1Pct.dl != null || p1Amt.dl != null)) {
-                md = { percent: p1Pct.dl, dollar: p1Amt.dl };
-            }
-            if ((!mt.percent && !mt.dollar) && (p1Pct.dd != null || p1Amt.dd != null)) {
-                mt = { percent: p1Pct.dd, dollar: p1Amt.dd };
-            }
+            const p1 = pr.p1Pct || {};
             minDays = session.minTradingDays ?? pr.minTradingDays ?? pr.p1MinDays ?? 1;
-            if (session.minTradingDaysEnabled === false) minDays = 0;
-            profitTarget = session.profitTarget ?? p1Pct.pt;
-            if (!Number.isFinite(Number(profitTarget))) {
-                const ptUsd = Number(session.profitTargetUsd ?? p1Amt.pt);
-                if (Number.isFinite(ptUsd) && cap > 0) profitTarget = (ptUsd / cap) * 100;
-            }
+            profitTarget = session.profitTarget ?? p1.pt ?? 10;
         }
 
         const mdp = Number(md.percent);
         const mtp = Number(mt.percent);
         const mdd = Number(md.dollar);
         const mtd = Number(mt.dollar);
-        const dailyPct = Number.isFinite(mdp) ? mdp : (Number.isFinite(mdd) && cap > 0 ? (mdd / cap) * 100 : 5);
-        const totalPct = Number.isFinite(mtp) ? mtp : (Number.isFinite(mtd) && cap > 0 ? (mtd / cap) * 100 : 10);
+        const dailyPct = Number.isFinite(mdp) ? mdp : 5;
+        const totalPct = Number.isFinite(mtp) ? mtp : 10;
         const profitPct = Number.isFinite(Number(profitTarget)) ? Number(profitTarget) : 10;
 
         this.rules = {
