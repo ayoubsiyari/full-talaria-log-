@@ -36899,6 +36899,12 @@ class OrderManager {
      * Update SL/TP line positions
      */
     updateSLTPLines(sourceChart) {
+        const slAll = this.slLines;
+        const tpAll = this.tpLines;
+        if ((!slAll || slAll.length === 0) && (!tpAll || tpAll.length === 0)) {
+            return;
+        }
+
         if (sourceChart === undefined && this._isMultiPanelLayout()) {
             this._collectLayoutCharts().forEach((c) => {
                 if (c?.scales?.yScale) this.updateSLTPLines(c);
@@ -36908,25 +36914,17 @@ class OrderManager {
 
         const ch = sourceChart || this.chart;
         if (!ch?.scales) {
-            console.log('⚠️ updateSLTPLines: Scales not ready');
             return;
         }
 
-        if (!this.slLines && !this.tpLines) {
-            console.log('⚠️ updateSLTPLines: No lines to update');
-            return;
-        }
-
-        const slForChart = (this.slLines || []).filter((sl) => (sl.chart || this.chart) === ch);
-        const tpForChart = (this.tpLines || []).filter((tp) => (tp.chart || this.chart) === ch);
+        const slForChart = (slAll || []).filter((sl) => (sl.chart || this.chart) === ch);
+        const tpForChart = (tpAll || []).filter((tp) => (tp.chart || this.chart) === ch);
 
         if (slForChart.length === 0 && tpForChart.length === 0) {
             ch.svg.selectAll('.y-axis-sl-highlight').remove();
             ch.svg.selectAll('.y-axis-tp-highlight').remove();
             return;
         }
-
-        console.log(`📍 updateSLTPLines: SL lines=${slForChart.length}, TP lines=${tpForChart.length}`);
 
         ch.svg.selectAll('.y-axis-sl-highlight').remove();
         ch.svg.selectAll('.y-axis-tp-highlight').remove();
@@ -36935,8 +36933,6 @@ class OrderManager {
         const yAxisHighlightPrices = { sl: new Set(), tp: new Set(), entry: new Set() };
 
         if (slForChart.length > 0) {
-            console.log(`   Updating ${slForChart.length} SL lines`);
-            
             const updatedSLPrices = new Set();
             
             slForChart.forEach(({ orderId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }) => {
@@ -37379,11 +37375,6 @@ class OrderManager {
         }
         
         // Entry prices are handled in updateOrderLines
-        
-        // Check if SL/TP lines are visible in DOM
-        const slLinesInDom = document.querySelectorAll('.sl-line');
-        const tpLinesInDom = document.querySelectorAll('.tp-line');
-        console.log(`✅ SL/TP lines updated. DOM count: SL=${slLinesInDom.length}, TP=${tpLinesInDom.length}`);
     }
     
     /**
@@ -37700,7 +37691,6 @@ class OrderManager {
             this._ensureLevelCtrlHover(ch);
         }
         if (!ch?.scales) {
-            console.log('⚠️ updateOrderLines: Scales not ready');
             return;
         }
 
@@ -37718,8 +37708,6 @@ class OrderManager {
         const lines = (this.orderLines || []).filter((ol) => (ol.chart || this.chart) === ch);
 
         if (lines.length > 0) {
-            console.log(`📍 updateOrderLines: Updating ${lines.length} order lines`);
-
             lines.forEach((olEntry) => {
                 const { orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn, pnlBox, pnlText, slBadge, tpBadge } = olEntry;
 
@@ -37972,14 +37960,13 @@ class OrderManager {
                     : '#2962ff';
                 this.drawYAxisPriceHighlight(price, highlightColor, isPending ? 'pending' : 'entry', 0, ch);
             });
-
-            const orderLinesInDom = document.querySelectorAll('.order-line');
-            console.log(`✅ Order lines updated. DOM count: ${orderLinesInDom.length}`);
         }
 
         this._updateSplitGroupAvgLines(ch);
         this._updateMultiTPAvgLines(ch);
-        this.updateSLTPLines(ch);
+        if ((this.slLines && this.slLines.length > 0) || (this.tpLines && this.tpLines.length > 0)) {
+            this.updateSLTPLines(ch);
+        }
         this.updateBELines(ch);
         this._drawExecutedOrderConnectors(ch);
 
