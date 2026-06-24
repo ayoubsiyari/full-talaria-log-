@@ -928,7 +928,12 @@ function syncAllIframesToHost(mgr) {
 
 /** Coalesce host replay/viewport align only (no viewport stamp onto other pairs). */
 let _alignHostSyncTimer = 0;
+let _hostViewportFrozenCheck = () => false;
+function setHostViewportFrozenCheck(fn) {
+    _hostViewportFrozenCheck = typeof fn === "function" ? fn : () => false;
+}
 function scheduleAlignHostOnly(mgr, delayMs) {
+    if (_hostViewportFrozenCheck()) return;
     if (_alignHostSyncTimer) clearTimeout(_alignHostSyncTimer);
     const wait = Number.isFinite(delayMs) ? delayMs : 220;
     _alignHostSyncTimer = setTimeout(function () {
@@ -1356,6 +1361,8 @@ export default function MultichartGrid({
     const overlayHoldTimersRef = useRef({});
     /** True while splitting 1→N with host already holding cloneable bars for effFile. */
     const samePairCacheBootRef = useRef(false);
+    /** Freeze host viewport re-anchor until every iframe has bars (no shake mid-boot). */
+    const hostViewportFrozenRef = useRef(false);
     const OVERLAY_SETTLE_HOLD_CACHE_MS = 0;
     const OVERLAY_SETTLE_HOLD_DEFAULT_MS = 300;
     const OVERLAY_FALLBACK_MS = 4000;
@@ -1430,6 +1437,10 @@ export default function MultichartGrid({
                 next.add(id);
                 return next;
             });
+            const mgr = managerRef.current;
+            if (mgr && typeof mgr.showPanelFrame === "function") {
+                try { mgr.showPanelFrame(id); } catch (_) {}
+            }
         };
         if (holdMs <= 0) {
             apply();
@@ -1442,6 +1453,11 @@ export default function MultichartGrid({
     }, []);
     const markPanelDataReadyRef = useRef(markPanelDataReady);
     markPanelDataReadyRef.current = markPanelDataReady;
+
+    useEffect(() => {
+        setHostViewportFrozenCheck(() => hostViewportFrozenRef.current);
+        return () => setHostViewportFrozenCheck(() => false);
+    }, []);
 
     // ─── per-host order forwarding state ──────────────────────────────
     //
@@ -1617,6 +1633,8 @@ export default function MultichartGrid({
 
             const manager = new window.MultichartManager({
                 container: containerRef.current,
+                silentPanelBoot: true,
+                deferInitialRangeSync: true,
                 iframeSrcBuilder: function (cfg) {
                     return buildIframeSrc({
                         panelId:   cfg.id,
@@ -1659,6 +1677,10 @@ export default function MultichartGrid({
                     const fn = markPanelDataReadyRef.current;
                     if (typeof fn === "function") {
                         try { fn(id, { immediate: true }); } catch (_) {}
+                    }
+                    const mgr = managerRef.current;
+                    if (mgr && typeof mgr.showPanelFrame === "function") {
+                        try { mgr.showPanelFrame(id); } catch (_) {}
                     }
                 },
                 onChartReady: function (id) {
@@ -1891,6 +1913,9 @@ export default function MultichartGrid({
         const sessId = initialSessionIdRef.current || null;
         const IFRAME_ADD_STAGGER_MS = hostHasCloneableBars(effFile) ? 0 : 700;
         samePairCacheBootRef.current = hostHasCloneableBars(effFile);
+        if (layout.tiles.some((t) => t.id !== HOST_PANEL_ID)) {
+            hostViewportFrozenRef.current = true;
+        }
 
         const staggerTimeouts = [];
         let staggerCancelled = false;
@@ -1968,8 +1993,6 @@ export default function MultichartGrid({
             if (isDraggingRef.current) return;
             requestAnimationFrame(() => {
                 repaintAllPanelSurfaces(container, cellA, { reanchor: false });
-                const mgr = managerRef.current;
-                scheduleAlignHostOnly(mgr, 280);
                 if (computeFocusedRectRef.current) {
                     computeFocusedRectRef.current();
                 }
@@ -1982,30 +2005,42 @@ export default function MultichartGrid({
         };
     }, [layoutId, layout.cols, layout.rows, managerReady]);
 
-    // ─── Host re-anchor once the boot settles ───────────────────────────
+    // ─── Host re-anchor once ALL iframe panels have bars ───────────────
     //
-    // The host viewport re-anchor (center on replay playhead / refit) now
-    // runs EXACTLY ONCE per layout, after every iframe panel reports ready,
-    // instead of on every staggered panel-ready. Re-centering repeatedly
-    // during the ~2s staggered boot is what made the host chart visibly
-    // shake left/right while loading. The host's geometry (cell A bbox) is
-    // fixed by the grid template and does not depend on the panels finishing,
-    // so a single re-anchor at the end lands on the correct, stable window.
+    // Wait for dataReadyPanels (bars committed), not just bridge-ready.
+    // Re-centering while iframes are still booting made panel A shake.
     useEffect(() => {
         if (!managerReady) return;
         const expected = layout.tiles
             .filter((t) => t.id !== HOST_PANEL_ID)
             .map((t) => t.id);
-        if (expected.length === 0) return;
-        if (!expected.every((id) => readyPanels.has(id))) return;
+        if (expected.length === 0) {
+            hostViewportFrozenRef.current = false;
+            return;
+        }
+        const allDataReady = expected.every((id) =>
+            dataReadyPanels.has(id) || overlayFallbackPanels.has(id)
+        );
+        hostViewportFrozenRef.current = !allDataReady;
+        if (!allDataReady) return;
         const mgr = managerRef.current;
+        if (mgr) {
+            if (typeof mgr.flushPendingRangeSync === "function") {
+                try { mgr.flushPendingRangeSync(); } catch (_) {}
+            }
+            for (const id of expected) {
+                if (typeof mgr.showPanelFrame === "function") {
+                    try { mgr.showPanelFrame(id); } catch (_) {}
+                }
+            }
+        }
         const t = setTimeout(() => {
             if (isDraggingRef.current) return;
             scheduleAlignHostOnly(mgr, 0);
-        }, 120);
+        }, 80);
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [managerReady, readyPanels, layout.tiles]);
+    }, [managerReady, dataReadyPanels, overlayFallbackPanels, layout.tiles]);
 
     // Per-iframe cell ResizeObserver — debounced resize when any panel
     // cell changes size (splitter release, layout switch, sidebar, etc.).

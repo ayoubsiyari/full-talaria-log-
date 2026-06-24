@@ -83,6 +83,11 @@
         this.onChartBootFailed = (typeof opts.onChartBootFailed === 'function')
             ? opts.onChartBootFailed
             : function () {};
+        /** TradingView-style: no per-cell "Loading panel" diagnostic overlay. */
+        this.silentPanelBoot = opts.silentPanelBoot !== false;
+        /** Hold iframe range sync until parent signals boot complete (avoids host shake). */
+        this.deferInitialRangeSync = !!opts.deferInitialRangeSync;
+        this._pendingRangeSyncIds = new Set();
         this.iframeSrcBuilder = (typeof opts.iframeSrcBuilder === 'function')
             ? opts.iframeSrcBuilder
             : null;
@@ -276,16 +281,18 @@
             params.set('restoreEnd',   String(Math.floor(cfg.restoreEndSec)));
         }
 
-        // Per-cell loading overlay so we can see WHICH cells exist and which
-        // are stuck waiting for their iframe's chart.js to init. Removed when
-        // the cell goes ready (see _onWindowMessage on bridge-ready).
-        const overlay = document.createElement('div');
-        overlay.className = 'loading-overlay';
-        overlay.innerHTML =
-            '<div class="id">' + cfg.id + '</div>' +
-            '<div>Loading panel — pick a file…</div>' +
-            '<small>iframe: pending — bridge: pending</small>';
-        mountEl.appendChild(overlay);
+        // Per-cell loading overlay (diagnostic sandbox only). Production V9 grid
+        // uses silentPanelBoot — no visible overlay, TradingView-style.
+        let overlay = null;
+        if (!this.silentPanelBoot) {
+            overlay = document.createElement('div');
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML =
+                '<div class="id">' + cfg.id + '</div>' +
+                '<div>Loading panel — pick a file…</div>' +
+                '<small>iframe: pending — bridge: pending</small>';
+            mountEl.appendChild(overlay);
+        }
 
         const frame = document.createElement('iframe');
         if (this.iframeSrcBuilder) {
@@ -303,7 +310,8 @@
         // No `sandbox` attribute — iframe is same-origin (file:// or local
         // dev server), and chart.js needs unrestricted scripts. The
         // postMessage allowlist is the security boundary here.
-        frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#0b0c14;';
+        frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#0b0c14;'
+            + (this.silentPanelBoot ? 'opacity:0;transition:opacity 120ms ease;' : '');
         const self = this;
         // Panel iframes each boot the full dist-v9 stack (deferred scripts +
         // React + chart.js). With 3–4 panels, parallel CPU/network contention
@@ -313,9 +321,11 @@
         frame.addEventListener('load', function () {
             scheduleIframeBrandSuppression(frame);
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
-            const small = overlay.querySelector('small');
-            if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
-                + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
+            if (overlay) {
+                const small = overlay.querySelector('small');
+                if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '
+                    + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
+            }
             setTimeout(function () {
                 const c = self.charts.get(cfg.id);
                 if (c && !c.ready) {
@@ -324,17 +334,21 @@
                         + '(chart.js init stalled or failed)';
                     self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but '
                         + reason + ' — open the iframe URL in a new tab to inspect its console: ' + frame.src);
-                    const sm = overlay.querySelector('small');
-                    if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (no ready after '
-                        + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
+                    if (overlay) {
+                        const sm = overlay.querySelector('small');
+                        if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (no ready after '
+                            + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
+                    }
                     try { self.onChartBootFailed(cfg.id, reason, frame.src); } catch (_) {}
                 }
             }, BRIDGE_READY_TIMEOUT_MS);
         });
         frame.addEventListener('error', function () {
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
-            const small = overlay.querySelector('small');
-            if (small) small.textContent = 'iframe: LOAD FAILED';
+            if (overlay) {
+                const small = overlay.querySelector('small');
+                if (small) small.textContent = 'iframe: LOAD FAILED';
+            }
             try { self.onChartBootFailed(cfg.id, 'iframe failed to load', frame.src); } catch (_) {}
         });
         mountEl.appendChild(frame);
@@ -364,6 +378,42 @@
         try { c.frame.remove(); } catch (_) {}
         this.charts.delete(id);
         this._log('info', 'removeChart ' + id);
+    };
+
+  /** Reveal iframe after silent boot (data cloned from host). */
+    MultichartManager.prototype.showPanelFrame = function (id) {
+        const c = this.charts.get(id);
+        if (!c || c.host || !c.frame) return;
+        try { c.frame.style.opacity = '1'; } catch (_) {}
+    };
+
+    MultichartManager.prototype._scheduleInitialSyncToChart = function (sourceChart) {
+        if (!sourceChart || sourceChart.host) return;
+        const self = this;
+        const run = function () {
+            self._pushSyncModeToChart(sourceChart);
+            self._initialSyncToHost(sourceChart);
+        };
+        if (this.deferInitialRangeSync) {
+            this._pendingRangeSyncIds.add(sourceChart.id);
+            return;
+        }
+        setTimeout(run, 0);
+    };
+
+    MultichartManager.prototype.flushPendingRangeSync = function () {
+        const self = this;
+        const ids = Array.from(this._pendingRangeSyncIds);
+        this._pendingRangeSyncIds.clear();
+        ids.forEach(function (id) {
+            const c = self.charts.get(id);
+            if (c && c.ready) {
+                setTimeout(function () {
+                    self._pushSyncModeToChart(c);
+                    self._initialSyncToHost(c);
+                }, 0);
+            }
+        });
     };
 
     /**
@@ -695,8 +745,7 @@
                     // from inside its own message setup).
                     const self = this;
                     setTimeout(function () {
-                        self._pushSyncModeToChart(sourceChart);
-                        self._initialSyncToHost(sourceChart);
+                        self._scheduleInitialSyncToChart(sourceChart);
                     }, 0);
                 }
                 return;
@@ -723,8 +772,7 @@
                         sourceChart._initialRangeSyncedAfterData = true;
                         const self = this;
                         setTimeout(function () {
-                            self._pushSyncModeToChart(sourceChart);
-                            self._initialSyncToHost(sourceChart);
+                            self._scheduleInitialSyncToChart(sourceChart);
                         }, 0);
                     }
                 }
