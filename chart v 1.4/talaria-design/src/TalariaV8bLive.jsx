@@ -678,6 +678,41 @@ function v9ListMultichartPanelIds() {
   return ["A"];
 }
 
+function v9ChartIndicatorsMutationBlocked(chart) {
+  if (!chart) return true;
+  if (chart._timeframeSwitching || chart._pairSwitchLoading) return true;
+  if (chart._sessionIndicatorsRestoreGuardUntil
+      && Date.now() < chart._sessionIndicatorsRestoreGuardUntil) {
+    return true;
+  }
+  return false;
+}
+
+function v9ChartHasIndicatorForV9Id(chart, v9Id, idToType) {
+  const type = idToType[v9Id];
+  if (!chart || !type || !Array.isArray(chart.indicators?.active)) return false;
+  const want = String(type).toLowerCase();
+  return chart.indicators.active.some(
+    (ind) => ind && String(ind.type || "").toLowerCase() === want,
+  );
+}
+
+function v9SyncIndicatorMapFromChart(chart, map, idToType) {
+  if (!chart || !map || !Array.isArray(chart.indicators?.active)) return [];
+  const typeToV9 = {};
+  for (const [v9Id, t] of Object.entries(idToType)) typeToV9[t] = v9Id;
+  for (const k of Object.keys(map)) delete map[k];
+  const next = [];
+  for (const ind of chart.indicators.active) {
+    const v9 = typeToV9[ind.type];
+    if (v9 && ind.id) {
+      map[v9] = ind.id;
+      if (!next.includes(v9)) next.push(v9);
+    }
+  }
+  return next;
+}
+
 function v9RemoveIndicatorFromAllMultichartPanels(v9Id, grid, allMaps, idToType) {
   const type = idToType[v9Id];
   if (!type || !grid || typeof grid.runCommand !== "function") {
@@ -13300,6 +13335,15 @@ const TalariaV8bLive = () => {
       }
       if (userDismiss) indUserDismissRef.current = false;
 
+      const chartForGuard =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      if (v9ChartIndicatorsMutationBlocked(chartForGuard)) {
+        v9SyncIndicatorMapFromChart(chartForGuard, panelMap, ID_TO_TYPE);
+        return;
+      }
+
       // Remove indicators that are no longer in the toolbar's active set.
       for (const v9Id of prevSet) {
         if (nowSet.has(v9Id)) continue;
@@ -13321,6 +13365,10 @@ const TalariaV8bLive = () => {
         const type = ID_TO_TYPE[v9Id];
         if (!type) {
           console.warn("[V9 ind multi] indicator", v9Id, "is not yet supported by chart.js");
+          continue;
+        }
+        if (v9ChartHasIndicatorForV9Id(chartForGuard, v9Id, ID_TO_TYPE)) {
+          v9SyncIndicatorMapFromChart(chartForGuard, panelMap, ID_TO_TYPE);
           continue;
         }
         if (fanOutIndicators && typeof grid.runCommandOnAllPanels === "function") {
@@ -13432,6 +13480,11 @@ const TalariaV8bLive = () => {
 
       const map = getMapForChart(chart);
       if (!map) return;
+      if (v9ChartIndicatorsMutationBlocked(chart)) {
+        v9SyncIndicatorMapFromChart(chart, map, ID_TO_TYPE);
+        return;
+      }
+
       const nowSet = new Set(indActive);
       const prevSet = new Set(Object.keys(map));
 
@@ -13456,6 +13509,13 @@ const TalariaV8bLive = () => {
         const type = ID_TO_TYPE[v9Id];
         if (!type) {
           console.warn("[V9] indicator", v9Id, "is not yet supported by chart.js");
+          continue;
+        }
+        if (v9ChartHasIndicatorForV9Id(chart, v9Id, ID_TO_TYPE)) {
+          const live = chart.indicators.active.find(
+            (ind) => ind && String(ind.type || "").toLowerCase() === String(type).toLowerCase(),
+          );
+          if (live && live.id) map[v9Id] = live.id;
           continue;
         }
         try {
@@ -13484,6 +13544,11 @@ const TalariaV8bLive = () => {
         typeof window.getActiveChart === "function"
           ? window.getActiveChart()
           : window.chart;
+      if (v9ChartIndicatorsMutationBlocked(chart)) {
+        const map = getMapForChart(chart);
+        if (map) v9SyncIndicatorMapFromChart(chart, map, ID_TO_TYPE);
+        return;
+      }
       if (chart?.indicators?.active?.length > 0 && indActive.length === 0) {
         syncIndUiFromFocusedChart();
         return;

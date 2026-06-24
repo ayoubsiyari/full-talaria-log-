@@ -3574,6 +3574,16 @@ export default function MultichartGrid({
                         if (!ch.data || ch.data.length === 0) {
                             return Promise.reject(new Error("chart data not loaded yet"));
                         }
+                        if (ch._timeframeSwitching || ch._pairSwitchLoading) {
+                            return Promise.reject(new Error("chart timeframe switch in progress"));
+                        }
+                        const wantType = type.toLowerCase();
+                        const existing = (ch.indicators && Array.isArray(ch.indicators.active))
+                            ? ch.indicators.active.find((i) => i && String(i.type || "").toLowerCase() === wantType)
+                            : null;
+                        if (existing && existing.id) {
+                            return Promise.resolve({ chartId: existing.id, type, deduped: true });
+                        }
                         const ind = ch.addIndicator(type);
                         try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
                         try { if (typeof ch.recalculateIndicators === "function") ch.recalculateIndicators(); } catch (_) {}

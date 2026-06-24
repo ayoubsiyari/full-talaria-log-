@@ -5232,6 +5232,16 @@
         alert('Please load chart data first before adding indicators.');
         return;
     }
+
+    const normalizedType = String(type || '').toLowerCase();
+    if (this.indicators.active && this.indicators.active.length) {
+        const existingSameType = this.indicators.active.find(function (ind) {
+            return ind && String(ind.type || '').toLowerCase() === normalizedType;
+        });
+        if (existingSameType) {
+            return existingSameType;
+        }
+    }
         
         const indicator = {
         id: 'ind_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),

@@ -1190,6 +1190,18 @@
                         // surface the failure cleanly so the parent can retry.
                         throw new Error('chart data not loaded yet');
                     }
+                    if (ch._timeframeSwitching || ch._pairSwitchLoading) {
+                        throw new Error('chart timeframe switch in progress');
+                    }
+                    var wantType = String(indType).toLowerCase();
+                    if (ch.indicators && Array.isArray(ch.indicators.active)) {
+                        var existing = ch.indicators.active.find(function (i) {
+                            return i && String(i.type || '').toLowerCase() === wantType;
+                        });
+                        if (existing && existing.id) {
+                            return { chartId: existing.id, type: indType, deduped: true };
+                        }
+                    }
                     var ind = ch.addIndicator(indType);
                     try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
                     try { if (typeof ch.recalculateIndicators === 'function') ch.recalculateIndicators(); } catch (_) {}

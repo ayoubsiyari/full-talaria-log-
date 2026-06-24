@@ -2111,6 +2111,7 @@ class Chart {
     }
 
     _syncIndicatorsAfterMultichartDataShare() {
+        if (this._timeframeSwitching || this._pairSwitchLoading) return;
         if (typeof this.recalculateIndicators === 'function') {
             try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
         }
@@ -3746,8 +3747,12 @@ class Chart {
                     try {
                         const parent = window.parent.chart;
                         if (parent) {
-                            this.rawData = parent.rawData;
-                            this.data = parent.data;
+                            const pTf = String(parent.currentTimeframe || '').toLowerCase().trim();
+                            const myTf = String(this.currentTimeframe || '').toLowerCase().trim();
+                            if (pTf === myTf) {
+                                this.rawData = parent.rawData;
+                                this.data = parent.data;
+                            }
                         }
                     } catch (_) { /* ignore */ }
                     if (typeof this._schedulePanSyncFollowRender === 'function') {
@@ -17851,6 +17856,11 @@ class Chart {
         this._timeframeSwitching = true;
         this._switchingFromTimeframe = fromTf || this.currentTimeframe || null;
         this._switchingToTimeframe = toTf || null;
+        if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
+            this._multichartViewportMirroredWithHost = false;
+        } else if (typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel()) {
+            this._multichartViewportMirroredWithHost = false;
+        }
         try { this._showTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
     }
 
