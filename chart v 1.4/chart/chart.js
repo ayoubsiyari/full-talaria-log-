@@ -2248,6 +2248,44 @@ class Chart {
     }
 
     /**
+     * Host tile A: after backward/forward pan-load extends replay master, tell
+     * same-pair iframe peers to mirror host bars (one fetch on A, instant clone on B/C/D).
+     * @param {{ direction?: string, lite?: boolean }} [opts]
+     */
+    _broadcastMultichartMasterExtendIfHost(opts = {}) {
+        if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) {
+            return;
+        }
+        if (!this.currentFileId) return;
+        const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+        if (!grid || typeof grid.broadcastToIframesNoReply !== 'function') return;
+
+        this._mcMasterExtendBroadcastOpts = Object.assign(
+            {},
+            this._mcMasterExtendBroadcastOpts || {},
+            opts,
+        );
+        if (this._mcMasterExtendBroadcastRaf != null) return;
+
+        const self = this;
+        this._mcMasterExtendBroadcastRaf = requestAnimationFrame(() => {
+            self._mcMasterExtendBroadcastRaf = null;
+            const o = self._mcMasterExtendBroadcastOpts || {};
+            self._mcMasterExtendBroadcastOpts = null;
+            const stillPanning = !!(self.drag && self.drag.active && self.drag.type === 'pan');
+            const lite = o.lite != null
+                ? !!o.lite
+                : (stillPanning || !!self._panLoading);
+            try {
+                grid.broadcastToIframesNoReply('extendReplayMasterFromHost', {
+                    direction: o.direction || 'backward',
+                    lite,
+                });
+            } catch (_) { /* ignore */ }
+        });
+    }
+
+    /**
      * Same-pair iframe under date-range sync: mirror host tile A's loaded bars +
      * scroll so bar index N is the same candle on both panels (TradingView parity).
      * @returns {boolean}
@@ -19311,6 +19349,17 @@ class Chart {
                     && this.drawingManager
                     && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
                     try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
+                }
+
+                if ((direction === 'backward' || direction === 'forward')
+                    && isReplay
+                    && typeof this._broadcastMultichartMasterExtendIfHost === 'function') {
+                    try {
+                        this._broadcastMultichartMasterExtendIfHost({
+                            direction,
+                            lite: !!(this.drag && this.drag.active && this.drag.type === 'pan'),
+                        });
+                    } catch (_mcExt) { /* ignore */ }
                 }
             });
 

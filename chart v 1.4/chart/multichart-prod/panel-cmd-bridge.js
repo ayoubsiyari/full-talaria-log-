@@ -1506,6 +1506,31 @@
                     afterReplaySync();
                     return;
                 }
+                case 'extendReplayMasterFromHost': {
+                    if (typeof ch._multichartSamePairAsHost !== 'function'
+                        || !ch._multichartSamePairAsHost(ch.currentFileId)) {
+                        return;
+                    }
+                    if (typeof ch._tryExtendReplayMasterFromParent !== 'function') return;
+                    var liteExtend = !!(args && args.lite);
+                    var didExtend = false;
+                    try {
+                        didExtend = !!ch._tryExtendReplayMasterFromParent({ lite: liteExtend });
+                    } catch (_) {}
+                    if (!didExtend) return;
+                    if (ch._multichartPendingMasterResample
+                        && typeof ch._flushMultichartPendingMasterResample === 'function') {
+                        try { ch._flushMultichartPendingMasterResample(); } catch (_) {}
+                    } else if (!liteExtend && typeof ch._syncIndicatorsAfterMultichartDataShare === 'function') {
+                        try { ch._syncIndicatorsAfterMultichartDataShare(); } catch (_) {}
+                    }
+                    if (typeof ch.scheduleRender === 'function') {
+                        ch.scheduleRender();
+                    } else if (typeof ch.render === 'function') {
+                        ch.render();
+                    }
+                    return { extended: true };
+                }
                 case 'syncReplayFromHost': {
                     if (ch._multichartPairLoadInFlight) return;
                     if (isViewportSettling(ch)) return;
@@ -2161,6 +2186,7 @@
                 'applyV9UiSettings',
                 'syncFromHost',
                 'syncReplayFromHost',
+                'extendReplayMasterFromHost',
                 'replayEnter',
                 'replayFrame',
                 'replayTick',

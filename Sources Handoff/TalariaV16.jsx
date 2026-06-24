@@ -142,6 +142,15 @@ const normalizeStrategyBankNameKey = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+const findStrategyBankNameDuplicate = (name, rows, excludeEditId = null) => {
+  const key = String(name || "").trim().toLowerCase();
+  if (!key) return null;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (excludeEditId != null && sameStrategyRowId(row, { id: excludeEditId })) continue;
+    if (String(row?.name || "").trim().toLowerCase() === key) return row;
+  }
+  return null;
+};
 const DASH_PLAN_REVIEW_LABELS = {
   according_to_plan: "According to Plan",
   out_of_plan: "Out of Plan",
@@ -4752,6 +4761,21 @@ const STOCKS_INSTRUMENTS = [
 const MKT_CAT_OPTS = [
   {id:'forex',label:'Forex'},{id:'futures',label:'Futures'},{id:'crypto',label:'Crypto'},{id:'stocks',label:'Stocks'},
 ];
+const inferInstrumentMarketCategory = (instId) => {
+  if (FOREX_INSTRUMENTS.some(x => x.id === instId) || COMMODITY_CFD_INSTRUMENTS.some(x => x.id === instId)) return 'forex';
+  if (FUTURES_INSTRUMENTS.some(x => x.id === instId)) return 'futures';
+  if (CRYPTO_INSTRUMENTS.some(x => x.id === instId)) return 'crypto';
+  if (STOCKS_INSTRUMENTS.some(x => x.id === instId)) return 'stocks';
+  return null;
+};
+const deriveStrategyMarketsFromInstruments = (instrumentIds = [], supportIds = []) => {
+  const markets = new Set();
+  [...(instrumentIds || []), ...(supportIds || [])].forEach(id => {
+    const cat = inferInstrumentMarketCategory(id);
+    if (cat) markets.add(cat);
+  });
+  return MKT_CAT_OPTS.map(o => o.id).filter(id => markets.has(id));
+};
 const ALL_INSTRUMENTS = [...FOREX_INSTRUMENTS,...COMMODITY_CFD_INSTRUMENTS,...FUTURES_INSTRUMENTS,...CRYPTO_INSTRUMENTS,...STOCKS_INSTRUMENTS];
 
 const INST_SYM_DATA = {
@@ -4903,6 +4927,8 @@ function GeneralInfoStepContent({ c, F,
   stratBImages, setStratBImages,
   stratBLogoEmoji, setStratBLogoEmoji,
   stratBTags, setStratBTags,
+  stratEditId=null,
+  strategyBankRows=[],
   showRequiredHint=false,
   generalInfoMissingKeys=[],
   generalInfoMissingLabels=[],
@@ -5025,9 +5051,18 @@ function GeneralInfoStepContent({ c, F,
   const lbl  = {fontSize:9,fontWeight:700,color:c.tm,fontFamily:F,letterSpacing:'0.07em',textTransform:'uppercase',marginBottom:7};
   const inp  = {background:c.sf,border:'1px solid '+c.brH,color:c.tx,fontFamily:F,fontSize:13,padding:'9px 12px',outline:'none',width:'100%',boxSizing:'border-box',transition:'border-color 0.12s'};
   const missingSet = React.useMemo(() => new Set(generalInfoMissingKeys || []), [generalInfoMissingKeys]);
+  const duplicateStrategyRow = React.useMemo(
+    () => findStrategyBankNameDuplicate(stratBName, strategyBankRows, stratEditId),
+    [stratBName, strategyBankRows, stratEditId]
+  );
+  const nameIsDuplicate = !!duplicateStrategyRow;
   const requiredMissing = key => showRequiredHint && missingSet.has(key);
-  const requiredBorder = key => requiredMissing(key) ? 'rgba(255,80,104,0.62)' : c.brH;
-  const requiredGlow = key => requiredMissing(key) ? '0 0 0 1px rgba(255,80,104,0.35), 0 0 18px rgba(255,80,104,0.28)' : 'none';
+  const requiredBorder = key => nameIsDuplicate && key === "name"
+    ? "rgba(255,180,80,0.62)"
+    : requiredMissing(key) ? "rgba(255,80,104,0.62)" : c.brH;
+  const requiredGlow = key => (nameIsDuplicate && key === "name")
+    ? "0 0 0 1px rgba(255,180,80,0.35), 0 0 18px rgba(255,180,80,0.22)"
+    : requiredMissing(key) ? "0 0 0 1px rgba(255,80,104,0.35), 0 0 18px rgba(255,80,104,0.28)" : "none";
   const tbtn = active => ({
     display:'inline-flex',alignItems:'center',justifyContent:'center',padding:'7px 16px',fontSize:12,fontWeight:active?600:500,fontFamily:F,cursor:'default',
     border:'1px solid '+(active?c.acL:c.brH),color:active?c.acL:c.tx,
@@ -5051,7 +5086,27 @@ function GeneralInfoStepContent({ c, F,
   };
 
 
-  const toggleMkt  = id => { const cur=stratBMarkets||[]; setStratBMarkets(cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]); };
+  const toggleMkt  = id => {
+    const cur=stratBMarkets||[];
+    setStratBMarkets(cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]);
+  };
+  const effectiveMarkets = React.useMemo(
+    () => (stratBMarkets||[]).length > 0
+      ? stratBMarkets
+      : deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst),
+    [stratBMarkets, stratBInstruments, stratBSupportInst]
+  );
+  const marketsAutoDerived = !(stratBMarkets||[]).length && effectiveMarkets.length > 0;
+  const toggleInst = id => {
+    const cur=stratBInstruments||[];
+    const next=cur.includes(id)?cur.filter(x=>x!==id):cur.length>=10?cur:[...cur,id];
+    setStratBInstruments(next);
+  };
+  const toggleSupportInst = id => {
+    const cur=stratBSupportInst||[];
+    const next=cur.includes(id)?cur.filter(x=>x!==id):cur.length>=10?cur:[...cur,id];
+    setStratBSupportInst(next);
+  };
   React.useEffect(()=>{
     if(!mktDropOpen) return;
     const handler = e => { if(mktWrapRef.current && !mktWrapRef.current.contains(e.target)) setMktDropOpen(false); };
@@ -5070,7 +5125,6 @@ function GeneralInfoStepContent({ c, F,
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [supPickOpen]);
-  const toggleInst = id => { const cur=stratBInstruments||[]; if(!cur.includes(id)&&cur.length>=10)return; setStratBInstruments(cur.includes(id)?cur.filter(x=>x!==id):[...cur,id]); };
   const tfs        = Array.isArray(stratBTimeframes)?stratBTimeframes:[stratBTimeframes].filter(Boolean);
   const tfAtMax    = tfs.length >= MAX_STRATEGY_TIMEFRAMES;
   const toggleTf   = id => {
@@ -5186,7 +5240,7 @@ function GeneralInfoStepContent({ c, F,
           <input value={stratBName||''} onChange={e=>setStratBName(e.target.value)}
             placeholder="e.g. BB Squeeze Fade" style={{...inp,border:'1px solid '+requiredBorder('name')}} maxLength={80}
             aria-label="Strategy name"
-            onFocus={e=>e.target.style.borderColor=c.acL}
+            onFocus={e=>e.target.style.borderColor=nameIsDuplicate?'rgba(255,180,80,0.85)':c.acL}
             onBlur={e=>e.target.style.borderColor=requiredBorder('name')}/>
           <div ref={emojiRef} style={{display:'flex',position:'relative'}}>
             <div ref={emojiBtnRef} onClick={openEmoji}
@@ -5224,6 +5278,11 @@ function GeneralInfoStepContent({ c, F,
             )}
           </div>
         </div>
+        {nameIsDuplicate&&(
+          <div style={{marginTop:-8,marginBottom:12,fontSize:10,fontWeight:650,color:c.gold,lineHeight:1.4,fontFamily:F}}>
+            A strategy with this name already exists. Choose a different name.
+          </div>
+        )}
 
         {/* Description */}
         <div>
@@ -5325,13 +5384,22 @@ function GeneralInfoStepContent({ c, F,
 
         {/* ── Section: Markets ── */}
         <div style={{marginBottom:14,background:c.sf,border:`1px solid ${requiredBorder('markets')}`,padding:'14px 16px',boxShadow:requiredGlow('markets'),transition:'border-color 0.12s, box-shadow 0.12s'}}>
-          <div style={lbl}>Markets <span style={{color:c.rd}}>*</span></div>
+          <div style={{...lbl,display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:8}}>
+            <span>Markets</span>
+            <span style={{fontSize:8,fontWeight:600,color:c.tm,letterSpacing:'0.04em',textTransform:'none'}}>Optional filter — auto-set from symbols</span>
+          </div>
           <div ref={mktWrapRef} style={{position:'relative',display:'inline-block'}}>
             <div onClick={e=>{e.stopPropagation();if(mktDropOpen){setMktDropOpen(false);}else{const pos=dropPos(mktWrapRef,210,100,200,false);if(pos)setMktDropPos(pos);setMktDropOpen(true);}}}
               style={{display:'flex',alignItems:'center',border:`1px solid ${mktDropOpen?c.acB:requiredBorder('markets')}`,background:c.el,padding:'0 26px 0 10px',height:30,width:210,cursor:'default',userSelect:'none',position:'relative',transition:'border-color 0.12s'}}>
               {(()=>{
-                const sel=stratBMarkets||[];
-                const label=sel.length===0?'None':sel.length===MKT_CAT_OPTS.length?'All markets':sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ');
+                const sel=effectiveMarkets||[];
+                const label=sel.length===0
+                  ?'All symbols'
+                  :marketsAutoDerived
+                    ?`Auto: ${sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ')}`
+                    :sel.length===MKT_CAT_OPTS.length
+                      ?'All markets'
+                      :sel.map(id=>MKT_CAT_OPTS.find(o=>o.id===id)?.label||id).join(', ');
                 return <span style={{flex:1,fontSize:11,fontWeight:600,fontFamily:F,color:sel.length?c.tx:c.tm}}>{label}</span>;
               })()}
               <svg style={{position:'absolute',right:7,top:'50%',transform:`translateY(-50%) rotate(${mktDropOpen?180:0}deg)`,transition:'transform 0.15s',pointerEvents:'none'}} width={8} height={8} viewBox="0 0 10 10" fill="none"><polyline points="1,3 5,7 9,3" stroke={c.tm} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -5595,7 +5663,7 @@ function GeneralInfoStepContent({ c, F,
                         if(!filtered.length)return null;
                         return(<div key={sec.title} style={{borderBottom:'1px solid rgba(140,160,255,0.1)'}}>
                           <div style={{padding:'5px 10px 2px',fontSize:9,fontWeight:700,color:c.tm,letterSpacing:'0.08em',textTransform:'uppercase',position:'sticky',top:0,background:c.sf,zIndex:1}}>{sec.title}</div>
-                          {filtered.map(opt=>{const isChk=(stratBSupportInst||[]).includes(opt.id);const isH=supPickHov==='s_'+opt.id;return mkRow(opt,isChk,isH,()=>setStratBSupportInst(prev=>{const c2=prev||[];if(!c2.includes(opt.id)&&c2.length>=10)return c2;return c2.includes(opt.id)?c2.filter(x=>x!==opt.id):[...c2,opt.id];}));})}
+                          {filtered.map(opt=>{const isChk=(stratBSupportInst||[]).includes(opt.id);const isH=supPickHov==='s_'+opt.id;return mkRow(opt,isChk,isH,()=>toggleSupportInst(opt.id));})}
                         </div>);
                       })}
                     </div>
@@ -5612,7 +5680,7 @@ function GeneralInfoStepContent({ c, F,
                   <div key={id} style={{display:'flex',alignItems:'center',padding:'4px 5px 4px 6px',background:c.sf,border:`1px solid ${c.brH}`,gap:4,minWidth:0,justifyContent:'space-between'}}>
                     {(()=>{const sym2=!fl?getInstSym(id):null;return(<div style={{width:fl?fl.single?20:25:sym2?27:0,height:10,flexShrink:0,position:'relative'}}>{fl?(fl.single?<div style={{borderRadius:1,overflow:'hidden'}}><FlagSvg code={fl.single} w={20} h={10}/></div>:<><div style={{position:'absolute',left:0,top:0,borderRadius:1,overflow:'hidden',boxShadow:'0 2px 4px rgba(0,0,0,0.8)',zIndex:2}}><FlagSvg code={fl.base} w={16} h={10}/></div><div style={{position:'absolute',left:8,top:0,borderRadius:1,overflow:'hidden',boxShadow:'0 1px 3px rgba(0,0,0,0.6)',zIndex:1}}><FlagSvg code={fl.quote} w={16} h={10}/></div></>):sym2?<SymBadge sym={sym2} w={27} h={10}/>:null}</div>);})()}
                     <span style={{fontSize:10,fontWeight:700,color:c.tx,fontFamily:F,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0,flex:1}}>{inst.label}</span>
-                    <span onClick={e=>{e.stopPropagation();setStratBSupportInst(prev=>(prev||[]).filter(x=>x!==id));}} style={{fontSize:11,lineHeight:1,color:c.tm,cursor:'default',transition:'color 0.1s',flexShrink:0}}
+                    <span onClick={e=>{e.stopPropagation();toggleSupportInst(id);}} style={{fontSize:11,lineHeight:1,color:c.tm,cursor:'default',transition:'color 0.1s',flexShrink:0}}
                       onMouseEnter={e=>e.currentTarget.style.color=c.rd} onMouseLeave={e=>e.currentTarget.style.color=c.tm}>×</span>
                   </div>
                 );
@@ -5928,10 +5996,20 @@ function GeneralInfoStepContent({ c, F,
 
       {/* Emoji picker — fixed, escapes overflow:auto clipping */}
       {emojiOpen&&(()=>{
-        const searchTrim = emojiSearch.trim();
-        const activeCat  = EMOJI_CATS.find(ct=>ct.id===emojiCat)||EMOJI_CATS[0];
-        const allEmojis  = EMOJI_CATS.flatMap(ct=>ct.list).filter((em,i,a)=>a.indexOf(em)===i);
-        const visibleList = searchTrim ? allEmojis.filter(em=>em.includes(searchTrim)) : activeCat.list;
+        const searchQ = normalizeSearchQuery(emojiSearch);
+        const activeCat = EMOJI_CATS.find(ct=>ct.id===emojiCat)||EMOJI_CATS[0];
+        const matchedCats = searchQ
+          ? EMOJI_CATS.filter(ct => {
+              const label = normalizeSearchQuery(ct.label);
+              const id = normalizeSearchQuery(ct.id);
+              return label.includes(searchQ) || id.includes(searchQ);
+            })
+          : [];
+        const visibleList = searchQ
+          ? (matchedCats.length
+              ? [...new Set(matchedCats.flatMap(ct => ct.list || []))]
+              : [])
+          : (activeCat.list || []);
         return (
           <div ref={emojiPickerRef}
             style={{position:'fixed',top:emojiPos.top,left:emojiPos.left,zIndex:100100,
@@ -5950,18 +6028,22 @@ function GeneralInfoStepContent({ c, F,
                 onBlur={e=>e.target.style.borderColor=c.brH}/>
             </div>
             {/* Category tabs */}
-            {!searchTrim&&(
-              <div style={{display:'flex',borderBottom:'1px solid rgba(140,160,255,0.14)',padding:'0 2px',overflowX:'auto',scrollbarWidth:'none'}}>
-                {EMOJI_CATS.map(ct=>(
-                  <div key={ct.id} onClick={()=>setEmojiCat(ct.id)}
-                    style={{flexShrink:0,height:34,minWidth:30,display:'flex',alignItems:'center',justifyContent:'center',
-                      fontSize:16,cursor:'default',position:'relative',
-                      borderBottom:'2px solid '+(emojiCat===ct.id?c.acL:'transparent'),
-                      opacity:emojiCat===ct.id?1:0.45,transition:'opacity 0.1s,border-color 0.1s'}}
-                    title={ct.label}>
-                    {ct.ic}
-                  </div>
-                ))}
+            <div style={{display:'flex',borderBottom:'1px solid rgba(140,160,255,0.14)',padding:'0 2px',overflowX:'auto',scrollbarWidth:'none'}}>
+              {EMOJI_CATS.map(ct=>(
+                <div key={ct.id} onClick={()=>{setEmojiCat(ct.id);setEmojiSearch('');}}
+                  style={{flexShrink:0,height:34,minWidth:30,display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:16,cursor:'default',position:'relative',
+                    borderBottom:'2px solid '+(emojiCat===ct.id&&!searchQ?c.acL:'transparent'),
+                    opacity:emojiCat===ct.id&&!searchQ?1:searchQ&&matchedCats.some(m=>m.id===ct.id)?1:0.45,
+                    transition:'opacity 0.1s,border-color 0.1s'}}
+                  title={ct.label}>
+                  {ct.ic}
+                </div>
+              ))}
+            </div>
+            {searchQ && matchedCats.length > 0 && (
+              <div style={{padding:'4px 10px 2px',fontSize:8,fontWeight:700,color:c.tm,letterSpacing:'0.06em',textTransform:'uppercase'}}>
+                {matchedCats.map(ct => ct.label).join(' · ')}
               </div>
             )}
             {/* Emoji grid */}
@@ -5980,7 +6062,9 @@ function GeneralInfoStepContent({ c, F,
                 </div>
               ))}
               {visibleList.length===0&&(
-                <div style={{gridColumn:'1/-1',padding:'20px 0',textAlign:'center',fontSize:11,color:c.tm}}>No results</div>
+                <div style={{gridColumn:'1/-1',padding:'20px 0',textAlign:'center',fontSize:11,color:c.tm}}>
+                  {searchQ ? 'No categories match — try Smileys, Food, Finance…' : 'No emojis in this category'}
+                </div>
               )}
             </div>
           </div>
@@ -6379,7 +6463,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
   );
   const readyItems = [
     {label:'General Info', ready:!!(stratBName||'').trim(), detail:(stratBName||'').trim()?'Name added':'Name required'},
-    {label:'Market Scope', ready:(stratBMarkets||[]).length>0 && (stratBTimeframes||[]).length>0, detail:`${(stratBMarkets||[]).length} markets · ${(stratBTimeframes||[]).length} timeframes`},
+    {label:'Market Scope', ready:((stratBMarkets||[]).length>0||(stratBInstruments||[]).length>0||(stratBSupportInst||[]).length>0) && (stratBTimeframes||[]).length>0, detail:`${(stratBMarkets||[]).length? (stratBMarkets||[]).length : deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst).length} markets · ${(stratBTimeframes||[]).length} timeframes`},
     {label:'Strategy Flow', ready:groups.length>0 && conditionCount>0, detail:`${groups.length} groups · ${conditionCount} conditions`},
     {label:'Trade Tags', ready:preCount+postCount>0, detail:`${preCount} pre · ${postCount} post`},
   ];
@@ -6474,7 +6558,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
         {reviewBlock('02','Market Scope',readyItems[1].ready,
           <div style={{display:'grid',gap:14}}>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',columnGap:20,rowGap:14}}>
-              {scopeGroup('Markets',(stratBMarkets||[]).map(marketLabel),c.acL,'No markets selected.')}
+              {scopeGroup('Markets',((stratBMarkets||[]).length?stratBMarkets:deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst)).map(marketLabel),c.acL,'No markets selected.')}
               {scopeGroup('Timeframes',stratBTimeframes||[],c.ts,'No timeframes selected.')}
             </div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',columnGap:20,rowGap:14}}>
@@ -6562,7 +6646,7 @@ function ReviewStepContent({ c, F, stratBName, stratBDesc, stratBMarkets, stratB
 }
 
 function StrategyBuilderModal(props) {
-  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates } = props;
+  const { c, F, stratWizardStep, setStratWizardStep, stratBName, setStratBName, stratEditId, isSaving=false, saveError="", onSave, onClose, onOpenTemplates, strategyBankRows=[] } = props;
   const [tplBtnHov, setTplBtnHov] = React.useState(false);
   const [showGeneralInfoRequired, setShowGeneralInfoRequired] = React.useState(false);
 
@@ -6576,10 +6660,16 @@ function StrategyBuilderModal(props) {
   const generalInfoIssues = React.useMemo(() => {
     const issues = [];
     if (!(stratBName || '').trim()) issues.push({key:'name', label:'strategy name'});
-    if (!(props.stratBMarkets || []).length) issues.push({key:'markets', label:'markets'});
+    else if (findStrategyBankNameDuplicate(stratBName, strategyBankRows, stratEditId)) {
+      issues.push({key:'name', label:'unique strategy name'});
+    }
+    const resolvedMarkets = (props.stratBMarkets || []).length > 0
+      ? props.stratBMarkets
+      : deriveStrategyMarketsFromInstruments(props.stratBInstruments, props.stratBSupportInst);
+    if (!resolvedMarkets.length) issues.push({key:'markets', label:'markets or trading symbols'});
     if (!(props.stratBTimeframes || []).length) issues.push({key:'timeframes', label:'time frames'});
     return issues;
-  }, [stratBName, props.stratBMarkets, props.stratBTimeframes]);
+  }, [stratBName, strategyBankRows, stratEditId, props.stratBMarkets, props.stratBInstruments, props.stratBSupportInst, props.stratBTimeframes]);
   const generalInfoReady = generalInfoIssues.length === 0;
   React.useEffect(() => {
     if (generalInfoReady) setShowGeneralInfoRequired(false);
@@ -6748,7 +6838,7 @@ function StrategyBuilderModal(props) {
             className={stratWizardStep!==2?'tlr-scroll':undefined}>
 
             {/* Step 1: General Info */}
-            {stratWizardStep===1&&<GeneralInfoStepContent c={c} F={F} stratBName={props.stratBName} setStratBName={props.setStratBName} stratBDesc={props.stratBDesc} setStratBDesc={props.setStratBDesc} stratBMarkets={props.stratBMarkets} setStratBMarkets={props.setStratBMarkets} stratBTimeframes={props.stratBTimeframes} setStratBTimeframes={props.setStratBTimeframes} stratBInstruments={props.stratBInstruments} setStratBInstruments={props.setStratBInstruments} stratBSupportInst={props.stratBSupportInst} setStratBSupportInst={props.setStratBSupportInst} stratBImages={props.stratBImages} setStratBImages={props.setStratBImages} stratBLogoEmoji={props.stratBLogoEmoji} setStratBLogoEmoji={props.setStratBLogoEmoji} stratBTags={props.stratBTags} setStratBTags={props.setStratBTags} showRequiredHint={showGeneralInfoRequired} generalInfoMissingKeys={generalInfoIssues.map(issue=>issue.key)} generalInfoMissingLabels={generalInfoIssues.map(issue=>issue.label)} />}
+            {stratWizardStep===1&&<GeneralInfoStepContent c={c} F={F} stratBName={props.stratBName} setStratBName={props.setStratBName} stratBDesc={props.stratBDesc} setStratBDesc={props.setStratBDesc} stratBMarkets={props.stratBMarkets} setStratBMarkets={props.setStratBMarkets} stratBTimeframes={props.stratBTimeframes} setStratBTimeframes={props.setStratBTimeframes} stratBInstruments={props.stratBInstruments} setStratBInstruments={props.setStratBInstruments} stratBSupportInst={props.stratBSupportInst} setStratBSupportInst={props.setStratBSupportInst} stratBImages={props.stratBImages} setStratBImages={props.setStratBImages} stratBLogoEmoji={props.stratBLogoEmoji} setStratBLogoEmoji={props.setStratBLogoEmoji} stratBTags={props.stratBTags} setStratBTags={props.setStratBTags} stratEditId={stratEditId} strategyBankRows={strategyBankRows} showRequiredHint={showGeneralInfoRequired} generalInfoMissingKeys={generalInfoIssues.map(issue=>issue.key)} generalInfoMissingLabels={generalInfoIssues.map(issue=>issue.label)} />}
 
             {/* Step 2: Canvas */}
             {stratWizardStep===2&&<StrategyCanvasWorkspaceInner {...props} step={2} goPrev={goPrev} goNext={goNext} secondaryBtnStyle={secondaryBtnStyle} primaryBtnStyle={primaryBtnStyle} onSecondaryEnter={onSecondaryEnter} onSecondaryLeave={onSecondaryLeave} onSecondaryDown={onSecondaryDown} onSecondaryUp={onSecondaryUp} onPrimaryEnter={onPrimaryEnter} onPrimaryLeave={onPrimaryLeave} onPrimaryDown={onPrimaryDown} onPrimaryUp={onPrimaryUp} />}
@@ -6781,29 +6871,29 @@ function StrategyBuilderModal(props) {
               </div>
               {/* Next / Save */}
               {stratWizardStep<4?(
-                <button onClick={isSaving?undefined:goNext} disabled={isSaving}
-                  style={primaryBtnStyle(!isSaving&&(stratWizardStep===1?true:canNext))}
-                  onMouseEnter={e=>onPrimaryEnter(e,!isSaving&&(stratWizardStep===1?true:canNext))}
-                  onMouseLeave={e=>onPrimaryLeave(e,!isSaving&&(stratWizardStep===1?true:canNext))}
-                  onMouseDown={e=>onPrimaryDown(e,!isSaving&&(stratWizardStep===1?true:canNext))}
-                  onMouseUp={e=>onPrimaryUp(e,!isSaving&&(stratWizardStep===1?true:canNext))}>
+                <button onClick={isSaving?undefined:goNext} disabled={isSaving||!(stratWizardStep===1?generalInfoReady:canNext)}
+                  style={primaryBtnStyle(!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
+                  onMouseEnter={e=>onPrimaryEnter(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
+                  onMouseLeave={e=>onPrimaryLeave(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
+                  onMouseDown={e=>onPrimaryDown(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}
+                  onMouseUp={e=>onPrimaryUp(e,!isSaving&&(stratWizardStep===1?generalInfoReady:canNext))}>
                   Next
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                 </button>
               ):(
-                <button onClick={stratBName.trim()&&!isSaving?onSave:undefined} disabled={!stratBName.trim()||isSaving}
+                <button onClick={stratBName.trim()&&generalInfoReady&&!isSaving?onSave:undefined} disabled={!stratBName.trim()||!generalInfoReady||isSaving}
                   style={{height:30,padding:'0 14px',minWidth:120,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,
                     fontSize:12,fontWeight:700,letterSpacing:'0.02em',fontFamily:F,borderRadius:0,
-                    color:stratBName.trim()&&!isSaving?'#fff':c.tm,
-                    background:stratBName.trim()&&!isSaving?`linear-gradient(135deg,#00A882,${c.gn})`:'rgba(140,160,255,0.10)',
-                    border:`1px solid ${stratBName.trim()&&!isSaving?'rgba(0,212,161,0.5)':'rgba(140,160,255,0.18)'}`,
-                    boxShadow:stratBName.trim()&&!isSaving?'0 2px 8px rgba(0,212,161,0.25)':'none',
-                    cursor:'default',opacity:stratBName.trim()&&!isSaving?1:0.55,
+                    color:stratBName.trim()&&generalInfoReady&&!isSaving?'#fff':c.tm,
+                    background:stratBName.trim()&&generalInfoReady&&!isSaving?`linear-gradient(135deg,#00A882,${c.gn})`:'rgba(140,160,255,0.10)',
+                    border:`1px solid ${stratBName.trim()&&generalInfoReady&&!isSaving?'rgba(0,212,161,0.5)':'rgba(140,160,255,0.18)'}`,
+                    boxShadow:stratBName.trim()&&generalInfoReady&&!isSaving?'0 2px 8px rgba(0,212,161,0.25)':'none',
+                    cursor:'default',opacity:stratBName.trim()&&generalInfoReady&&!isSaving?1:0.55,
                     transition:'background 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, transform 0.08s ease'}}
-                  onMouseEnter={e=>{if(stratBName.trim()&&!isSaving){e.currentTarget.style.background=`linear-gradient(135deg,#00C499,#11E4B5)`;e.currentTarget.style.boxShadow='0 2px 14px rgba(0,212,161,0.5)';}}}
-                  onMouseLeave={e=>{if(stratBName.trim()&&!isSaving){e.currentTarget.style.background=`linear-gradient(135deg,#00A882,${c.gn})`;e.currentTarget.style.boxShadow='0 2px 8px rgba(0,212,161,0.25)';e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}
-                  onMouseDown={e=>{if(stratBName.trim()&&!isSaving){e.currentTarget.style.filter='brightness(0.9)';e.currentTarget.style.transform='scale(0.97)';}}}
-                  onMouseUp={e=>{if(stratBName.trim()&&!isSaving){e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}>
+                  onMouseEnter={e=>{if(stratBName.trim()&&generalInfoReady&&!isSaving){e.currentTarget.style.background=`linear-gradient(135deg,#00C499,#11E4B5)`;e.currentTarget.style.boxShadow='0 2px 14px rgba(0,212,161,0.5)';}}}
+                  onMouseLeave={e=>{if(stratBName.trim()&&generalInfoReady&&!isSaving){e.currentTarget.style.background=`linear-gradient(135deg,#00A882,${c.gn})`;e.currentTarget.style.boxShadow='0 2px 8px rgba(0,212,161,0.25)';e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}
+                  onMouseDown={e=>{if(stratBName.trim()&&generalInfoReady&&!isSaving){e.currentTarget.style.filter='brightness(0.9)';e.currentTarget.style.transform='scale(0.97)';}}}
+                  onMouseUp={e=>{if(stratBName.trim()&&generalInfoReady&&!isSaving){e.currentTarget.style.filter='brightness(1)';e.currentTarget.style.transform='scale(1)';}}}>
                   {isSaving
                     ? <span style={{width:12,height:12,border:'2px solid rgba(255,255,255,0.22)',borderTopColor:'rgba(255,255,255,0.95)',borderRadius:'50%',animation:'tlrLoadRotate 0.7s linear infinite'}}/>
                     : <svg width={12} height={12} viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
@@ -35920,6 +36010,12 @@ const TalariaV8b = () => {
 
           const saveBuilder = () => {
             if (stratBuilderSaving || !stratBName.trim()) return;
+            const bankRows = getV16StrategyBankRows(myStrategies);
+            if (findStrategyBankNameDuplicate(stratBName, bankRows, stratEditId)) {
+              setStratBuilderSaveError("A strategy with this name already exists. Choose a different name.");
+              setStratWizardStep(1);
+              return;
+            }
             const strat = {
               id: stratEditId || `m${Date.now()}`,
               name: stratBName.trim()||"Untitled Strategy",
@@ -35931,7 +36027,7 @@ const TalariaV8b = () => {
               tags: stratBTags,
               complexity: stratBComplexity,
               direction: stratBDirection,
-              markets: stratBMarkets,
+              markets: (stratBMarkets||[]).length ? stratBMarkets : deriveStrategyMarketsFromInstruments(stratBInstruments, stratBSupportInst),
               conditions: stratBConditions,
               tree: stratBTree,
               variables: stratBVariables,
@@ -36333,6 +36429,7 @@ const TalariaV8b = () => {
                   canvasPaletteCollapsed={canvasPaletteCollapsed} setCanvasPaletteCollapsed={setCanvasPaletteCollapsed}
                   canvasInspectorCollapsed={canvasInspectorCollapsed} setCanvasInspectorCollapsed={setCanvasInspectorCollapsed}
                   stratEditId={stratEditId}
+                  strategyBankRows={getV16StrategyBankRows(myStrategies)}
                   isSaving={stratBuilderSaving}
                   saveError={stratBuilderSaveError}
                   sessions={strategyReviewSessions}
