@@ -91,6 +91,14 @@ const sanitizeDashAddTradeDecimalInput = (raw, maxDecimals) => {
 };
 const sanitizeDashAddTradePriceInput = (raw) => sanitizeDashAddTradeDecimalInput(raw, DASH_ADD_TRADE_PRICE_DECIMALS_MAX);
 const sanitizeDashAddTradeLotInput = (raw) => sanitizeDashAddTradeDecimalInput(raw, DASH_ADD_TRADE_LOT_DECIMALS_MAX);
+const finalizeDashAddTradePriceInput = (raw) => {
+  let s = sanitizeDashAddTradePriceInput(raw);
+  if (!s || s === ".") return "";
+  if (s.endsWith(".")) s = s.slice(0, -1);
+  const parsed = Number(String(s).replace(/^\./, "0."));
+  if (!Number.isFinite(parsed) || parsed < 0) return "";
+  return sanitizeDashAddTradePriceInput(String(parsed));
+};
 const finalizeDashAddTradeLotInput = (raw) => {
   const sanitized = sanitizeDashAddTradeLotInput(raw);
   if (!sanitized || sanitized === ".") return "";
@@ -98,6 +106,74 @@ const finalizeDashAddTradeLotInput = (raw) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return sanitized;
   if (parsed > 0 && parsed < DASH_ADD_TRADE_LOT_MIN) return String(DASH_ADD_TRADE_LOT_MIN);
   return sanitized;
+};
+const createDashAddTradeDecimalInputGuard = (maxDecimals, onApply) => ({
+  onKeyDown: (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (["Backspace", "Delete", "Tab", "Enter", "Escape", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+    if (["-", "+", "e", "E"].includes(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    if (/^\d$/.test(e.key)) {
+      const input = e.currentTarget;
+      const value = String(input.value ?? "");
+      const start = input.selectionStart ?? value.length;
+      const end = input.selectionEnd ?? value.length;
+      const next = value.slice(0, start) + e.key + value.slice(end);
+      const dot = next.indexOf(".");
+      if (dot >= 0) {
+        const decimals = next.slice(dot + 1).replace(/[^\d]/g, "");
+        if (decimals.length > maxDecimals) e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "." || e.key === ",") {
+      const input = e.currentTarget;
+      const value = String(input.value ?? "");
+      const start = input.selectionStart ?? value.length;
+      const end = input.selectionEnd ?? value.length;
+      const next = value.slice(0, start) + "." + value.slice(end);
+      if (next.replace(/[^\d.]/g, "").split(".").length > 2) e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+  },
+  onPaste: (e) => {
+    e.preventDefault();
+    const pasted = (e.clipboardData?.getData("text") ?? "").replace(/,/g, ".");
+    const input = e.currentTarget;
+    const value = String(input.value ?? "");
+    const start = input.selectionStart ?? value.length;
+    const end = input.selectionEnd ?? value.length;
+    const merged = sanitizeDashAddTradeDecimalInput(`${value.slice(0, start)}${pasted}${value.slice(end)}`, maxDecimals);
+    if (typeof onApply === "function") onApply(merged);
+  },
+});
+const sanitizeDashAddTradeRowCollection = (rows, kind) => {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const next = {...row};
+    if ("price" in next) next.price = sanitizeDashAddTradePriceInput(next.price);
+    if ("qty" in next) next.qty = sanitizeDashAddTradeLotInput(next.qty);
+    return next;
+  });
+};
+const sanitizeDashAddTradeDraftNumericFields = (draft) => {
+  if (!draft || typeof draft !== "object") return draft;
+  return {
+    ...draft,
+    stopLoss: finalizeDashAddTradePriceInput(draft.stopLoss),
+    exit: finalizeDashAddTradePriceInput(draft.exit),
+    highestPrice: finalizeDashAddTradePriceInput(draft.highestPrice),
+    lowestPrice: finalizeDashAddTradePriceInput(draft.lowestPrice),
+    postExitHighest: finalizeDashAddTradePriceInput(draft.postExitHighest),
+    postExitLowest: finalizeDashAddTradePriceInput(draft.postExitLowest),
+    entries: sanitizeDashAddTradeRowCollection(draft.entries, "entries"),
+    targets: sanitizeDashAddTradeRowCollection(draft.targets, "targets"),
+    exits: sanitizeDashAddTradeRowCollection(draft.exits, "exits"),
+  };
 };
 const dashAddTradeLotQtyValid = (value) => {
   const raw = String(value ?? "").trim();
@@ -29849,7 +29925,7 @@ const TalariaV8b = () => {
                 nextSource = applyDashAddTradeStrategyByName(nextSource, draft.setup_tag);
               }
               setDashAddTradeEditorSource(nextSource);
-              setDashAddTradeDraft(draft);
+              setDashAddTradeDraft(sanitizeDashAddTradeDraftNumericFields(draft));
               setDashAddTradeEditorOpen(true);
             });
           };
@@ -29964,11 +30040,15 @@ const TalariaV8b = () => {
               const list = Array.isArray(rows) ? rows : [];
               const prepared = list.map((row, index) => ({
                 id:`${prefix}-${index + 1}`,
-                price:String(row?.price ?? row?.entry ?? row?.exit ?? row?.target ?? row?.value ?? ""),
-                qty:String(row?.qty ?? row?.size ?? row?.quantity ?? fallbackQty ?? "1"),
+                price:sanitizeDashAddTradePriceInput(String(row?.price ?? row?.entry ?? row?.exit ?? row?.target ?? row?.value ?? "")),
+                qty:sanitizeDashAddTradeLotInput(String(row?.qty ?? row?.size ?? row?.quantity ?? fallbackQty ?? "1")),
               })).filter(row => row.price !== "" || row.qty !== "");
               if (prepared.length) return prepared.slice(0, 5);
-              return [{id:`${prefix}-1`, price:String(fallbackPrice ?? ""), qty:String(fallbackQty ?? "1")}];
+              return [{
+                id:`${prefix}-1`,
+                price:sanitizeDashAddTradePriceInput(String(fallbackPrice ?? "")),
+                qty:sanitizeDashAddTradeLotInput(String(fallbackQty ?? "1")),
+              }];
             };
             const entryStamp = parseDateTime(trade.entryTime || trade.openTime || trade.entryDate || trade.date, draftBase.date, draftBase.time);
             const exitStamp = parseDateTime(trade.closeTime || trade.exitDate || trade.exitTime, "", "");
@@ -29976,7 +30056,7 @@ const TalariaV8b = () => {
             const symbol = String(trade.symbol || trade.ticker || draftBase.symbol || "").toUpperCase();
             const market = trade.market || trade.asset_class || draftBase.assetClass;
             const qty = trade.quantity || trade.positionSize || trade.position_size || trade.size || "1";
-            const draftStopLoss = String(trade.stopLoss ?? trade.planned_sl ?? trade.stop_loss ?? trade.sl ?? draftBase.stopLoss ?? "");
+            const draftStopLoss = sanitizeDashAddTradePriceInput(String(trade.stopLoss ?? trade.planned_sl ?? trade.stop_loss ?? trade.sl ?? draftBase.stopLoss ?? ""));
             const entryRowsForDraft = normalizedRows(trade.entries, trade.entryPrice ?? trade.entry, qty, "entry");
             const targetRowsForDraft = (() => {
               const raw = normalizedRows(trade.planned_targets || trade.targets, trade.takeProfit ?? trade.target ?? trade.tp, qty, "target");
@@ -29988,7 +30068,7 @@ const TalariaV8b = () => {
                 qty: (() => {
                   const n = Number(clamped[index]?.qty);
                   if (!Number.isFinite(n) || n <= 0) return row.qty;
-                  return Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/\.?0+$/, "");
+                  return Number.isInteger(n) ? String(n) : n.toFixed(DASH_ADD_TRADE_LOT_DECIMALS_MAX).replace(/\.?0+$/, "");
                 })(),
               }));
             })();
@@ -30131,7 +30211,7 @@ const TalariaV8b = () => {
               return enrichedSource;
             })();
             setDashAddTradeEditorSource(editorSource);
-            setDashAddTradeDraft(draftWithSnapshot);
+            setDashAddTradeDraft(sanitizeDashAddTradeDraftNumericFields(draftWithSnapshot));
             setDashAddTradeEditorPage("trade");
             setDashAddTradeValidationError("");
             setDashAddTradePreTags({});
@@ -30441,7 +30521,8 @@ const TalariaV8b = () => {
           const formatDashTradeSizeInput = value => {
             const n = Number(value);
             if (!Number.isFinite(n) || n <= 0) return "";
-            return Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/\.?0+$/, "");
+            if (Number.isInteger(n)) return String(n);
+            return n.toFixed(DASH_ADD_TRADE_LOT_DECIMALS_MAX).replace(/\.?0+$/, "");
           };
           const clampDashAddTradeExitSizes = draft => {
             if (!draft) return draft;
@@ -33049,7 +33130,7 @@ const TalariaV8b = () => {
                   const current = parseDashTradeNumber(value);
                   const base = Number.isFinite(current) ? current : 0;
                   const next = Math.max(0, base + direction * addTradePriceStep);
-                  return formatAddTradeSteppedPrice(next);
+                  return finalizeDashAddTradePriceInput(formatAddTradeSteppedPrice(next));
                 };
                 const cloneDashAddTradeGraphDraft = draft => {
                   if (!draft) return draft;
@@ -33072,6 +33153,7 @@ const TalariaV8b = () => {
                 };
                 const addTradeTypingCue = dashTxt("Type...","اكتب...");
                 const addTradeSteppedPriceInput = ({value, onChange, placeholder, color=c.tx, disabled=false, invalid=false, errorTitle="", style={}}) => {
+                  const priceInputGuard = createDashAddTradeDecimalInputGuard(DASH_ADD_TRADE_PRICE_DECIMALS_MAX, onChange);
                   const inputSx = {
                     ...addTradeCompactInputStyle,
                     ...style,
@@ -33145,16 +33227,18 @@ const TalariaV8b = () => {
                         aria-invalid={invalid ? "true" : undefined}
                         onFocus={disabled ? undefined : holdDashAddTradeGraph}
                         onBlur={disabled ? undefined : e=>{
-                          const finalized = sanitizeDashAddTradePriceInput(e.target.value);
+                          const finalized = finalizeDashAddTradePriceInput(e.target.value);
                           if (finalized !== e.target.value) onChange(finalized);
                           releaseDashAddTradeGraph();
                         }}
                         onKeyDown={disabled ? undefined : e=>{
+                          addTradePriceInputGuard.onKeyDown(e);
                           if (e.key === "Enter") {
                             e.preventDefault();
                             e.currentTarget.blur();
                           }
                         }}
+                        onPaste={disabled ? undefined : addTradePriceInputGuard.onPaste}
                         onChange={e=>onChange(sanitizeDashAddTradePriceInput(e.target.value.replace(",", ".")))}
                         placeholder={placeholder || addTradeTypingCue}
                         inputMode="decimal"
@@ -33263,6 +33347,11 @@ const TalariaV8b = () => {
                           const finalized = finalizeNumberInput(e.target.value);
                           if (finalized !== e.target.value) onChange(finalized);
                         }}
+                        onKeyDown={locked ? undefined : e=>{
+                          if (inputKind === "lot") addTradeLotInputGuard.onKeyDown(e);
+                          else if (["-", "+", "e", "E"].includes(e.key)) e.preventDefault();
+                        }}
+                        onPaste={locked ? undefined : (inputKind === "lot" ? addTradeLotInputGuard.onPaste : undefined)}
                         placeholder={placeholder}
                         aria-label={ariaLabel || placeholder || dashTxt("Value","القيمة")}
                         inputMode="decimal"

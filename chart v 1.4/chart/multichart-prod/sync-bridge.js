@@ -1940,6 +1940,31 @@
                 return;
             }
             const panSync = !!m.panSync;
+            // Boot-storm guard: opening a multichart layout fires forceInitialSync
+            // for the SAME panel several times within a few ms (per-panel ready +
+            // syncAllIframesToHost burst + chart-state updates). Each one mirrors
+            // host data and re-renders the panel. Once we've successfully mirrored a
+            // given host range, re-applying that identical range is a pure no-op that
+            // only burns main-thread time — skip it so a 2x2 split doesn't freeze the
+            // tab. A genuinely different host range still applies, and if the first
+            // mirror failed (parent data not ready yet) the mirrored flag stays false
+            // so race-retries still go through.
+            if (!panSync && m.forceInitialSync && isEmbedPanelChart()) {
+                const _fiSig = String(m.startTime) + '|' + String(m.endTime) + '|'
+                    + (Number.isFinite(m.offsetX) ? m.offsetX.toFixed(1) : 'x') + '|'
+                    + (Number.isFinite(m.candleWidth) ? m.candleWidth.toFixed(2) : 'x');
+                const _fiNow = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now() : Date.now();
+                if (chart._multichartViewportMirroredWithHost
+                    && state._lastForceInitSig === _fiSig
+                    && Number.isFinite(state._lastForceInitAt)
+                    && (_fiNow - state._lastForceInitAt) < 1500) {
+                    if (m && m.causationId) state.applied.add(m.causationId);
+                    return;
+                }
+                state._pendingForceInitSig = _fiSig;
+                state._pendingForceInitAt = _fiNow;
+            }
             if (!panSync && typeof chart._releasePanSyncFollowBurst === 'function') {
                 try { chart._releasePanSyncFollowBurst(); } catch (_) {}
             }
@@ -1968,6 +1993,10 @@
             if (!panSync && m.forceInitialSync && isEmbedPanelChart()
                 && typeof chart._multichartMirrorViewportFromHost === 'function'
                 && chart._multichartMirrorViewportFromHost()) {
+                // Remember the host range we just mirrored so the next identical
+                // forceInitialSync (boot-storm duplicate) is skipped by the guard above.
+                state._lastForceInitSig = state._pendingForceInitSig;
+                state._lastForceInitAt = state._pendingForceInitAt;
                 finishViewportApply(chart, false);
                 return;
             }

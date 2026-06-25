@@ -2405,6 +2405,9 @@ function talariaOverlayIndicatorDecimals(chart) {
 
 /** Match chart price-axis / last-price formatting (symbol tick precision). */
 function talariaFormatOverlayPrice(chart, price) {
+    if (typeof window !== 'undefined' && typeof window.talariaFormatOverlayLegendPrice === 'function') {
+        return window.talariaFormatOverlayLegendPrice(chart, price);
+    }
     const p = Number(price);
     if (!Number.isFinite(p)) return '—';
     if (chart && typeof chart._formatLastPrice === 'function') {
@@ -2459,20 +2462,28 @@ function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
         if (val !== null) pushToken(val, color, decOrMode != null ? decOrMode : 'price');
     };
     if (Array.isArray(valuesStore)) {
-        readSeries(valuesStore, indicator.style && indicator.style.color, decimals);
+        readSeries(valuesStore, indicator.style && indicator.style.color, 'price');
         return out;
     }
     if (typeof valuesStore === 'object') {
+        if (Array.isArray(valuesStore.upper) || Array.isArray(valuesStore.middle) || Array.isArray(valuesStore.lower)) {
+            if (typeof window !== 'undefined' && typeof window.talariaBuildOverlayBandLegendTokens === 'function') {
+                const bandTokens = window.talariaBuildOverlayBandLegendTokens(
+                    chart, valuesStore, barIdx, plotOff, indicator.style
+                );
+                if (bandTokens.length) return bandTokens;
+            }
+        }
         if (Array.isArray(valuesStore.line)) {
-            readSeries(valuesStore.line, indicator.style && indicator.style.color, decimals);
+            readSeries(valuesStore.line, indicator.style && indicator.style.color, 'price');
             if (out.length > 0) return out;
         }
         if (Array.isArray(valuesStore.vwap)) {
-            readSeries(valuesStore.vwap, indicator.style && indicator.style.color, decimals);
+            readSeries(valuesStore.vwap, indicator.style && indicator.style.color, 'price');
             if (out.length > 0) return out;
         }
         if (Array.isArray(valuesStore.ma)) {
-            readSeries(valuesStore.ma, indicator.style && (indicator.style.smoothColor || indicator.style.color), decimals);
+            readSeries(valuesStore.ma, indicator.style && (indicator.style.smoothColor || indicator.style.color), 'price');
             if (out.length > 0) return out;
         }
         if (Array.isArray(valuesStore.macd) && Array.isArray(valuesStore.signal)) {
@@ -2514,7 +2525,7 @@ function talariaFillLegendValueSpan(valuesSpan, tokens) {
         valuesSpan.appendChild(t);
         if (i < tokens.length - 1) {
             const gap = document.createElement('span');
-            gap.textContent = ' ';
+            gap.textContent = ' / ';
             gap.style.cssText = 'color:#6b7280;';
             valuesSpan.appendChild(gap);
         }
@@ -2775,6 +2786,7 @@ function talariaRebuildOhlcIndicatorLegend(chart, div) {
         div.style.display = '';
     }
     talariaSyncOhlcLegendChevron(chart);
+    talariaSyncOhlcIndicatorLegendValues(chart, div);
 }
 
 function talariaOpenIndicatorSettingsFromLegend(chart, indicatorId, indicatorType, indicator) {

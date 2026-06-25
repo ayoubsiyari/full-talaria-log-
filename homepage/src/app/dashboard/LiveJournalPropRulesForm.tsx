@@ -221,6 +221,8 @@ export function LiveJournalPropRulesForm({ rules, onChange, balance, market, emb
   const isAmount = rules.limitMode === "amount" || market.toLowerCase() === "futures";
   const cap = Math.max(1000, balance || 50000);
   const stepFormat = liveJournalPropStepFormat(rules);
+  const isFutures = market.toLowerCase() === "futures";
+  const stepOptions = isFutures ? STEP_OPTIONS.filter((opt) => opt.id !== "2-step") : STEP_OPTIONS;
   const showPhase2 = rules.numPhases === 2 && stepFormat === "2-step";
 
   const setPhase = (phaseNum: 1 | 2, key: "dl" | "dd" | "pt", val: string) => {
@@ -274,7 +276,7 @@ export function LiveJournalPropRulesForm({ rules, onChange, balance, market, emb
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <FieldLabel>Challenge steps</FieldLabel>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {STEP_OPTIONS.map((opt) => (
+          {stepOptions.map((opt) => (
             <TabBtn
               key={opt.id}
               active={stepFormat === opt.id}
@@ -285,10 +287,14 @@ export function LiveJournalPropRulesForm({ rules, onChange, balance, market, emb
         </div>
         <span style={{ fontSize: 8, color: C.tm, fontFamily: F, lineHeight: 1.45 }}>
           {stepFormat === "instant"
-            ? "Instant funding — single funded-style limits, no min-day rule by default."
+            ? isFutures
+              ? "Instant funding for futures — funded account limits, no evaluation steps."
+              : "Instant funding — single funded-style limits, no min-day rule by default."
             : stepFormat === "2-step"
               ? "Two evaluation steps — set limits for Step 1 and Step 2."
-              : "Single evaluation step before funded account."}
+              : isFutures
+                ? "Single evaluation step — futures accounts use 1-step only."
+                : "Single evaluation step before funded account."}
         </span>
       </div>
 

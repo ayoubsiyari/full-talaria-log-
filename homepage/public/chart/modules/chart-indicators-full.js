@@ -620,6 +620,59 @@
         return tokens;
     }
 
+    function overlayLegendPriceRange(chart) {
+        if (!chart || !chart.yScale || typeof chart.yScale.domain !== 'function') return 0;
+        const dom = chart.yScale.domain();
+        if (!dom || dom.length < 2) return 0;
+        return Math.abs(dom[1] - dom[0]);
+    }
+
+    /** Same formatting as drawOverlayIndicatorPriceLabels / price-axis tags. */
+    function formatOverlayLegendPrice(chart, price) {
+        const p = Number(price);
+        if (!Number.isFinite(p)) return '—';
+        const priceRange = overlayLegendPriceRange(chart);
+        const sym = chart && chart.currentSymbol;
+        if (sym && typeof window !== 'undefined' && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(sym, chart && chart.marketType);
+                const specs = calc && calc.specs;
+                if (calc && specs && !specs._genericFallback && typeof calc.formatPrice === 'function') {
+                    return calc.formatPrice(p);
+                }
+            } catch (_) { /* fall through */ }
+        }
+        if (chart && typeof chart._formatLastPrice === 'function') {
+            return chart._formatLastPrice(p, priceRange, sym);
+        }
+        let dec = 4;
+        if (chart && typeof chart.getPriceDecimalsForSymbol === 'function' && sym) {
+            dec = chart.getPriceDecimalsForSymbol(sym, priceRange);
+        } else if (chart && typeof chart.getPriceDecimals === 'function') {
+            dec = chart.getPriceDecimals(priceRange);
+        }
+        return p.toFixed(dec);
+    }
+
+    function buildOverlayBandLegendTokens(chart, store, barIdx, plotOff, style) {
+        if (!chart || !store || barIdx < 0) return [];
+        const st = style || {};
+        const color = st.color || '#9ca3af';
+        const bands = [
+            { k: 'upper', show: st.showUpper !== false, color: st.upperColor || color },
+            { k: 'middle', show: st.showMiddle !== false, color: st.middleColor || color },
+            { k: 'lower', show: st.showLower !== false, color: st.lowerColor || color }
+        ];
+        const tokens = [];
+        bands.forEach(function(b) {
+            if (!b.show || !Array.isArray(store[b.k])) return;
+            const val = seriesValueAtPlotOffset(store[b.k], barIdx, plotOff);
+            if (!Number.isFinite(val)) return;
+            tokens.push({ text: formatOverlayLegendPrice(chart, val), color: b.color || color });
+        });
+        return tokens;
+    }
+
     function safeIndicatorNumber(raw, fallback) {
         let s = raw;
         if (typeof window !== 'undefined' && typeof window.__v9NormalizeIndicatorNumericString === 'function') {
@@ -9589,10 +9642,14 @@ Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
                 : 1;
             const dirUp = (dirRaw == null ? 1 : dirRaw) >= 0;
             const col = dirUp ? (st.upColor || '#26a69a') : (st.downColor || '#ef5350');
-            const dec = typeof this.getPriceDecimals === 'function' && this.yScale && this.yScale.domain
-                ? this.getPriceDecimals(Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]))
-                : 4;
-            return { text: Number(lineV).toFixed(dec), color: col };
+            const priceRange = this.yScale && this.yScale.domain
+                ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0])
+                : 0;
+            const text = typeof this._formatLastPrice === 'function'
+                ? this._formatLastPrice(Number(lineV), priceRange, this.currentSymbol)
+                : Number(lineV).toFixed(typeof this.getPriceDecimals === 'function'
+                    ? this.getPriceDecimals(priceRange) : 4);
+            return { text: text, color: col };
         }
         return { text: '—', color: st.upColor || '#26a69a' };
     }
@@ -9660,11 +9717,29 @@ Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
         return v || { text: '—', color: color };
     }
     if (typeof store === 'object') {
+        if (Array.isArray(store.upper) || Array.isArray(store.middle) || Array.isArray(store.lower)) {
+            const plotOff = typeof this._indicatorPlotOffset === 'function' ? this._indicatorPlotOffset(indicator) : 0;
+            const bandTokens = buildOverlayBandLegendTokens(this, store, barIdx, plotOff, st);
+            if (bandTokens.length) {
+                return {
+                    text: bandTokens.map(function(t) { return t.text; }).join(' / '),
+                    color: bandTokens[0].color,
+                    tokens: bandTokens
+                };
+            }
+        }
         const keys = ['upper', 'middle', 'lower', 'fast', 'slow', 'k', 'd', 'cci'];
         for (let ki = 0; ki < keys.length; ki++) {
             const k = keys[ki];
             if (!Array.isArray(store[k])) continue;
             const col = st[k + 'Color'] || color;
+            if (k === 'upper' || k === 'middle' || k === 'lower') {
+                const v = this._pickFiniteSeriesValue(store[k], barIdx);
+                if (v !== null) {
+                    return { text: formatOverlayLegendPrice(this, v), color: col || color };
+                }
+                continue;
+            }
             const v = pick(store[k], k === 'cci' ? 2 : 4, col);
             if (v) return v;
         }
@@ -9684,7 +9759,7 @@ Chart.prototype._applyCrosshairIndicatorDisplays = function(indicators) {
             ind._legendValueTags = fmt.tokens.map(function(t) {
                 return { text: t.text, color: t.color };
             });
-            ind._displayLabel = fmt.tokens.map(function(t) { return t.text; }).join(' ');
+            ind._displayLabel = fmt.tokens.map(function(t) { return t.text; }).join(' / ');
             ind._displayColor = fmt.tokens[0].color;
         } else {
             ind._legendValueTags = null;
@@ -14158,7 +14233,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 el.appendChild(sp);
                 if (i < tags.length - 1) {
                     const gap = document.createElement('span');
-                    gap.textContent = ' ';
+                    gap.textContent = ' / ';
                     gap.style.cssText = 'color:#6b7280;';
                     el.appendChild(gap);
                 }
@@ -14804,6 +14879,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     // Mark as loaded
     window.INDICATORS_MODULE_LOADED = true;
     global.talariaSeriesValueAtPlotOffset = seriesValueAtPlotOffset;
+    global.talariaFormatOverlayLegendPrice = formatOverlayLegendPrice;
+    global.talariaBuildOverlayBandLegendTokens = buildOverlayBandLegendTokens;
     
     } // End of attachIndicatorMethods
     
