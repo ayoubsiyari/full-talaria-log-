@@ -74,6 +74,37 @@ const getV16StrategyBankRows = (localRows = []) => {
 const STARTING_BALANCE_MAX_DIGITS = 6;
 const SESSION_NAME_MAX = 80;
 const sanitizeSessionNameInput = (raw) => String(raw ?? "").slice(0, SESSION_NAME_MAX);
+const DASH_ADD_TRADE_PRICE_DECIMALS_MAX = 5;
+const DASH_ADD_TRADE_LOT_DECIMALS_MAX = 3;
+const DASH_ADD_TRADE_LOT_MIN = 0.01;
+const sanitizeDashAddTradeDecimalInput = (raw, maxDecimals) => {
+  let s = String(raw ?? "").trim().replace(/,/g, ".").replace(/[^\d.]/g, "");
+  if (!s) return "";
+  const firstDot = s.indexOf(".");
+  if (firstDot >= 0) {
+    const intPart = s.slice(0, firstDot).replace(/[^\d]/g, "");
+    const decPart = s.slice(firstDot + 1).replace(/[^\d]/g, "").slice(0, maxDecimals);
+    if (firstDot === 0) return decPart ? `.${decPart}` : ".";
+    return decPart.length ? `${intPart || "0"}.${decPart}` : (intPart ? `${intPart}.` : "");
+  }
+  return s.replace(/[^\d]/g, "");
+};
+const sanitizeDashAddTradePriceInput = (raw) => sanitizeDashAddTradeDecimalInput(raw, DASH_ADD_TRADE_PRICE_DECIMALS_MAX);
+const sanitizeDashAddTradeLotInput = (raw) => sanitizeDashAddTradeDecimalInput(raw, DASH_ADD_TRADE_LOT_DECIMALS_MAX);
+const finalizeDashAddTradeLotInput = (raw) => {
+  const sanitized = sanitizeDashAddTradeLotInput(raw);
+  if (!sanitized || sanitized === ".") return "";
+  const parsed = Number(String(sanitized).replace(/^\./, "0."));
+  if (!Number.isFinite(parsed) || parsed <= 0) return sanitized;
+  if (parsed > 0 && parsed < DASH_ADD_TRADE_LOT_MIN) return String(DASH_ADD_TRADE_LOT_MIN);
+  return sanitized;
+};
+const dashAddTradeLotQtyValid = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw === ".") return false;
+  const parsed = Number(String(raw).replace(/^\./, "0."));
+  return Number.isFinite(parsed) && parsed >= DASH_ADD_TRADE_LOT_MIN;
+};
 const sanitizeStartingBalanceInput = (raw) =>
   String(raw ?? "").replace(/\D/g, "").slice(0, STARTING_BALANCE_MAX_DIGITS);
 const parseStartingBalanceInput = (raw) => {
@@ -9347,11 +9378,12 @@ function btDashNoGoFlags(metrics) {
   return flags;
 }
 const BtMiniLine = ({ points=[], c, color, height=34, fill=false, invert=false }) => {
+  const h = Math.max(1, Number(height) || 34);
   const vals = points.length ? points.map(Number) : [0,0];
   const min = Math.min(...vals), max = Math.max(...vals), range = max-min || 1;
-  const path = vals.map((v,i)=>`${i===0?"M":"L"}${(i/Math.max(1,vals.length-1))*100},${height-3-((v-min)/range)*(height-6)}`).join(" ");
+  const path = vals.map((v,i)=>`${i===0?"M":"L"}${(i/Math.max(1,vals.length-1))*100},${h-3-((v-min)/range)*(h-6)}`).join(" ");
   return (
-    <svg width="100%" height={height} viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" style={{display:"block"}}>
+    <svg width="100%" height={h} viewBox={`0 0 100 ${h}`} preserveAspectRatio="none" style={{display:"block"}}>
       {fill && <path d={`${path} L100,${height-2} L0,${height-2} Z`} fill={color} opacity={invert?0.12:0.16}/>}
       <path d={path} fill="none" stroke={color || c.acL} strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round"/>
     </svg>
@@ -9728,6 +9760,9 @@ const TalariaV8b = () => {
       }
       if (Array.isArray(boot.strategyBank)) {
         setMyStrategies((prev) => mergeV16StrategyBankRows(boot.strategyBank, prev));
+      }
+      if (Array.isArray(boot.communityStrategies)) {
+        setCommunityStrategies(boot.communityStrategies);
       }
       const pinnedJournalSelection = (
         dashLibraryAppliedSelectionRef.current
@@ -10257,7 +10292,9 @@ const TalariaV8b = () => {
       const rows = getV16CommunityBank();
       if (!Array.isArray(rows)) return false;
       applyCommunity(rows);
-      return true;
+      // Empty placeholder boot ([] before API load) must not block refresh — same as strategy bank sync.
+      if (typeof window !== "undefined" && window.__TALARIA_V16_BOOT_LOADING__) return false;
+      return rows.length > 0;
     };
     if (syncCommunity()) return;
     const onBoot = () => { syncCommunity(); };
@@ -12698,7 +12735,7 @@ const TalariaV8b = () => {
       const updated = sessions.map(s => s.id === editSessId ? {
         ...s, name, timeframe: newSessTf, startDate: newSessStart, endDate: newSessEnd,
         capital: parseStartingBalanceInput(newSessCapital) || 100000, tickers: newSessTickers,
-        assetClasses: [newSessAssetClass], rollbackAllowed: newSessRollback,
+        assetClasses: [newSessAssetClass], rollbackAllowed: sessTradingMode === "prop" ? false : newSessRollback,
         strategyName: newSessPlaybook, strategyDesc: newSessDescription,
         tradingMode: sessTradingMode, leverage: sessLeverage, riskVal: sessRiskVal,
         riskMode: sessRiskMode, replayMode: sessReplayMode, replaySpeed: sessReplaySpeed,
@@ -12850,6 +12887,7 @@ const TalariaV8b = () => {
     e?.stopPropagation?.();
     if (openDashboardEditSession(sess)) return;
     setEditSessId(sess.id);
+    setEditSessOriginalTradingMode((sess.tradingMode || "standard") === "prop" ? "prop" : "standard");
     setNewSessName(sanitizeSessionNameInput(sess.name || ""));
     setNewSessTf(sess.timeframe || "1H");
     setNewSessStart(sess.startDate || "");
@@ -13052,7 +13090,7 @@ const TalariaV8b = () => {
         const lbl = (t) => {const isReq=t.endsWith(" *");const text=isReq?t.slice(0,-2):t;return(<div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4,display:"flex",alignItems:"center",gap:4}}>{text}{isReq&&<span style={{width:4,height:4,borderRadius:"50%",background:"rgba(255,80,104,0.9)",flexShrink:0,display:"inline-block"}}/>}</div>);};
         const secH = (t) => (<div style={{display:"flex",alignItems:"center",gap:6,fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}><div style={{width:2,height:9,background:c.acL,flexShrink:0,boxShadow:`0 0 4px ${c.acG}`}}/>{t}</div>);
         const inp = (extra={}) => ({background:c.el,border:`1px solid ${c.brH}`,color:c.tx,fontSize:11,fontWeight:600,padding:"0 8px",height:27,fontFamily:F,outline:"none",width:"100%",boxSizing:"border-box",...extra});
-        const closeNewSess = () => { setNewSessOpen(false); setEditSessId(null); setNewSessFilePickerOpen(false); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessStratDropOpen(false); setNewSessSymDropOpen(false); setNewSessAssetDropOpen(false); setNewSessMarketOpen(false); setNewSessSupportInput(""); setNewSessSupportFocus(false); setNewSessSupportDropOpen(false); setNewSessSymPickerOpen(false); setNewSessSupPickerOpen(false); };
+        const closeNewSess = () => { setNewSessOpen(false); setEditSessId(null); setEditSessOriginalTradingMode(null); setNewSessFilePickerOpen(false); setNewSessTickerInput(""); setNewSessTickerFocus(false); setNewSessStratDropOpen(false); setNewSessSymDropOpen(false); setNewSessAssetDropOpen(false); setNewSessMarketOpen(false); setNewSessSupportInput(""); setNewSessSupportFocus(false); setNewSessSupportDropOpen(false); setNewSessSymPickerOpen(false); setNewSessSupPickerOpen(false); };
         const sessInfoDone = !!newSessName.trim();
         const sessSettingsDone = sessInfoDone && newSessTickers.length > 0 && !!newSessStart && !!newSessEnd;
         const lockedBox = {opacity:0.35, pointerEvents:"none", userSelect:"none"};
@@ -15309,11 +15347,13 @@ const TalariaV8b = () => {
                           <span style={{fontSize:10,fontWeight:600,color:newSessAdvancedOrder?c.ts:c.tm,fontFamily:F,transition:"color 0.12s"}}>Advanced order</span>
                           <span style={{fontSize:9,color:c.tm,fontFamily:F}}>— multiple entries, auto move-to-BE, trailing stop</span>
                         </div>
+                        {sessTradingMode!=="prop"&&(
                         <div style={{height:27,display:"flex",alignItems:"center",gap:8,cursor:"default"}} onClick={()=>setNewSessRollback(v=>!v)}>
                           {TlChk(newSessRollback,"chk_rollback","",null)}
                           <span style={{fontSize:10,fontWeight:600,color:newSessRollback?c.ts:c.tm,fontFamily:F,transition:"color 0.12s"}}>Roll back</span>
                           <span style={{fontSize:9,color:c.tm,fontFamily:F}}>— step backward through bars during replay</span>
                         </div>
+                        )}
                         <div>
                           <div style={{height:27,display:"flex",alignItems:"center",gap:8,cursor:"default"}} onClick={()=>setNewSessTradingCostsEnabled(v=>!v)}>
                             {TlChk(newSessTradingCostsEnabled,"tcToggle2","",null)}
@@ -15476,16 +15516,18 @@ const TalariaV8b = () => {
                       {/* Standard / Prop Firm mode toggle — standard tab style */}
                       {(()=>{
                         const propUnavailable=newSessAssetClass==="Stocks"||newSessAssetClass==="Crypto";
+                        const modeLocked=editSessId!=null&&editSessOriginalTradingMode!=null;
                         return(
-                          <div style={{display:"flex",gap:0,marginBottom:14,borderBottom:`1px solid ${c.br}`}}>
+                          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+                          <div style={{display:"flex",gap:0,borderBottom:`1px solid ${c.br}`}}>
                             {[["standard","Standard","Free backtest — Trade your personal account",false],["prop","Prop Firm","Trade under prop firm challenge rules",true]].map(([v,l,desc,isPropTab])=>{
-                              const disabled=isPropTab&&propUnavailable;
-                              const isA=sessTradingMode===v&&!disabled;const hk="sessMode_"+v;const isH=hov===hk&&!disabled;
+                              const disabled=(isPropTab&&propUnavailable)||(modeLocked&&sessTradingMode!==v);
+                              const isA=sessTradingMode===v&&!disabled;const hk="sessMode_"+v;const isH=hov===hk&&!disabled&&!modeLocked;
                               const acColor=isPropTab?c.gold:c.acL;const acGlow=isPropTab?"rgba(200,150,0,0.4)":c.acG;
                               return(
                                 <div key={v}
-                                  onClick={disabled?undefined:()=>{setSessTradingMode(v);if(v==="prop"&&newSessAssetClass==="Futures"){setNewSessCapital("50000");setSessP1DailyLossAmt("1000");setSessP1MaxDDAmt("2000");setSessP1ProfitTargetAmt("3000");}}}
-                                  onMouseEnter={disabled?undefined:()=>setHov(hk)} onMouseLeave={disabled?undefined:()=>setHov(null)}
+                                  onClick={disabled||modeLocked?undefined:()=>{setSessTradingMode(v);if(v==="prop"){setNewSessRollback(false);if(newSessAssetClass==="Futures"){setNewSessCapital("50000");setSessP1DailyLossAmt("1000");setSessP1MaxDDAmt("2000");setSessP1ProfitTargetAmt("3000");}}}}
+                                  onMouseEnter={disabled||modeLocked?undefined:()=>setHov(hk)} onMouseLeave={disabled||modeLocked?undefined:()=>setHov(null)}
                                   style={{flex:1,padding:"6px 10px 8px",display:"flex",flexDirection:"column",gap:2,
                                     cursor:"default",transition:"all 0.15s",position:"relative",textAlign:"center",
                                     opacity:disabled?0.35:1,
@@ -15517,6 +15559,12 @@ const TalariaV8b = () => {
                                 </div>
                               );
                             })}
+                          </div>
+                          {modeLocked&&(
+                            <span style={{fontSize:9,color:c.tm,fontFamily:F,lineHeight:1.4}}>
+                              Trading mode is locked for existing sessions and cannot be changed.
+                            </span>
+                          )}
                           </div>
                         );
                       })()}
@@ -30362,9 +30410,9 @@ const TalariaV8b = () => {
           };
           const parseDashTradeNumber = value => {
             const raw = String(value ?? "").trim();
-            const cleaned = raw.replace(/[^0-9.-]/g, "");
-            if (!cleaned || cleaned === "-" || cleaned === "." || cleaned === "-.") return null;
-            const parsed = Number(cleaned);
+            const cleaned = raw.replace(/[^0-9.]/g, "");
+            if (!cleaned || cleaned === "." || cleaned === ".") return null;
+            const parsed = Number(cleaned.replace(/^\./, "0."));
             return Number.isFinite(parsed) ? parsed : null;
           };
           const dashLegacyFieldForRows = kind => kind === "entries" ? "entry" : kind === "targets" ? "target" : "exit";

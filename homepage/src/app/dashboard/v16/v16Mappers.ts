@@ -382,7 +382,10 @@ export function mapApiSessionToV16(
       }
       return null;
     })(),
-    rollbackAllowed: true,
+    rollbackAllowed:
+      tradingMode === "prop"
+        ? false
+        : !!(cfg?.allowBackNavigation ?? cfg?.rollback_allowed),
     assetClasses: assetClasses.length ? assetClasses : ["Futures"],
     leverage: cfgString(cfg, "leverage") || "1:10",
     riskVal: cfgString(cfg, "risk_val", "riskVal") || "1",
@@ -393,6 +396,7 @@ export function mapApiSessionToV16(
     compositeTrades: loaded ? tradesArr : undefined,
     compositeTradesLoaded: loaded,
     sessionType: sess.session_type || "standard",
+    session_type: sess.session_type,
     config: cfg && typeof cfg === "object" ? { ...cfg } : {},
     strategyId: sessionStrategyIdFromConfig(cfg),
     strategy_variables: sessionStrategyVariables(cfg),

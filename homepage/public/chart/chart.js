@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260624b81';
+const CHART_ENGINE_BUILD = '20260624b86';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -1056,16 +1056,6 @@ class Chart {
         }
 
         this.materializeInstrumentCostFields(normalized);
-
-        const tradingMode = String(normalized.trading_mode || normalized.tradingMode || '').toLowerCase();
-        const sessionType = String(normalized.type || normalized.session_type || '').toLowerCase();
-        const isProp = sessionType === 'propfirm' || sessionType.includes('prop') || tradingMode.includes('prop');
-        if (isProp) {
-            normalized.type = 'propfirm';
-            normalized.trading_mode = 'prop';
-            normalized.allowBackNavigation = false;
-            normalized.rollback_allowed = false;
-        }
 
         return normalized;
     }
@@ -18296,8 +18286,10 @@ class Chart {
             }
 
             const session = this.backtestingSession || {};
+            const vpSnap = this._tfSwitchViewport;
+            const viewingHistory = vpSnap && (vpSnap.userHasPanned || vpSnap.anchorMode === 'viewportLeft');
             const fetchWindow = options.windowRange
-                || this._buildTfSwitchFetchWindow(timeframe);
+                || (viewingHistory ? this._buildTfSwitchFetchWindow(timeframe) : null);
             const fetchOpts = { ...(options.smartOpts || {}) };
             if (fetchWindow && !Number.isFinite(Number(fetchOpts.limit))) {
                 fetchOpts.limit = this._resolveTfSwitchFetchLimit(timeframe);
@@ -18306,7 +18298,7 @@ class Chart {
                 this.currentFileId,
                 timeframe,
                 session,
-                fetchWindow ? 'start' : options.anchor,
+                fetchWindow ? 'start' : (options.anchor || 'end'),
                 fetchWindow,
                 fetchOpts
             );
@@ -18358,13 +18350,16 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
-                // Re-apply anchor after layout settles. The sync restore above already
-                // consumed _tfSwitchViewport; a second full restore would fall through
-                // to jumpToLatest() and undo the preserved bar count / placement.
+                // Re-apply viewport after layout settles (snapshot already consumed above).
                 if (this._tfSwitchAnchorLock) {
                     this._reapplyTfSwitchAnchorLock();
-                } else if (this._tfSwitchViewport) {
-                    this._restoreOrJumpAfterTfSwitch();
+                } else if (Number.isFinite(this._tfSwitchVisibleBarCount)
+                    && typeof this._applyTfSwitchFollowEdgeViewport === 'function') {
+                    const m = this.margin || { l: 60, r: 60 };
+                    this._applyTfSwitchFollowEdgeViewport({
+                        visibleBarCount: this._tfSwitchVisibleBarCount,
+                        plotW: Math.max(1, this.w - m.l - m.r),
+                    });
                 }
                 // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
                 // the render-skip guard at the top of render() would no-op this final paint.
@@ -25429,28 +25424,46 @@ class Chart {
             this._tfSwitchVisibleBarCount = vp.visibleBarCount;
         }
 
-        const replay = this.replaySystem;
-        if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
-            const st = replay.getReplayAutoScrollState(this);
-            if (st && Number.isFinite(st.offsetX)) {
-                this.offsetX = st.offsetX;
-                this._chartViewRestored = true;
-                this.constrainOffset();
-                return true;
-            }
-        }
-
         const spacing = this.getCandleSpacing();
         if (!(spacing > 0)) return false;
         const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
             ? this.timeScale.rightOffsetCandles
             : 15;
-        const numVisibleCandles = Math.max(1, Math.floor(plotW / spacing));
-        const targetVisible = Math.max(1, numVisibleCandles - Math.max(0, rightMarginCandles));
+        const barsOnScreen = Math.max(
+            1,
+            Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0
+                ? vp.visibleBarCount
+                : Math.floor(plotW / spacing)
+        );
+        const targetVisible = Math.max(1, barsOnScreen - Math.max(0, rightMarginCandles));
         const scrollPosition = this.data.length - targetVisible;
         this.offsetX = -scrollPosition * spacing;
         this._chartViewRestored = true;
         this.constrainOffset();
+        return true;
+    }
+
+    /** Last-resort TF viewport when anchor restore fails — never jumpToLatest (resets zoom). */
+    _softFallbackAfterTfSwitch(vpSnap) {
+        this._clearTfSwitchAnchorLock();
+        if (vpSnap && this._applyTfSwitchFollowEdgeViewport(vpSnap)) {
+            return true;
+        }
+        const replay = this.replaySystem;
+        if (replay && replay.isActive && typeof replay.syncReplayViewportToPlayhead === 'function') {
+            const synced = replay.syncReplayViewportToPlayhead(this, {
+                centerPlayhead: false,
+                forceRecenter: true,
+                resetPriceScale: false,
+                render: false,
+            });
+            if (synced) {
+                this._chartViewRestored = true;
+                return true;
+            }
+        }
+        this._chartViewRestored = false;
+        this.fitToView();
         return true;
     }
 
@@ -25799,7 +25812,9 @@ class Chart {
      * Locks replay auto-follow when restore succeeds so follow-up sync does not recenter.
      */
     _finishTfSwitchViewportRestore() {
-        this._restoreOrJumpAfterTfSwitch();
+        if (!this._chartViewRestored) {
+            this._restoreOrJumpAfterTfSwitch();
+        }
         if (typeof this.resize === 'function') {
             try { this.resize(); } catch (_e) { /* ignore */ }
         }
@@ -25977,31 +25992,13 @@ class Chart {
                 && typeof this._restorePositionToTimestamp === 'function') {
                 const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth(vp);
                 this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
-            } else if (typeof this.jumpToLatest === 'function') {
-                this.jumpToLatest();
             } else {
-                this._chartViewRestored = false;
-                this.fitToView();
+                this._softFallbackAfterTfSwitch(vp);
             }
             return;
         }
         if (this.data && this.data.length > 0) {
-            const replay = this.replaySystem;
-            if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
-                const st = replay.getReplayAutoScrollState(this);
-                if (st && Number.isFinite(st.offsetX)) {
-                    this.offsetX = st.offsetX;
-                    this._chartViewRestored = true;
-                    this.constrainOffset();
-                    return;
-                }
-            }
-            if (typeof this.jumpToLatest === 'function') {
-                this.jumpToLatest();
-            } else {
-                this._chartViewRestored = false;
-                this.fitToView();
-            }
+            this._softFallbackAfterTfSwitch(vpSnap);
         } else {
             this._chartViewRestored = false;
             this.fitToView();

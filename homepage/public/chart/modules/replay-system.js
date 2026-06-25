@@ -1824,26 +1824,10 @@ class ReplaySystem {
         } catch (_) {
             sess = {};
         }
-        if (sess && this._isPropFirmSession(sess)) return false;
+        if (sess && sess.type === 'propfirm') return false;
         if (sess && sess.allowBackNavigation === false) return false;
         if (sess && sess.rollback_allowed === false) return false;
         return true;
-    }
-
-    _isPropFirmSession(sess) {
-        if (!sess || typeof sess !== 'object') return false;
-        const type = String(sess.type || sess.session_type || '').toLowerCase();
-        if (type === 'propfirm' || type.includes('prop')) return true;
-        const mode = String(sess.trading_mode || sess.tradingMode || '').toLowerCase();
-        if (mode.includes('prop')) return true;
-        const cfg = sess.config;
-        if (cfg && typeof cfg === 'object') {
-            const cfgType = String(cfg.type || '').toLowerCase();
-            if (cfgType === 'propfirm' || cfgType.includes('prop')) return true;
-            const cfgMode = String(cfg.trading_mode || cfg.tradingMode || '').toLowerCase();
-            if (cfgMode.includes('prop')) return true;
-        }
-        return false;
     }
 
     /** True when the React V9 shell owns replay chrome (skip legacy floating toasts). */
@@ -6540,15 +6524,21 @@ class ReplaySystem {
                 }
             } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
                 const pendingVp = this.chart._tfSwitchViewport;
-                const willRestoreViewport = pendingVp
-                    && Number.isFinite(pendingVp.anchorTs);
-                if (!willRestoreViewport) {
+                const manualRestore = pendingVp && (
+                    pendingVp.userHasPanned || pendingVp.anchorMode === 'viewportLeft'
+                );
+                if (pendingVp && pendingVp.followPlayhead
+                    && typeof this.chart._applyTfSwitchFollowEdgeViewport === 'function') {
+                    this.chart._applyTfSwitchFollowEdgeViewport(pendingVp);
+                } else if (!manualRestore) {
                     this.syncReplayViewportToPlayhead(this.chart, {
-                        centerPlayhead: true,
+                        centerPlayhead: false,
                         resetPriceScale: false,
-                        render: true,
+                        forceRecenter: true,
+                        render: false,
                     });
-                } else if (typeof this.chart.render === 'function') {
+                }
+                if (typeof this.chart.render === 'function') {
                     this.chart.renderPending = true;
                     this.chart.render();
                 }

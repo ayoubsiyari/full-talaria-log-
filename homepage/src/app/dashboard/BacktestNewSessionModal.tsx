@@ -509,7 +509,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     const tradingModeRaw = String(
       sess.tradingMode || cfg.trading_mode || cfg.tradingMode || "standard"
     ).toLowerCase();
-    const isProp = tradingModeRaw.includes("prop");
+    const sessionTypeRaw = String(sess.session_type || (sess as { sessionType?: string }).sessionType || cfg.type || "").toLowerCase();
+    const isProp = tradingModeRaw.includes("prop") || sessionTypeRaw.includes("prop");
     const playbook = String(cfg.playbook || cfg.strategy_name || sess.strategyName || "");
     const tf = String(sess.timeframe || cfg.timeframe || cfg.tf || "1H");
 

@@ -206,7 +206,10 @@ export function useV16LiveBootstrap(): BootState {
             activeProfile: null,
             liveAccounts: [],
           })),
-          fetchCommunityTemplates().catch(() => [] as Record<string, unknown>[]),
+          fetchCommunityTemplates().catch((err) => {
+            console.warn("[V16] community templates fetch failed:", err);
+            return [] as Record<string, unknown>[];
+          }),
         ]);
 
         const apiSessions = sessionsPayload.sessions ?? [];

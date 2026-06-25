@@ -65,6 +65,29 @@ def ensure_users_schema(app) -> None:
                     )
                     conn.execute(
                         text(
+                            "CREATE TABLE IF NOT EXISTS strategy_templates ("
+                            "id SERIAL PRIMARY KEY, "
+                            "source_strategy_id INTEGER REFERENCES strategies(id), "
+                            "creator_user_id INTEGER REFERENCES users(id), "
+                            "title VARCHAR(200) NOT NULL, "
+                            "definition JSONB NOT NULL DEFAULT '{}', "
+                            "category VARCHAR(80), "
+                            "difficulty VARCHAR(40), "
+                            "template_type VARCHAR(20) NOT NULL DEFAULT 'community', "
+                            "status VARCHAR(20) NOT NULL DEFAULT 'published', "
+                            "clone_count INTEGER NOT NULL DEFAULT 0, "
+                            "share_count INTEGER NOT NULL DEFAULT 0, "
+                            "rating_sum INTEGER NOT NULL DEFAULT 0, "
+                            "rating_count INTEGER NOT NULL DEFAULT 0, "
+                            "created_at TIMESTAMP, "
+                            "publish_settings JSONB, "
+                            "backtest_snapshot JSONB, "
+                            "preview_image JSONB"
+                            ")"
+                        )
+                    )
+                    conn.execute(
+                        text(
                             "ALTER TABLE strategy_templates ADD COLUMN IF NOT EXISTS "
                             "publish_settings JSONB"
                         )
@@ -298,6 +321,32 @@ def ensure_users_schema(app) -> None:
                                     "entitlements_json TEXT"
                                 )
                             )
+                    if "strategy_templates" not in insp.get_table_names():
+                        conn.execute(
+                            text(
+                                "CREATE TABLE strategy_templates ("
+                                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                "source_strategy_id INTEGER, "
+                                "creator_user_id INTEGER, "
+                                "title VARCHAR(200) NOT NULL, "
+                                "definition JSON NOT NULL, "
+                                "category VARCHAR(80), "
+                                "difficulty VARCHAR(40), "
+                                "template_type VARCHAR(20) NOT NULL DEFAULT 'community', "
+                                "status VARCHAR(20) NOT NULL DEFAULT 'published', "
+                                "clone_count INTEGER NOT NULL DEFAULT 0, "
+                                "share_count INTEGER NOT NULL DEFAULT 0, "
+                                "rating_sum INTEGER NOT NULL DEFAULT 0, "
+                                "rating_count INTEGER NOT NULL DEFAULT 0, "
+                                "created_at DATETIME, "
+                                "publish_settings JSON, "
+                                "backtest_snapshot JSON, "
+                                "preview_image JSON, "
+                                "FOREIGN KEY(source_strategy_id) REFERENCES strategies(id), "
+                                "FOREIGN KEY(creator_user_id) REFERENCES users(id)"
+                                ")"
+                            )
+                        )
                     if "strategy_templates" in insp.get_table_names():
                         st_cols = {c["name"] for c in insp.get_columns("strategy_templates")}
                         if "publish_settings" not in st_cols:

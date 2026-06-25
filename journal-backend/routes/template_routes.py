@@ -1,6 +1,6 @@
 """Strategy template library."""
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 from sqlalchemy.exc import IntegrityError
@@ -184,8 +184,20 @@ def _tpl_dict(t, strategy_snapshot=None, viewer_id=None, engagement=None):
 
 
 def _templates_payload(items, viewer_id=None):
-    eng = _engagement_map(items, viewer_id)
-    return [_tpl_dict(t, viewer_id=viewer_id, engagement=eng.get(t.id)) for t in items]
+    try:
+        eng = _engagement_map(items, viewer_id)
+    except Exception as exc:
+        current_app.logger.warning("template engagement map failed: %s", exc)
+        eng = {}
+    out = []
+    for t in items:
+        try:
+            out.append(_tpl_dict(t, viewer_id=viewer_id, engagement=eng.get(t.id)))
+        except Exception as exc:
+            current_app.logger.warning(
+                "skip template id=%s in list payload: %s", getattr(t, "id", "?"), exc,
+            )
+    return out
 
 
 def _published_templates_list():
@@ -224,6 +236,7 @@ def list_templates():
             'templates': _templates_payload(items, viewer_id=_uid()),
         }), 200
     except Exception as e:
+        current_app.logger.exception("list_templates failed")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
