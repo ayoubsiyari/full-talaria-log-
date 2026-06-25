@@ -2870,19 +2870,73 @@ class CompareOverlay {
     }
 
     /**
-     * Load OHLCV for an overlay via the same GET /file/{id}/smart path as the main chart.
-     * @param {string|number} fileId
-     * @param {string} [fetchTf] - API timeframe for this request; defaults to {@link #_resolveOverlaySmartFetchTimeframe}.
+     * Same /smart window shape as the main chart (playhead-centered in replay/backtest).
+     * Avoids anchor=start over the full master span, which only returns the first ~2000 bars.
      */
+    _resolveOverlaySmartFetchWindow() {
+        const ch = this.chart;
+        if (!ch) return { anchor: 'end', windowRange: null, smartOpts: { limit: 2000 } };
+
+        const session = this._resolveCompareSession();
+        const tf = this._resolveOverlaySmartFetchTimeframe();
+        const isBacktest = (typeof ch._isSessionBacktestStyle === 'function' && ch._isSessionBacktestStyle(session))
+            || !!ch.isBacktestMode;
+
+        if (isBacktest) {
+            const limitFn = ch._backtestFetchLimitForTimeframe;
+            const limit = typeof limitFn === 'function' ? limitFn.call(ch, tf) : 2000;
+            const smartOpts = { skipSessionDates: true, limit };
+            const rs = ch.replaySystem;
+            let playheadMs = null;
+            if (rs?.isActive && typeof ch._getReplayPlayheadMs === 'function') {
+                playheadMs = ch._getReplayPlayheadMs();
+            } else if (Number.isFinite(Number(rs?.replayTimestamp))) {
+                playheadMs = Number(rs.replayTimestamp);
+            }
+
+            let windowRange = null;
+            if (typeof ch._getBacktestReplayFetchRange === 'function' && Number.isFinite(playheadMs)) {
+                windowRange = ch._getBacktestReplayFetchRange(tf, session, playheadMs);
+            }
+            if (!windowRange && typeof ch._getBacktestInitialFetchRange === 'function') {
+                windowRange = ch._getBacktestInitialFetchRange(tf, session);
+            }
+            return { anchor: 'end', windowRange, smartOpts };
+        }
+
+        const span = this._resolveCompareWindowRange();
+        const windowRange = span && Number.isFinite(span.endTs) ? { endTs: span.endTs } : null;
+        return { anchor: 'end', windowRange, smartOpts: { limit: 2000 } };
+    }
+
+    _overlayCursorChunkLimit() {
+        const ch = this.chart;
+        if (ch?.replaySystem?.isActive || ch?.isBacktestMode) return 2000;
+        return 3000;
+    }
+
     /**
-     * Reuse main chart TF cache when overlay fileId matches (avoids duplicate /smart fetch).
+     * Reuse main/backtest TF cache when overlay fileId matches (avoids duplicate /smart fetch).
      */
     _getOverlayBarsFromChartTfCache(fileId, timeframe) {
         const ch = this.chart;
-        if (!ch || typeof ch._getTfDataCache !== 'function') return null;
-        const entry = ch._getTfDataCache(fileId, timeframe);
-        if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return null;
-        return entry.rawData.slice();
+        if (!ch || !fileId || !timeframe) return null;
+        const tf = String(timeframe).toLowerCase().trim();
+
+        if (ch.isBacktestMode && typeof ch._getBtTfDataCache === 'function') {
+            const btEntry = ch._getBtTfDataCache(fileId, tf);
+            if (btEntry && Array.isArray(btEntry.rawData) && btEntry.rawData.length) {
+                return btEntry.rawData.slice();
+            }
+        }
+
+        if (typeof ch._getTfDataCache === 'function') {
+            const entry = ch._getTfDataCache(fileId, tf);
+            if (entry && Array.isArray(entry.rawData) && entry.rawData.length) {
+                return entry.rawData.slice();
+            }
+        }
+        return null;
     }
 
     async _fetchOverlayBarsViaSmart(fileId, fetchTf) {
@@ -2896,16 +2950,10 @@ class CompareOverlay {
         }
         if (!ch || typeof ch._fetchSmartWindow !== 'function') return [];
         const session = this._resolveCompareSession();
-        const windowRange = this._resolveCompareWindowRange();
-        const explicit = !!(windowRange && Number.isFinite(windowRange.startTs) && Number.isFinite(windowRange.endTs));
-        const smartOpts = explicit
-            ? { skipSessionDates: true, limit: 100000 }
-            : { limit: 100000 };
-        const anchor = explicit ? 'start' : 'end';
-        const rangeArg = explicit ? windowRange : null;
+        const { anchor, windowRange, smartOpts } = this._resolveOverlaySmartFetchWindow();
         let result;
         try {
-            result = await ch._fetchSmartWindow(fileId, tf, session, anchor, rangeArg, smartOpts);
+            result = await ch._fetchSmartWindow(fileId, tf, session, anchor, windowRange, smartOpts);
         } catch (e) {
             console.warn('📊 Compare /smart fetch failed:', e && e.message ? e.message : e);
             return [];
@@ -3021,6 +3069,9 @@ class CompareOverlay {
 
             // Trigger chart re-render
             this.chart.render();
+
+            // Fill remaining history in idle time — does not block main chart load/render.
+            this._scheduleOverlaySpanSync(overlay.id);
             
             console.log(`✅ Overlay added: ${symbol} with ${resampledData.length} candles`);
             
@@ -3489,7 +3540,27 @@ class CompareOverlay {
                 fetchTf,
                 cursorTs,
                 'backward',
-                limit || 5000
+                limit || this._overlayCursorChunkLimit()
+            );
+            const bars = Array.isArray(payload?.bars) ? payload.bars.slice() : [];
+            if (bars.length > 1) bars.sort((a, b) => Number(a.t) - Number(b.t));
+            return bars;
+        } catch (_) {
+            return [];
+        }
+    }
+
+    async _fetchOverlayForwardChunk(overlay, cursorTs, limit) {
+        const ch = this.chart;
+        if (!ch || typeof ch._fetchCandlesCursor !== 'function' || !overlay?.fileId) return [];
+        const fetchTf = overlay.rawFetchTf || this._resolveOverlaySmartFetchTimeframe();
+        try {
+            const payload = await ch._fetchCandlesCursor(
+                overlay.fileId,
+                fetchTf,
+                cursorTs,
+                'forward',
+                limit || this._overlayCursorChunkLimit()
             );
             const bars = Array.isArray(payload?.bars) ? payload.bars.slice() : [];
             if (bars.length > 1) bars.sort((a, b) => Number(a.t) - Number(b.t));
@@ -3540,6 +3611,106 @@ class CompareOverlay {
     }
 
     /**
+     * Extend overlay rawData backward + forward until it covers the main chart master span.
+     * Runs in small cursor chunks (same cadence as main-chart pan loads) to avoid jank.
+     */
+    async _extendOverlayRawDataToMainSpan(overlay, opts = {}) {
+        const span = this._getMainChartRawTimeSpan();
+        if (!span || !overlay?.fileId) return false;
+
+        const fetchTf = overlay.rawFetchTf || this._resolveOverlaySmartFetchTimeframe();
+        const tfMs = this._parseTimeframeMs(fetchTf) || 60000;
+        const slack = Math.max(tfMs * 3, 180000);
+        const maxRounds = Number.isFinite(opts.maxRounds) ? opts.maxRounds : 8;
+        const chunkLimit = this._overlayCursorChunkLimit();
+        let changed = false;
+
+        if (!overlay.rawData?.length) {
+            let rows = await this._fetchOverlayBarsViaSmart(overlay.fileId, fetchTf);
+            if (!rows.length) {
+                try { rows = await this._fetchOverlayBarsLegacyCsv(overlay.fileId); } catch (_) { rows = []; }
+            }
+            if (rows.length) {
+                overlay.rawData = rows;
+                overlay.rawFetchTf = fetchTf;
+                overlay.nativeBarMs = this._parseTimeframeMs(fetchTf) || this._inferMedianBarPeriodMs(rows);
+                changed = true;
+            }
+        }
+
+        if (await this._extendOverlayRawDataToTarget(overlay, span.startTs)) {
+            changed = true;
+        }
+
+        let guard = 0;
+        while (overlay.rawData?.length
+            && Number(overlay.rawData[overlay.rawData.length - 1].t) < span.endTs - slack
+            && guard < maxRounds) {
+            guard++;
+            const cursor = Number(overlay.rawData[overlay.rawData.length - 1].t);
+            const newer = await this._fetchOverlayForwardChunk(overlay, cursor, chunkLimit);
+            if (!newer.length) break;
+            const merged = this._mergeSortedOhlcRows(overlay.rawData, newer);
+            if (merged.length <= overlay.rawData.length) break;
+            overlay.rawData = merged;
+            changed = true;
+        }
+
+        if (changed) {
+            this._invalidateOverlayDisplayCache(overlay);
+            const ch = this.chart;
+            if (ch) {
+                overlay.data = this.resampleData(overlay.rawData, ch.currentTimeframe || '1m');
+            }
+            this._lastReplaySyncKey = null;
+            this.syncForReplay();
+        }
+        return changed;
+    }
+
+    _scheduleOverlaySpanSync(overlayId) {
+        clearTimeout(this._overlaySpanSyncTimer);
+        this._overlaySpanSyncTimer = setTimeout(() => {
+            this._overlaySpanSyncTimer = null;
+            const ric = (typeof window !== 'undefined' && window.requestIdleCallback)
+                ? window.requestIdleCallback
+                : (cb) => setTimeout(cb, 120);
+            ric(() => {
+                this._runOverlaySpanSync(overlayId).catch((e) => {
+                    console.warn('📊 overlay span sync:', e && e.message ? e.message : e);
+                });
+            }, { timeout: 4000 });
+        }, 180);
+    }
+
+    async _runOverlaySpanSync(overlayId) {
+        if (this._overlaySpanSyncInFlight) return;
+        this._overlaySpanSyncInFlight = true;
+        let anyChanged = false;
+        try {
+            const targets = overlayId
+                ? this.overlays.filter((o) => o.id === overlayId)
+                : this.overlays.slice();
+            for (const overlay of targets) {
+                if (!overlay?.fileId) continue;
+                this._tryExtendOverlayFromCaches(overlay);
+                if (!this._overlayNeedsHistoryRefetch(overlay)) continue;
+                const changed = await this._extendOverlayRawDataToMainSpan(overlay, { maxRounds: 6 });
+                if (changed) anyChanged = true;
+                await new Promise((r) => setTimeout(r, 0));
+            }
+        } finally {
+            this._overlaySpanSyncInFlight = false;
+        }
+        if (anyChanged && this.chart && typeof this.chart.render === 'function') {
+            try { this.chart.render(); } catch (_) { /* ignore */ }
+        }
+        if (this.overlays.some((o) => this._overlayNeedsHistoryRefetch(o))) {
+            this._scheduleOverlaySpanSync();
+        }
+    }
+
+    /**
      * Main chart pan-loaded older/newer bars — resync overlays and refetch if span grew.
      */
     refreshForMainChartPanExtend(direction) {
@@ -3551,11 +3722,7 @@ class CompareOverlay {
         }
         this._lastReplaySyncKey = null;
         this.syncForReplay();
-        if (direction === 'backward') {
-            this._refetchOverlaysForExtendedWindow().catch((e) => {
-                console.warn('📊 overlay pan extend refetch:', e && e.message ? e.message : e);
-            });
-        }
+        this._scheduleOverlaySpanSync();
         this._scheduleOverlayPanExtendRefetch(direction);
         if (ch && typeof ch.scheduleRender === 'function') {
             ch.scheduleRender();
@@ -3583,35 +3750,12 @@ class CompareOverlay {
     async _refetchOverlaysForExtendedWindow(visibleStartTime) {
         const ch = this.chart;
         if (!ch || !this.overlays.length) return;
-        const span = this._getMainChartRawTimeSpan();
-        if (!span) return;
-
-        const targetStartTs = Number.isFinite(visibleStartTime)
-            ? Math.min(span.startTs, visibleStartTime)
-            : span.startTs;
 
         let changed = false;
         for (const overlay of this.overlays) {
             if (!overlay.fileId || !this._overlayNeedsHistoryRefetch(overlay, visibleStartTime)) continue;
-            const fetchTf = overlay.rawFetchTf || this._resolveOverlaySmartFetchTimeframe();
-            let rows = this._getOverlayBarsFromChartTfCache(overlay.fileId, fetchTf);
-            if (!rows || !rows.length || Number(rows[0].t) > targetStartTs) {
-                rows = await this._fetchOverlayBarsViaSmart(overlay.fileId, fetchTf);
-            }
-            if (Array.isArray(rows) && rows.length) {
-                overlay.rawData = overlay.rawData?.length
-                    ? this._mergeSortedOhlcRows(overlay.rawData, rows)
-                    : rows;
-                overlay.rawFetchTf = fetchTf;
-                overlay.nativeBarMs = this._parseTimeframeMs(fetchTf) || this._inferMedianBarPeriodMs(overlay.rawData);
-                changed = true;
-            }
-            if (await this._extendOverlayRawDataToTarget(overlay, targetStartTs)) {
-                changed = true;
-            }
-            if (overlay.rawData?.length) {
-                this._invalidateOverlayDisplayCache(overlay);
-                overlay.data = this.resampleData(overlay.rawData, ch.currentTimeframe || '1m');
+            this._tryExtendOverlayFromCaches(overlay);
+            if (await this._extendOverlayRawDataToMainSpan(overlay, { maxRounds: 4 })) {
                 changed = true;
             }
         }
@@ -3715,7 +3859,7 @@ class CompareOverlay {
         }
 
         if (this.overlays.some((o) => this._overlayNeedsHistoryRefetch(o))) {
-            this._scheduleOverlayPanExtendRefetch('backward');
+            this._scheduleOverlaySpanSync();
         }
 
         try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }

@@ -25,6 +25,13 @@ const F = "'Exo 2', sans-serif";
 const normalizeSearchQuery = (raw: string) => String(raw ?? "").trim().toLowerCase();
 
 const STARTING_BALANCE_MAX_DIGITS = 6;
+const SESSION_DESCRIPTION_MAX = 500;
+const SESSION_DESCRIPTION_MIN_ROWS = 2;
+const SESSION_DESCRIPTION_MAX_ROWS = 10;
+const SESSION_DESCRIPTION_DEFAULT_ROWS = 3;
+function sanitizeSessionDescriptionInput(raw: string): string {
+  return String(raw ?? "").slice(0, SESSION_DESCRIPTION_MAX);
+}
 function sanitizeStartingBalanceInput(raw: string): string {
   return String(raw ?? "").replace(/\D/g, "").slice(0, STARTING_BALANCE_MAX_DIGITS);
 }
@@ -177,6 +184,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   const [newSessTimezone, setNewSessTimezone] = useState("America/New_York");
   const [newSessDST, setNewSessDST] = useState(true);
   const [newSessDescription, setNewSessDescription] = useState("");
+  const [newSessDescriptionRows, setNewSessDescriptionRows] = useState(SESSION_DESCRIPTION_DEFAULT_ROWS);
   const [newSessPlaybook, setNewSessPlaybook] = useState("");
   const [newSessFiles, setNewSessFiles] = useState<any[]>([]);
   const [newSessMarginCall, setNewSessMarginCall] = useState("100");
@@ -429,6 +437,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setNewSessCapital("10000");
     setSessTradingMode("standard");
     setNewSessDescription("");
+    setNewSessDescriptionRows(SESSION_DESCRIPTION_DEFAULT_ROWS);
     setNewSessPlaybook("");
     setNewSessMarginCall("100");
     setNewSessStopOut("50");
@@ -502,7 +511,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setEditSessId(sess.id);
     setNewSessName(sess.name || String(cfg.sessionName || cfg.session_name || "Backtest Session"));
     setNewSessPlaybook(playbook);
-    setNewSessDescription(String(cfg.description || sess.strategyDesc || ""));
+    setNewSessDescription(sanitizeSessionDescriptionInput(String(cfg.description || sess.strategyDesc || "")));
+    setNewSessDescriptionRows(SESSION_DESCRIPTION_DEFAULT_ROWS);
     setNewSessTickers(tickers.filter(Boolean));
     setNewSessSymbol(tickers[0] || "NQ");
     setNewSessTf(tf);
@@ -931,7 +941,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     return {
       type: modeType,
       sessionName,
-      description: newSessDescription,
+      description: sanitizeSessionDescriptionInput(newSessDescription),
       playbook: newSessPlaybook || "",
       playbook_display: strategyDisplayName,
       strategy_name: strategyDisplayName,
@@ -1323,10 +1333,35 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                             </div>
                           </div>
                           {/* Row 2: description */}
-                          {lbl("Description")}
-                          <textarea value={newSessDescription} onChange={e=>setNewSessDescription(e.target.value)}
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4}}>
+                            <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",display:"flex",alignItems:"center",gap:4}}>Description</div>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                              <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F}}>Height</span>
+                              <div style={{display:"flex",alignItems:"center",gap:3}}>
+                                <button type="button" aria-label="Decrease description area height"
+                                  disabled={newSessDescriptionRows <= SESSION_DESCRIPTION_MIN_ROWS}
+                                  onClick={()=>setNewSessDescriptionRows(rows=>Math.max(SESSION_DESCRIPTION_MIN_ROWS, rows - 1))}
+                                  style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:c.el,border:`1px solid ${c.brH}`,color:newSessDescriptionRows <= SESSION_DESCRIPTION_MIN_ROWS ? c.tm : c.tx,fontSize:13,fontWeight:700,fontFamily:F,cursor:newSessDescriptionRows <= SESSION_DESCRIPTION_MIN_ROWS ? "default" : "pointer",opacity:newSessDescriptionRows <= SESSION_DESCRIPTION_MIN_ROWS ? 0.45 : 1,padding:0}}>−</button>
+                                <span style={{minWidth:16,textAlign:"center",fontSize:9,fontWeight:800,color:c.ts,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{newSessDescriptionRows}</span>
+                                <button type="button" aria-label="Increase description area height"
+                                  disabled={newSessDescriptionRows >= SESSION_DESCRIPTION_MAX_ROWS}
+                                  onClick={()=>setNewSessDescriptionRows(rows=>Math.min(SESSION_DESCRIPTION_MAX_ROWS, rows + 1))}
+                                  style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:c.el,border:`1px solid ${c.brH}`,color:newSessDescriptionRows >= SESSION_DESCRIPTION_MAX_ROWS ? c.tm : c.tx,fontSize:13,fontWeight:700,fontFamily:F,cursor:newSessDescriptionRows >= SESSION_DESCRIPTION_MAX_ROWS ? "default" : "pointer",opacity:newSessDescriptionRows >= SESSION_DESCRIPTION_MAX_ROWS ? 0.45 : 1,padding:0}}>+</button>
+                              </div>
+                            </div>
+                          </div>
+                          <textarea value={newSessDescription}
+                            onChange={e=>setNewSessDescription(sanitizeSessionDescriptionInput(e.target.value))}
+                            maxLength={SESSION_DESCRIPTION_MAX}
+                            rows={newSessDescriptionRows}
                             placeholder="Optional notes about this session"
-                            style={{...inp({height:"auto",padding:"5px 8px",resize:"vertical",minHeight:40,lineHeight:1.5})}}/>
+                            aria-describedby="new-sess-description-meta"
+                            style={{...inp({height:"auto",padding:"5px 8px",resize:"none",minHeight:newSessDescriptionRows * 18,lineHeight:1.5})}}/>
+                          <div id="new-sess-description-meta" style={{display:"flex",justifyContent:"flex-end",marginTop:4}}>
+                            <span style={{fontSize:8.5,fontWeight:700,color:newSessDescription.length >= SESSION_DESCRIPTION_MAX ? c.rd : c.tm,fontFamily:F,fontVariantNumeric:"tabular-nums",letterSpacing:"0.04em"}}>
+                              {newSessDescription.length} / {SESSION_DESCRIPTION_MAX}
+                            </span>
+                          </div>
                         </>);
                       })()}
                       </div>

@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260624b74';
+const CHART_ENGINE_BUILD = '20260624b77';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -18290,9 +18290,7 @@ class Chart {
                 || this._buildTfSwitchFetchWindow(timeframe);
             const fetchOpts = { ...(options.smartOpts || {}) };
             if (fetchWindow && !Number.isFinite(Number(fetchOpts.limit))) {
-                const vp = this._tfSwitchViewport;
-                const visible = Number.isFinite(vp?.visibleBarCount) ? vp.visibleBarCount : 200;
-                fetchOpts.limit = Math.max(100, Math.min(2000, Math.ceil(visible * 3)));
+                fetchOpts.limit = this._resolveTfSwitchFetchLimit(timeframe);
             }
             const result = await this._fetchSmartWindow(
                 this.currentFileId,
@@ -18371,6 +18369,7 @@ class Chart {
                 if (typeof this.dispatchScrollSync === 'function') {
                     this.dispatchScrollSync();
                 }
+                setTimeout(() => this._fillViewportGapsAfterTfSwitch(0), 0);
             });
 
         } catch (error) {
@@ -18693,11 +18692,14 @@ class Chart {
             ? (this._getBacktestInitialFetchRange(timeframe, session)
                 || this._getBacktestSessionEndFetchRange(sessionEndMs))
             : (Number.isFinite(playheadMs)
-                ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
+                ? this._mergeTfSwitchFetchWindow(
+                    timeframe,
+                    this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
+                )
                 : this._getBacktestSessionEndFetchRange(sessionEndMs));
         const fetchOpts = {
             skipSessionDates: true,
-            limit: this._backtestFetchLimitForTimeframe(timeframe),
+            limit: this._resolveTfSwitchFetchLimit(timeframe),
         };
 
         let result;
@@ -25422,20 +25424,74 @@ class Chart {
         if (!vp) return null;
         const targetMs = this.parseTimeframe(targetTf);
         const barMs = Number.isFinite(targetMs) && targetMs > 0 ? targetMs : 3600000;
+        const sourceMs = Number.isFinite(vp.sourceBarMs) && vp.sourceBarMs > 0
+            ? vp.sourceBarMs
+            : barMs;
         const visible = Number.isFinite(vp.visibleBarCount) ? vp.visibleBarCount : 200;
-        const padBars = Math.max(visible * 2, 120);
+        const spanMs = Number.isFinite(vp.spanMs) && vp.spanMs > 0
+            ? vp.spanMs
+            : (Number.isFinite(vp.rightTs) && Number.isFinite(vp.leftTs)
+                ? Math.max(barMs, vp.rightTs - vp.leftTs)
+                : visible * sourceMs);
+        const padMs = Math.max(spanMs * 0.35, visible * barMs * 2, barMs * 80);
         let startTs = vp.leftTs;
         let endTs = vp.rightTs;
         if (!Number.isFinite(startTs) && Number.isFinite(vp.centerTs)) {
-            startTs = vp.centerTs - (visible / 2) * barMs;
+            startTs = vp.centerTs - spanMs / 2;
         }
         if (!Number.isFinite(endTs) && Number.isFinite(vp.centerTs)) {
-            endTs = vp.centerTs + (visible / 2) * barMs;
+            endTs = vp.centerTs + spanMs / 2;
         }
         if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return null;
+
+        const replay = this.replaySystem;
+        if (replay && replay.isActive) {
+            const playheadMs = this._captureReplayPlayheadMs(replay);
+            if (Number.isFinite(playheadMs)) {
+                endTs = Math.max(endTs, playheadMs + padMs * 0.25);
+            }
+            const session = this.backtestingSession || {};
+            const sessionEndMs = this._getBacktestSessionEndMs(session);
+            if (Number.isFinite(sessionEndMs)) {
+                endTs = Math.min(endTs, sessionEndMs);
+            }
+        }
+
         return {
-            startTs: Math.floor(startTs - padBars * barMs),
-            endTs: Math.floor(endTs + padBars * barMs),
+            startTs: Math.floor(startTs - padMs),
+            endTs: Math.floor(endTs + padMs),
+        };
+    }
+
+    /**
+     * Bar budget for a TF-switch fetch. When zooming into a finer TF the same
+     * visible bar count spans fewer target bars but the server window must still
+     * cover the captured wall-clock span.
+     */
+    _resolveTfSwitchFetchLimit(targetTf) {
+        const vp = this._tfSwitchViewport;
+        const visible = Number.isFinite(vp?.visibleBarCount) ? vp.visibleBarCount : 200;
+        const targetMs = this.parseTimeframe(targetTf) || 60000;
+        const sourceMs = Number.isFinite(vp?.sourceBarMs) && vp.sourceBarMs > 0
+            ? vp.sourceBarMs
+            : targetMs;
+        let spanBars = visible + 80;
+        if (Number.isFinite(vp?.spanMs) && vp.spanMs > 0 && targetMs > 0) {
+            spanBars = Math.ceil(vp.spanMs / targetMs) + 120;
+        } else if (sourceMs > targetMs) {
+            spanBars = Math.ceil((visible * sourceMs) / targetMs) + 120;
+        }
+        return Math.max(100, Math.min(2000, spanBars));
+    }
+
+    /** Merge viewport wall-clock window with replay playhead fetch range. */
+    _mergeTfSwitchFetchWindow(targetTf, playheadRange) {
+        const vpWin = this._buildTfSwitchFetchWindow(targetTf);
+        if (!vpWin) return playheadRange || null;
+        if (!playheadRange) return vpWin;
+        return {
+            startTs: Math.min(vpWin.startTs, playheadRange.startTs),
+            endTs: Math.max(vpWin.endTs, playheadRange.endTs),
         };
     }
 
@@ -25503,14 +25559,21 @@ class Chart {
         }
         if (anchorMode !== 'viewportLeft' && replay && replay.isActive) {
             anchorMode = 'playhead';
-            anchorTs = this._captureReplayPlayheadMs(replay);
-            const lastIdx = Math.max(0, this.data.length - 1);
-            const lastBar = this.data[lastIdx];
-            if (lastBar && Number.isFinite(lastBar.t)) {
-                anchorTs = lastBar.t;
-            }
             const spacing = this.getCandleSpacing();
-            anchorScreenX = this.dataIndexToPixel(lastIdx) + spacing / 2;
+            const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
+            const rightBar = this.data[rightBarIdx];
+            const playheadTs = this._captureReplayPlayheadMs(replay);
+            const visibleRightTs = this.estimateTimestampForDataIndex(rightIdx);
+            if (Number.isFinite(visibleRightTs)) {
+                anchorTs = visibleRightTs;
+            } else if (rightBar && Number.isFinite(rightBar.t)) {
+                anchorTs = rightBar.t;
+            } else if (Number.isFinite(playheadTs)) {
+                anchorTs = playheadTs;
+            }
+            if (Number.isFinite(anchorTs) && spacing > 0) {
+                anchorScreenX = this.dataIndexToPixel(rightIdx) + spacing / 2;
+            }
         }
         if (!Number.isFinite(anchorTs)) {
             const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
@@ -25519,9 +25582,8 @@ class Chart {
             anchorMode = 'playhead';
         }
         if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX)) {
-            const anchorIdx = this._findClosestBarIndexForTimestamp(anchorTs);
             const spacing = this.getCandleSpacing();
-            anchorScreenX = this.dataIndexToPixel(anchorIdx) + spacing / 2;
+            anchorScreenX = this.dataIndexToPixel(rightIdx) + spacing / 2;
         }
 
         const leftTs = this.estimateTimestampForDataIndex(vr.first);
@@ -25541,6 +25603,8 @@ class Chart {
             anchorScreenX,
             candleWidth: this.candleWidth,
             offsetX: this.offsetX,
+            sourceBarMs: barMs,
+            fromTimeframe: this.currentTimeframe || null,
             autoScale: this.autoScale !== false,
             priceZoom: this.priceZoom,
             priceOffset: this.priceOffset,
@@ -25692,22 +25756,32 @@ class Chart {
             this._reapplyTfSwitchAnchorLock();
         }
         if (typeof setTimeout === 'function') {
-            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(0), 0);
+            setTimeout(() => this._fillViewportGapsAfterTfSwitch(0), 0);
         }
+    }
+
+    /**
+     * Fill empty left/right space after a TF switch (TradingView keeps buffers
+     * on both sides so the captured window is fully covered).
+     */
+    _fillViewportGapsAfterTfSwitch(attempt = 0) {
+        this._fillViewportHistoryAfterTfSwitch(attempt, { allowForward: true });
     }
 
     /**
      * Fill empty left space after a TF switch by loading older bars (TradingView
      * keeps a backward buffer so previous data appears without a manual drag).
      * Retries while data keeps arriving and a left gap remains.
+     * @param {number} attempt
+     * @param {{ allowForward?: boolean }} [options]
      */
-    _fillViewportHistoryAfterTfSwitch(attempt = 0) {
+    _fillViewportHistoryAfterTfSwitch(attempt = 0, options = {}) {
         // Big-TF tiles pull many 1m chunks (shared-master design fetches at 1m),
         // so allow more iterations than a single coarse-TF fetch would need.
         if (attempt > 28) return;
         // Loaders bail while a switch is mid-flight — retry shortly.
         if (this._timeframeSwitching || this._pairSwitchLoading) {
-            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt), 60);
+            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt, options), 60);
             return;
         }
         if (!Array.isArray(this.data) || this.data.length === 0) return;
@@ -25717,7 +25791,11 @@ class Chart {
         const m = this.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, this.w - m.l - m.r);
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
-        if (leftIdx >= 6) return;
+        const rightIdx = Math.ceil(this.pixelToDataIndex(m.l + plotW));
+        const needsBackward = leftIdx < 6;
+        const needsForward = !!options.allowForward && rightIdx >= this.data.length - 8;
+
+        if (!needsBackward && !needsForward) return;
 
         const replay = this.replaySystem;
         const measureLen = () => (replay && Array.isArray(replay.fullRawData))
@@ -25736,51 +25814,64 @@ class Chart {
         }
 
         let pollMs = 260;
+        let requestedLoad = false;
 
-        if (replay && replay.isActive && sameAsHost && host) {
-            // FAST PATH (multichart): mirror everything the host already holds in
-            // one shot — instant, no network. Then, if the host itself is short,
-            // force ONE shared fetch on the host so every tile mirrors the same
-            // bars instead of each tile doing its own /bars round-trip.
-            let pulled = false;
-            if (typeof this._tryExtendReplayMasterFromParent === 'function') {
-                try { pulled = !!this._tryExtendReplayMasterFromParent(); } catch (_e) { pulled = false; }
+        if (needsForward) {
+            const hasMoreRight = !this._serverCursors
+                || this._serverCursors.hasMoreRight !== false
+                || (this.isBacktestMode && replay && replay.isActive);
+            if (hasMoreRight && !this._panLoading && typeof this.checkViewportLoadMore === 'function') {
+                this.checkViewportLoadMore('forward', true);
+                requestedLoad = true;
+                pollMs = 90;
             }
-            if (!pulled) {
-                const hostHasLeft = !host._serverCursors
-                    || host._serverCursors.hasMoreLeft !== false
-                    || (host.isBacktestMode
-                        && typeof host._backtestReplayHasUnloadHistoryLeft === 'function'
-                        && host._backtestReplayHasUnloadHistoryLeft());
-                if (!hostHasLeft && !host._panLoading) return; // host has nothing more
-                if (typeof host.checkViewportLoadMore === 'function') {
-                    try { host.checkViewportLoadMore('backward', true); } catch (_e) { /* ignore */ }
+        }
+
+        if (needsBackward) {
+            if (replay && replay.isActive && sameAsHost && host) {
+                // FAST PATH (multichart): mirror everything the host already holds in
+                // one shot — instant, no network. Then, if the host itself is short,
+                // force ONE shared fetch on the host so every tile mirrors the same
+                // bars instead of each tile doing its own /bars round-trip.
+                let pulled = false;
+                if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+                    try { pulled = !!this._tryExtendReplayMasterFromParent(); } catch (_e) { pulled = false; }
+                }
+                if (!pulled) {
+                    const hostHasLeft = !host._serverCursors
+                        || host._serverCursors.hasMoreLeft !== false
+                        || (host.isBacktestMode
+                            && typeof host._backtestReplayHasUnloadHistoryLeft === 'function'
+                            && host._backtestReplayHasUnloadHistoryLeft());
+                    if (hostHasLeft && !host._panLoading && typeof host.checkViewportLoadMore === 'function') {
+                        try { host.checkViewportLoadMore('backward', true); } catch (_e) { /* ignore */ }
+                        requestedLoad = true;
+                    }
+                } else {
+                    requestedLoad = true;
+                }
+                pollMs = pulled ? 40 : 90;
+            } else if (replay && replay.isActive) {
+                const hasMoreLeft = !this._serverCursors
+                    || this._serverCursors.hasMoreLeft !== false
+                    || (this.isBacktestMode
+                        && typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
+                        && this._backtestReplayHasUnloadHistoryLeft());
+                if (hasMoreLeft && !this._panLoading && typeof this.checkViewportLoadMore === 'function') {
+                    this.checkViewportLoadMore('backward', true);
+                    requestedLoad = true;
+                }
+                pollMs = 90;
+            } else {
+                const hasMoreLeft = !this._serverCursors || this._serverCursors.hasMoreLeft !== false;
+                if (hasMoreLeft && typeof this.checkViewportLoadMore === 'function') {
+                    this.checkViewportLoadMore('backward', true);
+                    requestedLoad = true;
                 }
             }
-            // Mirroring is instant; poll quickly to catch the host's fetch result.
-            // Match the single-chart cadence (90ms) when waiting on the host's
-            // shared fetch so panel TF-switch backfill is as fast as the main chart.
-            pollMs = pulled ? 40 : 90;
-        } else if (replay && replay.isActive) {
-            // Single chart / independent tile. Drive the forced backward fetch
-            // directly (skip the loader's 40ms debounce indirection) so chunks
-            // fire back-to-back — big-TF tiles need several 1m chunks and this
-            // keeps them as close to single-chart speed as the 2000-bar cap allows.
-            const hasMoreLeft = !this._serverCursors
-                || this._serverCursors.hasMoreLeft !== false
-                || (this.isBacktestMode
-                    && typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
-                    && this._backtestReplayHasUnloadHistoryLeft());
-            if (!hasMoreLeft && !this._panLoading) return;
-            if (!this._panLoading && typeof this.checkViewportLoadMore === 'function') {
-                this.checkViewportLoadMore('backward', true);
-            }
-            pollMs = 90;
-        } else {
-            const hasMoreLeft = !this._serverCursors || this._serverCursors.hasMoreLeft !== false;
-            if (!hasMoreLeft) return;
-            this.checkViewportLoadMore('backward', true);
         }
+
+        if (!requestedLoad) return;
 
         setTimeout(() => {
             const grew = measureLen() > beforeLen;
@@ -25790,7 +25881,7 @@ class Chart {
             // Keep going while data is arriving here OR a shared host fetch is in flight.
             const busy = this._panLoading || this._replayPanLoadTimer || (host && host._panLoading);
             if (!grew && !busy) return; // nothing more to load
-            this._fillViewportHistoryAfterTfSwitch(attempt + 1);
+            this._fillViewportHistoryAfterTfSwitch(attempt + 1, options);
         }, pollMs);
     }
 
