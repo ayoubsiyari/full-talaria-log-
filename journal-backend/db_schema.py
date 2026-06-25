@@ -169,6 +169,18 @@ def ensure_users_schema(app) -> None:
                             "notes TEXT"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS "
+                            "drawing_tool_templates JSONB"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS "
+                            "v9_chart_templates JSONB"
+                        )
+                    )
                 else:
                     if "users" not in insp.get_table_names():
                         return
@@ -389,6 +401,22 @@ def ensure_users_schema(app) -> None:
                             conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN prop_rules JSON"))
                         if "notes" not in live_cols:
                             conn.execute(text("ALTER TABLE live_journal_accounts ADD COLUMN notes TEXT"))
+                    if "user_preferences" in insp.get_table_names():
+                        pref_cols = {c["name"] for c in insp.get_columns("user_preferences")}
+                        if "drawing_tool_templates" not in pref_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE user_preferences ADD COLUMN "
+                                    "drawing_tool_templates JSON"
+                                )
+                            )
+                        if "v9_chart_templates" not in pref_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE user_preferences ADD COLUMN "
+                                    "v9_chart_templates JSON"
+                                )
+                            )
             app.logger.info(
                 "schema patch applied (users public_id, strategy_templates publish)"
             )

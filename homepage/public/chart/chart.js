@@ -1057,6 +1057,16 @@ class Chart {
 
         this.materializeInstrumentCostFields(normalized);
 
+        const tradingMode = String(normalized.trading_mode || normalized.tradingMode || '').toLowerCase();
+        const sessionType = String(normalized.type || normalized.session_type || '').toLowerCase();
+        const isProp = sessionType === 'propfirm' || sessionType.includes('prop') || tradingMode.includes('prop');
+        if (isProp) {
+            normalized.type = 'propfirm';
+            normalized.trading_mode = 'prop';
+            normalized.allowBackNavigation = false;
+            normalized.rollback_allowed = false;
+        }
+
         return normalized;
     }
 

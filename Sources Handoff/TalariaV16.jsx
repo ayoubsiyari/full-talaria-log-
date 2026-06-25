@@ -3591,7 +3591,7 @@ const CanvasScrollbar = ({ rfTransform, contentBotGraph, canvasH, rfRef }) => {
   );
 };
 
-function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp, applyStrategyTemplate }) {
+function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canvasEdges, setCanvasEdges, stratBName, setStratBName, stratBDesc, setStratBDesc, setStratBMarkets, setStratBTimeframes, setStratBTags, stratEditId, onSave, onClose, canvasMiniMap, setCanvasMiniMap, canvasPaletteCollapsed, setCanvasPaletteCollapsed, canvasInspectorCollapsed, setCanvasInspectorCollapsed, step, goPrev, goNext, canNext, secondaryBtnStyle, primaryBtnStyle, onSecondaryEnter, onSecondaryLeave, onSecondaryDown, onSecondaryUp, onPrimaryEnter, onPrimaryLeave, onPrimaryDown, onPrimaryUp, applyStrategyTemplate }) {
   const rfRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -5018,7 +5018,7 @@ function StrategyCanvasWorkspaceInner({ c, F, canvasNodes, setCanvasNodes, canva
         <div style={{display:'flex',gap:5}}>
           {[1,2,3,4].map(d=>(<div key={d} style={{width:6,height:6,borderRadius:'50%',background:d===2?'var(--tlc-ac)':'var(--tlc-brh)'}}/>))}
         </div>
-        <button type="button" onClick={goNext} style={primaryBtnStyle(canNext)} onMouseEnter={e=>onPrimaryEnter(e,canNext)} onMouseLeave={e=>onPrimaryLeave(e,canNext)} onMouseDown={e=>onPrimaryDown(e,canNext)} onMouseUp={e=>onPrimaryUp(e,canNext)}>
+        <button type="button" onClick={canNext ? goNext : undefined} disabled={!canNext} style={primaryBtnStyle(canNext)} onMouseEnter={e=>onPrimaryEnter(e,canNext)} onMouseLeave={e=>onPrimaryLeave(e,canNext)} onMouseDown={e=>onPrimaryDown(e,canNext)} onMouseUp={e=>onPrimaryUp(e,canNext)}>
           Next
           <svg width={11} height={11} viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
@@ -7301,7 +7301,7 @@ function StrategyBuilderModal(props) {
             {stratWizardStep===1&&<GeneralInfoStepContent c={c} F={F} stratBName={props.stratBName} setStratBName={props.setStratBName} stratBDesc={props.stratBDesc} setStratBDesc={props.setStratBDesc} stratBMarkets={props.stratBMarkets} setStratBMarkets={props.setStratBMarkets} stratBTimeframes={props.stratBTimeframes} setStratBTimeframes={props.setStratBTimeframes} stratBInstruments={props.stratBInstruments} setStratBInstruments={props.setStratBInstruments} stratBSupportInst={props.stratBSupportInst} setStratBSupportInst={props.setStratBSupportInst} stratBImages={props.stratBImages} setStratBImages={props.setStratBImages} stratBLogoEmoji={props.stratBLogoEmoji} setStratBLogoEmoji={props.setStratBLogoEmoji} stratBTags={props.stratBTags} setStratBTags={props.setStratBTags} stratEditId={stratEditId} strategyBankRows={strategyBankRows} showRequiredHint={showGeneralInfoRequired} generalInfoMissingKeys={generalInfoIssues.map(issue=>issue.key)} generalInfoMissingLabels={generalInfoIssues.map(issue=>issue.label)} />}
 
             {/* Step 2: Canvas */}
-            {stratWizardStep===2&&<StrategyCanvasWorkspaceInner {...props} step={2} goPrev={goPrev} goNext={goNext} secondaryBtnStyle={secondaryBtnStyle} primaryBtnStyle={primaryBtnStyle} onSecondaryEnter={onSecondaryEnter} onSecondaryLeave={onSecondaryLeave} onSecondaryDown={onSecondaryDown} onSecondaryUp={onSecondaryUp} onPrimaryEnter={onPrimaryEnter} onPrimaryLeave={onPrimaryLeave} onPrimaryDown={onPrimaryDown} onPrimaryUp={onPrimaryUp} />}
+            {stratWizardStep===2&&<StrategyCanvasWorkspaceInner {...props} step={2} goPrev={goPrev} goNext={goNext} canNext={canNext} secondaryBtnStyle={secondaryBtnStyle} primaryBtnStyle={primaryBtnStyle} onSecondaryEnter={onSecondaryEnter} onSecondaryLeave={onSecondaryLeave} onSecondaryDown={onSecondaryDown} onSecondaryUp={onSecondaryUp} onPrimaryEnter={onPrimaryEnter} onPrimaryLeave={onPrimaryLeave} onPrimaryDown={onPrimaryDown} onPrimaryUp={onPrimaryUp} />}
 
             {/* Step 3: Trade Tags */}
             {stratWizardStep===3&&<VariablesStepContent c={c} F={F} stratBVariables={props.stratBVariables} setStratBVariables={props.setStratBVariables} />}
@@ -10127,6 +10127,7 @@ const TalariaV8b = () => {
   const newSessPanelRef = useRef(null);
   const newSessBackdropDismissRef = useRef(false);
   const [editSessId, setEditSessId] = useState(null);
+  const [editSessOriginalTradingMode, setEditSessOriginalTradingMode] = useState(null);
   const [newSessTickers, setNewSessTickers] = useState([]);
   const [newSessTickerInput, setNewSessTickerInput] = useState("");
   const [newSessTickerFocus, setNewSessTickerFocus] = useState(false);
@@ -12685,6 +12686,14 @@ const TalariaV8b = () => {
   };
   const saveNewSession = () => {
     const name = newSessName.trim() || `Session ${sessions.length + 1}`;
+    if (
+      editSessId &&
+      editSessOriginalTradingMode != null &&
+      sessTradingMode !== editSessOriginalTradingMode
+    ) {
+      window.alert("Trading mode cannot be changed after a session is created.");
+      return;
+    }
     if (editSessId) {
       const updated = sessions.map(s => s.id === editSessId ? {
         ...s, name, timeframe: newSessTf, startDate: newSessStart, endDate: newSessEnd,
@@ -12703,6 +12712,7 @@ const TalariaV8b = () => {
       setSessions(updated);
       try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
       setEditSessId(null);
+      setEditSessOriginalTradingMode(null);
       closeNewSess();
     } else {
       const sess = { id: Date.now(), name, symbol: (newSessSymbol.trim() || "NQ").toUpperCase(), timeframe: newSessTf, startDate: newSessStart, endDate: newSessEnd, capital: parseStartingBalanceInput(newSessCapital) || 100000, createdAt: new Date().toISOString(), trades: 0, pnl: null, commission: newSessTradingCostsEnabled ? (sessCommission || "Per Lot") : "None", realWorldCostsEnabled: newSessTradingCostsEnabled, costsEnabled: newSessTradingCostsEnabled, costSettings: newSessCosts, symbolSpreads: newSessSymbolSpreads, futuresCosts: newSessFuturesData };

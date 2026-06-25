@@ -466,6 +466,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setNewSessSupportEnabled(false);
     setNewSessFiles([]);
     setEditSessId(null);
+    setEditSessOriginalTradingMode(null);
     setNewSessStartInput("");
     setNewSessEndInput("");
     setDropdown(null);
@@ -513,6 +514,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     const tf = String(sess.timeframe || cfg.timeframe || cfg.tf || "1H");
 
     setEditSessId(sess.id);
+    setEditSessOriginalTradingMode(isProp ? "prop" : "standard");
     setNewSessName(sanitizeSessionNameInput(sess.name || String(cfg.sessionName || cfg.session_name || "Backtest Session")));
     setNewSessPlaybook(playbook);
     setNewSessDescription(sanitizeSessionDescriptionInput(String(cfg.description || sess.strategyDesc || "")));
@@ -984,11 +986,11 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       timeframe: newSessTf,
       defaultRiskType: sessRiskMode,
       defaultRisk: parseFloat(sessRiskVal || "1") || 1,
-      allowBackNavigation: newSessRollback,
+      allowBackNavigation: sessTradingMode === "prop" ? false : newSessRollback,
       protectionPreset: newSessProtect,
       commission: newSessTradingCostsEnabled ? "Per Lot" : "None",
       trading_costs_enabled: newSessTradingCostsEnabled,
-      rollback_allowed: newSessRollback,
+      rollback_allowed: sessTradingMode === "prop" ? false : newSessRollback,
       replayMode: sessReplayMode,
       replaySpeed: sessReplaySpeed,
       timezone: newSessTimezone,
@@ -1070,6 +1072,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
 
   const saveNewSession = async () => {
     if (!isValid2 || savingSession) return;
+    if (
+      editSessId != null &&
+      editSessOriginalTradingMode != null &&
+      sessTradingMode !== editSessOriginalTradingMode
+    ) {
+      window.alert("Trading mode cannot be changed after a session is created.");
+      return;
+    }
     if (atSessionCap) {
       onSessionLimitReached?.({
         count: userLimits.tradingSessionsCount,
@@ -1896,11 +1906,13 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                           <span style={{fontSize:10,fontWeight:600,color:newSessAdvancedOrder?c.ts:c.tm,fontFamily:F,transition:"color 0.12s"}}>Advanced order</span>
                           <span style={{fontSize:9,color:c.tm,fontFamily:F}}>— multiple entries, auto move-to-BE, trailing stop</span>
                         </div>
+                        {sessTradingMode!=="prop"&&(
                         <div style={{height:27,display:"flex",alignItems:"center",gap:8,cursor:"default"}} onClick={()=>setNewSessRollback(v=>!v)}>
                           {TlChk(newSessRollback,"chk_rollback","",null)}
                           <span style={{fontSize:10,fontWeight:600,color:newSessRollback?c.ts:c.tm,fontFamily:F,transition:"color 0.12s"}}>Roll back</span>
                           <span style={{fontSize:9,color:c.tm,fontFamily:F}}>— step backward through bars during replay</span>
                         </div>
+                        )}
                         <div>
                           <div style={{height:27,display:"flex",alignItems:"center",gap:8,cursor:"default"}} onClick={()=>setNewSessMfeMaeEnabled(v=>!v)}>
                             {TlChk(newSessMfeMaeEnabled,"chk_mfeMae","",null)}
@@ -2121,18 +2133,20 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                       {/* Standard / Prop Firm mode toggle — standard tab style */}
                       {(()=>{
                         const propUnavailable=newSessAssetClass==="Stocks"||newSessAssetClass==="Crypto";
+                        const modeLocked=editSessId!=null&&editSessOriginalTradingMode!=null;
                         return(
-                          <div style={{display:"flex",gap:0,marginBottom:14,borderBottom:`1px solid ${c.br}`}}>
+                          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+                          <div style={{display:"flex",gap:0,borderBottom:`1px solid ${c.br}`}}>
                             {[["standard","Standard","Free backtest — Trade your personal account",false],["prop","Prop Firm","Trade under prop firm challenge rules",true]].map(([v,l,desc,isPropTab])=>{
-                              const disabled=isPropTab&&propUnavailable;
-                              const isA=sessTradingMode===v&&!disabled;const hk="sessMode_"+v;const isH=hov===hk&&!disabled;
+                              const disabled=(isPropTab&&propUnavailable)||(modeLocked&&sessTradingMode!==v);
+                              const isA=sessTradingMode===v&&!disabled;const hk="sessMode_"+v;const isH=hov===hk&&!disabled&&!modeLocked;
                               const acColor=isPropTab?c.gold:c.acL;const acGlow=isPropTab?"rgba(200,150,0,0.4)":c.acG;
                               return(
                                 <div key={v}
-                                  onClick={disabled?undefined:()=>{setSessTradingMode(v);if(v==="prop"&&newSessAssetClass==="Futures"){setNewSessCapital("50000");setSessP1DailyLossAmt("1000");setSessP1MaxDDAmt("2000");setSessP1ProfitTargetAmt("3000");}}}
-                                  onMouseEnter={disabled?undefined:()=>setHov(hk)} onMouseLeave={disabled?undefined:()=>setHov(null)}
+                                  onClick={disabled||modeLocked?undefined:()=>{setSessTradingMode(v);if(v==="prop"){setNewSessRollback(false);if(newSessAssetClass==="Futures"){setNewSessCapital("50000");setSessP1DailyLossAmt("1000");setSessP1MaxDDAmt("2000");setSessP1ProfitTargetAmt("3000");}}}}
+                                  onMouseEnter={disabled||modeLocked?undefined:()=>setHov(hk)} onMouseLeave={disabled||modeLocked?undefined:()=>setHov(null)}
                                   style={{flex:1,padding:"6px 10px 8px",display:"flex",flexDirection:"column",gap:2,
-                                    cursor:"default",transition:"all 0.15s",position:"relative",textAlign:"center",
+                                    cursor:modeLocked?"default":"default",transition:"all 0.15s",position:"relative",textAlign:"center",
                                     opacity:disabled?0.35:1,
                                     background:isA?(isPropTab?"rgba(200,150,0,0.07)":"rgba(74,106,255,0.07)"):isH?"rgba(255,255,255,0.03)":"transparent"}}>
                                   <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
@@ -2162,6 +2176,12 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                 </div>
                               );
                             })}
+                          </div>
+                          {modeLocked&&(
+                            <span style={{fontSize:9,color:c.tm,fontFamily:F,lineHeight:1.4}}>
+                              Trading mode is locked for existing sessions and cannot be changed.
+                            </span>
+                          )}
                           </div>
                         );
                       })()}
