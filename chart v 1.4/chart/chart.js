@@ -21571,7 +21571,8 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            this.drawGrid();
+            // Vertical grid under candles; horizontal redrawn after axes (margin may widen from labels).
+            this.drawGrid({ skipHorizontal: true });
             if (!interactionLite) {
                 this.drawVolume(visible, panOpts);
             }
@@ -21585,6 +21586,8 @@ class Chart {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
+            this.calculateScales();
+            this.drawGrid({ skipVertical: true });
             if (!interactionLite && chartViewPanning) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
@@ -21631,8 +21634,8 @@ class Chart {
             this.compareOverlay.updateLeftMargin();
         }
 
-        // Draw grid lines first
-        this.drawGrid();
+        // Vertical grid under candles; horizontal redrawn after axes so release paint does not bury price levels.
+        this.drawGrid({ skipHorizontal: true });
 
         // Draw volume bars
         this.drawVolume(visible);
@@ -21700,6 +21703,8 @@ class Chart {
         // Draw axes LAST so the price/time axis always overlays candles and other chart content.
         // This makes candles hide behind the axis instead of drawing above it.
         this.drawAxes();
+
+        this.drawGrid({ skipVertical: true });
 
         // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
         if (!chartViewPanning) {
@@ -21796,8 +21801,8 @@ class Chart {
             yTicks.forEach(price => {
                 const yRaw = this.yScale(price);
                 
-                // Only draw lines in the price area (not in volume area)
-                if (yRaw > m.t && yRaw < m.t + priceHeight) {
+                // Inclusive bounds — strict >/< dropped domain-edge ticks after pan release auto-scale.
+                if (yRaw >= m.t && yRaw <= m.t + priceHeight) {
                     // Snap to a crisp pixel row (+0.5) so 1px grid lines don't
                     // anti-alias-shimmer as the price domain shifts each frame.
                     const y = Math.round(yRaw) + 0.5;

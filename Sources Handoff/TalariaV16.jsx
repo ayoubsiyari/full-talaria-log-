@@ -30794,8 +30794,11 @@ const TalariaV8b = () => {
               if (!prev) return prev;
               const rows = getDashTradeRows(prev, kind, dashLegacyFieldForRows(kind));
               if (rows.length >= 5) return prev;
-              const defaultQty = kind === "exits"
-                ? formatDashTradeSizeInput(Math.max(0, calcDashRowSizeTotal(getDashTradeRows(prev, "entries", "entry")) - calcDashRowSizeTotal(rows)))
+              const enteredSize = calcDashRowSizeTotal(getDashTradeRows(prev, "entries", "entry"));
+              const usedSize = calcDashRowSizeTotal(rows);
+              const remainingSize = Math.max(0, enteredSize - usedSize);
+              const defaultQty = kind === "exits" || kind === "targets"
+                ? (formatDashTradeSizeInput(remainingSize) || (kind === "targets" ? "" : "1"))
                 : "1";
               const next = {...prev, [kind]:[...rows, {id:`${kind}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, price:"", qty:defaultQty}]};
               const clamped = (kind === "entries" || kind === "exits" || kind === "targets") ? applyDashAddTradeSizeClamps(next) : next;
@@ -31156,9 +31159,9 @@ const TalariaV8b = () => {
               ? (currency.net > 0 ? "Win" : currency.net < 0 ? "Loss" : "Breakeven")
               : "";
             const manualTrade = {
-              ...dashAddTradeDraft,
+              ...draftToSave,
               ...dashManualNullTradeFields,
-              id:dashAddTradeDraft.id,
+              id:draftToSave.id,
               trade_id:manualTradeId,
               is_manual:true,
               data_source:"manual",
@@ -32997,18 +33000,20 @@ const TalariaV8b = () => {
                   const fixed = n.toFixed(precision);
                   return precision === 0 ? String(Math.round(n)) : fixed.replace(/\.?0+$/, "");
                 };
-                const stepAddTradeNumberValue = (value, direction, step=1, min=0) => {
+                const stepAddTradeNumberValue = (value, direction, step=1, min=0, max=null) => {
                   const current = parseDashTradeNumber(value);
                   const base = Number.isFinite(current) ? current : 0;
-                  const next = Math.max(min, base + direction * step);
+                  let next = Math.max(min, base + direction * step);
+                  if (max != null && Number.isFinite(max)) next = Math.min(next, max);
                   return formatAddTradeSteppedNumber(next, step);
                 };
-                const addTradeSteppedNumberInput = ({value, onChange, placeholder="", color=c.ts, disabled=false, readOnly=false, step=1, min=0, style={}, ariaLabel=typeof placeholder === "string" ? placeholder : "", showLockedArrows=false, hideArrows=false}) => {
+                const addTradeSteppedNumberInput = ({value, onChange, placeholder="", color=c.ts, disabled=false, readOnly=false, step=1, min=0, max=null, invalid=false, style={}, ariaLabel=typeof placeholder === "string" ? placeholder : "", showLockedArrows=false, hideArrows=false}) => {
                   const locked = disabled || readOnly;
                   const inputSx = {
                     ...addTradeCompactInputStyle,
                     ...style,
-                    color:locked ? addTradeReadableMuted : color,
+                    ...(invalid ? {borderColor:c.rd, boxShadow:`inset 0 1px 0 rgba(255,255,255,0.035), 0 0 0 1px ${c.rd}88, 0 0 10px ${c.rd}24`} : {}),
+                    color:locked ? addTradeReadableMuted : (invalid ? c.rd : color),
                     padding:hideArrows ? "0 7px" : "0 22px 0 7px",
                     width:"100%",
                     opacity:disabled ? 0.88 : 1,
@@ -33018,7 +33023,7 @@ const TalariaV8b = () => {
                     if (locked) return;
                     const hold = dashAddTradeStepperHoldRef.current;
                     const baseValue = hold ? hold.value : value;
-                    const next = stepAddTradeNumberValue(baseValue, direction, step, min);
+                    const next = stepAddTradeNumberValue(baseValue, direction, step, min, max);
                     if (hold) hold.value = next;
                     onChange(next);
                   };
@@ -33065,7 +33070,14 @@ const TalariaV8b = () => {
                         value={value ?? ""}
                         disabled={disabled}
                         readOnly={readOnly}
-                        onChange={locked ? undefined : e=>onChange(e.target.value.replace(/[^\d.,-]/g, "").replace(",", "."))}
+                        onChange={locked ? undefined : e=>{
+                          let nextValue = e.target.value.replace(/[^\d.,-]/g, "").replace(",", ".");
+                          if (max != null && Number.isFinite(max)) {
+                            const parsed = parseDashTradeNumber(nextValue);
+                            if (parsed != null && parsed > max + 0.000001) nextValue = formatAddTradeSteppedNumber(max, step);
+                          }
+                          onChange(nextValue);
+                        }}
                         placeholder={placeholder}
                         aria-label={ariaLabel || placeholder || dashTxt("Value","القيمة")}
                         inputMode="decimal"
@@ -34931,6 +34943,12 @@ const TalariaV8b = () => {
                     </span>
                   );
                 };
+                const addTradeTargetQtyInvalid = (rowId, qty) => {
+                  const maxQty = getDashAddTradeTargetQtyMax(dashAddTradeDraft, rowId);
+                  const parsed = parseDashTradeNumber(qty);
+                  if (maxQty == null || !(parsed > 0)) return false;
+                  return parsed - maxQty > 0.000001;
+                };
                 const tradeRowEditor = (kind, rows, accent, title, addLabel, avgValue=null) => {
                   const showRowMeta = rows.length > 1;
                   return (
@@ -34988,6 +35006,8 @@ const TalariaV8b = () => {
                             color:c.ts,
                             step:addTradeSizeStep,
                             min:0,
+                            max:kind === "targets" ? getDashAddTradeTargetQtyMax(dashAddTradeDraft, row.id) : null,
+                            invalid:kind === "targets" ? addTradeTargetQtyInvalid(row.id, row.qty) : false,
                           })}
                           {index === 0 ? (
                             <div aria-hidden="true" style={{width:20,height:22}}/>
