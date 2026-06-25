@@ -5214,6 +5214,27 @@ const INST_SYM_DATA = {
 };
 const getInstSym = id => INST_SYM_DATA[id]||null;
 
+const DASH_CATALOG_CAT_TO_ASSET = {forex:"Forex", futures:"Futures", crypto:"Crypto", stocks:"Stocks"};
+const dashResolveCatalogInstrumentId = (symbol) => {
+  const upper = String(symbol || "").toUpperCase();
+  const compact = upper.replace(/[^A-Z0-9]/gi, "").toLowerCase();
+  const byId = ALL_INSTRUMENTS.find(x => x.id === compact);
+  if (byId) return byId.id;
+  const byMappedSym = Object.entries(INST_SYM_DATA).find(([, meta]) => String(meta?.id || "").toUpperCase() === upper);
+  if (byMappedSym) return byMappedSym[0];
+  return ALL_INSTRUMENTS.find(x => {
+    const mapped = INST_SYM_DATA[x.id]?.id;
+    const sym = mapped || x.id.replace(/[^a-z0-9]/gi, "").toUpperCase();
+    return sym === upper;
+  })?.id || null;
+};
+const dashCatalogAssetClass = (symbol) => {
+  const instId = dashResolveCatalogInstrumentId(symbol);
+  if (!instId) return null;
+  const cat = inferInstrumentMarketCategory(instId);
+  return cat ? DASH_CATALOG_CAT_TO_ASSET[cat] || null : null;
+};
+
 const getAppZoom = () => parseFloat(document.querySelector('[style*="zoom"]')?.style?.zoom) || 1;
 const dropPos = (ref, w, minBelow, flipMaxH, center=true) => {
   const r = ref.current?.getBoundingClientRect();
@@ -29279,41 +29300,23 @@ const TalariaV8b = () => {
             const raw = String(inst?.id || "").toUpperCase();
             return raw.replace(/[^A-Z0-9]/gi, "").slice(0, 12);
           };
+          const getDashGlobalInstrumentSymbols = (market=null) => {
+            const extras = ["MNQ","MES","MYM","MRTY","M2K","MCL","MGC","MNG","SIL","HO","RB","BZ","QM","UB","ZT","ZF"];
+            const all = [...new Set([
+              ...ALL_INSTRUMENTS.map(dashCatalogInstrumentSymbol),
+              ...DASH_LIVE_JOURNAL_INDEX_SYMBOLS,
+              ...extras,
+            ].filter(Boolean).map(symbol => String(symbol).toUpperCase()))];
+            const normalizedMarket = String(market || "").trim();
+            if (!normalizedMarket) return all;
+            return all.filter(symbol => dashSymbolMatchesJournalMarket(symbol, normalizedMarket));
+          };
           const getDashSourceInstruments = (source) => {
             if (isDashLiveJournalAddTradeSource(source)) {
               const journalMarket = resolveDashLiveJournalMarket(source);
-              return getDashLiveJournalInstrumentSymbols(journalMarket);
+              return getDashGlobalInstrumentSymbols(journalMarket);
             }
-            const sourceSessions = Array.isArray(source?.sessions) ? source.sessions : [];
-            const sourceTrades = Array.isArray(source?.trades) ? source.trades : [];
-            const raw = [...new Set([
-              ...(Array.isArray(source?.instrumentConfig) ? source.instrumentConfig.map(item => item?.symbol) : []),
-              ...(Array.isArray(source?.instruments) ? source.instruments.map(item => typeof item === "string" ? item : item?.symbol) : []),
-              ...(Array.isArray(source?.tickers) ? source.tickers : []),
-              ...(Array.isArray(source?.symbols) ? source.symbols : []),
-              ...(source?.symbol ? [source.symbol] : []),
-              ...sourceTrades.map(trade => trade?.symbol),
-              ...sourceSessions.flatMap(session => [
-                ...(Array.isArray(session?.instrumentConfig) ? session.instrumentConfig.map(item => item?.symbol) : []),
-                ...(Array.isArray(session?.instruments) ? session.instruments.map(item => typeof item === "string" ? item : item?.symbol) : []),
-                ...(Array.isArray(session?.tickers) ? session.tickers : []),
-                ...(Array.isArray(session?.symbols) ? session.symbols : []),
-                session?.symbol,
-              ]),
-            ].filter(Boolean).map(symbol => String(symbol).toUpperCase()))].slice(0, 40);
-            const markets = getDashSourceMarkets(source).join(" ").toLowerCase();
-            const label = `${source?.label || ""} ${source?.name || ""} ${source?.strategy || ""} ${sourceSessions.map(session=>session?.name || session?.strategyName || "").join(" ")}`.toUpperCase();
-            const allForexPairs = raw.length > 0 && raw.every(symbol => /^[A-Z]{6}$/.test(symbol));
-            if (markets.includes("future") && allForexPairs) {
-              if (label.includes("NQ")) return ["NQ","MNQ"];
-              if (label.includes("ES")) return ["ES","MES"];
-              if (label.includes("YM")) return ["YM","MYM"];
-              if (label.includes("RTY")) return ["RTY","MRTY","M2K"];
-              if (label.includes("CL")) return ["CL","MCL"];
-              if (label.includes("GC")) return ["GC","MGC"];
-              return ["NQ","MNQ","ES","MES","RTY","MRTY"];
-            }
-            return raw;
+            return getDashGlobalInstrumentSymbols(null);
           };
           const getDashSourceMarkets = (source) => {
             if (isDashLiveJournalAddTradeSource(source)) {
@@ -29337,6 +29340,8 @@ const TalariaV8b = () => {
             const upperSymbol = String(symbol || "").toUpperCase();
             const indexSymbols = new Set(DASH_LIVE_JOURNAL_INDEX_SYMBOLS);
             if (indexSymbols.has(upperSymbol)) return "Indices";
+            const catalogCls = dashCatalogAssetClass(symbol);
+            if (catalogCls) return catalogCls;
             const futuresSymbols = new Set(["ES","MES","NQ","MNQ","YM","MYM","RTY","M2K","MRTY","CL","MCL","GC","MGC","SI","SIL","NG","MNG","ZB","ZN","ZF","ZT","ZQ","UB","HO","RB","6E","6J","6B"]);
             if (futuresSymbols.has(upperSymbol)) return "Futures";
             if (/^(BTC|ETH|SOL|BNB|XRP|ADA|DOT|AVAX|LINK|MATIC)(USD|USDT)$/.test(upperSymbol)) return "Crypto";
@@ -29361,16 +29366,7 @@ const TalariaV8b = () => {
             const cls = inferDashAssetClass({ market, markets: [market], assetClasses: [market] }, symbol);
             return String(cls).toLowerCase() === String(market).toLowerCase();
           };
-          const getDashLiveJournalInstrumentSymbols = (journalMarket=null) => {
-            const all = [...new Set([
-              ...ALL_INSTRUMENTS.map(dashCatalogInstrumentSymbol),
-              ...DASH_LIVE_JOURNAL_INDEX_SYMBOLS,
-              "MNQ", "MES", "MYM", "MRTY", "M2K", "MCL", "MGC", "XAUUSD", "XAGUSD",
-            ].filter(Boolean).map(symbol => String(symbol).toUpperCase()))];
-            const market = String(journalMarket || "").trim();
-            if (!market) return all;
-            return all.filter(symbol => dashSymbolMatchesJournalMarket(symbol, market));
-          };
+          const getDashLiveJournalInstrumentSymbols = (journalMarket=null) => getDashGlobalInstrumentSymbols(journalMarket);
           const pickDashLiveJournalDefaultSymbol = (symbols, journalMarket) => {
             const list = (Array.isArray(symbols) ? symbols : []).map(symbol => String(symbol || "").toUpperCase()).filter(Boolean);
             if (!list.length) {
@@ -29637,11 +29633,15 @@ const TalariaV8b = () => {
             const isoDay = defaultDashAddTradeEntryDate(source);
             const hhmm = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
             const side = String(lastTrade.side || "Long");
-            const sourceInstruments = getDashSourceInstruments(source);
             const journalMarket = isDashLiveJournalAddTradeSource(source) ? resolveDashLiveJournalMarket(source) : null;
+            const sessionMarkets = getDashSourceMarkets(source);
+            const defaultMarket = journalMarket || sessionMarkets[0] || null;
+            const marketSymbols = getDashGlobalInstrumentSymbols(defaultMarket);
             const lastSymbol = lastTrade.symbol ? String(lastTrade.symbol).toUpperCase() : "";
-            const symbol = (lastSymbol && sourceInstruments.includes(lastSymbol) ? lastSymbol : pickDashLiveJournalDefaultSymbol(sourceInstruments, journalMarket));
-            const assetClass = journalMarket || inferDashAssetClass(source, symbol);
+            const symbol = (lastSymbol && (!defaultMarket || dashSymbolMatchesJournalMarket(lastSymbol, defaultMarket)) && marketSymbols.includes(lastSymbol))
+              ? lastSymbol
+              : pickDashLiveJournalDefaultSymbol(marketSymbols, defaultMarket);
+            const assetClass = defaultMarket || inferDashAssetClass(source, symbol);
             const instrumentSpec = getDashInstrumentSpec(source, symbol, assetClass);
             const costSettings = getDashAddTradeCostSettings(source, symbol, assetClass);
             const setupOptions = isDashJournalAddTradeSource(source) ? getDashSourceStrategyOptions(source) : getDashSourceSetupOptions(source);
@@ -30288,8 +30288,7 @@ const TalariaV8b = () => {
               if (field === "assetClass") {
                 const sourceMarkets = getDashSourceMarkets(dashAddTradeEditorSource);
                 const market = sourceMarkets.find(item => String(item).toLowerCase() === String(value).toLowerCase()) || value;
-                const sourceInstruments = getDashSourceInstruments(dashAddTradeEditorSource);
-                const marketSymbols = sourceInstruments.filter(symbol => inferDashAssetClass(dashAddTradeEditorSource, symbol) === market);
+                const marketSymbols = getDashGlobalInstrumentSymbols(market);
                 const currentSymbol = String(prev.symbol || "").toUpperCase();
                 const symbol = marketSymbols.includes(currentSymbol) ? currentSymbol : (marketSymbols[0] || currentSymbol);
                 const instrumentSpec = getDashInstrumentSpec(dashAddTradeEditorSource, symbol, market);
@@ -32803,10 +32802,15 @@ const TalariaV8b = () => {
                   || (dashAddTradeTimeFormat === "12" ? "12h" : "24h")
                 ).toLowerCase();
                 const addTradeResolvedTimeFormat = addTradeSourceTimeFormatRaw.includes("12") ? "12" : "24";
-                const sourceSymbolsForMarket = sourceSymbols.filter(symbol => inferDashAssetClass(dashAddTradeEditorSource, symbol) === selectedTradeMarket);
-                const addTradeSymbolOptions = (sourceSymbolsForMarket.length ? sourceSymbolsForMarket : sourceSymbols).length
-                  ? (sourceSymbolsForMarket.length ? sourceSymbolsForMarket : sourceSymbols)
-                  : [dashAddTradeDraft.symbol || "ES"];
+                const sourceSymbolsForMarket = getDashGlobalInstrumentSymbols(selectedTradeMarket);
+                const currentTradeSymbol = String(dashAddTradeDraft.symbol || "").toUpperCase();
+                const addTradeSymbolOptions = (() => {
+                  const options = [...sourceSymbolsForMarket];
+                  if (currentTradeSymbol && dashSymbolMatchesJournalMarket(currentTradeSymbol, selectedTradeMarket) && !options.includes(currentTradeSymbol)) {
+                    options.unshift(currentTradeSymbol);
+                  }
+                  return options.length ? options : [currentTradeSymbol || "ES"].filter(Boolean);
+                })();
                 const editorUnitOptions = [instrumentSpec.unit || dashUnitOptionsForAsset(editorAssetClass)[0]];
                 const currencyPreview = calcDashManualCurrency(dashAddTradeEditorSource, calculated, dashAddTradeDraft);
                 const addTradeExitTimingEnabled = dashAddTradeDraft?.exitTimingEnabled != null

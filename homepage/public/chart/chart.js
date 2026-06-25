@@ -25657,16 +25657,12 @@ class Chart {
             && typeof _replay.syncReplayViewportToPlayhead === 'function') {
             const _keepPriceScale = !!(vp && (vp.autoScale === false || vp.priceScaleLocked));
             this._clearTfSwitchAnchorLock();
-            // A TF switch always re-frames on the playhead (right-edge follow) AND
-            // resumes auto-follow, even when the user had dragged/panned the previous
-            // timeframe. onUserPan() sets userHasPanned=true AND autoScrollEnabled=false;
-            // clearing only the first left follow disabled, so after the switch the
-            // chart stopped tracking the advancing playhead and drifted off screen
-            // during playback (the drag-then-switch bug). Reset all three so drag+switch
-            // behaves exactly like the no-drag switch, which already works perfectly.
+            // A TF switch always re-frames on the playhead (right-edge follow), even
+            // when the user had dragged/panned the previous timeframe. Without this,
+            // the panned "viewportLeft + bar-count" restore below drifts on the new TF
+            // (the drag-then-switch bug). Clearing userHasPanned makes drag+switch
+            // behave exactly like the no-drag switch, which already works perfectly.
             _replay.userHasPanned = false;
-            _replay.autoScrollEnabled = true;
-            _replay._viewportLockForPlayback = null;
             const _synced = _replay.syncReplayViewportToPlayhead(this, {
                 centerPlayhead: false,
                 resetPriceScale: !_keepPriceScale,
