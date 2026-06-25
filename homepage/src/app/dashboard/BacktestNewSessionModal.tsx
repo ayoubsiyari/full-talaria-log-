@@ -25,7 +25,11 @@ const F = "'Exo 2', sans-serif";
 const normalizeSearchQuery = (raw: string) => String(raw ?? "").trim().toLowerCase();
 
 const STARTING_BALANCE_MAX_DIGITS = 6;
+const SESSION_NAME_MAX = 80;
 const SESSION_DESCRIPTION_MAX = 500;
+function sanitizeSessionNameInput(raw: string): string {
+  return String(raw ?? "").slice(0, SESSION_NAME_MAX);
+}
 const SESSION_DESCRIPTION_MIN_ROWS = 2;
 const SESSION_DESCRIPTION_MAX_ROWS = 10;
 const SESSION_DESCRIPTION_DEFAULT_ROWS = 3;
@@ -509,7 +513,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     const tf = String(sess.timeframe || cfg.timeframe || cfg.tf || "1H");
 
     setEditSessId(sess.id);
-    setNewSessName(sess.name || String(cfg.sessionName || cfg.session_name || "Backtest Session"));
+    setNewSessName(sanitizeSessionNameInput(sess.name || String(cfg.sessionName || cfg.session_name || "Backtest Session")));
     setNewSessPlaybook(playbook);
     setNewSessDescription(sanitizeSessionDescriptionInput(String(cfg.description || sess.strategyDesc || "")));
     setNewSessDescriptionRows(SESSION_DESCRIPTION_DEFAULT_ROWS);
@@ -580,7 +584,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       if (initialState?.editSession) {
         applySessionToForm(initialState.editSession);
       } else {
-        if (initialState?.sessionName) setNewSessName(initialState.sessionName);
+        if (initialState?.sessionName) setNewSessName(sanitizeSessionNameInput(initialState.sessionName));
         if (initialState?.playbook) setNewSessPlaybook(initialState.playbook);
         if (initialState?.tradingMode === "prop") setSessTradingMode("prop");
         else if (initialState?.tradingMode === "standard") setSessTradingMode("standard");
@@ -822,7 +826,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
 
   async function buildChartConfig(): Promise<Record<string, unknown>> {
     const primary = newSessTickers[0] || newSessSymbol || "NQ";
-    const sessionName = newSessName.trim() || "Backtest Session";
+    const sessionName = sanitizeSessionNameInput(newSessName.trim() || "Backtest Session");
     const startDate = (newSessStart || "").split("T")[0] || "";
     const endDate = (newSessEnd || "").split("T")[0] || "";
     const modeType = sessTradingMode === "prop" ? "propfirm" : "standard";
@@ -1029,7 +1033,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   }
 
   async function persistSessionWithConfig(config: Record<string, unknown>): Promise<number | null> {
-    const sessionName = newSessName.trim() || "Backtest Session";
+    const sessionName = sanitizeSessionNameInput(newSessName.trim() || "Backtest Session");
     const session_type = sessTradingMode === "prop" ? "propfirm" : "personal";
     if (editSessId != null) {
       const res = await fetch(`/api/sessions/${encodeURIComponent(String(editSessId))}`, {
@@ -1281,7 +1285,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                               {/* Row 1: session name */}
                               <div>
                                 {lbl("Session name *")}
-                                <input value={newSessName} onChange={e=>setNewSessName(e.target.value)} placeholder="e.g. EURUSD Test" style={{...inp()}}/>
+                                <input value={newSessName} onChange={e=>setNewSessName(sanitizeSessionNameInput(e.target.value))} maxLength={SESSION_NAME_MAX} placeholder="e.g. EURUSD Test" style={{...inp()}}/>
                               </div>
                               {/* Row 2: strategy dropdown – same full width */}
                               <div style={{position:"relative"}}>

@@ -12840,7 +12840,7 @@ const TalariaV8b = () => {
     e?.stopPropagation?.();
     if (openDashboardEditSession(sess)) return;
     setEditSessId(sess.id);
-    setNewSessName(sess.name || "");
+    setNewSessName(sanitizeSessionNameInput(sess.name || ""));
     setNewSessTf(sess.timeframe || "1H");
     setNewSessStart(sess.startDate || "");
     setNewSessEnd(sess.endDate || "");
@@ -13797,7 +13797,7 @@ const TalariaV8b = () => {
                           </div>
                           {/* Session name + created */}
                           <div style={{flex:1,minWidth:0,padding:"0 8px",display:"flex",flexDirection:"column",gap:2}}>
-                            <div style={{fontSize:(sess.name||"").length>22?9:(sess.name||"").length>15?10:11,fontWeight:700,color:c.ts,lineHeight:1.3,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sess.name||"—"}</div>
+                            <div title={sess.name||""} style={{fontSize:(sess.name||"").length>22?9:(sess.name||"").length>15?10:11,fontWeight:700,color:c.ts,lineHeight:1.3,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%"}}>{sess.name||"—"}</div>
                             <div style={{fontSize:8,fontWeight:500,color:c.tm,fontFamily:F,whiteSpace:"nowrap"}}>{createdStr}</div>
                           </div>
                           {/* ⋯ */}
@@ -13960,14 +13960,14 @@ const TalariaV8b = () => {
                         </div>
 
                         {/* Session name + created date */}
-                        <div style={{width:110,flexShrink:0,padding:"0 10px",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"flex-start",gap:4,borderRight:"none"}}>
-                          <div style={{fontSize:(sess.name||"").length>24?8:(sess.name||"").length>16?9:10,fontWeight:700,color:c.ts,lineHeight:1.3,wordBreak:"break-word",fontFamily:F}}>{sess.name||"—"}</div>
+                        <div style={{width:110,flexShrink:0,padding:"0 10px",display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"flex-start",gap:4,borderRight:"none",minWidth:0,overflow:"hidden"}}>
+                          <div title={sess.name||""} style={{width:"100%",fontSize:10,fontWeight:700,color:c.ts,lineHeight:1.3,fontFamily:F,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sess.name||"—"}</div>
                           <div style={{fontSize:7,fontWeight:500,color:c.tm,fontFamily:F,whiteSpace:"nowrap"}}>{createdStr}</div>
                         </div>
 
                         {/* Strategy name + info button */}
-                        <div style={{width:100,flexShrink:0,padding:"0 8px 0 10px",display:"flex",alignItems:"center",gap:4,borderRight:"none"}}>
-                          <div style={{fontSize:(sess.strategyName||"").length>20?9:(sess.strategyName||"").length>13?10:11,fontWeight:600,color:c.ts,lineHeight:1.35,wordBreak:"break-word",fontFamily:F,flex:1}}>{sess.strategyName||"—"}</div>
+                        <div style={{width:100,flexShrink:0,padding:"0 8px 0 10px",display:"flex",alignItems:"center",gap:4,borderRight:"none",minWidth:0,overflow:"hidden"}}>
+                          <div title={sess.strategyName||""} style={{fontSize:10,fontWeight:600,color:c.ts,lineHeight:1.35,fontFamily:F,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sess.strategyName||"—"}</div>
                           {sess.strategyDesc&&(
                             <div
                               onClick={e=>e.stopPropagation()}
@@ -14420,7 +14420,7 @@ const TalariaV8b = () => {
                               {/* Row 1: session name */}
                               <div>
                                 {lbl("Session name *")}
-                                <input value={newSessName} onChange={e=>setNewSessName(e.target.value)} placeholder="e.g. EURUSD Test" style={{...inp()}}/>
+                                <input value={newSessName} onChange={e=>setNewSessName(sanitizeSessionNameInput(e.target.value))} maxLength={SESSION_NAME_MAX} placeholder="e.g. EURUSD Test" style={{...inp()}}/>
                               </div>
                               {/* Row 2: strategy dropdown – same full width */}
                               <div style={{position:"relative"}}>

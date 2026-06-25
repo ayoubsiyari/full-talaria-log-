@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260624b80';
+const CHART_ENGINE_BUILD = '20260624b81';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -25388,6 +25388,62 @@ class Chart {
         this._pendingTfSwitchVisibleBarCount = null;
     }
 
+    /** True when the user has panned away from the live / replay follow edge. */
+    _isViewingHistoryViewport() {
+        if (!this.data || this.data.length === 0) return false;
+        const m = this.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, this.w - m.l - m.r);
+        const spacing = this.getCandleSpacing();
+        if (!(spacing > 0)) return false;
+        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
+            ? this.timeScale.rightOffsetCandles
+            : 15;
+        const rightMargin = Math.max(0, rightMarginCandles) * spacing;
+        const maxOffset = plotW - rightMargin;
+        return this.offsetX > maxOffset - spacing * 8;
+    }
+
+    /**
+     * After TF switch at the live/replay edge: keep bar count, right-anchor the
+     * playhead / latest bar (TradingView). Avoids extrapolated future anchor pixels
+     * that leave empty space on the right or squash bars to the left.
+     */
+    _applyTfSwitchFollowEdgeViewport(vp) {
+        if (!vp || !Array.isArray(this.data) || this.data.length === 0) return false;
+        const m = this.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, (this.w - m.l - m.r) || vp.plotW || 0);
+        const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth({ ...vp, plotW });
+        this._clampRestoredCandleWidth(targetCandleWidth);
+        this._syncZoomLevelIndexFromCandleWidth();
+        if (Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0) {
+            this._tfSwitchVisibleBarCount = vp.visibleBarCount;
+        }
+
+        const replay = this.replaySystem;
+        if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+            const st = replay.getReplayAutoScrollState(this);
+            if (st && Number.isFinite(st.offsetX)) {
+                this.offsetX = st.offsetX;
+                this._chartViewRestored = true;
+                this.constrainOffset();
+                return true;
+            }
+        }
+
+        const spacing = this.getCandleSpacing();
+        if (!(spacing > 0)) return false;
+        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
+            ? this.timeScale.rightOffsetCandles
+            : 15;
+        const numVisibleCandles = Math.max(1, Math.floor(plotW / spacing));
+        const targetVisible = Math.max(1, numVisibleCandles - Math.max(0, rightMarginCandles));
+        const scrollPosition = this.data.length - targetVisible;
+        this.offsetX = -scrollPosition * spacing;
+        this._chartViewRestored = true;
+        this.constrainOffset();
+        return true;
+    }
+
     /**
      * Approximate the candleWidth that yields a given on-screen candle spacing.
      * Inverts _getSpacingForCandleWidth via binary search (spacing is monotonic
@@ -25516,6 +25572,7 @@ class Chart {
         let anchorTs = null;
         let anchorScreenX = null;
         let anchorMode = 'center';
+        let followPlayhead = false;
         const replay = this.replaySystem;
         const userOwnsViewport = !!(replay && replay.isActive
             && (replay.userHasPanned || !replay.autoScrollEnabled));
@@ -25531,56 +25588,35 @@ class Chart {
         this._pendingTfSwitchVisibleBarCount = visibleBarCount;
         const viewportLeftIdx = vr.first;
         const leftScreenX = this.dataIndexToPixel(viewportLeftIdx);
+        const viewingHistory = userOwnsViewport || this._isViewingHistoryViewport();
 
-        if (userOwnsViewport) {
-            // Panned / manual zoom: keep the left edge pinned at the same screen X.
+        if (viewingHistory) {
             anchorMode = 'viewportLeft';
             anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
             anchorScreenX = leftScreenX;
-        } else if (!(replay && replay.isActive)) {
-            // Live browse panned into history: pin left edge (same wall-clock window).
-            const spacing = this.getCandleSpacing();
-            if (spacing > 0) {
-                const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
-                    ? this.timeScale.rightOffsetCandles
-                    : 15;
-                const rightMargin = Math.max(0, rightMarginCandles) * spacing;
-                const maxOffset = plotW - rightMargin;
-                const viewingHistory = this.offsetX > maxOffset - spacing * 8;
-                if (viewingHistory) {
-                    anchorMode = 'viewportLeft';
-                    anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
-                    anchorScreenX = leftScreenX;
+        } else {
+            followPlayhead = true;
+            anchorMode = 'followEdge';
+            if (replay && replay.isActive) {
+                const playheadTs = this._captureReplayPlayheadMs(replay);
+                if (Number.isFinite(playheadTs)) {
+                    anchorTs = playheadTs;
                 }
             }
-        }
-        if (anchorMode !== 'viewportLeft' && replay && replay.isActive) {
-            anchorMode = 'playhead';
-            const spacing = this.getCandleSpacing();
-            const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
-            const rightBar = this.data[rightBarIdx];
-            const playheadTs = this._captureReplayPlayheadMs(replay);
-            const visibleRightTs = this.estimateTimestampForDataIndex(rightIdx);
-            if (Number.isFinite(visibleRightTs)) {
-                anchorTs = visibleRightTs;
-            } else if (rightBar && Number.isFinite(rightBar.t)) {
-                anchorTs = rightBar.t;
-            } else if (Number.isFinite(playheadTs)) {
-                anchorTs = playheadTs;
-            }
-            if (Number.isFinite(anchorTs) && spacing > 0) {
-                anchorScreenX = this.dataIndexToPixel(rightIdx) + spacing / 2;
+            if (!Number.isFinite(anchorTs) && this.data.length > 0) {
+                const lastBar = this.data[this.data.length - 1];
+                if (lastBar && Number.isFinite(lastBar.t)) anchorTs = lastBar.t;
             }
         }
         if (!Number.isFinite(anchorTs)) {
             const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
             const rightBar = this.data[rightBarIdx];
             if (rightBar && Number.isFinite(rightBar.t)) anchorTs = rightBar.t;
-            anchorMode = 'playhead';
+            if (anchorMode === 'center') anchorMode = 'playhead';
         }
-        if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX)) {
+        if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX) && viewingHistory) {
             const spacing = this.getCandleSpacing();
-            anchorScreenX = this.dataIndexToPixel(rightIdx) + spacing / 2;
+            anchorScreenX = this.dataIndexToPixel(viewportLeftIdx) + (spacing > 0 ? spacing / 2 : 0);
         }
 
         const leftTs = this.estimateTimestampForDataIndex(vr.first);
@@ -25598,6 +25634,7 @@ class Chart {
             anchorMode,
             anchorTs,
             anchorScreenX,
+            followPlayhead,
             candleWidth: this.candleWidth,
             offsetX: this.offsetX,
             sourceBarMs: barMs,
@@ -25703,6 +25740,13 @@ class Chart {
             }
         }
 
+        if (vp.followPlayhead) {
+            this._clearTfSwitchAnchorLock();
+            if (this._applyTfSwitchFollowEdgeViewport(vp)) {
+                return true;
+            }
+        }
+
         if (vp.anchorMode === 'viewportLeft'
             && Number.isFinite(vp.leftTs)
             && Number.isFinite(vp.leftScreenX)) {
@@ -25751,6 +25795,17 @@ class Chart {
         }
         if (this._tfSwitchAnchorLock) {
             this._reapplyTfSwitchAnchorLock();
+        } else if (Number.isFinite(this._tfSwitchVisibleBarCount)
+            && typeof this._applyTfSwitchFollowEdgeViewport === 'function') {
+            const replay = this.replaySystem;
+            const atFollowEdge = !(replay && replay.isActive && replay.userHasPanned);
+            if (atFollowEdge) {
+                const m = this.margin || { l: 60, r: 60 };
+                this._applyTfSwitchFollowEdgeViewport({
+                    visibleBarCount: this._tfSwitchVisibleBarCount,
+                    plotW: Math.max(1, this.w - m.l - m.r),
+                });
+            }
         }
         if (typeof setTimeout === 'function') {
             setTimeout(() => this._fillViewportGapsAfterTfSwitch(0), 0);
@@ -25903,6 +25958,9 @@ class Chart {
         }
         const vp = vpSnap;
         if (vp && this.data && this.data.length > 0) {
+            if (vp.followPlayhead && this._applyTfSwitchFollowEdgeViewport(vp)) {
+                return;
+            }
             if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
                 this._commitTfSwitchAnchorLock(vp);
             } else if (Number.isFinite(vp.centerTs)
@@ -25918,6 +25976,16 @@ class Chart {
             return;
         }
         if (this.data && this.data.length > 0) {
+            const replay = this.replaySystem;
+            if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+                const st = replay.getReplayAutoScrollState(this);
+                if (st && Number.isFinite(st.offsetX)) {
+                    this.offsetX = st.offsetX;
+                    this._chartViewRestored = true;
+                    this.constrainOffset();
+                    return;
+                }
+            }
             if (typeof this.jumpToLatest === 'function') {
                 this.jumpToLatest();
             } else {
