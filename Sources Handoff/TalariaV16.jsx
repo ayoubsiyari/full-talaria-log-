@@ -35699,7 +35699,7 @@ const TalariaV8b = () => {
                             </div>
                           ))}
                         </div>
-                        <div className="tlr-library-action tlr-add-trade-soft-action tlr-library-close" role="button" tabIndex={0} aria-label={dashTxt("Close","إغلاق")} onPointerDown={libraryPointerActivate(()=>{setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})} onKeyDown={libraryKeyActivate(()=>{setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})}
+                        <div className="tlr-library-action tlr-add-trade-soft-action tlr-library-close" role="button" tabIndex={0} aria-label={dashTxt("Close","إغلاق")} onPointerDown={libraryPointerActivate(()=>{hideDashboardInfo();setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})} onKeyDown={libraryKeyActivate(()=>{hideDashboardInfo();setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})}
                           style={{width:28,height:28,display:"grid",placeItems:"center",color:c.ts,background:"transparent",flexShrink:0,"--tlr-add-hover-bg":"rgba(255,80,104,0.08)","--tlr-add-hover-color":c.rd,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":"rgba(255,80,104,0.14)","--tlr-add-active-color":c.rd}}>
                           <I n="x" s={16} cl="currentColor"/>
                         </div>

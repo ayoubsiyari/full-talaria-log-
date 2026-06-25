@@ -265,6 +265,81 @@
             && ch.rawData && ch.rawData.length > 0;
     }
 
+    function readParentSymbol() {
+        try {
+            var pc = (global.parent && global.parent !== global) ? global.parent.chart : null;
+            if (pc && pc.currentSymbol != null && pc.currentSymbol !== '') {
+                return String(pc.currentSymbol);
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    function normalizeSymbol(s) {
+        return String(s == null ? '' : s).replace(/\//g, '').toUpperCase().trim();
+    }
+
+    /**
+     * Same-symbol panels must show the SAME candle/time as host tile A. As replay
+     * plays forward it can cross into a different backtest SESSION (a new fileId);
+     * a panel still on the old session can never catch up — its data ends before
+     * the host playhead, so it freezes on an old candle (the "not same candle time"
+     * desync). When the host is on a different fileId but the SAME symbol as this
+     * panel, adopt (reload) the host's session, then seek to the playhead.
+     * Never fires for an intentionally different pair (symbol mismatch).
+     * @returns {boolean} true when a session adopt+seek was initiated.
+     */
+    function maybeAdoptHostSessionForSameSymbol(ch, args) {
+        try {
+            if (!ch || !isMultichartIframePanel()) return false;
+            if (ch._multichartPairLoadInFlight) return false;
+            if (ch._multichartSessionAdoptInFlight) return false;
+            if (typeof ch.loadFileData !== 'function') return false;
+            var hostFid = (args && args.hostFileId != null && args.hostFileId !== '')
+                ? String(args.hostFileId)
+                : readParentHostFileId();
+            if (!hostFid) return false;
+            if (String(ch.currentFileId || '') === hostFid) return false;
+            var hostSym = normalizeSymbol(readParentSymbol());
+            var mySym = normalizeSymbol(ch.currentSymbol);
+            if (!hostSym || !mySym || hostSym !== mySym) return false;
+            // Throttle so a burst of rejected frames can't stack reloads, but a
+            // genuinely new host session can still be adopted on a later frame.
+            var now = Date.now();
+            if (ch._multichartSessionAdoptAt && (now - ch._multichartSessionAdoptAt) < 2000) {
+                return false;
+            }
+            ch._multichartSessionAdoptAt = now;
+            ch._multichartSessionAdoptInFlight = true;
+            var ts = Number(args && args.timestamp);
+            mirrorParentBacktestSession(ch);
+            var done = function () {
+                ch._multichartSessionAdoptInFlight = false;
+                try { drainPendingReplay(); } catch (_) {}
+                if (!Number.isFinite(ts)) return;
+                if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                    applyReplayEnter(ch, ts);
+                } else {
+                    forceReplaySeek(ch, ts, false);
+                }
+            };
+            var p = ch.loadFileData(hostFid);
+            if (p && typeof p.then === 'function') {
+                p.then(done).catch(function (e) {
+                    ch._multichartSessionAdoptInFlight = false;
+                    warn('adoptHostSession: loadFileData failed', e && e.message);
+                });
+            } else {
+                done();
+            }
+            return true;
+        } catch (e) {
+            if (ch) ch._multichartSessionAdoptInFlight = false;
+            warn('maybeAdoptHostSessionForSameSymbol threw', e && e.message);
+            return false;
+        }
+    }
+
     function reseedReplayFromChart(ch) {
         if (!ch || typeof ch._reseedReplayFullRawFromLoadedData !== 'function') return;
         try { ch._reseedReplayFullRawFromLoadedData(); } catch (_) {}
@@ -400,6 +475,11 @@
         // already holds right now, then kick the catch-up fetch for the rest.
         // This keeps every panel moving candle-by-candle through its own data.
         renderFurthestLoadedMirrorFrame(ch, rs, args);
+
+        // Same symbol but host crossed into a different session file → adopt the
+        // host session so the panel stays in lockstep instead of catching up
+        // within its own (now-too-short) session.
+        if (maybeAdoptHostSessionForSameSymbol(ch, args)) return;
 
         scheduleMirrorCatchUp(ch, ts, args);
     }
@@ -763,6 +843,12 @@
             // doesn't visibly re-fit the viewport and snap back. Fall back to a full
             // seek (which can refetch) only when the mirror can't render this ts.
             if (applyStaticMirrorFrame(ch, seekTs)) return;
+            // Same symbol but host is on a different session file → adopt it so a
+            // paused/scrubbed panel lands on the host's actual candle/time.
+            if (maybeAdoptHostSessionForSameSymbol(ch, {
+                timestamp: seekTs,
+                hostFileId: readParentHostFileId(),
+            })) return;
             forceReplaySeek(ch, seekTs, false);
         });
     }

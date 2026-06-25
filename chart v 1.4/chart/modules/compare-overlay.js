@@ -3599,8 +3599,6 @@ class CompareOverlay {
      * Called during chart render to draw overlays
      */
     drawOverlays() {
-        this.syncForReplay();
-
         const visibleOverlays = this.overlays.filter(o => o.visible);
         if (visibleOverlays.length === 0) {
             // Reset left margin and logo position when no overlays
@@ -3672,17 +3670,6 @@ class CompareOverlay {
         ctx.clip();
         
         visibleOverlays.forEach((overlay, overlayIndex) => {
-            const overlayData = this._getOverlayVisibleBars(overlay, mainData, startIdx, endIdx);
-            
-            if (overlayData.length < 1) {
-                console.log(`📊 Overlay ${overlay.symbol}: only ${overlayData.length} candles in visible range`);
-                return;
-            }
-            const needsTwoPoints = overlay.displayType === 'line' || overlay.displayType === 'area';
-            if (needsTwoPoints && overlayData.length < 2) {
-                return;
-            }
-            
             let minPrice;
             let maxPrice;
             const snap = this.chart._overlaySnapDomains && this.chart._overlaySnapDomains[overlay.id];
@@ -3691,68 +3678,50 @@ class CompareOverlay {
                 minPrice = snap.min;
                 maxPrice = snap.max;
             } else {
-                // Calculate Y scale for this overlay from full OHLC range.
-                // Using close-only can distort/clip candle wicks on higher timeframes.
-                minPrice = Infinity;
-                maxPrice = -Infinity;
-                overlayData.forEach(d => {
-                    const lo = Number.isFinite(d.l) ? d.l : d.c;
-                    const hi = Number.isFinite(d.h) ? d.h : d.c;
-                    if (lo < minPrice) minPrice = lo;
-                    if (hi > maxPrice) maxPrice = hi;
-                });
-                
+                const yRange = this._computeOverlayYRangeFromMainAnchors(overlay, mainData, startIdx, endIdx);
+                minPrice = yRange.minPrice;
+                maxPrice = yRange.maxPrice;
+                if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+                    return;
+                }
                 let priceRange = maxPrice - minPrice || 1;
                 const padding = priceRange * 0.1;
                 minPrice -= padding;
                 maxPrice += padding;
-                
-                // Apply zoom and offset
                 const midPrice = (minPrice + maxPrice) / 2;
                 priceRange = (maxPrice - minPrice) / overlay.priceZoom;
                 minPrice = midPrice - priceRange / 2 + overlay.priceOffset;
                 maxPrice = midPrice + priceRange / 2 + overlay.priceOffset;
             }
-            
-            // Create Y scale for overlay
+
             const overlayYScale = (price) => {
                 return m.t + priceHeight - ((price - minPrice) / (maxPrice - minPrice)) * priceHeight;
             };
-            
-            // Store scale info on overlay for drag operations
+
             overlay.yScale = {
                 domain: () => [minPrice, maxPrice],
                 range: () => [m.t + priceHeight, m.t]
             };
-            
-            // Draw based on display type
+
             ctx.save();
             const baseOp = overlay.opacity != null ? overlay.opacity : 1;
             ctx.globalAlpha = baseOp * (overlay.timeframeLoading ? 0.5 : 1);
-            
+
             if (overlay.displayType === 'candles') {
-                // Draw as candles with customizable colors
                 const candleWidth = Math.max(1, this.chart.candleWidth * 0.6);
-                
-                overlayData.forEach((candle) => {
-                    const globalIdx = this._findOverlayGlobalIndex(overlay, candle);
-                    const mainIndex = this._mapOverlayToMainIndex(
-                        candle, globalIdx, overlay.data, mainData, startIdx, endIdx
-                    );
-                    if (mainIndex === -1) return;
-                    
-                    // Use chart's dataIndexToPixel for smooth movement (includes offsetX)
-                    const x = Math.round(this.chart.dataIndexToPixel(mainIndex));
+                const points = this._buildMainAnchoredOverlayPoints(
+                    overlay, mainData, startIdx, endIdx, overlayYScale,
+                    (bar) => Number(bar.c ?? bar.close)
+                );
+                points.forEach(({ x, bar }) => {
+                    const candle = bar;
                     const yOpen = Math.round(overlayYScale(candle.o));
                     const yClose = Math.round(overlayYScale(candle.c));
                     const yHigh = Math.round(overlayYScale(candle.h));
                     const yLow = Math.round(overlayYScale(candle.l));
-                    
                     const isBullish = candle.c >= candle.o;
                     const bodyLeft = Math.round(x - candleWidth / 2);
                     const bodyWidthRound = Math.round(candleWidth);
-                    
-                    // Draw wick
                     if (overlay.showWick) {
                         ctx.strokeStyle = isBullish ? overlay.wickUpColor : overlay.wickDownColor;
                         ctx.lineWidth = 1;
@@ -3761,14 +3730,10 @@ class CompareOverlay {
                         ctx.lineTo(x, yLow);
                         ctx.stroke();
                     }
-                    
-                    // Draw body
                     const bodyTop = Math.min(yOpen, yClose);
                     const bodyHeight = Math.abs(yClose - yOpen) || 1;
-                    
                     if (overlay.showBody) {
                         if (isBullish) {
-                            // Bullish candle - fill with up color
                             ctx.fillStyle = overlay.bodyUpColor;
                             ctx.fillRect(bodyLeft, bodyTop, bodyWidthRound, bodyHeight);
                             if (overlay.showBorder) {
@@ -3777,7 +3742,6 @@ class CompareOverlay {
                                 ctx.strokeRect(bodyLeft + 0.5, bodyTop + 0.5, bodyWidthRound - 1, bodyHeight - 1);
                             }
                         } else {
-                            // Bearish candle - fill with down color
                             ctx.fillStyle = overlay.bodyDownColor;
                             ctx.fillRect(bodyLeft, bodyTop, bodyWidthRound, bodyHeight);
                             if (overlay.showBorder) {
@@ -3789,58 +3753,49 @@ class CompareOverlay {
                     }
                 });
             } else {
-                // Draw as line — one stroke per contiguous segment so skipped mappings
-                // (findClosestIndex === -1) never connect with a diagonal across the gap.
                 ctx.strokeStyle = overlay.color;
-                ctx.lineWidth = overlay.lineWidth;
+                ctx.lineWidth = overlay.lineWidth || 2;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
-                
-                const mapped = [];
-                let lastMi = -2;
-                let lastOverlayTime = null;
-                overlayData.forEach((candle) => {
-                    const globalIdx = this._findOverlayGlobalIndex(overlay, candle);
-                    const mainIndex = this._mapOverlayToMainIndex(
-                        candle, globalIdx, overlay.data, mainData, startIdx, endIdx
-                    );
-                    if (mainIndex === -1) {
-                        lastMi = -1;
-                        lastOverlayTime = null;
-                        return;
-                    }
-                    const x = Math.round(this.chart.dataIndexToPixel(mainIndex));
-                    const y = Math.round(overlayYScale(candle.c));
-                    const breakSeg = lastMi === -1
-                        || mainIndex < lastMi
-                        || this._shouldBreakCompareLineSegment(
-                            lastMi === -1 ? null : lastMi,
-                            lastOverlayTime,
-                            mainIndex,
-                            candle.t,
-                            mainData
-                        );
-                    this._pushCompareLinePoint(mapped, mainIndex, x, y, breakSeg);
-                    lastMi = mainIndex;
-                    lastOverlayTime = candle.t;
-                });
-                
+
+                const points = this._buildMainAnchoredOverlayPoints(
+                    overlay, mainData, startIdx, endIdx, overlayYScale,
+                    (bar) => Number(bar.c ?? bar.close)
+                );
+                if (points.length < 2) {
+                    ctx.restore();
+                    return;
+                }
+
                 let seg = [];
                 const flush = () => {
-                    if (seg.length === 0) return;
+                    if (seg.length < 2) {
+                        seg = [];
+                        return;
+                    }
                     ctx.beginPath();
                     ctx.moveTo(seg[0].x, seg[0].y);
                     for (let s = 1; s < seg.length; s++) ctx.lineTo(seg[s].x, seg[s].y);
                     ctx.stroke();
                     seg = [];
                 };
-                mapped.forEach((pt) => {
-                    if (pt.breakSeg && seg.length) flush();
+
+                let lastMi = -1;
+                let lastOverlayTime = null;
+                points.forEach((pt) => {
+                    const breakSeg = lastMi === -1
+                        || pt.mainIndex < lastMi
+                        || this._shouldBreakCompareLineSegment(
+                            lastMi, lastOverlayTime, pt.mainIndex, pt.overlayTime, mainData
+                        );
+                    if (breakSeg && seg.length) flush();
                     seg.push(pt);
+                    lastMi = pt.mainIndex;
+                    lastOverlayTime = pt.overlayTime;
                 });
                 flush();
             }
-            
+
             ctx.restore();
         });
         
@@ -3892,14 +3847,17 @@ class CompareOverlay {
      * Refreshes compare legend so OHLC appears in lockstep with the main symbol row.
      */
     onMainChartTimeframeReady() {
-        this.resetViewState();
         const tf = this.chart?.currentTimeframe || '1m';
+        if (this.chart) this.chart._overlaySnapDomains = null;
         for (const overlay of this.overlays) {
             overlay.timeframeLoading = false;
+            overlay.priceZoom = 1.0;
+            overlay.priceOffset = 0;
             if (overlay.rawData?.length) {
                 overlay.data = this.resampleData(overlay.rawData, tf);
             }
         }
+        this._lastReplaySyncKey = null;
         this.syncForReplay();
         try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
         const ch = this.chart;
@@ -4292,27 +4250,116 @@ class CompareOverlay {
         return false;
     }
 
-    _findOverlayGlobalIndex(overlay, candle) {
-        const data = overlay?.data;
-        if (!Array.isArray(data) || !data.length || !candle) return -1;
-        const t = Number(candle.t);
-        if (!Number.isFinite(t)) return -1;
+    _getCurrentTfMs() {
+        const tfKey = String(this.chart?.currentTimeframe || '1m').toLowerCase().trim();
+        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const parsed = this.chart.parseTimeframe(tfKey);
+            if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
+        return this.getTimeframeDuration(tfKey);
+    }
+
+    /**
+     * Find overlay OHLC row for a main-chart bar time (main chart drives X axis).
+     */
+    _findOverlayBarForMainTime(series, mainTimestamp, mainIndex, mainLen) {
+        if (!Array.isArray(series) || !series.length || !Number.isFinite(mainTimestamp)) return null;
+
+        const tfMs = this._getCurrentTfMs();
+        const maxDiff = Math.max(tfMs * 2, 120000);
+
+        if (Number.isFinite(mainIndex) && mainIndex >= 0 && mainIndex < series.length
+            && Number.isFinite(mainLen) && series.length === mainLen) {
+            const aligned = series[mainIndex];
+            const alignedT = Number(aligned?.t);
+            if (aligned && Number.isFinite(alignedT) && Math.abs(alignedT - mainTimestamp) <= maxDiff) {
+                return aligned;
+            }
+        }
 
         let lo = 0;
-        let hi = data.length - 1;
+        let hi = series.length - 1;
         while (lo < hi) {
             const mid = (lo + hi) >> 1;
-            if (Number(data[mid].t) < t) lo = mid + 1;
+            if (Number(series[mid].t) < mainTimestamp) lo = mid + 1;
             else hi = mid;
         }
 
         let idx = lo;
         if (lo > 0) {
-            const diffLo = Math.abs(Number(data[lo - 1].t) - t);
-            const diffHi = Math.abs(Number(data[lo].t) - t);
+            const diffLo = Math.abs(Number(series[lo - 1].t) - mainTimestamp);
+            const diffHi = Math.abs(Number(series[lo].t) - mainTimestamp);
             if (diffLo <= diffHi) idx = lo - 1;
         }
-        return idx;
+
+        const bar = series[idx];
+        if (!bar) return null;
+        if (Math.abs(Number(bar.t) - mainTimestamp) > maxDiff) return null;
+        return bar;
+    }
+
+    /** Plot points anchored to visible main-chart bar indices (reliable after TF switch). */
+    _buildMainAnchoredOverlayPoints(overlay, mainData, startIdx, endIdx, overlayYScale, valueFn) {
+        const points = [];
+        if (!overlay?.data?.length || !mainData?.length) return points;
+
+        const mainLen = mainData.length;
+        const overlayLen = overlay.data.length;
+        const m = this.chart.margin || { l: 0, r: 0 };
+        const plotRight = this.chart.w - m.r;
+
+        for (let i = startIdx; i < endIdx && i < mainLen; i++) {
+            const mainT = Number(mainData[i]?.t);
+            if (!Number.isFinite(mainT)) continue;
+
+            const bar = this._findOverlayBarForMainTime(overlay.data, mainT, i, mainLen);
+            if (!bar) continue;
+
+            const x = Math.round(this.chart.dataIndexToPixel(i));
+            if (x < m.l - 60 || x > plotRight + 60) continue;
+
+            const yVal = valueFn(bar);
+            if (!Number.isFinite(yVal)) continue;
+
+            const y = Math.round(overlayYScale(yVal));
+            points.push({ x, y, mainIndex: i, overlayTime: bar.t, bar });
+        }
+
+        return points;
+    }
+
+    _computeOverlayYRangeFromMainAnchors(overlay, mainData, startIdx, endIdx) {
+        let minPrice = Infinity;
+        let maxPrice = -Infinity;
+        const mainLen = mainData.length;
+
+        for (let i = startIdx; i < endIdx && i < mainLen; i++) {
+            const mainT = Number(mainData[i]?.t);
+            if (!Number.isFinite(mainT)) continue;
+            const bar = this._findOverlayBarForMainTime(overlay.data, mainT, i, mainLen);
+            if (!bar) continue;
+            const lo = Number.isFinite(bar.l) ? bar.l : bar.c;
+            const hi = Number.isFinite(bar.h) ? bar.h : bar.c;
+            if (Number.isFinite(lo) && lo < minPrice) minPrice = lo;
+            if (Number.isFinite(hi) && hi > maxPrice) maxPrice = hi;
+        }
+
+        if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+            const pad = this._getCurrentTfMs();
+            const t0 = mainData[startIdx]?.t;
+            const t1 = mainData[Math.min(endIdx, mainLen - 1)]?.t;
+            if (Number.isFinite(t0) && Number.isFinite(t1)) {
+                overlay.data.forEach((d) => {
+                    if (d.t < t0 - pad || d.t > t1 + pad) return;
+                    const lo = Number.isFinite(d.l) ? d.l : d.c;
+                    const hi = Number.isFinite(d.h) ? d.h : d.c;
+                    if (lo < minPrice) minPrice = lo;
+                    if (hi > maxPrice) maxPrice = hi;
+                });
+            }
+        }
+
+        return { minPrice, maxPrice };
     }
 
     findClosestIndex(data, timestamp, startIdx, endIdx) {
@@ -4406,8 +4453,8 @@ class CompareOverlay {
         for (const overlay of this.overlays) {
             overlay.priceZoom = 1.0;
             overlay.priceOffset = 0;
+            overlay.timeframeLoading = false;
         }
-        this._lastReplaySyncKey = null;
     }
     
     getTimeframeDuration(timeframe) {
@@ -4643,23 +4690,13 @@ class CompareOverlay {
         const parseMs = (tf) => this._parseTimeframeMs(tf);
         const newMs = parseMs(timeframe);
 
-        this.resetViewState();
-
-        // Keep compare rows visible with the same 3-dot loading affordance as the main OHLC bar.
-        this.overlays.forEach((overlay) => {
-            overlay.timeframeLoading = true;
-        });
-        this.updateOverlayLegend();
-
-        // Resample synchronously first so overlay.data matches the new chart TF immediately.
-        // If we only updated inside the async /smart refetch, main.data could already be on
-        // the new TF while overlay.data stayed on the old aggregation — findClosestIndex would
-        // miss and the compare line would not draw until the fetch finished (or never, if it failed).
         for (const overlay of this.overlays) {
             overlay.data = this.resampleData(overlay.rawData || [], timeframe);
+            overlay.timeframeLoading = false;
         }
         this._lastReplaySyncKey = null;
         this.syncForReplay();
+        try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
         if (Array.isArray(this.linkedPanes)) {
             this.linkedPanes.forEach((pane) => {
                 pane.data = this.resampleData(pane.rawData || [], timeframe);
