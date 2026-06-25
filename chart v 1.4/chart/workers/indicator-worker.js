@@ -715,19 +715,76 @@ function calculateDonchian(data, period, offset) {
     return shiftBandSeries({ upper, middle, lower }, offset);
 }
 
+function calculateBarRangeSMA(data, period) {
+    period = Math.max(1, period);
+    const out = [];
+    for (let i = 0; i < data.length; i++) {
+        if (i < period - 1) {
+            out.push(null);
+            continue;
+        }
+        let sum = 0;
+        for (let j = 0; j < period; j++) {
+            sum += data[i - j].h - data[i - j].l;
+        }
+        out.push(sum / period);
+    }
+    return out;
+}
+
+function resolveKeltnerCalcParams(params) {
+    params = params || {};
+    const lengthRaw = params.length != null ? Number(params.length) : (params.emaPeriod != null ? Number(params.emaPeriod) : 20);
+    const atrLengthRaw = params.atrLength != null ? Number(params.atrLength) : (params.atrPeriod != null ? Number(params.atrPeriod) : 10);
+    const multiplierRaw = params.multiplier != null ? Number(params.multiplier) : 2;
+    let bandsStyle = params.bandsStyle || 'Average True Range';
+    if (bandsStyle === 'ATR' || bandsStyle === 'atr') bandsStyle = 'Average True Range';
+    return {
+        length: Number.isFinite(lengthRaw) ? lengthRaw : 20,
+        atrLength: Number.isFinite(atrLengthRaw) ? atrLengthRaw : 10,
+        multiplier: Number.isFinite(multiplierRaw) ? multiplierRaw : 2,
+        source: params.source || 'close',
+        useExponentialMa: params.useExponentialMa !== false,
+        bandsStyle: bandsStyle,
+        offset: params.offset || 0
+    };
+}
+
 function calculateKeltner(data, calcOrEmaPeriod, atrPeriod, mult, source) {
     let calc;
-    if (typeof calcOrEmaPeriod === 'object' && calcOrEmaPeriod !== null) {
-        calc = calcOrEmaPeriod;
+    if (typeof calcOrEmaPeriod === 'object' && calcOrEmaPeriod !== null && !Array.isArray(calcOrEmaPeriod)) {
+        calc = resolveKeltnerCalcParams(calcOrEmaPeriod);
     } else {
-        calc = { emaPeriod: calcOrEmaPeriod || 20, atrPeriod: atrPeriod || 10, multiplier: mult || 2, source: source || 'close', offset: 0 };
+        calc = resolveKeltnerCalcParams({
+            emaPeriod: calcOrEmaPeriod,
+            atrPeriod: atrPeriod,
+            multiplier: mult,
+            source: source
+        });
     }
-    const ema = calculateEMA(data, calc.emaPeriod, calc.source || 'close');
-    const atr = calculateATR(data, calc.atrPeriod, 'RMA');
-    const m = calc.multiplier || 2;
-    const upper = ema.map((v, i) => (v != null && atr[i] != null) ? v + m * atr[i] : null);
-    const lower = ema.map((v, i) => (v != null && atr[i] != null) ? v - m * atr[i] : null);
-    return shiftBandSeries({ upper, middle: ema, lower }, calc.offset || 0);
+    const mid = calc.useExponentialMa
+        ? calculateEMA(data, calc.length, calc.source)
+        : calculateSMA(data, calc.length, calc.source);
+    let bandWidth;
+    if (calc.bandsStyle === 'True Range') {
+        bandWidth = calculateTrueRangeSeries(data);
+    } else if (calc.bandsStyle === 'Range') {
+        bandWidth = calculateBarRangeSMA(data, calc.length);
+    } else {
+        bandWidth = calculateATR(data, calc.atrLength, 'RMA');
+    }
+    const upper = [];
+    const lower = [];
+    for (let i = 0; i < data.length; i++) {
+        if (mid[i] == null || bandWidth[i] == null) {
+            upper.push(null);
+            lower.push(null);
+        } else {
+            upper.push(mid[i] + calc.multiplier * bandWidth[i]);
+            lower.push(mid[i] - calc.multiplier * bandWidth[i]);
+        }
+    }
+    return shiftBandSeries({ upper: upper, middle: mid, lower: lower }, calc.offset || 0);
 }
 
 function calculateAroon(data, period) {

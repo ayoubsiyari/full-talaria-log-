@@ -4144,7 +4144,8 @@
         return trs;
     }
 
-    function calculateHighLowRange(data, period) {
+    /** TradingView Keltner "Range": SMA(high - low, length) — not Donchian channel width. */
+    function calculateBarRangeSMA(data, period) {
         period = Math.max(1, period);
         const out = [];
         for (let i = 0; i < data.length; i++) {
@@ -4152,14 +4153,11 @@
                 out.push(null);
                 continue;
             }
-            let hh = -Infinity;
-            let ll = Infinity;
+            let sum = 0;
             for (let j = 0; j < period; j++) {
-                const bar = data[i - j];
-                if (bar.h > hh) hh = bar.h;
-                if (bar.l < ll) ll = bar.l;
+                sum += data[i - j].h - data[i - j].l;
             }
-            out.push(hh - ll);
+            out.push(sum / period);
         }
         return out;
     }
@@ -4213,7 +4211,7 @@
         if (calc.bandsStyle === 'True Range') {
             bandWidth = calculateTrueRangeSeries(data);
         } else if (calc.bandsStyle === 'Range') {
-            bandWidth = calculateHighLowRange(data, calc.length);
+            bandWidth = calculateBarRangeSMA(data, calc.length);
         } else {
             bandWidth = calculateATR(data, calc.atrLength);
         }

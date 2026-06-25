@@ -14062,6 +14062,49 @@ class Chart {
         }
     }
 
+    /** Active chart for placement cursor (multi-panel / multichart parent focus). */
+    _resolvePlacementChart() {
+        if (typeof window !== 'undefined' && typeof window.getActiveChart === 'function') {
+            const ch = window.getActiveChart();
+            if (ch) return ch;
+        }
+        try {
+            if (typeof window !== 'undefined' && window.parent && window.parent !== window
+                && typeof window.parent.getActiveChart === 'function') {
+                return window.parent.getActiveChart();
+            }
+        } catch (_parentActive) { /* cross-origin */ }
+        return this;
+    }
+
+    /** Placement cursor when a drawing tool is armed (local or focused chart). */
+    _getDrawingPlacementCursor() {
+        if (this.tool) return 'crosshair';
+
+        const cursorFromDm = (chart, dm) => {
+            if (!dm) return null;
+            const armed = !!(dm.currentTool || dm.eraserMode
+                || (dm.drawingState && dm.drawingState.isDrawing));
+            if (!armed) return null;
+            if (typeof dm._placementCursorStyle === 'function') {
+                return dm._placementCursorStyle();
+            }
+            if (chart && typeof chart.getCurrentCursorStyle === 'function') {
+                return chart.getCurrentCursorStyle();
+            }
+            return 'crosshair';
+        };
+
+        const local = cursorFromDm(this, this.drawingManager);
+        if (local) return local;
+
+        const active = this._resolvePlacementChart();
+        if (active && active !== this) {
+            return cursorFromDm(active, active.drawingManager);
+        }
+        return null;
+    }
+
     setCursorType(type, skipSync = false) {
         this.cursorType = type;
         
@@ -25609,30 +25652,48 @@ class Chart {
         // switching timeframe always shows the same play position as the one before.
         // If the user manually panned away from follow we fall through and keep their
         // position (forceRecenter:false → syncReplayViewportToPlayhead returns false).
+        // While FOLLOWING the playhead (not manually panned) this is the SINGLE
+        // authoritative positioner for a replay TF switch. It always returns true so
+        // the bar-count / jumpToLatest fallbacks below never also run — having two
+        // positioners with different zoom (bar-count) or a candle-width reset
+        // (jumpToLatest → DEFAULT_CANDLE_WIDTH) is what made rapid TF toggling jump
+        // and occasionally blank. Candle width is preserved (sync only moves offsetX)
+        // so every timeframe lands at the same play position as the one before.
         const _replay = this.replaySystem;
-        if (_replay && _replay.isActive
-            && typeof _replay.syncReplayViewportToPlayhead === 'function') {
-            const _following = !(vp && vp.userHasPanned);
+        const _following = _replay && _replay.isActive && !(vp && vp.userHasPanned);
+        if (_following && typeof _replay.syncReplayViewportToPlayhead === 'function') {
             const _keepPriceScale = !!(vp && (vp.autoScale === false || vp.priceScaleLocked));
             this._clearTfSwitchAnchorLock();
             const _synced = _replay.syncReplayViewportToPlayhead(this, {
                 centerPlayhead: false,
                 resetPriceScale: !_keepPriceScale,
-                forceRecenter: _following,
+                forceRecenter: true,
                 render: false,
             });
-            if (_synced) {
-                if (_keepPriceScale) {
-                    if (Number.isFinite(vp.priceZoom)) this.priceZoom = vp.priceZoom;
-                    if (Number.isFinite(vp.priceOffset)) this.priceOffset = vp.priceOffset;
-                    if (Number.isFinite(vp.manualCenterPrice)) this.manualCenterPrice = vp.manualCenterPrice;
-                    if (Number.isFinite(vp.manualRange)) this.manualRange = vp.manualRange;
-                    this.autoScale = false;
-                    if (this.priceScale) this.priceScale.autoScale = false;
+            // Guarantee the playhead stays on screen even if sync could not compute an
+            // offset this frame (transient w=0 / empty layout during rapid switching).
+            const _visible = typeof this._countVisiblePlotBars === 'function'
+                ? this._countVisiblePlotBars() > 0
+                : true;
+            if (!_synced || !_visible) {
+                const _st = typeof _replay.getReplayAutoScrollState === 'function'
+                    ? _replay.getReplayAutoScrollState(this)
+                    : null;
+                if (_st && Number.isFinite(_st.offsetX)) {
+                    this.offsetX = _st.offsetX;
+                    if (typeof this.constrainOffset === 'function') this.constrainOffset();
                 }
-                this._chartViewRestored = true;
-                return true;
             }
+            if (_keepPriceScale) {
+                if (Number.isFinite(vp.priceZoom)) this.priceZoom = vp.priceZoom;
+                if (Number.isFinite(vp.priceOffset)) this.priceOffset = vp.priceOffset;
+                if (Number.isFinite(vp.manualCenterPrice)) this.manualCenterPrice = vp.manualCenterPrice;
+                if (Number.isFinite(vp.manualRange)) this.manualRange = vp.manualRange;
+                this.autoScale = false;
+                if (this.priceScale) this.priceScale.autoScale = false;
+            }
+            this._chartViewRestored = true;
+            return true;
         }
 
         const newBarMs = this._estimateTimeframeStepMs();
@@ -25829,8 +25890,22 @@ class Chart {
 
         setTimeout(() => {
             const grew = measureLen() > beforeLen;
-            if (grew && this._tfSwitchAnchorLock) {
-                try { this._reapplyTfSwitchAnchorLock(); } catch (_e) { /* ignore */ }
+            if (grew) {
+                if (this._tfSwitchAnchorLock) {
+                    try { this._reapplyTfSwitchAnchorLock(); } catch (_e) { /* ignore */ }
+                } else if (replay && replay.isActive && !replay.userHasPanned
+                    && typeof replay.syncReplayViewportToPlayhead === 'function') {
+                    // Replay follow has no anchor lock — re-pin the playhead as older
+                    // bars stream in (prepended bars would otherwise shift it right /
+                    // off screen, looking like the chart "jumps" after a TF switch).
+                    try {
+                        replay.syncReplayViewportToPlayhead(this, {
+                            centerPlayhead: false,
+                            forceRecenter: true,
+                            render: true,
+                        });
+                    } catch (_e) { /* ignore */ }
+                }
             }
             // Keep going while data is arriving here OR a shared host fetch is in flight.
             const busy = this._panLoading || this._replayPanLoadTimer || (host && host._panLoading);

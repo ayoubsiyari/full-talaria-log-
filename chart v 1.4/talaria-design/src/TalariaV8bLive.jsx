@@ -21,6 +21,7 @@ import {
   presetToGotoItem,
   isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
+import { loadIndPinned, saveIndPinned } from "./indicatorPinStorage.js";
 import {
   deleteV9ChartTemplateAtIndex,
   hydrateV9ChartTemplatesFromCloud,
@@ -13069,7 +13070,7 @@ const TalariaV8bLive = () => {
   }, []);
 
   const [indOpen, setIndOpen] = useState(false);
-  const [indPinned, setIndPinned] = useState([]);
+  const [indPinned, setIndPinned] = useState(() => loadIndPinned());
   const [indActive, setIndActive] = useState([]);
   const [indSelectedId, setIndSelectedId] = useState(null);
 
@@ -14354,6 +14355,10 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     saveGotoState(gotoItems, gotoPresets);
   }, [gotoItems, gotoPresets]);
+
+  useEffect(() => {
+    saveIndPinned(indPinned);
+  }, [indPinned]);
 
   // Always use effective zoom 1: CSS `zoom` on the shell broke hit-testing vs visually
   // stacked layers (left rail, floating bars) in Chromium — clicks registered on #chart-container
