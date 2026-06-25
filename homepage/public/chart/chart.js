@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260624b77';
+const CHART_ENGINE_BUILD = '20260624b80';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -21577,8 +21577,8 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            // Vertical grid under candles; horizontal redrawn after axes (margin may widen from labels).
-            this.drawGrid({ skipHorizontal: true });
+            // Full grid under candles (horizontal must not redraw after axes — that paints over wicks).
+            this.drawGrid();
             if (!interactionLite) {
                 this.drawVolume(visible, panOpts);
             }
@@ -21593,7 +21593,6 @@ class Chart {
             }
             this.drawAxes();
             this.calculateScales();
-            this.drawGrid({ skipVertical: true });
             if (!interactionLite && chartViewPanning) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
@@ -21640,8 +21639,8 @@ class Chart {
             this.compareOverlay.updateLeftMargin();
         }
 
-        // Vertical grid under candles; horizontal redrawn after axes so release paint does not bury price levels.
-        this.drawGrid({ skipHorizontal: true });
+        // Full grid under candles (horizontal must not redraw after axes — that paints over wicks).
+        this.drawGrid();
 
         // Draw volume bars
         this.drawVolume(visible);
@@ -21709,8 +21708,6 @@ class Chart {
         // Draw axes LAST so the price/time axis always overlays candles and other chart content.
         // This makes candles hide behind the axis instead of drawing above it.
         this.drawAxes();
-
-        this.drawGrid({ skipVertical: true });
 
         // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
         if (!chartViewPanning) {

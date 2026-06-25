@@ -72,6 +72,8 @@ const getV16StrategyBankRows = (localRows = []) => {
   return mergeV16StrategyBankRows(getV16StrategyBank(), localRows);
 };
 const STARTING_BALANCE_MAX_DIGITS = 6;
+const SESSION_NAME_MAX = 80;
+const sanitizeSessionNameInput = (raw) => String(raw ?? "").slice(0, SESSION_NAME_MAX);
 const sanitizeStartingBalanceInput = (raw) =>
   String(raw ?? "").replace(/\D/g, "").slice(0, STARTING_BALANCE_MAX_DIGITS);
 const parseStartingBalanceInput = (raw) => {
