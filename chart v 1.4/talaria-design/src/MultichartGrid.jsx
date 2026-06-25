@@ -2167,19 +2167,28 @@ export default function MultichartGrid({
         if (!allDataReady) return;
         const mgr = managerRef.current;
         const cellA = cellRefs.current[HOST_PANEL_ID];
+        const revealAll = () => {
+            if (!mgr || typeof mgr.showPanelFrame !== "function") return;
+            for (const id of expected) {
+                try { mgr.showPanelFrame(id); } catch (_) {}
+            }
+        };
         if (mgr) {
             if (typeof mgr.flushPendingRangeSync === "function") {
                 try { mgr.flushPendingRangeSync(); } catch (_) {}
             }
+            // Position the (still invisible) panels first.
             syncAllIframesToHost(mgr);
-            for (const id of expected) {
-                if (typeof mgr.showPanelFrame === "function") {
-                    try { mgr.showPanelFrame(id); } catch (_) {}
-                }
-            }
         }
+        // Reveal panels only AFTER the host re-anchor/align pass below, so they
+        // fade in already positioned instead of popping in (opacity 0 → 1) and then
+        // visibly jumping while the host settles its own viewport — that pop+jump is
+        // the boot "shaking". silentPanelBoot keeps them at opacity:0 until
+        // showPanelFrame. The safety timer guarantees they are never left hidden if
+        // the align path bails for any reason.
+        let revealTimer = 0;
         const t = setTimeout(() => {
-            if (isDraggingRef.current) return;
+            if (isDraggingRef.current) { revealAll(); return; }
             // Same-pair cache boot: host viewport was correct before split — only
             // resize canvas to cell A once and sync iframes; never re-seek playhead.
             if (samePairCacheBootRef.current) {
@@ -2189,11 +2198,18 @@ export default function MultichartGrid({
                     if (cellA) applyHostSlot(cellA, { reanchor: false });
                 } catch (_) {}
                 syncAllIframesToHost(mgr);
-                return;
+            } else {
+                scheduleAlignHostOnly(mgr, 0);
             }
-            scheduleAlignHostOnly(mgr, 0);
+            // Give the align one more beat to land, then fade the panels in.
+            revealTimer = setTimeout(revealAll, 200);
         }, 80);
-        return () => clearTimeout(t);
+        const safetyReveal = setTimeout(revealAll, 1500);
+        return () => {
+            clearTimeout(t);
+            clearTimeout(revealTimer);
+            clearTimeout(safetyReveal);
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [managerReady, dataReadyPanels, overlayFallbackPanels, layout.tiles]);
 

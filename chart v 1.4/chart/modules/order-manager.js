@@ -27632,6 +27632,16 @@ class OrderManager {
             
             this._refreshOpenPositionSlTpAfterPartialTpClose(position);
 
+            // Re-mark remaining lots immediately — stale full-size unrealized until the next bar
+            // made the trade card show ~2× the first TP profit after a partial close.
+            position.unrealizedPnL = this._calculatePositionPnL(position, closePrice);
+            const openUnrealized = (this.openPositions || []).reduce(
+                (sum, p) => sum + (Number.parseFloat(p.unrealizedPnL) || 0),
+                0
+            );
+            this.unrealizedPnL = openUnrealized;
+            this.equity = this.balance + openUnrealized;
+
             const remQty = Number(position.quantity) || 0;
             const minLot = this.getMarketConfig()?.minSize ?? 0.01;
             const allActiveHit = this._multiTpAllActiveTargetsHit(position);

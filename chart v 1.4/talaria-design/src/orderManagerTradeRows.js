@@ -35,6 +35,24 @@ function v9UsdPnLParts(n) {
   return { text, pc: n >= 0 ? "gn" : "rd" };
 }
 
+/** Open-leg P&L for display: realized partial closes + mark-to-market on remaining size. */
+export function extractOpenPositionDisplayPnL(position) {
+  if (!position || typeof position !== "object") return NaN;
+  const partial = Number.parseFloat(position.partialClosePnL);
+  const unrealized = Number.parseFloat(position.unrealizedPnL);
+  const partialN = Number.isFinite(partial) ? partial : 0;
+  const unrealizedN = Number.isFinite(unrealized) ? unrealized : 0;
+  if (partialN !== 0 || unrealizedN !== 0) return partialN + unrealizedN;
+  if (Array.isArray(position.partialCloses) && position.partialCloses.length) {
+    const sum = position.partialCloses.reduce(
+      (s, pc) => s + (Number.parseFloat(pc?.pnl) || 0),
+      0
+    );
+    if (Math.abs(sum) > 1e-8) return sum + unrealizedN;
+  }
+  return unrealizedN;
+}
+
 /** Sum P&L from a journal row or closed position (same fields the trade table uses). */
 export function extractOrderManagerTradePnl(trade, om) {
   if (!trade || typeof trade !== "object") return 0;
@@ -606,7 +624,9 @@ function buildTradeTargetLegs(order, journal, fmtPx, om, row) {
     }
 
     const pctSource = ePcts ? ePcts[i] : t.percentage;
-    const isRealized = !!(isClosed && br && ((Number(br.lotsClosed) || 0) > 0 || Math.abs(Number(br.pnl) || 0) > 1e-8));
+    const isRealized = !!(
+      br && ((Number(br.lotsClosed) || 0) > 0 || Math.abs(Number(br.pnl) || 0) > 1e-8)
+    );
     return {
       price: fmtPx(t.price),
       hit: !!(t.hit || isRealized),
@@ -644,6 +664,27 @@ function computeTargetsTotalProfit(targets, journal, order, row, om) {
       if (Number.isFinite(fin) && Math.abs(fin) > 1e-8) sum += fin;
       if (hasRealized || Math.abs(sum) > 1e-8) return { total: sum, isRealized: true };
     }
+  }
+
+  const partialPnL = Number.parseFloat(order?.partialClosePnL);
+  const hasPartials =
+    (breakdown?.length > 0)
+    || (Number.isFinite(partialPnL) && Math.abs(partialPnL) > 1e-8);
+  if (hasPartials) {
+    let realized = 0;
+    if (breakdown?.length) {
+      breakdown.forEach((b) => {
+        const gp = Number(b.pnl);
+        const lots = Number(b.lotsClosed) || 0;
+        if (Number.isFinite(gp) && (lots > 0 || Math.abs(gp) > 1e-8)) realized += gp;
+      });
+    } else if (Number.isFinite(partialPnL)) {
+      realized = partialPnL;
+    }
+    const u = Number.parseFloat(order?.unrealizedPnL);
+    const unrealized = Number.isFinite(u) ? u : 0;
+    const total = realized + unrealized;
+    if (Math.abs(total) > 1e-8) return { total, isRealized: true };
   }
 
   const planned = targets.reduce((s, t) => s + (Number.isFinite(t.profitUsd) ? t.profitUsd : 0), 0);
@@ -696,6 +737,14 @@ function attachMultiLegDisplayToRow(om, row, order, journal) {
         const plannedOnly = targets
           .filter((t) => !t.isRealized)
           .reduce((s, t) => s + (Number.isFinite(t.profitUsd) ? t.profitUsd : 0), 0);
+        if (plannedOnly > 0 && Math.abs(totalUsd - plannedOnly) > 0.05) {
+          row.targetsPlannedProfit = formatUsdProfit(plannedOnly);
+        }
+      } else if (row.status === "open" && isRealized) {
+        const plannedOnly = targets.reduce(
+          (s, t) => s + (Number.isFinite(t.profitUsd) ? t.profitUsd : 0),
+          0
+        );
         if (plannedOnly > 0 && Math.abs(totalUsd - plannedOnly) > 0.05) {
           row.targetsPlannedProfit = formatUsdProfit(plannedOnly);
         }
@@ -1222,8 +1271,8 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
 
   open.forEach((o) => {
     const tMs = o.openTime || Date.now();
-    const uPnL = Number.parseFloat(o.unrealizedPnL);
-    const { text: pnlText, pc } = v9UsdPnLParts(uPnL);
+    const pnlN = extractOpenPositionDisplayPnL(o);
+    const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
     const ot = typeLabel(resolvePositionOrderType(o));
