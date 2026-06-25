@@ -14751,13 +14751,19 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const labelWidth = axisW - 4;
         const labelX = axisLeft ? 2 : this.w - m.r;
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = typeof this.getPriceDecimals === 'function' ? this.getPriceDecimals(priceRange) : 4;
+        const formatPrice = function(val) {
+            if (typeof this._formatLastPrice === 'function') {
+                return this._formatLastPrice(Number(val), Math.abs(priceRange), this.currentSymbol);
+            }
+            const decimals = typeof this.getPriceDecimals === 'function' ? this.getPriceDecimals(Math.abs(priceRange)) : 4;
+            return Number(val).toFixed(decimals);
+        }.bind(this);
         const scaleTextSize = (this.chartSettings && this.chartSettings.scaleTextSize) || 11;
         const radius = 2;
 
         labels.forEach(function(lbl) {
             const bgColor = lbl.color;
-            const priceText = Number(lbl.val).toFixed(decimals);
+            const priceText = formatPrice(lbl.val);
             const labelHeight = 20;
             const labelY = lbl.y - labelHeight / 2;
             const textColor = (typeof this.isLightColor === 'function' && this.isLightColor(bgColor)) ? '#111111' : '#ffffff';

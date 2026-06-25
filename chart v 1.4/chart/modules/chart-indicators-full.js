@@ -9589,10 +9589,14 @@ Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
                 : 1;
             const dirUp = (dirRaw == null ? 1 : dirRaw) >= 0;
             const col = dirUp ? (st.upColor || '#26a69a') : (st.downColor || '#ef5350');
-            const dec = typeof this.getPriceDecimals === 'function' && this.yScale && this.yScale.domain
-                ? this.getPriceDecimals(Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]))
-                : 4;
-            return { text: Number(lineV).toFixed(dec), color: col };
+            const priceRange = this.yScale && this.yScale.domain
+                ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0])
+                : 0;
+            const text = typeof this._formatLastPrice === 'function'
+                ? this._formatLastPrice(Number(lineV), priceRange, this.currentSymbol)
+                : Number(lineV).toFixed(typeof this.getPriceDecimals === 'function'
+                    ? this.getPriceDecimals(priceRange) : 4);
+            return { text: text, color: col };
         }
         return { text: '—', color: st.upColor || '#26a69a' };
     }
@@ -14751,13 +14755,19 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const labelWidth = axisW - 4;
         const labelX = axisLeft ? 2 : this.w - m.r;
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = typeof this.getPriceDecimals === 'function' ? this.getPriceDecimals(priceRange) : 4;
+        const formatPrice = function(val) {
+            if (typeof this._formatLastPrice === 'function') {
+                return this._formatLastPrice(Number(val), Math.abs(priceRange), this.currentSymbol);
+            }
+            const decimals = typeof this.getPriceDecimals === 'function' ? this.getPriceDecimals(Math.abs(priceRange)) : 4;
+            return Number(val).toFixed(decimals);
+        }.bind(this);
         const scaleTextSize = (this.chartSettings && this.chartSettings.scaleTextSize) || 11;
         const radius = 2;
 
         labels.forEach(function(lbl) {
             const bgColor = lbl.color;
-            const priceText = Number(lbl.val).toFixed(decimals);
+            const priceText = formatPrice(lbl.val);
             const labelHeight = 20;
             const labelY = lbl.y - labelHeight / 2;
             const textColor = (typeof this.isLightColor === 'function' && this.isLightColor(bgColor)) ? '#111111' : '#ffffff';

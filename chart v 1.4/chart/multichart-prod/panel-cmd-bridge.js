@@ -1221,11 +1221,7 @@
                     return;
                 }
                 case 'clearActiveDrawingTool': {
-                    var dmc = ch.drawingManager;
-                    if (!dmc) return;
-                    var mirroredClear = !!(args && args.mirrored);
-                    if (typeof dmc.clearTool === 'function') dmc.clearTool(mirroredClear);
-                    else dmc.currentTool = null;
+                    dismissActiveDrawingTool(ch.drawingManager, !!(args && args.mirrored));
                     return;
                 }
                 case 'setChartCursorType': {
@@ -2393,6 +2389,98 @@
     // `true` for keydown registration in some paths) also doesn't run.
     global.addEventListener('keydown', onReplayKey, { capture: true });
 
+    // ─── drawing-tool dismiss (Escape + right-click) ─────────────────────
+    //
+    // chart.js / drawing-tools-manager normally clear armed tools on Escape
+    // and right-click, but multichart iframes forward contextmenu to the
+    // parent before those handlers run — and keyboard focus often stays on
+    // the parent shell, so Escape never reaches the iframe's drawingManager.
+    function notifyParentDrawingToolCleared() {
+        try {
+            global.parent.postMessage({
+                type:   'v9-drawing-tool-cleared',
+                source: panelId,
+            }, '*');
+        } catch (_) {}
+    }
+
+    function dismissActiveDrawingTool(dm, mirrored) {
+        if (!dm) return false;
+        if (dm.isRectSelecting) {
+            if (typeof dm.cancelRectangularSelection === 'function') {
+                dm.cancelRectangularSelection();
+            }
+            return true;
+        }
+        if (dm.drawingState && dm.drawingState.isDrawing) {
+            if (typeof dm.cancelDrawing === 'function') dm.cancelDrawing();
+            return true;
+        }
+        var had = !!(dm.currentTool
+            || (dm.selectedDrawings && dm.selectedDrawings.length));
+        if (typeof dm.deselectAll === 'function') dm.deselectAll();
+        if (typeof dm.clearTool === 'function') dm.clearTool(!!mirrored);
+        else dm.currentTool = null;
+        return had;
+    }
+
+    function dismissDrawingToolOnContextMenu(e) {
+        var ch = global.chart;
+        var dm = ch && ch.drawingManager;
+        if (!dm || !e) return;
+
+        if (dm.currentTool && e.button === 0 && e.ctrlKey) return;
+
+        if (ch.shouldSuppressRightClickContextMenu
+            && typeof ch.shouldSuppressRightClickContextMenu === 'function'
+            && ch.shouldSuppressRightClickContextMenu(e)) {
+            return;
+        }
+
+        var cleared = false;
+
+        if ((dm.currentTool === 'polyline' || dm.currentTool === 'path')
+            && dm.drawingState && dm.drawingState.isDrawing) {
+            if (typeof dm.hidePathTooltip === 'function') dm.hidePathTooltip();
+            if (dm.drawingState.tempPoints && dm.drawingState.tempPoints.length >= 2) {
+                if (typeof dm.finalizeDrawing === 'function') dm.finalizeDrawing();
+            } else if (typeof dm.cancelDrawing === 'function') {
+                dm.cancelDrawing();
+            }
+            cleared = true;
+        } else {
+            cleared = dismissActiveDrawingTool(dm, false);
+        }
+
+        if (cleared) notifyParentDrawingToolCleared();
+    }
+
+    function isDrawingToolDismissKeyTarget(dm) {
+        if (!dm) return false;
+        return !!(dm.currentTool
+            || (dm.drawingState && dm.drawingState.isDrawing)
+            || dm.isRectSelecting
+            || (dm.selectedDrawings && dm.selectedDrawings.length));
+    }
+
+    function onDismissDrawingKey(e) {
+        if (!e || e.key !== 'Escape') return;
+        var t = e.target;
+        if (t && t.tagName) {
+            var tag = String(t.tagName).toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (t.isContentEditable) return;
+        }
+        var dm = global.chart && global.chart.drawingManager;
+        if (!isDrawingToolDismissKeyTarget(dm)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        dismissActiveDrawingTool(dm, false);
+        notifyParentDrawingToolCleared();
+    }
+    global.addEventListener('keydown', onDismissDrawingKey, { capture: true });
+
     // ─── context-menu forward ───────────────────────────────────────────
     //
     // Each iframe has its own chart.js that opens a LOCAL context menu
@@ -2407,6 +2495,10 @@
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+
+        // Deactivate armed / in-progress drawing tools before forwarding
+        // the unified host context menu (local chart.js never sees this event).
+        dismissDrawingToolOnContextMenu(e);
 
         // Hide the local menu in case chart.js already rendered it
         // (some paths fire both mouseup + contextmenu in the same task).

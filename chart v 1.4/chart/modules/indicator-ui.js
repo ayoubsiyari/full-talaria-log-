@@ -2384,17 +2384,36 @@ function talariaSeriesValueAtBar(arr, barIdx, plotOffset) {
     return Number(v);
 }
 
+function talariaOverlayPriceRange(chart) {
+    if (!chart || !chart.yScale || typeof chart.yScale.domain !== 'function') return 0;
+    const dom = chart.yScale.domain();
+    if (!dom || dom.length < 2) return 0;
+    return Math.abs(dom[1] - dom[0]);
+}
+
 function talariaOverlayIndicatorDecimals(chart) {
-    if (typeof chart.getPriceDecimals === 'function' && chart.yScale && chart.yScale.domain) {
-        const dom = chart.yScale.domain();
-        if (dom && dom.length === 2) {
-            return chart.getPriceDecimals(Math.abs(dom[1] - dom[0]));
-        }
+    if (!chart) return 4;
+    const priceRange = talariaOverlayPriceRange(chart);
+    if (typeof chart.getPriceDecimalsForSymbol === 'function' && chart.currentSymbol) {
+        return chart.getPriceDecimalsForSymbol(chart.currentSymbol, priceRange);
+    }
+    if (typeof chart.getPriceDecimals === 'function') {
+        return chart.getPriceDecimals(priceRange);
     }
     return 4;
 }
 
-function talariaSupertrendLegendToken(valuesStore, barIdx, plotOffset, style, decimals) {
+/** Match chart price-axis / last-price formatting (symbol tick precision). */
+function talariaFormatOverlayPrice(chart, price) {
+    const p = Number(price);
+    if (!Number.isFinite(p)) return '—';
+    if (chart && typeof chart._formatLastPrice === 'function') {
+        return chart._formatLastPrice(p, talariaOverlayPriceRange(chart), chart.currentSymbol);
+    }
+    return p.toFixed(talariaOverlayIndicatorDecimals(chart));
+}
+
+function talariaSupertrendLegendToken(valuesStore, barIdx, plotOffset, style, chart) {
     if (!valuesStore || !Array.isArray(valuesStore.line)) return null;
     const src = barIdx - (Number(plotOffset) | 0);
     if (src < 0 || src >= valuesStore.line.length) return null;
@@ -2406,7 +2425,7 @@ function talariaSupertrendLegendToken(valuesStore, barIdx, plotOffset, style, de
     const dirUp = (dirRaw == null ? 1 : dirRaw) >= 0;
     const st = style || {};
     return {
-        text: Number(val).toFixed(decimals != null ? decimals : 4),
+        text: talariaFormatOverlayPrice(chart, val),
         color: dirUp ? (st.upColor || '#26a69a') : (st.downColor || '#ef5350')
     };
 }
@@ -2419,22 +2438,25 @@ function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
     const barIdx = talariaCrosshairBarIndex(chart);
     const plotOff = talariaIndicatorPlotOffset(indicator);
     const decimals = talariaOverlayIndicatorDecimals(chart);
-    const pushToken = function(val, color, dec) {
+    const pushToken = function(val, color, decOrMode) {
         if (!Number.isFinite(val)) return;
+        const text = decOrMode === 'price'
+            ? talariaFormatOverlayPrice(chart, val)
+            : Number(val).toFixed(decOrMode != null ? decOrMode : decimals);
         out.push({
-            text: Number(val).toFixed(dec != null ? dec : decimals),
+            text: text,
             color: color || '#9ca3af'
         });
     };
     if (indicator.type === 'supertrend' && typeof valuesStore === 'object' && !Array.isArray(valuesStore)) {
-        const tok = talariaSupertrendLegendToken(valuesStore, barIdx, plotOff, indicator.style, decimals);
+        const tok = talariaSupertrendLegendToken(valuesStore, barIdx, plotOff, indicator.style, chart);
         if (tok) out.push(tok);
         return out;
     }
-    const readSeries = function(arr, color, dec) {
+    const readSeries = function(arr, color, decOrMode) {
         if (!Array.isArray(arr)) return;
         const val = talariaSeriesValueAtBar(arr, barIdx, plotOff);
-        if (val !== null) pushToken(val, color, dec);
+        if (val !== null) pushToken(val, color, decOrMode != null ? decOrMode : 'price');
     };
     if (Array.isArray(valuesStore)) {
         readSeries(valuesStore, indicator.style && indicator.style.color, decimals);
@@ -2467,7 +2489,8 @@ function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
             const val = talariaSeriesValueAtBar(arr, barIdx, plotOff);
             if (val === null) return;
             const colorKey = k + 'Color';
-            pushToken(val, indicator.style && indicator.style[colorKey], k === 'cci' ? 2 : decimals);
+            const mode = (k === 'cci' || k === 'k' || k === 'd') ? 2 : 'price';
+            pushToken(val, indicator.style && indicator.style[colorKey], mode);
         });
         if (out.length > 0) return out;
     }
@@ -5935,3 +5958,4 @@ window.talariaOhlcLegendCollapseBlocked = talariaOhlcLegendCollapseBlocked;
 window.talariaChartForOhlcPanel = talariaChartForOhlcPanel;
 window.talariaCrosshairBarIndex = talariaCrosshairBarIndex;
 window.talariaFormatOverlayIndicatorValueTokens = talariaFormatOverlayIndicatorValueTokens;
+window.talariaFormatOverlayPrice = talariaFormatOverlayPrice;

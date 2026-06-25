@@ -404,6 +404,35 @@ function isPlaceholderMultichartSymbol(s) {
     return t === "—" || t === "–" || t === "-" || t === "…";
 }
 
+/** Mirror drawing-tools-manager Escape: cancel in-progress, deselect, clear armed tool. */
+function dismissActiveDrawingTool(dm, mirrored = false) {
+    if (!dm) return false;
+    if (dm.isRectSelecting) {
+        if (typeof dm.cancelRectangularSelection === "function") {
+            dm.cancelRectangularSelection();
+        }
+        return true;
+    }
+    if (dm.drawingState && dm.drawingState.isDrawing) {
+        if (typeof dm.cancelDrawing === "function") dm.cancelDrawing();
+        return true;
+    }
+    const had = !!(dm.currentTool
+        || (dm.selectedDrawings && dm.selectedDrawings.length));
+    if (typeof dm.deselectAll === "function") dm.deselectAll();
+    if (typeof dm.clearTool === "function") dm.clearTool(!!mirrored);
+    else dm.currentTool = null;
+    return had;
+}
+
+function isDrawingToolDismissKeyTarget(dm) {
+    if (!dm) return false;
+    return !!(dm.currentTool
+        || (dm.drawingState && dm.drawingState.isDrawing)
+        || dm.isRectSelecting
+        || (dm.selectedDrawings && dm.selectedDrawings.length));
+}
+
 /**
  * Pixel gap between CSS grid tracks — must match `gap` on the multichart grid container.
  */
@@ -3587,9 +3616,7 @@ export default function MultichartGrid({
                     case "clearActiveDrawingTool": {
                         const dmc = ch.drawingManager;
                         if (!dmc) return Promise.resolve(null);
-                        const mirroredClear = !!(args && args.mirrored);
-                        if (typeof dmc.clearTool === "function") dmc.clearTool(mirroredClear);
-                        else dmc.currentTool = null;
+                        dismissActiveDrawingTool(dmc, !!(args && args.mirrored));
                         return Promise.resolve(null);
                     }
                     case "addIndicator": {
@@ -4774,7 +4801,36 @@ export default function MultichartGrid({
         };
         ensureMultichartGlobalSettingsRoot();
 
+        // Escape on the parent shell: keyboard focus often stays here even after
+        // clicking an iframe tile, so route dismiss to the focused panel.
+        function onParentDismissDrawingKey(e) {
+            if (!e || e.key !== "Escape") return;
+            const t = e.target;
+            if (t && t.tagName) {
+                const tag = String(t.tagName).toLowerCase();
+                if (tag === "input" || tag === "textarea" || tag === "select") return;
+                if (t.isContentEditable) return;
+            }
+            const focused = focusedPanelIdRef.current || HOST_PANEL_ID;
+            const ch = getChartForPanelId(focused);
+            const dm = ch && ch.drawingManager;
+            if (!isDrawingToolDismissKeyTarget(dm)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            void runCommand("clearActiveDrawingTool", null, { panelId: focused })
+                .then(() => {
+                    try {
+                        window.dispatchEvent(new CustomEvent("v9DrawingToolCleared", {
+                            detail: { panelId: focused },
+                        }));
+                    } catch (_) {}
+                })
+                .catch(() => {});
+        }
+        document.addEventListener("keydown", onParentDismissDrawingKey, true);
+
         return () => {
+            document.removeEventListener("keydown", onParentDismissDrawingKey, true);
             try {
                 if (window.__multichartOpenShapeSettings === multichartOpenShapeSettings) {
                     delete window.__multichartOpenShapeSettings;
