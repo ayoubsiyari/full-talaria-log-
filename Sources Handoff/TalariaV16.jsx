@@ -21835,13 +21835,17 @@ const TalariaV8b = () => {
               </div>
             );
           };
-          const getDashTradeRowKey = (trade, index=0) => String(
-            trade?.editedOverrideKey
-            || trade?.trade_id
-            || trade?.client_trade_id
-            || trade?.id
-            || `${trade?.sourceKey || trade?.sourceFilterKey || trade?.sourceSessionId || trade?.trading_session_id || "trade"}:${trade?.symbol || trade?.ticker || ""}:${trade?.entryTime || trade?.openTime || trade?.entryDate || trade?.date || ""}:${trade?.n ?? index}`
-          );
+          const getDashTradeRowKey = (trade, index=0) => {
+            const explicit =
+              trade?.editedOverrideKey
+              ?? trade?.journal_trade_id
+              ?? trade?.id
+              ?? trade?.trade_id
+              ?? trade?.client_trade_id
+              ?? trade?.chart_trade_id;
+            if (explicit != null && String(explicit).trim() !== "") return String(explicit);
+            return `${trade?.sourceKey || trade?.sourceFilterKey || trade?.sourceSessionId || trade?.trading_session_id || "trade"}:${trade?.symbol || trade?.ticker || ""}:${trade?.entryTime || trade?.openTime || trade?.entryDate || trade?.date || ""}:${trade?.n ?? index}:${index}`;
+          };
           const isDashManualSourceTrade = (trade) => (
             !!trade?.is_manual
             || !!trade?.manual
@@ -22723,7 +22727,7 @@ const TalariaV8b = () => {
                 </span>
               );
             };
-            const records = rawRows.map(tradeValue);
+            const records = rawRows.map((trade, index) => tradeValue(trade, index));
             const filteredRecords = records;
             const sortedRecords = activeSort.key && activeSort.dir ? [...filteredRecords].sort((a,b) => {
               const av = a.sortValues[activeSort.key] ?? a.values[activeSort.key]?.raw ?? "";
