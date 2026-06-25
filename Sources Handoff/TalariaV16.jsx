@@ -28715,6 +28715,19 @@ const TalariaV8b = () => {
             const iso = String(value || "").slice(0, 10);
             return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : "";
           };
+          const dashAddTradeTodayIso = () => {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+          };
+          const getDashAddTradeEffectiveDateBounds = (source) => {
+            const {minDate, maxDate} = getDashAddTradeSessionDateRange(source);
+            const todayIso = dashAddTradeTodayIso();
+            const sessionMax = maxDate || "";
+            const effectiveMax = sessionMax
+              ? (sessionMax < todayIso ? sessionMax : todayIso)
+              : todayIso;
+            return {minDate: minDate || "", maxDate: effectiveMax, todayIso, sessionMax, sessionMin: minDate || ""};
+          };
           const resolveDashAddTradePrimarySession = (source) => {
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions.filter(Boolean) : [];
             if (sourceSessions[0]) return sourceSessions[0];
@@ -28865,13 +28878,19 @@ const TalariaV8b = () => {
             if (!iso) return iso;
             let next = dashAddTradeIsoDay(iso);
             if (!next) return iso;
-            if (range?.minDate && next < range.minDate) next = range.minDate;
-            if (range?.maxDate && next > range.maxDate) next = range.maxDate;
+            const todayIso = dashAddTradeTodayIso();
+            const sessionMin = range?.minDate || "";
+            const sessionMax = range?.maxDate || "";
+            const effectiveMax = sessionMax
+              ? (sessionMax < todayIso ? sessionMax : todayIso)
+              : todayIso;
+            if (sessionMin && next < sessionMin) next = sessionMin;
+            if (next > effectiveMax) next = effectiveMax;
             return next;
           };
           const defaultDashAddTradeEntryDate = (source) => {
-            const {minDate, maxDate} = getDashAddTradeSessionDateRange(source);
-            const today = new Date().toISOString().slice(0, 10);
+            const {minDate, maxDate} = getDashAddTradeEffectiveDateBounds(source);
+            const today = dashAddTradeTodayIso();
             if (minDate && maxDate) {
               if (today >= minDate && today <= maxDate) return today;
               return maxDate;
@@ -29998,6 +30017,40 @@ const TalariaV8b = () => {
               : !!(draft.exitDate || draft.exitTime);
             return !!(enabled && String(draft.exitDate || "").trim() && String(draft.exitTime || "").trim());
           };
+          const normalizeDashAddTradeClock = raw => {
+            const match = String(raw || "00:00").match(/^(\d{1,2}):(\d{1,2})$/);
+            if (!match) return "00:00";
+            const hour = Math.max(0, Math.min(23, Number(match[1]) || 0));
+            const minute = Math.max(0, Math.min(59, Number(match[2]) || 0));
+            return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+          };
+          const clampDashAddTradeTimingBounds = (draft, source) => {
+            if (!draft) return draft;
+            const range = getDashAddTradeSessionDateRange(source);
+            const {maxDate: effectiveMax, todayIso} = getDashAddTradeEffectiveDateBounds(source);
+            let next = {...draft};
+            if (next.date) next.date = clampDashAddTradeIsoDate(next.date, range);
+            if (next.exitDate) next.exitDate = clampDashAddTradeIsoDate(next.exitDate, range);
+            const clampTimeForDate = (dateField, timeField) => {
+              const dateIso = String(next[dateField] || "").slice(0, 10);
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return;
+              let time = normalizeDashAddTradeClock(next[timeField] || "00:00");
+              let ms = dashAddTradeDateTimeMs(dateIso, time);
+              const maxMs = dateIso === todayIso
+                ? Date.now()
+                : dateIso === effectiveMax
+                  ? dashAddTradeDateTimeMs(effectiveMax, "23:59")
+                  : null;
+              if (ms != null && maxMs != null && ms > maxMs) {
+                const cap = new Date(maxMs);
+                time = `${String(cap.getHours()).padStart(2, "0")}:${String(cap.getMinutes()).padStart(2, "0")}`;
+              }
+              next[timeField] = time;
+            };
+            clampTimeForDate("date", "time");
+            if (String(next.exitDate || "").trim()) clampTimeForDate("exitDate", "exitTime");
+            return next;
+          };
           const updateDashAddTradeDraft = (field, value) => {
             setDashAddTradeValidationError("");
             setDashAddTradeDraft(prev => {
@@ -30133,12 +30186,16 @@ const TalariaV8b = () => {
                 const range = getDashAddTradeSessionDateRange(dashAddTradeEditorSource);
                 value = clampDashAddTradeIsoDate(value, range);
               }
-              const next = {...prev, [field]:value};
-              const withTiming = ["date", "time", "exitDate", "exitTime"].includes(field) ? ensureDashAddTradeExitAfterEntry(next) : next;
-              if (String(withTiming.exitDate || "").trim() && String(withTiming.exitTime || "").trim()) {
-                return {...withTiming, exitTimingEnabled:true};
+              let next = {...prev, [field]:value};
+              if (["date", "time", "exitDate", "exitTime"].includes(field)) {
+                next = clampDashAddTradeTimingBounds(next, dashAddTradeEditorSource);
+                next = ensureDashAddTradeExitAfterEntry(next);
+                if (String(next.exitDate || "").trim() && String(next.exitTime || "").trim()) {
+                  next.exitTimingEnabled = true;
+                }
+                return next;
               }
-              return withTiming;
+              return next;
             });
           };
           const parseDashTradeNumber = value => {
@@ -30500,13 +30557,8 @@ const TalariaV8b = () => {
               const entryIso = dashAddTradeIsoDay(draft?.date);
               if (sessionRange.minDate && entryIso && entryIso < sessionRange.minDate) return {ok:false, error:dashTxt("Entry date must be within the backtest session range.","يجب أن يكون تاريخ الدخول ضمن نطاق جلسة الاختبار.")};
               if (sessionRange.maxDate && entryIso && entryIso > sessionRange.maxDate) return {ok:false, error:dashTxt("Entry date must be within the backtest session range.","يجب أن يكون تاريخ الدخول ضمن نطاق جلسة الاختبار.")};
-            } else if (isDashLiveJournalAddTradeSource(source)) {
-              const entryIso = dashAddTradeIsoDay(draft?.date);
-              const todayIso = dashAddTradeIsoDay(new Date().toISOString());
-              if (entryIso && todayIso && entryIso > todayIso) return {ok:false, error:dashTxt("Entry date cannot be in the future.","لا يمكن أن يكون تاريخ الدخول في المستقبل.")};
-            } else if (startMs > nowMs) {
-              return {ok:false, error:dashTxt("Entry date and time cannot be in the future.","لا يمكن أن يكون وقت الدخول في المستقبل.")};
             }
+            if (startMs > nowMs) return {ok:false, error:dashTxt("Entry date and time cannot be in the future.","لا يمكن أن يكون وقت الدخول في المستقبل.")};
             if (!entryRows.length || firstBadEntry) return {ok:false, error:dashTxt("Each entry row needs a price and size greater than zero.","كل صف دخول يحتاج سعرا وحجما أكبر من صفر.")};
             if (calculated.avgEntry == null) return {ok:false, error:dashTxt("At least one valid entry price is required.","يلزم إدخال سعر دخول صالح واحد على الأقل.")};
             if (!(stop > 0)) return {ok:false, error:dashTxt("Initial stop loss is required and must be greater than zero.","وقف الخسارة الأولي مطلوب ويجب أن يكون أكبر من صفر.")};
@@ -30532,6 +30584,7 @@ const TalariaV8b = () => {
                 if (sessionRange.minDate && exitIso && exitIso < sessionRange.minDate) return {ok:false, error:dashTxt("Exit date must be within the backtest session range.","يجب أن يكون تاريخ الخروج ضمن نطاق جلسة الاختبار.")};
                 if (sessionRange.maxDate && exitIso && exitIso > sessionRange.maxDate) return {ok:false, error:dashTxt("Exit date must be within the backtest session range.","يجب أن يكون تاريخ الخروج ضمن نطاق جلسة الاختبار.")};
               }
+              if (endMs > nowMs) return {ok:false, error:dashTxt("Exit date and time cannot be in the future.","لا يمكن أن يكون وقت الخروج في المستقبل.")};
               if (!hasActualExitRows || !(calculated.exitedSize > 0)) return {ok:false, error:dashTxt("Add at least one actual exit, or turn off exit time to keep the trade open.","أضف خروجا فعليا واحدا على الأقل أو أوقف وقت الخروج لإبقاء الصفقة مفتوحة.")};
             }
             const nonNegativeFields = [
