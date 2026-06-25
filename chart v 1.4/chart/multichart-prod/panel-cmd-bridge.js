@@ -390,7 +390,11 @@
         }
 
         var applied = rs.applyMultichartMirrorFrame(args);
-        if (applied) return;
+        if (applied) {
+            ch._mcCatchUpFails = 0;
+            ch._mcCatchUpCooldownUntil = 0;
+            return;
+        }
 
         // Mirror rejected the host playhead — almost always because this panel's
         // loaded master does not yet reach `ts` (host stepped a full display-TF
@@ -605,6 +609,16 @@
      * /bars prefetch. Coalesce to the latest ts and refetch once per frame.
      */
     function scheduleMirrorCatchUp(ch, ts, args) {
+        // Circuit-breaker: a panel that genuinely cannot reach the host playhead
+        // (e.g. same symbol but a different / shorter session) would otherwise fire
+        // a /bars fetch on every animation frame × every panel → the browser runs
+        // out of sockets/memory (net::ERR_INSUFFICIENT_RESOURCES) and the page
+        // freezes. After repeated failures we back off for a cooldown and just keep
+        // showing the furthest candle the panel already holds.
+        if (ch && Number.isFinite(ch._mcCatchUpCooldownUntil)
+            && Date.now() < ch._mcCatchUpCooldownUntil) {
+            return;
+        }
         if (Number.isFinite(ts)) {
             coalescedMirrorCatchUpTs = coalescedMirrorCatchUpTs == null
                 ? ts
@@ -658,8 +672,25 @@
                 return;
             }
 
+            var tripBreaker = function () {
+                // Too many failed catch-ups in a row → this panel can't reach the
+                // host ts (different/short session). Stop fetching for a cooldown so
+                // we don't flood the network; the furthest-loaded frame stays shown.
+                ch._mcCatchUpFails = (Number(ch._mcCatchUpFails) || 0) + 1;
+                if (ch._mcCatchUpFails >= 3) {
+                    ch._mcCatchUpFails = 0;
+                    ch._mcCatchUpCooldownUntil = Date.now() + 2500;
+                    return true;
+                }
+                return false;
+            };
             ch.ensureReplayDataCoversTimestamp(seekTs).then(function () {
-                if (retryMirror()) return;
+                if (retryMirror()) {
+                    ch._mcCatchUpFails = 0;
+                    ch._mcCatchUpCooldownUntil = 0;
+                    return;
+                }
+                if (tripBreaker()) return;
                 var latest = pendingReplayTs != null ? pendingReplayTs : readParentReplayTimestamp();
                 if (Number.isFinite(latest) && latest > seekTs) {
                     scheduleMirrorCatchUp(ch, latest, frameArgs);
@@ -668,6 +699,7 @@
                 scheduleCoalescedSeek(ch, seekTs);
             }).catch(function (e) {
                 warn('mirror catch-up: ensureReplayDataCoversTimestamp failed', e && e.message);
+                if (tripBreaker()) return;
                 scheduleCoalescedSeek(ch, seekTs);
             });
         });

@@ -28719,15 +28719,6 @@ const TalariaV8b = () => {
             const now = new Date();
             return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
           };
-          const getDashAddTradeEffectiveDateBounds = (source) => {
-            const {minDate, maxDate} = getDashAddTradeSessionDateRange(source);
-            const todayIso = dashAddTradeTodayIso();
-            const sessionMax = maxDate || "";
-            const effectiveMax = sessionMax
-              ? (sessionMax < todayIso ? sessionMax : todayIso)
-              : todayIso;
-            return {minDate: minDate || "", maxDate: effectiveMax, todayIso, sessionMax, sessionMin: minDate || ""};
-          };
           const resolveDashAddTradePrimarySession = (source) => {
             const sourceSessions = Array.isArray(source?.sessions) ? source.sessions.filter(Boolean) : [];
             if (sourceSessions[0]) return sourceSessions[0];
@@ -28873,6 +28864,25 @@ const TalariaV8b = () => {
             const minDate = dashAddTradeIsoDay(session?.startDate);
             const maxDate = dashAddTradeIsoDay(session?.endDate) || minDate;
             return {minDate, maxDate, session};
+          };
+          const getDashAddTradeEffectiveDateBounds = (source) => {
+            const {minDate, maxDate} = getDashAddTradeSessionDateRange(source);
+            const todayIso = dashAddTradeTodayIso();
+            const sessionMax = maxDate || "";
+            const effectiveMax = sessionMax
+              ? (sessionMax < todayIso ? sessionMax : todayIso)
+              : todayIso;
+            return {minDate: minDate || "", maxDate: effectiveMax, todayIso, sessionMax, sessionMin: minDate || ""};
+          };
+          const getDashAddTradeCalendarDateBounds = (source, field, draft) => {
+            const {minDate: sessionMin, maxDate: effectiveMax, todayIso} = getDashAddTradeEffectiveDateBounds(source);
+            let minDate = sessionMin;
+            let maxDate = effectiveMax;
+            if (field === "exitDate") {
+              const entryIso = dashAddTradeIsoDay(draft?.date);
+              if (entryIso && (!minDate || entryIso > minDate)) minDate = entryIso;
+            }
+            return {minDate, maxDate, todayIso};
           };
           const clampDashAddTradeIsoDate = (iso, range) => {
             if (!iso) return iso;
@@ -34068,11 +34078,11 @@ const TalariaV8b = () => {
                   const entryYearForExit = entryDatePartsForExit ? Number(entryDatePartsForExit[1]) : null;
                   const entryMonthForExit = entryDatePartsForExit ? Number(entryDatePartsForExit[2]) - 1 : null;
                   const sessionRange = getDashAddTradeSessionDateRange(dashAddTradeEditorSource);
-                  const minSessionDate = sessionRange.minDate;
-                  const maxSessionDate = sessionRange.maxDate;
+                  const calendarBounds = getDashAddTradeCalendarDateBounds(dashAddTradeEditorSource, field, dashAddTradeDraft);
+                  const minCalendarDate = calendarBounds.minDate;
+                  const maxCalendarDate = calendarBounds.maxDate;
+                  const todayIso = calendarBounds.todayIso;
                   const yearBase = Math.floor(model.year / 12) * 12;
-                  const todayRaw = new Date();
-                  const todayIso = `${todayRaw.getFullYear()}-${String(todayRaw.getMonth() + 1).padStart(2, "0")}-${String(todayRaw.getDate()).padStart(2, "0")}`;
                   const setAddTradeCalendarMode = nextMode => setDashAddTradeCalendar(prev => ({...(prev || {}), field, monthKey:model.key, mode:nextMode}));
                   const selectAddTradeCalendarMonth = monthIndex => {
                     const next = new Date(Date.UTC(model.year, monthIndex, 1));
@@ -34086,9 +34096,11 @@ const TalariaV8b = () => {
                     setDashAddTradeValidationError("");
                     setDashAddTradeDraft(prev => {
                       if (!prev) return prev;
-                      const next = {...prev, [field]:nextDate};
+                      let next = {...prev, [field]:nextDate};
                       if (timeField && nextTime) next[timeField] = nextTime;
                       if (field === "exitDate") next.exitTimingEnabled = true;
+                      next[field] = clampDashAddTradeIsoDate(next[field], sessionRange);
+                      next = clampDashAddTradeTimingBounds(next, dashAddTradeEditorSource);
                       return ["exitDate","exitTime"].includes(field) || timeField === "exitTime" ? ensureDashAddTradeExitAfterEntry(next) : next;
                     });
                     setDashAddTradeDateInputDraft(prev => {
@@ -34161,8 +34173,8 @@ const TalariaV8b = () => {
                       const isOutside = date.getUTCMonth() !== model.month;
                       const isSelected = selectedYear === date.getUTCFullYear() && selectedMonth === date.getUTCMonth() && selectedDay === date.getUTCDate();
                       const isDisabled = (field === "exitDate" && entryDateForExit && iso < entryDateForExit)
-                        || (minSessionDate && iso < minSessionDate)
-                        || (maxSessionDate && iso > maxSessionDate);
+                        || (minCalendarDate && iso < minCalendarDate)
+                        || (maxCalendarDate && iso > maxCalendarDate);
                       const isToday = iso === todayIso;
                       const isWeekend = date.getUTCDay() === 0 || date.getUTCDay() === 6;
                       return (
@@ -34212,8 +34224,8 @@ const TalariaV8b = () => {
                           {addTradeCalendarMonths.map((month, index) => {
                             const isSelected = selectedYear === model.year && selectedMonth === index;
                             const isDisabled = (field === "exitDate" && entryYearForExit != null && (model.year < entryYearForExit || (model.year === entryYearForExit && index < entryMonthForExit)))
-                              || (minSessionDate && `${model.year}-${String(index + 1).padStart(2, "0")}-01` > maxSessionDate)
-                              || (maxSessionDate && `${model.year}-${String(index + 1).padStart(2, "0")}-28` < minSessionDate);
+                              || (minCalendarDate && `${model.year}-${String(index + 1).padStart(2, "0")}-28` < minCalendarDate)
+                              || (maxCalendarDate && `${model.year}-${String(index + 1).padStart(2, "0")}-01` > maxCalendarDate);
                             return (
                               <div key={`add-trade-month-${model.year}-${month}`} className={isDisabled ? "" : "tlr-library-action tlr-add-trade-soft-action"} role={isDisabled ? "presentation" : "button"} tabIndex={isDisabled ? -1 : 0} onPointerDown={isDisabled ? undefined : libraryPointerActivate(()=>selectAddTradeCalendarMonth(index))} onKeyDown={isDisabled ? undefined : libraryKeyActivate(()=>selectAddTradeCalendarMonth(index))}
                                 style={{...cellSx({isSelected,isDisabled}),height:28,fontSize:10.6,"--tlr-add-hover-bg":isSelected?c.acL:"rgba(255,255,255,0.045)","--tlr-add-hover-color":isSelected?"#fff":c.tx}}>
@@ -34229,8 +34241,8 @@ const TalariaV8b = () => {
                             const isSelected = selectedYear === year;
                             const isDisabled = !addTradeYearIsRealistic(year)
                               || (field === "exitDate" && entryYearForExit != null && year < entryYearForExit)
-                              || (minSessionDate && year < Number(minSessionDate.slice(0, 4)))
-                              || (maxSessionDate && year > Number(maxSessionDate.slice(0, 4)));
+                              || (minCalendarDate && year < Number(minCalendarDate.slice(0, 4)))
+                              || (maxCalendarDate && year > Number(maxCalendarDate.slice(0, 4)));
                             return (
                               <div key={`add-trade-year-${year}`} className={isDisabled ? "" : "tlr-library-action tlr-add-trade-soft-action"} role={isDisabled ? "presentation" : "button"} tabIndex={isDisabled ? -1 : 0} onPointerDown={isDisabled ? undefined : libraryPointerActivate(()=>selectAddTradeCalendarYear(year))} onKeyDown={isDisabled ? undefined : libraryKeyActivate(()=>selectAddTradeCalendarYear(year))}
                                 style={{...cellSx({isSelected,isDisabled}),height:28,fontSize:10.6,"--tlr-add-hover-bg":isSelected?c.acL:"rgba(255,255,255,0.045)","--tlr-add-hover-color":isSelected?"#fff":c.tx}}>
@@ -34254,6 +34266,11 @@ const TalariaV8b = () => {
                     const entryHour = Number.isFinite(entryHourRaw) ? Math.max(0, Math.min(23, entryHourRaw)) : 0;
                     const entryMinute = Number.isFinite(entryMinuteRaw) ? Math.max(0, Math.min(59, entryMinuteRaw)) : 0;
                     const exitMatchesEntryDate = timeField === "exitTime" && String(dashAddTradeDraft?.exitDate || "").slice(0, 10) === String(dashAddTradeDraft?.date || "").slice(0, 10);
+                    const selectedDateIso = String(dashAddTradeDraft?.[field] || dashAddTradeDraft?.date || "").slice(0, 10);
+                    const isTodaySelected = selectedDateIso === todayIso;
+                    const nowClock = new Date();
+                    const nowHour = nowClock.getHours();
+                    const nowMinute = nowClock.getMinutes();
                     const hourOptions = Array.from({length:24}, (_, index) => index);
                     const minuteOptions = Array.from({length:60}, (_, index) => index);
                     const hourLabel = hour => String(hour).padStart(2, "0");
@@ -34280,10 +34297,15 @@ const TalariaV8b = () => {
                         <div className="tlr-add-trade-time-column" style={{height:"100%",overflowY:"auto",padding:"8px 5px",boxSizing:"border-box"}}>
                           {items.map(item => {
                             const isSelected = item === selected;
-                            const isDisabledOption = exitMatchesEntryDate && (
+                            const isBeforeEntryTime = exitMatchesEntryDate && (
                               (part === "hour" && item < entryHour) ||
                               (part === "minute" && (currentHour < entryHour || (currentHour === entryHour && item < entryMinute)))
                             );
+                            const isFutureTime = isTodaySelected && (
+                              (part === "hour" && item > nowHour) ||
+                              (part === "minute" && (currentHour > nowHour || (currentHour === nowHour && item > nowMinute)))
+                            );
+                            const isDisabledOption = isBeforeEntryTime || isFutureTime;
                             return (
                               <div key={`clock-${timeField}-${part}-${item}`} className={isDisabledOption ? "" : "tlr-library-action tlr-add-trade-soft-action"} role={isDisabledOption ? "presentation" : "button"} tabIndex={isDisabledOption ? -1 : 0}
                                 ref={isSelected ? node => {
