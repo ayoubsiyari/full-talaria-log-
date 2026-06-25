@@ -9675,6 +9675,7 @@ const TalariaV8b = () => {
   const [dashLibraryStrategyExpanded, setDashLibraryStrategyExpanded] = useState({});
   const [dashLibraryTreeOpen, setDashLibraryTreeOpen] = useState({backtests:true,standard:true,prop:false,strategies:true,journals:true,journalPersonal:true,journalProp:true});
   const [dashLibrarySelection, setDashLibrarySelection] = useState(null);
+  const [dashLibraryGoWarning, setDashLibraryGoWarning] = useState("");
   const [dashLibraryStrategyChildSelection, setDashLibraryStrategyChildSelection] = useState({});
   const [dashLibraryAppliedSelection, setDashLibraryAppliedSelection] = useState(() => {
     const applied = getV16AppliedSourceBoot() || resolvePersistedAppliedLibrarySource();
@@ -11413,6 +11414,10 @@ const TalariaV8b = () => {
     reconcileRows(dashCompareShellRef.current, compareKeys);
   }, [c.br, dashLibraryOpen, dashLibraryTab, dashLibrarySelection, dashCompareOpen, dashCompareTab, dashCompareDraftKey, dashCompareDraftKeys, dashCompareMultiple]);
 
+  useEffect(() => {
+    if (dashLibraryOpen) setDashLibraryGoWarning("");
+  }, [dashLibraryOpen, dashLibraryTab, dashLibraryModeCat, dashLibraryJournalCat]);
+
   const allSymbols = SYMBOLS_DATA.flatMap(c => c.items);
   const currentSymbol = allSymbols.find(s => s.id === symbol) || { id:symbol, type:"forex", base:symbol.split("/")[0], quote:symbol.split("/")[1] };
   const chartTypeMap = {
@@ -11614,7 +11619,7 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-dashboard-balance-field{transition:none!important}.tlr-dashboard-balance-field:hover,.tlr-dashboard-balance-field:focus-within{border-color:rgba(140,160,255,0.20)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05)!important;background:linear-gradient(180deg,rgba(17,21,37,0.98),rgba(9,12,24,0.96))!important}.tlr-dashboard-balance-field:hover .tlr-dashboard-balance-label{color:${c.tm}!important}.tlr-dashboard-balance-mode-icon{transition:none!important}.tlr-dashboard-balance-mode-icon:hover{background:var(--tlr-balance-icon-hover-bg,rgba(74,106,255,0.12))!important;color:var(--tlr-balance-icon-accent,#4A6AFF)!important;box-shadow:0 0 10px -8px var(--tlr-balance-icon-accent,#4A6AFF)!important}.tlr-dashboard-balance-mode-icon:active{background:var(--tlr-balance-icon-active-bg,rgba(74,106,255,0.20))!important;color:var(--tlr-balance-icon-accent,#fff)!important;transform:translateY(1px)!important}.tlr-dashboard-balance-mode-icon:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-balance-value-line{background:linear-gradient(90deg,transparent,${c.gn},transparent);box-shadow:0 0 7px rgba(0,212,161,0.62)}`;
       style.textContent += `.tlr-dashboard-filter-chip:hover{background:rgba(18,22,40,0.98)!important;border-color:rgba(74,106,255,0.46)!important;color:${tcHov}!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.055),0 0 14px -11px #4A6AFF!important}.tlr-dashboard-filter-chip:active{background:rgba(24,30,56,0.98)!important;transform:translateY(1px)!important}.tlr-dashboard-filter-option:hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important}.tlr-dashboard-filter-option:active{background:rgba(74,106,255,0.14)!important}.tlr-dashboard-filter-option-active{background:rgba(38,67,247,0.14)!important;color:#4A6AFF!important}.tlr-dashboard-filter-option-active:hover{background:rgba(38,67,247,0.14)!important;color:#4A6AFF!important}.tlr-dashboard-filter-token:hover{background:rgba(255,255,255,0.052)!important;color:${tcHov}!important}.tlr-dashboard-filter-token:active{background:rgba(74,106,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-filter-token-active,.tlr-dashboard-filter-token-active:hover{background:transparent!important;color:var(--tlr-filter-token-active,#4A6AFF)!important}.tlr-dashboard-filter-token-active::after{content:"";position:absolute;left:3px;right:3px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,var(--tlr-filter-token-active,#4A6AFF),transparent);box-shadow:0 0 6px var(--tlr-filter-token-glow,rgba(74,106,255,0.72));pointer-events:none}.tlr-dashboard-filter-token-no-line::after{display:none!important}.tlr-dashboard-filter-chip:focus-visible,.tlr-dashboard-filter-option:focus-visible,.tlr-dashboard-filter-token:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-filter-clear,.tlr-dashboard-filter-clear *{cursor:default!important}.tlr-dashboard-filter-clear:not([aria-disabled="true"]):hover{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-filter-clear:not([aria-disabled="true"]):active{background:transparent!important;color:#fff!important;transform:translateY(1px)!important}`;
       style.textContent += `.tlr-dashboard-filter-source-row:hover{background:var(--tlr-lib-hover-bg,rgba(255,255,255,0.045))!important;border-color:var(--tlr-lib-hover-border,rgba(255,255,255,0.12))!important}.tlr-dashboard-filter-source-row:active{background:var(--tlr-lib-active-press,rgba(74,106,255,0.10))!important;transform:translateY(1px)!important}.tlr-dashboard-filter-source-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `.tlr-dashboard-trade-row{transition:background-color 45ms linear,border-color 45ms linear!important;will-change:background-color,border-color}.tlr-dashboard-trade-row:not(.tlr-dashboard-trade-row-selected):hover{background:rgba(12,16,29,0.98)!important;border-color:rgba(140,160,255,0.18)!important}.tlr-dashboard-trade-row-selected:hover{background:rgba(17,24,54,0.94)!important;border-color:rgba(74,106,255,0.34)!important}.tlr-dashboard-trade-row:active{background:rgba(74,106,255,0.10)!important}.tlr-dashboard-trade-row-selected:active{background:rgba(17,24,54,0.94)!important}.tlr-dashboard-trade-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-trades-body-scroll{scrollbar-width:none!important}.tlr-trades-body-scroll::-webkit-scrollbar{height:0!important}`;
+      style.textContent += `.tlr-dashboard-trade-row{transition:background-color 45ms linear,border-color 45ms linear!important;will-change:background-color,border-color}.tlr-dashboard-trade-row:not(.tlr-dashboard-trade-row-selected):hover{background:rgba(12,16,29,0.98)!important;border-color:rgba(140,160,255,0.18)!important}.tlr-dashboard-trade-row-selected:hover{background:rgba(17,24,54,0.94)!important;border-color:rgba(74,106,255,0.34)!important}.tlr-dashboard-trade-row:active{background:rgba(74,106,255,0.10)!important}.tlr-dashboard-trade-row-selected:active{background:rgba(17,24,54,0.94)!important}.tlr-dashboard-trade-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-trade-block{display:flex;flex-direction:column;min-width:0;overflow-anchor:none}.tlr-dashboard-trade-detail{overflow-anchor:none;flex:0 0 auto}.tlr-trades-body-scroll{scrollbar-width:none!important}.tlr-trades-body-scroll::-webkit-scrollbar{height:0!important}`;
       style.textContent += `.tlr-trades-id-toggle{position:relative;transition:color 55ms linear,transform 45ms linear!important}.tlr-trades-id-toggle::after{content:"";position:absolute;left:7px;right:7px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 7px rgba(74,106,255,0.72);opacity:.38;pointer-events:none;transition:opacity 55ms linear}.tlr-trades-id-toggle:hover,.tlr-trades-id-toggle-active{color:#4A6AFF!important}.tlr-trades-id-toggle:hover::after,.tlr-trades-id-toggle-active::after{opacity:1}.tlr-trades-id-toggle:active{transform:translateY(1px)!important}.tlr-trades-id-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:1px}.tlr-trades-id-toggle svg{color:rgba(255,255,255,0.48);transition:color 55ms linear,transform 85ms ease}.tlr-trades-id-toggle:hover svg,.tlr-trades-id-toggle-active svg{color:#4A6AFF!important}`;
       style.textContent += `.tlr-add-trade-time-column{scrollbar-width:thin!important;scrollbar-color:rgba(140,160,255,0.34) transparent!important}.tlr-add-trade-time-column::-webkit-scrollbar{width:1px!important;height:1px!important}.tlr-add-trade-time-column::-webkit-scrollbar-track{background:transparent!important}.tlr-add-trade-time-column::-webkit-scrollbar-thumb{background:rgba(140,160,255,0.42)!important;border-radius:0!important}.tlr-add-trade-time-column::-webkit-scrollbar-thumb:hover{background:rgba(140,160,255,0.7)!important}.tlr-add-trade-time-column::-webkit-scrollbar-corner{background:transparent!important}`;
       style.textContent += `.tlr-add-trade-soft-action{transition:background-color 65ms linear,color 65ms linear,border-color 65ms linear,box-shadow 65ms linear,transform 45ms linear!important;will-change:background-color,color,border-color,box-shadow,transform}.tlr-add-trade-soft-action:not([aria-disabled="true"]):hover{background:var(--tlr-add-hover-bg,rgba(255,255,255,0.055))!important;color:var(--tlr-add-hover-color,${tcHov})!important;border-color:var(--tlr-add-hover-border,rgba(140,160,255,0.32))!important;box-shadow:var(--tlr-add-hover-shadow,0 0 12px rgba(74,106,255,0.14))!important;filter:none!important}.tlr-add-trade-soft-action:not([aria-disabled="true"]):active{background:var(--tlr-add-active-bg,rgba(74,106,255,0.14))!important;color:var(--tlr-add-active-color,var(--tlr-add-hover-color,${tcHov}))!important;border-color:var(--tlr-add-active-border,var(--tlr-add-hover-border,rgba(140,160,255,0.42)))!important;box-shadow:var(--tlr-add-active-shadow,0 0 8px rgba(74,106,255,0.20))!important;transform:translateY(1px)!important;filter:none!important}.tlr-add-trade-soft-action:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}@keyframes tlrAddTradePageSlideIn{from{opacity:.82;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}.tlr-add-trade-page-slide{animation:tlrAddTradePageSlideIn 155ms cubic-bezier(.2,.7,.2,1)}`;
@@ -17549,15 +17554,38 @@ const TalariaV8b = () => {
               return [clean.slice(0,2), clean.slice(2,4), clean.slice(4,8)].filter(Boolean).join("-");
             };
             const parseNumericDateInput = value => {
-              const digits = String(value || "").replace(/\D/g, "");
-              if (digits.length !== 8) return "";
-              const day = Number(digits.slice(0,2));
-              const month = Number(digits.slice(2,4));
-              const year = Number(digits.slice(4,8));
+              const splitParts = String(value || "").trim().split(/\s*-\s*/);
+              let dayRaw = "";
+              let monthRaw = "";
+              let yearRaw = "";
+              if (splitParts.length >= 3 && !String(splitParts[0] || "").includes("D")) {
+                dayRaw = String(splitParts[0] || "").replace(/\D/g, "");
+                monthRaw = String(splitParts[1] || "").replace(/\D/g, "");
+                yearRaw = String(splitParts[2] || "").replace(/\D/g, "");
+              } else {
+                const digits = String(value || "").replace(/\D/g, "");
+                if (digits.length !== 8) return "";
+                dayRaw = digits.slice(0, 2);
+                monthRaw = digits.slice(2, 4);
+                yearRaw = digits.slice(4, 8);
+              }
+              if (!dayRaw || !monthRaw || yearRaw.length !== 4) return "";
+              const day = Number(dayRaw);
+              const month = Number(monthRaw);
+              const year = Number(yearRaw);
               if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1) return "";
               const maxDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
               if (day > maxDay) return "";
               return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            };
+            const finalizeDateDisplay = (value) => {
+              const splitParts = String(value || "").trim().split(/\s*-\s*/);
+              if (splitParts.length < 3) return null;
+              const dayRaw = String(splitParts[0] || "").replace(/\D/g, "");
+              const monthRaw = String(splitParts[1] || "").replace(/\D/g, "");
+              const yearRaw = String(splitParts[2] || "").replace(/\D/g, "");
+              if (!dayRaw || !monthRaw || yearRaw.length !== 4 || /D|M|Y/.test(`${dayRaw}${monthRaw}${yearRaw}`)) return null;
+              return `${String(Number(dayRaw)).padStart(2, "0")} - ${String(Number(monthRaw)).padStart(2, "0")} - ${yearRaw}`;
             };
             const sanitizeNumericDateInput = (raw, previous, target) => {
               const digits = String(raw || "").replace(/\D/g, "").slice(0, 8);
@@ -17844,33 +17872,46 @@ const TalariaV8b = () => {
                 if (pos <= midMonthYear) return "month";
                 return "year";
               };
-              const isCompleteDateDisplay = value => /^\d{2}-\d{2}-\d{4}$/.test(value);
-              const isCompleteDateDisplayLoose = value => /^\d{2}\s*-\s*\d{2}\s*-\s*\d{4}$/.test(value);
+              const isCompleteDateDisplay = value => {
+                const parts = String(value || "").trim().split(/\s*-\s*/);
+                if (parts.length < 3) return false;
+                const day = String(parts[0] || "").replace(/\D/g, "");
+                const month = String(parts[1] || "").replace(/\D/g, "");
+                const year = String(parts[2] || "").replace(/\D/g, "");
+                return day.length >= 1 && day.length <= 2 && month.length >= 1 && month.length <= 2 && year.length === 4;
+              };
+              const isCompleteDateDisplayLoose = isCompleteDateDisplay;
+              const padActiveSegmentInDisplay = (value) => {
+                if (dashDateSegmentFocus.target !== target) return value;
+                const { segment, buffer } = dashDateSegmentFocus;
+                if (!buffer || (segment !== "day" && segment !== "month") || buffer.length >= 2) return value;
+                const parts = normalizeParts(value);
+                return composeDateParts({ ...parts, [segment]: buffer.padStart(2, "0") });
+              };
               const setDateError = message => setDashDateInputError(prev => ({...prev, [target]:message}));
               const getDateValidationError = value => {
                 if (!isCompleteDateDisplayLoose(value)) return "";
-                const digits = String(value || "").replace(/\D/g, "");
-                const iso = parseNumericDateInput(value);
+                const iso = parseNumericDateInput(finalizeDateDisplay(value) || value);
                 if (!iso) return dashTxt("Invalid date","تاريخ غير صالح");
                 if (iso < dashDataDateRange.start || iso > dashDataDateRange.end) return dashTxt("Outside data range","خارج نطاق البيانات");
                 if (target === "start" && dashDateEndFilter && iso > dashDateEndFilter) return dashTxt("After end date","بعد تاريخ النهاية");
                 if (target === "end" && dashDateStartFilter && iso < dashDateStartFilter) return dashTxt("Before start date","قبل تاريخ البداية");
-                if (digits.length !== 8) return "";
                 return "";
               };
               const validateDateDisplay = value => {
                 if (!isCompleteDateDisplayLoose(value)) return "";
-                const iso = parseNumericDateInput(value);
+                const iso = parseNumericDateInput(finalizeDateDisplay(value) || value);
                 if (!iso || iso < dashDataDateRange.start || iso > dashDataDateRange.end) return "";
                 if (target === "start" && dashDateEndFilter && iso > dashDateEndFilter) return "";
                 if (target === "end" && dashDateStartFilter && iso < dashDateStartFilter) return "";
                 return iso;
               };
               const commitDisplayValue = value => {
-                setInputValue(value);
-                const error = getDateValidationError(value);
+                const normalized = finalizeDateDisplay(value) || value;
+                setInputValue(normalized);
+                const error = getDateValidationError(normalized);
                 setDateError(error);
-                const iso = validateDateDisplay(value);
+                const iso = validateDateDisplay(normalized);
                 if (!iso) {
                   setSelectedDate("");
                   return false;
@@ -17886,9 +17927,15 @@ const TalariaV8b = () => {
                 selectInputSegment(el, segment);
               };
               const moveSegment = (delta, el) => {
+                const paddedValue = padActiveSegmentInDisplay(displayValue);
+                if (paddedValue !== displayValue) {
+                  setInputValue(paddedValue);
+                  if (isCompleteDateDisplayLoose(paddedValue)) commitDisplayValue(paddedValue);
+                }
                 const current = activeField && dashDateSegmentFocus.target === target ? dashDateSegmentFocus.segment : "day";
                 const idx = segmentOrder.indexOf(current);
                 const next = segmentOrder[Math.max(0, Math.min(segmentOrder.length - 1, idx + delta))] || "day";
+                setDashDateSegmentFocus({ target, segment: next, buffer: "" });
                 selectSegment(next, el);
               };
               const handleSegmentDigit = (digit, el) => {
@@ -17928,7 +17975,7 @@ const TalariaV8b = () => {
                 const nextIdx = segmentOrder.indexOf(segment) + 1;
                 const nextSegment = segmentOrder[nextIdx] || segment;
                 setDashDateSegmentFocus({target, segment:nextSegment, buffer:""});
-                selectInputSegment(el, nextSegment, nextDisplay);
+                selectInputSegment(el, nextSegment, finalizeDateDisplay(nextDisplay) || nextDisplay);
               };
               const clearSegment = (el) => {
                 const segment = activeField && dashDateSegmentFocus.target === target ? dashDateSegmentFocus.segment : "day";
@@ -17997,7 +18044,15 @@ const TalariaV8b = () => {
                     onClick={e=>handleSegmentClick(e.currentTarget)}
                     onPaste={handlePaste}
                     onChange={()=>{}}
-                    onBlur={()=>{if (!validateDateDisplay(displayValue) && !inputError) setInputValue(formatNumericDate(selectedDate));}}
+                    onBlur={()=>{
+                      const finalized = finalizeDateDisplay(displayValue);
+                      if (finalized && commitDisplayValue(finalized)) {
+                        setDashDateSegmentFocus({target, segment:"day", buffer:""});
+                        return;
+                      }
+                      if (!validateDateDisplay(displayValue) && !inputError) setInputValue(formatNumericDate(selectedDate));
+                      setDashDateSegmentFocus({target, segment:"day", buffer:""});
+                    }}
                     onKeyDown={handleKey}
                     style={{width:"100%",height:28,display:"block",background:c.well,border:`1px solid ${inputError?c.rd:c.brH}`,boxShadow:inputError?`0 0 10px rgba(255,80,104,0.22)`:"none",outline:"none",color:inputValue?c.tx:c.tm,fontSize:12,fontWeight:600,padding:"0 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",letterSpacing:"0.01em",boxSizing:"border-box",caretColor:"#fff"}}
                   />
@@ -20001,12 +20056,7 @@ const TalariaV8b = () => {
             }
             return false;
           };
-          const defaultLibrarySelection = makeLibrarySessionSelection(sourceBacktestRows[0] || dashboardSessionPool[0])
-            || makeLibraryJournalAccountSelection(sourceJournalAccounts[0])
-            || makeLibraryJournalAccountSelection(libraryJournalAccountGroups.find(group=>group.accounts.length)?.accounts?.[0])
-            || makeLibraryJournalEntrySelection(sourceJournalRows[0]);
-          const effectiveLibrarySelection = dashLibrarySelection || defaultLibrarySelection;
-          if (!dashLibrarySelectionRef.current && effectiveLibrarySelection) dashLibrarySelectionRef.current = effectiveLibrarySelection;
+          const pendingLibraryGoSelection = isLibrarySelectionVisible(dashLibrarySelection) ? dashLibrarySelection : null;
           dashLibraryStrategyChildSelectionRef.current = dashLibraryStrategyChildSelection || {};
           const currentDashboardLibrarySelection = dashboardSourceKind === "strategy"
             ? {kind:"strategy",id:dashStrategyId || dashStrategyKey(ds.strategyName),label:ds.strategyName || ds.name}
@@ -20027,7 +20077,7 @@ const TalariaV8b = () => {
           if (!dashLibraryAppliedSelectionRef.current && appliedLibrarySelection) dashLibraryAppliedSelectionRef.current = appliedLibrarySelection;
           dashLibraryAppliedMultiSelectionRef.current = Array.isArray(dashLibraryAppliedMultiSelection) ? dashLibraryAppliedMultiSelection : [];
           dashLibraryAppliedStrategyChildSelectionRef.current = dashLibraryAppliedStrategyChildSelection || {};
-          const visibleLibrarySelection = isLibrarySelectionVisible(effectiveLibrarySelection) ? effectiveLibrarySelection : null;
+          const visibleLibrarySelection = pendingLibraryGoSelection;
           const libraryTradeCountForSession = (session) => {
             if (!session) return 0;
             const builtTrades = btDashBuildTrades(session);
@@ -20133,6 +20183,7 @@ const TalariaV8b = () => {
             dashLibrarySelectionItemsRef.current[key] = item;
             dashLibrarySelectionRef.current = item;
             setDashLibrarySelection(item);
+            setDashLibraryGoWarning("");
             updateLibrarySelectedFooter(item.label, null, null, libraryTradeCountLabel(libraryTradeCountForSelection(item)));
           };
           const toggleLibraryStrategyChildSource = (strategyItem, childKey) => {
@@ -20160,8 +20211,11 @@ const TalariaV8b = () => {
               libraryTradeCountLabel(safeKeys.reduce((sum,key)=>sum+libraryTradeCountForKey(key),0))
             );
           };
-          const selectedLibraryTradeCount = libraryTradeCountForSelection(effectiveLibrarySelection);
-          const selectedLibraryTradeCountLabel = effectiveLibrarySelection ? libraryTradeCountLabel(selectedLibraryTradeCount) : "";
+          const selectedLibraryTradeCount = libraryTradeCountForSelection(pendingLibraryGoSelection);
+          const selectedLibraryTradeCountLabel = pendingLibraryGoSelection ? libraryTradeCountLabel(selectedLibraryTradeCount) : "";
+          const libraryGoMissingSelectionMessage = dashLibraryTab === "backtests"
+            ? dashTxt("Select a backtest session before continuing.","حدد جلسة اختبار قبل المتابعة.")
+            : dashTxt("Select a journal account before continuing.","حدد حساب يومية قبل المتابعة.");
           const expandLibraryAppliedRows = (rows=[], sourceMap=dashLibraryStrategyChildSelectionRef.current) => {
             const expanded = [];
             rows.map(String).filter(Boolean).forEach(rowKey => {
@@ -20229,8 +20283,18 @@ const TalariaV8b = () => {
             }
           };
           const runLibrarySelection = () => {
-            const sel = dashLibrarySelectionRef.current || effectiveLibrarySelection;
-            if (!sel) return;
+            const sel = dashLibrarySelectionRef.current;
+            if (!sel || !isLibrarySelectionVisible(sel)) {
+              setDashLibraryGoWarning(libraryGoMissingSelectionMessage);
+              updateLibrarySelectedFooter(
+                dashTxt("None selected","لم يُحدد شيء"),
+                dashTxt("None","لا شيء"),
+                c.tm,
+                ""
+              );
+              return;
+            }
+            setDashLibraryGoWarning("");
             commitLibrarySelection(sel);
             if (sel.kind === "session") {
               const session = dashboardSessionPool.find(s=>String(s.id)===String(sel.sessionId || sel.id));
@@ -20273,9 +20337,9 @@ const TalariaV8b = () => {
             dashLibrarySelectionRef.current = sel || null;
             setDashLibrarySelection(sel || null);
           };
-          const selectedLibraryLabel = effectiveLibrarySelection?.label || dashTxt("No selectable item","لا يوجد عنصر قابل للاختيار");
+          const selectedLibraryLabel = pendingLibraryGoSelection?.label || dashTxt("None selected","لم يُحدد شيء");
           const librarySelectionType = (() => {
-            const kind = effectiveLibrarySelection?.kind;
+            const kind = pendingLibraryGoSelection?.kind;
             if (kind === "session") return {label:dashTxt("Backtest","اختبار"), color:c.acL};
             if (kind === "strategy") return {label:dashTxt("Strategy","استراتيجية"), color:c.acL};
             if (kind === "strategyJournal") return {label:dashTxt("Journal","يومية"), color:c.gn};
@@ -20633,6 +20697,7 @@ const TalariaV8b = () => {
             flushSync(()=>{
               if (next) {
                 resetLibraryPendingToApplied();
+                setDashLibraryGoWarning("");
                 if (dashLibraryTab === "strategies") setDashLibraryTab("backtests");
               }
               setDashLibraryOpen(next);
@@ -20647,6 +20712,7 @@ const TalariaV8b = () => {
             setDashLibraryVisibleNow(false);
             flushSync(()=>{
               resetLibraryPendingToApplied();
+              setDashLibraryGoWarning("");
               setDashLibraryOpen(false);
             });
           };
@@ -22989,11 +23055,42 @@ const TalariaV8b = () => {
             };
             const toggleExpandedTradeRow = (rowKey) => {
               setDashTradesExpandedRows(prev => {
-                const next = new Set(prev);
-                if (next.has(rowKey)) next.delete(rowKey);
-                else next.add(rowKey);
+                const opening = !prev.has(rowKey);
+                const next = opening ? new Set([rowKey]) : new Set();
+                if (opening) {
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => ensureDashTradeDetailVisible(rowKey));
+                  });
+                }
                 return next;
               });
+            };
+            const ensureDashTradeDetailVisible = (rowKey) => {
+              try {
+                if (typeof document === "undefined") return;
+                const escaped = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(String(rowKey)) : String(rowKey).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+                const block = document.querySelector(`[data-trade-row-key="${escaped}"]`);
+                if (!block) return;
+                const scroller = block.closest(".tlr-scroll");
+                if (!scroller) return;
+                const row = block.querySelector(".tlr-dashboard-trade-row");
+                const detail = block.querySelector(".tlr-dashboard-trade-detail");
+                if (!row || !detail) return;
+                const scrollerRect = scroller.getBoundingClientRect();
+                const stickyHead = scroller.querySelector('[style*="position: sticky"], [style*="position:sticky"]');
+                const anchorTop = stickyHead ? stickyHead.getBoundingClientRect().bottom : scrollerRect.top;
+                const rowRect = row.getBoundingClientRect();
+                const detailRect = detail.getBoundingClientRect();
+                if (rowRect.top < anchorTop + 2) {
+                  scroller.scrollTop += rowRect.top - anchorTop - 10;
+                }
+                const nextRowRect = row.getBoundingClientRect();
+                const nextDetailRect = detail.getBoundingClientRect();
+                if (nextDetailRect.top < nextRowRect.bottom - 1) return;
+                if (nextDetailRect.bottom > scrollerRect.bottom - 10) {
+                  scroller.scrollTop += nextDetailRect.bottom - scrollerRect.bottom + 16;
+                }
+              } catch {}
             };
             const drawerRecord = null;
             const cellStyle = (key, value) => ({
@@ -23195,7 +23292,7 @@ const TalariaV8b = () => {
               pushPriceRows("Exit", priceStructure.exits, c.gold, "exits");
               const expandedTradeBorder = "rgba(74,106,255,0.44)";
               return (
-                <div style={{gridColumn:"1 / -1",background:"rgba(10,14,26,0.98)",borderTop:"none",borderRight:`1px solid ${expandedTradeBorder}`,borderBottom:`1px solid ${expandedTradeBorder}`,borderLeft:`1px solid ${expandedTradeBorder}`,boxShadow:`inset 3px 0 0 rgba(74,106,255,0.78), inset 0 1px 0 rgba(255,255,255,0.025), 0 10px 24px rgba(0,0,0,0.22)`,padding:"10px 12px 11px",marginBottom:6,boxSizing:"border-box"}}>
+                <div className="tlr-dashboard-trade-detail" style={{gridColumn:"1 / -1",background:"rgba(10,14,26,0.98)",borderTop:"none",borderRight:`1px solid ${expandedTradeBorder}`,borderBottom:`1px solid ${expandedTradeBorder}`,borderLeft:`1px solid ${expandedTradeBorder}`,boxShadow:`inset 3px 0 0 rgba(74,106,255,0.78), inset 0 1px 0 rgba(255,255,255,0.025), 0 10px 24px rgba(0,0,0,0.22)`,padding:"10px 12px 11px",marginBottom:6,boxSizing:"border-box"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,paddingBottom:8,borderBottom:`1px solid ${c.br}`,marginBottom:9}}>
                     <div style={{minWidth:0,display:"flex",alignItems:"center",gap:10}}>
                       <span style={{fontSize:13,fontWeight:950,color:c.tx,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{record.values.symbol.text} · <span style={{color:record.values.side.color}}>{record.values.side.text}</span></span>
@@ -23503,14 +23600,14 @@ const TalariaV8b = () => {
                   {sortedRecords.map(record => {
                     const expanded = dashTradesExpandedRows.has(record.key);
                     return (
-                      <React.Fragment key={record.key}>
+                      <div key={record.key} data-trade-row-key={record.key} className="tlr-dashboard-trade-block">
                         <div className={`tlr-dashboard-trade-row${expanded ? " tlr-dashboard-trade-row-selected" : ""}`} role="row" aria-expanded={expanded}
                           onDoubleClick={e=>{
                             if (e.target?.closest?.("button,[role='button'],input,select,textarea,a,label")) return;
                             e.preventDefault();
                             toggleExpandedTradeRow(record.key);
                           }}
-                          style={{display:"grid",gridTemplateColumns,alignItems:"center",minHeight:46,borderTop:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,borderRight:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,borderBottom:`1px solid ${expanded ? "rgba(74,106,255,0.22)" : c.br}`,borderLeft:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,background:expanded?"rgba(17,24,54,0.94)":"rgba(6,9,18,0.98)",boxShadow:expanded?"inset 3px 0 0 rgba(74,106,255,0.78)":"none",padding:`0 ${tradesTablePadX}px`,columnGap:tradesColumnGap,cursor:"default",boxSizing:"border-box"}}>
+                          style={{display:"grid",gridTemplateColumns,alignItems:"center",minHeight:46,borderTop:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,borderRight:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,borderBottom:expanded ? "none" : `1px solid ${c.br}`,borderLeft:`1px solid ${expanded ? "rgba(74,106,255,0.44)" : "transparent"}`,background:expanded?"rgba(17,24,54,0.94)":"rgba(6,9,18,0.98)",boxShadow:expanded?"inset 3px 0 0 rgba(74,106,255,0.78)":"none",padding:`0 ${tradesTablePadX}px`,columnGap:tradesColumnGap,cursor:"default",boxSizing:"border-box"}}>
                           {activeColumnKeys.map(key => {
                             if (key === "expand") {
                               return (
@@ -23548,7 +23645,7 @@ const TalariaV8b = () => {
                           })}
                         </div>
                         {expanded && detailCard(record)}
-                      </React.Fragment>
+                      </div>
                     );
                   })}
                   {!sortedRecords.length && (
@@ -32144,23 +32241,26 @@ const TalariaV8b = () => {
                           <span data-tlr-library-selected-type style={{fontSize:8,fontWeight:950,color:librarySelectionType.color,letterSpacing:"0.08em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{librarySelectionType.label}</span>
                         </div>
                         <div style={{display:"flex",alignItems:"baseline",gap:18,minWidth:0}}>
-                          <span data-tlr-library-selected-label style={{fontSize:11.2,fontWeight:900,color:effectiveLibrarySelection?c.tx:c.tm,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:360}}>{selectedLibraryLabel}</span>
+                          <span data-tlr-library-selected-label style={{fontSize:11.2,fontWeight:900,color:pendingLibraryGoSelection?c.tx:c.tm,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:360}}>{selectedLibraryLabel}</span>
                           {selectedLibraryTradeCountLabel && (
                             <span data-tlr-library-selected-trades style={{fontSize:8.2,fontWeight:950,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums",flexShrink:0}}>{selectedLibraryTradeCountLabel}</span>
                           )}
                         </div>
+                        {dashLibraryGoWarning && (
+                          <div style={{fontSize:9.2,fontWeight:850,color:c.rd,fontFamily:F,lineHeight:1.35,maxWidth:420}}>{dashLibraryGoWarning}</div>
+                        )}
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                         <div className="tlr-library-title-action tlr-library-footer-cancel" role="button" tabIndex={0} aria-label={dashTxt("Cancel","إلغاء")} onClick={closeDashLibrary} onKeyDown={libraryKeyActivate(closeDashLibrary)}
                           style={{...libraryFooterButtonStyle,color:c.ts,border:`1px solid ${c.brH}`,background:"transparent"}}>
                           {dashTxt("Cancel","إلغاء")}
                         </div>
-                        <div className="tlr-library-action tlr-library-footer-go" role="button" tabIndex={effectiveLibrarySelection?0:-1} aria-disabled={effectiveLibrarySelection?"false":"true"} aria-label={dashTxt("Go to selected item","اذهب إلى العنصر المحدد")} onClick={()=>{if(effectiveLibrarySelection)runLibrarySelection();}}
-                          onKeyDown={libraryKeyActivate(()=>{if(effectiveLibrarySelection)runLibrarySelection();})}
-                          onMouseDown={e=>{if(effectiveLibrarySelection)e.currentTarget.style.transform=dashPressTransform;}}
+                        <div className="tlr-library-action tlr-library-footer-go" role="button" tabIndex={0} aria-label={dashTxt("Go to selected item","اذهب إلى العنصر المحدد")} onClick={runLibrarySelection}
+                          onKeyDown={libraryKeyActivate(runLibrarySelection)}
+                          onMouseDown={e=>{e.currentTarget.style.transform=dashPressTransform;}}
                           onMouseUp={e=>{e.currentTarget.style.transform="translateY(0)";}}
                           onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
-                          style={{...libraryFooterButtonStyle,background:c.acL,color:"#fff",border:"1px solid transparent",opacity:effectiveLibrarySelection?1:0.38,pointerEvents:effectiveLibrarySelection?"auto":"none",boxShadow:effectiveLibrarySelection?libraryGoButtonStyle.boxShadow:"none"}}>
+                          style={{...libraryFooterButtonStyle,background:c.acL,color:"#fff",border:"1px solid transparent",opacity:1,pointerEvents:"auto",boxShadow:libraryGoButtonStyle.boxShadow}}>
                           {dashTxt("Go","اذهب")}
                         </div>
                       </div>

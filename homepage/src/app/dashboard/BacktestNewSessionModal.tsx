@@ -186,6 +186,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   const [newSessNavEnabled, setNewSessNavEnabled] = useState(true);
   const [newSessFilePickerOpen, setNewSessFilePickerOpen] = useState(false);
   const [editSessId, setEditSessId] = useState<any>(null);
+  const [editSessOriginalTradingMode, setEditSessOriginalTradingMode] = useState<"standard" | "prop" | null>(null);
   const [savingSession, setSavingSession] = useState(false);
   const [newSessTickers, setNewSessTickers] = useState<string[]>([]);
   const [newSessTickerInput, setNewSessTickerInput] = useState("");

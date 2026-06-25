@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b12';
+const CHART_ENGINE_BUILD = '20260624b74';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -18286,13 +18286,21 @@ class Chart {
             }
 
             const session = this.backtestingSession || {};
+            const fetchWindow = options.windowRange
+                || this._buildTfSwitchFetchWindow(timeframe);
+            const fetchOpts = { ...(options.smartOpts || {}) };
+            if (fetchWindow && !Number.isFinite(Number(fetchOpts.limit))) {
+                const vp = this._tfSwitchViewport;
+                const visible = Number.isFinite(vp?.visibleBarCount) ? vp.visibleBarCount : 200;
+                fetchOpts.limit = Math.max(100, Math.min(2000, Math.ceil(visible * 3)));
+            }
             const result = await this._fetchSmartWindow(
                 this.currentFileId,
                 timeframe,
                 session,
-                options.anchor,
-                options.windowRange || null,
-                options.smartOpts || null
+                fetchWindow ? 'start' : options.anchor,
+                fetchWindow,
+                fetchOpts
             );
 
             if (loadId !== this._timeframeLoadSeq) return;
@@ -18325,16 +18333,11 @@ class Chart {
             this._ingestSmartWindowResult(result, { skipFitToView: true, skipIndicators: true });
             this._deferRecalculateIndicators();
 
-            // Immediately put the chart into a renderable state.
-            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
-            // which some listeners react to with a render. Without a valid offsetX for
-            // the NEW dataset, those intermediate renders produce
-            // "No candles drawn! All N candles are outside viewport" warnings and a
-            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
-            // The rAF below refines the view (restore center timestamp) once dimensions settle.
+            // Immediately restore viewport (bar count + anchor pixel) so chartDataLoaded
+            // listeners and intermediate renders see a valid offsetX on the new dataset.
+            // Do NOT call fitToView() here — it snaps to offsetX=0 when all bars fit.
             if (Array.isArray(this.data) && this.data.length > 0) {
-                this._chartViewRestored = false;
-                this.fitToView();
+                this._restoreOrJumpAfterTfSwitch();
             }
 
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -18347,13 +18350,14 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
-                // TradingView parity: restore the same visible wall-clock window
-                // captured before the switch. The server /smart window is
-                // end-anchored, so when the user was viewing recent data the
-                // captured center is inside the fetched bars and the view is
-                // preserved; when it isn't (scrolled far back), restore returns
-                // false and we self-heal to the latest candle instead.
-                this._restoreOrJumpAfterTfSwitch();
+                // Re-apply anchor after layout settles. The sync restore above already
+                // consumed _tfSwitchViewport; a second full restore would fall through
+                // to jumpToLatest() and undo the preserved bar count / placement.
+                if (this._tfSwitchAnchorLock) {
+                    this._reapplyTfSwitchAnchorLock();
+                } else if (this._tfSwitchViewport) {
+                    this._restoreOrJumpAfterTfSwitch();
+                }
                 // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
                 // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
@@ -25410,6 +25414,32 @@ class Chart {
     }
 
     /**
+     * Wall-clock fetch window for a TF switch server load. Covers the visible
+     * range captured before the switch plus padding so restore can anchor in-place.
+     */
+    _buildTfSwitchFetchWindow(targetTf) {
+        const vp = this._tfSwitchViewport;
+        if (!vp) return null;
+        const targetMs = this.parseTimeframe(targetTf);
+        const barMs = Number.isFinite(targetMs) && targetMs > 0 ? targetMs : 3600000;
+        const visible = Number.isFinite(vp.visibleBarCount) ? vp.visibleBarCount : 200;
+        const padBars = Math.max(visible * 2, 120);
+        let startTs = vp.leftTs;
+        let endTs = vp.rightTs;
+        if (!Number.isFinite(startTs) && Number.isFinite(vp.centerTs)) {
+            startTs = vp.centerTs - (visible / 2) * barMs;
+        }
+        if (!Number.isFinite(endTs) && Number.isFinite(vp.centerTs)) {
+            endTs = vp.centerTs + (visible / 2) * barMs;
+        }
+        if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return null;
+        return {
+            startTs: Math.floor(startTs - padBars * barMs),
+            endTs: Math.floor(endTs + padBars * barMs),
+        };
+    }
+
+    /**
      * Snapshot viewport state before a timeframe switch (old TF still on screen).
      * Preserve the on-screen candle count (e.g. 200 bars on 1m → 200 bars on 1h)
      * and anchor the playhead / last candle at the same pixel X on the new TF.
@@ -25454,7 +25484,24 @@ class Chart {
             anchorMode = 'viewportLeft';
             anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
             anchorScreenX = leftScreenX;
-        } else if (replay && replay.isActive) {
+        } else if (!(replay && replay.isActive)) {
+            // Live browse panned into history: pin left edge (same wall-clock window).
+            const spacing = this.getCandleSpacing();
+            if (spacing > 0) {
+                const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
+                    ? this.timeScale.rightOffsetCandles
+                    : 15;
+                const rightMargin = Math.max(0, rightMarginCandles) * spacing;
+                const maxOffset = plotW - rightMargin;
+                const viewingHistory = this.offsetX > maxOffset - spacing * 8;
+                if (viewingHistory) {
+                    anchorMode = 'viewportLeft';
+                    anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
+                    anchorScreenX = leftScreenX;
+                }
+            }
+        }
+        if (anchorMode !== 'viewportLeft' && replay && replay.isActive) {
             anchorMode = 'playhead';
             anchorTs = this._captureReplayPlayheadMs(replay);
             const lastIdx = Math.max(0, this.data.length - 1);
@@ -25753,6 +25800,11 @@ class Chart {
      * candle so the chart is never left on an empty/offscreen region.
      */
     _restoreOrJumpAfterTfSwitch() {
+        // Second restore pass after the snapshot was consumed must not fall through
+        // to jumpToLatest() — that resets zoom and snaps the chart to the left edge.
+        if (this._tfSwitchAnchorLock && typeof this._reapplyTfSwitchAnchorLock === 'function') {
+            if (this._reapplyTfSwitchAnchorLock()) return;
+        }
         const vpSnap = this._tfSwitchViewport
             ? { ...this._tfSwitchViewport }
             : null;
