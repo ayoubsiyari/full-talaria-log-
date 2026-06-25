@@ -21400,7 +21400,14 @@ class Chart {
         }
 
         // Keep bar-close countdown on the price axis ticking (TradingView-style).
-        if (this.chartSettings.showCountdownToBarClose !== false) {
+        // Multichart embed panels are PASSIVE mirrors of host tile A — the host
+        // drives the playhead and they only repaint on incoming frames. Running
+        // an independent once-a-second countdown re-render here makes a same-pair
+        // panel constantly re-render (and visibly jump) while idle, unlike the
+        // smooth main chart. Skip it on panels; the host still shows the countdown.
+        const isEmbedPanel = typeof this._isMultichartEmbedPanel === 'function'
+            && this._isMultichartEmbedPanel();
+        if (!isEmbedPanel && this.chartSettings.showCountdownToBarClose !== false) {
             const nowCd = performance.now();
             if (!this._lastCountdownRender || nowCd - this._lastCountdownRender > 1000) {
                 this._lastCountdownRender = nowCd;
