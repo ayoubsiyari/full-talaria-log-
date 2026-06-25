@@ -19,6 +19,30 @@ def test_enforce_journal_trade_limit_raises(monkeypatch):
         pass
 
 
+def test_normalize_manual_trade_payload_open_trade_zeros_realized_metrics():
+    raw = {
+        "trade_id": "manual-open-1",
+        "symbol": "EURUSD",
+        "side": "Short",
+        "status": "Open",
+        "entryPrice": 1.1,
+        "stopLoss": 1.2,
+        "takeProfit": 1.0,
+        "plannedRR": 1.0,
+        "entryTime": "2012-06-29T00:13:00.000Z",
+        "entries": [{"price": 1.1, "qty": 1}],
+        "exits": [{"price": "", "qty": 1}],
+        "partial_exits": [],
+    }
+    out = sjs.normalize_manual_trade_payload(raw)
+    assert out["status"] == "open"
+    assert out["pnl"] == 0
+    assert out["netPnL"] == 0
+    assert out["rMultiple"] == 0
+    assert out["rewardToRiskRatio"] == 1.0
+    assert out.get("partialCloses") is None
+
+
 def test_normalize_manual_trade_payload_aliases():
     raw = {
         "trade_id": "manual-abc",

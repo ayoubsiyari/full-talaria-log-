@@ -210,6 +210,14 @@ def _map_partial_exits_to_partial_closes(exits: Any, fallback_time_ms: int | Non
         qty = row.get("qty") if row.get("qty") is not None else row.get("quantity")
         if price is None and qty is None:
             continue
+        try:
+            price_f = float(price)
+            if not (price_f > 0):
+                continue
+        except (TypeError, ValueError):
+            if price in (None, ""):
+                continue
+            continue
         out.append(
             {
                 "closePrice": price,
@@ -397,6 +405,17 @@ def normalize_manual_trade_payload(raw: dict) -> dict:
     if not status:
         status = "closed" if exit_ms is not None else "open"
     out["status"] = "closed" if status in {"closed", "close"} else "open"
+
+    if out["status"] == "open":
+        out["pnl"] = 0
+        out["netPnL"] = 0
+        out["realizedPnL"] = 0
+        out["pnl_currency_net"] = 0
+        out["pnl_dollars_net"] = 0
+        out["rMultiple"] = 0
+        out["rr"] = 0
+        out["actual_rr_net"] = 0
+        out["actualRR"] = 0
 
     if entry_ms is not None and exit_ms is not None and exit_ms >= entry_ms:
         holding_ms = exit_ms - entry_ms

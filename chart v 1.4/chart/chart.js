@@ -7102,6 +7102,15 @@ class Chart {
             if (this.timeScale) this.timeScale.locked = false;
             this._chartViewRestored = false;
 
+            // New session / pair load (NOT a timeframe switch): render with a clean,
+            // auto-fit price scale so the data is framed like a fresh chart. A TF
+            // switch preserves the previous scale/candle-count/position via
+            // _restoreTfSwitchViewport(), so never reset there.
+            if (!this._timeframeSwitching && !this._tfSwitchAnchorLock
+                && typeof this._resetPriceScaleToAuto === 'function') {
+                try { this._resetPriceScaleToAuto(); } catch (_rs) { /* ignore */ }
+            }
+
             const pairSwitched = outgoingPanelFileId != null
                 && String(outgoingPanelFileId) !== String(targetFileId);
             if (pairSwitched) {
@@ -8088,17 +8097,17 @@ class Chart {
                 // Y-axis on a completely different price range (e.g. 1240 when current
                 // candles are at 5700), requiring a manual double-click to fix.
                 if (!replayIsActive) {
-                    if (typeof v.priceOffset === 'number' && Number.isFinite(v.priceOffset)) {
-                        this.priceOffset = v.priceOffset;
-                    }
-                    if (typeof v.priceZoom === 'number' && Number.isFinite(v.priceZoom)) {
-                        this.priceZoom = Math.max(this.minPriceZoom, v.priceZoom);
-                    }
-                    if (typeof v.autoScale === 'boolean') {
-                        this.autoScale = v.autoScale;
-                        if (this.priceScale) {
-                            this.priceScale.autoScale = v.autoScale;
-                        }
+                    // Refresh should render with a clean, auto-fit price scale (like a
+                    // fresh load) rather than restoring a stale manual Y zoom/offset.
+                    // Horizontal candleWidth/offsetX are still restored above so the
+                    // last viewed candles stay in view; only the Y scale is reset.
+                    if (typeof this._resetPriceScaleToAuto === 'function') {
+                        try { this._resetPriceScaleToAuto(); } catch (_rs) { /* ignore */ }
+                    } else {
+                        this.priceOffset = 0;
+                        this.priceZoom = 1;
+                        this.autoScale = true;
+                        if (this.priceScale) this.priceScale.autoScale = true;
                     }
                 }
                 if (typeof v.candleWidthIndex === 'number' && this.zoomLevel) {

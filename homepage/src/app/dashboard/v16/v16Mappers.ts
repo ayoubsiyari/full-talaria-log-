@@ -2,8 +2,10 @@ import {
   flattenJournalApiTrade,
   tradeRowDurationMinutes,
   tradeRowPnl,
+  tradeRowRealizedR,
   tradeRowSide,
   tradeRowSymbol,
+  tradeRowStatus,
   tradeRowTimestamp,
   type JournalApiTradeItem,
 } from "../sessionJournalUtils";
@@ -177,22 +179,18 @@ export function mapJournalRowToV16Trade(
   session: ApiSession,
   index: number
 ): Record<string, unknown> {
+  const isOpen = tradeRowStatus(row) === "open";
   const resolvedPnl = tradeRowPnl(row);
-  const pnl = resolvedPnl ?? 0;
+  const pnl = isOpen ? 0 : resolvedPnl ?? 0;
   const side = sideLabel(tradeRowSide(row));
   const symbol = tradeRowSymbol(row) || session.symbol || "—";
   const ts = tradeRowTimestamp(row);
   const date = isoDay(ts) || String(row.date || row.time || "").slice(0, 10);
-  const rRaw =
-    row.rMultiple ??
-    row.r_multiple ??
-    row.rr ??
-    row.R ??
-    row.rewardToRiskRatio ??
-    row.actual_rr_net ??
-    0;
-  const rMultiple = Number(rRaw);
-  const r = Number.isFinite(rMultiple) ? rMultiple : 0;
+  const resolvedR = tradeRowRealizedR(row);
+  const r = isOpen ? 0 : resolvedR ?? 0;
+  const plannedRR = Number(
+    row.plannedRR ?? row.planned_rr ?? row.rewardToRiskRatio ?? row.tp ?? NaN
+  );
   const tag =
     String(row.tag || row.setup || row.strategy || "").trim() ||
     sessionConfigStrategyName(session) ||
@@ -229,19 +227,21 @@ export function mapJournalRowToV16Trade(
     direction: row.direction ?? row.side ?? side,
     session: row.session || "Session",
     tag: row.tag || tag,
-    rMultiple: Number.isFinite(r) ? r : Number(row.rMultiple) || 0,
+    rMultiple: r,
     duration: tradeRowDurationMinutes(row) ?? parseDurationMinutes(row.duration ?? row.hold_minutes ?? row.durationMinutes) ?? 0,
-    pnl: resolvedPnl != null ? resolvedPnl : Number(row.pnl) || 0,
+    pnl,
+    status: isOpen ? "Open" : row.status ?? "Closed",
     mae:
       row.mae ??
       row.mae_r ??
-      (Number.isFinite(mae) && mae !== 0 ? mae : -Math.abs(r) * 0.5),
+      (Number.isFinite(mae) && mae !== 0 ? mae : isOpen ? 0 : -Math.abs(r) * 0.5),
     mfe:
       row.mfe ??
       row.mfe_r ??
-      (Number.isFinite(mfe) && mfe !== 0 ? mfe : Math.abs(r) * 0.8),
-    plannedRR: Number(row.plannedRR ?? row.planned_rr ?? row.tp ?? 2) || 2,
-    actualRR: row.actualRR ?? Math.abs(r),
+      (Number.isFinite(mfe) && mfe !== 0 ? mfe : isOpen ? 0 : Math.abs(r) * 0.8),
+    plannedRR: Number.isFinite(plannedRR) ? plannedRR : null,
+    planned_rr: Number.isFinite(plannedRR) ? plannedRR : null,
+    actualRR: isOpen ? null : row.actualRR ?? (resolvedR != null ? Math.abs(resolvedR) : null),
     rulesFollowed: row.rulesFollowed ?? true,
     preTags,
     postTags,

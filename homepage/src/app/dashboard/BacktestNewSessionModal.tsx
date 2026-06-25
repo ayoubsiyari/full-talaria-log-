@@ -35,6 +35,27 @@ function parseStartingBalanceInput(raw: string): number | null {
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function sanitizeNonNegativeNumericInput(raw: string): string {
+  const s = String(raw ?? "").trim().replace(/-/g, "");
+  if (!s || s === ".") return s;
+  const n = Number.parseFloat(s);
+  if (Number.isFinite(n) && n < 0) return "0";
+  return s;
+}
+
+function finalizeNonNegativeNumericInput(raw: string, fallback = "0"): string {
+  const s = sanitizeNonNegativeNumericInput(raw);
+  if (!s || s === ".") return fallback;
+  const n = Number.parseFloat(s);
+  return Number.isFinite(n) && n >= 0 ? s : fallback;
+}
+
+function clampNonNegativeCostNumber(raw: unknown, fallback = 0): number {
+  const n = Number.parseFloat(String(raw ?? ""));
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
 function IconI({ n, s = 18, cl = "currentColor" }: { n: string; s?: number; cl?: string }) {
   if (n === "x") {
     return (
@@ -830,18 +851,22 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
         }
         const sym = String(row.ticker || k);
         const asset = sessionAssetOf(sym);
-        const spread =
+        const spread = clampNonNegativeCostNumber(
           newSessSymbolSpreads[k] ??
           newSessSymbolSpreads[sym] ??
           DEFAULT_SYMBOL_SPREADS[k] ??
           DEFAULT_SYMBOL_SPREADS[sym] ??
-          row.spread;
-        let commission =
-          newSessCosts[asset as keyof typeof newSessCosts]?.commission ?? row.commission;
+          row.spread,
+          0
+        );
+        let commission = clampNonNegativeCostNumber(
+          newSessCosts[asset as keyof typeof newSessCosts]?.commission ?? row.commission,
+          0
+        );
         if (asset === "Futures") {
           const fd = newSessFuturesData[sym];
           if (fd?.commission != null && fd.commission !== "") {
-            commission = fd.commission;
+            commission = clampNonNegativeCostNumber(fd.commission, 0);
           }
         }
         return [k, { ...row, spread, commission }];
@@ -972,7 +997,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
               newSessTickers.forEach((sym) => {
                 const k = normSessionSym(sym);
                 const v = newSessSymbolSpreads[k] ?? DEFAULT_SYMBOL_SPREADS[k];
-                if (v != null && v !== "") merged[k] = String(v);
+                if (v != null && v !== "") merged[k] = finalizeNonNegativeNumericInput(String(v), "0");
               });
               return merged;
             })(),
@@ -1940,16 +1965,25 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                 ))}
                               </div>
                             );
-                            const numCell=(val,onChange,step,w=52)=>(
+                            const numCell=(val,onChange,step,w=52)=>{
+                              const displayVal=(()=>{const n=Number.parseFloat(String(val??""));return Number.isFinite(n)&&n<0?"0":val;})();
+                              const handleChange=(nextRaw)=>{
+                                onChange({target:{value:sanitizeNonNegativeNumericInput(nextRaw)}});
+                              };
+                              return (
                               <div style={{position:"relative",width:w,height:22,flexShrink:0,background:c.bg,border:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
-                                <input type="number" min={0} step={step} value={val} onChange={onChange} onClick={e=>e.stopPropagation()} className="tlr-nospinner"
+                                <input type="number" min={0} step={step} value={displayVal}
+                                  onChange={e=>handleChange(e.target.value)}
+                                  onBlur={e=>handleChange(finalizeNonNegativeNumericInput(e.target.value, displayVal || "0"))}
+                                  onKeyDown={e=>{if(e.key==="-")e.preventDefault();}}
+                                  onClick={e=>e.stopPropagation()} className="tlr-nospinner"
                                   style={{position:"absolute",left:0,right:tcStepW,top:0,bottom:0,width:`calc(100% - ${tcStepW}px)`,height:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"center",padding:0,boxSizing:"border-box"}}/>
                                 {mkArrows(
-                                  ()=>onChange({target:{value:tcBumpNum(val,step,1)}}),
-                                  ()=>onChange({target:{value:tcBumpNum(val,step,-1)}})
+                                  ()=>handleChange(tcBumpNum(displayVal,step,1)),
+                                  ()=>handleChange(tcBumpNum(displayVal,step,-1))
                                 )}
                               </div>
-                            );
+                            );};
                             const costMeta={
                               Forex:   {color:c.ts,label:"FOREX",   spreadUnit:"pips (mid→side)",   commUnit:"$/lot RT",commLabel:"Commission",spreadStep:0.1, commStep:0.01, levOpts:["1:1","1:10","1:30","1:50","1:100","1:200","1:500"],defLev:"1:500",perSymComm:false},
                               Futures: {color:c.ts,label:"FUTURES",spreadUnit:"ticks (mid→side)",  commUnit:"$/RT",   commLabel:"Commission",spreadStep:1,   commStep:0.01, levOpts:[],                                                 defLev:"1:20", perSymComm:true, hideLev:true},

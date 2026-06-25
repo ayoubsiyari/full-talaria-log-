@@ -109,9 +109,10 @@ export function mapLiveJournalEntryToV16Trade(
 ): Record<string, unknown> {
   const sideRaw = String(entry.direction || "").toLowerCase();
   const side = sideRaw.includes("short") || sideRaw === "sell" ? "Short" : "Long";
-  const pnl = Math.round(Number(entry.pnl) || 0);
+  const isOpen = !entry.close_time && String(entry.trade_status || "").toLowerCase().includes("open");
+  const pnl = isOpen ? 0 : Math.round(Number(entry.pnl) || 0);
   const r = Number(entry.rr);
-  const rMultiple = Number.isFinite(r) ? r : 0;
+  const rMultiple = isOpen ? 0 : Number.isFinite(r) ? r : 0;
   const market = instrumentMarket(entry.instrument_type);
   const tag = String(entry.setup || entry.strategy || "").trim() || "Journal";
   const date = isoDay(entry.close_time || entry.date || entry.open_time);
@@ -158,11 +159,12 @@ export function mapLiveJournalEntryToV16Trade(
     rMultiple,
     duration: parseDurationMinutes(entry.open_time, entry.close_time),
     pnl,
-    mae: -Math.abs(rMultiple) * 0.5,
-    mfe: Math.abs(rMultiple) * 0.8,
+    mae: isOpen ? 0 : -Math.abs(rMultiple) * 0.5,
+    mfe: isOpen ? 0 : Math.abs(rMultiple) * 0.8,
     plannedRR: plannedRR ?? null,
     planned_rr: plannedRR ?? null,
-    actualRR: Math.abs(rMultiple),
+    actualRR: isOpen ? null : Math.abs(rMultiple),
+    status: isOpen ? "Open" : "Closed",
     rulesFollowed,
     planReview: planReviewKey,
     planReviewKey,

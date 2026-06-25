@@ -155,10 +155,14 @@ export function mapManualTradeToJournalAddPayload(
   const side = String(trade.side || trade.direction || "Long").toLowerCase();
   const entryPrice = Number(trade.entryPrice ?? trade.entry ?? 0);
   const exitPriceRaw = trade.exitPrice ?? trade.exit;
+  const statusText = String(trade.status || trade.trade_status || "").trim().toLowerCase();
+  const isOpen =
+    statusText.includes("open") ||
+    (!trade.closeTime && !trade.exitDate && !trade.exitTime && exitPriceRaw == null);
   const exitPrice =
-    exitPriceRaw != null && exitPriceRaw !== ""
+    !isOpen && exitPriceRaw != null && exitPriceRaw !== ""
       ? Number(exitPriceRaw)
-      : entryPrice;
+      : null;
   const qty = Number(trade.position_size ?? trade.positionSize ?? trade.size ?? trade.quantity ?? 1);
   const openTime =
     formatJournalDateTime(trade.entryTime as string) ||
@@ -195,7 +199,7 @@ export function mapManualTradeToJournalAddPayload(
     symbol: String(trade.symbol || "").toUpperCase(),
     direction: side.includes("short") || side === "sell" ? "short" : "long",
     entry_price: entryPrice,
-    exit_price: Number.isFinite(exitPrice) ? exitPrice : entryPrice,
+    exit_price: exitPrice != null && Number.isFinite(exitPrice) ? exitPrice : null,
     quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
     stop_loss: trade.stopLoss ?? trade.planned_sl ?? null,
     take_profit: trade.takeProfit ?? trade.target ?? null,
@@ -204,8 +208,9 @@ export function mapManualTradeToJournalAddPayload(
     open_time: openTime,
     close_time: closeTime,
     entry_datetime: openTime,
-    pnl: trade.pnl ?? trade.pnl_currency_net ?? null,
-    rr: trade.rMultiple ?? trade.rr ?? trade.actual_rr_net ?? null,
+    pnl: isOpen ? 0 : trade.pnl ?? trade.pnl_currency_net ?? null,
+    rr: isOpen ? null : trade.rMultiple ?? trade.rr ?? trade.actual_rr_net ?? null,
+    trade_status: isOpen ? "Open" : "Closed",
     strategy: setup,
     setup,
     strategy_id: strategyId,

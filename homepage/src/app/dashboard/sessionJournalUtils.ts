@@ -385,6 +385,7 @@ function normalizeTradeSide(raw: string): "long" | "short" | "" {
 }
 
 export function tradeRowPnl(row: Record<string, unknown>): number | null {
+  if (tradeRowStatus(row) === "open") return 0;
   const direct = [
     "pnl",
     "PnL",
@@ -405,8 +406,29 @@ export function tradeRowPnl(row: Record<string, unknown>): number | null {
     }
   }
   for (const [k, v] of Object.entries(row)) {
+    if (/pnl_points|planned_rr|plannedrr|rewardtorisk/i.test(k)) continue;
     if (/pnl|profit|finalclose/i.test(k) && v != null && v !== "") {
       const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
+/** Realized R-multiple only — never treat planned/reward ratio as closed-trade R. */
+export function tradeRowRealizedR(row: Record<string, unknown>): number | null {
+  if (tradeRowStatus(row) === "open") return 0;
+  const direct = [
+    "rMultiple",
+    "r_multiple",
+    "actual_rr_net",
+    "actualRR",
+    "rr",
+    "R",
+  ];
+  for (const k of direct) {
+    if (row[k] != null && row[k] !== "") {
+      const n = Number(row[k]);
       if (Number.isFinite(n)) return n;
     }
   }

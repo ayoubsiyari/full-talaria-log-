@@ -79,6 +79,19 @@ const parseStartingBalanceInput = (raw) => {
   const value = Number(digits);
   return Number.isFinite(value) && value > 0 ? value : null;
 };
+const sanitizeNonNegativeNumericInput = (raw) => {
+  const s = String(raw ?? "").trim().replace(/-/g, "");
+  if (!s || s === ".") return s;
+  const n = Number.parseFloat(s);
+  if (Number.isFinite(n) && n < 0) return "0";
+  return s;
+};
+const finalizeNonNegativeNumericInput = (raw, fallback = "0") => {
+  const s = sanitizeNonNegativeNumericInput(raw);
+  if (!s || s === ".") return fallback;
+  const n = Number.parseFloat(s);
+  return Number.isFinite(n) && n >= 0 ? s : fallback;
+};
 const normalizeSearchQuery = (raw) => String(raw ?? "").trim().toLowerCase();
 const sessionNetPnlIsZero = (pnl) => {
   const n = Number(pnl);
@@ -15218,16 +15231,25 @@ const TalariaV8b = () => {
                                 ))}
                               </div>
                             );
-                            const numCell=(val,onChange,step,w=52)=>(
+                            const numCell=(val,onChange,step,w=52)=>{
+                              const displayVal=(()=>{const n=Number.parseFloat(String(val??""));return Number.isFinite(n)&&n<0?"0":val;})();
+                              const handleChange=(nextRaw)=>{
+                                onChange({target:{value:sanitizeNonNegativeNumericInput(nextRaw)}});
+                              };
+                              return (
                               <div style={{position:"relative",width:w,height:20,flexShrink:0,background:c.bg,border:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
-                                <input type="number" min={0} step={step} value={val} onChange={onChange} onClick={e=>e.stopPropagation()} className="tlr-nospinner"
+                                <input type="number" min={0} step={step} value={displayVal}
+                                  onChange={e=>handleChange(e.target.value)}
+                                  onBlur={e=>handleChange(finalizeNonNegativeNumericInput(e.target.value, displayVal || "0"))}
+                                  onKeyDown={e=>{if(e.key==="-")e.preventDefault();}}
+                                  onClick={e=>e.stopPropagation()} className="tlr-nospinner"
                                   style={{position:"absolute",left:0,right:16,top:0,bottom:0,width:`calc(100% - 16px)`,height:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:10,fontWeight:700,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"center",padding:0,boxSizing:"border-box"}}/>
                                 {mkArrows(
-                                  ()=>onChange({target:{value:String(Math.max(0,Math.round((parseFloat(val||0)+step)*1e6)/1e6))}}),
-                                  ()=>onChange({target:{value:String(Math.max(0,Math.round((parseFloat(val||0)-step)*1e6)/1e6))}})
+                                  ()=>handleChange(String(Math.max(0,Math.round((parseFloat(displayVal||0)+step)*1e6)/1e6))),
+                                  ()=>handleChange(String(Math.max(0,Math.round((parseFloat(displayVal||0)-step)*1e6)/1e6)))
                                 )}
                               </div>
-                            );
+                            );};
                             const costMeta={
                               Forex:   {color:c.ts,label:"FOREX",   spreadUnit:"pips",   commUnit:"$/lot RT",commLabel:"Commission",spreadStep:0.1, commStep:0.5,  levOpts:["1:1","1:10","1:30","1:50","1:100","1:200","1:500"],defLev:"1:500",perSymComm:false},
                               Futures: {color:c.ts,label:"FUTURES",spreadUnit:"ticks",  commUnit:"$/RT",   commLabel:"Commission",spreadStep:1,   commStep:0.01, levOpts:[],                                                 defLev:"1:20", perSymComm:true, hideLev:true},
@@ -22301,11 +22323,15 @@ const TalariaV8b = () => {
               return null;
             };
             const dashStoredTradePnl = (trade) => {
+              const status = String(firstValue(trade, ["status","tradeStatus","state"], "")).trim().toLowerCase();
+              if (status.includes("open")) return 0;
               const n = Number(firstValue(trade, ["pnl_currency_net","netPnL","netPnl","net_pnl","realizedPnL","realized_pnl","pnl"], NaN));
               return Number.isFinite(n) ? n : null;
             };
             const dashStoredTradeR = (trade) => {
-              const n = Number(firstValue(trade, ["rMultiple","r_multiple","actual_rr_net","actualRR","rr","R"], NaN));
+              const status = String(firstValue(trade, ["status","tradeStatus","state"], "")).trim().toLowerCase();
+              if (status.includes("open")) return 0;
+              const n = Number(firstValue(trade, ["rMultiple","r_multiple","actual_rr_net","actualRR","rr"], NaN));
               return Number.isFinite(n) ? n : null;
             };
             const joinList = (value, fallback="-") => {
@@ -22676,6 +22702,9 @@ const TalariaV8b = () => {
               const derivedMae = ledgerFiniteNumber(excursion.mae) != null ? -Math.abs(Number(excursion.mae)) : (ledgerFiniteNumber(mae) ?? NaN);
               const closeReasonLabel = (reason) => ({TP_HIT:"Target", SL_HIT:"Stop", MANUAL:"Manual", TRAILING:"Trailing"}[reason] || String(reason || "").replace(/_/g, " "));
               const derivedCloseType = derived?.exitReason ? closeReasonLabel(derived.exitReason) : String(firstValue(t, ["closeType","exit_reason","reason"], "-")).replace(/_/g, " ");
+              const tradeIsOpen = String(derivedStatus).toLowerCase().includes("open") || (derived && !derived.closed);
+              const displayPnl = tradeIsOpen ? 0 : derivedPnl;
+              const displayR = tradeIsOpen ? 0 : derivedR;
               return {
                 key:rowKey,
                 trade:t,
@@ -22700,8 +22729,8 @@ const TalariaV8b = () => {
                   status:derivedStatus,
                   calendar:firstValue(t, ["entryTime","openTime","entryDate","date"], ""),
                   duration:derivedDuration,
-                  netPnl:Number.isFinite(derivedPnl) ? derivedPnl : -Infinity,
-                  rMultiple:Number.isFinite(derivedR) ? derivedR : -Infinity,
+                  netPnl:Number.isFinite(displayPnl) ? displayPnl : -Infinity,
+                  rMultiple:Number.isFinite(displayR) ? displayR : -Infinity,
                   actualRisk:Number.isFinite(derivedPlannedR) ? derivedPlannedR : -Infinity,
                   closeType:derivedCloseType,
                   entryPrice:derivedEntry,
@@ -22728,8 +22757,8 @@ const TalariaV8b = () => {
                   status:{text:derivedStatus, color:derivedStatus.toLowerCase().includes("open")?c.gold:c.acL, raw:derivedStatus},
                   calendar:{text:fmtDateTime(firstValue(t, ["entryTime","openTime","entryDate","date"], "")), raw:firstValue(t, ["entryTime","openTime","entryDate","date"], "")},
                   duration:{text:fmtDuration({...t, duration:derivedDuration}), raw:derivedDuration},
-                  netPnl:{text:fmtSignedMoney(derivedPnl), color:Number.isFinite(derivedPnl) ? (derivedPnl>=0?c.gn:c.rd) : c.ts, raw:derivedPnl},
-                  rMultiple:{text:Number.isFinite(derivedR) ? `${fmtNum(derivedR, 2)}R` : "-", color:Number.isFinite(derivedR) ? (derivedR>=0?c.gn:c.rd) : c.ts, raw:derivedR},
+                  netPnl:{text:fmtSignedMoney(displayPnl), color:Number.isFinite(displayPnl) ? (displayPnl>=0?c.gn:c.rd) : c.ts, raw:displayPnl},
+                  rMultiple:{text:Number.isFinite(displayR) ? `${fmtNum(displayR, 2)}R` : "-", color:Number.isFinite(displayR) ? (displayR>=0?c.gn:c.rd) : c.ts, raw:displayR},
                   actualRisk:{text:Number.isFinite(derivedPlannedR) ? `${fmtNum(derivedPlannedR, 2)}R` : "-", color:c.acL, raw:Number.isFinite(derivedPlannedR) ? derivedPlannedR : ""},
                   closeType:{text:derivedCloseType, raw:derivedCloseType, color:dashCloseTypeAccent(derivedCloseType)},
                   entryPrice:{text:entryRows.length > 1 ? entrySummary : fmtPrice(derivedEntry), color:c.acL, raw:derivedEntry},
@@ -30967,14 +30996,14 @@ const TalariaV8b = () => {
               risk_points:calculated.riskPerUnit,
               plannedRR:hasStop ? calculated.plannedRrValue : null,
               planned_rr:hasStop ? calculated.plannedRrValue : null,
-              actualRR:hasStop ? calculated.rrValue : null,
-              actual_rr_net:hasStop ? calculated.rrValue : null,
-              rMultiple:hasStop ? calculated.rrValue : null,
-              rr:hasStop ? calculated.rrValue : null,
-              pnl:currency.net,
-              pnl_currency_gross:currency.gross,
-              pnl_currency_net:currency.net,
-              pnl_points:calculated.pnlValue,
+              actualRR:closed && hasStop ? calculated.rrValue : null,
+              actual_rr_net:closed && hasStop ? calculated.rrValue : null,
+              rMultiple:closed && hasStop ? calculated.rrValue : null,
+              rr:closed && hasStop ? calculated.rrValue : null,
+              pnl:closed ? currency.net : 0,
+              pnl_currency_gross:closed ? currency.gross : null,
+              pnl_currency_net:closed ? currency.net : 0,
+              pnl_points:closed ? calculated.pnlValue : null,
               outcome:manualOutcome,
               result:manualOutcome,
               tradeOutcome:manualOutcome,
