@@ -1962,6 +1962,22 @@
                     if (m && m.causationId) state.applied.add(m.causationId);
                     return;
                 }
+                // Anti-drift hold: once the panel is positioned with bars on screen
+                // and inside its boot settle window, STOP re-mirroring on every
+                // forceInitialSync. During multichart boot the host is still
+                // re-anchoring / resizing its own viewport, so tracking it makes the
+                // panel visibly drift/shake until the load completes. Holding the
+                // settled position makes the panel load fixed in place like the main
+                // chart. The settle window is short (~1.2s), after which normal sync
+                // resumes, and recovery passes still fix a genuinely empty panel.
+                const _vis = typeof chart._countVisiblePlotBars === 'function'
+                    ? chart._countVisiblePlotBars() : 0;
+                const _settleUntil = chart._multichartViewportSettleUntil;
+                const _withinSettle = Number.isFinite(_settleUntil) && _fiNow < _settleUntil;
+                if (chart._multichartViewportMirroredWithHost && _vis > 1 && _withinSettle) {
+                    if (m && m.causationId) state.applied.add(m.causationId);
+                    return;
+                }
                 state._pendingForceInitSig = _fiSig;
                 state._pendingForceInitAt = _fiNow;
             }
