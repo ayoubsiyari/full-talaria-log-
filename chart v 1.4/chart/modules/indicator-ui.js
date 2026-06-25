@@ -2394,6 +2394,23 @@ function talariaOverlayIndicatorDecimals(chart) {
     return 4;
 }
 
+function talariaSupertrendLegendToken(valuesStore, barIdx, plotOffset, style, decimals) {
+    if (!valuesStore || !Array.isArray(valuesStore.line)) return null;
+    const src = barIdx - (Number(plotOffset) | 0);
+    if (src < 0 || src >= valuesStore.line.length) return null;
+    const val = valuesStore.line[src];
+    if (val === null || val === undefined || isNaN(val) || !Number.isFinite(Number(val))) return null;
+    const dirRaw = valuesStore.direction && src < valuesStore.direction.length
+        ? valuesStore.direction[src]
+        : 1;
+    const dirUp = (dirRaw == null ? 1 : dirRaw) >= 0;
+    const st = style || {};
+    return {
+        text: Number(val).toFixed(decimals != null ? decimals : 4),
+        color: dirUp ? (st.upColor || '#26a69a') : (st.downColor || '#ef5350')
+    };
+}
+
 /** Same value tokens as chart-indicators-full.js updateOHLCIndicators (panel MACD bar). */
 function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
     const valuesStore = chart.indicators && chart.indicators.data ? chart.indicators.data[indicator.id] : null;
@@ -2409,6 +2426,11 @@ function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
             color: color || '#9ca3af'
         });
     };
+    if (indicator.type === 'supertrend' && typeof valuesStore === 'object' && !Array.isArray(valuesStore)) {
+        const tok = talariaSupertrendLegendToken(valuesStore, barIdx, plotOff, indicator.style, decimals);
+        if (tok) out.push(tok);
+        return out;
+    }
     const readSeries = function(arr, color, dec) {
         if (!Array.isArray(arr)) return;
         const val = talariaSeriesValueAtBar(arr, barIdx, plotOff);

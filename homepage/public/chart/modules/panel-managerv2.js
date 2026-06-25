@@ -110,9 +110,10 @@ class PanelManager {
         // Setup event listeners for panel synchronization
         this.setupEventListeners();
         
-        // Default: show original chart (layout '1')
-        // Don't call applyLayout - original chart is already visible
-        this.currentLayout = '1';
+        // Hydrate currentLayout from storage so UI/hydration reads the saved value.
+        // applyLayout runs from legacy-index chartDataLoaded or V9 React layout picker.
+        const saved = this.loadPanelState();
+        this.currentLayout = (saved && saved.layout) ? String(saved.layout) : '1';
     }
     
     /**

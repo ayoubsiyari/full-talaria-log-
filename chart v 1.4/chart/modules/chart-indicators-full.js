@@ -634,6 +634,11 @@
     function applySupertrendStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
+        if (params.period != null) indicator.params.period = Math.max(1, Number(params.period) | 0) || 10;
+        if (params.multiplier != null) {
+            const mult = Number(params.multiplier);
+            indicator.params.multiplier = Number.isFinite(mult) ? mult : 3;
+        }
         indicator.overlay = true;
         indicator.separatePanel = false;
         indicator.style.showUp = params.showUp !== false;
@@ -6186,6 +6191,10 @@
         
         // Update parameters
         if (newParams.period !== undefined) indicator.params.period = newParams.period;
+        if (newParams.multiplier !== undefined) {
+            const mult = Number(newParams.multiplier);
+            indicator.params.multiplier = Number.isFinite(mult) ? mult : 3;
+        }
         if (newParams.stdDev !== undefined) indicator.params.stdDev = newParams.stdDev;
         if (newParams.offset !== undefined) indicator.params.offset = Number(newParams.offset) || 0;
         if (newParams.maType !== undefined) indicator.params.maType = newParams.maType;
@@ -6575,6 +6584,17 @@
         if (indicator.type === 'supertrend') {
             const mergedSt = Object.assign({}, indicator.style, indicator.params, newParams);
             applySupertrendStyleFromParams(indicator, mergedSt);
+            const stRecalc = ['period', 'multiplier'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            if (stRecalc) {
+                indicator.name = 'Supertrend(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateSupertrend(
+                    this.data,
+                    indicator.params.period,
+                    indicator.params.multiplier
+                );
+            }
         }
         if (indicator.type === 'dema') {
             const mergedDema = Object.assign({}, indicator.style, indicator.params, newParams);
@@ -9561,6 +9581,21 @@ Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
         return { text: Number(v).toFixed(decimals), color: col || color };
     };
     const type = indicator.type;
+    if (type === 'supertrend' && store.line) {
+        const lineV = this._pickFiniteSeriesValue(store.line, barIdx);
+        if (lineV !== null) {
+            const dirRaw = store.direction && barIdx >= 0 && barIdx < store.direction.length
+                ? store.direction[barIdx]
+                : 1;
+            const dirUp = (dirRaw == null ? 1 : dirRaw) >= 0;
+            const col = dirUp ? (st.upColor || '#26a69a') : (st.downColor || '#ef5350');
+            const dec = typeof this.getPriceDecimals === 'function' && this.yScale && this.yScale.domain
+                ? this.getPriceDecimals(Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]))
+                : 4;
+            return { text: Number(lineV).toFixed(dec), color: col };
+        }
+        return { text: '—', color: st.upColor || '#26a69a' };
+    }
     if (type === 'macd' && store.macd && store.signal) {
         const m = pick(store.macd, 4, st.macdColor || color);
         const s = pick(store.signal, 4, st.signalColor || '#f23645');

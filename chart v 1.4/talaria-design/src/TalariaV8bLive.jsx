@@ -31,6 +31,7 @@ import {
   upsertV9ChartTemplateList,
 } from "./v9ChartTemplatesStorage.js";
 import { readV9UiSettingsLocal, persistV9UiSettings } from "./v9UiSettingsStorage.js";
+import { loadV9MultichartLayout, saveV9MultichartLayout } from "./v9MultichartLayoutStorage.js";
 
 function isMultichartEmbedPanel() {
   if (typeof window === "undefined") return false;
@@ -117,6 +118,39 @@ const LAYOUT_SYNC_ITEMS = [
   ["symbol","Symbol"],["interval","Interval"],["crosshair","Crosshair"],["time","Time"],
   ["dateRange","Date Range"],["drawings","Drawings"],["indicators","Indicators"],["chartType","Chart Type"]
 ];
+const DEFAULT_LAYOUT_SYNC = {
+  crosshair: true,
+  time: false,
+  drawings: true,
+  symbol: false,
+  interval: false,
+  dateRange: false,
+  indicators: true,
+  chartType: false,
+};
+/** V9 (n,li) → legacy panelManager layout id (same order as layout picker variants). */
+const LAYOUT_ID_MAP = [
+  ["1"],
+  ["2v","2h"],
+  ["3v","3h","3l","3r","3t","3b"],
+  ["4","4h","4v","4b","4t","4l","4r","4tl"],
+  ["5a","5b","5c","5v","5h"],
+  ["6","6b","6v","6h"],
+  ["7a","7v"],
+  ["8","8b","8v","8h"],
+];
+function layoutTupleFromId(id) {
+  for (let n = 0; n < LAYOUT_ID_MAP.length; n++) {
+    const li = LAYOUT_ID_MAP[n].indexOf(id);
+    if (li >= 0) return { n: n + 1, li };
+  }
+  return null;
+}
+function layoutIdFromTuple(panels) {
+  if (!panels || panels.n < 1) return "1";
+  return LAYOUT_ID_MAP[panels.n - 1]?.[panels.li] || "1";
+}
+const __savedMultichartLayout = loadV9MultichartLayout(layoutTupleFromId, DEFAULT_LAYOUT_SYNC);
 const LAYOUT_SYNC_HELP =
   "Crosshair, Symbol, Drawings, Time, and Date range control the items named on each row. " +
   "Replay (playhead) is always shared across tiles. With Indicators on, new indicators apply to every same-pair tile.";
@@ -12412,7 +12446,9 @@ const TalariaV8bLive = () => {
   const [newsCntSel, setNewsCntSel] = useState({US:1,EU:1,GB:1,JP:1,AU:1,CA:1,DE:1,FR:1,IT:1,CN:1,CH:1});
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [layoutPos, setLayoutPos] = useState({ x: 0, y: 0 });
-  const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
+  const [layoutPanels, setLayoutPanels] = useState(
+    () => __savedMultichartLayout?.panels ?? { n: 1, li: 0 }
+  );
   // Phase 7.2.2: which iframe in <MultichartGrid> currently has focus.
   // Single-chart layouts ignore this; multi-panel layouts highlight the
   // focused tile and (in Phase 7.2.4) route topbar/leftbar actions to it.
@@ -12422,7 +12458,9 @@ const TalariaV8bLive = () => {
   // directly below the button so it lines up like TradingView.
   // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
   // races re-enabling sync modes (especially `time`) unexpectedly.
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: true, chartType: false });
+  const [layoutSync, setLayoutSync] = useState(
+    () => __savedMultichartLayout?.sync ?? DEFAULT_LAYOUT_SYNC
+  );
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);
@@ -12779,30 +12817,14 @@ const TalariaV8bLive = () => {
   // ─── MULTI-PANEL LAYOUTS + SYNC ↔ window.panelManager ───────────────────
   // V9's layout picker uses (n=panel count 1..8, li=variant index). Legacy
   // panelManager.applyLayout takes string IDs like '1','2v','2h','3l','4tl'.
-  // The 2D array below maps V9 (n,li) → legacy id, in the SAME visual order
-  // V9 renders the variants (see lyLines around line 10635). Variants whose
-  // visual layout doesn't exactly match a legacy id fall through to the
-  // closest legacy variant for that panel count.
-  const LAYOUT_ID_MAP = [
-    ["1"],
-    ["2v","2h"],
-    ["3v","3h","3l","3r","3t","3b"],
-    ["4","4h","4v","4b","4t","4l","4r","4tl"],
-    ["5a","5b","5c","5v","5h"],
-    ["6","6b","6v","6h"],
-    ["7a","7v"],
-    ["8","8b","8v","8h"],
-  ];
-  const layoutTupleFromId = (id) => {
-    for (let n = 0; n < LAYOUT_ID_MAP.length; n++) {
-      const li = LAYOUT_ID_MAP[n].indexOf(id);
-      if (li >= 0) return { n: n + 1, li };
-    }
-    return null;
-  };
+  // LAYOUT_ID_MAP (module scope) maps V9 (n,li) → legacy id.
 
-  // Mount: hydrate V9 state from whatever panelManager already has loaded
-  // from userStorage so the UI shows the correct active layout/sync toggles.
+  // Persist layout + sync toggles so refresh restores MultichartGrid.
+  useEffect(() => {
+    saveV9MultichartLayout(layoutPanels, layoutSync, layoutIdFromTuple(layoutPanels));
+  }, [layoutPanels, layoutSync]);
+
+  // Mount: hydrate sync flags from panelManager when present (legacy builds).
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
@@ -12813,11 +12835,6 @@ const TalariaV8bLive = () => {
         if (attempts++ < 60) setTimeout(tryHydrate, 100);
         return;
       }
-      try {
-        const cur = pm.getCurrentLayout?.() || pm.currentLayout || "1";
-        const tuple = layoutTupleFromId(cur);
-        if (tuple) setLayoutPanels(tuple);
-      } catch (_) {}
       try {
         // Only copy keys V9 knows about so we don't spread legacy-only keys
         // into V9's state object.

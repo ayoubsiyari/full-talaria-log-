@@ -6543,11 +6543,8 @@ class ReplaySystem {
                 const willRestoreViewport = pendingVp
                     && Number.isFinite(pendingVp.anchorTs);
                 if (!willRestoreViewport) {
-                    // Right-edge follow (not centered) so this matches the authoritative
-                    // TF-switch positioner (_restoreTfSwitchViewport). A centered fallback
-                    // here would fight it and make rapid TF toggling jump.
                     this.syncReplayViewportToPlayhead(this.chart, {
-                        centerPlayhead: false,
+                        centerPlayhead: true,
                         resetPriceScale: false,
                         render: true,
                     });
