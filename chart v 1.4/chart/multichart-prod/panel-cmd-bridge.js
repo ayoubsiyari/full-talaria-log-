@@ -560,7 +560,40 @@
         if (typeof isPlayingOverride === 'boolean') payload.isPlaying = isPlayingOverride;
         if (!payload.animatedCandle || !(Number(payload.tickProgress) > 0)) return false;
         try {
-            return !!rs.applyMultichartMirrorFrame(payload);
+            // Preserve the exact viewport the play stream left behind — same guard
+            // as applyStaticMirrorFrame. On PAUSE this path renders the host's frozen
+            // partial candle, but the mirror's auto-scroll recompute re-fits the
+            // viewport and drifts the playhead left, so play then snaps it back to
+            // the right ("multichart jumps when I click play"). Snapshot the offset/
+            // zoom, freeze auto-scroll for this single frame, then restore.
+            var prevOffsetX = ch.offsetX;
+            var prevCandleWidth = ch.candleWidth;
+            var prevAutoScroll = rs.autoScrollEnabled;
+            rs.autoScrollEnabled = false;
+            var ok = !!rs.applyMultichartMirrorFrame(payload);
+            rs.autoScrollEnabled = prevAutoScroll;
+            if (ok) {
+                var keepOffset = Number.isFinite(prevOffsetX);
+                if (rs.userHasPanned || ch._multichartVisibleRangeSyncOn) {
+                    keepOffset = Number.isFinite(prevOffsetX);
+                } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
+                    && ch._multichartViewportNeedsRecovery()) {
+                    keepOffset = false;
+                }
+                if (keepOffset) ch.offsetX = prevOffsetX;
+                if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) ch.candleWidth = prevCandleWidth;
+                if (!keepOffset && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                    try {
+                        ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false, render: false });
+                    } catch (_) {}
+                }
+                if (typeof ch.constrainOffset === 'function') {
+                    try { ch.constrainOffset(); } catch (_) {}
+                }
+                ch.renderPending = true;
+                if (typeof ch.render === 'function') ch.render();
+            }
+            return ok;
         } catch (e) {
             warn('applyParentReplayMirror threw', e && e.message);
             return false;

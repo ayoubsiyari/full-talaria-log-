@@ -21560,17 +21560,18 @@ class Chart {
             if (!interactionLite && chartViewPanning) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
-            if (!interactionLite && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
+            // Compare overlay line/candles must stay painted during lite pan (canvas clears every frame).
+            if (this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
             }
-            if (!interactionLite && this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
+            if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
                 try {
                     this.compareOverlay.drawOverlays();
                 } catch (e) {
                     console.error('Error drawing overlays during pan:', e);
                 }
             }
-            if (!interactionLite && this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
+            if (this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
                 this.compareOverlay.updateInfoPositions();
             }
             this.drawCurrentPriceLabel(visible);

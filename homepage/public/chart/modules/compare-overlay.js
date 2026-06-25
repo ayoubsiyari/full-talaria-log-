@@ -3558,13 +3558,14 @@ class CompareOverlay {
         ctx.clip();
         
         visibleOverlays.forEach((overlay, overlayIndex) => {
-            // Filter overlay data to visible time range
-            const overlayData = overlay.data.filter(d => 
-                d.t >= visibleStartTime && d.t <= visibleEndTime
-            );
+            const overlayData = this._getOverlayVisibleBars(overlay, mainData, startIdx, endIdx);
             
-            if (overlayData.length < 2) {
+            if (overlayData.length < 1) {
                 console.log(`📊 Overlay ${overlay.symbol}: only ${overlayData.length} candles in visible range`);
+                return;
+            }
+            const needsTwoPoints = overlay.displayType === 'line' || overlay.displayType === 'area';
+            if (needsTwoPoints && overlayData.length < 2) {
                 return;
             }
             
@@ -3620,7 +3621,9 @@ class CompareOverlay {
                 const candleWidth = Math.max(1, this.chart.candleWidth * 0.6);
                 
                 overlayData.forEach((candle, i) => {
-                    const mainIndex = this.findClosestIndex(mainData, candle.t, startIdx, endIdx);
+                    const mainIndex = this._mapOverlayToMainIndex(
+                        candle, i, overlayData, mainData, startIdx, endIdx
+                    );
                     if (mainIndex === -1) return;
                     
                     // Use chart's dataIndexToPixel for smooth movement (includes offsetX)
@@ -3681,8 +3684,10 @@ class CompareOverlay {
                 const mapped = [];
                 let lastMi = -2;
                 let lastOverlayTime = null;
-                overlayData.forEach((candle) => {
-                    const mainIndex = this.findClosestIndex(mainData, candle.t, startIdx, endIdx);
+                overlayData.forEach((candle, oi) => {
+                    const mainIndex = this._mapOverlayToMainIndex(
+                        candle, oi, overlayData, mainData, startIdx, endIdx
+                    );
                     if (mainIndex === -1) {
                         lastMi = -1;
                         lastOverlayTime = null;
@@ -3771,6 +3776,15 @@ class CompareOverlay {
      * Refreshes compare legend so OHLC appears in lockstep with the main symbol row.
      */
     onMainChartTimeframeReady() {
+        this._lastReplaySyncKey = null;
+        const tf = this.chart?.currentTimeframe || '1m';
+        for (const overlay of this.overlays) {
+            overlay.timeframeLoading = false;
+            if (overlay.rawData?.length) {
+                overlay.data = this.resampleData(overlay.rawData, tf);
+            }
+        }
+        this.syncForReplay();
         try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
         const ch = this.chart;
         if (ch && typeof ch.render === 'function') {
@@ -4160,21 +4174,24 @@ class CompareOverlay {
     }
 
     findClosestIndex(data, timestamp, startIdx, endIdx) {
-        let closestIdx = -1;
-        let minDiff = Infinity;
-        
-        for (let i = startIdx; i < endIdx && i < data.length; i++) {
-            const diff = Math.abs(data[i].t - timestamp);
-            if (diff < minDiff) {
-                minDiff = diff;
-                closestIdx = i;
-            }
+        if (!Array.isArray(data) || !data.length || !Number.isFinite(timestamp)) return -1;
+
+        let lo = 0;
+        let hi = data.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (Number(data[mid].t) < timestamp) lo = mid + 1;
+            else hi = mid;
         }
-        
-        // Only map when the overlay bar time is within ~half a main candle of a bar.
-        // Must use the same TF duration as chart.resampleData() (parseTimeframe), not a
-        // hard-coded map — unknown/custom TFs (e.g. 3m) defaulted to 1m here and caused
-        // mass rejections + stray diagonals across "gaps" when points were skipped.
+
+        let closestIdx = lo;
+        if (lo > 0) {
+            const diffLo = Math.abs(Number(data[lo - 1].t) - timestamp);
+            const diffHi = Math.abs(Number(data[lo].t) - timestamp);
+            if (diffLo <= diffHi) closestIdx = lo - 1;
+        }
+
+        const minDiff = Math.abs(Number(data[closestIdx].t) - timestamp);
         const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
         let tfMs = 60 * 1000;
         if (this.chart && typeof this.chart.parseTimeframe === 'function') {
@@ -4183,9 +4200,67 @@ class CompareOverlay {
         } else {
             tfMs = this.getTimeframeDuration(tfKey);
         }
-        const maxDiff = tfMs / 2;
-        
-        return minDiff <= maxDiff ? closestIdx : -1;
+        // Slightly wider than half-bar so resampled compare symbols still map after TF switch.
+        const maxDiff = tfMs * 0.75;
+
+        if (minDiff > maxDiff) return -1;
+
+        if (Number.isFinite(startIdx) && Number.isFinite(endIdx)) {
+            const margin = 2;
+            if (closestIdx < startIdx - margin || closestIdx > endIdx + margin) return -1;
+        }
+
+        return closestIdx;
+    }
+
+    /** Bars from overlay series that overlap the main chart viewport (with one-TF padding). */
+    _getOverlayVisibleBars(overlay, mainData, startIdx, endIdx) {
+        if (!overlay?.data?.length || !mainData?.length) return [];
+        const visibleStartTime = mainData[startIdx]?.t;
+        const visibleEndTime = mainData[Math.min(endIdx, mainData.length - 1)]?.t;
+        if (!Number.isFinite(visibleStartTime) || !Number.isFinite(visibleEndTime)) return [];
+
+        const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
+        let tfMs = 60 * 1000;
+        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const parsed = this.chart.parseTimeframe(tfKey);
+            if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
+        } else {
+            tfMs = this.getTimeframeDuration(tfKey);
+        }
+        const pad = tfMs;
+
+        return overlay.data.filter(
+            (d) => d.t >= visibleStartTime - pad && d.t <= visibleEndTime + pad
+        );
+    }
+
+    /**
+     * Map an overlay OHLC row to a main-chart bar index.
+     * Uses index alignment when replay-resampled series share length (fast + exact after TF switch).
+     */
+    _mapOverlayToMainIndex(overlayBar, overlayIdx, overlaySeries, mainData, startIdx, endIdx) {
+        if (!overlayBar || !Array.isArray(mainData) || !mainData.length) return -1;
+
+        const mainLen = mainData.length;
+        const overlayLen = Array.isArray(overlaySeries) ? overlaySeries.length : 0;
+
+        if (overlayLen === mainLen && overlayIdx >= 0 && overlayIdx < mainLen) {
+            const mt = Number(mainData[overlayIdx]?.t);
+            const ot = Number(overlayBar.t);
+            const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
+            let tfMs = 60 * 1000;
+            if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+                const parsed = this.chart.parseTimeframe(tfKey);
+                if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
+            }
+            const slack = tfMs * 1.05;
+            if (Number.isFinite(mt) && Number.isFinite(ot) && Math.abs(mt - ot) <= slack) {
+                return overlayIdx;
+            }
+        }
+
+        return this.findClosestIndex(mainData, overlayBar.t, startIdx, endIdx);
     }
     
     getTimeframeDuration(timeframe) {
@@ -4527,6 +4602,11 @@ class CompareOverlay {
             } catch (e) {
                 console.warn('📊 refreshForTimeframe:', e && e.message ? e.message : e);
             } finally {
+                this._lastReplaySyncKey = null;
+                this.syncForReplay();
+                if (typeof ch.render === 'function') {
+                    try { ch.render(); } catch (_) { /* ignore */ }
+                }
                 this._finishCompareTimeframeLoading(ch);
             }
         })();
