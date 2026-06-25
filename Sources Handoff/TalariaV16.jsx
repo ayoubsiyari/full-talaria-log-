@@ -10399,9 +10399,6 @@ const TalariaV8b = () => {
   };
   useEffect(() => () => clearDashAddTradeStepperHold(), []);
   useEffect(() => {
-    if (stratTab !== "mine") setStratTab("mine");
-  }, [stratTab]);
-  useEffect(() => {
     const syncResourcesRoute = () => {
       try {
         const path = String(window.location.pathname || "");
@@ -36989,7 +36986,7 @@ const TalariaV8b = () => {
                 <div style={{flexShrink:0,background:c.bg,padding:"0 32px",zIndex:3}}>
                   <div style={{width:1288,margin:"0 auto",display:"flex",alignItems:"center",height:44,gap:10,borderBottom:`1px solid ${c.brH}`,boxSizing:"border-box"}}>
                     <div style={{display:"flex",alignItems:"flex-end",height:"100%",gap:5,flexShrink:0}}>
-                      {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length,disabled:true}].map(({k,l,ct,disabled})=>{
+                      {[{k:"mine",l:"My Strategies",ct:mineSource.length},{k:"community",l:"Community",ct:communityPool.length}].map(({k,l,ct,disabled})=>{
                         const isA=stratTab===k&&!disabled;
                         const tabCol=isA?c.acL:(disabled?c.tm:c.ts);
                         const tabBg=isA?c.acD:"transparent";
