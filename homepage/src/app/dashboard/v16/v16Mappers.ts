@@ -81,12 +81,39 @@ function winRatePct(kpis: SessionKpis | undefined): number | null {
 
 function sessionProgress(sess: ApiSession, kpis: SessionKpis | undefined): number {
   const dash = sess.replay_dashboard;
-  if (dash && typeof dash.progress_pct === "number" && Number.isFinite(dash.progress_pct)) {
-    return Math.min(100, Math.max(0, Math.round(dash.progress_pct)));
-  }
   const trades = kpis?.trades ?? 0;
+  if (dash && typeof dash.progress_pct === "number" && Number.isFinite(dash.progress_pct)) {
+    const pct = Math.min(100, Math.max(0, Math.round(dash.progress_pct)));
+    if (pct > 0) return pct;
+    if (trades <= 0) return 0;
+    // Replay at 0% but KPIs show trades — stay at 0%; lifecycle bucket uses trades.
+    return 0;
+  }
   if (trades > 0) return 100;
   return 0;
+}
+
+export function sessionHasTradingActivity(
+  sess: Record<string, unknown> | null | undefined
+): boolean {
+  if (!sess) return false;
+  if (Number(sess.trades || 0) > 0) return true;
+  const composite = sess.compositeTrades;
+  if (Array.isArray(composite) && composite.length > 0) return true;
+  const progress = Number(sess.progress || 0);
+  if (progress > 0 && progress < 100) return true;
+  const pnl = Number(sess.pnl);
+  if (Number.isFinite(pnl) && Math.abs(pnl) >= 0.005) return true;
+  return false;
+}
+
+export function resolveSessionLifecycleBucket(
+  sess: Record<string, unknown> | null | undefined
+): "completed" | "active" | "not-started" {
+  const progress = Number(sess?.progress || 0);
+  if (progress >= 100) return "completed";
+  if (sessionHasTradingActivity(sess)) return "active";
+  return "not-started";
 }
 
 function isoDay(ms: number): string {

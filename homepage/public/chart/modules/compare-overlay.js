@@ -3633,10 +3633,20 @@ class CompareOverlay {
         if (!mainData || mainData.length === 0) return;
         
         const candleSpacing = this.chart.getCandleSpacing();
-        const firstVisibleIndex = Math.floor(-this.chart.offsetX / candleSpacing);
-        const numVisibleCandles = Math.ceil(this.chart.w / candleSpacing);
-        const startIdx = Math.max(0, firstVisibleIndex);
-        const endIdx = Math.min(mainData.length, firstVisibleIndex + numVisibleCandles + 2);
+        const mVis = this.chart.margin || { l: 0, r: 0 };
+        const plotRight = this.chart.w - mVis.r;
+        const edgeBuf = 4;
+        let startIdx;
+        let endIdx;
+        if (typeof this.chart.pixelToDataIndex === 'function') {
+            startIdx = Math.max(0, Math.floor(this.chart.pixelToDataIndex(mVis.l)) - edgeBuf);
+            endIdx = Math.min(mainData.length, Math.ceil(this.chart.pixelToDataIndex(plotRight)) + edgeBuf);
+        } else {
+            const firstVisibleIndex = Math.floor(-this.chart.offsetX / candleSpacing);
+            const numVisibleCandles = Math.ceil(this.chart.w / candleSpacing);
+            startIdx = Math.max(0, firstVisibleIndex);
+            endIdx = Math.min(mainData.length, firstVisibleIndex + numVisibleCandles + 2);
+        }
         
         // Get visible time range from main chart
         const visibleStartTime = mainData[startIdx]?.t;
@@ -3724,9 +3734,10 @@ class CompareOverlay {
                 // Draw as candles with customizable colors
                 const candleWidth = Math.max(1, this.chart.candleWidth * 0.6);
                 
-                overlayData.forEach((candle, i) => {
+                overlayData.forEach((candle) => {
+                    const globalIdx = this._findOverlayGlobalIndex(overlay, candle);
                     const mainIndex = this._mapOverlayToMainIndex(
-                        candle, i, overlayData, mainData, startIdx, endIdx
+                        candle, globalIdx, overlay.data, mainData, startIdx, endIdx
                     );
                     if (mainIndex === -1) return;
                     
@@ -3788,9 +3799,10 @@ class CompareOverlay {
                 const mapped = [];
                 let lastMi = -2;
                 let lastOverlayTime = null;
-                overlayData.forEach((candle, oi) => {
+                overlayData.forEach((candle) => {
+                    const globalIdx = this._findOverlayGlobalIndex(overlay, candle);
                     const mainIndex = this._mapOverlayToMainIndex(
-                        candle, oi, overlayData, mainData, startIdx, endIdx
+                        candle, globalIdx, overlay.data, mainData, startIdx, endIdx
                     );
                     if (mainIndex === -1) {
                         lastMi = -1;
@@ -3880,7 +3892,7 @@ class CompareOverlay {
      * Refreshes compare legend so OHLC appears in lockstep with the main symbol row.
      */
     onMainChartTimeframeReady() {
-        this._lastReplaySyncKey = null;
+        this.resetViewState();
         const tf = this.chart?.currentTimeframe || '1m';
         for (const overlay of this.overlays) {
             overlay.timeframeLoading = false;
@@ -3922,7 +3934,10 @@ class CompareOverlay {
                 requestAnimationFrame(step);
                 return;
             }
+            this.resetViewState();
             this._clearOverlayTimeframeLoadingFlags();
+            this._lastReplaySyncKey = null;
+            this.syncForReplay();
             try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
             try { if (typeof ch.render === 'function') ch.render(); } catch (_) { /* ignore */ }
         };
@@ -4277,6 +4292,29 @@ class CompareOverlay {
         return false;
     }
 
+    _findOverlayGlobalIndex(overlay, candle) {
+        const data = overlay?.data;
+        if (!Array.isArray(data) || !data.length || !candle) return -1;
+        const t = Number(candle.t);
+        if (!Number.isFinite(t)) return -1;
+
+        let lo = 0;
+        let hi = data.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (Number(data[mid].t) < t) lo = mid + 1;
+            else hi = mid;
+        }
+
+        let idx = lo;
+        if (lo > 0) {
+            const diffLo = Math.abs(Number(data[lo - 1].t) - t);
+            const diffHi = Math.abs(Number(data[lo].t) - t);
+            if (diffLo <= diffHi) idx = lo - 1;
+        }
+        return idx;
+    }
+
     findClosestIndex(data, timestamp, startIdx, endIdx) {
         if (!Array.isArray(data) || !data.length || !Number.isFinite(timestamp)) return -1;
 
@@ -4304,16 +4342,10 @@ class CompareOverlay {
         } else {
             tfMs = this.getTimeframeDuration(tfKey);
         }
-        // Slightly wider than half-bar so resampled compare symbols still map after TF switch.
-        const maxDiff = tfMs * 0.75;
+        // One full bar — resampled compare symbols can shift bucket open times after TF switch.
+        const maxDiff = tfMs * 1.01;
 
         if (minDiff > maxDiff) return -1;
-
-        if (Number.isFinite(startIdx) && Number.isFinite(endIdx)) {
-            const margin = 2;
-            if (closestIdx < startIdx - margin || closestIdx > endIdx + margin) return -1;
-        }
-
         return closestIdx;
     }
 
@@ -4358,13 +4390,24 @@ class CompareOverlay {
                 const parsed = this.chart.parseTimeframe(tfKey);
                 if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
             }
-            const slack = tfMs * 1.05;
+            const slack = tfMs * 3;
             if (Number.isFinite(mt) && Number.isFinite(ot) && Math.abs(mt - ot) <= slack) {
                 return overlayIdx;
             }
         }
 
         return this.findClosestIndex(mainData, overlayBar.t, startIdx, endIdx);
+    }
+
+    /** Clear frozen pan domains and reset overlay Y zoom after main chart fit/TF change. */
+    resetViewState() {
+        const ch = this.chart;
+        if (ch) ch._overlaySnapDomains = null;
+        for (const overlay of this.overlays) {
+            overlay.priceZoom = 1.0;
+            overlay.priceOffset = 0;
+        }
+        this._lastReplaySyncKey = null;
     }
     
     getTimeframeDuration(timeframe) {
@@ -4599,6 +4642,8 @@ class CompareOverlay {
         if (!ch) return;
         const parseMs = (tf) => this._parseTimeframeMs(tf);
         const newMs = parseMs(timeframe);
+
+        this.resetViewState();
 
         // Keep compare rows visible with the same 3-dot loading affordance as the main OHLC bar.
         this.overlays.forEach((overlay) => {

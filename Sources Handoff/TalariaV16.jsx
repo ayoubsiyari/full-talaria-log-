@@ -11421,6 +11421,21 @@ const TalariaV8b = () => {
     }
   }, [dashAddTradeEditorOpen]);
 
+  useEffect(() => {
+    if (dashAddTradeEditorOpen) return;
+    if (dashHoverInfoTimerRef.current) {
+      cancelAnimationFrame(dashHoverInfoTimerRef.current);
+      dashHoverInfoTimerRef.current = null;
+    }
+    if (dashHoverInfoDelayRef.current) {
+      clearTimeout(dashHoverInfoDelayRef.current);
+      dashHoverInfoDelayRef.current = null;
+    }
+    dashHoverInfoPendingRef.current = null;
+    dashHoverInfoPointerRef.current = { x: null, y: null };
+    setDashHoverInfo((prev) => (prev?.scope === "add-trade" ? null : prev));
+  }, [dashAddTradeEditorOpen]);
+
   useEffect(() => () => {
     if (dashAddTradeGraphReleaseRef.current) clearTimeout(dashAddTradeGraphReleaseRef.current);
   }, []);
@@ -12321,13 +12336,21 @@ const TalariaV8b = () => {
   };
   const getSessionsPageRows = () => {
     void v16BootRevision;
-    const backtests = sessions || [];
-    if (!isV16Embedded() || !isV16LiveBoot()) return backtests;
+    if (!isV16Embedded() || !isV16LiveBoot()) return sessions || [];
+    const bootSessions = window.__TALARIA_V16_BOOT__?.sessions || [];
     const journalBoot = getV16JournalBoot();
     const journalRows = (journalBoot?.accounts || [])
       .filter((a) => a?.isLiveJournalAccount)
       .map(mapJournalAccountToSessionRow);
-    return [...journalRows, ...backtests];
+    const localById = new Map((sessions || []).map((s) => [String(s.id), s]));
+    const mergedBacktests = (bootSessions.length ? bootSessions : (sessions || [])).map((row) => {
+      const old = localById.get(String(row.id));
+      if (old?.compositeTradesLoaded && Array.isArray(old.compositeTrades)) {
+        return { ...row, compositeTrades: old.compositeTrades, compositeTradesLoaded: true };
+      }
+      return row;
+    });
+    return [...journalRows, ...mergedBacktests];
   };
   const sessionConfiguredRangeDays = (sess) => {
     if (!sess?.startDate || !sess?.endDate) return 0;
@@ -12370,11 +12393,11 @@ const TalariaV8b = () => {
   };
   const sessionHasTradingActivity = (sess) => {
     if (!sess) return false;
-    if (Number(sess.progress || 0) > 0) return true;
     if (Number(sess.trades || 0) > 0) return true;
-    if (sess.pnl != null && Number.isFinite(Number(sess.pnl))) return true;
-    if (sess.winRate != null && Number.isFinite(Number(sess.winRate))) return true;
-    if (sess.avgRR != null && Number.isFinite(Number(sess.avgRR))) return true;
+    if (Array.isArray(sess.compositeTrades) && sess.compositeTrades.length > 0) return true;
+    const progress = Number(sess.progress || 0);
+    if (progress > 0 && progress < 100) return true;
+    if (sess.pnl != null && Number.isFinite(Number(sess.pnl)) && !sessionNetPnlIsZero(sess.pnl)) return true;
     return false;
   };
   const resolveSessionLifecycleBucket = (sess) => {
@@ -31023,6 +31046,7 @@ const TalariaV8b = () => {
             const canPersistToJournal = isLiveJournalManualTrade && typeof window !== "undefined" && typeof window.__TALARIA_V16_SAVE_MANUAL_JOURNAL_TRADE__ === "function";
             const canPersistToBacktestSession = isV16LiveBoot() && sourceSessionId && !isLiveJournalManualTrade;
             const closeAddTradeEditor = () => {
+              hideDashboardInfo();
               setDashAddTradeEditorOpen(false);
               setDashAddTradeEditorPage("trade");
               setDashAddTradeEditorSource(null);
@@ -35885,7 +35909,7 @@ const TalariaV8b = () => {
                           </div>
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <div className="tlr-library-title-action tlr-add-trade-soft-action tlr-library-footer-cancel" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>{setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})} onKeyDown={libraryKeyActivate(()=>{setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})}
+                          <div className="tlr-library-title-action tlr-add-trade-soft-action tlr-library-footer-cancel" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>{hideDashboardInfo();setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})} onKeyDown={libraryKeyActivate(()=>{hideDashboardInfo();setDashAddTradeEditorOpen(false);setDashAddTradeEditMeta(null);})}
                             style={{height:32,minWidth:92,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",color:c.ts,border:`1px solid ${c.brH}`,background:"transparent",fontSize:9,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxSizing:"border-box","--tlr-add-hover-bg":"rgba(255,255,255,0.065)","--tlr-add-hover-color":c.tx,"--tlr-add-hover-border":"rgba(255,255,255,0.20)","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":"rgba(255,255,255,0.10)","--tlr-add-active-color":c.tx}}>
                             {dashTxt("Cancel","إلغاء")}
                           </div>
@@ -35905,8 +35929,8 @@ const TalariaV8b = () => {
                               body:addTradeCanSave ? dashTxt("Save this manual trade to the selected source.","احفظ هذه الصفقة اليدوية في المصدر المحدد.") : addTradeSaveBlockedReason,
                               accent:addTradeCanSave ? c.acL : c.rd,
                             }, "add-trade-save-button")}
-                            onPointerDown={libraryPointerActivate(() => addTradeCanSave ? saveDashAddTradeDraft() : revealAddTradeSaveBlockers())}
-                            onKeyDown={libraryKeyActivate(() => addTradeCanSave ? saveDashAddTradeDraft() : revealAddTradeSaveBlockers())}
+                            onPointerDown={libraryPointerActivate(() => { hideDashboardInfo(); addTradeCanSave ? saveDashAddTradeDraft() : revealAddTradeSaveBlockers(); })}
+                            onKeyDown={libraryKeyActivate(() => { hideDashboardInfo(); addTradeCanSave ? saveDashAddTradeDraft() : revealAddTradeSaveBlockers(); })}
                             style={{height:32,minWidth:92,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:addTradeCanSave?c.acL:"rgba(255,255,255,0.055)",color:addTradeCanSave?"#fff":"rgba(255,255,255,0.34)",border:addTradeCanSave?"1px solid transparent":`1px solid ${c.br}`,fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxShadow:addTradeCanSave?libraryGoButtonStyle.boxShadow:"none",boxSizing:"border-box",opacity:addTradeCanSave?1:0.88,cursor:"default","--tlr-add-hover-bg":"#536fff","--tlr-add-hover-color":"#fff","--tlr-add-hover-border":"#536fff","--tlr-add-hover-shadow":"0 0 13px rgba(74,106,255,0.46)","--tlr-add-active-bg":"#3f5df6","--tlr-add-active-color":"#fff","--tlr-add-active-border":"#3f5df6","--tlr-add-active-shadow":"0 0 8px rgba(74,106,255,0.34)"}}>
                             {dashTxt("Save","حفظ")}
                           </div>

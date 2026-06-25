@@ -5837,9 +5837,19 @@ class ReplaySystem {
             // autoScrollEnabled=false), never re-scroll/recenter the viewport.
             // Only force a recovery when the panel is genuinely empty (0 bars),
             // which is a broken render, not a deliberate pan.
-            const userOwnsViewport = this._replayUserOwnsViewport(chart)
-                && visibleBars > 0
-                && !passivePlay;
+            //
+            // An EXPLICIT pan (onUserPan set these flags from real mouse/wheel
+            // input) is honored even during passive play, so the user can freely
+            // move a panel while it plays — exactly like the main chart. The
+            // offset-distance heuristic inside _replayUserOwnsViewport is NOT
+            // trusted during passive play, because each appended candle shifts the
+            // auto-scroll anchor by one spacing and would otherwise look like a pan
+            // and stop the panel from following the playhead.
+            const explicitUserPan = this.userHasPanned || !this.autoScrollEnabled;
+            const userOwnsViewport = visibleBars > 0 && (
+                explicitUserPan
+                || (this._replayUserOwnsViewport(chart) && !passivePlay)
+            );
             if (userOwnsViewport
                 && visibleBars <= 1
                 && typeof chart._needsReplayHistoryLoadLeft === 'function'

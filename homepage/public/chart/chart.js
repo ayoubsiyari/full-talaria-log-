@@ -14405,6 +14405,9 @@ class Chart {
         if (this.priceScale) {
             this.priceScale.autoScale = true;
         }
+        if (this.compareOverlay && typeof this.compareOverlay.resetViewState === 'function') {
+            try { this.compareOverlay.resetViewState(); } catch (_coReset) { /* ignore */ }
+        }
     }
 
     /** TradingView-style price-axis double-click: auto-scale and lock vertical scale. */
@@ -32797,7 +32800,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260625b01';
+    window.TALARIA_CHART_BUILD = '20260625b02';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
