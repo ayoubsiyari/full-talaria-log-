@@ -25868,8 +25868,13 @@ const TalariaV8bLive = () => {
         const isCustom = ctx.indicatorType === "custom";
         const panelW = isCustom ? 520 : isIctEverything ? 520 : 400;
         const title = (ctx.indicator && ctx.indicator.name) || def.name || "Indicator";
+        const isCotNet = ctx.indicatorType === "cotnet";
         const tabOrder = [["style","Style"],["input","Input"],["visibility","Visibility"]];
-        const tabsShown = isIctEverything ? [["input","Settings"],["visibility","Visibility"]] : tabOrder;
+        const tabsShown = isIctEverything
+          ? [["input","Settings"],["visibility","Visibility"]]
+          : isCotNet
+            ? [["input","Input"],["visibility","Visibility"]]
+            : tabOrder;
         const tabIdx = Math.max(0, tabsShown.findIndex(([id]) => id === indSettTab));
         const openIndCP = (e, paramId, val) => {
           const def0 = (id) => def.params.find((x) => x.id === id);

@@ -26867,8 +26867,7 @@ class Chart {
                     this.drag.startY = e.clientY;
                     this.drag.lastX = e.clientX;
                     this.drag.lastY = e.clientY;
-                    this.canvas.style.cursor = 'ns-resize';
-                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+                    this._lockDragCursor('ns-resize');
                     e.preventDefault();
                     return;
                 }
@@ -26957,8 +26956,7 @@ class Chart {
                 this.drag.type = 'separatePanelAxis';
                 this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
                 this.isZooming = true;
-                this.canvas.style.cursor = 'ns-resize';
-                if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+                this._lockDragCursor('ns-resize');
             } else if (mode === 'priceAxis') {
                 this.drag.type = 'priceAxis';
                 const wasAutoScale = this.autoScale;
@@ -26975,11 +26973,12 @@ class Chart {
                     this.priceZoom = 1;
                 }
                 this._cachedInteractionTimeTicks = this._timeTicks;
-                this.canvas.style.cursor = 'ns-resize';
+                this._lockDragCursor('ns-resize');
             } else if (mode === 'timeAxis') {
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
                 this._cachedInteractionTimeTicks = this._timeTicks;
+                this._lockDragCursor('ew-resize');
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }

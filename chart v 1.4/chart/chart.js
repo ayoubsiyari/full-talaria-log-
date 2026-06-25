@@ -26973,11 +26973,12 @@ class Chart {
                     this.priceZoom = 1;
                 }
                 this._cachedInteractionTimeTicks = this._timeTicks;
-                this.canvas.style.cursor = 'ns-resize';
+                this._lockDragCursor('ns-resize');
             } else if (mode === 'timeAxis') {
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
                 this._cachedInteractionTimeTicks = this._timeTicks;
+                this._lockDragCursor('ew-resize');
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }

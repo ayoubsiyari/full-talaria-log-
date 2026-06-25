@@ -4716,7 +4716,7 @@ function v9BuildIndicatorInputLayout(indicatorType) {
 function v9BuildIndicatorStyleLayout(indicatorType) {
     indicatorType = resolveIndicatorDefinitionKey(indicatorType);
     const def = INDICATOR_DEFINITIONS[indicatorType];
-    if (!def || indicatorType === 'icteverything' || indicatorType === 'custom') return null;
+    if (!def || indicatorType === 'icteverything' || indicatorType === 'custom' || indicatorType === 'cotnet') return null;
     const params = def.params;
     const has = function (id) { return !!v9ParamById(params, id); };
     const footers = [];
