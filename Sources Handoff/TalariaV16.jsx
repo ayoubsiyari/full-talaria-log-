@@ -22156,8 +22156,7 @@ const TalariaV8b = () => {
           };
           const getDashTradeRowKey = (trade, index=0) => {
             const explicit =
-              trade?.editedOverrideKey
-              ?? trade?.journal_trade_id
+              trade?.journal_trade_id
               ?? trade?.id
               ?? trade?.trade_id
               ?? trade?.client_trade_id
@@ -22889,7 +22888,7 @@ const TalariaV8b = () => {
               const baseKey = getDashTradeRowKey(trade, index);
               const override = dashTradesEditedOverrides[baseKey];
               const t = override ? {...trade, ...override} : trade;
-              const rowKey = override?.editedOverrideKey || baseKey;
+              const rowKey = baseKey;
               const sourceKind = isDashManualSourceTrade(t) ? "manual" : "auto";
               const edited = String(t?.integrity || "").toLowerCase() === "edited" || !!t?.editedAt || !!override;
               const sideText = resolveDashTradeSideRaw(t) || "-";
@@ -31513,7 +31512,7 @@ const TalariaV8b = () => {
                 integrity:"Edited",
                 editedAt:nowIso,
                 originalSnapshot:dashAddTradeEditMeta.originalSnapshot || {...originalTrade},
-                editedOverrideKey:dashAddTradeEditMeta.rowKey,
+                editedOverrideKey:originalTrade.editedOverrideKey || dashAddTradeEditMeta.rowKey,
                 sourceKey:originalTrade.sourceKey || originalTrade.sourceFilterKey || manualTrade.sourceKey,
                 sourceFilterKey:originalTrade.sourceFilterKey || originalTrade.sourceKey || manualTrade.sourceFilterKey,
                 sourceLabel:originalTrade.sourceLabel || originalTrade.sourceSessionName || manualTrade.sourceLabel,
@@ -31529,7 +31528,8 @@ const TalariaV8b = () => {
                     const next = prev.map((trade, index) => {
                       const tradeKey = getDashTradeRowKey(trade, index);
                       const sameTradeId = String(trade?.trade_id || trade?.id || "") === String(originalTrade?.trade_id || originalTrade?.id || "");
-                      if (tradeKey === dashAddTradeEditMeta.rowKey || sameTradeId) {
+                      const sameEditedLineage = String(trade?.editedOverrideKey || "") === String(dashAddTradeEditMeta.rowKey || "");
+                      if (tradeKey === dashAddTradeEditMeta.rowKey || sameTradeId || sameEditedLineage) {
                         replaced = true;
                         return editedTrade;
                       }
