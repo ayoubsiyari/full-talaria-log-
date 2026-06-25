@@ -1733,33 +1733,14 @@
                         playheadTs = Number(rsP.replayTimestamp);
                     }
                     var primeAndFollow = function () {
-                        // DON'T recenter the viewport on play when the playhead is
-                        // already on screen. The panel was just showing the paused
-                        // playhead (applyStaticMirrorFrame preserves the viewport),
-                        // and the play-time mirror frames only re-position when the
-                        // playhead goes off-screen — so an unconditional
-                        // syncReplayViewportToPlayhead here is the ONLY thing that
-                        // snapped the panel to the auto-scroll anchor, i.e. the
-                        // "multichart jumps to the middle then runs" report. The
-                        // host's own play() recenters too but is already sitting at
-                        // that anchor, so it never visibly moves. Match that: keep
-                        // the current place, only recenter if the playhead is not
-                        // visible (avoids starting playback off-screen).
-                        var playheadVisible = false;
-                        try {
-                            if (Array.isArray(ch.data) && ch.data.length > 0
-                                && typeof ch.dataIndexToPixel === 'function') {
-                                var phPx = ch.dataIndexToPixel(ch.data.length - 1);
-                                var phM = ch.margin || { l: 60, r: 60 };
-                                var phRight = (Number(ch.w) || 0) - (phM.r || 0);
-                                if (Number.isFinite(phPx)
-                                    && phPx >= (phM.l || 0) && phPx <= phRight) {
-                                    playheadVisible = true;
-                                }
-                            }
-                        } catch (_) {}
-                        if (!playheadVisible
-                            && typeof rsP.syncReplayViewportToPlayhead === 'function') {
+                        // The panel was paused sitting at the auto-scroll anchor
+                        // (the pause path now preserves the playhead near the right,
+                        // same as the host). Recentering to that same anchor on play
+                        // is therefore a no-op and never visibly moves — exactly like
+                        // the host's own play(). (Without the pause-side viewport
+                        // preservation this call was what snapped the panel back to
+                        // the right after it had drifted left while paused.)
+                        if (typeof rsP.syncReplayViewportToPlayhead === 'function') {
                             try {
                                 rsP.syncReplayViewportToPlayhead(ch, {
                                     resetPriceScale: false,

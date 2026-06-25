@@ -6355,6 +6355,12 @@ class Chart {
             this._lastLoadedFileId = this.currentFileId;
         }
 
+        if (mergeDirection === 'backward' || mergeDirection === 'forward') {
+            if (this.compareOverlay && typeof this.compareOverlay.refreshForMainChartPanExtend === 'function') {
+                try { this.compareOverlay.refreshForMainChartPanExtend(mergeDirection); } catch (_coPan) { /* ignore */ }
+            }
+        }
+
         if (!options.skipChartDataLoadedEvent) {
             window.dispatchEvent(new CustomEvent('chartDataLoaded', {
                 detail: {
@@ -19340,6 +19346,9 @@ class Chart {
                 if (!replayPlaying) {
                     this._scheduleIndicatorRecalcAfterInteraction();
                     this.scheduleRender();
+                }
+                if (this.compareOverlay && typeof this.compareOverlay.refreshForMainChartPanExtend === 'function') {
+                    try { this.compareOverlay.refreshForMainChartPanExtend(direction); } catch (_coPan) { /* ignore */ }
                 }
                 
 
@@ -32788,7 +32797,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260525a01';
+    window.TALARIA_CHART_BUILD = '20260625b01';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

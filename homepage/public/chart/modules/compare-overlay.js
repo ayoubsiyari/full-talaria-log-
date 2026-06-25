@@ -3363,15 +3363,115 @@ class CompareOverlay {
         return end < 0 ? [] : bars.slice(0, end + 1);
     }
 
+    _getMainChartRawTimeSpan() {
+        const ch = this.chart;
+        const rs = ch?.replaySystem;
+        if (rs?.isActive && Array.isArray(rs.fullRawData) && rs.fullRawData.length) {
+            const startTs = Number(rs.fullRawData[0].t);
+            const endTs = Number(rs.fullRawData[rs.fullRawData.length - 1].t);
+            if (Number.isFinite(startTs) && Number.isFinite(endTs)) {
+                return { startTs, endTs, masterLen: rs.fullRawData.length };
+            }
+        }
+        if (Array.isArray(ch?.rawData) && ch.rawData.length) {
+            const startTs = Number(ch.rawData[0].t);
+            const endTs = Number(ch.rawData[ch.rawData.length - 1].t);
+            if (Number.isFinite(startTs) && Number.isFinite(endTs)) {
+                return { startTs, endTs, masterLen: ch.rawData.length };
+            }
+        }
+        return null;
+    }
+
     _buildReplaySyncKey() {
         const ch = this.chart;
         const rs = ch?.replaySystem;
-        if (!rs?.isActive || !Array.isArray(ch.rawData) || !ch.rawData.length) return 'live';
+        if (!rs?.isActive || !Array.isArray(ch.rawData) || !ch.rawData.length) {
+            return this._buildLiveSyncKey();
+        }
         const maxT = ch.rawData[ch.rawData.length - 1].t;
         const playhead = typeof ch._getReplayPlayheadMs === 'function'
             ? ch._getReplayPlayheadMs()
             : rs.replayTimestamp;
-        return `${rs.currentIndex}|${ch.currentTimeframe}|${maxT}|${playhead}`;
+        const masterLen = Array.isArray(rs.fullRawData) ? rs.fullRawData.length : ch.rawData.length;
+        const masterFirst = Array.isArray(rs.fullRawData) && rs.fullRawData.length
+            ? rs.fullRawData[0].t
+            : ch.rawData[0].t;
+        return `${rs.currentIndex}|${ch.currentTimeframe}|${maxT}|${playhead}|${masterLen}|${masterFirst}`;
+    }
+
+    _buildLiveSyncKey() {
+        const ch = this.chart;
+        const span = this._getMainChartRawTimeSpan();
+        const tf = ch?.currentTimeframe || '1m';
+        if (!span) return `live|${tf}|empty`;
+        return `live|${tf}|${span.masterLen}|${span.startTs}|${span.endTs}`;
+    }
+
+    _overlayNeedsHistoryRefetch(overlay) {
+        const span = this._getMainChartRawTimeSpan();
+        if (!span || !overlay?.rawData?.length) return false;
+        const tfMs = this._parseTimeframeMs(this.chart?.currentTimeframe) || 60000;
+        const slack = Math.max(tfMs * 2, 120000);
+        const oStart = Number(overlay.rawData[0].t);
+        const oEnd = Number(overlay.rawData[overlay.rawData.length - 1].t);
+        if (!Number.isFinite(oStart) || !Number.isFinite(oEnd)) return false;
+        return oStart > span.startTs + slack || oEnd < span.endTs - slack;
+    }
+
+    /**
+     * Main chart pan-loaded older/newer bars — resync overlays and refetch if span grew.
+     */
+    refreshForMainChartPanExtend(direction) {
+        this._lastReplaySyncKey = null;
+        this.syncForReplay();
+        this._scheduleOverlayPanExtendRefetch(direction);
+        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+            this.chart.scheduleRender();
+        }
+    }
+
+    _scheduleOverlayPanExtendRefetch(direction) {
+        clearTimeout(this._panExtendOverlayTimer);
+        const delay = direction === 'backward' ? 120 : 80;
+        this._panExtendOverlayTimer = setTimeout(() => {
+            this._panExtendOverlayTimer = null;
+            this._refetchOverlaysForExtendedWindow().catch((e) => {
+                console.warn('📊 overlay pan extend refetch:', e && e.message ? e.message : e);
+            });
+        }, delay);
+    }
+
+    async _refetchOverlaysForExtendedWindow() {
+        const ch = this.chart;
+        if (!ch || !this.overlays.length) return;
+        const span = this._getMainChartRawTimeSpan();
+        if (!span) return;
+
+        let changed = false;
+        for (const overlay of this.overlays) {
+            if (!overlay.fileId || !this._overlayNeedsHistoryRefetch(overlay)) continue;
+            const fetchTf = overlay.rawFetchTf || this._resolveOverlaySmartFetchTimeframe();
+            let rows = this._getOverlayBarsFromChartTfCache(overlay.fileId, fetchTf);
+            if (!rows || !rows.length || Number(rows[0].t) > span.startTs) {
+                rows = await this._fetchOverlayBarsViaSmart(overlay.fileId, fetchTf);
+            }
+            if (!Array.isArray(rows) || !rows.length) continue;
+            overlay.rawData = rows;
+            overlay.rawFetchTf = fetchTf;
+            overlay.nativeBarMs = this._parseTimeframeMs(fetchTf) || this._inferMedianBarPeriodMs(rows);
+            overlay.data = this.resampleData(rows, ch.currentTimeframe || '1m');
+            changed = true;
+        }
+
+        if (changed) {
+            this._lastReplaySyncKey = null;
+            this.syncForReplay();
+            try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
+            if (typeof ch.render === 'function') {
+                try { ch.render(); } catch (_) { /* ignore */ }
+            }
+        }
     }
 
     /**
@@ -3442,7 +3542,7 @@ class CompareOverlay {
 
         const rs = ch.replaySystem;
         const inReplay = !!(rs && rs.isActive && Array.isArray(ch.rawData) && ch.rawData.length);
-        const syncKey = inReplay ? this._buildReplaySyncKey() : 'live';
+        const syncKey = inReplay ? this._buildReplaySyncKey() : this._buildLiveSyncKey();
         if (this._lastReplaySyncKey === syncKey) return;
         this._lastReplaySyncKey = syncKey;
 
@@ -3460,6 +3560,10 @@ class CompareOverlay {
             } else {
                 overlay.data = this.resampleData(overlay.rawData, tf);
             }
+        }
+
+        if (this.overlays.some((o) => this._overlayNeedsHistoryRefetch(o))) {
+            this._scheduleOverlayPanExtendRefetch('backward');
         }
 
         try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }

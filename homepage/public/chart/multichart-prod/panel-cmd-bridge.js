@@ -560,7 +560,40 @@
         if (typeof isPlayingOverride === 'boolean') payload.isPlaying = isPlayingOverride;
         if (!payload.animatedCandle || !(Number(payload.tickProgress) > 0)) return false;
         try {
-            return !!rs.applyMultichartMirrorFrame(payload);
+            // Preserve the exact viewport the play stream left behind — same guard
+            // as applyStaticMirrorFrame. On PAUSE this path renders the host's frozen
+            // partial candle, but the mirror's auto-scroll recompute re-fits the
+            // viewport and drifts the playhead left, so play then snaps it back to
+            // the right ("multichart jumps when I click play"). Snapshot the offset/
+            // zoom, freeze auto-scroll for this single frame, then restore.
+            var prevOffsetX = ch.offsetX;
+            var prevCandleWidth = ch.candleWidth;
+            var prevAutoScroll = rs.autoScrollEnabled;
+            rs.autoScrollEnabled = false;
+            var ok = !!rs.applyMultichartMirrorFrame(payload);
+            rs.autoScrollEnabled = prevAutoScroll;
+            if (ok) {
+                var keepOffset = Number.isFinite(prevOffsetX);
+                if (rs.userHasPanned || ch._multichartVisibleRangeSyncOn) {
+                    keepOffset = Number.isFinite(prevOffsetX);
+                } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
+                    && ch._multichartViewportNeedsRecovery()) {
+                    keepOffset = false;
+                }
+                if (keepOffset) ch.offsetX = prevOffsetX;
+                if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) ch.candleWidth = prevCandleWidth;
+                if (!keepOffset && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                    try {
+                        ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false, render: false });
+                    } catch (_) {}
+                }
+                if (typeof ch.constrainOffset === 'function') {
+                    try { ch.constrainOffset(); } catch (_) {}
+                }
+                ch.renderPending = true;
+                if (typeof ch.render === 'function') ch.render();
+            }
+            return ok;
         } catch (e) {
             warn('applyParentReplayMirror threw', e && e.message);
             return false;
@@ -1700,33 +1733,14 @@
                         playheadTs = Number(rsP.replayTimestamp);
                     }
                     var primeAndFollow = function () {
-                        // DON'T recenter the viewport on play when the playhead is
-                        // already on screen. The panel was just showing the paused
-                        // playhead (applyStaticMirrorFrame preserves the viewport),
-                        // and the play-time mirror frames only re-position when the
-                        // playhead goes off-screen — so an unconditional
-                        // syncReplayViewportToPlayhead here is the ONLY thing that
-                        // snapped the panel to the auto-scroll anchor, i.e. the
-                        // "multichart jumps to the middle then runs" report. The
-                        // host's own play() recenters too but is already sitting at
-                        // that anchor, so it never visibly moves. Match that: keep
-                        // the current place, only recenter if the playhead is not
-                        // visible (avoids starting playback off-screen).
-                        var playheadVisible = false;
-                        try {
-                            if (Array.isArray(ch.data) && ch.data.length > 0
-                                && typeof ch.dataIndexToPixel === 'function') {
-                                var phPx = ch.dataIndexToPixel(ch.data.length - 1);
-                                var phM = ch.margin || { l: 60, r: 60 };
-                                var phRight = (Number(ch.w) || 0) - (phM.r || 0);
-                                if (Number.isFinite(phPx)
-                                    && phPx >= (phM.l || 0) && phPx <= phRight) {
-                                    playheadVisible = true;
-                                }
-                            }
-                        } catch (_) {}
-                        if (!playheadVisible
-                            && typeof rsP.syncReplayViewportToPlayhead === 'function') {
+                        // The panel was paused sitting at the auto-scroll anchor
+                        // (the pause path now preserves the playhead near the right,
+                        // same as the host). Recentering to that same anchor on play
+                        // is therefore a no-op and never visibly moves — exactly like
+                        // the host's own play(). (Without the pause-side viewport
+                        // preservation this call was what snapped the panel back to
+                        // the right after it had drifted left while paused.)
+                        if (typeof rsP.syncReplayViewportToPlayhead === 'function') {
                             try {
                                 rsP.syncReplayViewportToPlayhead(ch, {
                                     resetPriceScale: false,
