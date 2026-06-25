@@ -200,6 +200,133 @@ const dashTradeDisciplineAccent = (label, palette) => {
   if (lower.includes("out of")) return palette.rd;
   return palette.acL;
 };
+const DASH_DISCIPLINE_NOTE_KEYS = new Set([
+  "rules-followed", "rules-broken", "rules_followed", "rules_broken",
+  "according-to-plan", "according_to_plan", "according to plan",
+  "out-of-plan", "out_of_plan", "out of plan",
+  "missed-trade", "missed_trade", "missed trade",
+  "followed", "deviated", "missed",
+]);
+const dashIsDisciplineNoteToken = (value) => {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return true;
+  if (DASH_DISCIPLINE_NOTE_KEYS.has(text)) return true;
+  return /^rules[-_]?(followed|broken)$/i.test(text);
+};
+const dashNotePlainText = (value) => {
+  if (value == null || value === "") return "";
+  if (Array.isArray(value)) return value.map(dashNotePlainText).filter(Boolean).join(" ");
+  if (typeof value === "object") {
+    const parts = [];
+    [
+      value.text, value.note, value.notes, value.body, value.content,
+      value.comment, value.summary, value.value, value.setup,
+      value.deviationReason, value.deviation_reason,
+    ].forEach((item) => {
+      const part = dashNotePlainText(item);
+      if (part) parts.push(part);
+    });
+    const reason = value.reason;
+    if (reason != null && reason !== "" && !dashIsDisciplineNoteToken(reason)) {
+      parts.push(String(reason).trim());
+    }
+    return parts.join(" / ");
+  }
+  return String(value).trim();
+};
+const dashTradePreNotesText = (trade) => {
+  if (!trade || typeof trade !== "object") return "";
+  for (const candidate of [
+    trade.v9TradeNotes,
+    trade.preNotes,
+    trade.notes,
+    trade.preTradeNotes,
+    trade.journalEntry?.v9TradeNotes,
+    trade.journalEntry?.preTradeNotes,
+    trade.extra_data?.notes,
+  ]) {
+    const text = dashNotePlainText(candidate);
+    if (text) return text;
+  }
+  return "";
+};
+const dashTradePostNotesText = (trade) => {
+  if (!trade || typeof trade !== "object") return "";
+  for (const candidate of [
+    trade.postNotes,
+    trade.postTradeNotes,
+    trade.post_trade_notes,
+    trade.journalEntry?.postTradeNotes,
+  ]) {
+    const text = dashNotePlainText(candidate);
+    if (text) return text;
+  }
+  const notes = typeof trade.notes === "string" ? trade.notes.trim() : "";
+  const pre = dashTradePreNotesText(trade);
+  return notes && notes !== pre ? notes : "";
+};
+const dashTradeCombinedNotesText = (trade) => {
+  const pre = dashTradePreNotesText(trade);
+  const post = dashTradePostNotesText(trade);
+  if (pre && post && pre !== post) return `${pre}\n\n${post}`;
+  return pre || post || "";
+};
+const resolveDashTradeSideRaw = (trade) => {
+  if (!trade || typeof trade !== "object") return null;
+  for (const key of ["direction", "side", "type", "orderType", "order_type"]) {
+    const value = trade[key];
+    if (value != null && String(value).trim() !== "") return String(value).trim();
+  }
+  return null;
+};
+const resolveDashTradeSideLabel = (trade, fallback = "Long") =>
+  normalizeDashTradeSideLabel(resolveDashTradeSideRaw(trade) ?? fallback, fallback);
+const dashPriceMovePnlSign = (sideShort, avgEntry, avgExit) => {
+  if (!Number.isFinite(avgEntry) || !Number.isFinite(avgExit) || avgExit === avgEntry) return null;
+  const favorable = sideShort ? avgExit < avgEntry : avgExit > avgEntry;
+  return favorable ? 1 : -1;
+};
+const dashReconcileTradeMetrics = ({
+  preferStored,
+  storedPnl,
+  storedR,
+  ledgerPnl,
+  ledgerR,
+  sideShort,
+  avgEntry,
+  avgExit,
+}) => {
+  let pnl = preferStored && storedPnl != null ? storedPnl : (ledgerPnl ?? storedPnl);
+  let r = preferStored && storedR != null ? storedR : (ledgerR ?? storedR);
+  if (!preferStored || storedPnl == null || ledgerPnl == null || storedPnl * ledgerPnl >= 0) {
+    return {pnl, r};
+  }
+  const priceSign = dashPriceMovePnlSign(sideShort, avgEntry, avgExit);
+  const ledgerSign = ledgerPnl > 0 ? 1 : ledgerPnl < 0 ? -1 : 0;
+  if (priceSign != null && ledgerSign === priceSign) {
+    pnl = ledgerPnl;
+    if (ledgerR != null) r = ledgerR;
+  }
+  return {pnl, r};
+};
+const clampDashTargetRowsToEntrySize = (entryRows, targetRows, fallbackQty = null) => {
+  const entryTotal = (Array.isArray(entryRows) ? entryRows : []).reduce((sum, row) => {
+    const qty = Number(row?.qty);
+    return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
+  }, 0) || (Number(fallbackQty) > 0 ? Number(fallbackQty) : 1);
+  if (!Array.isArray(targetRows) || !targetRows.length) return targetRows || [];
+  const rows = targetRows.map((row) => {
+    const qty = Number(row?.qty);
+    return {...row, qty: Number.isFinite(qty) && qty > 0 ? qty : null};
+  });
+  const perRowDefault = entryTotal / rows.length;
+  const impliedTotal = rows.reduce((sum, row) => sum + (row.qty ?? perRowDefault), 0);
+  if (impliedTotal <= entryTotal + 0.000001) {
+    return rows.map((row) => ({...row, qty: row.qty ?? perRowDefault}));
+  }
+  const scale = entryTotal / impliedTotal;
+  return rows.map((row) => ({...row, qty: (row.qty ?? perRowDefault) * scale}));
+};
 /** Chart/backtest rows use BUY/SELL; manual rows use Long/Short. */
 const normalizeDashTradeSideLabel = (value, fallback = "Long") => {
   const t = String(value ?? fallback).trim().toLowerCase();
@@ -208,6 +335,7 @@ const normalizeDashTradeSideLabel = (value, fallback = "Long") => {
   return String(fallback).toLowerCase().includes("short") ? "Short" : "Long";
 };
 const isDashShortSide = (value) => normalizeDashTradeSideLabel(value) === "Short";
+const normalizeDashTradeDirectionKey = (value) => (isDashShortSide(value) ? "short" : "long");
 const getV16AppliedSourceBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.appliedSource : null);
 const persistAppliedLibrarySource = (sel) => {
   if (!isV16Embedded() || !sel?.kind || sel.id == null) return;
@@ -7961,7 +8089,7 @@ function btDashComputeMetrics(session, filters = {}) {
     if (symbolFilters.length && !symbolFilters.includes(String(t.symbol))) return false;
     if (filters.tag && filters.tag !== "all" && t.tag !== filters.tag) return false;
     if (marketFilters.length && !marketFilters.includes(String(t.market))) return false;
-    if (directionFilters.length && !directionFilters.includes(String(t.side || "").toLowerCase())) return false;
+    if (directionFilters.length && !directionFilters.includes(normalizeDashTradeDirectionKey(t.side || t.direction))) return false;
     if (filters.preTag && filters.preTag !== "all" && !(t.preTags || []).includes(filters.preTag)) return false;
     if (filters.postTag && filters.postTag !== "all" && !(t.postTags || []).includes(filters.postTag)) return false;
     const matchesTagGroups = (tradeTags, groups) => {
@@ -17756,13 +17884,14 @@ const TalariaV8b = () => {
                 outcome:[dashOutcomeFilters, setDashOutcomeFilters, tradeOutcomeOptions.filter(option=>String(option.value)!=="all")],
               };
               const [current, setter, options] = ensureMap[id] || [];
-              if (setter && !(Array.isArray(current) && current.length)) {
+              if (setter && !(Array.isArray(current) && current.length) && id !== "direction" && id !== "outcome") {
                 const first = options?.[0]?.value;
                 if (first != null) setter([String(first)]);
               }
             };
             const makeTradeMultiSetter = (id, setValues, allOptions) => (nextValues) => {
               const clean = [...new Set((Array.isArray(nextValues) ? nextValues : []).map(String).filter(Boolean))];
+              const isBinaryScope = id === "direction" || id === "outcome";
               if (!clean.length) {
                 setDashTradeSectionEnabled(prev => {
                   if (prev?.[id]) return prev;
@@ -17771,7 +17900,7 @@ const TalariaV8b = () => {
                 });
                 return;
               }
-              if (clean.length >= allOptions.length) {
+              if (!isBinaryScope && clean.length >= allOptions.length) {
                 setValues([]);
                 setDashTradeSectionEnabled(prev=>({...prev, [id]:false}));
                 return;
@@ -17905,6 +18034,11 @@ const TalariaV8b = () => {
                       const current = (group.selectedValues || []).map(String);
                       const value = String(option.value);
                       const exists = current.includes(value);
+                      const binaryScope = group.id === "direction" || group.id === "outcome";
+                      if (binaryScope && (group.options || []).length === 2) {
+                        group.set([value]);
+                        return;
+                      }
                       if (exists && current.length <= 1) return;
                       const optionOrder = new Map((group.options || []).map((item,idx)=>[String(item.value), idx]));
                       const next = exists
@@ -22181,7 +22315,14 @@ const TalariaV8b = () => {
                 const qty = Number(readPriceRowQty(row));
                 return Number.isFinite(price) && price > 0 ? {price, qty:Number.isFinite(qty) && qty > 0 ? qty : null, index} : null;
               }).filter(Boolean);
-              if (rows.length) return rows;
+              if (rows.length) {
+                if (kind === "targets") {
+                  const entryRows = buildTradePriceRows(trade, "entries");
+                  const fallbackQty = Number(firstValue(trade, ["quantity","positionSize","position_size","size"], NaN));
+                  return clampDashTargetRowsToEntrySize(entryRows, rows, Number.isFinite(fallbackQty) && fallbackQty > 0 ? fallbackQty : null);
+                }
+                return rows;
+              }
               const fallback = Number(firstValue(trade, fallbackPriceKeys[kind] || [], NaN));
               const qty = Number(firstValue(trade, ["quantity","positionSize","position_size","size"], NaN));
               return Number.isFinite(fallback) && fallback > 0 ? [{price:fallback, qty:Number.isFinite(qty) && qty > 0 ? qty : null, index:0}] : [];
@@ -22274,7 +22415,7 @@ const TalariaV8b = () => {
               const slippageSourceValue = lockedCostSource
                 ? costSettings.slippage
                 : firstValue(trade, ["slippage","slippage_points"], costSettings.slippage);
-              const side = normalizeDashTradeSideLabel(firstValue(trade, ["direction","side"], "Long"));
+              const side = resolveDashTradeSideLabel(trade, "Long");
               const qty = Number(firstValue(trade, ["quantity","positionSize","position_size","size"], 1));
               const entryStamp = buildLedgerDateTime(firstValue(trade, ["entryTime","openTime","entryDateTime"], null), firstValue(trade, ["entryClock","time","entryTimeText"], null));
               const exitStamp = buildLedgerDateTime(firstValue(trade, ["closeTime","exitDateTime","exitTimestamp"], null), firstValue(trade, ["exitTime","exitClock"], null));
@@ -22285,6 +22426,7 @@ const TalariaV8b = () => {
               const hasExcursionPrices = firstValue(trade, ["highestPrice","highest_price","highPrice","high_price","high","maxPrice","max_price"], null) != null
                 || firstValue(trade, ["lowestPrice","lowest_price","lowPrice","low_price","low","minPrice","min_price"], null) != null;
               const excursionMode = firstValue(trade, ["excursionMode","excursion_mode"], hasExcursionPrices ? "during" : "none");
+              const normalizedTargets = clampDashTargetRowsToEntrySize(entryRows, targetRows, qty);
               return {
                 symbol,
                 assetClass:spec.assetClass || assetClass,
@@ -22302,7 +22444,7 @@ const TalariaV8b = () => {
                 costsLockedFromSource:lockedCostSource || !!firstValue(trade, ["costsLockedFromSource"], false),
                 sourceCostModel:costSettings.model,
                 entries:ledgerRowsForDraft(entryRows, qty, "entry"),
-                targets:ledgerRowsForDraft(targetRows, qty, "target"),
+                targets:ledgerRowsForDraft(normalizedTargets, qty, "target"),
                 exits:ledgerRowsForDraft(exitRows, qty, "exit"),
                 excursionMode,
                 highestPrice:ledgerInputText(firstValue(trade, ["highestPrice","highest_price","highPrice","high_price","high","maxPrice","max_price"], "")),
@@ -22423,7 +22565,7 @@ const TalariaV8b = () => {
               const rowKey = override?.editedOverrideKey || baseKey;
               const sourceKind = isDashManualSourceTrade(t) ? "manual" : "auto";
               const edited = String(t?.integrity || "").toLowerCase() === "edited" || !!t?.editedAt || !!override;
-              const sideText = String(firstValue(t, ["direction","side"], "-"));
+              const sideText = resolveDashTradeSideRaw(t) || "-";
               const short = isDashShortSide(sideText);
               const statusText = String(firstValue(t, ["status"], t?.closeTime || t?.exitTime ? "Closed" : "Open"));
               const pnl = Number(firstValue(t, ["pnl_currency_net","netPnL","netPnl","net_pnl","realizedPnL","pnl"], NaN));
@@ -22453,12 +22595,20 @@ const TalariaV8b = () => {
               const storedEntry = Number(firstValue(t, ["entryPrice","entry","openPrice"], NaN));
               const storedExit = Number(firstValue(t, ["exitPrice","exit","closePrice"], NaN));
               const storedRisk = Number(firstValue(t, ["riskPerTrade","riskAmount","risk_amount","originalRiskAmount"], NaN));
-              const derivedPnl = preferStoredMetrics && storedPnl != null
-                ? storedPnl
-                : (ledgerFiniteNumber(currency.net) ?? storedPnl ?? pnl);
-              const derivedR = preferStoredMetrics && storedR != null
-                ? storedR
-                : (ledgerFiniteNumber(calculated.rrValue) ?? storedR ?? rVal);
+              const ledgerPnl = ledgerFiniteNumber(currency.net);
+              const ledgerR = ledgerFiniteNumber(calculated.rrValue);
+              const reconciled = dashReconcileTradeMetrics({
+                preferStored: preferStoredMetrics,
+                storedPnl,
+                storedR,
+                ledgerPnl,
+                ledgerR,
+                sideShort: short,
+                avgEntry: ledgerFiniteNumber(calculated.avgEntry) ?? (Number.isFinite(storedEntry) ? storedEntry : null),
+                avgExit: ledgerFiniteNumber(calculated.avgExit) ?? (Number.isFinite(storedExit) ? storedExit : null),
+              });
+              const derivedPnl = reconciled.pnl ?? ledgerPnl ?? storedPnl ?? pnl;
+              const derivedR = reconciled.r ?? ledgerR ?? storedR ?? rVal;
               const derivedPlannedR = btDashTradePlannedR(t) ?? ledgerFiniteNumber(calculated.plannedRrValue) ?? Number(firstValue(t, ["plannedRR","planned_rr","rewardToRiskRatio"], NaN));
               const derivedRisk = preferStoredMetrics && Number.isFinite(storedRisk)
                 ? Math.abs(storedRisk)
@@ -22550,8 +22700,8 @@ const TalariaV8b = () => {
                   mfeMae:{text:`${fmtPrice(derivedMfe)} / ${fmtPrice(derivedMae)}`, raw:`${Number.isFinite(derivedMfe) ? derivedMfe : ""} ${Number.isFinite(derivedMae) ? derivedMae : ""}`},
                   mfeMaeR:{text:`${signedRText(derivedMfeR) || "-"} / ${signedRText(derivedMaeR) || "-"}`, raw:`${Number.isFinite(derivedMfeR) ? derivedMfeR : ""} ${Number.isFinite(derivedMaeR) ? derivedMaeR : ""}`},
                   costs:{text:fmtCost(derivedCost), color:c.tm, raw:derivedCost},
-                  preNotes:{text:String(firstValue(t, ["preNotes","notes"], "-")), raw:firstValue(t, ["preNotes","notes"], "")},
-                  postNotes:{text:noteTextFrom(firstValue(t, ["postNotes","postTradeNotes"], "")), raw:firstValue(t, ["postNotes","postTradeNotes"], "")},
+                  preNotes:{text:(() => { const v = dashTradePreNotesText(t); return v || "-"; })(), raw:dashTradePreNotesText(t) || firstValue(t, ["preNotes","notes","v9TradeNotes"], "")},
+                  postNotes:{text:(() => { const v = dashTradePostNotesText(t); return v || "-"; })(), raw:dashTradePostNotesText(t) || firstValue(t, ["postNotes","postTradeNotes"], "")},
                   preVars:{text:joinList(preVars), raw:joinList(preVars, "")},
                   postVars:{text:joinList(postVars), raw:joinList(postVars, "")},
                   partials:{text:countSummary(t?.partial_exits || t?.exits, "exits"), raw:Array.isArray(t?.partial_exits || t?.exits) ? (t?.partial_exits || t?.exits).length : 0},
@@ -22813,7 +22963,10 @@ const TalariaV8b = () => {
               const disciplineAccent = dashTradeDisciplineAccent(disciplineLabel, c);
               const entryTime = fmtDateTime(firstValue(trade, ["entryTime","openTime","entryDate","date"], ""));
               const exitTime = fmtDateTime(firstValue(trade, ["closeTime","exitTime","exitDate"], ""));
-              const postNotesText = noteTextFrom(record.values.postNotes.raw) || record.values.postNotes.text || "";
+              const postNotesText = dashTradeCombinedNotesText(trade)
+                || noteTextFrom(record.values.postNotes.raw)
+                || record.values.postNotes.text
+                || (record.values.preNotes.text !== "-" ? record.values.preNotes.text : "");
               const mediaItems = asList(trade.screenshots || trade.media || trade.images).filter(Boolean);
               const mediaSrc = item => typeof item === "string" ? item : item?.src || item?.url || item?.dataUrl || item?.thumb || item?.thumbnail;
               const integrityTitle = record.edited ? `Edited ${fmtDateTime(trade.editedAt || trade.updatedAt || new Date().toISOString())}` : "Original record";
@@ -22880,7 +23033,7 @@ const TalariaV8b = () => {
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"58px minmax(0,1fr)",gap:8,alignItems:"start"}}>
                           <span style={{fontSize:7.8,fontWeight:950,color:c.tm,letterSpacing:"0.055em",textTransform:"uppercase",lineHeight:1.3}}>Notes</span>
-                          <span style={{fontSize:9.2,fontWeight:780,color:postNotesText?c.ts:c.tm,lineHeight:1.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={postNotesText || "No notes"}>{postNotesText || "No notes"}</span>
+                          <span style={{fontSize:9.2,fontWeight:780,color:postNotesText?c.ts:c.tm,lineHeight:1.35,whiteSpace:"pre-wrap",wordBreak:"break-word"}} title={postNotesText || "No notes"}>{postNotesText || "No notes"}</span>
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"58px minmax(0,1fr)",gap:8,alignItems:"start"}}>
                           <span style={{fontSize:7.8,fontWeight:950,color:c.tm,letterSpacing:"0.055em",textTransform:"uppercase",lineHeight:1.3}}>Demons</span>
@@ -29430,13 +29583,26 @@ const TalariaV8b = () => {
             };
             const entryStamp = parseDateTime(trade.entryTime || trade.openTime || trade.entryDate || trade.date, draftBase.date, draftBase.time);
             const exitStamp = parseDateTime(trade.closeTime || trade.exitDate || trade.exitTime, "", "");
-            const side = normalizeDashTradeSideLabel(trade.direction || trade.side || draftBase.side || "Long");
+            const side = resolveDashTradeSideLabel(trade, draftBase.side || "Long");
             const symbol = String(trade.symbol || trade.ticker || draftBase.symbol || "").toUpperCase();
             const market = trade.market || trade.asset_class || draftBase.assetClass;
             const qty = trade.quantity || trade.positionSize || trade.position_size || trade.size || "1";
             const draftStopLoss = String(trade.stopLoss ?? trade.planned_sl ?? trade.stop_loss ?? trade.sl ?? draftBase.stopLoss ?? "");
             const entryRowsForDraft = normalizedRows(trade.entries, trade.entryPrice ?? trade.entry, qty, "entry");
-            const targetRowsForDraft = normalizedRows(trade.planned_targets || trade.targets, trade.takeProfit ?? trade.target ?? trade.tp, qty, "target");
+            const targetRowsForDraft = (() => {
+              const raw = normalizedRows(trade.planned_targets || trade.targets, trade.takeProfit ?? trade.target ?? trade.tp, qty, "target");
+              const entrySized = entryRowsForDraft.map(row => ({price: Number(row.price), qty: Number(row.qty)}));
+              const targetSized = raw.map(row => ({price: Number(row.price), qty: Number(row.qty)}));
+              const clamped = clampDashTargetRowsToEntrySize(entrySized, targetSized, qty);
+              return raw.map((row, index) => ({
+                ...row,
+                qty: (() => {
+                  const n = Number(clamped[index]?.qty);
+                  if (!Number.isFinite(n) || n <= 0) return row.qty;
+                  return Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/\.?0+$/, "");
+                })(),
+              }));
+            })();
             const exitRowsForDraft = normalizedRows(trade.partial_exits || trade.exits, trade.exitPrice ?? trade.exit, qty, "exit");
             const draftWeightedPrice = rows => {
               const valid = (Array.isArray(rows) ? rows : []).map(row => ({price:Number(row.price), qty:Number(row.qty)})).filter(row => Number.isFinite(row.price));
@@ -29520,7 +29686,7 @@ const TalariaV8b = () => {
               entries:entryRowsForDraft,
               targets:targetRowsForDraft,
               exits:exitRowsForDraft,
-              notes:String(trade.notes || trade.preNotes || ""),
+              notes:String(dashTradeCombinedNotesText(trade) || trade.notes || trade.preNotes || ""),
               session:trade.session || draftBase.session,
               planReview:trade.planReviewKey || trade.planReview || trade.extra_data?.plan_review || draftBase.planReview,
               mae:tradeMaeR,
@@ -29869,6 +30035,30 @@ const TalariaV8b = () => {
             });
             return changed ? {...draft, exits:nextExits} : draft;
           };
+          const clampDashAddTradeTargetSizes = draft => {
+            if (!draft) return draft;
+            const entryRows = getDashTradeRows(draft, "entries", "entry");
+            const targetRows = getDashTradeRows(draft, "targets", "target");
+            const enteredSize = calcDashRowSizeTotal(entryRows);
+            if (!(enteredSize > 0) || !targetRows.length) return draft;
+            const clamped = clampDashTargetRowsToEntrySize(
+              entryRows.map(row => ({price: parseDashTradeNumber(row.price), qty: parseDashTradeNumber(row.qty)})),
+              targetRows.map(row => ({price: parseDashTradeNumber(row.price), qty: parseDashTradeNumber(row.qty)})),
+              enteredSize
+            );
+            let changed = false;
+            const nextTargets = targetRows.map((row, index) => {
+              const nextQty = formatDashTradeSizeInput(clamped[index]?.qty);
+              if (!nextQty || String(row.qty) === nextQty) return row;
+              changed = true;
+              return {...row, qty: nextQty};
+            });
+            return changed ? {...draft, targets: nextTargets} : draft;
+          };
+          const applyDashAddTradeSizeClamps = draft => {
+            if (!draft) return draft;
+            return clampDashAddTradeTargetSizes(clampDashAddTradeExitSizes(draft));
+          };
           const formatDashDuration = minutes => {
             if (!Number.isFinite(minutes) || minutes < 0) return "—";
             const total = Math.round(minutes);
@@ -30165,6 +30355,12 @@ const TalariaV8b = () => {
             if (!sideShort && highestEntry != null && validTargetPrices.some(target => target <= highestEntry)) return {ok:false, error:dashTxt("For a long trade, every target must be above every entry.","في صفقة الشراء يجب أن تكون كل الأهداف أعلى من كل أسعار الدخول.")};
             if (sideShort && lowestEntry != null && validTargetPrices.some(target => target >= lowestEntry)) return {ok:false, error:dashTxt("For a short trade, every target must be below every entry.","في صفقة البيع يجب أن تكون كل الأهداف أسفل من كل أسعار الدخول.")};
             if (calculated.requestedExitSize - calculated.enteredSize > 0.000001) return {ok:false, error:dashTxt("Exited size cannot exceed entered size.","حجم الخروج لا يمكن أن يتجاوز حجم الدخول.")};
+            const requestedTargetSize = targetRows.reduce((sum, row) => {
+              const price = parseDashTradeNumber(row.price);
+              const qty = parseDashTradeNumber(row.qty);
+              return price > 0 && qty > 0 ? sum + qty : sum;
+            }, 0);
+            if (requestedTargetSize - calculated.enteredSize > 0.000001) return {ok:false, error:dashTxt("Target size cannot exceed entered size.","حجم الأهداف لا يمكن أن يتجاوز حجم الدخول.")};
             if (firstBadExit) return {ok:false, error:dashTxt("Actual exit rows need a price and size greater than zero.","صفوف الخروج الفعلية تحتاج سعرا وحجما أكبر من صفر.")};
             if (hasActualExitRows && !hasExitTiming) return {ok:false, error:dashTxt("Enable exit time to save actual exits, or clear exits for an open trade.","فعّل وقت الخروج لحفظ الخروج الفعلي أو امسح الخروج لترك الصفقة مفتوحة.")};
             if (hasExitTiming) {
@@ -30297,7 +30493,7 @@ const TalariaV8b = () => {
               if (!prev) return prev;
               const rows = getDashTradeRows(prev, kind, dashLegacyFieldForRows(kind));
               const next = {...prev, [kind]:rows.map(row => row.id === id ? {...row, [field]:value} : row)};
-              const sizedNext = (kind === "entries" || kind === "exits") ? clampDashAddTradeExitSizes(next) : next;
+              const sizedNext = (kind === "entries" || kind === "exits" || kind === "targets") ? applyDashAddTradeSizeClamps(next) : next;
               return (kind === "entries" || kind === "exits") ? normalizeDashAddTradeExitStatus(sizedNext, {reopenPartial:true}) : sizedNext;
             });
           };
@@ -30311,7 +30507,8 @@ const TalariaV8b = () => {
                 ? formatDashTradeSizeInput(Math.max(0, calcDashRowSizeTotal(getDashTradeRows(prev, "entries", "entry")) - calcDashRowSizeTotal(rows)))
                 : "1";
               const next = {...prev, [kind]:[...rows, {id:`${kind}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, price:"", qty:defaultQty}]};
-              return (kind === "entries" || kind === "exits") ? normalizeDashAddTradeExitStatus(next, {reopenPartial:true}) : next;
+              const clamped = (kind === "entries" || kind === "exits" || kind === "targets") ? applyDashAddTradeSizeClamps(next) : next;
+              return (kind === "entries" || kind === "exits") ? normalizeDashAddTradeExitStatus(clamped, {reopenPartial:true}) : clamped;
             });
           };
           const removeDashAddTradeRow = (kind, id) => {
@@ -30321,7 +30518,8 @@ const TalariaV8b = () => {
               const rows = getDashTradeRows(prev, kind, dashLegacyFieldForRows(kind));
               if (rows.length <= 1) return prev;
               const next = {...prev, [kind]:rows.filter(row => row.id !== id)};
-              return (kind === "entries" || kind === "exits") ? normalizeDashAddTradeExitStatus(next, {reopenPartial:true}) : next;
+              const clamped = (kind === "entries" || kind === "exits" || kind === "targets") ? applyDashAddTradeSizeClamps(next) : next;
+              return (kind === "entries" || kind === "exits") ? normalizeDashAddTradeExitStatus(clamped, {reopenPartial:true}) : clamped;
             });
           };
           const dashAddTradeTagAutoKey = "__auto";

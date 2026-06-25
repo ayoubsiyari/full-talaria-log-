@@ -178,6 +178,7 @@ export function mapLiveJournalEntryToV16Trade(
     journalAccountKey: accountKey,
     strategyId: entry.strategy_id ?? null,
     strategyName: entry.strategy || "",
+    notes: entry.notes ?? null,
     liveJournal: true,
     hasEditedTrade: Boolean(entry.updated_at && entry.created_at && entry.updated_at !== entry.created_at),
   };

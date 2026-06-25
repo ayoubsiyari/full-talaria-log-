@@ -105,13 +105,45 @@ function buildVariablesFromTrade(trade: Record<string, unknown>): Record<string,
   return variables;
 }
 
+const DISCIPLINE_NOTE_KEYS = new Set([
+  "rules-followed",
+  "rules-broken",
+  "according-to-plan",
+  "according_to_plan",
+  "out-of-plan",
+  "out_of_plan",
+  "missed-trade",
+  "missed_trade",
+]);
+
+function notePlainText(value: unknown): string {
+  if (value == null || value === "") return "";
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) return value.map(notePlainText).filter(Boolean).join(" ");
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const parts: string[] = [];
+    for (const key of ["text", "note", "notes", "setup", "reason", "deviationReason"]) {
+      const part = notePlainText(obj[key]);
+      if (!part) continue;
+      if (key === "reason" && DISCIPLINE_NOTE_KEYS.has(part.toLowerCase())) continue;
+      parts.push(part);
+    }
+    return parts.join(" / ");
+  }
+  return String(value).trim();
+}
+
 function mergeNotes(trade: Record<string, unknown>): string | null {
-  const direct = typeof trade.notes === "string" ? trade.notes.trim() : "";
-  const postNotes =
-    typeof (trade.postTradeNotes as { reason?: string })?.reason === "string"
-      ? (trade.postTradeNotes as { reason?: string }).reason!.trim()
-      : "";
-  const merged = [direct, postNotes].filter(Boolean).join("\n\n");
+  const parts = [
+    notePlainText(trade.notes),
+    notePlainText(trade.v9TradeNotes),
+    notePlainText(trade.preNotes),
+    notePlainText(trade.preTradeNotes),
+    notePlainText(trade.postNotes),
+    notePlainText(trade.postTradeNotes),
+  ].filter(Boolean);
+  const merged = [...new Set(parts)].join("\n\n");
   return merged || null;
 }
 
