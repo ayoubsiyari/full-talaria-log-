@@ -6540,21 +6540,15 @@ class ReplaySystem {
                 }
             } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
                 const pendingVp = this.chart._tfSwitchViewport;
-                const manualRestore = pendingVp && (
-                    pendingVp.userHasPanned || pendingVp.anchorMode === 'viewportLeft'
-                );
-                if (pendingVp && pendingVp.followPlayhead
-                    && typeof this.chart._applyTfSwitchFollowEdgeViewport === 'function') {
-                    this.chart._applyTfSwitchFollowEdgeViewport(pendingVp);
-                } else if (!manualRestore) {
+                const willRestoreViewport = pendingVp
+                    && Number.isFinite(pendingVp.anchorTs);
+                if (!willRestoreViewport) {
                     this.syncReplayViewportToPlayhead(this.chart, {
-                        centerPlayhead: false,
+                        centerPlayhead: true,
                         resetPriceScale: false,
-                        forceRecenter: true,
-                        render: false,
+                        render: true,
                     });
-                }
-                if (typeof this.chart.render === 'function') {
+                } else if (typeof this.chart.render === 'function') {
                     this.chart.renderPending = true;
                     this.chart.render();
                 }

@@ -30396,6 +30396,8 @@ const TalariaV8b = () => {
                 const range = getDashAddTradeSessionDateRange(dashAddTradeEditorSource);
                 value = clampDashAddTradeIsoDate(value, range);
               }
+              const dashAddTradePriceFields = new Set(["stopLoss", "highestPrice", "lowestPrice", "postExitHighest", "postExitLowest", "exit"]);
+              if (dashAddTradePriceFields.has(field)) value = sanitizeDashAddTradePriceInput(value);
               let next = {...prev, [field]:value};
               if (["date", "time", "exitDate", "exitTime"].includes(field)) {
                 next = clampDashAddTradeTimingBounds(next, dashAddTradeEditorSource);
@@ -30411,7 +30413,7 @@ const TalariaV8b = () => {
           const parseDashTradeNumber = value => {
             const raw = String(value ?? "").trim();
             const cleaned = raw.replace(/[^0-9.]/g, "");
-            if (!cleaned || cleaned === "." || cleaned === ".") return null;
+            if (!cleaned || cleaned === ".") return null;
             const parsed = Number(cleaned.replace(/^\./, "0."));
             return Number.isFinite(parsed) ? parsed : null;
           };
@@ -30766,10 +30768,10 @@ const TalariaV8b = () => {
             const startMs = Date.parse(`${draft?.date || ""}T${draft?.time || "00:00"}`);
             const endMs = hasExitTiming ? Date.parse(`${draft?.exitDate || ""}T${draft?.exitTime || ""}`) : NaN;
             const nowMs = Date.now();
-            const firstBadEntry = entryRows.find(row => !(parseDashTradeNumber(row.price) > 0) || !(parseDashTradeNumber(row.qty) > 0));
+            const firstBadEntry = entryRows.find(row => !(parseDashTradeNumber(row.price) > 0) || !dashAddTradeLotQtyValid(row.qty));
             const firstBadTarget = targetRows.find(row => String(row.price || "").trim() && !(parseDashTradeNumber(row.price) > 0));
             const firstBadExit = (hasExitTiming || hasActualExitRows)
-              ? exitRows.find(row => String(row.price || "").trim() && (!(parseDashTradeNumber(row.price) > 0) || !(parseDashTradeNumber(row.qty) > 0)))
+              ? exitRows.find(row => String(row.price || "").trim() && (!(parseDashTradeNumber(row.price) > 0) || !dashAddTradeLotQtyValid(row.qty)))
               : null;
             const validEntryPrices = entryRows
               .map(row => parseDashTradeNumber(row.price))
@@ -30791,7 +30793,7 @@ const TalariaV8b = () => {
               if (sessionRange.maxDate && entryIso && entryIso > sessionRange.maxDate) return {ok:false, error:dashTxt("Entry date must be within the backtest session range.","يجب أن يكون تاريخ الدخول ضمن نطاق جلسة الاختبار.")};
             }
             if (startMs > nowMs) return {ok:false, error:dashTxt("Entry date and time cannot be in the future.","لا يمكن أن يكون وقت الدخول في المستقبل.")};
-            if (!entryRows.length || firstBadEntry) return {ok:false, error:dashTxt("Each entry row needs a price and size greater than zero.","كل صف دخول يحتاج سعرا وحجما أكبر من صفر.")};
+            if (!entryRows.length || firstBadEntry) return {ok:false, error:dashTxt(`Each entry row needs a price greater than zero and a size of at least ${DASH_ADD_TRADE_LOT_MIN}.`,`كل صف دخول يحتاج سعرا أكبر من صفر وحجما لا يقل عن ${DASH_ADD_TRADE_LOT_MIN}.`)};
             if (calculated.avgEntry == null) return {ok:false, error:dashTxt("At least one valid entry price is required.","يلزم إدخال سعر دخول صالح واحد على الأقل.")};
             if (!(stop > 0)) return {ok:false, error:dashTxt("Initial stop loss is required and must be greater than zero.","وقف الخسارة الأولي مطلوب ويجب أن يكون أكبر من صفر.")};
             if (firstBadTarget) return {ok:false, error:dashTxt("Target prices must be greater than zero.","أسعار الأهداف يجب أن تكون أكبر من صفر.")};
@@ -30806,7 +30808,7 @@ const TalariaV8b = () => {
               return price > 0 && qty > 0 ? sum + qty : sum;
             }, 0);
             if (requestedTargetSize - calculated.enteredSize > 0.000001) return {ok:false, error:dashTxt("Target size cannot exceed entered size.","حجم الأهداف لا يمكن أن يتجاوز حجم الدخول.")};
-            if (firstBadExit) return {ok:false, error:dashTxt("Actual exit rows need a price and size greater than zero.","صفوف الخروج الفعلية تحتاج سعرا وحجما أكبر من صفر.")};
+            if (firstBadExit) return {ok:false, error:dashTxt(`Actual exit rows need a price greater than zero and a size of at least ${DASH_ADD_TRADE_LOT_MIN}.`,`صفوف الخروج الفعلية تحتاج سعرا أكبر من صفر وحجما لا يقل عن ${DASH_ADD_TRADE_LOT_MIN}.`)};
             if (hasActualExitRows && !hasExitTiming) return {ok:false, error:dashTxt("Enable exit time to save actual exits, or clear exits for an open trade.","فعّل وقت الخروج لحفظ الخروج الفعلي أو امسح الخروج لترك الصفقة مفتوحة.")};
             if (hasExitTiming) {
               if (!Number.isFinite(endMs)) return {ok:false, error:dashTxt("Exit date and time are required when exit timing is enabled.","تاريخ ووقت الخروج مطلوبان عند تفعيل وقت الخروج.")};
@@ -30939,7 +30941,9 @@ const TalariaV8b = () => {
               if (!prev) return prev;
               const rows = getDashTradeRows(prev, kind, dashLegacyFieldForRows(kind));
               let nextValue = value;
-              if (kind === "targets" && field === "qty") nextValue = capDashAddTradeTargetQtyInput(prev, id, value);
+              if (field === "price") nextValue = sanitizeDashAddTradePriceInput(value);
+              if (field === "qty") nextValue = sanitizeDashAddTradeLotInput(value);
+              if (kind === "targets" && field === "qty") nextValue = capDashAddTradeTargetQtyInput(prev, id, nextValue);
               const next = {...prev, [kind]:rows.map(row => row.id === id ? {...row, [field]:nextValue} : row)};
               const sizedNext = (kind === "entries" || kind === "exits" || kind === "targets") ? applyDashAddTradeSizeClamps(next) : next;
               return (kind === "entries" || kind === "exits") ? normalizeDashAddTradeExitStatus(sizedNext, {reopenPartial:true}) : sizedNext;
@@ -33030,7 +33034,7 @@ const TalariaV8b = () => {
                   }
                   return 0.01;
                 })();
-                const addTradePriceStepPrecision = getAddTradeStepPrecision(addTradePriceStep);
+                const addTradePriceStepPrecision = Math.min(getAddTradeStepPrecision(addTradePriceStep), DASH_ADD_TRADE_PRICE_DECIMALS_MAX);
                 const formatAddTradeSteppedPrice = value => {
                   const n = Number(value);
                   if (!Number.isFinite(n)) return "";
@@ -33136,14 +33140,18 @@ const TalariaV8b = () => {
                         disabled={disabled}
                         aria-invalid={invalid ? "true" : undefined}
                         onFocus={disabled ? undefined : holdDashAddTradeGraph}
-                        onBlur={disabled ? undefined : releaseDashAddTradeGraph}
+                        onBlur={disabled ? undefined : e=>{
+                          const finalized = sanitizeDashAddTradePriceInput(e.target.value);
+                          if (finalized !== e.target.value) onChange(finalized);
+                          releaseDashAddTradeGraph();
+                        }}
                         onKeyDown={disabled ? undefined : e=>{
                           if (e.key === "Enter") {
                             e.preventDefault();
                             e.currentTarget.blur();
                           }
                         }}
-                        onChange={e=>onChange(e.target.value.replace(/[^\d.,-]/g, "").replace(",", "."))}
+                        onChange={e=>onChange(sanitizeDashAddTradePriceInput(e.target.value.replace(",", ".")))}
                         placeholder={placeholder || addTradeTypingCue}
                         inputMode="decimal"
                         style={inputSx}
@@ -33167,7 +33175,16 @@ const TalariaV8b = () => {
                   if (max != null && Number.isFinite(max)) next = Math.min(next, max);
                   return formatAddTradeSteppedNumber(next, step);
                 };
-                const addTradeSteppedNumberInput = ({value, onChange, placeholder="", color=c.ts, disabled=false, readOnly=false, step=1, min=0, max=null, invalid=false, style={}, ariaLabel=typeof placeholder === "string" ? placeholder : "", showLockedArrows=false, hideArrows=false}) => {
+                const addTradeSteppedNumberInput = ({value, onChange, placeholder="", color=c.ts, disabled=false, readOnly=false, step=1, min=0, max=null, invalid=false, style={}, ariaLabel=typeof placeholder === "string" ? placeholder : "", showLockedArrows=false, hideArrows=false, inputKind="generic"}) => {
+                  const sanitizeNumberInput = raw => {
+                    if (inputKind === "lot") return sanitizeDashAddTradeLotInput(raw);
+                    return sanitizeNonNegativeNumericInput(String(raw ?? "").replace(/,/g, "."));
+                  };
+                  const finalizeNumberInput = raw => {
+                    if (inputKind === "lot") return finalizeDashAddTradeLotInput(raw);
+                    return sanitizeNumberInput(raw);
+                  };
+                  const effectiveMin = inputKind === "lot" ? DASH_ADD_TRADE_LOT_MIN : min;
                   const locked = disabled || readOnly;
                   const inputSx = {
                     ...addTradeCompactInputStyle,
@@ -33183,7 +33200,7 @@ const TalariaV8b = () => {
                     if (locked) return;
                     const hold = dashAddTradeStepperHoldRef.current;
                     const baseValue = hold ? hold.value : value;
-                    const next = stepAddTradeNumberValue(baseValue, direction, step, min, max);
+                    const next = stepAddTradeNumberValue(baseValue, direction, step, effectiveMin, max);
                     if (hold) hold.value = next;
                     onChange(next);
                   };
@@ -33231,12 +33248,16 @@ const TalariaV8b = () => {
                         disabled={disabled}
                         readOnly={readOnly}
                         onChange={locked ? undefined : e=>{
-                          let nextValue = e.target.value.replace(/[^\d.,-]/g, "").replace(",", ".");
+                          let nextValue = sanitizeNumberInput(e.target.value);
                           if (max != null && Number.isFinite(max)) {
                             const parsed = parseDashTradeNumber(nextValue);
                             if (parsed != null && parsed > max + 0.000001) nextValue = formatAddTradeSteppedNumber(max, step);
                           }
                           onChange(nextValue);
+                        }}
+                        onBlur={locked ? undefined : e=>{
+                          const finalized = finalizeNumberInput(e.target.value);
+                          if (finalized !== e.target.value) onChange(finalized);
                         }}
                         placeholder={placeholder}
                         aria-label={ariaLabel || placeholder || dashTxt("Value","القيمة")}
@@ -35165,7 +35186,8 @@ const TalariaV8b = () => {
                             placeholder:dashTxt("Size","الحجم"),
                             color:c.ts,
                             step:addTradeSizeStep,
-                            min:0,
+                            min:DASH_ADD_TRADE_LOT_MIN,
+                            inputKind:"lot",
                             max:kind === "targets" ? getDashAddTradeTargetQtyMax(dashAddTradeDraft, row.id) : null,
                             invalid:kind === "targets" ? addTradeTargetQtyInvalid(row.id, row.qty) : false,
                           })}

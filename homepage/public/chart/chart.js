@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260624b86';
+const CHART_ENGINE_BUILD = '20260609b12';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -18286,21 +18286,13 @@ class Chart {
             }
 
             const session = this.backtestingSession || {};
-            const vpSnap = this._tfSwitchViewport;
-            const viewingHistory = vpSnap && (vpSnap.userHasPanned || vpSnap.anchorMode === 'viewportLeft');
-            const fetchWindow = options.windowRange
-                || (viewingHistory ? this._buildTfSwitchFetchWindow(timeframe) : null);
-            const fetchOpts = { ...(options.smartOpts || {}) };
-            if (fetchWindow && !Number.isFinite(Number(fetchOpts.limit))) {
-                fetchOpts.limit = this._resolveTfSwitchFetchLimit(timeframe);
-            }
             const result = await this._fetchSmartWindow(
                 this.currentFileId,
                 timeframe,
                 session,
-                fetchWindow ? 'start' : (options.anchor || 'end'),
-                fetchWindow,
-                fetchOpts
+                options.anchor,
+                options.windowRange || null,
+                options.smartOpts || null
             );
 
             if (loadId !== this._timeframeLoadSeq) return;
@@ -18333,11 +18325,16 @@ class Chart {
             this._ingestSmartWindowResult(result, { skipFitToView: true, skipIndicators: true });
             this._deferRecalculateIndicators();
 
-            // Immediately restore viewport (bar count + anchor pixel) so chartDataLoaded
-            // listeners and intermediate renders see a valid offsetX on the new dataset.
-            // Do NOT call fitToView() here — it snaps to offsetX=0 when all bars fit.
+            // Immediately put the chart into a renderable state.
+            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
+            // which some listeners react to with a render. Without a valid offsetX for
+            // the NEW dataset, those intermediate renders produce
+            // "No candles drawn! All N candles are outside viewport" warnings and a
+            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
+            // The rAF below refines the view (restore center timestamp) once dimensions settle.
             if (Array.isArray(this.data) && this.data.length > 0) {
-                this._restoreOrJumpAfterTfSwitch();
+                this._chartViewRestored = false;
+                this.fitToView();
             }
 
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -18350,17 +18347,13 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
-                // Re-apply viewport after layout settles (snapshot already consumed above).
-                if (this._tfSwitchAnchorLock) {
-                    this._reapplyTfSwitchAnchorLock();
-                } else if (Number.isFinite(this._tfSwitchVisibleBarCount)
-                    && typeof this._applyTfSwitchFollowEdgeViewport === 'function') {
-                    const m = this.margin || { l: 60, r: 60 };
-                    this._applyTfSwitchFollowEdgeViewport({
-                        visibleBarCount: this._tfSwitchVisibleBarCount,
-                        plotW: Math.max(1, this.w - m.l - m.r),
-                    });
-                }
+                // TradingView parity: restore the same visible wall-clock window
+                // captured before the switch. The server /smart window is
+                // end-anchored, so when the user was viewing recent data the
+                // captured center is inside the fetched bars and the view is
+                // preserved; when it isn't (scrolled far back), restore returns
+                // false and we self-heal to the latest candle instead.
+                this._restoreOrJumpAfterTfSwitch();
                 // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
                 // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
@@ -18374,7 +18367,6 @@ class Chart {
                 if (typeof this.dispatchScrollSync === 'function') {
                     this.dispatchScrollSync();
                 }
-                setTimeout(() => this._fillViewportGapsAfterTfSwitch(0), 0);
             });
 
         } catch (error) {
@@ -18697,14 +18689,11 @@ class Chart {
             ? (this._getBacktestInitialFetchRange(timeframe, session)
                 || this._getBacktestSessionEndFetchRange(sessionEndMs))
             : (Number.isFinite(playheadMs)
-                ? this._mergeTfSwitchFetchWindow(
-                    timeframe,
-                    this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
-                )
+                ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
                 : this._getBacktestSessionEndFetchRange(sessionEndMs));
         const fetchOpts = {
             skipSessionDates: true,
-            limit: this._resolveTfSwitchFetchLimit(timeframe),
+            limit: this._backtestFetchLimitForTimeframe(timeframe),
         };
 
         let result;
@@ -21582,7 +21571,6 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            // Full grid under candles (horizontal must not redraw after axes — that paints over wicks).
             this.drawGrid();
             if (!interactionLite) {
                 this.drawVolume(visible, panOpts);
@@ -21597,7 +21585,6 @@ class Chart {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
-            this.calculateScales();
             if (!interactionLite && chartViewPanning) {
                 this.drawEconomicCalendarAxisMarkers({ panFast: true });
             }
@@ -21644,7 +21631,7 @@ class Chart {
             this.compareOverlay.updateLeftMargin();
         }
 
-        // Full grid under candles (horizontal must not redraw after axes — that paints over wicks).
+        // Draw grid lines first
         this.drawGrid();
 
         // Draw volume bars
@@ -21809,8 +21796,8 @@ class Chart {
             yTicks.forEach(price => {
                 const yRaw = this.yScale(price);
                 
-                // Inclusive bounds — strict >/< dropped domain-edge ticks after pan release auto-scale.
-                if (yRaw >= m.t && yRaw <= m.t + priceHeight) {
+                // Only draw lines in the price area (not in volume area)
+                if (yRaw > m.t && yRaw < m.t + priceHeight) {
                     // Snap to a crisp pixel row (+0.5) so 1px grid lines don't
                     // anti-alias-shimmer as the price domain shifts each frame.
                     const y = Math.round(yRaw) + 0.5;
@@ -25393,80 +25380,6 @@ class Chart {
         this._pendingTfSwitchVisibleBarCount = null;
     }
 
-    /** True when the user has panned away from the live / replay follow edge. */
-    _isViewingHistoryViewport() {
-        if (!this.data || this.data.length === 0) return false;
-        const m = this.margin || { l: 60, r: 60 };
-        const plotW = Math.max(1, this.w - m.l - m.r);
-        const spacing = this.getCandleSpacing();
-        if (!(spacing > 0)) return false;
-        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
-            ? this.timeScale.rightOffsetCandles
-            : 15;
-        const rightMargin = Math.max(0, rightMarginCandles) * spacing;
-        const maxOffset = plotW - rightMargin;
-        return this.offsetX > maxOffset - spacing * 8;
-    }
-
-    /**
-     * After TF switch at the live/replay edge: keep bar count, right-anchor the
-     * playhead / latest bar (TradingView). Avoids extrapolated future anchor pixels
-     * that leave empty space on the right or squash bars to the left.
-     */
-    _applyTfSwitchFollowEdgeViewport(vp) {
-        if (!vp || !Array.isArray(this.data) || this.data.length === 0) return false;
-        const m = this.margin || { l: 60, r: 60 };
-        const plotW = Math.max(1, (this.w - m.l - m.r) || vp.plotW || 0);
-        const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth({ ...vp, plotW });
-        this._clampRestoredCandleWidth(targetCandleWidth);
-        this._syncZoomLevelIndexFromCandleWidth();
-        if (Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0) {
-            this._tfSwitchVisibleBarCount = vp.visibleBarCount;
-        }
-
-        const spacing = this.getCandleSpacing();
-        if (!(spacing > 0)) return false;
-        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
-            ? this.timeScale.rightOffsetCandles
-            : 15;
-        const barsOnScreen = Math.max(
-            1,
-            Number.isFinite(vp.visibleBarCount) && vp.visibleBarCount > 0
-                ? vp.visibleBarCount
-                : Math.floor(plotW / spacing)
-        );
-        const targetVisible = Math.max(1, barsOnScreen - Math.max(0, rightMarginCandles));
-        const scrollPosition = this.data.length - targetVisible;
-        this.offsetX = -scrollPosition * spacing;
-        this._chartViewRestored = true;
-        this.constrainOffset();
-        return true;
-    }
-
-    /** Last-resort TF viewport when anchor restore fails — never jumpToLatest (resets zoom). */
-    _softFallbackAfterTfSwitch(vpSnap) {
-        this._clearTfSwitchAnchorLock();
-        if (vpSnap && this._applyTfSwitchFollowEdgeViewport(vpSnap)) {
-            return true;
-        }
-        const replay = this.replaySystem;
-        if (replay && replay.isActive && typeof replay.syncReplayViewportToPlayhead === 'function') {
-            const synced = replay.syncReplayViewportToPlayhead(this, {
-                centerPlayhead: false,
-                forceRecenter: true,
-                resetPriceScale: false,
-                render: false,
-            });
-            if (synced) {
-                this._chartViewRestored = true;
-                return true;
-            }
-        }
-        this._chartViewRestored = false;
-        this.fitToView();
-        return true;
-    }
-
     /**
      * Approximate the candleWidth that yields a given on-screen candle spacing.
      * Inverts _getSpacingForCandleWidth via binary search (spacing is monotonic
@@ -25489,86 +25402,6 @@ class Chart {
             }
         }
         return best;
-    }
-
-    /**
-     * Wall-clock fetch window for a TF switch server load. Covers the visible
-     * range captured before the switch plus padding so restore can anchor in-place.
-     */
-    _buildTfSwitchFetchWindow(targetTf) {
-        const vp = this._tfSwitchViewport;
-        if (!vp) return null;
-        const targetMs = this.parseTimeframe(targetTf);
-        const barMs = Number.isFinite(targetMs) && targetMs > 0 ? targetMs : 3600000;
-        const sourceMs = Number.isFinite(vp.sourceBarMs) && vp.sourceBarMs > 0
-            ? vp.sourceBarMs
-            : barMs;
-        const visible = Number.isFinite(vp.visibleBarCount) ? vp.visibleBarCount : 200;
-        const spanMs = Number.isFinite(vp.spanMs) && vp.spanMs > 0
-            ? vp.spanMs
-            : (Number.isFinite(vp.rightTs) && Number.isFinite(vp.leftTs)
-                ? Math.max(barMs, vp.rightTs - vp.leftTs)
-                : visible * sourceMs);
-        const padMs = Math.max(spanMs * 0.35, visible * barMs * 2, barMs * 80);
-        let startTs = vp.leftTs;
-        let endTs = vp.rightTs;
-        if (!Number.isFinite(startTs) && Number.isFinite(vp.centerTs)) {
-            startTs = vp.centerTs - spanMs / 2;
-        }
-        if (!Number.isFinite(endTs) && Number.isFinite(vp.centerTs)) {
-            endTs = vp.centerTs + spanMs / 2;
-        }
-        if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return null;
-
-        const replay = this.replaySystem;
-        if (replay && replay.isActive) {
-            const playheadMs = this._captureReplayPlayheadMs(replay);
-            if (Number.isFinite(playheadMs)) {
-                endTs = Math.max(endTs, playheadMs + padMs * 0.25);
-            }
-            const session = this.backtestingSession || {};
-            const sessionEndMs = this._getBacktestSessionEndMs(session);
-            if (Number.isFinite(sessionEndMs)) {
-                endTs = Math.min(endTs, sessionEndMs);
-            }
-        }
-
-        return {
-            startTs: Math.floor(startTs - padMs),
-            endTs: Math.floor(endTs + padMs),
-        };
-    }
-
-    /**
-     * Bar budget for a TF-switch fetch. When zooming into a finer TF the same
-     * visible bar count spans fewer target bars but the server window must still
-     * cover the captured wall-clock span.
-     */
-    _resolveTfSwitchFetchLimit(targetTf) {
-        const vp = this._tfSwitchViewport;
-        const visible = Number.isFinite(vp?.visibleBarCount) ? vp.visibleBarCount : 200;
-        const targetMs = this.parseTimeframe(targetTf) || 60000;
-        const sourceMs = Number.isFinite(vp?.sourceBarMs) && vp.sourceBarMs > 0
-            ? vp.sourceBarMs
-            : targetMs;
-        let spanBars = visible + 80;
-        if (Number.isFinite(vp?.spanMs) && vp.spanMs > 0 && targetMs > 0) {
-            spanBars = Math.ceil(vp.spanMs / targetMs) + 120;
-        } else if (sourceMs > targetMs) {
-            spanBars = Math.ceil((visible * sourceMs) / targetMs) + 120;
-        }
-        return Math.max(100, Math.min(2000, spanBars));
-    }
-
-    /** Merge viewport wall-clock window with replay playhead fetch range. */
-    _mergeTfSwitchFetchWindow(targetTf, playheadRange) {
-        const vpWin = this._buildTfSwitchFetchWindow(targetTf);
-        if (!vpWin) return playheadRange || null;
-        if (!playheadRange) return vpWin;
-        return {
-            startTs: Math.min(vpWin.startTs, playheadRange.startTs),
-            endTs: Math.max(vpWin.endTs, playheadRange.endTs),
-        };
     }
 
     /**
@@ -25595,7 +25428,6 @@ class Chart {
         let anchorTs = null;
         let anchorScreenX = null;
         let anchorMode = 'center';
-        let followPlayhead = false;
         const replay = this.replaySystem;
         const userOwnsViewport = !!(replay && replay.isActive
             && (replay.userHasPanned || !replay.autoScrollEnabled));
@@ -25611,35 +25443,33 @@ class Chart {
         this._pendingTfSwitchVisibleBarCount = visibleBarCount;
         const viewportLeftIdx = vr.first;
         const leftScreenX = this.dataIndexToPixel(viewportLeftIdx);
-        const viewingHistory = userOwnsViewport || this._isViewingHistoryViewport();
 
-        if (viewingHistory) {
+        if (userOwnsViewport) {
+            // Panned / manual zoom: keep the left edge pinned at the same screen X.
             anchorMode = 'viewportLeft';
             anchorTs = this.estimateTimestampForDataIndex(viewportLeftIdx);
             anchorScreenX = leftScreenX;
-        } else {
-            followPlayhead = true;
-            anchorMode = 'followEdge';
-            if (replay && replay.isActive) {
-                const playheadTs = this._captureReplayPlayheadMs(replay);
-                if (Number.isFinite(playheadTs)) {
-                    anchorTs = playheadTs;
-                }
+        } else if (replay && replay.isActive) {
+            anchorMode = 'playhead';
+            anchorTs = this._captureReplayPlayheadMs(replay);
+            const lastIdx = Math.max(0, this.data.length - 1);
+            const lastBar = this.data[lastIdx];
+            if (lastBar && Number.isFinite(lastBar.t)) {
+                anchorTs = lastBar.t;
             }
-            if (!Number.isFinite(anchorTs) && this.data.length > 0) {
-                const lastBar = this.data[this.data.length - 1];
-                if (lastBar && Number.isFinite(lastBar.t)) anchorTs = lastBar.t;
-            }
+            const spacing = this.getCandleSpacing();
+            anchorScreenX = this.dataIndexToPixel(lastIdx) + spacing / 2;
         }
         if (!Number.isFinite(anchorTs)) {
             const rightBarIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(rightIdx)));
             const rightBar = this.data[rightBarIdx];
             if (rightBar && Number.isFinite(rightBar.t)) anchorTs = rightBar.t;
-            if (anchorMode === 'center') anchorMode = 'playhead';
+            anchorMode = 'playhead';
         }
-        if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX) && viewingHistory) {
+        if (Number.isFinite(anchorTs) && !Number.isFinite(anchorScreenX)) {
+            const anchorIdx = this._findClosestBarIndexForTimestamp(anchorTs);
             const spacing = this.getCandleSpacing();
-            anchorScreenX = this.dataIndexToPixel(viewportLeftIdx) + (spacing > 0 ? spacing / 2 : 0);
+            anchorScreenX = this.dataIndexToPixel(anchorIdx) + spacing / 2;
         }
 
         const leftTs = this.estimateTimestampForDataIndex(vr.first);
@@ -25657,11 +25487,8 @@ class Chart {
             anchorMode,
             anchorTs,
             anchorScreenX,
-            followPlayhead,
             candleWidth: this.candleWidth,
             offsetX: this.offsetX,
-            sourceBarMs: barMs,
-            fromTimeframe: this.currentTimeframe || null,
             autoScale: this.autoScale !== false,
             priceZoom: this.priceZoom,
             priceOffset: this.priceOffset,
@@ -25763,13 +25590,6 @@ class Chart {
             }
         }
 
-        if (vp.followPlayhead) {
-            this._clearTfSwitchAnchorLock();
-            if (this._applyTfSwitchFollowEdgeViewport(vp)) {
-                return true;
-            }
-        }
-
         if (vp.anchorMode === 'viewportLeft'
             && Number.isFinite(vp.leftTs)
             && Number.isFinite(vp.leftScreenX)) {
@@ -25812,53 +25632,30 @@ class Chart {
      * Locks replay auto-follow when restore succeeds so follow-up sync does not recenter.
      */
     _finishTfSwitchViewportRestore() {
-        if (!this._chartViewRestored) {
-            this._restoreOrJumpAfterTfSwitch();
-        }
+        this._restoreOrJumpAfterTfSwitch();
         if (typeof this.resize === 'function') {
             try { this.resize(); } catch (_e) { /* ignore */ }
         }
         if (this._tfSwitchAnchorLock) {
             this._reapplyTfSwitchAnchorLock();
-        } else if (Number.isFinite(this._tfSwitchVisibleBarCount)
-            && typeof this._applyTfSwitchFollowEdgeViewport === 'function') {
-            const replay = this.replaySystem;
-            const atFollowEdge = !(replay && replay.isActive && replay.userHasPanned);
-            if (atFollowEdge) {
-                const m = this.margin || { l: 60, r: 60 };
-                this._applyTfSwitchFollowEdgeViewport({
-                    visibleBarCount: this._tfSwitchVisibleBarCount,
-                    plotW: Math.max(1, this.w - m.l - m.r),
-                });
-            }
         }
         if (typeof setTimeout === 'function') {
-            setTimeout(() => this._fillViewportGapsAfterTfSwitch(0), 0);
+            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(0), 0);
         }
-    }
-
-    /**
-     * Fill empty left/right space after a TF switch (TradingView keeps buffers
-     * on both sides so the captured window is fully covered).
-     */
-    _fillViewportGapsAfterTfSwitch(attempt = 0) {
-        this._fillViewportHistoryAfterTfSwitch(attempt, { allowForward: true });
     }
 
     /**
      * Fill empty left space after a TF switch by loading older bars (TradingView
      * keeps a backward buffer so previous data appears without a manual drag).
      * Retries while data keeps arriving and a left gap remains.
-     * @param {number} attempt
-     * @param {{ allowForward?: boolean }} [options]
      */
-    _fillViewportHistoryAfterTfSwitch(attempt = 0, options = {}) {
+    _fillViewportHistoryAfterTfSwitch(attempt = 0) {
         // Big-TF tiles pull many 1m chunks (shared-master design fetches at 1m),
         // so allow more iterations than a single coarse-TF fetch would need.
         if (attempt > 28) return;
         // Loaders bail while a switch is mid-flight — retry shortly.
         if (this._timeframeSwitching || this._pairSwitchLoading) {
-            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt, options), 60);
+            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt), 60);
             return;
         }
         if (!Array.isArray(this.data) || this.data.length === 0) return;
@@ -25868,11 +25665,7 @@ class Chart {
         const m = this.margin || { l: 60, r: 60 };
         const plotW = Math.max(1, this.w - m.l - m.r);
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
-        const rightIdx = Math.ceil(this.pixelToDataIndex(m.l + plotW));
-        const needsBackward = leftIdx < 6;
-        const needsForward = !!options.allowForward && rightIdx >= this.data.length - 8;
-
-        if (!needsBackward && !needsForward) return;
+        if (leftIdx >= 6) return;
 
         const replay = this.replaySystem;
         const measureLen = () => (replay && Array.isArray(replay.fullRawData))
@@ -25891,64 +25684,51 @@ class Chart {
         }
 
         let pollMs = 260;
-        let requestedLoad = false;
 
-        if (needsForward) {
-            const hasMoreRight = !this._serverCursors
-                || this._serverCursors.hasMoreRight !== false
-                || (this.isBacktestMode && replay && replay.isActive);
-            if (hasMoreRight && !this._panLoading && typeof this.checkViewportLoadMore === 'function') {
-                this.checkViewportLoadMore('forward', true);
-                requestedLoad = true;
-                pollMs = 90;
+        if (replay && replay.isActive && sameAsHost && host) {
+            // FAST PATH (multichart): mirror everything the host already holds in
+            // one shot — instant, no network. Then, if the host itself is short,
+            // force ONE shared fetch on the host so every tile mirrors the same
+            // bars instead of each tile doing its own /bars round-trip.
+            let pulled = false;
+            if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+                try { pulled = !!this._tryExtendReplayMasterFromParent(); } catch (_e) { pulled = false; }
             }
-        }
-
-        if (needsBackward) {
-            if (replay && replay.isActive && sameAsHost && host) {
-                // FAST PATH (multichart): mirror everything the host already holds in
-                // one shot — instant, no network. Then, if the host itself is short,
-                // force ONE shared fetch on the host so every tile mirrors the same
-                // bars instead of each tile doing its own /bars round-trip.
-                let pulled = false;
-                if (typeof this._tryExtendReplayMasterFromParent === 'function') {
-                    try { pulled = !!this._tryExtendReplayMasterFromParent(); } catch (_e) { pulled = false; }
-                }
-                if (!pulled) {
-                    const hostHasLeft = !host._serverCursors
-                        || host._serverCursors.hasMoreLeft !== false
-                        || (host.isBacktestMode
-                            && typeof host._backtestReplayHasUnloadHistoryLeft === 'function'
-                            && host._backtestReplayHasUnloadHistoryLeft());
-                    if (hostHasLeft && !host._panLoading && typeof host.checkViewportLoadMore === 'function') {
-                        try { host.checkViewportLoadMore('backward', true); } catch (_e) { /* ignore */ }
-                        requestedLoad = true;
-                    }
-                } else {
-                    requestedLoad = true;
-                }
-                pollMs = pulled ? 40 : 90;
-            } else if (replay && replay.isActive) {
-                const hasMoreLeft = !this._serverCursors
-                    || this._serverCursors.hasMoreLeft !== false
-                    || (this.isBacktestMode
-                        && typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
-                        && this._backtestReplayHasUnloadHistoryLeft());
-                if (hasMoreLeft && !this._panLoading && typeof this.checkViewportLoadMore === 'function') {
-                    this.checkViewportLoadMore('backward', true);
-                    requestedLoad = true;
-                }
-                pollMs = 90;
-            } else {
-                const hasMoreLeft = !this._serverCursors || this._serverCursors.hasMoreLeft !== false;
-                if (hasMoreLeft && typeof this.checkViewportLoadMore === 'function') {
-                    this.checkViewportLoadMore('backward', true);
-                    requestedLoad = true;
+            if (!pulled) {
+                const hostHasLeft = !host._serverCursors
+                    || host._serverCursors.hasMoreLeft !== false
+                    || (host.isBacktestMode
+                        && typeof host._backtestReplayHasUnloadHistoryLeft === 'function'
+                        && host._backtestReplayHasUnloadHistoryLeft());
+                if (!hostHasLeft && !host._panLoading) return; // host has nothing more
+                if (typeof host.checkViewportLoadMore === 'function') {
+                    try { host.checkViewportLoadMore('backward', true); } catch (_e) { /* ignore */ }
                 }
             }
+            // Mirroring is instant; poll quickly to catch the host's fetch result.
+            // Match the single-chart cadence (90ms) when waiting on the host's
+            // shared fetch so panel TF-switch backfill is as fast as the main chart.
+            pollMs = pulled ? 40 : 90;
+        } else if (replay && replay.isActive) {
+            // Single chart / independent tile. Drive the forced backward fetch
+            // directly (skip the loader's 40ms debounce indirection) so chunks
+            // fire back-to-back — big-TF tiles need several 1m chunks and this
+            // keeps them as close to single-chart speed as the 2000-bar cap allows.
+            const hasMoreLeft = !this._serverCursors
+                || this._serverCursors.hasMoreLeft !== false
+                || (this.isBacktestMode
+                    && typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
+                    && this._backtestReplayHasUnloadHistoryLeft());
+            if (!hasMoreLeft && !this._panLoading) return;
+            if (!this._panLoading && typeof this.checkViewportLoadMore === 'function') {
+                this.checkViewportLoadMore('backward', true);
+            }
+            pollMs = 90;
+        } else {
+            const hasMoreLeft = !this._serverCursors || this._serverCursors.hasMoreLeft !== false;
+            if (!hasMoreLeft) return;
+            this.checkViewportLoadMore('backward', true);
         }
-
-        if (!requestedLoad) return;
 
         setTimeout(() => {
             const grew = measureLen() > beforeLen;
@@ -25958,7 +25738,7 @@ class Chart {
             // Keep going while data is arriving here OR a shared host fetch is in flight.
             const busy = this._panLoading || this._replayPanLoadTimer || (host && host._panLoading);
             if (!grew && !busy) return; // nothing more to load
-            this._fillViewportHistoryAfterTfSwitch(attempt + 1, options);
+            this._fillViewportHistoryAfterTfSwitch(attempt + 1);
         }, pollMs);
     }
 
@@ -25968,11 +25748,6 @@ class Chart {
      * candle so the chart is never left on an empty/offscreen region.
      */
     _restoreOrJumpAfterTfSwitch() {
-        // Second restore pass after the snapshot was consumed must not fall through
-        // to jumpToLatest() — that resets zoom and snaps the chart to the left edge.
-        if (this._tfSwitchAnchorLock && typeof this._reapplyTfSwitchAnchorLock === 'function') {
-            if (this._reapplyTfSwitchAnchorLock()) return;
-        }
         const vpSnap = this._tfSwitchViewport
             ? { ...this._tfSwitchViewport }
             : null;
@@ -25983,22 +25758,27 @@ class Chart {
         }
         const vp = vpSnap;
         if (vp && this.data && this.data.length > 0) {
-            if (vp.followPlayhead && this._applyTfSwitchFollowEdgeViewport(vp)) {
-                return;
-            }
             if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
                 this._commitTfSwitchAnchorLock(vp);
             } else if (Number.isFinite(vp.centerTs)
                 && typeof this._restorePositionToTimestamp === 'function') {
                 const targetCandleWidth = this._resolveTfSwitchTargetCandleWidth(vp);
                 this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
+            } else if (typeof this.jumpToLatest === 'function') {
+                this.jumpToLatest();
             } else {
-                this._softFallbackAfterTfSwitch(vp);
+                this._chartViewRestored = false;
+                this.fitToView();
             }
             return;
         }
         if (this.data && this.data.length > 0) {
-            this._softFallbackAfterTfSwitch(vpSnap);
+            if (typeof this.jumpToLatest === 'function') {
+                this.jumpToLatest();
+            } else {
+                this._chartViewRestored = false;
+                this.fitToView();
+            }
         } else {
             this._chartViewRestored = false;
             this.fitToView();
