@@ -417,7 +417,12 @@ export function mapApiSessionToReviewRow(sess: ApiSessionRecord, kpis?: KpisLite
     : sess.symbol
       ? [String(sess.symbol)]
       : [];
-  const strategyName = String(cfg.strategy_name || cfg.playbook_display || sess.name || "General");
+  const sessionName = String(sess.name || "").trim();
+  const rawStrategy = String(cfg.strategy_name || cfg.playbook_display || "").trim();
+  const strategyName =
+    !rawStrategy || (sessionName && rawStrategy.toLowerCase() === sessionName.toLowerCase())
+      ? "General"
+      : rawStrategy;
   const strategyDesc = String(cfg.description || "");
   const startDate = String(cfg.startDate || sess.start_date || "").split("T")[0] || "";
   const endDate = String(cfg.endDate || sess.end_date || "").split("T")[0] || "";

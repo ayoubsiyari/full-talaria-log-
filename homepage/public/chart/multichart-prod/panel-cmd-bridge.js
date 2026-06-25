@@ -2427,14 +2427,14 @@
     function dismissDrawingToolOnContextMenu(e) {
         var ch = global.chart;
         var dm = ch && ch.drawingManager;
-        if (!dm || !e) return;
+        if (!dm || !e) return false;
 
-        if (dm.currentTool && e.button === 0 && e.ctrlKey) return;
+        if (dm.currentTool && e.button === 0 && e.ctrlKey) return false;
 
         if (ch.shouldSuppressRightClickContextMenu
             && typeof ch.shouldSuppressRightClickContextMenu === 'function'
             && ch.shouldSuppressRightClickContextMenu(e)) {
-            return;
+            return false;
         }
 
         var cleared = false;
@@ -2452,7 +2452,7 @@
             cleared = dismissActiveDrawingTool(dm, false);
         }
 
-        if (cleared) notifyParentDrawingToolCleared();
+        return cleared;
     }
 
     function isDrawingToolDismissKeyTarget(dm) {
@@ -2498,7 +2498,7 @@
 
         // Deactivate armed / in-progress drawing tools before forwarding
         // the unified host context menu (local chart.js never sees this event).
-        dismissDrawingToolOnContextMenu(e);
+        var toolDismissed = dismissDrawingToolOnContextMenu(e);
 
         // Hide the local menu in case chart.js already rendered it
         // (some paths fire both mouseup + contextmenu in the same task).
@@ -2548,6 +2548,7 @@
                 priceText: priceText,
                 symbolName: symbolName,
                 currentPrice: currentPrice,
+                toolDismissed: !!toolDismissed,
             }, '*');
         } catch (_) {}
     }

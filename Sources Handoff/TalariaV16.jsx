@@ -323,6 +323,58 @@ const dashTradeDisciplineAccent = (label, palette) => {
   if (lower.includes("out of")) return palette.rd;
   return palette.acL;
 };
+const hydrateTradeCardTagState = (flatTags, defs) => {
+  const remaining = [...(Array.isArray(flatTags) ? flatTags : [])];
+  const state = {};
+  (Array.isArray(defs) ? defs : []).forEach(def => {
+    if (!def?.id) return;
+    if (def.type === "bool") {
+      if (remaining.includes(def.label)) {
+        state[def.id] = true;
+        remaining.splice(remaining.indexOf(def.label), 1);
+      }
+      return;
+    }
+    const match = (def.options || []).find(opt => remaining.includes(opt));
+    if (match != null) {
+      state[def.id] = [match];
+      remaining.splice(remaining.indexOf(match), 1);
+    }
+  });
+  return state;
+};
+const flattenTradeCardTagState = (state, defs) => {
+  const out = [];
+  (Array.isArray(defs) ? defs : []).forEach(def => {
+    if (!def?.id) return;
+    const val = state?.[def.id];
+    if (def.type === "bool") {
+      if (val === true) out.push(def.label);
+      return;
+    }
+    const list = Array.isArray(val) ? val : (val ? [val] : []);
+    list.forEach(item => {
+      const text = String(item || "").trim();
+      if (text) out.push(text);
+    });
+  });
+  return out;
+};
+const toggleTradeCardTagSelection = (state, def, option) => {
+  const next = {...(state || {})};
+  if (def.type === "bool") {
+    const wantYes = option === true;
+    const active = wantYes ? next[def.id] === true : next[def.id] === false;
+    if (active) delete next[def.id];
+    else next[def.id] = wantYes;
+    return next;
+  }
+  const cur = Array.isArray(next[def.id]) ? next[def.id] : [];
+  const active = cur.includes(option);
+  if (active) delete next[def.id];
+  else next[def.id] = [option];
+  return next;
+};
 const DASH_DISCIPLINE_NOTE_KEYS = new Set([
   "rules-followed", "rules-broken", "rules_followed", "rules_broken",
   "according-to-plan", "according_to_plan", "according to plan",
@@ -10859,8 +10911,8 @@ const TalariaV8b = () => {
   const [tblSort, setTblSort] = useState(null); // {col, dir:'asc'|'desc'}
   const btmTabBarRef = useRef(null);
   const [tradeCard, setTradeCard] = useState(null);
-  const [tradeCardPreTags, setTradeCardPreTags] = useState([]);
-  const [tradeCardPostTags, setTradeCardPostTags] = useState([]);
+  const [tradeCardPreTags, setTradeCardPreTags] = useState({});
+  const [tradeCardPostTags, setTradeCardPostTags] = useState({});
   const [tradeCardNotes, setTradeCardNotes] = useState("");
   const [tradeActPopup, setTradeActPopup] = useState(null);
   const [tapJournal, setTapJournal] = useState("");
@@ -46611,7 +46663,7 @@ const TalariaV8b = () => {
                     const isSelected=selRow===r.id;
                     const isHov=hov===`pos-${i}`;
                     const rowBg=isSelected?"rgba(140,160,255,0.07)":isHov?"rgba(140,160,255,0.025)":"transparent";
-                    const openCard=()=>{setTradeCard(r);setTradeCardPreTags([...r.preTags]);setTradeCardPostTags([...r.postTags]);setTradeCardNotes(tradeNotes[r.id]||"");};
+                    const openCard=()=>{setTradeCard(r);setTradeCardPreTags(hydrateTradeCardTagState(r.preTags, tagDefs));setTradeCardPostTags(hydrateTradeCardTagState(r.postTags, postTagDefs));setTradeCardNotes(tradeNotes[r.id]||"");};
                     const isActive=r.status==="open"||r.status==="pending";
                     return(
                     <div key={r.id}
@@ -46683,17 +46735,18 @@ const TalariaV8b = () => {
                                     <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:8}}>
                                       {defs.map(def=>{
                                         if(def.type==="bool"){
-                                          const active=editTags.includes(def.label);
+                                          const keyedTags=hydrateTradeCardTagState(editTags, defs);
+                                          const active=keyedTags[def.id]===true;
                                           return(
                                             <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                                               <span style={{fontSize:10,color:c.ts,fontWeight:500}}>{def.label}</span>
                                               <div style={{display:"flex",gap:2,flexShrink:0}}>
                                                 {[["YES",true],["NO",false]].map(([lbl,val])=>{
-                                                  const sel=val?active:!active;
+                                                  const sel=val?active:keyedTags[def.id]===false;
                                                   const isH2=swHov===`td-yn-${r.id}-${def.id}-${lbl}`;
                                                   return(
                                                     <div key={lbl}
-                                                      onClick={()=>updTags(r.id,val?[...editTags.filter(x=>x!==def.label),def.label]:editTags.filter(x=>x!==def.label))}
+                                                      onClick={()=>updTags(r.id, flattenTradeCardTagState(toggleTradeCardTagSelection(keyedTags, def, val), defs))}
                                                       onMouseEnter={()=>setSwHov(`td-yn-${r.id}-${def.id}-${lbl}`)} onMouseLeave={()=>setSwHov(null)}
                                                       style={{padding:"1px 7px",fontSize:9,fontWeight:sel?700:500,cursor:"default",transition:"all 0.12s",
                                                         color:sel?accentCol:isH2?c.tx:c.ts,
@@ -46707,15 +46760,17 @@ const TalariaV8b = () => {
                                             </div>
                                           );
                                         } else {
+                                          const keyedTags=hydrateTradeCardTagState(editTags, defs);
+                                          const selected=(Array.isArray(keyedTags[def.id])?keyedTags[def.id]:[]);
                                           return(
                                             <div key={def.id}>
                                               <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.07em",display:"block",marginBottom:4}}>{def.label.toUpperCase()}</span>
                                               <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
                                                 {def.options.map(opt=>{
-                                                  const active=editTags.includes(opt);
+                                                  const active=selected.includes(opt);
                                                   const isH=swHov===`td-opt-${r.id}-${def.id}-${opt}`;
                                                   return(
-                                                    <div key={opt} onClick={()=>updTags(r.id,active?editTags.filter(x=>x!==opt):[...editTags,opt])}
+                                                    <div key={opt} onClick={()=>updTags(r.id, flattenTradeCardTagState(toggleTradeCardTagSelection(keyedTags, def, opt), defs))}
                                                       onMouseEnter={()=>setSwHov(`td-opt-${r.id}-${def.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
                                                       style={{padding:"2px 8px",fontSize:9,fontWeight:active?700:400,cursor:"default",transition:"all 0.12s",
                                                         color:active?accentCol:isH?c.tx:c.ts,
@@ -49176,8 +49231,8 @@ const TalariaV8b = () => {
         const sizeUnit=r.sym.includes("/")?((r.sym.startsWith("XAU")||r.sym.startsWith("XAG"))?"oz":"Lots"):"Contracts";
         const hasProtection=!!(r.breakeven||r.trailingSL);
         const saveCard=()=>{
-          if(canEditPre) setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),pre:tradeCardPreTags}}));
-          if(canEditPost) setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),post:tradeCardPostTags}}));
+          if(canEditPre) setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),pre:flattenTradeCardTagState(tradeCardPreTags, tagDefs)}}));
+          if(canEditPost) setTradeTagOverrides(prev=>({...prev,[r.id]:{...(prev[r.id]||{}),post:flattenTradeCardTagState(tradeCardPostTags, postTagDefs)}}));
           setTradeNotes(prev=>({...prev,[r.id]:tradeCardNotes}));
           setTradeCard(null);
         };
@@ -49186,19 +49241,19 @@ const TalariaV8b = () => {
         // TagRow — no swHov; read-only shows all tags but selected highlighted, unselected dimmed
         const TagRow=(def,tags,setTags,accent,accentBg,accentBd,canEdit)=>{
           if(def.type==="bool"){
-            const active=tags.includes(def.label);
+            const active=tags[def.id]===true;
             return(
               <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",minHeight:24}}>
                 <span style={{fontSize:11,color:c.ts}}>{def.label}</span>
                 <div style={{display:"flex",gap:2}}>
                   {[["YES",true],["NO",false]].map(([lbl,val])=>{
-                    const sel=val?active:!active;
+                    const sel=val?active:tags[def.id]===false;
                     const pillColor=sel?accent:canEdit?c.ts:c.tm;
                     const pillBg=sel?accentBg:"transparent";
                     const pillBd=sel?accentBd:c.br;
                     return(
                       <div key={lbl}
-                        onClick={canEdit?()=>setTags(pt=>val?[...pt.filter(x=>x!==def.label),def.label]:pt.filter(x=>x!==def.label)):undefined}
+                        onClick={canEdit?()=>setTags(pt=>toggleTradeCardTagSelection(pt, def, val)):undefined}
                         className={canEdit?`tc-pill${sel?" tc-pill-act":""}`:undefined}
                         style={{padding:"2px 8px",fontSize:11,fontWeight:sel?700:400,cursor:"default",
                           color:pillColor,background:pillBg,border:`1px solid ${pillBd}`,
@@ -49211,7 +49266,7 @@ const TalariaV8b = () => {
               </div>
             );
           } else {
-            const selOpts=tags.filter(t=>def.options.includes(t));
+            const selOpts=Array.isArray(tags[def.id])?tags[def.id]:[];
             return(
               <div key={def.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,minHeight:24}}>
                 <span style={{fontSize:11,color:c.ts,flexShrink:0}}>{def.label}</span>
@@ -49223,7 +49278,7 @@ const TalariaV8b = () => {
                     const pillBd=sel?accentBd:c.br;
                     return(
                       <div key={opt}
-                        onClick={canEdit?()=>setTags(pt=>sel?pt.filter(x=>x!==opt):[...pt,opt]):undefined}
+                        onClick={canEdit?()=>setTags(pt=>toggleTradeCardTagSelection(pt, def, opt)):undefined}
                         className={canEdit?`tc-opt${sel?" tc-opt-act":""}`:undefined}
                         style={{padding:"2px 7px",fontSize:11,fontWeight:sel?700:400,cursor:"default",
                           color:pillColor,background:pillBg,border:`1px solid ${pillBd}`,

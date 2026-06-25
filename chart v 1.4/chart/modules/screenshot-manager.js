@@ -1201,15 +1201,23 @@ class ScreenshotManager {
                 }
             }
             
-            const canvas = await this.captureCanvasDirect(targetElement, 2);
+            let hiddenOverlays = [];
+            let canvas = null;
+            let isMultichart = false;
+            try {
+                hiddenOverlays = this._hideUIOverlays();
+                isMultichart = !!document.querySelector('[data-multichart-grid] iframe');
+                canvas = isMultichart ? await this.captureMultichartComposite(2) : null;
+                if (!canvas) canvas = await this.captureCanvasDirect(targetElement, 2);
+            } finally {
+                this._restoreUIOverlays(hiddenOverlays);
+                originalStyles.forEach((originalDisplay, element) => {
+                    element.style.display = originalDisplay;
+                });
+            }
             if (!canvas) throw new Error('Canvas capture returned null');
-            
-            // Restore original styles
-            originalStyles.forEach((originalDisplay, element) => {
-                element.style.display = originalDisplay;
-            });
-            
-            // Add watermark if enabled
+
+            if (!isMultichart) this.addOHLCOverlay(canvas, 2);
             if (includeWatermark) {
                 this.addWatermark(canvas);
             }
@@ -1396,9 +1404,9 @@ class ScreenshotManager {
 
     /**
      * Capture ALL multichart panels (host + iframes) as a single composite
-     * canvas matching the on-screen grid layout, with no gap between panels
-     * and OHLC info stamped on each panel. Falls back to null when
-     * multichart is not active.
+     * canvas matching the on-screen grid layout. Host tile A is captured from
+     * #chartWrapper (positioned over its cell); iframe tiles from their own
+     * chart-container. Falls back to null when multichart is not active.
      */
     async captureMultichartComposite(scale = 2) {
         const gridEl = document.querySelector('[data-multichart-grid]');
@@ -1406,7 +1414,9 @@ class ScreenshotManager {
         const iframes = gridEl.querySelectorAll('iframe');
         if (!iframes.length) return null;
 
-        // Collect every panel cell with its capture source
+        const gridRect = gridEl.getBoundingClientRect();
+        if (!gridRect.width || !gridRect.height) return null;
+
         const cells = [];
         for (const cell of gridEl.querySelectorAll('[data-panel-id]')) {
             const r = cell.getBoundingClientRect();
@@ -1417,43 +1427,18 @@ class ScreenshotManager {
         }
         if (!cells.length) return null;
 
-        // Determine column / row structure from unique positions
-        const uniqX = [...new Set(cells.map(c => Math.round(c.r.left)))].sort((a, b) => a - b);
-        const uniqY = [...new Set(cells.map(c => Math.round(c.r.top)))].sort((a, b) => a - b);
-
-        // Gapless layout: cumulative offsets using actual cell widths
-        const colWidths = uniqX.map((x) => {
-            const match = cells.find(c => Math.round(c.r.left) === x);
-            return match ? Math.round(match.r.width) : 0;
-        });
-        const rowHeights = uniqY.map((y) => {
-            const match = cells.find(c => Math.round(c.r.top) === y);
-            return match ? Math.round(match.r.height) : 0;
-        });
-        const totalW = colWidths.reduce((s, w) => s + w, 0);
-        const totalH = rowHeights.reduce((s, h) => s + h, 0);
-        if (!totalW || !totalH) return null;
-
         const out = document.createElement('canvas');
-        out.width  = Math.round(totalW * scale);
-        out.height = Math.round(totalH * scale);
+        out.width  = Math.round(gridRect.width  * scale);
+        out.height = Math.round(gridRect.height * scale);
         const ctx = out.getContext('2d');
         if (!ctx) return null;
 
         ctx.fillStyle = this.getScreenshotBackgroundColor(gridEl) || '#050028';
         ctx.fillRect(0, 0, out.width, out.height);
 
-        // Cumulative offsets (gapless)
-        const colOff = [0];
-        for (let i = 0; i < colWidths.length - 1; i++) colOff.push(colOff[i] + colWidths[i]);
-        const rowOff = [0];
-        for (let i = 0; i < rowHeights.length - 1; i++) rowOff.push(rowOff[i] + rowHeights[i]);
-
         for (const cell of cells) {
-            const col = uniqX.indexOf(Math.round(cell.r.left));
-            const row = uniqY.indexOf(Math.round(cell.r.top));
-            const dx = colOff[col] * scale;
-            const dy = rowOff[row] * scale;
+            const dx = (cell.r.left - gridRect.left) * scale;
+            const dy = (cell.r.top  - gridRect.top)  * scale;
             const dw = Math.round(cell.r.width  * scale);
             const dh = Math.round(cell.r.height * scale);
 
@@ -1461,20 +1446,26 @@ class ScreenshotManager {
                 let container = null;
                 let panelDoc  = document;
                 if (cell.isHost) {
-                    container = document.getElementById('chart-container');
+                    // Host chart lives in #chartWrapper (sibling overlay), NOT
+                    // inside the empty host grid cell. Capturing chart-container
+                    // pulls the full multichart bbox into one tile and leaves
+                    // a black void beside iframe panels in the composite.
+                    container = document.getElementById('chartWrapper')
+                        || document.querySelector('.chart-wrapper');
                 } else if (cell.iframe) {
                     panelDoc = cell.iframe.contentDocument
-                           || (cell.iframe.contentWindow && cell.iframe.contentWindow.document);
-                    container = panelDoc && panelDoc.getElementById('chart-container');
+                        || (cell.iframe.contentWindow && cell.iframe.contentWindow.document);
+                    container = panelDoc && (
+                        panelDoc.getElementById('chart-container')
+                        || panelDoc.querySelector('.chart-wrapper')
+                    );
                 }
                 if (!container) continue;
 
                 const panelCanvas = await this.captureCanvasDirect(container, scale);
                 if (!panelCanvas) continue;
 
-                // Stamp OHLC overlay onto the individual panel canvas
                 this._addOHLCOverlayFromDoc(panelCanvas, panelDoc, scale);
-
                 ctx.drawImage(panelCanvas, dx, dy, dw, dh);
             } catch (e) {
                 console.warn('[screenshot] panel capture failed:', e && e.message);

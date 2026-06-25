@@ -6522,8 +6522,18 @@ class ReplaySystem {
                 this.chart.priceZoom = savedPriceZoom;
             }
             if (isEmbedInitiator && typeof this.chart._ensureMultichartViewportVisible === 'function') {
+                // Match the single-chart TF-switch behavior in multichart panels:
+                // re-frame the new timeframe on the replay playhead at the same
+                // right-edge slot as the previous timeframe (centerPlayhead:false),
+                // so switching TF in a panel always shows the same play position as
+                // the one before — exactly like the host chart. Previously panels
+                // used centerPlayhead:true (playhead centered), which made the panel
+                // jump to a different on-screen position than the host on every TF
+                // switch. forceRecenter still clears userHasPanned and the
+                // blank-panel fallbacks inside _ensureMultichartViewportVisible
+                // remain, so this can't leave a panel empty.
                 const ok = this.chart._ensureMultichartViewportVisible({
-                    centerPlayhead: true,
+                    centerPlayhead: false,
                     resetPriceScale: true,
                     forceRecenter: true,
                     render: true,
@@ -6531,7 +6541,7 @@ class ReplaySystem {
                 if (!ok && typeof requestAnimationFrame === 'function') {
                     requestAnimationFrame(() => {
                         this.chart._ensureMultichartViewportVisible({
-                            centerPlayhead: true,
+                            centerPlayhead: false,
                             resetPriceScale: true,
                             forceRecenter: true,
                             render: true,

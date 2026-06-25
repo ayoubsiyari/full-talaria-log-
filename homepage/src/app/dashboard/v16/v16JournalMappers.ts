@@ -525,7 +525,7 @@ export function buildStrategyGroups(
   }
 
   for (const sess of sessions) {
-    const name = String(sess.strategyName || sess.name || "").trim();
+    const name = String(sess.strategyName || "").trim();
     if (!name) continue;
     const id = slug(name);
     const cur = byName.get(id) || {

@@ -4739,6 +4739,9 @@ class DrawingToolsManager {
                     window.dispatchEvent(new CustomEvent('v9DrawingToolCleared'));
                 }
             } catch (_) {}
+            if (this.chart && typeof this.chart.showChartContextMenu === 'function') {
+                this.chart.showChartContextMenu(event.clientX, event.clientY, event.offsetX, event.offsetY);
+            }
             return;
         }
         
@@ -4793,6 +4796,14 @@ class DrawingToolsManager {
             // Right-click on empty canvas: deselect all selected drawings then show chart menu
             if (this.selectedDrawings.length > 0) {
                 this.deselectAll({ fromCanvasBackground: true });
+            }
+            if (this.currentTool && !this.drawingState.isDrawing) {
+                this.clearTool();
+                try {
+                    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                        window.dispatchEvent(new CustomEvent('v9DrawingToolCleared'));
+                    }
+                } catch (_) {}
             }
             if (this.chart && typeof this.chart.showChartContextMenu === 'function') {
                 this.chart.showChartContextMenu(event.clientX, event.clientY, event.offsetX, event.offsetY);

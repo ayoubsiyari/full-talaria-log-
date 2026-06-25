@@ -290,6 +290,20 @@ function sessionStrategyIdFromConfig(cfg: Record<string, unknown> | undefined): 
   return null;
 }
 
+function resolveMappedSessionStrategyName(
+  sessionName: string,
+  ...candidates: string[]
+): string {
+  const normalizedSessionName = sessionName.trim().toLowerCase();
+  for (const raw of candidates) {
+    const value = String(raw || "").trim();
+    if (!value || value.startsWith("strategy:")) continue;
+    if (normalizedSessionName && value.toLowerCase() === normalizedSessionName) continue;
+    return value;
+  }
+  return "";
+}
+
 function sessionStrategyVariables(cfg: Record<string, unknown> | undefined): unknown[] {
   if (!cfg || typeof cfg !== "object") return [];
   const direct = cfg.strategy_variables ?? cfg.strategyVariables;
@@ -347,15 +361,12 @@ export function mapApiSessionToV16(
   return {
     id: sess.id,
     name: sess.name,
-    strategyName: (() => {
-      const display =
-        cfgString(cfg, "playbook_display", "strategyName") ||
-        sessionConfigStrategyName(sess);
-      if (display && !display.startsWith("strategy:")) return display;
-      const rawName = cfgString(cfg, "strategy_name", "strategyName");
-      if (rawName && !rawName.startsWith("strategy:")) return rawName;
-      return display || rawName || sess.name;
-    })(),
+    strategyName: resolveMappedSessionStrategyName(
+      String(sess.name || ""),
+      cfgString(cfg, "playbook_display", "strategyName"),
+      sessionConfigStrategyName(sess),
+      cfgString(cfg, "strategy_name", "strategyName"),
+    ),
     strategyDesc:
       cfgString(cfg, "description", "session_description", "sessionDescription", "strategy_desc") ||
       "Backtest session",

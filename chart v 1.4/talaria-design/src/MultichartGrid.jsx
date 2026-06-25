@@ -1881,6 +1881,16 @@ export default function MultichartGrid({
                         symbolName:    msg.symbolName,
                         currentPrice:  msg.currentPrice,
                     });
+                    // Sync V9 left rail AFTER the menu is shown — posting
+                    // v9-drawing-tool-cleared before iframe-contextmenu raced
+                    // React/rail updates against showChartContextMenu.
+                    if (msg.toolDismissed) {
+                        try {
+                            window.dispatchEvent(new CustomEvent("v9DrawingToolCleared", {
+                                detail: { panelId },
+                            }));
+                        } catch (_) {}
+                    }
                 },
             });
             managerRef.current = manager;
