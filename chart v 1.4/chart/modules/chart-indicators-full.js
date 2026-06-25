@@ -4035,21 +4035,21 @@
     }
 
     function applyCotNetStyleFromParams(indicator, params) {
-        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
-        const legacyS = params.lineStyle || 'Line';
         indicator.params.cftcCode = params.cftcCode != null ? String(params.cftcCode).trim() : 'auto';
         indicator.params.dataUrl = params.dataUrl != null ? String(params.dataUrl) : '';
         indicator.params.showCommercial = params.showCommercial !== false;
         indicator.params.showLarge = params.showLarge !== false;
-        indicator.style.bullColor = params.bullColor || '#26a69a';
-        indicator.style.bullOpacity = params.bullOpacity != null ? Number(params.bullOpacity) : 100;
-        indicator.style.bearColor = params.bearColor || '#ef5350';
-        indicator.style.bearOpacity = params.bearOpacity != null ? Number(params.bearOpacity) : 100;
-        indicator.style.lineWidth = legacyW;
-        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
+        indicator.style.bullColor = '#26a69a';
+        indicator.style.bullOpacity = 100;
+        indicator.style.bearColor = '#ef5350';
+        indicator.style.bearOpacity = 100;
+        indicator.style.lineWidth = 2;
+        indicator.style.lineStyle = 'Line';
+        indicator.style.lineDashStyle = 'Solid';
         indicator.overlay = false;
         indicator.separatePanel = true;
         indicator.isCotNet = true;
+        indicator.hideValues = true;
     }
 
     function calculateWilliamsR(data, period, source) {
@@ -12499,7 +12499,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
-        this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 2);
         const zy = scaleY(0);
         if (zy !== null && zy > panelTop && zy < panelBottom) {
             ctx.strokeStyle = 'rgba(0,0,0,0.45)';
@@ -12523,12 +12522,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             this._drawPanelLine(ctx, m, b, bearColor, lw, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, lineStyle, dashStyle);
         }
         indicator._displayColor = bullColor;
-        if (data._cotMarket) {
-            const m = data._cotMarket;
-            indicator._displayLabel = m.length > 42 ? m.slice(0, 39) + '…' : m;
-        } else {
-            indicator._displayLabel = data._cotNote === 'file' ? 'COT (file)' : 'COT (CFTC)';
-        }
+        indicator._displayLabel = '';
+        indicator._axisLabelTags = [];
+        indicator._axisLabelY = null;
+        indicator._axisLabelText = '';
+        indicator._axisLabelColor = '';
     };
 
     // ---- TRIX: auto-scaled line + configurable zero ----

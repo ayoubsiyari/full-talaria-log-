@@ -14001,6 +14001,67 @@ class Chart {
         return cursorStyles[type] || 'default';
     }
 
+    _panDragCursorStyle() {
+        return this.cursorType === 'dot' ? 'none' : 'move';
+    }
+
+    _axisDragCursorStyle(dragType) {
+        if (dragType === 'timeAxis') return 'ew-resize';
+        if (dragType === 'priceAxis' || dragType === 'separatePanelAxis' || dragType === 'separatePanelResize') {
+            return 'ns-resize';
+        }
+        return null;
+    }
+
+    _setChartSurfaceCursor(style) {
+        if (!style) return;
+        if (this.canvas) this.canvas.style.cursor = style;
+        const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
+        if (svgNode) svgNode.style.cursor = style;
+        const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
+        if (chartWrapper) chartWrapper.style.cursor = style;
+    }
+
+    /** Chart currently driving a chart-body pan (multi-panel: only one at a time). */
+    _findActivePanChart() {
+        const isPan = (ch) => !!(ch && ch.drag && ch.drag.active && ch.drag.type === 'pan');
+        if (isPan(this)) return this;
+        if (typeof window !== 'undefined' && isPan(window.chart)) return window.chart;
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        const panels = pm && typeof pm.getPanels === 'function' ? pm.getPanels() : (pm?.panels || []);
+        for (const p of panels) {
+            const ch = p && p.chartInstance;
+            if (isPan(ch)) return ch;
+        }
+        return null;
+    }
+
+    /** Keep drag cursor stable across SVG/canvas/panel boundaries (fixes arrow↔move flicker). */
+    _lockDragCursor(style) {
+        if (!style) return;
+        this._dragCursorLockStyle = style;
+        if (typeof window !== 'undefined') window.__talariaDragCursorOwner = this;
+        this._setChartSurfaceCursor(style);
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.style.cursor = style;
+        }
+    }
+
+    _releaseDragCursor() {
+        if (typeof window !== 'undefined' && window.__talariaDragCursorOwner
+            && window.__talariaDragCursorOwner !== this) {
+            return;
+        }
+        this._dragCursorLockStyle = null;
+        if (typeof window !== 'undefined') window.__talariaDragCursorOwner = null;
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.style.cursor = '';
+        }
+        if (!this.tool) {
+            this._setChartSurfaceCursor(this.getCurrentCursorStyle());
+        }
+    }
+
     setCursorType(type, skipSync = false) {
         this.cursorType = type;
         
@@ -25538,6 +25599,42 @@ class Chart {
             return false;
         }
 
+        // Replay: ALWAYS re-frame the new timeframe on the current replay candle
+        // (playhead) at the same on-screen slot as the previous timeframe, keeping
+        // the existing candle width. Preserving an old-TF *bar count* (the default
+        // restore below) shrinks candleWidth to fill a phantom window the coarse TF
+        // cannot fill early in a session, squashing the few bars to one side with a
+        // huge empty future region (the "TF switch drifts left" bug). Right-edge
+        // replay follow keeps the playhead at a consistent position on every TF, so
+        // switching timeframe always shows the same play position as the one before.
+        // If the user manually panned away from follow we fall through and keep their
+        // position (forceRecenter:false → syncReplayViewportToPlayhead returns false).
+        const _replay = this.replaySystem;
+        if (_replay && _replay.isActive
+            && typeof _replay.syncReplayViewportToPlayhead === 'function') {
+            const _following = !(vp && vp.userHasPanned);
+            const _keepPriceScale = !!(vp && (vp.autoScale === false || vp.priceScaleLocked));
+            this._clearTfSwitchAnchorLock();
+            const _synced = _replay.syncReplayViewportToPlayhead(this, {
+                centerPlayhead: false,
+                resetPriceScale: !_keepPriceScale,
+                forceRecenter: _following,
+                render: false,
+            });
+            if (_synced) {
+                if (_keepPriceScale) {
+                    if (Number.isFinite(vp.priceZoom)) this.priceZoom = vp.priceZoom;
+                    if (Number.isFinite(vp.priceOffset)) this.priceOffset = vp.priceOffset;
+                    if (Number.isFinite(vp.manualCenterPrice)) this.manualCenterPrice = vp.manualCenterPrice;
+                    if (Number.isFinite(vp.manualRange)) this.manualRange = vp.manualRange;
+                    this.autoScale = false;
+                    if (this.priceScale) this.priceScale.autoScale = false;
+                }
+                this._chartViewRestored = true;
+                return true;
+            }
+        }
+
         const newBarMs = this._estimateTimeframeStepMs();
         const margin = (Number.isFinite(newBarMs) && newBarMs > 0) ? newBarMs : 0;
 
@@ -26770,8 +26867,7 @@ class Chart {
                     this.drag.startY = e.clientY;
                     this.drag.lastX = e.clientX;
                     this.drag.lastY = e.clientY;
-                    this.canvas.style.cursor = 'ns-resize';
-                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+                    this._lockDragCursor('ns-resize');
                     e.preventDefault();
                     return;
                 }
@@ -26860,8 +26956,7 @@ class Chart {
                 this.drag.type = 'separatePanelAxis';
                 this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
                 this.isZooming = true;
-                this.canvas.style.cursor = 'ns-resize';
-                if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+                this._lockDragCursor('ns-resize');
             } else if (mode === 'priceAxis') {
                 this.drag.type = 'priceAxis';
                 const wasAutoScale = this.autoScale;
@@ -26893,15 +26988,7 @@ class Chart {
                 this._snapshotPanDrawingsLayer();
                 // DON'T change autoScale here - preserve lock state from double-click
                 // Update cursor to move during pan (unless in dot mode)
-                const panCursor = this.cursorType === 'dot' ? 'none' : 'move';
-                this.canvas.style.cursor = panCursor;
-                if (this.svg && this.svg.node()) {
-                    this.svg.node().style.cursor = panCursor;
-                }
-                const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
-                if (chartWrapper) {
-                    chartWrapper.style.cursor = panCursor;
-                }
+                this._lockDragCursor(this._panDragCursorStyle());
                 
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
@@ -26954,7 +27041,7 @@ class Chart {
                 } else if (this.drag.type === 'timeAxis') {
                     dragCursor = 'ew-resize';
                 } else if (this.drag.type === 'pan') {
-                    dragCursor = this.cursorType === 'dot' ? 'none' : 'move';
+                    dragCursor = this._panDragCursorStyle();
                     if (this.drag.separatePanelSlot) {
                         dragCursor = 'move';
                     }
@@ -26962,14 +27049,7 @@ class Chart {
                     dragCursor = 'ns-resize';
                 }
                 if (dragCursor !== null) {
-                    this.canvas.style.cursor = dragCursor;
-                    if (this.svg && this.svg.node()) {
-                        this.svg.node().style.cursor = dragCursor;
-                    }
-                    const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
-                    if (chartWrapper) {
-                        chartWrapper.style.cursor = dragCursor;
-                    }
+                    this._lockDragCursor(dragCursor);
                 }
                 
                 // ─── Chart Pan ─── (offset updates every mousemove; render coalesced to rAF)
@@ -27067,6 +27147,10 @@ class Chart {
                     this.drag.lastY = e.clientY;
                 }
             } else {
+                if (this._findActivePanChart()) {
+                    this._scheduleCrosshairTooltipFromEvent(e);
+                    return;
+                }
                 if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
                     const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
                     if (resizeHandle) {
@@ -27374,16 +27458,16 @@ class Chart {
             this.isZooming = false;
             this._rightMouseDragged = false;
 
+            if (wasDragging && (dragType === 'pan' || dragType === 'priceAxis' || dragType === 'timeAxis'
+                || dragType === 'separatePanelAxis' || dragType === 'separatePanelResize')) {
+                this._releaseDragCursor();
+            } else if (!this.tool) {
+                this._setChartSurfaceCursor(this.getCurrentCursorStyle());
+            }
+
             if (wasDragging && dragType === 'pan') {
                 if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
                 if (typeof this.updateTooltip === 'function') this.updateTooltip(e);
-            }
-            
-            if (!this.tool) {
-                this.canvas.style.cursor = this.getCurrentCursorStyle();
-                if (this.svg && this.svg.node()) {
-                    this.svg.node().style.cursor = this.getCurrentCursorStyle();
-                }
             }
         };
         
@@ -27422,6 +27506,9 @@ class Chart {
             this._separatePanelHoverHandle = null;
             this.boxZoom.active = false;
             this.inertia.active = false;
+            if (wasPanDrag || wasPanelResize) {
+                this._releaseDragCursor();
+            }
             const dm = this.drawingManager;
             if (dm && (dm.isResizing || dm.isCustomHandleDrag)) {
                 this.canvas.style.cursor = 'ew-resize';
@@ -27433,8 +27520,8 @@ class Chart {
                 if (this.svg && this.svg.node()) {
                     this.svg.node().style.cursor = 'move';
                 }
-            } else {
-                this.canvas.style.cursor = 'default';
+            } else if (!wasPanDrag && !wasPanelResize) {
+                this._setChartSurfaceCursor(this.getCurrentCursorStyle());
             }
             // hideCrosshair is NOT called here — the document-level capture listener
             // calls updateCrosshair() on every move; its own boundary check hides the
@@ -27474,6 +27561,15 @@ class Chart {
                 this.ctrlMarqueeSelect.endX = lx;
                 this.ctrlMarqueeSelect.endY = ly;
                 this.scheduleRender();
+            }
+
+            if (this.drag && this.drag.active && this.canvas) {
+                const dragCursor = this.drag.type === 'pan'
+                    ? this._panDragCursorStyle()
+                    : this._axisDragCursorStyle(this.drag.type);
+                if (dragCursor) {
+                    this._lockDragCursor(dragCursor);
+                }
             }
 
             // Continue axis/pan drags when pointer leaves canvas or moves over separate-panel DOM layers.

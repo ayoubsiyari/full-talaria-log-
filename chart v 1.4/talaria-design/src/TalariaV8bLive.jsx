@@ -14013,7 +14013,7 @@ const TalariaV8bLive = () => {
         counts[tabFn(p)]++;
       });
       let first = "visibility";
-      if (indicatorType === "icteverything") first = "input";
+      if (indicatorType === "icteverything" || indicatorType === "cotnet") first = "input";
       else if (counts.style) first = "style";
       else if (counts.input) first = "input";
       indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };

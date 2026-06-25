@@ -2011,13 +2011,7 @@ const INDICATOR_DEFINITIONS = {
                 tab: 'input'
             },
             { id: 'showCommercial', label: 'Show commercial net', type: 'checkbox', default: true, tab: 'visibility' },
-            { id: 'showLarge', label: 'Show non-commercial net', type: 'checkbox', default: true, tab: 'visibility' },
-            { id: 'bullColor', label: 'Commercial (net)', type: 'color', default: '#26a69a', tab: 'style' },
-            { id: 'bullOpacity', label: 'Commercial opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
-            { id: 'bearColor', label: 'Non-commercial (net)', type: 'color', default: '#ef5350', tab: 'style' },
-            { id: 'bearOpacity', label: 'Non-commercial opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
-            { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+            { id: 'showLarge', label: 'Show non-commercial net', type: 'checkbox', default: true, tab: 'visibility' }
         ]
     },
     ictpd: {
@@ -5436,20 +5430,6 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 checkboxRow: { showId: 'showObv', label: 'On Balance Volume' },
                 bandStyleHeader: true,
                 rows: [v9BandStyleRow('On Balance Volume', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', null)]
-            }],
-            footers: footers
-        };
-    }
-
-    if (indicatorType === 'cotnet') {
-        return {
-            sections: [{
-                title: 'COT Net',
-                bandStyleHeader: true,
-                rows: [
-                    v9BandStyleRow('Commercial (net)', 'bullColor', 'bullOpacity', 'lineStyle', 'lineWidth', null),
-                    v9BandStyleRow('Non-commercial (net)', 'bearColor', 'bearOpacity', null, null, null)
-                ]
             }],
             footers: footers
         };
