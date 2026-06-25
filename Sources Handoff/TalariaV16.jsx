@@ -329,17 +329,15 @@ const clampDashTargetRowsToEntrySize = (entryRows, targetRows, fallbackQty = nul
     return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
   }, 0) || (Number(fallbackQty) > 0 ? Number(fallbackQty) : 1);
   if (!Array.isArray(targetRows) || !targetRows.length) return targetRows || [];
-  const rows = targetRows.map((row) => {
-    const qty = Number(row?.qty);
-    return {...row, qty: Number.isFinite(qty) && qty > 0 ? qty : null};
+  let usedSize = 0;
+  return targetRows.map((row) => {
+    const rawQty = Number(row?.qty);
+    if (!Number.isFinite(rawQty) || rawQty <= 0) return {...row, qty: row?.qty ?? null};
+    const remainingSize = Math.max(0, entryTotal - usedSize);
+    const cappedQty = Math.min(rawQty, remainingSize, entryTotal);
+    usedSize += cappedQty;
+    return {...row, qty: cappedQty};
   });
-  const perRowDefault = entryTotal / rows.length;
-  const impliedTotal = rows.reduce((sum, row) => sum + (row.qty ?? perRowDefault), 0);
-  if (impliedTotal <= entryTotal + 0.000001) {
-    return rows.map((row) => ({...row, qty: row.qty ?? perRowDefault}));
-  }
-  const scale = entryTotal / impliedTotal;
-  return rows.map((row) => ({...row, qty: (row.qty ?? perRowDefault) * scale}));
 };
 /** Chart/backtest rows use BUY/SELL; manual rows use Long/Short. */
 const normalizeDashTradeSideLabel = (value, fallback = "Long") => {
@@ -30321,12 +30319,34 @@ const TalariaV8b = () => {
             );
             let changed = false;
             const nextTargets = targetRows.map((row, index) => {
-              const nextQty = formatDashTradeSizeInput(clamped[index]?.qty);
-              if (!nextQty || String(row.qty) === nextQty) return row;
+              const cappedQty = Number(clamped[index]?.qty);
+              const nextQty = Number.isFinite(cappedQty) && cappedQty > 0 ? formatDashTradeSizeInput(cappedQty) : "";
+              if (String(row.qty ?? "") === nextQty) return row;
               changed = true;
               return {...row, qty: nextQty};
             });
             return changed ? {...draft, targets: nextTargets} : draft;
+          };
+          const getDashAddTradeTargetQtyMax = (draft, rowId) => {
+            if (!draft) return null;
+            const entryRows = getDashTradeRows(draft, "entries", "entry");
+            const enteredSize = calcDashRowSizeTotal(entryRows);
+            if (!(enteredSize > 0)) return null;
+            const targetRows = getDashTradeRows(draft, "targets", "target");
+            const otherSize = targetRows.reduce((sum, row) => {
+              if (row.id === rowId) return sum;
+              const qty = parseDashTradeNumber(row.qty);
+              return qty > 0 ? sum + qty : sum;
+            }, 0);
+            return Math.max(0, enteredSize - otherSize);
+          };
+          const capDashAddTradeTargetQtyInput = (draft, rowId, rawValue) => {
+            const maxQty = getDashAddTradeTargetQtyMax(draft, rowId);
+            if (maxQty == null) return rawValue;
+            const parsed = parseDashTradeNumber(rawValue);
+            if (parsed == null) return rawValue;
+            if (parsed <= maxQty + 0.000001) return rawValue;
+            return formatDashTradeSizeInput(maxQty);
           };
           const applyDashAddTradeSizeClamps = draft => {
             if (!draft) return draft;
@@ -30761,7 +30781,9 @@ const TalariaV8b = () => {
             setDashAddTradeDraft(prev => {
               if (!prev) return prev;
               const rows = getDashTradeRows(prev, kind, dashLegacyFieldForRows(kind));
-              const next = {...prev, [kind]:rows.map(row => row.id === id ? {...row, [field]:value} : row)};
+              let nextValue = value;
+              if (kind === "targets" && field === "qty") nextValue = capDashAddTradeTargetQtyInput(prev, id, value);
+              const next = {...prev, [kind]:rows.map(row => row.id === id ? {...row, [field]:nextValue} : row)};
               const sizedNext = (kind === "entries" || kind === "exits" || kind === "targets") ? applyDashAddTradeSizeClamps(next) : next;
               return (kind === "entries" || kind === "exits") ? normalizeDashAddTradeExitStatus(sizedNext, {reopenPartial:true}) : sizedNext;
             });
@@ -31069,15 +31091,17 @@ const TalariaV8b = () => {
           };
           const saveDashAddTradeDraft = () => {
             if (!dashAddTradeDraft || !dashAddTradeEditorSource) return;
+            const draftToSave = applyDashAddTradeSizeClamps(dashAddTradeDraft);
+            if (draftToSave !== dashAddTradeDraft) setDashAddTradeDraft(draftToSave);
             const nowIso = new Date().toISOString();
-            const validation = validateDashAddTradeDraft(dashAddTradeDraft, dashAddTradeEditorSource);
+            const validation = validateDashAddTradeDraft(draftToSave, dashAddTradeEditorSource);
             if (!validation.ok) {
               setDashAddTradeValidationError(validation.error);
               setDashAddTradeEditorPage("trade");
               return;
             }
-            const calculated = validation.calculated || calcDashAddTradeStats(dashAddTradeDraft);
-            const currency = calcDashManualCurrency(dashAddTradeEditorSource, calculated, dashAddTradeDraft);
+            const calculated = validation.calculated || calcDashAddTradeStats(draftToSave);
+            const currency = calcDashManualCurrency(dashAddTradeEditorSource, calculated, draftToSave);
             const instrumentSpec = getDashInstrumentSpec(dashAddTradeEditorSource, dashAddTradeDraft.symbol, dashAddTradeDraft.assetClass);
             const manualExcursion = calcDashManualExcursion(dashAddTradeDraft, calculated);
             const exitPlacement = calcDashExitPlacement(dashAddTradeDraft, calculated);
