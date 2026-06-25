@@ -1531,7 +1531,11 @@ class CompareOverlay {
                     candle.t,
                     mainData
                 );
-            points.push({ candle, x, mainIndex, newSegment });
+            if (points.length > 0 && points[points.length - 1].mainIndex === mainIndex) {
+                points[points.length - 1] = { candle, x, mainIndex, newSegment: points[points.length - 1].newSegment };
+            } else {
+                points.push({ candle, x, mainIndex, newSegment });
+            }
             lastOkMain = mainIndex;
             lastOkOverlayTime = candle.t;
         });
@@ -3370,20 +3374,62 @@ class CompareOverlay {
         return `${rs.currentIndex}|${ch.currentTimeframe}|${maxT}|${playhead}`;
     }
 
-    _trimOverlayDataToPlayhead(data) {
+    /**
+     * Trim the overlay's forming bar using the overlay symbol's own raw stream.
+     * Main chart _trimBarOhlcToReplayPlayhead uses EUR/USD (primary) data — wrong for GBP/USD etc.
+     */
+    _trimOverlayDataToPlayhead(data, overlayRawSlice) {
         const ch = this.chart;
         if (!Array.isArray(data) || !data.length) return data;
-        if (typeof ch._trimBarOhlcToReplayPlayhead !== 'function') return data;
         const rs = ch.replaySystem;
         if (!rs?.isActive) return data;
+        if (!Array.isArray(overlayRawSlice) || !overlayRawSlice.length) return data;
+        if (typeof ch._aggregateFinerBarsWalkForward !== 'function') return data;
+
+        const playhead = typeof ch._getReplayPlayheadMs === 'function'
+            ? ch._getReplayPlayheadMs()
+            : rs.replayTimestamp;
+        if (!Number.isFinite(playhead)) return data;
+
         const tf = ch.currentTimeframe || '1m';
         const tfMs = typeof ch.parseTimeframe === 'function' ? ch.parseTimeframe(tf) : null;
         const lastIdx = data.length - 1;
-        const trimmed = ch._trimBarOhlcToReplayPlayhead(data[lastIdx], data, lastIdx, tfMs);
-        if (trimmed === data[lastIdx]) return data;
+        const bar = data[lastIdx];
+        const barT = Number(bar?.t);
+        if (!Number.isFinite(barT)) return data;
+
+        const periodEnd = typeof ch._getBarPeriodEndMs === 'function'
+            ? ch._getBarPeriodEndMs(barT, data, lastIdx, tfMs)
+            : (Number.isFinite(tfMs) ? barT + tfMs : null);
+        if (periodEnd != null && playhead >= periodEnd - 1) return data;
+
+        const partial = ch._aggregateFinerBarsWalkForward(overlayRawSlice, barT, playhead);
+        if (!partial) return data;
+
+        const trimmed = Object.assign({}, bar, {
+            o: partial.o != null ? partial.o : bar.o,
+            h: partial.h != null ? partial.h : bar.h,
+            l: partial.l != null ? partial.l : bar.l,
+            c: partial.c != null ? partial.c : bar.c,
+            v: partial.v != null ? partial.v : bar.v,
+        });
+        if (trimmed.o === bar.o && trimmed.h === bar.h && trimmed.l === bar.l && trimmed.c === bar.c) {
+            return data;
+        }
         const out = data.slice();
         out[lastIdx] = trimmed;
         return out;
+    }
+
+    /** Append or coalesce a compare line point (same main bar → update, never vertical stitch). */
+    _pushCompareLinePoint(bucket, mainIndex, x, y, breakSeg) {
+        if (bucket.length > 0 && bucket[bucket.length - 1].mainIndex === mainIndex) {
+            const last = bucket[bucket.length - 1];
+            last.x = x;
+            last.y = y;
+            return;
+        }
+        bucket.push({ mainIndex, x, y, breakSeg });
     }
 
     /**
@@ -3410,7 +3456,7 @@ class CompareOverlay {
                 const rawSlice = this._sliceRawToTimestamp(overlay.rawData, maxT);
                 const base = rawSlice.length ? rawSlice : overlay.rawData.slice(0, 1);
                 overlay.data = this.resampleData(base, tf);
-                overlay.data = this._trimOverlayDataToPlayhead(overlay.data);
+                overlay.data = this._trimOverlayDataToPlayhead(overlay.data, base);
             } else {
                 overlay.data = this.resampleData(overlay.rawData, tf);
             }
@@ -3449,6 +3495,8 @@ class CompareOverlay {
      * Called during chart render to draw overlays
      */
     drawOverlays() {
+        this.syncForReplay();
+
         const visibleOverlays = this.overlays.filter(o => o.visible);
         if (visibleOverlays.length === 0) {
             // Reset left margin and logo position when no overlays
@@ -3651,7 +3699,7 @@ class CompareOverlay {
                             candle.t,
                             mainData
                         );
-                    mapped.push({ x, y, breakSeg });
+                    this._pushCompareLinePoint(mapped, mainIndex, x, y, breakSeg);
                     lastMi = mainIndex;
                     lastOverlayTime = candle.t;
                 });

@@ -12368,11 +12368,27 @@ const TalariaV8b = () => {
       : `0 0 0 1px ${c.acB}, 0 4px 24px rgba(0,0,0,0.6), 0 0 18px rgba(38,67,247,0.15)`;
     return { isJournal, isProp: isProp || isPropJournal, stripeCol, hoverBorder, hoverShadow };
   };
+  const sessionHasTradingActivity = (sess) => {
+    if (!sess) return false;
+    if (Number(sess.progress || 0) > 0) return true;
+    if (Number(sess.trades || 0) > 0) return true;
+    if (sess.pnl != null && Number.isFinite(Number(sess.pnl))) return true;
+    if (sess.winRate != null && Number.isFinite(Number(sess.winRate))) return true;
+    if (sess.avgRR != null && Number.isFinite(Number(sess.avgRR))) return true;
+    return false;
+  };
+  const resolveSessionLifecycleBucket = (sess) => {
+    const progress = Number(sess?.progress || 0);
+    if (progress >= 100) return "completed";
+    if (sessionHasTradingActivity(sess)) return "active";
+    return "not-started";
+  };
   const applySessionsPageFilter = (s, filt) => {
     if (filt === "journal") return !!s?.isJournalSession;
-    if (filt === "not-started") return s.progress === 0;
-    if (filt === "active") return s.progress > 0 && s.progress < 100;
-    if (filt === "completed") return s.progress === 100;
+    const bucket = resolveSessionLifecycleBucket(s);
+    if (filt === "not-started") return bucket === "not-started";
+    if (filt === "active") return bucket === "active";
+    if (filt === "completed") return bucket === "completed";
     if (filt === "standard") return !s?.isJournalSession && s.tradingMode !== "prop";
     if (filt === "prop") return !s?.isJournalSession && s.tradingMode === "prop";
     return true;
@@ -13172,18 +13188,18 @@ const TalariaV8b = () => {
               {(()=>{
                 // ── Compute stats ──
                 const withPnl=sessionsPageRows.filter(s=>s.pnl!=null);
-                const completed=sessionsPageRows.filter(s=>s.progress===100).length;
-                const active=sessionsPageRows.filter(s=>s.progress>0&&s.progress<100).length;
-                const notStarted=sessionsPageRows.filter(s=>s.progress===0).length;
+                const completed=sessionsPageRows.filter(s=>resolveSessionLifecycleBucket(s)==="completed").length;
+                const active=sessionsPageRows.filter(s=>resolveSessionLifecycleBucket(s)==="active").length;
+                const notStarted=sessionsPageRows.filter(s=>resolveSessionLifecycleBucket(s)==="not-started").length;
                 const journalSess=sessionsPageRows.filter(s=>s.isJournalSession);
                 const propSess=sessionsPageRows.filter(s=>!s.isJournalSession&&s.tradingMode==="prop");
                 const stdSess=sessionsPageRows.filter(s=>!s.isJournalSession&&s.tradingMode!=="prop");
-                const journalCompleted=journalSess.filter(s=>s.progress===100).length;
-                const journalActive=journalSess.filter(s=>s.progress>0&&s.progress<100).length;
-                const propCompleted=propSess.filter(s=>s.progress===100).length;
-                const propActive=propSess.filter(s=>s.progress>0&&s.progress<100).length;
-                const stdCompleted=stdSess.filter(s=>s.progress===100).length;
-                const stdActive=stdSess.filter(s=>s.progress>0&&s.progress<100).length;
+                const journalCompleted=journalSess.filter(s=>resolveSessionLifecycleBucket(s)==="completed").length;
+                const journalActive=journalSess.filter(s=>resolveSessionLifecycleBucket(s)==="active").length;
+                const propCompleted=propSess.filter(s=>resolveSessionLifecycleBucket(s)==="completed").length;
+                const propActive=propSess.filter(s=>resolveSessionLifecycleBucket(s)==="active").length;
+                const stdCompleted=stdSess.filter(s=>resolveSessionLifecycleBucket(s)==="completed").length;
+                const stdActive=stdSess.filter(s=>resolveSessionLifecycleBucket(s)==="active").length;
                 const totalTrades=sessionsPageRows.reduce((a,s)=>a+(s.trades||0),0);
                 const profSess=withPnl.filter(s=>s.pnl>0).length;
                 const profPct=withPnl.length?Math.round(profSess/withPnl.length*100):0;
@@ -13588,8 +13604,8 @@ const TalariaV8b = () => {
                     const optLines=sess.isJournalSession
                       ? [{label:"Manual",on:true},{label:sess.platform||"Journal",on:!!sess.platform}]
                       : [{label:"Rollback",on:!!sess.rollbackAllowed},{label:"Costs",on:!!(sess.commission&&sess.commission!=="None")}];
-                    const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPassedOutcome?"Passed":"Lost"):"Done"):`${progress}%`);
-                    const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPassedOutcome?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm);
+                    const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPassedOutcome?"Passed":"Lost"):"Done"):(sessionHasTradingActivity(sess)&&progress===0?"Active":`${progress}%`));
+                    const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPassedOutcome?c.gn:c.rd):c.gn):(sessionHasTradingActivity(sess)?c.acL:c.tm));
                     return(
                       <div key={sess.id}
                         onMouseEnter={()=>setSessHov(sess.id)} onMouseLeave={()=>setSessHov(null)}
@@ -13752,14 +13768,14 @@ const TalariaV8b = () => {
                   const pnlPassedOutcome=hasPnl&&Number(sess.pnl)>=0;
                   const createdStr=sess.createdAt?new Date(sess.createdAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"—";
                   const progress=sess.progress??0;
-                  const hasStarted=progress>0;
+                  const hasStarted=sessionHasTradingActivity(sess);
                   const pnlCol=pnlDisplay.color;
                   const fmtD=d=>{if(!d)return"—";const[y,mo,day]=d.split("-");return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mo-1]+" "+Number(day)+", "+y;};
                   const pnlVal=pnlDisplay.text;
                   const modeLabel=getSessionRowModeLabel(sess);
                   const modeColor=isJournal?c.gn:(isProp?c.gold:c.acL);
-                  const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPassedOutcome?"Passed":"Lost"):"Done"):`${progress}%`);
-                  const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPassedOutcome?c.gn:c.rd):c.gn):progress>0?c.acL:c.tm);
+                  const progressLabel=isJournal?(sess.trades>0?"Live":"New"):(progress>=100?(isProp?(pnlPassedOutcome?"Passed":"Lost"):"Done"):(sessionHasTradingActivity(sess)&&progress===0?"Active":`${progress}%`));
+                  const progressColor=isJournal?(sess.trades>0?c.gn:c.tm):(progress>=100?(isProp?(pnlPassedOutcome?c.gn:c.rd):c.gn):(sessionHasTradingActivity(sess)?c.acL:c.tm));
                   const colCell=(label,val,w,valCol=c.ts)=>(
                     <div style={{width:w,flexShrink:0,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",borderRight:"none",overflow:"hidden"}}>
                       <div style={{fontSize:10,fontWeight:700,color:valCol,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums",fontFamily:F,textAlign:"center"}}>{val}</div>
@@ -13921,7 +13937,7 @@ const TalariaV8b = () => {
             {sessActMenu&&(()=>{
               const ms=sessionsPageRows.find(s=>s.id===sessActMenu.id);
               if(!ms)return null;
-              const hasStarted=ms.progress>0;
+              const hasStarted=sessionHasTradingActivity(ms);
               if(ms.isJournalSession){
                 const journalAccount = resolveJournalSessionAccount(ms);
                 return(<>
@@ -13966,7 +13982,7 @@ const TalariaV8b = () => {
                 <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:sessActMenu.y+6,left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   {[
-                    {label:ms.progress===0?"Start":"Resume", handler:()=>{launchSession(ms);setSessActMenu(null);}, col:c.acL, disabled:false, danger:false,
+                    {label:hasStarted?"Resume":"Start", handler:()=>{launchSession(ms);setSessActMenu(null);}, col:c.acL, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
                     {label:"Dashboard", handler:()=>{openEmbeddedSessionDashboard(ms);setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="8" height="8" fill="currentColor"/><rect x="11" y="1" width="8" height="8" fill="currentColor"/><rect x="1" y="11" width="8" height="8" fill="currentColor"/><rect x="11" y="11" width="8" height="8" fill="currentColor"/></svg>},
