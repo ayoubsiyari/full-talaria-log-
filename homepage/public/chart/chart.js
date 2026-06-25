@@ -25901,6 +25901,32 @@ class Chart {
         if (restored) {
             return;
         }
+
+        // Multichart embed panels never capture _tfSwitchViewport (the capture is
+        // skipped on the iframe TF-switch fast path), so _restoreTfSwitchViewport
+        // bails and they fall to jumpToLatest() below — which resets candleWidth to
+        // DEFAULT_CANDLE_WIDTH, making every timeframe render at a different zoom /
+        // position than the previous one. Mirror the single-chart TF-switch fix
+        // instead: re-frame on the replay playhead at the same right-edge slot while
+        // PRESERVING the current candle width (no zoom reset), so switching TF in a
+        // panel shows the same play position as the one before. Skipped when the
+        // host drives the viewport (date-range sync on) so we don't fight that path.
+        const _embedReplay = this.replaySystem;
+        if (!vpSnap
+            && !this._multichartVisibleRangeSyncOn
+            && typeof this._isMultichartEmbedPanel === 'function'
+            && this._isMultichartEmbedPanel()
+            && _embedReplay && _embedReplay.isActive
+            && this.data && this.data.length > 0
+            && typeof this._ensureMultichartViewportVisible === 'function') {
+            this._ensureMultichartViewportVisible({
+                centerPlayhead: false,
+                resetPriceScale: true,
+                forceRecenter: true,
+                render: false,
+            });
+            return;
+        }
         const vp = vpSnap;
         if (vp && this.data && this.data.length > 0) {
             if (Number.isFinite(vp.anchorScreenX) && Number.isFinite(vp.anchorTs)) {
