@@ -3408,26 +3408,157 @@ class CompareOverlay {
         return `live|${tf}|${span.masterLen}|${span.startTs}|${span.endTs}`;
     }
 
-    _overlayNeedsHistoryRefetch(overlay) {
+    _overlayNeedsHistoryRefetch(overlay, visibleStartTime) {
         const span = this._getMainChartRawTimeSpan();
-        if (!span || !overlay?.rawData?.length) return false;
+        if (!overlay?.rawData?.length) return !!span;
         const tfMs = this._parseTimeframeMs(this.chart?.currentTimeframe) || 60000;
-        const slack = Math.max(tfMs * 2, 120000);
+        const slack = Math.max(tfMs * 3, 180000);
         const oStart = Number(overlay.rawData[0].t);
         const oEnd = Number(overlay.rawData[overlay.rawData.length - 1].t);
         if (!Number.isFinite(oStart) || !Number.isFinite(oEnd)) return false;
-        return oStart > span.startTs + slack || oEnd < span.endTs - slack;
+        if (span && (oStart > span.startTs + slack || oEnd < span.endTs - slack)) return true;
+        if (Number.isFinite(visibleStartTime) && oStart > visibleStartTime + slack) return true;
+        return false;
+    }
+
+    _invalidateOverlayDisplayCache(overlay) {
+        if (!overlay) return;
+        overlay._displayTf = null;
+        overlay._displaySourceLen = null;
+        overlay._displaySourceEnd = null;
+        overlay._displayRawLen = null;
+    }
+
+    _mergeSortedOhlcRows(left, right) {
+        if (!Array.isArray(left) || !left.length) return Array.isArray(right) ? right.slice() : [];
+        if (!Array.isArray(right) || !right.length) return left.slice();
+        const out = [];
+        let i = 0;
+        let j = 0;
+        while (i < left.length && j < right.length) {
+            const ta = Number(left[i].t);
+            const tb = Number(right[j].t);
+            if (!Number.isFinite(ta)) { i++; continue; }
+            if (!Number.isFinite(tb)) { j++; continue; }
+            if (ta < tb) {
+                out.push(left[i++]);
+            } else if (tb < ta) {
+                out.push(right[j++]);
+            } else {
+                out.push(right[j++]);
+                i++;
+            }
+        }
+        while (i < left.length) out.push(left[i++]);
+        while (j < right.length) out.push(right[j++]);
+        return out;
+    }
+
+    _tryExtendOverlayFromCaches(overlay) {
+        const ch = this.chart;
+        if (!ch || !overlay?.fileId) return false;
+        const tf = ch.currentTimeframe || '1m';
+        const candidates = [tf, overlay.rawFetchTf, this._resolveOverlaySmartFetchTimeframe()]
+            .filter(Boolean)
+            .map((v) => String(v).trim())
+            .filter((v, idx, arr) => v && arr.indexOf(v) === idx);
+        let merged = Array.isArray(overlay.rawData) ? overlay.rawData.slice() : [];
+        let changed = false;
+        for (const fetchTf of candidates) {
+            const cached = this._getOverlayBarsFromChartTfCache(overlay.fileId, fetchTf);
+            if (!cached?.length) continue;
+            const next = this._mergeSortedOhlcRows(merged, cached);
+            if (next.length > merged.length) {
+                merged = next;
+                changed = true;
+            }
+        }
+        if (!changed) return false;
+        overlay.rawData = merged;
+        this._invalidateOverlayDisplayCache(overlay);
+        return true;
+    }
+
+    async _fetchOverlayBackwardChunk(overlay, cursorTs, limit) {
+        const ch = this.chart;
+        if (!ch || typeof ch._fetchCandlesCursor !== 'function' || !overlay?.fileId) return [];
+        const fetchTf = overlay.rawFetchTf || this._resolveOverlaySmartFetchTimeframe();
+        try {
+            const payload = await ch._fetchCandlesCursor(
+                overlay.fileId,
+                fetchTf,
+                cursorTs,
+                'backward',
+                limit || 5000
+            );
+            const bars = Array.isArray(payload?.bars) ? payload.bars.slice() : [];
+            if (bars.length > 1) bars.sort((a, b) => Number(a.t) - Number(b.t));
+            return bars;
+        } catch (_) {
+            return [];
+        }
+    }
+
+    async _extendOverlayRawDataToTarget(overlay, targetStartTs) {
+        if (!overlay?.fileId || !Number.isFinite(targetStartTs)) return false;
+        const fetchTf = overlay.rawFetchTf || this._resolveOverlaySmartFetchTimeframe();
+        const tfMs = this._parseTimeframeMs(fetchTf) || 60000;
+        const slack = Math.max(tfMs * 3, 180000);
+        let changed = false;
+
+        if (!overlay.rawData?.length) {
+            let rows = await this._fetchOverlayBarsViaSmart(overlay.fileId, fetchTf);
+            if (!rows.length) {
+                try { rows = await this._fetchOverlayBarsLegacyCsv(overlay.fileId); } catch (_) { rows = []; }
+            }
+            if (rows.length) {
+                overlay.rawData = rows;
+                overlay.rawFetchTf = fetchTf;
+                overlay.nativeBarMs = this._parseTimeframeMs(fetchTf) || this._inferMedianBarPeriodMs(rows);
+                changed = true;
+            }
+        }
+
+        let guard = 0;
+        while (overlay.rawData?.length
+            && Number(overlay.rawData[0].t) > targetStartTs + slack
+            && guard < 10) {
+            guard++;
+            const cursor = Number(overlay.rawData[0].t);
+            const older = await this._fetchOverlayBackwardChunk(overlay, cursor);
+            if (!older.length) break;
+            const merged = this._mergeSortedOhlcRows(older, overlay.rawData);
+            if (merged.length <= overlay.rawData.length) break;
+            overlay.rawData = merged;
+            changed = true;
+        }
+
+        if (changed) {
+            this._invalidateOverlayDisplayCache(overlay);
+        }
+        return changed;
     }
 
     /**
      * Main chart pan-loaded older/newer bars — resync overlays and refetch if span grew.
      */
     refreshForMainChartPanExtend(direction) {
+        const ch = this.chart;
+        if (ch) ch._overlaySnapDomains = null;
+        for (const overlay of this.overlays) {
+            this._invalidateOverlayDisplayCache(overlay);
+            this._tryExtendOverlayFromCaches(overlay);
+        }
         this._lastReplaySyncKey = null;
         this.syncForReplay();
+        if (direction === 'backward') {
+            this._refetchOverlaysForExtendedWindow().catch((e) => {
+                console.warn('📊 overlay pan extend refetch:', e && e.message ? e.message : e);
+            });
+        }
         this._scheduleOverlayPanExtendRefetch(direction);
-        if (this.chart && typeof this.chart.scheduleRender === 'function') {
-            this.chart.scheduleRender();
+        if (ch && typeof ch.scheduleRender === 'function') {
+            ch.scheduleRender();
         }
     }
 
@@ -3436,32 +3567,53 @@ class CompareOverlay {
         const delay = direction === 'backward' ? 120 : 80;
         this._panExtendOverlayTimer = setTimeout(() => {
             this._panExtendOverlayTimer = null;
-            this._refetchOverlaysForExtendedWindow().catch((e) => {
+            let visibleStartTime = null;
+            const mainData = this.chart?.data;
+            if (mainData?.length && typeof this.chart.pixelToDataIndex === 'function') {
+                const mVis = this.chart.margin || { l: 0, r: 0 };
+                const startIdx = Math.max(0, Math.floor(this.chart.pixelToDataIndex(mVis.l)) - 4);
+                visibleStartTime = mainData[startIdx]?.t;
+            }
+            this._refetchOverlaysForExtendedWindow(visibleStartTime).catch((e) => {
                 console.warn('📊 overlay pan extend refetch:', e && e.message ? e.message : e);
             });
         }, delay);
     }
 
-    async _refetchOverlaysForExtendedWindow() {
+    async _refetchOverlaysForExtendedWindow(visibleStartTime) {
         const ch = this.chart;
         if (!ch || !this.overlays.length) return;
         const span = this._getMainChartRawTimeSpan();
         if (!span) return;
 
+        const targetStartTs = Number.isFinite(visibleStartTime)
+            ? Math.min(span.startTs, visibleStartTime)
+            : span.startTs;
+
         let changed = false;
         for (const overlay of this.overlays) {
-            if (!overlay.fileId || !this._overlayNeedsHistoryRefetch(overlay)) continue;
+            if (!overlay.fileId || !this._overlayNeedsHistoryRefetch(overlay, visibleStartTime)) continue;
             const fetchTf = overlay.rawFetchTf || this._resolveOverlaySmartFetchTimeframe();
             let rows = this._getOverlayBarsFromChartTfCache(overlay.fileId, fetchTf);
-            if (!rows || !rows.length || Number(rows[0].t) > span.startTs) {
+            if (!rows || !rows.length || Number(rows[0].t) > targetStartTs) {
                 rows = await this._fetchOverlayBarsViaSmart(overlay.fileId, fetchTf);
             }
-            if (!Array.isArray(rows) || !rows.length) continue;
-            overlay.rawData = rows;
-            overlay.rawFetchTf = fetchTf;
-            overlay.nativeBarMs = this._parseTimeframeMs(fetchTf) || this._inferMedianBarPeriodMs(rows);
-            overlay.data = this.resampleData(rows, ch.currentTimeframe || '1m');
-            changed = true;
+            if (Array.isArray(rows) && rows.length) {
+                overlay.rawData = overlay.rawData?.length
+                    ? this._mergeSortedOhlcRows(overlay.rawData, rows)
+                    : rows;
+                overlay.rawFetchTf = fetchTf;
+                overlay.nativeBarMs = this._parseTimeframeMs(fetchTf) || this._inferMedianBarPeriodMs(overlay.rawData);
+                changed = true;
+            }
+            if (await this._extendOverlayRawDataToTarget(overlay, targetStartTs)) {
+                changed = true;
+            }
+            if (overlay.rawData?.length) {
+                this._invalidateOverlayDisplayCache(overlay);
+                overlay.data = this.resampleData(overlay.rawData, ch.currentTimeframe || '1m');
+                changed = true;
+            }
         }
 
         if (changed) {
@@ -3673,15 +3825,31 @@ class CompareOverlay {
             this._ensureOverlayDisplayData(overlay);
             if (!overlay.data?.length) return;
 
+            if (this._overlayNeedsHistoryRefetch(overlay, visibleStartTime)) {
+                this._tryExtendOverlayFromCaches(overlay);
+                this._ensureOverlayDisplayData(overlay);
+                this._scheduleOverlayPanExtendRefetch('backward');
+            }
+
             let minPrice;
             let maxPrice;
             const snap = this.chart._overlaySnapDomains && this.chart._overlaySnapDomains[overlay.id];
             const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
-            if (panning && snap && Number.isFinite(snap.min) && Number.isFinite(snap.max) && snap.max > snap.min) {
+            const yRange = this._computeOverlayYRange(overlay, mainData, startIdx, endIdx);
+            let useSnap = panning && snap && Number.isFinite(snap.min) && Number.isFinite(snap.max) && snap.max > snap.min;
+            if (useSnap && Number.isFinite(yRange.minPrice) && Number.isFinite(yRange.maxPrice)) {
+                const snapSpan = snap.max - snap.min;
+                if (snapSpan > 0 && (
+                    yRange.minPrice < snap.min - snapSpan * 0.08
+                    || yRange.maxPrice > snap.max + snapSpan * 0.08
+                )) {
+                    useSnap = false;
+                }
+            }
+            if (useSnap) {
                 minPrice = snap.min;
                 maxPrice = snap.max;
             } else {
-                const yRange = this._computeOverlayYRange(overlay, mainData, startIdx, endIdx);
                 minPrice = yRange.minPrice;
                 maxPrice = yRange.maxPrice;
                 if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
@@ -4415,9 +4583,11 @@ class CompareOverlay {
         }
 
         const sourceEnd = source[source.length - 1]?.t;
+        const rawLen = overlay.rawData.length;
         const needsUpdate = overlay._displayTf !== tf
             || overlay._displaySourceLen !== source.length
-            || overlay._displaySourceEnd !== sourceEnd;
+            || overlay._displaySourceEnd !== sourceEnd
+            || overlay._displayRawLen !== rawLen;
 
         if (needsUpdate) {
             overlay.data = this.resampleData(source, tf);
@@ -4427,6 +4597,7 @@ class CompareOverlay {
             overlay._displayTf = tf;
             overlay._displaySourceLen = source.length;
             overlay._displaySourceEnd = sourceEnd;
+            overlay._displayRawLen = rawLen;
         }
     }
 

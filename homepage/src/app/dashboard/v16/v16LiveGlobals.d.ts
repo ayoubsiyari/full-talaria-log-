@@ -12,6 +12,8 @@ export type V16LiveBoot = {
   strategies: V16StrategyGroup[];
   /** Full strategy lab rows (includes `variables` for Add Trade tag defs). */
   strategyBank?: Record<string, unknown>[];
+  /** Published community / official strategy templates. */
+  communityStrategies?: Record<string, unknown>[];
   appliedSource: V16AppliedSource | null;
 };
 
@@ -82,6 +84,18 @@ declare global {
     ) => Promise<Record<string, unknown>>;
     /** Delete a persisted strategy from journal-backend. */
     __TALARIA_V16_DELETE_STRATEGY__?: (strategyId: number) => Promise<void>;
+    /** Reload published community strategies. */
+    __TALARIA_V16_REFRESH_COMMUNITY__?: () => Promise<Record<string, unknown>[]>;
+    /** Copy a community template into My Strategies. */
+    __TALARIA_V16_CLONE_COMMUNITY_TEMPLATE__?: (
+      templateId: number,
+      name?: string
+    ) => Promise<Record<string, unknown>>;
+    /** Publish a saved strategy to the community feed. */
+    __TALARIA_V16_SUBMIT_COMMUNITY_STRATEGY__?: (
+      strategyId: number,
+      options?: Record<string, unknown>
+    ) => Promise<number>;
     /** Navigate to Strategy Lab and open the new-strategy builder. */
     __TALARIA_OPEN_STRATEGY_BUILDER__?: () => void;
     /** Open dashboard profile/settings from embedded V16 chrome. */

@@ -26,6 +26,7 @@ const isV16LiveBoot = () =>
 const getV16JournalBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.journal : null);
 const getV16StrategyBoot = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategies : null);
 const getV16StrategyBank = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.strategyBank : null);
+const getV16CommunityBank = () => (isV16LiveBoot() ? window.__TALARIA_V16_BOOT__?.communityStrategies : null);
 const parseStratApiId = (id) => {
   if (typeof id === "number" && Number.isFinite(id) && id > 0) return id;
   const raw = String(id ?? "").trim();
@@ -10197,6 +10198,11 @@ const TalariaV8b = () => {
   const [stratEditId, setStratEditId] = useState(null);
   const [savedCommunityIds, setSavedCommunityIds] = useState(new Set());
   const [savedCommunityStrats, setSavedCommunityStrats] = useState([]);
+  const [communityStrategies, setCommunityStrategies] = useState(() => {
+    const bank = getV16CommunityBank();
+    return Array.isArray(bank) ? bank : [];
+  });
+  const [communityFetchLoading, setCommunityFetchLoading] = useState(false);
   const [myStrategies, setMyStrategies] = useState(() => {
     if (isV16LiveBoot()) {
       const bank = getV16StrategyBank();
@@ -10238,6 +10244,48 @@ const TalariaV8b = () => {
       window.clearInterval(timer);
     };
   }, [mergeDashStrategyBankRows]);
+  useEffect(() => {
+    if (!isV16LiveBoot()) return;
+    let cancelled = false;
+    const applyCommunity = (rows) => {
+      if (cancelled) return;
+      setCommunityStrategies(Array.isArray(rows) ? rows : []);
+    };
+    const syncCommunity = () => {
+      const rows = getV16CommunityBank();
+      if (!Array.isArray(rows)) return false;
+      applyCommunity(rows);
+      return true;
+    };
+    if (syncCommunity()) return;
+    const onBoot = () => { syncCommunity(); };
+    window.addEventListener("talaria-v16-boot-updated", onBoot);
+    const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_COMMUNITY__ : null;
+    if (typeof refresh === "function") {
+      setCommunityFetchLoading(true);
+      refresh()
+        .then(applyCommunity)
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setCommunityFetchLoading(false); });
+    }
+    return () => {
+      cancelled = true;
+      window.removeEventListener("talaria-v16-boot-updated", onBoot);
+    };
+  }, []);
+  useEffect(() => {
+    if (stratTab !== "community" || !isV16LiveBoot()) return;
+    if (communityStrategies.length || communityFetchLoading) return;
+    const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_COMMUNITY__ : null;
+    if (typeof refresh !== "function") return;
+    let cancelled = false;
+    setCommunityFetchLoading(true);
+    refresh()
+      .then((rows) => { if (!cancelled) setCommunityStrategies(Array.isArray(rows) ? rows : []); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setCommunityFetchLoading(false); });
+    return () => { cancelled = true; };
+  }, [stratTab, communityStrategies.length, communityFetchLoading]);
   useEffect(() => {
     if (!dashAddTradeEditorOpen) return;
     let cancelled = false;
@@ -36173,21 +36221,32 @@ const TalariaV8b = () => {
           const TFS = ["1m","2m","3m","5m","10m","15m","30m","1H","2H","4H","1D","1W"];
           const complexityColor={Easy:c.gn,Medium:c.gold,Hard:c.rd};
 
-          /* ─── Community pool ─── */
-          const communityPool = [
-            {id:"c1",author:"TraderMike",authorBadge:"Pro",name:"Momentum Breakout",style:"Trend Following",instruments:["NQ","ES","YM"],timeframes:["5m","15m"],winRate:58,rr:2.1,trades:214,pnl:8340,complexity:"Medium",tags:["Breakout","Momentum","Volume"],saves:412,desc:"Trades NQ momentum breakouts on the 5m chart using volume confirmation and ATR-based stops."},
-            {id:"c2",author:"FXAlchemist",authorBadge:"",name:"EMA Mean Reversion",style:"Mean Reversion",instruments:["ES","SPY","QQQ"],timeframes:["15m","1H"],winRate:44,rr:1.4,trades:87,pnl:-1220,complexity:"Easy",tags:["EMA","Pullback","Counter-trend"],saves:87,desc:"Fades extended moves using EMA distance bands. Entries on pullback candles after price stretches >1.5 ATR."},
-            {id:"c3",author:"LondonLion",authorBadge:"Verified",name:"London Session Scalp",style:"Scalping",instruments:["EURUSD","GBPUSD","USDJPY"],timeframes:["1m","5m","15m"],winRate:65,rr:1.8,trades:312,pnl:6750,complexity:"Hard",tags:["Forex","Session","Scalp"],saves:631,desc:"Scalps during the London open using key S/R levels. Targets 10–20 pips with tight 5-pip stops."},
-            {id:"c4",author:"OilTrader99",authorBadge:"",name:"Volume Breakout",style:"Breakout",instruments:["CL","NG","HO"],timeframes:["1H","4H"],winRate:52,rr:2.6,trades:48,pnl:2840,complexity:"Medium",tags:["Volume","Energy","Futures"],saves:203,desc:"Trades range breakouts on crude oil with volume confirmation. Requires 150% avg volume on the breakout candle."},
-            {id:"c5",author:"GoldDigger",authorBadge:"Pro",name:"Golden Cross Trend",style:"Trend Following",instruments:["GC","SI","PL"],timeframes:["4H","1D"],winRate:71,rr:2.6,trades:52,pnl:12480,complexity:"Easy",tags:["Gold","SMA","Long-term"],saves:889,desc:"Long-only trend strategy using the 50/200 EMA golden cross on gold and silver."},
-            {id:"c6",author:"VWAPmaster",authorBadge:"",name:"VWAP Intraday",style:"Scalping",instruments:["ES","NQ","SPY"],timeframes:["1m","5m"],winRate:60,rr:1.5,trades:440,pnl:4210,complexity:"Medium",tags:["VWAP","Intraday","Scalp"],saves:344,desc:"Bounces off VWAP during regular trading hours. Uses 1-min confirmation candles with a volume spike filter."},
-            {id:"c7",author:"ZoneHunter",authorBadge:"Verified",name:"Supply & Demand Zones",style:"Swing",instruments:["EURUSD","GBPJPY","XAUUSD"],timeframes:["1H","4H","1D"],winRate:55,rr:3.2,trades:67,pnl:7650,complexity:"Hard",tags:["Zones","Price Action","Swing"],saves:521,desc:"Identifies major S&D zones on the 4H chart; takes precision entries on the 15m chart. Minimum 1:3 R:R."},
-            {id:"c8",author:"ICT_Trader",authorBadge:"Pro",name:"ICT SMC Framework",style:"Price Action",instruments:["NQ","ES","DX"],timeframes:["5m","15m","1H"],winRate:62,rr:2.8,trades:130,pnl:9200,complexity:"Hard",tags:["ICT","SMC","Liquidity"],saves:1204,desc:"Applies ICT methodology: Order Blocks, Fair Value Gaps, and liquidity sweeps. Only enters after confirmed displacement."},
-            {id:"c9",author:"AsianEdge",authorBadge:"",name:"Asian Range Breakout",style:"Breakout",instruments:["GBPUSD","AUDUSD","USDJPY"],timeframes:["15m","1H"],winRate:55,rr:1.9,trades:58,pnl:1890,complexity:"Medium",tags:["Session","Range","Forex"],saves:167,desc:"Breaks out of the Asian session range during the London open on GBP pairs. Min R:R of 1.8 required."},
-            {id:"c10",author:"MacroBot",authorBadge:"Verified",name:"News Trading Catalyst",style:"News Trading",instruments:["EURUSD","XAUUSD","USDJPY"],timeframes:["1H","4H"],winRate:61,rr:2.0,trades:22,pnl:7200,complexity:"Hard",tags:["News","NFP","FOMC"],saves:278,desc:"Trades high-impact news events (NFP, CPI, FOMC) with breakout entries and wide initial stops."},
-            {id:"c11",author:"GridKing",authorBadge:"",name:"EUR/USD Grid System",style:"Algorithmic",instruments:["EURUSD","EURGBP","EURJPY"],timeframes:["1H","4H"],winRate:62,rr:1.2,trades:388,pnl:2210,complexity:"Medium",tags:["Grid","Algorithmic","Forex"],saves:95,desc:"Places a grid of buy/sell orders every 20 pips around a central price level. Profits from oscillating price action."},
-            {id:"c12",author:"YieldCurveZ",authorBadge:"Pro",name:"Treasury Bond Yield Curve",style:"Swing",instruments:["ZB","ZN","ZF","TLT"],timeframes:["1H","1D"],winRate:61,rr:2.5,trades:33,pnl:7200,complexity:"Hard",tags:["Bonds","Yield","Macro"],saves:312,desc:"Trades the yield curve by going long ZB and short ZN/ZF during inversion periods."},
-          ];
+          const communityPool = communityStrategies;
+          const communitySortValue = (strat, key) => {
+            if (key === "name" || key === "author") return String(strat?.[key] || "").toLowerCase();
+            if (key === "saves") return Number(strat?.saves ?? strat?.copyCount) || 0;
+            const sess = (strat?.backtestSessions || [])[0];
+            const snap = strat?.backtestSnapshot;
+            if (key === "winRate") return Number(sess?.winRate ?? snap?.win_rate) || 0;
+            if (key === "pnl") return Number(sess?.pnl ?? snap?.pnl) || 0;
+            if (key === "rr") return Number(strat?.rr ?? strat?.avgRR ?? snap?.rr) || 0;
+            return strat?.[key] ?? 0;
+          };
+          const normalizeCommunityTemplateForBuilder = (tpl) => {
+            if (!tpl || typeof tpl !== "object") return tpl;
+            const def = tpl.definition && typeof tpl.definition === "object" ? tpl.definition : {};
+            const v9 = def.talaria_v9 && typeof def.talaria_v9 === "object" ? def.talaria_v9 : {};
+            return {
+              ...tpl,
+              name: tpl.title || tpl.name || "Community Strategy",
+              description: (typeof v9.desc === "string" && v9.desc) || String(def.description || tpl.desc || ""),
+              icon: (typeof v9.icon === "string" && v9.icon) || tpl.icon || "◎",
+              tags: Array.isArray(v9.tags) ? v9.tags : (Array.isArray(tpl.tags) ? tpl.tags : []),
+              timeframes: Array.isArray(v9.timeframes) ? v9.timeframes : (Array.isArray(tpl.timeframes) ? tpl.timeframes : []),
+              markets: Array.isArray(v9.markets) ? v9.markets : (Array.isArray(tpl.markets) ? tpl.markets : []),
+              groups: (v9.tree && Array.isArray(v9.tree.groups) ? v9.tree.groups : tpl.groups) || [],
+            };
+          };
 
           const normalizeStrategyBankName = normalizeStrategyBankNameKey;
           const sessionsForStrategyName = sessionsForStrategyBankName;
@@ -36222,11 +36281,11 @@ const TalariaV8b = () => {
           const filteredCommunity = communityPool
             .filter(s => {
               const q = normalizeSearchQuery(stratSearch);
-              return !q || s.name.toLowerCase().includes(q) || s.author.toLowerCase().includes(q) || s.tags.some(t=>t.toLowerCase().includes(q));
+              return !q || String(s.name||"").toLowerCase().includes(q) || String(s.author||"").toLowerCase().includes(q) || (s.tags||[]).some(t=>String(t).toLowerCase().includes(q));
             })
             .sort((a,b)=>{
-              let av=a[stratSort]??0, bv=b[stratSort]??0;
-              if(stratSort==="name"||stratSort==="author"){av=av.toLowerCase();bv=bv.toLowerCase();}
+              let av=communitySortValue(a, stratSort), bv=communitySortValue(b, stratSort);
+              if(stratSort==="name"||stratSort==="author"){av=String(av).toLowerCase();bv=String(bv).toLowerCase();}
               if(av<bv) return stratSortDir==="asc"?-1:1;
               if(av>bv) return stratSortDir==="asc"?1:-1;
               return 0;
@@ -36235,6 +36294,7 @@ const TalariaV8b = () => {
           /* ─── Filter + sort my strategies ─── */
           const stratLiveMode = isV16LiveBoot();
           const stratDataLoading = stratLiveMode && dashBootLoading;
+          const communityDataLoading = stratLiveMode && (dashBootLoading || communityFetchLoading);
           const stratBankRows = stratLiveMode ? getV16StrategyBankRows(myStrategies) : myStrategies;
           const minePreviewMode = !stratLiveMode && stratBankRows.length === 0;
           const userStrategySource = stratBankRows.map(s=>({...s,backtestSessions:(s.backtestSessions||sessionsForStrategyName(s.name))}));
@@ -36765,8 +36825,38 @@ const TalariaV8b = () => {
           };
 
           const applyTemplateToBuilder = (tpl) => {
-            fillStrategyBuilderFromTemplate(tpl);
+            fillStrategyBuilderFromTemplate(normalizeCommunityTemplateForBuilder(tpl));
             setStratBuilderOpen(true);
+          };
+
+          const resolveCommunityTemplateId = (source) => {
+            if (!source) return null;
+            if (source.templateId != null) return Number(source.templateId);
+            const match = String(source.id || "").match(/^tpl_(\d+)$/);
+            return match ? Number(match[1]) : null;
+          };
+          const copyCommunityStrategyIntoBank = (source) => {
+            if (!source) return;
+            const templateId = resolveCommunityTemplateId(source);
+            const cloneFn = typeof window !== "undefined" ? window.__TALARIA_V16_CLONE_COMMUNITY_TEMPLATE__ : null;
+            if (stratLiveMode && templateId > 0 && typeof cloneFn === "function") {
+              const existing = getV16StrategyBankRows(myStrategies);
+              const name = strategyCopyName(source.name, existing);
+              cloneFn(templateId, name)
+                .then((saved) => {
+                  setMyStrategies((prev) => [saved, ...prev.filter((s) => !sameStrategyRowId(s, saved))]);
+                  const refreshCommunity = window.__TALARIA_V16_REFRESH_COMMUNITY__;
+                  if (typeof refreshCommunity === "function") {
+                    refreshCommunity().then((rows) => setCommunityStrategies(Array.isArray(rows) ? rows : [])).catch(() => {});
+                  }
+                })
+                .catch((err) => {
+                  console.error("[V16] community clone failed", err);
+                  window.alert(err?.message || "Could not copy this community strategy.");
+                });
+              return;
+            }
+            copyStrategyIntoBank(source);
           };
 
           const strategyCopyName = (name, existing) => {
@@ -36848,7 +36938,7 @@ const TalariaV8b = () => {
             }
             applySavedCopy(copy);
           };
-          const saveTemplateReference = (preview) => copyStrategyIntoBank(preview);
+          const saveTemplateReference = (preview) => copyCommunityStrategyIntoBank(preview);
           const deleteStrategyFromBank = (source) => {
             if (!source) return;
             if (source.templatePreview) {
@@ -37176,23 +37266,35 @@ const TalariaV8b = () => {
 
                   {/* COMMUNITY */}
                   {stratTab==="community"&&(
-                    filteredCommunity.length===0?(
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,height:340}}>
-                        <svg width={48} height={48} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>No results</div>
-                        <div style={{fontSize:10,color:c.tm,fontFamily:F}}>Try adjusting your search or filters.</div>
+                    communityDataLoading ? (
+                      stratLayoutMode==="rows" ? (
+                        <StratRowsSkeleton/>
+                      ) : (
+                        <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
+                          {Array.from({length:4}).map((_,i)=><StratCardSkeleton key={`comm-skel-${i}`}/>)}
+                        </div>
+                      )
+                    ) : filteredCommunity.length===0?(
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,height:340}}>
+                        <svg width={52} height={52} viewBox="0 0 24 24" fill="none" style={{color:c.tm,opacity:0.5}}><circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/><circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/><circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                        <div style={{fontSize:13,fontWeight:700,color:c.ts,fontFamily:F}}>{normalizeSearchQuery(stratSearch)?"No strategies match":"No community strategies yet"}</div>
+                        <div style={{fontSize:10,color:c.tm,fontFamily:F,textAlign:"center",maxWidth:360}}>{normalizeSearchQuery(stratSearch)?"Try adjusting your search.":"Published strategies from other traders will appear here once shared to the community."}</div>
                       </div>
                     ):(
                       stratLayoutMode==="rows"?(
                         <StrategyRows items={filteredCommunity} isMine={false}
                           isSaved={id=>savedCommunityIds.has(id)}
-                          onSave={s=>saveCommunity(s)}/>
+                          onSave={s=>saveCommunity(s)}
+                          onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}
+                          onDuplicate={s=>copyCommunityStrategyIntoBank(s)}/>
                       ):(
                         <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                           {filteredCommunity.map(strat=>(
-                            <StratCard key={strat.id} strat={strat} isMine={false}
+                            <StratCard key={strategyRowKey(strat)||strat.id} strat={strat} isMine={false}
                               isSaved={savedCommunityIds.has(strat.id)}
-                              onSave={s=>saveCommunity(s)}/>
+                              onSave={s=>saveCommunity(s)}
+                              onDuplicate={s=>copyCommunityStrategyIntoBank(s)}
+                              onUseTemplate={tpl=>applyTemplateToBuilder(tpl)}/>
                           ))}
                         </div>
                       )
@@ -37227,13 +37329,13 @@ const TalariaV8b = () => {
                   }
                   setSessView("sessions");
                 };
-                const duplicateStrategy=()=>copyStrategyIntoBank(ms);
+                const duplicateStrategy=()=>copyCommunityStrategyIntoBank(ms);
                 const deleteStrategy=()=>deleteStrategyFromBank(ms);
                 const actions=[
                   {label:"New Session",handler:startStrategy,col:c.acL,icon:<svg width={14} height={14} viewBox="0 0 12 12"><polygon points="2,1 11,6 2,11" fill="currentColor"/></svg>},
                   {label:"divider"},
                   ...(isTemplate?[
-                    {label:"Edit",handler:()=>applyTemplateToBuilder(ms.template),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
+                    {label:"Edit",handler:()=>applyTemplateToBuilder(normalizeCommunityTemplateForBuilder(ms.template)),col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     {label:"Duplicate",handler:duplicateStrategy,col:c.ts,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
                     {label:"Delete",handler:deleteStrategy,col:c.rd,danger:true,icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ]:isMineMenu?[
@@ -37364,7 +37466,23 @@ const TalariaV8b = () => {
                           Cancel
                         </div>
                         <div onClick={()=>{
-                          const newCommunityStrat={...stratShareStrat,id:`comm_${Date.now()}`,author:"You",authorBadge:"",saves:0,isMine:false};
+                          const submitFn = typeof window !== "undefined" ? window.__TALARIA_V16_SUBMIT_COMMUNITY_STRATEGY__ : null;
+                          const apiId = parseStratApiId(stratShareStrat.id);
+                          if (stratLiveMode && apiId != null && typeof submitFn === "function") {
+                            submitFn(apiId, { backtestSessions: stratShareStrat.backtestSessions || [] })
+                              .then(() => {
+                                setStratShareStrat(null);
+                                const refresh = window.__TALARIA_V16_REFRESH_COMMUNITY__;
+                                if (typeof refresh === "function") {
+                                  refresh().then((rows) => setCommunityStrategies(Array.isArray(rows) ? rows : [])).catch(() => {});
+                                }
+                              })
+                              .catch((err) => {
+                                console.error("[V16] community publish failed", err);
+                                window.alert(err?.message || "Could not publish strategy to the community.");
+                              });
+                            return;
+                          }
                           setStratShareStrat(null);
                         }}
                           style={{height:32,padding:"0 20px",display:"flex",alignItems:"center",gap:6,fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.95)",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontFamily:F,letterSpacing:"0.05em",transition:"filter 0.12s"}}

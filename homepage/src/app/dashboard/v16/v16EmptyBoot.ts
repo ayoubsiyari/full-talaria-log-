@@ -28,6 +28,7 @@ export function createEmptyV16Boot(): V16LiveBoot {
     },
     strategies: [],
     strategyBank: [],
+    communityStrategies: [],
     appliedSource: null,
   };
 }

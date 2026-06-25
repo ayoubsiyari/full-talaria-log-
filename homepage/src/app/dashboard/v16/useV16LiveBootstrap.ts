@@ -29,6 +29,11 @@ import {
   parseStrategyApiId,
   saveStrategyToJournalApi,
 } from "./v16StrategyApi";
+import {
+  cloneCommunityTemplate,
+  fetchCommunityTemplates,
+  submitStrategyToCommunity,
+} from "./v16CommunityApi";
 import { apiStrategyToBankRow } from "../strategies/strategyLabV9Mappers";
 import type { ApiStrategyRecord } from "../strategies/strategyLabV9Mappers";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
@@ -142,6 +147,46 @@ export function useV16LiveBootstrap(): BootState {
       if (typeof refresh === "function") await refresh();
     };
 
+    window.__TALARIA_V16_REFRESH_COMMUNITY__ = async () => {
+      const rows = await fetchCommunityTemplates().catch(() => []);
+      if (window.__TALARIA_V16_BOOT__) {
+        window.__TALARIA_V16_BOOT__.communityStrategies = rows;
+        window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
+      }
+      return rows;
+    };
+
+    window.__TALARIA_V16_CLONE_COMMUNITY_TEMPLATE__ = async (templateId, name) => {
+      const saved = await cloneCommunityTemplate(templateId, name);
+      const refreshBank = window.__TALARIA_V16_REFRESH_STRATEGY_BANK__;
+      if (typeof refreshBank === "function") {
+        await refreshBank().catch(() => {
+          if (window.__TALARIA_V16_BOOT__) {
+            const bank = window.__TALARIA_V16_BOOT__.strategyBank || [];
+            const idx = bank.findIndex((row) => String(row?.id) === String(saved.id));
+            const next =
+              idx >= 0 ? bank.map((row, i) => (i === idx ? saved : row)) : [saved, ...bank];
+            window.__TALARIA_V16_BOOT__.strategyBank = next;
+            window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
+          }
+        });
+      }
+      const refreshCommunity = window.__TALARIA_V16_REFRESH_COMMUNITY__;
+      if (typeof refreshCommunity === "function") {
+        await refreshCommunity().catch(() => {});
+      }
+      return saved;
+    };
+
+    window.__TALARIA_V16_SUBMIT_COMMUNITY_STRATEGY__ = async (strategyId, options) => {
+      const templateId = await submitStrategyToCommunity(strategyId, options as never);
+      const refreshCommunity = window.__TALARIA_V16_REFRESH_COMMUNITY__;
+      if (typeof refreshCommunity === "function") {
+        await refreshCommunity().catch(() => {});
+      }
+      return templateId;
+    };
+
     (async () => {
       setState((prev) =>
         prev.status === "ready" && window.__TALARIA_V16_BOOT__?.sessions?.length
@@ -149,7 +194,7 @@ export function useV16LiveBootstrap(): BootState {
           : { status: "loading" }
       );
       try {
-        const [sessionsPayload, kpisPayload, journalPayload] = await Promise.all([
+        const [sessionsPayload, kpisPayload, journalPayload, communityStrategies] = await Promise.all([
           fetchJson<{ sessions: Session[] }>("/api/sessions"),
           fetchJson<{ kpis_by_session_id?: Record<string, SessionKpis> }>("/api/sessions/kpis").catch(
             () => ({ kpis_by_session_id: {} })
@@ -161,6 +206,7 @@ export function useV16LiveBootstrap(): BootState {
             activeProfile: null,
             liveAccounts: [],
           })),
+          fetchCommunityTemplates().catch(() => [] as Record<string, unknown>[]),
         ]);
 
         const apiSessions = sessionsPayload.sessions ?? [];
@@ -241,6 +287,7 @@ export function useV16LiveBootstrap(): BootState {
           journal,
           strategies,
           strategyBank,
+          communityStrategies,
           appliedSource,
         };
 
@@ -269,6 +316,9 @@ export function useV16LiveBootstrap(): BootState {
       delete window.__TALARIA_V16_REFRESH_STRATEGY_BANK__;
       delete window.__TALARIA_V16_SAVE_STRATEGY__;
       delete window.__TALARIA_V16_DELETE_STRATEGY__;
+      delete window.__TALARIA_V16_REFRESH_COMMUNITY__;
+      delete window.__TALARIA_V16_CLONE_COMMUNITY_TEMPLATE__;
+      delete window.__TALARIA_V16_SUBMIT_COMMUNITY_STRATEGY__;
     };
   }, [reloadKey, urlSessionId]);
 
