@@ -150,7 +150,7 @@ const createDashAddTradeDecimalInputGuard = (maxDecimals, onApply) => ({
     if (typeof onApply === "function") onApply(merged);
   },
 });
-const sanitizeDashAddTradeRowCollection = (rows, kind) => {
+const sanitizeDashAddTradeRowCollection = (rows) => {
   if (!Array.isArray(rows)) return rows;
   return rows.map((row) => {
     if (!row || typeof row !== "object") return row;
@@ -33232,13 +33232,13 @@ const TalariaV8b = () => {
                           releaseDashAddTradeGraph();
                         }}
                         onKeyDown={disabled ? undefined : e=>{
-                          addTradePriceInputGuard.onKeyDown(e);
+                          priceInputGuard.onKeyDown(e);
                           if (e.key === "Enter") {
                             e.preventDefault();
                             e.currentTarget.blur();
                           }
                         }}
-                        onPaste={disabled ? undefined : addTradePriceInputGuard.onPaste}
+                        onPaste={disabled ? undefined : priceInputGuard.onPaste}
                         onChange={e=>onChange(sanitizeDashAddTradePriceInput(e.target.value.replace(",", ".")))}
                         placeholder={placeholder || addTradeTypingCue}
                         inputMode="decimal"
@@ -33272,6 +33272,9 @@ const TalariaV8b = () => {
                     if (inputKind === "lot") return finalizeDashAddTradeLotInput(raw);
                     return sanitizeNumberInput(raw);
                   };
+                  const lotInputGuard = inputKind === "lot"
+                    ? createDashAddTradeDecimalInputGuard(DASH_ADD_TRADE_LOT_DECIMALS_MAX, onChange)
+                    : null;
                   const effectiveMin = inputKind === "lot" ? DASH_ADD_TRADE_LOT_MIN : min;
                   const locked = disabled || readOnly;
                   const inputSx = {
@@ -33288,7 +33291,8 @@ const TalariaV8b = () => {
                     if (locked) return;
                     const hold = dashAddTradeStepperHoldRef.current;
                     const baseValue = hold ? hold.value : value;
-                    const next = stepAddTradeNumberValue(baseValue, direction, step, effectiveMin, max);
+                    let next = stepAddTradeNumberValue(baseValue, direction, step, effectiveMin, max);
+                    if (inputKind === "lot") next = sanitizeDashAddTradeLotInput(next);
                     if (hold) hold.value = next;
                     onChange(next);
                   };
@@ -33348,10 +33352,10 @@ const TalariaV8b = () => {
                           if (finalized !== e.target.value) onChange(finalized);
                         }}
                         onKeyDown={locked ? undefined : e=>{
-                          if (inputKind === "lot") addTradeLotInputGuard.onKeyDown(e);
+                          if (lotInputGuard) lotInputGuard.onKeyDown(e);
                           else if (["-", "+", "e", "E"].includes(e.key)) e.preventDefault();
                         }}
-                        onPaste={locked ? undefined : (inputKind === "lot" ? addTradeLotInputGuard.onPaste : undefined)}
+                        onPaste={locked ? undefined : (lotInputGuard ? lotInputGuard.onPaste : undefined)}
                         placeholder={placeholder}
                         aria-label={ariaLabel || placeholder || dashTxt("Value","القيمة")}
                         inputMode="decimal"

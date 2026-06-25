@@ -2015,7 +2015,12 @@ export default function MultichartGrid({
         // Stagger spawns slightly: each iframe loads the full dist-v9 bundle;
         // firing 3× addChart in one tick makes B/C/D fight for CPU + HTTP/2
         // streams so the last panel often misses the old 5s bridge-ready gate.
-        // Same-pair cache boot: spawn all iframes in parallel (host already has bars).
+        // Even when the host already has cloneable bars (same-pair boot), the
+        // iframes must still parse the full ~1.5MB bundle + boot a full chart
+        // instance each. Spawning all of them in a single tick parses 3 bundles
+        // back-to-back on one thread and locks the tab ("Page Unresponsive" when
+        // adding a 2x2 layout). Keep a smaller stagger for same-pair so boots are
+        // spread across frames; use the larger gap when bars must be fetched too.
         const hostNt = readHostChartFileAndTf();
         const propFid = initialFileIdRef.current && String(initialFileIdRef.current).trim();
         const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();
@@ -2023,7 +2028,7 @@ export default function MultichartGrid({
         const effTf = propTf || hostNt.tf || "1m";
         const effMode = initialModeRef.current || readUrlChartMode();
         const sessId = initialSessionIdRef.current || null;
-        const IFRAME_ADD_STAGGER_MS = hostHasCloneableBars(effFile) ? 0 : 700;
+        const IFRAME_ADD_STAGGER_MS = hostHasCloneableBars(effFile) ? 250 : 700;
         samePairCacheBootRef.current = hostHasCloneableBars(effFile);
         if (layout.tiles.some((t) => t.id !== HOST_PANEL_ID)) {
             hostViewportFrozenRef.current = true;
