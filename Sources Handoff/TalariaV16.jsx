@@ -481,6 +481,60 @@ const resolveDashLiveJournalAddTradeTypeLabel = (source, boot = getV16JournalBoo
 
 const isDashJournalLibraryKind = (kind) => ["journalAccount", "journalEntry", "strategyJournal"].includes(kind);
 
+const dashJournalAccountKeyFromAppliedKey = (appliedKey) => {
+  const raw = String(appliedKey || "");
+  const colon = raw.indexOf(":");
+  if (colon < 0) return raw;
+  const kind = raw.slice(0, colon);
+  const id = raw.slice(colon + 1);
+  if (kind === "strategyJournal" && id.includes("::")) {
+    return id.split("::").slice(-1).join("::");
+  }
+  return id;
+};
+
+const dashJournalTradeBelongsToAccount = (trade, account, accountKey, boot = getV16JournalBoot()) => {
+  const normalizedKey = String(accountKey || account?.id || "").trim();
+  if (!normalizedKey || !trade) return false;
+  const accountId = String(account?.id || normalizedKey);
+  const liveAccountId = account?.liveAccountId;
+  const profileId = account?.profileId;
+
+  if (String(trade.journalAccountKey || "").trim() === accountId) return true;
+  if (String(trade.journalAccountKey || "").trim() === normalizedKey) return true;
+
+  for (const sk of [trade.sourceKey, trade.sourceFilterKey]) {
+    const s = String(sk || "").trim();
+    if (!s) continue;
+    if (s === `journalAccount:${accountId}` || s === `journalAccount:${normalizedKey}`) return true;
+    if (liveAccountId != null && s === `journalAccount:${liveAccountId}`) return true;
+    const keyFromSource = dashJournalAccountKeyFromAppliedKey(
+      s.includes(":") ? s : `journalAccount:${s}`
+    );
+    if (keyFromSource && (keyFromSource === accountId || keyFromSource === normalizedKey)) return true;
+  }
+
+  if (boot?.tradeToAccountKey) {
+    const rawTid = String(trade.tradeId ?? "").replace(/^live-/, "");
+    if (rawTid) {
+      const tradeKey = boot.tradeToAccountKey[rawTid] || boot.tradeToAccountKey[`live-${rawTid}`];
+      if (tradeKey === accountId || tradeKey === normalizedKey) return true;
+    }
+    const liveSuffix = String(trade.id || "").match(/(?:^|-)live-(\d+)$/);
+    if (liveSuffix) {
+      const tradeKey = boot.tradeToAccountKey[liveSuffix[1]] || boot.tradeToAccountKey[`live-${liveSuffix[1]}`];
+      if (tradeKey === accountId || tradeKey === normalizedKey) return true;
+    }
+  }
+
+  if (profileId != null) {
+    const tradeProfile = trade.profileId ?? trade.profile_id;
+    if (tradeProfile != null && Number(tradeProfile) === Number(profileId)) return true;
+  }
+
+  return false;
+};
+
 const isDashLiveJournalAddTradeSource = (source) => {
   if (!source) return false;
   const text = `${source?.statusKind || ""} ${source?.kind || ""} ${source?.typeLabel || ""}`.toLowerCase();
@@ -12391,6 +12445,35 @@ const TalariaV8b = () => {
     if (days >= 30) return `${Math.round(days / 30.44)}mo`;
     return `${days}d`;
   };
+  const sessionSortDurationDays = (sess) => {
+    if (!sess) return 0;
+    if (sess.isJournalSession) return sessionTestedDays(sess);
+    const rangeDays = sessionConfiguredRangeDays(sess);
+    return rangeDays > 0 ? rangeDays : sessionTestedDays(sess);
+  };
+  const defaultSessionSortDir = (key) => {
+    if (key === "name" || key === "strategy" || key === "mode" || key === "asset" || key === "symbol") return "asc";
+    return "desc";
+  };
+  const compareSessionsPageRows = (a, b, sortBy, sortDir) => {
+    if (!sortBy) return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    const dir = sortDir === "asc" ? 1 : -1;
+    let cmp = 0;
+    if (sortBy === "name") cmp = a.name.localeCompare(b.name);
+    else if (sortBy === "strategy") cmp = (a.strategyName || "").localeCompare(b.strategyName || "");
+    else if (sortBy === "mode") cmp = (a.tradingMode || "").localeCompare(b.tradingMode || "");
+    else if (sortBy === "asset") cmp = ((a.assetClasses || [])[0] || "").localeCompare((b.assetClasses || [])[0] || "");
+    else if (sortBy === "symbol") cmp = (a.tickers?.[0] || "").localeCompare(b.tickers?.[0] || "");
+    else if (sortBy === "date") cmp = new Date(a.startDate || 0).getTime() - new Date(b.startDate || 0).getTime();
+    else if (sortBy === "duration") cmp = sessionSortDurationDays(a) - sessionSortDurationDays(b);
+    else if (sortBy === "capital") cmp = (a.capital || 0) - (b.capital || 0);
+    else if (sortBy === "pnl") cmp = (a.pnl ?? -Infinity) - (b.pnl ?? -Infinity);
+    else if (sortBy === "winRate") cmp = (a.winRate ?? -1) - (b.winRate ?? -1);
+    else if (sortBy === "avgRR") cmp = (a.avgRR ?? -1) - (b.avgRR ?? -1);
+    else if (sortBy === "trades") cmp = (a.trades || 0) - (b.trades || 0);
+    else if (sortBy === "progress") cmp = (a.progress || 0) - (b.progress || 0);
+    return cmp * dir;
+  };
   const getSessionRowStripeMeta = (sess) => {
     const isJournal = !!sess?.isJournalSession;
     const isPropJournal = isJournal && (sess?.accountTypeKey === "prop" || sess?.tradingMode === "journal-prop");
@@ -13467,7 +13550,7 @@ const TalariaV8b = () => {
                   </div>
                 );
               })()}
-              <div style={{position:"sticky",top:0,zIndex:5,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1288,margin:"0 auto",display:"flex",alignItems:"flex-end",height:40,gap:5}}>
+              <div style={{position:"sticky",top:0,zIndex:5,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1356,margin:"0 auto",display:"flex",alignItems:"flex-end",height:40,gap:5}}>
                 <div style={{position:"absolute",bottom:0,left:32,right:32,height:1,background:c.brH,pointerEvents:"none"}}/>
                 {(()=>{
                   const getCount=v=>v==="all"?sessionsPageRows.length:sessionsPageRows.filter(s=>applySessionsPageFilter(s,v)).length;
@@ -13497,7 +13580,7 @@ const TalariaV8b = () => {
                 <div style={{marginLeft:"auto",alignSelf:"center",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                   {/* Sort button — cards mode only, LEFT of toggles */}
                   {sessLayoutMode==="cards"&&(()=>{
-                    const sortOpts=[["name","Name"],["strategy","Strategy"],["date","Date Range"],["capital","Balance"],["pnl","Net P&L"],["winRate","Win Rate"],["avgRR","Avg R:R"],["trades","Trades"],["progress","Progress"]];
+                    const sortOpts=[["name","Name"],["strategy","Strategy"],["date","Date Range"],["duration","Duration"],["capital","Balance"],["pnl","Net P&L"],["winRate","Win Rate"],["avgRR","Avg R:R"],["trades","Trades"],["progress","Progress"]];
                     const activeLabel=sessSortBy?(sortOpts.find(([k])=>k===sessSortBy)||["",""])[1]:"Recent";
                     const isBH=hov==="cardSortBtn";
                     return(
@@ -13523,7 +13606,7 @@ const TalariaV8b = () => {
                               return(
                                 <div key={key}
                                   onMouseEnter={()=>setHov("csort_"+key)} onMouseLeave={()=>setHov(null)}
-                                  onClick={()=>{if(sessSortBy===key){setSessSortDir(d=>d==="asc"?"desc":"asc");}else{setSessSortBy(key);setSessSortDir("asc");}setCardSortOpen(false);}}
+                                  onClick={()=>{if(sessSortBy===key){setSessSortDir(d=>d==="asc"?"desc":"asc");}else{setSessSortBy(key);setSessSortDir(defaultSessionSortDir(key));}setCardSortOpen(false);}}
                                   style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 12px",cursor:"default",position:"relative",
                                     background:isAct?c.acD:isIH?"rgba(255,255,255,0.03)":"transparent",
                                     transition:"background 0.1s"}}>
@@ -13588,14 +13671,14 @@ const TalariaV8b = () => {
               </div>
               {/* Sticky column headers */}
               {sessionsPageRows.length>0&&sessLayoutMode==="rows"&&(
-                <div style={{position:"sticky",top:40,zIndex:4,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1288,margin:"0 auto",display:"flex",alignItems:"center",height:26}}>
+                <div style={{position:"sticky",top:40,zIndex:4,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1356,margin:"0 auto",display:"flex",alignItems:"center",height:26}}>
                   <div style={{position:"absolute",bottom:0,left:32,right:32,height:1,background:c.brH,pointerEvents:"none"}}/>
                   <div style={{width:96,flexShrink:0}}></div>
-                  {[["Session",110,"name"],["Strategy",100,"strategy"],["Mode",74,"mode"],["Asset",90,"asset"],["Symbols",120,"symbol"],["Date Range",134,"date"],["Options",102,null],["Starting Bal.",88,"capital"],["Net P&L",80,"pnl"],["Win %",60,"winRate"],["Avg R:R",62,"avgRR"],["Trades",56,"trades"],["Progress",66,"progress"],["",50,null]].map(([label,w,sk])=>{
+                  {[["Session",110,"name"],["Strategy",100,"strategy"],["Mode",74,"mode"],["Asset",90,"asset"],["Symbols",120,"symbol"],["Date Range",134,"date"],["Duration",68,"duration"],["Options",102,null],["Starting Bal.",88,"capital"],["Net P&L",80,"pnl"],["Win %",60,"winRate"],["Avg R:R",62,"avgRR"],["Trades",56,"trades"],["Progress",66,"progress"],["",50,null]].map(([label,w,sk])=>{
                     const isActive=sk&&sessSortBy===sk;
                     const isHov=hov===("ch_"+label);
                     return(
-                      <div key={label||"_act"} onClick={sk?()=>{if(sessSortBy===sk){if(sessSortDir==="asc")setSessSortDir("desc");else{setSessSortBy(null);setSessSortDir("asc");}}else{setSessSortBy(sk);setSessSortDir("asc");}}:undefined}
+                      <div key={label||"_act"} onClick={sk?()=>{if(sessSortBy===sk){if(sessSortDir==="asc")setSessSortDir("desc");else{setSessSortBy(null);setSessSortDir("desc");}}else{setSessSortBy(sk);setSessSortDir(defaultSessionSortDir(sk));}}:undefined}
                         onMouseEnter={()=>{if(sk)setHov("ch_"+label);}}
                         onMouseLeave={()=>{if(sk)setHov(null);}}
                         style={{width:w,flexShrink:0,fontSize:8,fontWeight:800,color:isActive?c.acL:isHov?c.ts:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:"center",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",gap:3,userSelect:"none",transition:"color 0.12s",background:isHov&&!isActive?"rgba(255,255,255,0.04)":"transparent"}}>
@@ -13624,7 +13707,7 @@ const TalariaV8b = () => {
                 </div>
               ):sessLayoutMode==="cards"?(()=>{
                 const _applyFilter=(s)=>applySessionsPageFilter(s,sessFilter);
-                const _fss=[...sessionsPageRows].filter(s=>{const q=normalizeSearchQuery(sessSearchQ);if(!q)return true;return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(_applyFilter).sort((a,b)=>{if(!sessSortBy)return new Date(b.createdAt||0)-new Date(a.createdAt||0);const dir=sessSortDir==="asc"?1:-1;let cmp=0;if(sessSortBy==="name")cmp=a.name.localeCompare(b.name);else if(sessSortBy==="strategy")cmp=(a.strategyName||"").localeCompare(b.strategyName||"");else if(sessSortBy==="mode")cmp=(a.tradingMode||"").localeCompare(b.tradingMode||"");else if(sessSortBy==="asset")cmp=((a.assetClasses||[])[0]||"").localeCompare((b.assetClasses||[])[0]||"");else if(sessSortBy==="symbol")cmp=(a.tickers?.[0]||"").localeCompare(b.tickers?.[0]||"");else if(sessSortBy==="date")cmp=new Date(a.startDate||0)-new Date(b.startDate||0);else if(sessSortBy==="capital")cmp=(a.capital||0)-(b.capital||0);else if(sessSortBy==="pnl")cmp=(a.pnl??-Infinity)-(b.pnl??-Infinity);else if(sessSortBy==="winRate")cmp=(a.winRate??-1)-(b.winRate??-1);else if(sessSortBy==="avgRR")cmp=(a.avgRR??-1)-(b.avgRR??-1);else if(sessSortBy==="trades")cmp=(a.trades||0)-(b.trades||0);else if(sessSortBy==="progress")cmp=(a.progress||0)-(b.progress||0);return cmp*dir;});
+                const _fss=[...sessionsPageRows].filter(s=>{const q=normalizeSearchQuery(sessSearchQ);if(!q)return true;return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(_applyFilter).sort((a,b)=>compareSessionsPageRows(a,b,sessSortBy,sessSortDir));
                 return(
                 <div style={{width:1288,margin:"0 auto",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"4px 0 24px"}}>
                   {_fss.map(sess=>{
@@ -13779,24 +13862,7 @@ const TalariaV8b = () => {
                 );
               })():(
               <div style={{width:"fit-content",margin:"0 auto",display:"flex",flexDirection:"column"}}>
-              {[...sessionsPageRows].filter(s=>{const q=normalizeSearchQuery(sessSearchQ);if(!q)return true;return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(s=>applySessionsPageFilter(s,sessFilter)).sort((a,b)=>{
-                  if(!sessSortBy) return new Date(b.createdAt||0)-new Date(a.createdAt||0);
-                  const dir=sessSortDir==="asc"?1:-1;
-                  let cmp=0;
-                  if(sessSortBy==="name")cmp=a.name.localeCompare(b.name);
-                  else if(sessSortBy==="strategy")cmp=(a.strategyName||"").localeCompare(b.strategyName||"");
-                  else if(sessSortBy==="mode")cmp=(a.tradingMode||"").localeCompare(b.tradingMode||"");
-                  else if(sessSortBy==="asset")cmp=((a.assetClasses||[])[0]||"").localeCompare((b.assetClasses||[])[0]||"");
-                  else if(sessSortBy==="symbol")cmp=(a.tickers?.[0]||"").localeCompare(b.tickers?.[0]||"");
-                  else if(sessSortBy==="date")cmp=new Date(a.startDate||0)-new Date(b.startDate||0);
-                  else if(sessSortBy==="capital")cmp=(a.capital||0)-(b.capital||0);
-                  else if(sessSortBy==="pnl")cmp=(a.pnl??-Infinity)-(b.pnl??-Infinity);
-                  else if(sessSortBy==="winRate")cmp=(a.winRate??-1)-(b.winRate??-1);
-                  else if(sessSortBy==="avgRR")cmp=(a.avgRR??-1)-(b.avgRR??-1);
-                  else if(sessSortBy==="trades")cmp=(a.trades||0)-(b.trades||0);
-                  else if(sessSortBy==="progress")cmp=(a.progress||0)-(b.progress||0);
-                  return cmp*dir;
-                }).map((sess,idx,arr)=>{
+              {[...sessionsPageRows].filter(s=>{const q=normalizeSearchQuery(sessSearchQ);if(!q)return true;return s.name.toLowerCase().includes(q)||(s.strategyName||"").toLowerCase().includes(q)||(s.tickers||[]).some(t=>t.toLowerCase().includes(q));}).filter(s=>applySessionsPageFilter(s,sessFilter)).sort((a,b)=>compareSessionsPageRows(a,b,sessSortBy,sessSortDir)).map((sess,idx,arr)=>{
                   const isH=sessHov===sess.id;
                   const {isJournal,isProp,stripeCol,hoverBorder,hoverShadow}=getSessionRowStripeMeta(sess);
                   const hasPnl=sess.pnl!=null;
@@ -13910,6 +13976,9 @@ const TalariaV8b = () => {
                             <span style={{fontSize:9,color:c.tm,fontFamily:F}}>—</span>
                           )}
                         </div>
+
+                        {/* Duration */}
+                        {colCell("Duration",formatSessionTestedDurationLabel(sessionSortDurationDays(sess)),68,c.acL)}
 
                         {/* Session options */}
                         <div style={{width:102,flexShrink:0,padding:"0 12px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,borderRight:"none",overflow:"hidden"}}>
@@ -16007,12 +16076,9 @@ const TalariaV8b = () => {
                   accountTypeKey: account?.accountTypeKey,
                   propFirm: account?.propFirm,
                 }, dashV16JournalBoot);
+                const resolvedAccountKey = account?.id || accountId;
                 const trades = dashV16JournalBoot.libraryTrades
-                  .filter(trade => {
-                    const tid = String(trade.tradeId ?? trade.id ?? "").replace(/^live-/, "");
-                    const tradeKey = dashV16JournalBoot.tradeToAccountKey[tid] || dashV16JournalBoot.tradeToAccountKey[`live-${tid}`];
-                    return tradeKey === (account?.id || accountId) || String(trade.journalAccountKey) === String(accountId);
-                  })
+                  .filter(trade => dashJournalTradeBelongsToAccount(trade, account, resolvedAccountKey, dashV16JournalBoot))
                   .map(trade => ({
                     ...trade,
                     id:`${key}-${trade.id}`,
@@ -16022,15 +16088,7 @@ const TalariaV8b = () => {
                     sourceType:"live-journal",
                   }));
                 const manualJournalTrades = dashManualTrades
-                  .filter(trade => {
-                    const sourceKey = String(trade?.sourceKey || trade?.sourceFilterKey || "");
-                    if (!sourceKey) return false;
-                    if (sourceKey === key) return true;
-                    if (sourceKey === `journalAccount:${accountId}`) return true;
-                    if (account?.liveAccountId != null && sourceKey === `journalAccount:${account.liveAccountId}`) return true;
-                    if (String(trade?.journalAccountKey || "") === String(account?.id || accountId)) return true;
-                    return false;
-                  })
+                  .filter(trade => dashJournalTradeBelongsToAccount(trade, account, resolvedAccountKey, dashV16JournalBoot))
                   .map((trade, index) => ({
                     ...trade,
                     id:`${key}-manual-${trade.trade_id || trade.id || index}`,
@@ -16106,9 +16164,21 @@ const TalariaV8b = () => {
               profileId: sourceItem.profileId,
             };
           };
-          const appliedJournalDashboardItem = dashboardAppliedSourceItems.find((item) =>
-            ["journalAccount", "journalEntry", "strategyJournal"].includes(item.kind)
-          );
+          const activeJournalSelectionKey = (() => {
+            const sel = dashLibraryAppliedSelection || dashLibraryAppliedSelectionRef.current;
+            if (sel?.kind && sel.id != null && isDashJournalLibraryKind(sel.kind)) {
+              return `${sel.kind}:${sel.id}`;
+            }
+            const journalKeys = dashboardAppliedSourceKeysRaw.filter((k) => {
+              const kind = String(k).split(":")[0];
+              return isDashJournalLibraryKind(kind);
+            });
+            return journalKeys.length ? journalKeys[journalKeys.length - 1] : null;
+          })();
+          const appliedJournalDashboardItem = activeJournalSelectionKey
+            ? (dashboardAppliedSourceItems.find((item) => item.key === activeJournalSelectionKey)
+              || resolveDashboardAppliedSource(activeJournalSelectionKey))
+            : dashboardAppliedSourceItems.find((item) => isDashJournalLibraryKind(item.kind));
           const appliedSelectionKind = embeddedAppliedLibraryKind;
           const provisionalJournalSourceItem = !appliedJournalDashboardItem && journalSelectionActive
             ? (() => {
@@ -16233,8 +16303,17 @@ const TalariaV8b = () => {
               </div>
             );
           }
+          const isJournalDashboardSession = !!(
+            ds?.isJournalDashboard
+            || ds?.statusKind === "journal"
+            || String(ds?.tradingMode || "").includes("journal")
+            || ds?.liveAccountId
+          );
+          const journalDashboardSourceKey = isJournalDashboardSession
+            ? String(ds?.key || ds?.id || activeJournalSelectionKey || "")
+            : "";
           const dashboardManualTradesForView = dashManualTrades.filter(trade => {
-            const sourceKey = String(trade?.sourceKey || "");
+            const sourceKey = String(trade?.sourceKey || trade?.sourceFilterKey || "");
             if (!sourceKey) return false;
             if (ds?.isMultiSourceDashboard && Array.isArray(ds.linkedSources)) {
               return ds.linkedSources.some(item => String(item?.key || "") === sourceKey);
@@ -16244,18 +16323,26 @@ const TalariaV8b = () => {
               const sourceSessionId = String(trade?.sourceSessionId || "").replace(/^strategySession:/, "");
               return sourceKey.startsWith("strategySession:") && strategySessionIds.has(sourceSessionId || sourceKey.replace("strategySession:", ""));
             }
-            if (ds?.isJournalDashboard || ds?.statusKind === "journal" || String(ds?.tradingMode || "").includes("journal")) {
-              const journalKey = String(ds?.key || ds?.id || "");
-              if (journalKey && sourceKey === journalKey) return true;
-              if (journalKey.startsWith("journalAccount:") && sourceKey === journalKey) return true;
-              if (ds?.liveAccountId != null && sourceKey === `journalAccount:${ds.liveAccountId}`) return true;
+            if (isJournalDashboardSession) {
+              const accountKey = dashJournalAccountKeyFromAppliedKey(journalDashboardSourceKey);
+              const account = dashV16JournalBoot?.accounts?.find((a) => String(a.id) === String(accountKey));
+              return dashJournalTradeBelongsToAccount(trade, account, accountKey, dashV16JournalBoot);
             }
             return sourceKey === `session:${ds.id}` || sourceKey === String(ds.id || "");
           });
-          const dsForDashboardMetrics = dashboardManualTradesForView.length
+          const dsForDashboardMetrics = !isJournalDashboardSession && dashboardManualTradesForView.length
             ? {...ds, manualTrades:dashboardManualTradesForView, trades:(Number(ds.trades)||0)+dashboardManualTradesForView.length}
             : ds;
-          const dashAllTrades = btDashBuildTrades(dsForDashboardMetrics);
+          const dashAllTradesBuilt = btDashBuildTrades(dsForDashboardMetrics);
+          const dashAllTrades = (() => {
+            if (!isJournalDashboardSession || !journalDashboardSourceKey) return dashAllTradesBuilt;
+            const accountKey = dashJournalAccountKeyFromAppliedKey(journalDashboardSourceKey);
+            const account = dashV16JournalBoot?.accounts?.find((a) => String(a.id) === String(accountKey));
+            return dashAllTradesBuilt.filter((trade) => {
+              if (String(trade.sourceFilterKey || "") === journalDashboardSourceKey) return true;
+              return dashJournalTradeBelongsToAccount(trade, account, accountKey, dashV16JournalBoot);
+            });
+          })();
           const symbols = [...new Set(dashAllTrades.map(t=>t.symbol))];
           const tags = [...new Set(dashAllTrades.map(t=>t.tag))];
           const markets = [...new Set([...(ds.assetClasses || []), ...dashAllTrades.map(t=>t.market).filter(Boolean)])];
@@ -16518,7 +16605,9 @@ const TalariaV8b = () => {
             timeRange:["full","last7","last30","last90","firstMonth","custom"].includes(dashTimeFilter) ? dashTimeFilter : "full",
             startDate:dashTimeFilter === "custom" ? customDateStart : "",
             endDate:dashTimeFilter === "custom" ? customDateEnd : "",
-            sourceKeys:"all",
+            sourceKeys:!dashboardHasSourceFilter && isJournalDashboardSession && journalDashboardSourceKey
+              ? [journalDashboardSourceKey]
+              : "all",
             symbol:dashTradeEnabled.symbol ? dashSymbolFilters.filter(value=>symbols.includes(value)) : "all",
             outcome:dashTradeEnabled.outcome ? dashOutcomeFilters.filter(value=>["wins","losses"].includes(value)) : "all",
             tag:tags.includes(dashTagFilter)?dashTagFilter:"all",
@@ -30946,8 +31035,12 @@ const TalariaV8b = () => {
               sourceOrigin:"manual",
               integrity:"Original",
               originalSnapshot:null,
-              sourceKey:dashAddTradeEditorSource.key,
-              sourceFilterKey:dashAddTradeEditorSource.key,
+              sourceKey:dashAddTradeEditorSource.key || (isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) ? `journalAccount:${dashAddTradeEditorSource.id}` : ""),
+              sourceFilterKey:dashAddTradeEditorSource.key || (isDashLiveJournalAddTradeSource(dashAddTradeEditorSource) ? `journalAccount:${dashAddTradeEditorSource.id}` : ""),
+              journalAccountKey:isDashLiveJournalAddTradeSource(dashAddTradeEditorSource)
+                ? (findDashLiveJournalBootAccount(dashAddTradeEditorSource)?.id
+                  || String(dashAddTradeEditorSource.id || "").replace(/^journalAccount:/, ""))
+                : undefined,
               sourceLabel:dashAddTradeEditorSource.label,
               sourceType:dashAddTradeEditorSource.typeLabel,
               sourceSessionId,

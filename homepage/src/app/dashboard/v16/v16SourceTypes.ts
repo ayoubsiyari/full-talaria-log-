@@ -124,6 +124,7 @@ export type ApiJournalEntry = {
   date?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  trade_status?: string | null;
   extra_data?: Record<string, unknown>;
 };
 
