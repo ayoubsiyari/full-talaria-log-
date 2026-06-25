@@ -3670,6 +3670,9 @@ class CompareOverlay {
         ctx.clip();
         
         visibleOverlays.forEach((overlay, overlayIndex) => {
+            this._ensureOverlayDisplayData(overlay);
+            if (!overlay.data?.length) return;
+
             let minPrice;
             let maxPrice;
             const snap = this.chart._overlaySnapDomains && this.chart._overlaySnapDomains[overlay.id];
@@ -3678,7 +3681,7 @@ class CompareOverlay {
                 minPrice = snap.min;
                 maxPrice = snap.max;
             } else {
-                const yRange = this._computeOverlayYRangeFromMainAnchors(overlay, mainData, startIdx, endIdx);
+                const yRange = this._computeOverlayYRange(overlay, mainData, startIdx, endIdx);
                 minPrice = yRange.minPrice;
                 maxPrice = yRange.maxPrice;
                 if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
@@ -3709,7 +3712,7 @@ class CompareOverlay {
 
             if (overlay.displayType === 'candles') {
                 const candleWidth = Math.max(1, this.chart.candleWidth * 0.6);
-                const points = this._buildMainAnchoredOverlayPoints(
+                const points = this._buildOverlayPlotPoints(
                     overlay, mainData, startIdx, endIdx, overlayYScale,
                     (bar) => Number(bar.c ?? bar.close)
                 );
@@ -3758,7 +3761,7 @@ class CompareOverlay {
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
 
-                const points = this._buildMainAnchoredOverlayPoints(
+                const points = this._buildOverlayPlotPoints(
                     overlay, mainData, startIdx, endIdx, overlayYScale,
                     (bar) => Number(bar.c ?? bar.close)
                 );
@@ -4266,7 +4269,7 @@ class CompareOverlay {
         if (!Array.isArray(series) || !series.length || !Number.isFinite(mainTimestamp)) return null;
 
         const tfMs = this._getCurrentTfMs();
-        const maxDiff = Math.max(tfMs * 2, 120000);
+        const maxDiff = Math.max(tfMs * 4, 300000);
 
         if (Number.isFinite(mainIndex) && mainIndex >= 0 && mainIndex < series.length
             && Number.isFinite(mainLen) && series.length === mainLen) {
@@ -4345,7 +4348,7 @@ class CompareOverlay {
         }
 
         if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
-            const pad = this._getCurrentTfMs();
+            const pad = this._getCurrentTfMs() * 6;
             const t0 = mainData[startIdx]?.t;
             const t1 = mainData[Math.min(endIdx, mainLen - 1)]?.t;
             if (Number.isFinite(t0) && Number.isFinite(t1)) {
@@ -4362,11 +4365,16 @@ class CompareOverlay {
         return { minPrice, maxPrice };
     }
 
-    findClosestIndex(data, timestamp, startIdx, endIdx) {
+    findClosestIndex(data, timestamp, startIdx, endIdx, opts) {
         if (!Array.isArray(data) || !data.length || !Number.isFinite(timestamp)) return -1;
 
-        let lo = 0;
-        let hi = data.length - 1;
+        const wide = !!(opts && opts.wide);
+        const loBound = Number.isFinite(startIdx) ? Math.max(0, startIdx) : 0;
+        const hiBound = Number.isFinite(endIdx) ? Math.min(data.length, endIdx) : data.length;
+        if (loBound >= hiBound) return -1;
+
+        let lo = loBound;
+        let hi = hiBound - 1;
         while (lo < hi) {
             const mid = (lo + hi) >> 1;
             if (Number(data[mid].t) < timestamp) lo = mid + 1;
@@ -4374,26 +4382,143 @@ class CompareOverlay {
         }
 
         let closestIdx = lo;
-        if (lo > 0) {
+        if (lo > loBound) {
             const diffLo = Math.abs(Number(data[lo - 1].t) - timestamp);
             const diffHi = Math.abs(Number(data[lo].t) - timestamp);
             if (diffLo <= diffHi) closestIdx = lo - 1;
         }
 
+        if (wide) return closestIdx;
+
         const minDiff = Math.abs(Number(data[closestIdx].t) - timestamp);
-        const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
-        let tfMs = 60 * 1000;
-        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
-            const parsed = this.chart.parseTimeframe(tfKey);
-            if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
-        } else {
-            tfMs = this.getTimeframeDuration(tfKey);
-        }
-        // One full bar — resampled compare symbols can shift bucket open times after TF switch.
+        const tfMs = this._getCurrentTfMs();
         const maxDiff = tfMs * 1.01;
 
         if (minDiff > maxDiff) return -1;
         return closestIdx;
+    }
+
+    /** Keep overlay.data aligned with main TF + replay playhead before each draw. */
+    _ensureOverlayDisplayData(overlay) {
+        const ch = this.chart;
+        if (!ch || !overlay?.rawData?.length) return;
+
+        const tf = ch.currentTimeframe || '1m';
+        const rs = ch.replaySystem;
+        const inReplay = !!(rs?.isActive && Array.isArray(ch.rawData) && ch.rawData.length);
+
+        let source = overlay.rawData;
+        if (inReplay) {
+            const maxT = ch.rawData[ch.rawData.length - 1].t;
+            const rawSlice = this._sliceRawToTimestamp(overlay.rawData, maxT);
+            source = rawSlice.length ? rawSlice : overlay.rawData.slice(0, 1);
+        }
+
+        const sourceEnd = source[source.length - 1]?.t;
+        const needsUpdate = overlay._displayTf !== tf
+            || overlay._displaySourceLen !== source.length
+            || overlay._displaySourceEnd !== sourceEnd;
+
+        if (needsUpdate) {
+            overlay.data = this.resampleData(source, tf);
+            if (inReplay && source.length) {
+                overlay.data = this._trimOverlayDataToPlayhead(overlay.data, source);
+            }
+            overlay._displayTf = tf;
+            overlay._displaySourceLen = source.length;
+            overlay._displaySourceEnd = sourceEnd;
+        }
+    }
+
+    /** Overlay-time anchored points — fallback when main-bar matching yields too few points. */
+    _buildOverlayAnchoredPoints(overlay, mainData, startIdx, endIdx, overlayYScale, valueFn) {
+        const points = [];
+        if (!overlay?.data?.length || !mainData?.length) return points;
+
+        const t0 = mainData[startIdx]?.t;
+        const t1 = mainData[Math.min(endIdx, mainData.length - 1)]?.t;
+        if (!Number.isFinite(t0) || !Number.isFinite(t1)) return points;
+
+        const tfMs = this._getCurrentTfMs();
+        const pad = tfMs * 6;
+        const m = this.chart.margin || { l: 0, r: 0 };
+        const plotRight = this.chart.w - m.r;
+
+        for (let oi = 0; oi < overlay.data.length; oi++) {
+            const bar = overlay.data[oi];
+            if (!bar || bar.t < t0 - pad || bar.t > t1 + pad) continue;
+
+            const mainIndex = this.findClosestIndex(mainData, bar.t, 0, mainData.length, { wide: true });
+            if (mainIndex < 0) continue;
+
+            const x = Math.round(this.chart.dataIndexToPixel(mainIndex));
+            if (x < m.l - 60 || x > plotRight + 60) continue;
+
+            const yVal = valueFn(bar);
+            if (!Number.isFinite(yVal)) continue;
+
+            const y = Math.round(overlayYScale(yVal));
+            points.push({ x, y, mainIndex, overlayTime: bar.t, bar });
+        }
+
+        return points;
+    }
+
+    _buildOverlayPlotPoints(overlay, mainData, startIdx, endIdx, overlayYScale, valueFn) {
+        let points = this._buildMainAnchoredOverlayPoints(
+            overlay, mainData, startIdx, endIdx, overlayYScale, valueFn
+        );
+        if (points.length < 2) {
+            points = this._buildOverlayAnchoredPoints(
+                overlay, mainData, startIdx, endIdx, overlayYScale, valueFn
+            );
+        }
+        return points;
+    }
+
+    _computeOverlayYRange(overlay, mainData, startIdx, endIdx) {
+        let { minPrice, maxPrice } = this._computeOverlayYRangeFromMainAnchors(
+            overlay, mainData, startIdx, endIdx
+        );
+
+        const applyBar = (d) => {
+            const lo = Number.isFinite(d.l) ? d.l : d.c;
+            const hi = Number.isFinite(d.h) ? d.h : d.c;
+            if (Number.isFinite(lo) && lo < minPrice) minPrice = lo;
+            if (Number.isFinite(hi) && hi > maxPrice) maxPrice = hi;
+        };
+
+        if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+            minPrice = Infinity;
+            maxPrice = -Infinity;
+            const tfMs = this._getCurrentTfMs();
+            const pad = tfMs * 6;
+            const t0 = mainData[startIdx]?.t;
+            const t1 = mainData[Math.min(endIdx, mainData.length - 1)]?.t;
+            if (Number.isFinite(t0) && Number.isFinite(t1) && overlay.data?.length) {
+                overlay.data.forEach((d) => {
+                    if (d.t < t0 - pad || d.t > t1 + pad) return;
+                    applyBar(d);
+                });
+            }
+        }
+
+        if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+            minPrice = Infinity;
+            maxPrice = -Infinity;
+            (overlay.data || []).forEach(applyBar);
+        }
+
+        if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+            const last = overlay.data?.[overlay.data.length - 1];
+            const c = Number(last?.c ?? last?.close);
+            if (Number.isFinite(c)) {
+                minPrice = c * 0.999;
+                maxPrice = c * 1.001;
+            }
+        }
+
+        return { minPrice, maxPrice };
     }
 
     /** Bars from overlay series that overlap the main chart viewport (with one-TF padding). */

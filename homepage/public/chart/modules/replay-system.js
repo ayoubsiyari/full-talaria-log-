@@ -2569,13 +2569,23 @@ class ReplaySystem {
         const rightGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
 
         const targetVisibleCandles = Math.max(1, numVisibleCandles - rightGapCandles);
-        const scrollPosition = Math.max(0, chartInstance.data.length - targetVisibleCandles);
+        // Anchor so the LAST loaded bar (the replay playhead — `data` is sliced to it)
+        // sits at the right-anchored slot (targetVisibleCandles-1 from the left),
+        // leaving rightGapCandles of empty space to its right, exactly like a full
+        // window. When the loaded prefix is SHORTER than the window — e.g. just
+        // switched to a higher timeframe early in the session, so only a few bars
+        // exist up to the playhead — this goes NEGATIVE so offsetX shifts the data
+        // RIGHT and the playhead stays right-anchored with empty space on the LEFT
+        // (TradingView behavior). The old `Math.max(0, …)` floored it to 0, pinning
+        // offsetX to 0 and squashing the few candles + playhead to the far LEFT with
+        // empty future space on the right (the "TF switch drifts left" bug).
+        const scrollPosition = chartInstance.data.length - targetVisibleCandles;
 
         return {
             offsetX: -scrollPosition * candleSpacing,
             numVisibleCandles,
             rightGapCandles,
-            scrollPosition
+            scrollPosition: Math.max(0, scrollPosition)
         };
     }
 
