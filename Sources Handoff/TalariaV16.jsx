@@ -8444,7 +8444,54 @@ const btDashDemonAnalytics = (rows = [], context = {}) => {
     totalCostMoney:Math.round(ranked.reduce((sum,row)=>sum+row.costMoney,0)),
   };
 };
+// ── Dashboard metrics memoization ────────────────────────────────────────────
+// btDashComputeMetricsUncached is pure and deterministic but heavy (it filters
+// the trades and computes the full KPI/score suite). It was being re-run on
+// every render — and twice per render (view + compare) — which is the source of
+// the lag on large sessions. We cache the result the same way btDashTradesCache
+// caches built trades: keyed by the session summary signature + the identities
+// and lengths of the real journal/live trade arrays + the active filters, so the
+// entry auto-invalidates whenever any of those actually change.
+const btDashMetricsCache = new Map();
+const btDashRefIds = new WeakMap();
+let btDashRefSeq = 0;
+function btDashRefId(obj) {
+  if (obj == null || typeof obj !== "object") return "0";
+  let id = btDashRefIds.get(obj);
+  if (id == null) { id = ++btDashRefSeq; btDashRefIds.set(obj, id); }
+  return String(id);
+}
+function btDashMetricsCacheKey(session, filters) {
+  const s = session || {};
+  const sessionSig = [
+    s.id, s.name, s.strategyName, s.strategyDesc, s.pnl, s.winRate, s.trades,
+    s.avgRR, s.startDate, s.endDate, s.createdAt, s.capital, s.tradingMode,
+    s.replayMode, s.symbol,
+    Array.isArray(s.tickers) ? s.tickers.join(",") : "",
+    Array.isArray(s.assetClasses) ? s.assetClasses.join(",") : "",
+  ].join("|");
+  // Real (saved/imported) trades: a replaced array yields a new ref id, and an
+  // add/remove changes the length — either way the key changes and we recompute.
+  const tradesSig = [
+    btDashRefId(s.manualTrades), Array.isArray(s.manualTrades) ? s.manualTrades.length : 0,
+    btDashRefId(s.compositeTrades), Array.isArray(s.compositeTrades) ? s.compositeTrades.length : 0,
+  ].join(":");
+  let filtersSig = "";
+  try { filtersSig = JSON.stringify(filters || {}); } catch (_) { filtersSig = String(filters); }
+  return `${sessionSig}#${tradesSig}#${filtersSig}`;
+}
 function btDashComputeMetrics(session, filters = {}) {
+  const key = btDashMetricsCacheKey(session, filters);
+  const cached = btDashMetricsCache.get(key);
+  if (cached !== undefined) return cached;
+  const result = btDashComputeMetricsUncached(session, filters);
+  // FIFO eviction, same guard style as btDashTradesCache.
+  if (btDashMetricsCache.size > 120) btDashMetricsCache.delete(btDashMetricsCache.keys().next().value);
+  btDashMetricsCache.set(key, result);
+  return result;
+}
+
+function btDashComputeMetricsUncached(session, filters = {}) {
   const allTrades = btDashBuildTrades(session);
   const maxDate = allTrades.reduce((latest, t) => t.date > latest ? t.date : latest, allTrades[0]?.date || btDashIsoDay(new Date()));
   let rows = allTrades.filter(t => {

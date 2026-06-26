@@ -78,6 +78,51 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Optional connection pooler (OFF by default) ─────────────────────────────
+  # At ~1000 users the bottleneck is Postgres connections, not CPU: every gunicorn
+  # worker holds its own SQLAlchemy pool, so a burst can exhaust max_connections.
+  # PgBouncer multiplexes many app clients onto a few real DB connections.
+  #
+  # SAFE BY DEFAULT: this service only starts with `--profile pgbouncer`, and the
+  # apps keep talking straight to `db` unless you ALSO set DB_HOST=pgbouncer. With
+  # no env changes the stack behaves exactly as before.
+  #
+  # To enable (and you MUST test the app afterwards — transaction pooling does not
+  # support session-level features like LISTEN/NOTIFY or advisory locks):
+  #   1) docker compose --profile pgbouncer up -d pgbouncer
+  #   2) set in .env:  DB_HOST=pgbouncer   (DB_PORT stays 5432)
+  #   3) consider lowering DB_POOL_SIZE/DB_MAX_OVERFLOW since pooling now happens here
+  #   4) docker compose up -d journal-backend trading-chart
+  # Roll back by removing DB_HOST from .env and re-upping those two services.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    profiles: ["pgbouncer"]
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-talaria}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-talaria}
+      DB_NAME: ${POSTGRES_DB:-talaria}
+      # transaction mode = best multiplexing for short web requests.
+      POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
+      # Accept up to N app-side clients; keep DEFAULT_POOL_SIZE real DB conns per db/user.
+      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-1000}
+      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+      RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-5}
+      # Postgres 16 stores passwords as scram-sha-256; authenticate clients the same way.
+      AUTH_TYPE: ${PGBOUNCER_AUTH_TYPE:-scram-sha-256}
+      # Recycle server connections so a rolling DB restart doesn't pin stale ones.
+      SERVER_IDLE_TIMEOUT: "240"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER:-talaria}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   journal-backend:
     # Defaults to the locally-built image name (zero friction for `docker compose build`).
     # For pull-based CI deploys, set JOURNAL_BACKEND_IMAGE=ghcr.io/<owner>/talaria-journal-backend:<tag>
@@ -87,7 +132,9 @@ services:
       context: ./journal-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@db:5432/${POSTGRES_DB:-talaria}
+      # DB_HOST defaults to `db` (direct). Set DB_HOST=pgbouncer in .env (with the
+      # pgbouncer profile up) to route this service through the connection pooler.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@${DB_HOST:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-talaria}
       FLASK_ENV: production
       FLASK_DEBUG: "False"
       # Must be 32+ chars in production (journal-backend refuses weak defaults)
@@ -153,7 +200,9 @@ services:
       ]
     environment:
       PYTHONUNBUFFERED: "1"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@db:5432/${POSTGRES_DB:-talaria}
+      # DB_HOST defaults to `db` (direct). Set DB_HOST=pgbouncer in .env (with the
+      # pgbouncer profile up) to route this service through the connection pooler.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@${DB_HOST:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-talaria}
       REDIS_URL: "redis://redis:6379"
       # Comma-separated browser origins (no paths). Set in .env for production — do not use * on a public site.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -343,8 +392,39 @@ services:
       trading-chart:
         condition: service_healthy
 
+  # ── Optional uptime monitoring + alerting (OFF by default) ───────────────────
+  # Self-hosted Uptime Kuma: polls your health endpoints and alerts (email,
+  # Telegram, Slack, Discord, webhook…) the moment something goes down.
+  #
+  # SAFE BY DEFAULT: only starts with `--profile monitoring`, and it's bound to
+  # 127.0.0.1 so the dashboard is NOT exposed publicly. With no flags the stack
+  # is unchanged.
+  #
+  # To enable:
+  #   docker compose --profile monitoring up -d uptime-kuma
+  #   # then reach the UI over an SSH tunnel from your machine:
+  #   #   ssh -L 3001:127.0.0.1:3001 user@your-vps   ->  open http://localhost:3001
+  #   # In the UI add monitors (HTTP, 60s):
+  #   #   https://www.talaria-log.com/                       (homepage)
+  #   #   https://www.talaria-log.com/api/status             (chart API)
+  #   #   https://www.talaria-log.com/journal/api/health     (journal API)
+  #   # then add a Notification (email/Telegram/etc.) and attach it to each monitor.
+  #
+  # NOTE: a monitor running on the SAME VPS can't detect a full-host outage. Pair
+  # it with a free EXTERNAL monitor (UptimeRobot / BetterStack) pointed at the
+  # homepage URL for true down-detection.
+  uptime-kuma:
+    image: louislam/uptime-kuma:2-slim
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    volumes:
+      - uptime_kuma_data:/app/data
+    ports:
+      - "127.0.0.1:3001:3001"
+
 volumes:
   postgres_data:
   questdb_data:
   chart_uploads:
   chart_data:
+  uptime_kuma_data:
