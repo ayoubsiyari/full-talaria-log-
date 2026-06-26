@@ -792,6 +792,103 @@ const SEED_TRADE_SCENARIO_FALLBACK = [
   { id: "winning", label: "Winning streak", hint: "Strong equity curve with controlled outliers." },
 ];
 const SEED_TRADE_COUNT_PRESETS = [50, 100, 200, 500, 1000];
+/** Same field catalog as analytics_core.csv_journal (import/export column mapping UI). */
+const DASH_CSV_FIELD_CATALOG = [
+  { key: "netPnL", label: "Net profit / loss", required: true },
+  { key: "closeTime", label: "Close / exit time", required: true },
+  { key: "openTime", label: "Open / entry time", required: false },
+  { key: "tradeId", label: "Trade ID", required: false },
+  { key: "ticker", label: "Symbol / ticker", required: false },
+  { key: "direction", label: "Direction (long/short)", required: false },
+  { key: "setup", label: "Strategy / setup", required: false },
+  { key: "rMultiple", label: "R-multiple", required: false },
+  { key: "quantity", label: "Position size", required: false },
+  { key: "riskAmount", label: "Risk amount ($)", required: false },
+  { key: "mae_r", label: "MAE (R)", required: false },
+  { key: "mfe_r", label: "MFE (R)", required: false },
+  { key: "plannedRR", label: "Planned R:R", required: false },
+  { key: "entryPrice", label: "Entry price", required: false },
+  { key: "exitPrice", label: "Exit price", required: false },
+  { key: "stopLoss", label: "Stop loss", required: false },
+  { key: "takeProfit", label: "Take profit", required: false },
+  { key: "commission_at_entry", label: "Commission", required: false },
+  { key: "spread_pips_at_entry", label: "Spread (pips)", required: false },
+  { key: "pip_value_at_entry", label: "Pip value", required: false },
+  { key: "closeType", label: "Close type / reason", required: false },
+  { key: "durationMinutes", label: "Duration (minutes)", required: false },
+  { key: "status", label: "Status (open/closed)", required: false },
+];
+const DASH_CSV_FIELD_ALIASES = {
+  netPnL: ["netPnL", "pnl_currency_net", "pnl", "pnl_dollars_net", "realizedPnL", "realized_pnl"],
+  closeTime: ["closeTime", "exitTime", "exitDate"],
+  openTime: ["openTime", "entryTime", "entryDate", "date"],
+  tradeId: ["tradeId", "trade_id", "journal_trade_id", "client_trade_id", "id", "n"],
+  ticker: ["ticker", "symbol", "instrument", "pair"],
+  direction: ["direction", "side", "type"],
+  setup: ["setup", "playbook", "strategy", "strategyName", "strategy_label", "tag"],
+  rMultiple: ["rMultiple", "rr", "actual_rr_net", "actualRR"],
+  quantity: ["quantity", "position_size", "positionSize", "size", "lots"],
+  riskAmount: ["riskAmount", "risk_amount", "risk_usd", "risk", "riskPerTrade", "originalRisk", "planned_risk_amount"],
+  mae_r: ["mae_r", "mae", "total_mae_r"],
+  mfe_r: ["mfe_r", "mfe", "total_mfe_r"],
+  plannedRR: ["plannedRR", "planned_rr", "rewardToRiskRatio"],
+  entryPrice: ["entryPrice", "entry", "openPrice", "open_price"],
+  exitPrice: ["exitPrice", "exit", "closePrice", "close_price"],
+  stopLoss: ["stopLoss", "planned_sl", "sl", "stop_loss"],
+  takeProfit: ["takeProfit", "target", "targetPrice", "tp"],
+  commission_at_entry: ["commission_at_entry", "commission", "commission_total"],
+  spread_pips_at_entry: ["spread_pips_at_entry", "spread"],
+  pip_value_at_entry: ["pip_value_at_entry", "pip_value"],
+  closeType: ["closeType", "exit_reason", "reason", "hitType"],
+  durationMinutes: ["durationMinutes", "duration", "timeHeldMinutes", "dur"],
+  status: ["status", "trade_status"],
+};
+const buildDefaultDashCsvExportMapping = () => {
+  const mapping = {};
+  DASH_CSV_FIELD_CATALOG.forEach((field) => { mapping[field.key] = field.key; });
+  return mapping;
+};
+const pickDashTradeFieldRaw = (trade, aliases) => {
+  if (!trade || !Array.isArray(aliases)) return null;
+  for (const key of aliases) {
+    const val = trade[key];
+    if (val != null && val !== "") return val;
+  }
+  return null;
+};
+const formatDashTradeCsvEpoch = (value) => {
+  if (value == null || value === "") return "";
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return String(value);
+  const ms = num > 1e12 ? num : num > 1e9 ? num * 1000 : num;
+  try {
+    return new Date(ms).toISOString();
+  } catch {
+    return String(value);
+  }
+};
+const resolveDashTradeCsvFieldValue = (trade, fieldKey) => {
+  const aliases = DASH_CSV_FIELD_ALIASES[fieldKey] || [fieldKey];
+  const raw = pickDashTradeFieldRaw(trade, aliases);
+  if (raw == null) return "";
+  if (fieldKey === "closeTime" || fieldKey === "openTime") return formatDashTradeCsvEpoch(raw);
+  if (fieldKey === "direction") {
+    const text = String(raw).trim().toLowerCase();
+    if (text.includes("short") || text === "sell" || text === "s") return "SHORT";
+    if (text.includes("long") || text === "buy" || text === "b") return "LONG";
+    return String(raw).toUpperCase();
+  }
+  if (fieldKey === "status") {
+    const text = String(raw).trim().toLowerCase();
+    if (text.includes("open")) return "open";
+    if (text.includes("closed") || text.includes("close")) return "closed";
+    return String(raw);
+  }
+  if (typeof raw === "object") {
+    try { return JSON.stringify(raw); } catch { return ""; }
+  }
+  return raw;
+};
 const syncV16SessionUrl = (sessionId) => {
   if (sessionId == null) return;
   const fn = typeof window !== "undefined" ? window.__TALARIA_V16_SYNC_SESSION_URL__ : null;
@@ -23091,18 +23188,33 @@ const TalariaV8b = () => {
               return override ? { ...trade, ...override } : trade;
             });
             if (!rows.length) return;
-            const columns = buildDashTradeExportColumns(rows);
-            const lines = [columns.map(csvEscapeTradeCell).join(",")];
-            rows.forEach((row) => {
-              lines.push(columns.map((k) => csvEscapeTradeCell(row[k])).join(","));
-            });
             const stamp = new Date().toISOString().slice(0, 10);
             const sourceSlug = String(ds?.name || ds?.label || "trades").replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "trades";
+            setDashCsvMapModal({
+              mode: "export",
+              phase: "map",
+              fileName: `talaria-${sourceSlug}-trades-${stamp}.csv`,
+              rowCountEstimate: rows.length,
+              fields: DASH_CSV_FIELD_CATALOG,
+              mapping: buildDefaultDashCsvExportMapping(),
+              exportRows: rows,
+            });
+          };
+          const performDashboardTradesCsvExport = (mapping, rows, fileName) => {
+            if (!Array.isArray(rows) || !rows.length || !mapping) return;
+            const columns = DASH_CSV_FIELD_CATALOG
+              .filter((field) => mapping[field.key] != null && String(mapping[field.key]).trim())
+              .map((field) => ({ fieldKey: field.key, header: String(mapping[field.key]).trim() }));
+            if (!columns.length) return;
+            const lines = [columns.map((col) => csvEscapeTradeCell(col.header)).join(",")];
+            rows.forEach((trade) => {
+              lines.push(columns.map((col) => csvEscapeTradeCell(resolveDashTradeCsvFieldValue(trade, col.fieldKey))).join(","));
+            });
             const blob = new Blob([`\uFEFF${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `talaria-${sourceSlug}-trades-${stamp}.csv`;
+            a.download = fileName || "talaria-trades.csv";
             a.rel = "noopener";
             document.body.appendChild(a);
             a.click();
@@ -23208,7 +23320,7 @@ const TalariaV8b = () => {
           const previewDashboardTradesCsv = async (file) => {
             const importCtx = resolveDashCsvImportContext();
             if (!file || !importCtx) return;
-            setDashCsvMapModal({ phase: "loading", fileName: file.name || "trades.csv", fileSize: file.size || 0 });
+            setDashCsvMapModal({ mode: "import", phase: "loading", fileName: file.name || "trades.csv", fileSize: file.size || 0 });
             try {
               const fd = new FormData();
               fd.append("file", file);
@@ -23229,6 +23341,7 @@ const TalariaV8b = () => {
               const mapping = { ...(body?.suggested_mapping || {}) };
               const fields = Array.isArray(body?.fields) ? body.fields : [];
               setDashCsvMapModal({
+                mode: "import",
                 phase: "map",
                 file,
                 fileName: file.name || "trades.csv",
@@ -23242,6 +23355,7 @@ const TalariaV8b = () => {
               });
             } catch (err) {
               setDashCsvMapModal({
+                mode: "import",
                 phase: "error",
                 fileName: file.name || "trades.csv",
                 message: err?.message || dashTxt("Could not read CSV", "تعذر قراءة CSV"),
@@ -23251,16 +23365,18 @@ const TalariaV8b = () => {
           const renderDashCsvMapModal = () => {
             if (!dashCsvMapModal) return null;
             const m = dashCsvMapModal;
+            const isExport = m.mode === "export";
             const closeModal = () => setDashCsvMapModal(null);
-            const requiredKeys = new Set((m.fields || []).filter((f) => f.required).map((f) => f.key));
-            const mappingReady = [...requiredKeys].every((k) => m.mapping && m.mapping[k]);
+            const fields = m.fields || DASH_CSV_FIELD_CATALOG;
+            const requiredKeys = new Set(fields.filter((f) => f.required).map((f) => f.key));
+            const mappingReady = [...requiredKeys].every((k) => m.mapping && String(m.mapping[k] || "").trim());
             const updateMapField = (key, value) => {
               setDashCsvMapModal((prev) => prev ? ({
                 ...prev,
                 mapping: { ...(prev.mapping || {}), [key]: value || null },
               }) : prev);
             };
-            const sampleForColumn = (col) => {
+            const sampleForImportColumn = (col) => {
               if (!col || !Array.isArray(m.sampleRows)) return "";
               for (const row of m.sampleRows) {
                 const val = row[col];
@@ -23268,16 +23384,28 @@ const TalariaV8b = () => {
               }
               return "";
             };
+            const sampleTrade = Array.isArray(m.exportRows) ? m.exportRows[0] : null;
+            const sampleForExportField = (fieldKey) => {
+              const val = resolveDashTradeCsvFieldValue(sampleTrade, fieldKey);
+              if (val == null || val === "") return "";
+              return String(val).slice(0, 48);
+            };
+            const selectedExportCount = fields.filter((field) => m.mapping?.[field.key] && String(m.mapping[field.key]).trim()).length;
             return (
               <div style={{position:"fixed",inset:0,zIndex:12000,background:"rgba(4,6,14,0.82)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,boxSizing:"border-box"}} onPointerDown={(e)=>{ if (e.target === e.currentTarget) closeModal(); }}>
                 <div style={{width:"min(920px, 96vw)",maxHeight:"min(88vh, 860px)",display:"flex",flexDirection:"column",background:"rgba(12,16,28,0.98)",border:`1px solid ${c.brH}`,boxShadow:"0 24px 80px rgba(0,0,0,0.55)"}} onPointerDown={(e)=>e.stopPropagation()}>
                   <div style={{padding:"14px 18px",borderBottom:`1px solid ${c.brH}`,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
                     <div style={{minWidth:0}}>
-                      <div style={{fontSize:8.5,fontWeight:950,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Map CSV columns","ربط أعمدة CSV")}</div>
+                      <div style={{fontSize:8.5,fontWeight:950,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F}}>
+                        {isExport ? dashTxt("Export CSV columns","أعمدة تصدير CSV") : dashTxt("Map CSV columns","ربط أعمدة CSV")}
+                      </div>
                       <div style={{marginTop:4,fontSize:13,fontWeight:850,color:c.tx,fontFamily:F}}>{m.fileName || "trades.csv"}</div>
                       <div style={{marginTop:3,fontSize:9.5,color:c.tm,fontFamily:F}}>
-                        {dashTxt("Match your file columns to Talaria fields. Required: Net P&L and Close time.","طابق أعمدة ملفك مع حقول تalaria. المطلوب: صافي الربح/الخسارة ووقت الإغلاق.")}
+                        {isExport
+                          ? dashTxt("Choose Talaria fields and CSV header names. Required: Net P&L and Close time.","اختر حقول تalaria وأسماء رؤوس CSV. المطلوب: صافي الربح/الخسارة ووقت الإغلاق.")
+                          : dashTxt("Match your file columns to Talaria fields. Required: Net P&L and Close time.","طابق أعمدة ملفك مع حقول تalaria. المطلوب: صافي الربح/الخسارة ووقت الإغلاق.")}
                         {m.rowCountEstimate != null ? ` · ~${Number(m.rowCountEstimate).toLocaleString()} ${dashTxt("rows","صف")}` : ""}
+                        {isExport && selectedExportCount ? ` · ${selectedExportCount} ${dashTxt("columns","عمود")}` : ""}
                       </div>
                     </div>
                     <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
@@ -23287,38 +23415,49 @@ const TalariaV8b = () => {
                       {dashTxt("Close","إغلاق")}
                     </div>
                   </div>
-                  {m.phase === "loading" && (
+                  {!isExport && m.phase === "loading" && (
                     <div style={{padding:28,fontSize:12.5,color:c.ts,fontFamily:F}}>{dashTxt("Reading CSV headers…","جارٍ قراءة رؤوس CSV…")}</div>
                   )}
-                  {m.phase === "error" && (
+                  {!isExport && m.phase === "error" && (
                     <div style={{padding:28}}>
                       <div style={{fontSize:12.5,color:c.rd,fontFamily:F,lineHeight:1.45}}>{m.message}</div>
                     </div>
                   )}
-                  {m.phase === "map" && (
+                  {(isExport || m.phase === "map") && (
                     <>
                       <div style={{flex:1,overflow:"auto",padding:"12px 18px 8px"}}>
                         <div style={{display:"grid",gridTemplateColumns:"minmax(180px,1.1fr) minmax(200px,1fr) minmax(120px,0.8fr)",gap:8,padding:"0 0 8px",borderBottom:`1px solid ${c.brH}`,marginBottom:8}}>
                           <div style={{fontSize:8,fontWeight:950,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Talaria field","حقل تalaria")}</div>
-                          <div style={{fontSize:8,fontWeight:950,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Your CSV column","عمود CSV")}</div>
+                          <div style={{fontSize:8,fontWeight:950,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>
+                            {isExport ? dashTxt("CSV column header","رأس عمود CSV") : dashTxt("Your CSV column","عمود CSV")}
+                          </div>
                           <div style={{fontSize:8,fontWeight:950,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Sample","عينة")}</div>
                         </div>
-                        {(m.fields || []).map((field) => {
+                        {fields.map((field) => {
                           const selected = m.mapping?.[field.key] || "";
-                          const sample = sampleForColumn(selected);
+                          const sample = isExport ? sampleForExportField(field.key) : sampleForImportColumn(selected);
                           return (
                             <div key={field.key} style={{display:"grid",gridTemplateColumns:"minmax(180px,1.1fr) minmax(200px,1fr) minmax(120px,0.8fr)",gap:8,alignItems:"center",padding:"7px 0",borderBottom:`1px solid rgba(255,255,255,0.04)`}}>
                               <div style={{fontSize:11,fontWeight:800,color:field.required ? c.tx : c.ts,fontFamily:F}}>
                                 {field.label || field.key}
                                 {field.required ? <span style={{marginLeft:6,fontSize:8,color:c.gold,fontWeight:950}}>*</span> : null}
                               </div>
-                              <select value={selected} onChange={(e)=>updateMapField(field.key, e.target.value || null)}
-                                style={{height:32,width:"100%",background:"rgba(15,19,34,0.92)",border:`1px solid ${field.required && !selected ? "rgba(255,180,80,0.45)" : c.brH}`,color:c.tx,fontSize:11,fontWeight:700,fontFamily:F,padding:"0 8px",boxSizing:"border-box"}}>
-                                <option value="">{dashTxt("— skip —","— تخطي —")}</option>
-                                {(m.headers || []).map((h) => (
-                                  <option key={h} value={h}>{h}</option>
-                                ))}
-                              </select>
+                              {isExport ? (
+                                <input
+                                  value={selected}
+                                  placeholder={dashTxt("— skip —","— تخطي —")}
+                                  onChange={(e)=>updateMapField(field.key, e.target.value || null)}
+                                  style={{height:32,width:"100%",background:"rgba(15,19,34,0.92)",border:`1px solid ${field.required && !selected ? "rgba(255,180,80,0.45)" : c.brH}`,color:c.tx,fontSize:11,fontWeight:700,fontFamily:F,padding:"0 8px",boxSizing:"border-box"}}
+                                />
+                              ) : (
+                                <select value={selected} onChange={(e)=>updateMapField(field.key, e.target.value || null)}
+                                  style={{height:32,width:"100%",background:"rgba(15,19,34,0.92)",border:`1px solid ${field.required && !selected ? "rgba(255,180,80,0.45)" : c.brH}`,color:c.tx,fontSize:11,fontWeight:700,fontFamily:F,padding:"0 8px",boxSizing:"border-box"}}>
+                                  <option value="">{dashTxt("— skip —","— تخطي —")}</option>
+                                  {(m.headers || []).map((h) => (
+                                    <option key={h} value={h}>{h}</option>
+                                  ))}
+                                </select>
+                              )}
                               <div style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={sample}>{sample || "—"}</div>
                             </div>
                           );
@@ -23326,7 +23465,9 @@ const TalariaV8b = () => {
                       </div>
                       <div style={{padding:"12px 18px 16px",borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
                         <div style={{fontSize:9.5,color:c.tm,fontFamily:F,maxWidth:520,lineHeight:1.4}}>
-                          {dashTxt("Unmapped optional fields use sensible defaults. Talaria exports re-import automatically.","الحقول الاختيارية غير المربوطة تستخدم قيمًا افتراضية. ملفات تصدير تalaria تُستورد تلقائيًا.")}
+                          {isExport
+                            ? dashTxt("Use the same field names as import for easy round-trip. Clear optional headers to omit columns.","استخدم نفس أسماء الحقول كما في الاستيراد لإعادة الاستيراد بسهولة. امسح الرؤوس الاختيارية لتخطي الأعمدة.")
+                            : dashTxt("Unmapped optional fields use sensible defaults. Talaria exports re-import automatically.","الحقول الاختيارية غير المربوطة تستخدم قيمًا افتراضية. ملفات تصدير تalaria تُستورد تلقائيًا.")}
                         </div>
                         <div style={{display:"flex",gap:8,flexShrink:0}}>
                           <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
@@ -23335,23 +23476,45 @@ const TalariaV8b = () => {
                             style={{height:34,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,19,34,0.92)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:11,fontWeight:800,fontFamily:F,cursor:"default"}}>
                             {dashTxt("Cancel","إلغاء")}
                           </div>
-                          <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
-                            onPointerDown={libraryPointerActivate(() => {
-                              if (!mappingReady || !m.file || dashTradesImportBusy) return;
-                              const mapCopy = { ...(m.mapping || {}) };
-                              closeModal();
-                              void importDashboardTradesCsv(m.file, mapCopy);
-                            })}
-                            onKeyDown={libraryKeyActivate(() => {
-                              if (!mappingReady || !m.file || dashTradesImportBusy) return;
-                              const mapCopy = { ...(m.mapping || {}) };
-                              closeModal();
-                              void importDashboardTradesCsv(m.file, mapCopy);
-                            })}
-                            aria-disabled={!mappingReady || dashTradesImportBusy}
-                            style={{height:34,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:mappingReady ? "rgba(74,106,255,0.22)" : "rgba(15,19,34,0.55)",border:`1px solid ${mappingReady ? "rgba(74,106,255,0.45)" : c.brH}`,color:mappingReady ? c.tx : c.tm,fontSize:11,fontWeight:900,fontFamily:F,cursor:"default",opacity:mappingReady && !dashTradesImportBusy ? 1 : 0.5,pointerEvents:mappingReady && !dashTradesImportBusy ? "auto" : "none"}}>
-                            {dashTxt("Import trades","استيراد الصفقات")}
-                          </div>
+                          {isExport ? (
+                            <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                              onPointerDown={libraryPointerActivate(() => {
+                                if (!mappingReady || !Array.isArray(m.exportRows) || !m.exportRows.length) return;
+                                const mapCopy = { ...(m.mapping || {}) };
+                                const fileName = m.fileName || "talaria-trades.csv";
+                                closeModal();
+                                performDashboardTradesCsvExport(mapCopy, m.exportRows, fileName);
+                              })}
+                              onKeyDown={libraryKeyActivate(() => {
+                                if (!mappingReady || !Array.isArray(m.exportRows) || !m.exportRows.length) return;
+                                const mapCopy = { ...(m.mapping || {}) };
+                                const fileName = m.fileName || "talaria-trades.csv";
+                                closeModal();
+                                performDashboardTradesCsvExport(mapCopy, m.exportRows, fileName);
+                              })}
+                              aria-disabled={!mappingReady}
+                              style={{height:34,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:mappingReady ? "rgba(74,106,255,0.22)" : "rgba(15,19,34,0.55)",border:`1px solid ${mappingReady ? "rgba(74,106,255,0.45)" : c.brH}`,color:mappingReady ? c.tx : c.tm,fontSize:11,fontWeight:900,fontFamily:F,cursor:"default",opacity:mappingReady ? 1 : 0.5,pointerEvents:mappingReady ? "auto" : "none"}}>
+                              {dashTxt("Export CSV","تصدير CSV")}
+                            </div>
+                          ) : (
+                            <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                              onPointerDown={libraryPointerActivate(() => {
+                                if (!mappingReady || !m.file || dashTradesImportBusy) return;
+                                const mapCopy = { ...(m.mapping || {}) };
+                                closeModal();
+                                void importDashboardTradesCsv(m.file, mapCopy);
+                              })}
+                              onKeyDown={libraryKeyActivate(() => {
+                                if (!mappingReady || !m.file || dashTradesImportBusy) return;
+                                const mapCopy = { ...(m.mapping || {}) };
+                                closeModal();
+                                void importDashboardTradesCsv(m.file, mapCopy);
+                              })}
+                              aria-disabled={!mappingReady || dashTradesImportBusy}
+                              style={{height:34,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:mappingReady ? "rgba(74,106,255,0.22)" : "rgba(15,19,34,0.55)",border:`1px solid ${mappingReady ? "rgba(74,106,255,0.45)" : c.brH}`,color:mappingReady ? c.tx : c.tm,fontSize:11,fontWeight:900,fontFamily:F,cursor:"default",opacity:mappingReady && !dashTradesImportBusy ? 1 : 0.5,pointerEvents:mappingReady && !dashTradesImportBusy ? "auto" : "none"}}>
+                              {dashTxt("Import trades","استيراد الصفقات")}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </>
