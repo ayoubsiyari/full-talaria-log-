@@ -2,8 +2,7 @@
 import { flushSync, createPortal } from "react-dom";
 import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Handle, Position, Background, BackgroundVariant, MiniMap, getBezierPath, BaseEdge, EdgeLabelRenderer, MarkerType, addEdge, applyNodeChanges, applyEdgeChanges, PanOnScrollMode } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { SCORE_CONFIG, DIM_KEYS, computeTalariaScore, computeTrend } from "./scoreEngine.js";
-import { buildInsightSignals } from "./insightEngine.js";
+import { SCORE_CONFIG, DIM_KEYS, computeTalariaScore, computeTrend, buildInsightSignals } from "./scoreEngine.js";
 
 /* @refresh reset */
 

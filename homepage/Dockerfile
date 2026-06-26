@@ -48,7 +48,6 @@ COPY --from=chart_assets /build/chart/workers ./public/chart/workers
 # V16 dashboard monolith + score engine (imported by TalariaV16.jsx)
 COPY ["Sources Handoff/TalariaV16.jsx", "/app/Sources Handoff/TalariaV16.jsx"]
 COPY ["Sources Handoff/scoreEngine.js", "/app/Sources Handoff/scoreEngine.js"]
-COPY ["Sources Handoff/insightEngine.js", "/app/Sources Handoff/insightEngine.js"]
 COPY ["Sources Handoff/v16AppliedSourceStorage.js", "/app/Sources Handoff/v16AppliedSourceStorage.js"]
 # Template storage lives in talaria-design; mirror into handoff for webpack alias at build time.
 COPY ["chart v 1.4/talaria-design/src/v9ChartTemplatesStorage.js", "/app/Sources Handoff/v9ChartTemplatesStorage.js"]
