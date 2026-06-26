@@ -3,6 +3,7 @@ import { flushSync, createPortal } from "react-dom";
 import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Handle, Position, Background, BackgroundVariant, MiniMap, getBezierPath, BaseEdge, EdgeLabelRenderer, MarkerType, addEdge, applyNodeChanges, applyEdgeChanges, PanOnScrollMode } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { SCORE_CONFIG, DIM_KEYS, computeTalariaScore, computeTrend } from "./scoreEngine.js";
+import { buildInsightSignals } from "./insightEngine.js";
 import {
   deleteV9ChartTemplateAtIndex,
   hydrateV9ChartTemplatesFromCloud,
@@ -9659,6 +9660,362 @@ function btDashNoGoFlags(metrics) {
   if (metrics.maxDDPct > 12) flags.push({severity:"warning",title:"High drawdown",detail:"Drawdown may be too large for prop-firm constraints."});
   return flags;
 }
+const btDashMonthIso = (dateLike = new Date()) => {
+  const d = btDashDate(dateLike);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};
+function btDashAggregateDailyPnlTradeCounts(trades = []) {
+  const map = new Map();
+  (Array.isArray(trades) ? trades : []).forEach(trade => {
+    const rawDate =
+      trade?.date
+      || trade?.calendar
+      || trade?.closeDate
+      || trade?.close_date
+      || trade?.exitDate
+      || trade?.exit_date
+      || trade?.closeTime
+      || trade?.closedAt
+      || trade?.exitTime
+      || trade?.entryDate
+      || trade?.entry_date
+      || trade?.entryTime
+      || trade?.openedAt;
+    const date = btDashIsoDay(rawDate || new Date());
+    const prev = map.get(date) || {date, tradeCount:0, pnl:0, r:0, trades:[]};
+    prev.tradeCount += 1;
+    prev.pnl += Number(
+      trade?.netPnl
+      ?? trade?.netPnL
+      ?? trade?.net_pnl
+      ?? trade?.pnl_dollars_net
+      ?? trade?.pnl_currency_net
+      ?? trade?.realizedPnL
+      ?? trade?.pnl
+      ?? trade?.profit
+      ?? 0
+    ) || 0;
+    prev.r += Number(btDashTradeActualR(trade)) || 0;
+    prev.trades.push(trade);
+    map.set(date, prev);
+  });
+  return Array.from(map.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+function btDashBuildDailyPnlCalendarGrid(dailyRows = [], monthIso = btDashMonthIso(new Date())) {
+  const [rawYear, rawMonth] = String(monthIso || btDashMonthIso(new Date())).split("-").map(Number);
+  const now = new Date();
+  const year = Number.isFinite(rawYear) ? rawYear : now.getUTCFullYear();
+  const monthIndex = Number.isFinite(rawMonth) ? Math.max(0, Math.min(11, rawMonth - 1)) : now.getUTCMonth();
+  const monthStart = new Date(Date.UTC(year, monthIndex, 1));
+  const monthEnd = new Date(Date.UTC(year, monthIndex + 1, 0));
+  const firstGridDay = btDashAddDays(monthStart, -monthStart.getUTCDay());
+  const lastGridDay = btDashAddDays(monthEnd, 6 - monthEnd.getUTCDay());
+  const byDate = new Map((Array.isArray(dailyRows) ? dailyRows : []).map(row => [row.date, row]));
+  const cells = [];
+  for (let d = new Date(firstGridDay); d <= lastGridDay; d = btDashAddDays(d, 1)) {
+    const date = btDashIsoDay(d);
+    const data = byDate.get(date) || {};
+    cells.push({
+      date,
+      day:d.getUTCDate(),
+      inMonth:d.getUTCMonth() === monthIndex,
+      tradeCount:Number(data.tradeCount) || 0,
+      pnl:Number(data.pnl) || 0,
+      r:Number(data.r) || 0,
+      trades:Array.isArray(data.trades) ? data.trades : [],
+    });
+  }
+  return {monthIso:btDashMonthIso(monthStart), monthStart, monthEnd, cells};
+}
+const SnapshotPnlCalendar = ({c, F, monthIso, dailyRows, formatValue, onMonthChange}) => {
+  const [calendarView, setCalendarView] = useState("days");
+  const [yearWindowStart, setYearWindowStart] = useState(null);
+  const [hoveredCalendarCell, setHoveredCalendarCell] = useState(null);
+  const calendar = btDashBuildDailyPnlCalendarGrid(dailyRows, monthIso);
+  const activeYear = calendar.monthStart.getUTCFullYear();
+  const activeMonthIndex = calendar.monthStart.getUTCMonth();
+  const monthName = calendar.monthStart.toLocaleDateString("en-US", {month:"long", timeZone:"UTC"});
+  const normalizedDailyRows = Array.isArray(dailyRows) ? dailyRows : [];
+  const monthBuckets = Array.from({length:12}, (_, monthIndex) => {
+    const rows = normalizedDailyRows.filter(row => {
+      const date = btDashDate(row?.date);
+      return date.getUTCFullYear() === activeYear && date.getUTCMonth() === monthIndex;
+    });
+    return {
+      key:`${activeYear}-${String(monthIndex + 1).padStart(2, "0")}`,
+      label:new Date(Date.UTC(activeYear, monthIndex, 1)).toLocaleDateString("en-US", {month:"short", timeZone:"UTC"}),
+      monthIndex,
+      tradeCount:rows.reduce((sum, row) => sum + (Number(row?.tradeCount) || 0), 0),
+      pnl:rows.reduce((sum, row) => sum + (Number(row?.pnl) || 0), 0),
+      r:rows.reduce((sum, row) => sum + (Number(row?.r) || 0), 0),
+    };
+  });
+  const yearStart = Number.isFinite(yearWindowStart) ? yearWindowStart : Math.floor(activeYear / 12) * 12;
+  const yearBuckets = Array.from({length:12}, (_, offset) => {
+    const year = yearStart + offset;
+    const rows = normalizedDailyRows.filter(row => btDashDate(row?.date).getUTCFullYear() === year);
+    return {
+      key:String(year),
+      label:String(year),
+      year,
+      tradeCount:rows.reduce((sum, row) => sum + (Number(row?.tradeCount) || 0), 0),
+      pnl:rows.reduce((sum, row) => sum + (Number(row?.pnl) || 0), 0),
+      r:rows.reduce((sum, row) => sum + (Number(row?.r) || 0), 0),
+    };
+  });
+  const maxAbsPnl = Math.max(
+    1,
+    ...calendar.cells.map(cell => Math.abs(cell.pnl || 0)),
+    ...monthBuckets.map(cell => Math.abs(cell.pnl || 0)),
+    ...yearBuckets.map(cell => Math.abs(cell.pnl || 0))
+  );
+  const calendarPanelKey = `${calendarView}-${calendar.monthIso}-${yearStart}`;
+  const previousCalendarPanelKeyRef = useRef(calendarPanelKey);
+  const shouldAnimateCalendarPanel = previousCalendarPanelKeyRef.current !== calendarPanelKey;
+  useEffect(() => {
+    previousCalendarPanelKeyRef.current = calendarPanelKey;
+  }, [calendarPanelKey]);
+  const setCalendarMonth = (year, monthIndex) => {
+    if (typeof onMonthChange !== "function") return;
+    onMonthChange(btDashMonthIso(new Date(Date.UTC(year, monthIndex, 1))));
+  };
+  const shiftPeriod = (delta) => {
+    if (calendarView === "years") {
+      setYearWindowStart(prev => (Number.isFinite(prev) ? prev : Math.floor(activeYear / 12) * 12) + delta * 12);
+      return;
+    }
+    if (calendarView === "months") {
+      setCalendarMonth(activeYear + delta, activeMonthIndex);
+      return;
+    }
+    setCalendarMonth(activeYear, activeMonthIndex + delta);
+  };
+  const pnlText = (cell) => {
+    if (!cell.tradeCount) return "-";
+    return typeof formatValue === "function" ? formatValue(cell) : `${cell.pnl >= 0 ? "+" : ""}${Math.round(cell.pnl)}`;
+  };
+  const cellTone = (cell) => {
+    if (!cell.tradeCount || Math.abs(cell.pnl) < 0.005) return {rgb:parseColor(c.tm), color:c.tm, alpha:0.035};
+    const positive = cell.pnl > 0;
+    const color = positive ? c.gn : c.rd;
+    const rgb = parseColor(color);
+    const intensity = Math.min(1, Math.abs(cell.pnl) / maxAbsPnl);
+    return {rgb, color, alpha:0.045 + intensity * 0.15};
+  };
+  const calendarCellHeight = 52;
+  const calendarGridStyle = {display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",columnGap:5,rowGap:5,minWidth:0};
+  const titleButtonStyle = {
+    "--tlr-source-accent":c.acL,
+    height:28,
+    minWidth:74,
+    border:"none",
+    background:"transparent",
+    padding:"0 10px",
+    color:c.tx,
+    fontFamily:F,
+    fontSize:10.8,
+    fontWeight:920,
+    lineHeight:1,
+    letterSpacing:"0.025em",
+    textTransform:"none",
+    cursor:"default",
+    display:"inline-grid",
+    gridTemplateColumns:"minmax(0,1fr)",
+    alignItems:"center",
+    columnGap:7,
+    boxSizing:"border-box",
+    boxShadow:"none",
+    transition:"background-color 90ms ease,border-color 90ms ease,box-shadow 90ms ease,transform 70ms ease,color 90ms ease",
+    textRendering:"geometricPrecision",
+    WebkitFontSmoothing:"antialiased",
+  };
+  const titleTextStyle = {minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"};
+  const calendarNavButtonStyle = {
+    width:18,
+    height:18,
+    minWidth:18,
+    padding:0,
+    display:"grid",
+    placeItems:"center",
+    border:"none",
+    background:"transparent",
+    color:c.tm,
+    fontFamily:F,
+    cursor:"default",
+    outline:"none",
+    boxSizing:"border-box",
+  };
+  const calendarNavIcon = (direction) => (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false" style={{display:"block"}}>
+      <path
+        d={direction === "prev" ? "M9.8 3.5 5.6 8l4.2 4.5" : "M6.2 3.5 10.4 8l-4.2 4.5"}
+        stroke="currentColor"
+        strokeWidth="1.55"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+      />
+    </svg>
+  );
+  const pickerCell = (cell, selected, onClick, cellHeight = calendarCellHeight) => {
+    const tone = cellTone(cell);
+    const cellKey = cell.key || cell.date || cell.label;
+    const hovered = hoveredCalendarCell === cellKey;
+    const hasValue = Boolean(cell.tradeCount);
+    const visibleAlpha = hovered && hasValue ? Math.min(0.34, tone.alpha + 0.095) : tone.alpha;
+    const bg = selected
+      ? `linear-gradient(180deg, rgba(74,106,255,0.17), rgba(74,106,255,0.095))`
+      : `linear-gradient(180deg, rgba(${tone.rgb.r},${tone.rgb.g},${tone.rgb.b},${visibleAlpha}), rgba(${tone.rgb.r},${tone.rgb.g},${tone.rgb.b},${visibleAlpha * 0.62}))`;
+    const borderColor = selected ? c.acL : hasValue ? `${tone.color}${hovered ? "78" : "3c"}` : hovered ? `${c.ts}55` : c.br;
+    return (
+      <button
+        key={cellKey}
+        type="button"
+        className={`tlr-snapshot-calendar-cell${selected ? " tlr-snapshot-calendar-cell-selected" : ""}`}
+        aria-label={`${cell.label || cell.day}: ${cell.tradeCount} trades, ${pnlText(cell)}`}
+        onClick={onClick}
+        onMouseEnter={() => setHoveredCalendarCell(cellKey)}
+        onMouseLeave={() => setHoveredCalendarCell(null)}
+        tabIndex={onClick ? 0 : -1}
+        aria-disabled={!onClick}
+        style={{
+          height:cellHeight,
+          minHeight:cellHeight,
+          maxHeight:cellHeight,
+          width:"100%",
+          display:"grid",
+          gridTemplateRows:"auto auto auto",
+          alignContent:"space-between",
+          gap:5,
+          padding:"7px 7px 6px",
+          border:`1px solid ${borderColor}`,
+          background:bg,
+          boxSizing:"border-box",
+          overflow:"hidden",
+          cursor:"default",
+          textAlign:"left",
+          fontFamily:F,
+          boxShadow:hovered && hasValue
+            ? `0 0 13px ${tone.color}30, inset 0 0 0 1px ${tone.color}24`
+            : selected
+              ? `0 0 10px ${c.acG}`
+              : "none",
+          transition:"background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease",
+          WebkitFontSmoothing:"antialiased",
+          textRendering:"geometricPrecision",
+        }}
+      >
+        <div style={{fontSize:11.2,fontWeight:950,color:selected ? c.acL : c.tx,lineHeight:1,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{cell.label || cell.day}</div>
+        <div style={{fontSize:9.8,fontWeight:950,color:hasValue ? tone.color : c.ts,lineHeight:1,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
+          {pnlText(cell)}
+        </div>
+        <div style={{fontSize:9,fontWeight:950,color:hasValue ? c.tx : c.tm,lineHeight:1,letterSpacing:"0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
+          {cell.tradeCount}
+        </div>
+      </button>
+    );
+  };
+  return (
+    <div style={{display:"grid",gridTemplateRows:"auto minmax(0,1fr)",gap:9,minWidth:0,height:"100%",minHeight:0,flex:"1 1 auto",overflow:"hidden",fontFamily:F}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,minWidth:0}}>
+        <button
+          type="button"
+          aria-label={calendarView === "years" ? "Previous years" : calendarView === "months" ? "Previous year" : "Previous month"}
+          onClick={() => shiftPeriod(-1)}
+          className="tlr-dashboard-score-arrow"
+          style={calendarNavButtonStyle}
+        >
+          {calendarNavIcon("prev")}
+        </button>
+        <div style={{minWidth:0,textAlign:"center"}}>
+          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,minWidth:0,whiteSpace:"nowrap"}}>
+            {calendarView === "years" ? (
+              <span style={{...titleButtonStyle,gridTemplateColumns:"1fr",placeItems:"center",minWidth:112,cursor:"default",color:c.tm}}>{yearStart} - {yearStart + 11}</span>
+            ) : (
+              <>
+                {calendarView === "days" ? (
+                  <button
+                    type="button"
+                    className="tlr-snapshot-calendar-title-btn"
+                    onClick={() => setCalendarView("months")}
+                    style={titleButtonStyle}
+                  >
+                    <span style={titleTextStyle}>{monthName}</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="tlr-snapshot-calendar-title-btn"
+                  onClick={() => {
+                    setYearWindowStart(Math.floor(activeYear / 12) * 12);
+                    setCalendarView("years");
+                  }}
+                  style={titleButtonStyle}
+                >
+                  <span style={titleTextStyle}>{activeYear}</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-label={calendarView === "years" ? "Next years" : calendarView === "months" ? "Next year" : "Next month"}
+          onClick={() => shiftPeriod(1)}
+          className="tlr-dashboard-score-arrow"
+          style={calendarNavButtonStyle}
+        >
+          {calendarNavIcon("next")}
+        </button>
+      </div>
+      <div
+        key={calendarPanelKey}
+        className={`tlr-snapshot-calendar-panel${shouldAnimateCalendarPanel ? " tlr-snapshot-calendar-panel-animate" : ""}`}
+        style={{display:"grid",gridTemplateRows:calendarView === "days" ? "auto minmax(0,1fr)" : "minmax(0,1fr)",gap:8,minWidth:0,overflow:"hidden"}}
+      >
+        {calendarView === "days" ? (
+          <>
+            <div style={{...calendarGridStyle,alignItems:"center"}}>
+              {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(day => (
+                <div key={day} style={{fontSize:9.4,fontWeight:950,color:c.ts,textTransform:"uppercase",letterSpacing:"0.025em",lineHeight:1,textAlign:"center",padding:"0 0 1px",WebkitFontSmoothing:"antialiased",textRendering:"geometricPrecision"}}>{day}</div>
+              ))}
+            </div>
+            <div style={{...calendarGridStyle,gridTemplateRows:`repeat(6, ${calendarCellHeight}px)`}}>
+              {calendar.cells.map(cell => (
+                <div key={cell.date} style={{opacity:cell.inMonth ? 1 : 0.38,minWidth:0,height:calendarCellHeight}}>
+                  {pickerCell({...cell, key:cell.date, label:cell.day}, false, undefined, calendarCellHeight)}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : calendarView === "months" ? (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gridTemplateRows:`repeat(4, ${calendarCellHeight}px)`,gap:6,minWidth:0}}>
+            {monthBuckets.map(cell => pickerCell(
+              cell,
+              cell.monthIndex === activeMonthIndex,
+              () => {
+                setCalendarMonth(activeYear, cell.monthIndex);
+                setCalendarView("days");
+              },
+              calendarCellHeight
+            ))}
+          </div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gridTemplateRows:`repeat(4, ${calendarCellHeight}px)`,gap:6,minWidth:0}}>
+            {yearBuckets.map(cell => pickerCell(
+              cell,
+              cell.year === activeYear,
+              () => {
+                setCalendarMonth(cell.year, activeMonthIndex);
+                setCalendarView("days");
+              },
+              calendarCellHeight
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 const BtMiniLine = ({ points=[], c, color, height=34, fill=false, invert=false }) => {
   const h = Math.max(1, Number(height) || 34);
   const vals = points.length ? points.map(Number) : [0,0];
@@ -10309,6 +10666,17 @@ const TalariaV8b = () => {
   const dashAddTradeStepperHoldRef = useRef(null);
   const [dashCardMenu, setDashCardMenu] = useState(null);
   const [dashFreshNavOpen, setDashFreshNavOpen] = useState(false);
+  const [dashAccountPulsePeriod, setDashAccountPulsePeriod] = useState("ALL");
+  const [dashAccountPulseMenuOpen, setDashAccountPulseMenuOpen] = useState(false);
+  const [dashAccountPulseHover, setDashAccountPulseHover] = useState(null);
+  const dashAccountPulseHoverFrameRef = useRef(null);
+  const dashAccountPulseHoverNextRef = useRef(null);
+  const [dashSnapshotTradePreview, setDashSnapshotTradePreview] = useState(null);
+  const dashSnapshotTradePreviewCardRef = useRef(null);
+  const [dashSnapshotTopMode, setDashSnapshotTopMode] = useState("basic");
+  const [dashSnapshotTopModeOpen, setDashSnapshotTopModeOpen] = useState(false);
+  const dashAccountPulseMenuRef = useRef(null);
+  const [dashSnapshotCalendarMonth, setDashSnapshotCalendarMonth] = useState(null);
   const [dashFreshPage, setDashFreshPage] = useState(() => {
     try {
       const hashMatch = String(window.location.hash || "").match(/#\/?dashboard\/fresh\/([^/]+)/);
@@ -10975,14 +11343,37 @@ const TalariaV8b = () => {
     return () => document.removeEventListener("pointerdown", closeDashboardUnitMenu, true);
   }, [dashUnitMenuOpen]);
   useEffect(() => {
-    if (!dashFreshNavOpen) return;
+    if (!dashFreshNavOpen && !dashSnapshotTopModeOpen) return;
     const closeDashboardPageMenu = (e) => {
-      if (e.target?.closest?.(".tlr-dashboard-page-menu-wrap")) return;
+      if (e.target?.closest?.(".tlr-dashboard-page-menu-wrap,.tlr-dashboard-snapshot-mode-wrap")) return;
       setDashFreshNavOpen(false);
+      setDashSnapshotTopModeOpen(false);
     };
     document.addEventListener("pointerdown", closeDashboardPageMenu, true);
     return () => document.removeEventListener("pointerdown", closeDashboardPageMenu, true);
-  }, [dashFreshNavOpen]);
+  }, [dashFreshNavOpen, dashSnapshotTopModeOpen]);
+  useEffect(() => {
+    if (!dashAccountPulseMenuOpen) return;
+    const closeDashboardPulseMenu = (e) => {
+      const menu = dashAccountPulseMenuRef.current;
+      if (menu && menu.contains(e.target)) return;
+      setDashAccountPulseMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeDashboardPulseMenu, true);
+    return () => document.removeEventListener("pointerdown", closeDashboardPulseMenu, true);
+  }, [dashAccountPulseMenuOpen]);
+  useEffect(() => {
+    if (!dashSnapshotTradePreview) return;
+    const closeSnapshotTradePreview = (event) => {
+      const card = dashSnapshotTradePreviewCardRef.current;
+      if (card && card.contains(event.target)) return;
+      const trigger = event.target?.closest?.(".tlr-snapshot-trade-id-button");
+      if (trigger) return;
+      setDashSnapshotTradePreview(null);
+    };
+    document.addEventListener("pointerdown", closeSnapshotTradePreview, true);
+    return () => document.removeEventListener("pointerdown", closeSnapshotTradePreview, true);
+  }, [dashSnapshotTradePreview]);
   useEffect(() => {
     try { localStorage.setItem("talaria_backtest_advanced_nav_collapsed", dashAdvNavCollapsed ? "1" : "0"); } catch {}
   }, [dashAdvNavCollapsed]);
@@ -11959,6 +12350,11 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-phase-nav-group,.tlr-phase-nav-item{transition:none!important;will-change:background-color,color;touch-action:manipulation}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):hover,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):active,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):active{background:rgba(74,106,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-phase-nav-group-active,.tlr-phase-nav-group-active:hover,.tlr-phase-nav-item-active,.tlr-phase-nav-item-active:hover{background:${c.acD}!important;color:${c.acL}!important}.tlr-phase-nav-group:focus-visible,.tlr-phase-nav-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-source-switch-redesign,.tlr-dashboard-value-select{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-dashboard-source-switch-redesign span,.tlr-dashboard-source-switch-redesign div,.tlr-dashboard-value-select span{text-shadow:none!important}.tlr-dashboard-source-switch-redesign:hover{background:rgba(255,255,255,0.055)!important;border-color:var(--tlr-source-accent)!important;box-shadow:0 0 14px -12px var(--tlr-source-accent)!important}.tlr-dashboard-source-switch-redesign:active{background:rgba(74,106,255,0.13)!important;transform:translateY(1px)!important}.tlr-dashboard-source-switch-redesign:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-source-switch-redesign [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign [data-tlr-upper-icon]{transition:color 0.04s linear}.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-icon],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-icon]{color:var(--tlr-source-accent)!important}.tlr-dashboard-page-menu-item:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-dashboard-page-menu-item:active{background:rgba(74,106,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-dashboard-page-menu-item-active,.tlr-dashboard-page-menu-item-active:hover,.tlr-dashboard-page-menu-item-active:active{background:${c.acD}!important;color:${c.acL}!important;transform:none!important}.tlr-dashboard-page-menu-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-summary-card{transition:none!important}.tlr-dashboard-summary-card:hover{border-color:${c.br}!important;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)!important}.tlr-dashboard-summary-card:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-info-target{transition:none!important}.tlr-dashboard-info-target:hover,.tlr-dashboard-info-target:focus-visible{filter:none!important;outline:none!important;box-shadow:none!important}.tlr-dashboard-shape-hover{transition:filter 90ms ease!important;cursor:default}.tlr-dashboard-score-arrow:hover,.tlr-dashboard-card-info:hover{color:${c.acL}!important;filter:drop-shadow(0 0 3px rgba(74,106,255,0.28))!important}.tlr-dashboard-score-arrow:active,.tlr-dashboard-card-info:active{transform:translateY(1px)!important}.tlr-dashboard-score-footer:hover{border-color:${c.brL}!important;color:${c.tx}!important;background:${c.well}!important}.tlr-dashboard-score-footer:active{transform:translateY(1px)!important;color:#fff!important}.tlr-dashboard-view-breakdown:hover{color:${tcHov}!important}.tlr-dashboard-view-breakdown:active{color:#fff!important;transform:translateY(1px)!important}@keyframes tlrScoreSlideInRight{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}@keyframes tlrScoreSlideInLeft{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}`;
       style.textContent += `.tlr-dashboard-score-row:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-row:active{background:rgba(74,106,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-score-row:focus-visible,.tlr-dashboard-radar-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-radar-toggle:hover{color:${tcHov}!important;background:rgba(255,255,255,0.052)!important}.tlr-dashboard-radar-toggle:active{transform:translateY(1px)!important;background:rgba(74,106,255,0.12)!important}.tlr-dashboard-radar-toggle-active,.tlr-dashboard-radar-toggle-active:hover{color:${c.acL}!important;background:transparent!important}.tlr-dashboard-radar-toggle-active:after{content:"";position:absolute;left:4px;right:4px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG};pointer-events:none}`;
+      style.textContent += `@keyframes tlrSnapshotTopBasicIn{0%{opacity:.38;transform:translateX(-26px) scale(.992);filter:blur(1px)}64%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}}@keyframes tlrSnapshotTopAdvancedIn{0%{opacity:.38;transform:translateX(26px) scale(.992);filter:blur(1px)}64%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}}.tlr-snapshot-top-mode-panel{transform-origin:50% 22px;will-change:opacity,transform}.tlr-snapshot-top-mode-basic{animation:tlrSnapshotTopBasicIn 360ms cubic-bezier(.18,.82,.18,1) both}.tlr-snapshot-top-mode-advanced{animation:tlrSnapshotTopAdvancedIn 360ms cubic-bezier(.18,.82,.18,1) both}@media (prefers-reduced-motion:reduce){.tlr-snapshot-top-mode-basic,.tlr-snapshot-top-mode-advanced{animation:none!important}}`;
+      style.textContent += `.tlr-snapshot-calendar-panel{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform;transform-origin:50% 42%}.tlr-snapshot-calendar-cell{transition:background 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease!important}.tlr-snapshot-calendar-title-btn{transition:background-color 130ms ease,color 130ms ease,transform 90ms ease!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.11)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-snapshot-calendar-cell:active{filter:brightness(1.08)!important}.tlr-snapshot-calendar-cell-selected{transition:background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,color 150ms ease!important}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel{animation:none!important}.tlr-snapshot-calendar-cell,.tlr-snapshot-calendar-title-btn{transition:none!important}}`;
+      style.textContent += `.tlr-snapshot-calendar-panel{animation:none!important;will-change:auto!important}.tlr-snapshot-calendar-panel-animate{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform!important;transform-origin:50% 42%}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel-animate{animation:none!important}}`;
+      style.textContent += `.tlr-snapshot-page,.tlr-snapshot-page *{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout paint;transform:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{transform:none!important;filter:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card span,.tlr-snapshot-page .tlr-dashboard-summary-card div{min-width:0}.tlr-snapshot-calendar-cell{transform:none!important;will-change:background,border-color,box-shadow}.tlr-snapshot-calendar-cell:hover{transform:none!important;filter:none!important}.tlr-snapshot-calendar-cell:active{transform:none!important;filter:brightness(1.04)!important}.tlr-snapshot-calendar-title-btn{border:0!important;box-shadow:none!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.10)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.17)!important;color:#fff!important}.tlr-snapshot-trade-preview-shell{pointer-events:none}.tlr-snapshot-trade-preview-card{background:rgb(7,10,20)!important;border:1px solid rgba(116,126,150,0.50)!important;box-shadow:0 18px 44px rgba(0,0,0,0.58),inset 0 1px 0 rgba(255,255,255,0.035)!important}.tlr-snapshot-trade-preview-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 8px ${c.acG};pointer-events:none}.tlr-snapshot-trade-id-button{display:inline-flex!important;align-items:center!important;gap:5px!important;line-height:1.05!important;vertical-align:middle!important}.tlr-snapshot-trade-id-button::after{left:0!important;right:13px!important;bottom:1px!important;height:1px!important;background:linear-gradient(90deg,transparent,${c.acL},transparent)!important;box-shadow:0 0 7px ${c.acG}!important}.tlr-snapshot-trade-id-button:hover,.tlr-snapshot-trade-id-button[aria-pressed="true"]{color:${c.acL}!important}.tlr-snapshot-trade-id-button:hover::after,.tlr-snapshot-trade-id-button[aria-pressed="true"]::after{opacity:1!important}.tlr-snapshot-trade-preview-close{border:0!important;background:transparent!important;box-shadow:none!important}.tlr-snapshot-trade-preview-close:hover{background:transparent!important;color:${c.rd}!important;filter:drop-shadow(0 0 5px rgba(255,80,104,.58))!important}.tlr-snapshot-trade-preview-close:active{background:transparent!important;color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-bestworst-grid{grid-template-columns:minmax(182px,1fr) minmax(42px,52px) minmax(62px,74px)!important;column-gap:8px!important}.tlr-snapshot-bestworst-id{font-size:7.85px!important;letter-spacing:-.01em!important;overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-bestworst-line{width:58px!important;max-width:58px!important}.tlr-snapshot-chip-row:hover{transform:none!important;filter:none!important}.tlr-snapshot-basic-card-title-line{height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG}}`;
+      style.textContent += `.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{box-shadow:inherit}.tlr-snapshot-page .tlr-snapshot-bestworst-grid>*{min-width:0}.tlr-snapshot-page .tlr-snapshot-bestworst-id>span{overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-page .tlr-snapshot-trade-preview-card{backdrop-filter:none!important}.tlr-snapshot-page .tlr-snapshot-calendar-title-btn,.tlr-snapshot-page .tlr-snapshot-trade-id-button,.tlr-snapshot-page .tlr-dashboard-score-arrow{cursor:pointer!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:hover{color:${c.acL}!important;filter:drop-shadow(0 0 5px ${c.acG})!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:active{color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-page .tlr-snapshot-trade-id-button:hover span,.tlr-snapshot-page .tlr-snapshot-trade-id-button:active span{color:${c.acL}!important}`;
       style.textContent += `.tlr-dashboard-compare-chip{position:relative}.tlr-dashboard-compare-chip:hover{background:rgba(255,255,255,0.055)!important;border-color:rgba(74,106,255,0.34)!important;color:#4A6AFF!important;box-shadow:0 0 12px -11px #4A6AFF!important}.tlr-dashboard-compare-chip:active{background:rgba(74,106,255,0.12)!important;color:#4A6AFF!important;transform:translateY(1px)!important}.tlr-dashboard-compare-chip-active{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:hover{background:rgba(255,255,255,0.055)!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:after{content:"";position:absolute;left:16px;right:16px;bottom:2px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 8px rgba(74,106,255,0.82);pointer-events:none}.tlr-dashboard-compare-chip:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-compare-exit:hover{background:rgba(255,80,104,0.055)!important;color:#FF5068!important}.tlr-dashboard-compare-exit:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}`;
       style.textContent += `.tlr-dashboard-compare-clear:hover{background:rgba(255,80,104,0.055)!important;border-color:rgba(255,80,104,0.22)!important;color:#FF5068!important}.tlr-dashboard-compare-clear:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-dashboard-compare-clear:focus-visible{outline:1px solid rgba(255,80,104,0.55);outline-offset:-1px}`;
@@ -22409,15 +22805,21 @@ const TalariaV8b = () => {
             } catch {}
           };
           const dashboardPagesButtonWidth = 176;
+          const snapshotTopMode = dashSnapshotTopMode === "advanced" ? "advanced" : "basic";
+          const snapshotTopModeOptions = [
+            {id:"basic", label:dashTxt("Basic","أساسي")},
+            {id:"advanced", label:dashTxt("Advanced","متقدم")},
+          ];
+          const activeSnapshotTopModeMeta = snapshotTopModeOptions.find(option => option.id === snapshotTopMode) || snapshotTopModeOptions[0];
           const DashboardPagesButton = () => (
             <div className="tlr-dashboard-page-menu-wrap" style={{position:"relative",zIndex:dashFreshNavOpen?160:2,flex:`0 0 ${dashboardPagesButtonWidth}px`,width:dashboardPagesButtonWidth}}>
-              <div className={`tlr-dashboard-source-switch-redesign${dashFreshNavOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={dashFreshNavOpen} aria-label={`${dashTxt("Dashboard Pages","صفحات اللوحة")}: ${activeFreshPageLabel}`}
-                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashFreshNavOpen(v=>!v);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);}}
-                onKeyDown={libraryKeyActivate(()=>{setDashFreshNavOpen(v=>!v);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);})}
+              <div className={`tlr-dashboard-source-switch-redesign${dashFreshNavOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={dashFreshNavOpen} aria-label={`${dashTxt("Dashboard","لوحة التحكم")}: ${activeFreshPageLabel}`}
+                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashFreshNavOpen(v=>!v);setDashSnapshotTopModeOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);}}
+                onKeyDown={libraryKeyActivate(()=>{setDashFreshNavOpen(v=>!v);setDashSnapshotTopModeOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);})}
                 style={{"--tlr-source-accent":c.acL,height:38,width:"100%",padding:"0 9px 0 10px",display:"grid",gridTemplateColumns:"14px minmax(0,1fr) 14px",alignItems:"center",columnGap:8,position:"relative",background:dashFreshNavOpen?"rgba(38,67,247,0.16)":"rgba(15,19,34,0.92)",border:`1px solid ${dashFreshNavOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashFreshNavOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashFreshNavOpen?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
                 <DashboardPageIcon id={activeFreshPageMeta.id} size={14} color={dashFreshNavOpen?c.acL:c.ts}/>
                 <div style={{minWidth:0,display:"flex",flexDirection:"column",gap:3,lineHeight:1}}>
-                  <span data-tlr-upper-accent="true" style={{fontSize:8,fontWeight:900,color:c.acL,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textShadow:"none",textRendering:"geometricPrecision"}}>{dashTxt("Dashboard Pages","صفحات اللوحة")}</span>
+                  <span data-tlr-upper-accent="true" style={{fontSize:8,fontWeight:900,color:c.acL,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textShadow:"none",textRendering:"geometricPrecision"}}>{dashTxt("Dashboard","لوحة التحكم")}</span>
                   <span style={{fontSize:10.9,fontWeight:900,color:"#F8FAFF",letterSpacing:"0.01em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.05,textShadow:"none",textRendering:"geometricPrecision"}}>{activeFreshPageLabel}</span>
                 </div>
                 <svg data-tlr-upper-icon="true" width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",color:dashFreshNavOpen?c.acL:c.tm,transform:dashFreshNavOpen?"rotate(180deg)":"none"}}>
@@ -22425,7 +22827,7 @@ const TalariaV8b = () => {
                 </svg>
               </div>
               {dashFreshNavOpen && (
-                <div role="menu" aria-label={dashTxt("Dashboard pages","صفحات لوحة التحكم")} style={{position:"absolute",left:isDashRTL?"auto":0,right:isDashRTL?0:"auto",top:40,width:"100%",maxHeight:"calc(100vh - 92px)",overflowY:"auto",background:c.sf,borderTop:`2px solid ${c.acL}`,borderRight:`1px solid ${c.brH}`,borderBottom:`1px solid ${c.brH}`,borderLeft:`1px solid ${c.brH}`,boxShadow:`0 -1px 8px -3px ${c.acL}, 0 14px 34px rgba(0,0,0,0.78)`,padding:"5px 0",boxSizing:"border-box",fontFamily:F}} className="tlr-scroll">
+                <div role="menu" aria-label={dashTxt("Dashboard","لوحة التحكم")} style={{position:"absolute",left:isDashRTL?"auto":0,right:isDashRTL?0:"auto",top:40,width:"100%",maxHeight:"calc(100vh - 92px)",overflowY:"auto",background:c.sf,borderTop:`2px solid ${c.acL}`,borderRight:`1px solid ${c.brH}`,borderBottom:`1px solid ${c.brH}`,borderLeft:`1px solid ${c.brH}`,boxShadow:`0 -1px 8px -3px ${c.acL}, 0 14px 34px rgba(0,0,0,0.78)`,padding:"5px 0",boxSizing:"border-box",fontFamily:F}} className="tlr-scroll">
                   {dashboardNavGroups.map(group => (
                     <div key={group.label} style={{padding:"4px 0 6px"}}>
                       <div style={{height:22,padding:"0 10px",display:"flex",alignItems:"center",fontSize:7.8,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",boxSizing:"border-box"}}>{group.label}</div>
@@ -22444,6 +22846,41 @@ const TalariaV8b = () => {
                       })}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          );
+          const SnapshotTopModeButton = () => (
+            <div className="tlr-dashboard-snapshot-mode-wrap" style={{position:"relative",zIndex:dashSnapshotTopModeOpen?160:2,flex:"0 0 118px",width:118}}>
+              <div className={`tlr-dashboard-source-switch-redesign${dashSnapshotTopModeOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={dashSnapshotTopModeOpen} aria-label={`${dashTxt("Snapshot Mode","وضع اللمحة")}: ${activeSnapshotTopModeMeta.label}`}
+                onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashSnapshotTopModeOpen(v=>!v);setDashFreshNavOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);}}
+                onKeyDown={libraryKeyActivate(()=>{setDashSnapshotTopModeOpen(v=>!v);setDashFreshNavOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);})}
+                style={{"--tlr-source-accent":c.acL,height:38,width:"100%",padding:"0 8px",display:"grid",gridTemplateColumns:"14px minmax(0,1fr) 14px",alignItems:"center",columnGap:6,position:"relative",background:dashSnapshotTopModeOpen?"rgba(38,67,247,0.16)":"rgba(15,19,34,0.92)",border:`1px solid ${dashSnapshotTopModeOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,boxShadow:dashSnapshotTopModeOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",color:dashSnapshotTopModeOpen?c.acL:c.ts,boxSizing:"border-box",cursor:"default",transition:"none",overflow:"hidden",fontFamily:F}}>
+                <svg data-tlr-upper-icon="true" width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",color:dashSnapshotTopModeOpen?c.acL:c.ts}}>
+                  <path d="M3 4h10M3 8h10M3 12h10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="square"/>
+                </svg>
+                <div style={{minWidth:0,display:"flex",flexDirection:"column",gap:3,lineHeight:1}}>
+                  <span data-tlr-upper-accent="true" style={{fontSize:8,fontWeight:900,color:c.acL,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textShadow:"none",textRendering:"geometricPrecision"}}>{dashTxt("View","العرض")}</span>
+                  <span style={{fontSize:10.9,fontWeight:900,color:"#F8FAFF",letterSpacing:"0.01em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.05,textShadow:"none",textRendering:"geometricPrecision"}}>{activeSnapshotTopModeMeta.label}</span>
+                </div>
+                <svg data-tlr-upper-icon="true" width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",color:dashSnapshotTopModeOpen?c.acL:c.tm,transform:dashSnapshotTopModeOpen?"rotate(180deg)":"none"}}>
+                  <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"/>
+                </svg>
+              </div>
+              {dashSnapshotTopModeOpen && (
+                <div role="menu" aria-label={dashTxt("Snapshot mode","وضع اللمحة")} style={{position:"absolute",left:isDashRTL?"auto":0,right:isDashRTL?0:"auto",top:40,width:"100%",background:c.sf,borderTop:`2px solid ${c.acL}`,borderRight:`1px solid ${c.brH}`,borderBottom:`1px solid ${c.brH}`,borderLeft:`1px solid ${c.brH}`,boxShadow:`0 -1px 8px -3px ${c.acL}, 0 14px 34px rgba(0,0,0,0.78)`,padding:"4px 0",boxSizing:"border-box",fontFamily:F}}>
+                  {snapshotTopModeOptions.map(option => {
+                    const active = option.id === snapshotTopMode;
+                    return (
+                      <button key={option.id} className={`tlr-dashboard-page-menu-item${active?" tlr-dashboard-page-menu-item-active":""}`} type="button" role="menuitem" aria-current={active?"page":undefined}
+                        onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashSnapshotTopMode(option.id);setDashSnapshotTopModeOpen(false);}}
+                        onClick={e=>e.preventDefault()}
+                        style={{position:"relative",width:"100%",height:30,padding:isDashRTL?"0 10px 0 12px":"0 12px 0 10px",display:"flex",alignItems:"center",border:0,outline:"none",background:active?"rgba(38,67,247,0.15)":"transparent",color:active?c.acL:c.ts,opacity:1,fontSize:8.9,fontWeight:active?900:850,letterSpacing:"0.035em",fontFamily:F,cursor:"default",textAlign:isDashRTL?"right":"left",textTransform:"uppercase",boxSizing:"border-box"}}>
+                        {active && <span style={{position:"absolute",left:isDashRTL?"auto":0,right:isDashRTL?0:"auto",top:8,bottom:8,width:1,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 7px ${c.acG}`}}/>}
+                        <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{option.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -25840,6 +26277,28 @@ const TalariaV8b = () => {
             const privacyMoney = (value, fallbackR=0) => fmtValue(value, fallbackR);
             const privacyAbsMoney = (value) => dashValueMode === "privacy" ? dashPrivacyMask : dashOverviewUnitMode === "percent" ? fmtAbsMoneyPct(value) : fmtAbsMoney(value);
             const netPnlTrades = Array.isArray(metrics.trades) ? metrics.trades : [];
+            const dashRiskLossUnitLabel = dashOverviewRPrimary ? "1R lost" : dashOverviewPercentPrimary ? "1% lost" : "$1 lost";
+            const dashProfitFactorSub = `made for every ${dashRiskLossUnitLabel}`;
+            const formatRecoveryFactorSub = () => {
+              if (metrics.recoveryFactor == null) return "No drawdown yet";
+              const value = Math.abs(Number(metrics.recoveryFactor) || 0);
+              const direction = Number(metrics.recoveryFactor) >= 0 ? "profit" : "lost";
+              if (dashOverviewRPrimary) return `${fmtNum(value,2)}R ${direction} per 1R of worst drawdown`;
+              if (dashOverviewPercentPrimary) return `${fmtNum(value,2)}% ${direction} per 1% of worst drawdown`;
+              return `$${fmtNum(value,2)} ${direction} per $1 of worst drawdown`;
+            };
+            const formatInsightMetricValue = signal => {
+              const raw = signal?.metricValue;
+              if (!raw) return null;
+              const rawText = String(raw);
+              if (!rawText.includes("$")) return rawText;
+              const usd = Number(signal?.impactUSD);
+              if (!Number.isFinite(usd) || Math.abs(usd) <= 0) return dashValueMode === "privacy" ? dashPrivacyMask : rawText;
+              const sign = /^\s*-/.test(rawText) ? -1 : 1;
+              const formattedImpact = dashMoneyMetricValue(sign * Math.abs(usd));
+              const suffixMatch = rawText.match(/^[+-]?\$[\d,]+(?:\.\d+)?(.*)$/);
+              return `${formattedImpact}${suffixMatch?.[1] || ""}`;
+            };
             const netPnlUseR = dashOverviewUnitMode === "r";
             const fmtSignedR = (value, digits=2) => `${Number(value || 0) >= 0 ? "+" : ""}${fmtNum(value || 0, digits)}R`;
             const fmtAbsR = (value, digits=2) => `${fmtNum(Math.abs(Number(value) || 0), digits)}R`;
@@ -26391,6 +26850,7 @@ const TalariaV8b = () => {
             const dashboardKpiCardHeight = 226;
             const dashboardKpiCardGap = 12;
             const dashboardScoreCardHeight = dashboardKpiCardHeight * 2 + dashboardKpiCardGap;
+            const dashboardSnapshotPulseCalendarHeight = dashboardScoreCardHeight;
             const PagedMetricCard = ({slot}) => {
               const pages = (slot.pages || []).filter(Boolean);
               const safeIndex = Math.min(Math.max(0, dashKpiPageIndex[slot.id] || 0), Math.max(0, pages.length - 1));
@@ -27020,6 +27480,259 @@ const TalariaV8b = () => {
                 </div>
               </SummaryCard>
             );
+            const BasicScoreRing = ({value, color=c.gold, trackColor=c.trk}) => {
+              const safe = Math.max(0, Math.min(100, Number(value) || 0));
+              const radius = 28;
+              const stroke = 7;
+              const size = 72;
+              const circumference = Math.PI * 2 * radius;
+              return (
+                <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{display:"block",flexShrink:0}}>
+                  <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={trackColor} strokeWidth={stroke}/>
+                  <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="butt" strokeDasharray={`${(safe / 100) * circumference} ${circumference}`} transform={`rotate(-90 ${size/2} ${size/2})`} style={{transition:"stroke-dasharray 180ms ease"}}/>
+                </svg>
+              );
+            };
+            const basicVisualClamp = (value, min=0, max=100) => Math.max(min, Math.min(max, Number(value) || 0));
+            const basicMetricTrades = Array.isArray(metrics.trades) ? metrics.trades : [];
+            const basicTradePnlValue = (trade) => {
+              const raw = trade?.netPnl ?? trade?.net_pnl ?? trade?.pnl ?? trade?.profit ?? trade?.realizedPnl ?? trade?.result;
+              const parsed = Number(raw);
+              return Number.isFinite(parsed) ? parsed : 0;
+            };
+            const basicTradePnlValues = basicMetricTrades.map(basicTradePnlValue).filter(Number.isFinite);
+            const basicTradePnlDecileValues = (() => {
+              const source = basicTradePnlValues.filter(Number.isFinite);
+              if (!source.length) return [];
+              const buckets = Array.from({length:10}, () => 0);
+              source.forEach((value, index) => {
+                const bucketIndex = Math.min(9, Math.floor((index / source.length) * 10));
+                buckets[bucketIndex] += value;
+              });
+              return buckets;
+            })();
+            const basicEquityValues = (Array.isArray(metrics.equityPoints) ? metrics.equityPoints : [])
+              .map(point => Number(point?.value ?? point?.equity ?? point))
+              .filter(Number.isFinite);
+            const basicDrawdownSeries = (() => {
+              if (!basicEquityValues.length) {
+                const dd = Math.abs(Number(metrics.maxDD) || 0);
+                return dd > 0 ? [0, -dd * 0.24, -dd * 0.54, -dd, -dd * 0.62] : [0, -1, -0.35, -0.7, -0.2];
+              }
+              let peak = basicEquityValues[0];
+              return basicEquityValues.map(value => {
+                peak = Math.max(peak, value);
+                return value - peak;
+              });
+            })();
+            const BasicMiniLine = ({points=[], color=c.acL, height=46, fill=false}) => {
+              const nums = points.map(Number).filter(Number.isFinite);
+              const source = nums.length > 1 ? nums : [0, 1, .4, .75, .55, 1.1];
+              const width = 78;
+              const padX = 3;
+              const padY = 5;
+              const min = Math.min(...source);
+              const max = Math.max(...source);
+              const span = Math.max(1e-6, max - min);
+              const coords = source.map((value, index) => {
+                const x = padX + (index / Math.max(1, source.length - 1)) * (width - padX * 2);
+                const y = padY + (1 - ((value - min) / span)) * (height - padY * 2);
+                return {x, y};
+              });
+              const path = coords.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+              const areaPath = `${path} L${coords[coords.length - 1].x.toFixed(2)} ${height - padY} L${coords[0].x.toFixed(2)} ${height - padY} Z`;
+              const last = coords[coords.length - 1];
+              return (
+                <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" style={{display:"block",width,height,overflow:"visible",flexShrink:0}}>
+                  <path d={`M${padX} ${height - padY} H${width - padX}`} stroke={c.trk} strokeWidth="1" opacity=".75"/>
+                  {fill ? <path d={areaPath} fill={color} opacity=".14"/> : null}
+                  <path d={path} fill="none" stroke={color} strokeWidth="1.65" strokeLinecap="butt" strokeLinejoin="miter"/>
+                  <circle cx={last.x} cy={last.y} r="2" fill={color}/>
+                </svg>
+              );
+            };
+            const BasicMiniPnlBars = ({values=[], avg=0, height=58}) => {
+              const raw = values.map(Number).filter(Number.isFinite);
+              const source = (raw.length ? raw : [1, -0.55, .4, .85, -0.35, .65, .25, -.2]).slice(-10);
+              const width = 78;
+              const padX = 3;
+              const padY = 5;
+              const baseline = Math.round(height * .54);
+              const maxAbs = Math.max(1e-6, ...source.map(value => Math.abs(value)), Math.abs(Number(avg) || 0));
+              const barGap = 2;
+              const barW = Math.max(3, (width - padX * 2 - barGap * (source.length - 1)) / source.length);
+              const avgY = baseline - ((Number(avg) || 0) / maxAbs) * (baseline - padY);
+              return (
+                <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" style={{display:"block",width,height,overflow:"visible",flexShrink:0}}>
+                  {source.map((value, index) => {
+                    const isWin = value >= 0;
+                    const barH = Math.max(3, Math.round((Math.abs(value) / maxAbs) * (height * .42)));
+                    const x = padX + index * (barW + barGap);
+                    const y = isWin ? baseline - barH : baseline;
+                    return (
+                      <rect key={`basic-pnl-bar-${index}`} x={x} y={y} width={barW} height={barH} fill={isWin ? c.gn : c.rd} opacity=".94"/>
+                    );
+                  })}
+                  <path d={`M${padX} ${baseline} H${width - padX}`} stroke={c.ts} strokeWidth="1" opacity=".72" shapeRendering="crispEdges"/>
+                  <path d={`M${padX} ${avgY.toFixed(1)} H${width - padX}`} stroke={c.gold} strokeWidth="1.4" strokeLinecap="butt" opacity=".92"/>
+                </svg>
+              );
+            };
+            const BasicMiniUpDownBars = ({positive=0, negative=0, height=58}) => {
+              const pos = Math.max(0, Number(positive) || 0);
+              const neg = Math.max(0, Number(negative) || 0);
+              const width = 78;
+              const baseline = Math.round(height * .52);
+              const max = Math.max(1e-6, pos, neg);
+              const topRoom = baseline - 6;
+              const bottomRoom = height - baseline - 6;
+              const posH = Math.max(4, Math.round((pos / max) * topRoom));
+              const negH = Math.max(4, Math.round((neg / max) * bottomRoom));
+              const barW = 18;
+              const leftX = Math.round(width / 2 - barW - 4);
+              const rightX = Math.round(width / 2 + 4);
+              return (
+                <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" style={{display:"block",width,height,overflow:"visible",flexShrink:0}}>
+                  <rect x={leftX} y={baseline - posH} width={barW} height={posH} fill={c.gn} opacity=".96"/>
+                  <rect x={rightX} y={baseline} width={barW} height={negH} fill={c.rd} opacity=".96"/>
+                  <path d={`M7 ${baseline} H${width - 7}`} stroke={c.ts} strokeWidth="1" opacity=".72" shapeRendering="crispEdges"/>
+                </svg>
+              );
+            };
+            const BasicMiniStack = ({positive=0, negative=0, gold=0, height=34}) => {
+              const pos = Math.max(0, Number(positive) || 0);
+              const neg = Math.max(0, Number(negative) || 0);
+              const aux = Math.max(0, Number(gold) || 0);
+              const total = Math.max(1, pos + neg + aux);
+              return (
+                <div aria-hidden="true" style={{width:62,height,display:"flex",alignItems:"center"}}>
+                  <div style={{width:"100%",height:9,background:c.trk,display:"flex",boxShadow:"inset 0 0 0 1px rgba(255,255,255,0.02)"}}>
+                    <span style={{width:`${(pos / total) * 100}%`,background:c.gn}}/>
+                    <span style={{width:`${(neg / total) * 100}%`,background:c.rd}}/>
+                    {aux ? <span style={{width:`${(aux / total) * 100}%`,background:c.gold}}/> : null}
+                  </div>
+                </div>
+              );
+            };
+            const BasicMiniMeter = ({value=0, color=c.acL, height=34}) => {
+              const pct = basicVisualClamp(value);
+              return (
+                <div aria-hidden="true" style={{width:62,height,display:"grid",alignItems:"center"}}>
+                  <div style={{height:9,background:c.trk,position:"relative",overflow:"hidden",boxShadow:"inset 0 0 0 1px rgba(255,255,255,0.02)"}}>
+                    <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${pct}%`,background:color,transition:"width 160ms ease"}}/>
+                    <span style={{position:"absolute",left:"33%",top:-4,bottom:-4,width:1,background:c.tx,opacity:.55}}/>
+                  </div>
+                </div>
+              );
+            };
+            const BasicMetricCard = ({title, value, sub, color=c.tx, accent=c.acL, onClick=null, children=null, visual=null}) => {
+              const clickable = typeof onClick === "function";
+              const handleKeyDown = (event) => {
+                if (!clickable) return;
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onClick(event);
+                }
+              };
+              return (
+                <div
+                  role={clickable ? "button" : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  onClick={clickable ? onClick : undefined}
+                  onKeyDown={clickable ? handleKeyDown : undefined}
+                  style={{
+                    position:"relative",
+                    minHeight:132,
+                    height:132,
+                    minWidth:0,
+                    background:c.sf,
+                    border:`1px solid ${c.br}`,
+                    boxShadow:"inset 0 1px 3px rgba(0,0,0,0.3)",
+                    boxSizing:"border-box",
+                    padding:"12px 14px",
+                    display:"grid",
+                    gridTemplateRows:"auto minmax(0,1fr) auto",
+                    gap:8,
+                    overflow:"hidden",
+                    fontFamily:F,
+                    cursor:clickable ? "default" : "default",
+                  }}
+                >
+                  <span aria-hidden="true" style={{position:"absolute",top:0,left:0,right:0,height:1,background:`linear-gradient(90deg,transparent,${accent},transparent)`,opacity:.8,boxShadow:`0 0 9px ${accent}66`}}/>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:6,minWidth:0}}>
+                    <span style={{display:"inline-grid",gap:4,minWidth:0,maxWidth:"100%",flex:"0 1 auto"}}>
+                      <span style={{fontSize:10,fontWeight:900,color:c.acL,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,lineHeight:1}}>{title}</span>
+                      <span aria-hidden="true" style={{height:1,width:"100%",minWidth:48,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 8px ${c.acG}`,opacity:.88}}/>
+                    </span>
+                    <DashboardCardInfoButton articleId={dashboardResourceIdFor(title)} label={title}/>
+                  </div>
+                  <div style={{minHeight:0,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,overflow:"hidden"}}>
+                    <div style={{minWidth:0,display:"flex",flexDirection:"column",gap:6,overflow:"hidden"}}>
+                      <div style={{fontSize:23,fontWeight:950,color,fontVariantNumeric:"tabular-nums",lineHeight:1.02,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value}</div>
+                      {sub ? <div style={{fontSize:10,fontWeight:800,color:c.ts,lineHeight:1.3,whiteSpace:"normal",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{sub}</div> : null}
+                    </div>
+                    <div style={{width:82,height:72,display:"grid",placeItems:"center",flexShrink:0,overflow:"hidden"}}>
+                      {visual || children}
+                    </div>
+                  </div>
+                </div>
+              );
+            };
+            const basicScoreValue = Math.round(Math.max(0, Math.min(100, Number(strategyScore.composite) || 0)));
+            const basicScoreDelta = Number(scoreDelta);
+            const basicScoreDeltaText = Number.isFinite(basicScoreDelta)
+              ? `${basicScoreDelta >= 0 ? "+" : "-"}${Math.abs(Math.round(basicScoreDelta))} vs prior`
+              : "No prior move";
+            const basicScoreTier = tierInfo?.label || tierInfo?.tier || dashTxt("Unrated","غير مصنف");
+            const basicScoreColor = tierInfo?.color || c.gold;
+            const basicNetPnlColor = Number(metrics.totalPnl || 0) >= 0 ? c.gn : c.rd;
+            const basicGrossWinValue = Math.abs(Number(metrics.grossWin ?? metrics.grossProfit ?? metrics.wonPnl) || 0);
+            const basicGrossLossValue = Math.abs(Number(metrics.grossLoss ?? metrics.lossPnl ?? metrics.gaveBack) || 0);
+            const basicNetPnlRValue = Number(metrics.avgR) * Number(metrics.tradeCount || 0);
+            const basicNetPnlValue = dashDualValue(
+              Number.isFinite(basicNetPnlRValue) ? basicNetPnlRValue : dashMoneyToR(metrics.totalPnl),
+              Number(metrics.totalPnl) || 0
+            );
+            const basicAvgTradeMoney = Number(metrics.expectancyDollarsPerTrade) || 0;
+            const basicAvgTradeRValue = Number.isFinite(Number(metrics.expectancyR))
+              ? Number(metrics.expectancyR)
+              : Number.isFinite(Number(metrics.avgR))
+                ? Number(metrics.avgR)
+                : dashMoneyToR(basicAvgTradeMoney);
+            const basicAvgTradeValue = dashDualValue(basicAvgTradeRValue, basicAvgTradeMoney);
+            const basicAvgTradeBucketValue = basicTradePnlValues.length ? (basicAvgTradeMoney * basicTradePnlValues.length) / 10 : basicAvgTradeMoney;
+            const basicMaxDrawdownValue = dashDualValue(
+              Math.abs(dashMoneyToR(metrics.maxDD)),
+              Math.abs(Number(metrics.maxDD) || 0),
+              {signedR:false, moneySign:false}
+            );
+            const renderSnapshotBasicTopStrip = () => (
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(174px,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                <BasicMetricCard
+                  title={dashTxt("Talaria Score","درجة تالاريا")}
+                  value={<>{basicScoreValue}<span style={{fontSize:12,color:c.ts,marginLeft:4}}>/100</span></>}
+                  sub={`${basicScoreTier} · ${basicScoreDeltaText}`}
+                  color={basicScoreColor}
+                  accent={basicScoreColor}
+                  onClick={() => setDashSnapshotTopMode("advanced")}
+                >
+                  <BasicScoreRing value={basicScoreValue} color={basicScoreColor}/>
+                </BasicMetricCard>
+                <BasicMetricCard title="Net P&L" value={basicNetPnlValue} sub={`${fmtPct(metrics.returnPct,1)} since start`} color={basicNetPnlColor} visual={<BasicMiniLine points={basicEquityValues} color={basicNetPnlColor} fill/>}/>
+                <BasicMetricCard title="Win Rate" value={fmtPct(metrics.winRate,0)} sub={`${metrics.wins || 0} W · ${metrics.losses || 0} L`} color={Number(metrics.winRate || 0) >= 50 ? c.gn : c.rd} visual={<BasicScoreRing value={metrics.winRate} color={c.gn} trackColor={c.rd}/>}/>
+                <BasicMetricCard title="Profit Factor" value={fmtNum(metrics.profitFactor,2)} sub={dashProfitFactorSub.replace("made for every", "made per")} color={Number(metrics.profitFactor || 0) >= 1 ? c.gn : c.rd} visual={<BasicMiniUpDownBars positive={basicGrossWinValue || Number(metrics.profitFactor || 0)} negative={basicGrossLossValue || 1}/>}/>
+                <BasicMetricCard title="Avg Trade" value={basicAvgTradeValue} sub={`expectancy · n ${(metrics.tradeCount || 0).toLocaleString()}`} color={Number(metrics.expectancyDollarsPerTrade || 0) >= 0 ? c.gn : c.rd} visual={<BasicMiniPnlBars values={basicTradePnlDecileValues} avg={basicAvgTradeBucketValue}/>}/>
+                <BasicMetricCard title="Max Drawdown" value={basicMaxDrawdownValue} sub={`worst · ${fmtPct(metrics.maxDDPct,1)}`} color={c.rd} accent={c.rd} visual={<BasicMiniLine points={basicDrawdownSeries} color={c.rd} fill/>}/>
+              </div>
+            );
+            const renderSnapshotAdvancedTopStrip = () => (
+              <div style={{display:"grid",gridTemplateColumns:"minmax(456px,1.18fr) minmax(0,3fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                <CompactScoreCard/>
+                <div style={{height:dashboardScoreCardHeight,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gridTemplateRows:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                  {overviewCarouselSlots.map(slot => <PagedMetricCard key={slot.id} slot={slot}/>)}
+                </div>
+              </div>
+            );
             const PropChallengeProgressSection = () => {
               if (!isPropD) return null;
               const sectionConfig = propConfig || { configured:false };
@@ -27129,8 +27842,8 @@ const TalariaV8b = () => {
                   tone:payoutMinAmount && payoutPool * payoutRatio >= payoutMinAmount ? "pass" : "open",
                   tag:payoutSplitPct != null ? `${Math.round(payoutSplitPct)}% split` : null,
                   used:payoutMinAmount ? Math.max(0, (payoutPool * payoutRatio) / payoutMinAmount) : 0,
-                  worst:payoutMinAmount ? `${fmtMoney(payoutPool * payoutRatio)} / ${formatMoneyAbs(payoutMinAmount)}` : "Add minimum payout",
-                  margin:payoutMinAmount ? `${formatMoneyAbs(Math.max(0, payoutMinAmount - payoutPool * payoutRatio))} left` : "Source setup",
+                  worst:payoutMinAmount ? `${dashDualValue(dashMoneyToR(payoutPool * payoutRatio), payoutPool * payoutRatio, {signedR:false, moneySign:false})} / ${dashDualValue(dashMoneyToR(payoutMinAmount), payoutMinAmount, {signedR:false, moneySign:false})}` : "Add minimum payout",
+                  margin:payoutMinAmount ? `${dashDualValue(dashMoneyToR(Math.max(0, payoutMinAmount - payoutPool * payoutRatio)), Math.max(0, payoutMinAmount - payoutPool * payoutRatio), {signedR:false, moneySign:false})} left` : "Source setup",
                 },
                 {
                   rule:"Payout Window",
@@ -27240,13 +27953,13 @@ const TalariaV8b = () => {
                   <details style={{border:`1px solid ${c.br}`,background:"rgba(8,10,18,0.58)",fontFamily:F}}>
                     <summary style={{listStyle:"none",minHeight:34,display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",alignItems:"center",gap:12,padding:"0 11px",cursor:"default"}}>
                       <span style={{fontSize:9,fontWeight:950,color:c.tx,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"normal"}}>{isLiveChallenge ? "Payout Certificates" : "Would-be payout ledger"}</span>
-                      <span style={{fontSize:8.5,fontWeight:900,color:isLiveChallenge?c.gn:c.gold,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{fmtMoney(payoutTotal)} · {payoutLedger.length} payouts</span>
+                      <span style={{fontSize:8.5,fontWeight:900,color:isLiveChallenge?c.gn:c.gold,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{dashDualValue(dashMoneyToR(payoutTotal), payoutTotal, {signedR:false, moneySign:false})} · {payoutLedger.length} payouts</span>
                     </summary>
                     <div style={{display:"grid",gap:0,borderTop:`1px solid ${c.br}`}}>
                       {rows.length ? rows.map((row, index) => (
                         <div key={row.id || index} style={{minHeight:32,display:"grid",gridTemplateColumns:"110px 110px minmax(0,1fr)",gap:12,alignItems:"center",padding:"0 11px",borderBottom:index < rows.length - 1 ? `1px solid ${c.br}` : "none"}}>
                           <span style={{fontSize:8.5,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{fmtDate(row.date)}</span>
-                          <span style={{fontSize:9,fontWeight:950,color:c.gn,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{fmtMoney(row.amount)}</span>
+                          <span style={{fontSize:9,fontWeight:950,color:c.gn,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{dashDualValue(dashMoneyToR(row.amount), row.amount, {signedR:false, moneySign:false})}</span>
                           <span style={{fontSize:8.5,fontWeight:850,color:c.tm,whiteSpace:"normal",textAlign:"right"}}>
                             {isLiveChallenge ? (row.certificate ? "Certificate linked" : "No certificate file") : "Simulated · no real certificate"}
                           </span>
@@ -27315,12 +28028,2102 @@ const TalariaV8b = () => {
                 </div>
               );
             };
+            const snapshotInsightSignals = buildInsightSignals({metrics, session:ds, trades:Array.isArray(metrics?.trades) ? metrics.trades : []});
+            const snapshotStrengthSignals = snapshotInsightSignals.filter(item => item.direction === "strength");
+            const snapshotWeaknessSignals = snapshotInsightSignals.filter(item => item.direction === "weakness");
+            const snapshotTopWeakness = snapshotWeaknessSignals[0] || null;
+            const snapshotAutoInsightChips = (() => {
+              const picked = [];
+              const used = new Set(snapshotTopWeakness?.id ? [snapshotTopWeakness.id] : []);
+              const counts = {strength:0, weakness:0};
+              const tryAdd = (signal, balanced=true) => {
+                if (!signal?.id || used.has(signal.id) || picked.length >= 4) return;
+                const direction = signal.direction === "strength" ? "strength" : "weakness";
+                if (balanced && counts[direction] >= 2) return;
+                picked.push(signal);
+                used.add(signal.id);
+                counts[direction] += 1;
+              };
+              snapshotInsightSignals.forEach(signal => tryAdd(signal, true));
+              snapshotInsightSignals.forEach(signal => tryAdd(signal, false));
+              return picked.slice(0, 4);
+            })();
+            const formatInsightActionImpact = signal => {
+              if (!signal) return "";
+              const hasUsd = signal.impactUSD !== null && signal.impactUSD !== undefined && Number.isFinite(Number(signal.impactUSD)) && Math.abs(Number(signal.impactUSD)) > 0;
+              const hasR = signal.impactR !== null && signal.impactR !== undefined && Number.isFinite(Number(signal.impactR)) && Math.abs(Number(signal.impactR)) > 0;
+              const absUsd = hasUsd ? Math.abs(Number(signal.impactUSD)) : null;
+              const absR = hasR ? Math.abs(Number(signal.impactR)) : null;
+              const r = hasR ? `${absR.toFixed(absR >= 10 ? 1 : 2)}R` : null;
+              const displayImpact = (() => {
+                if (dashValueMode === "privacy") return dashPrivacyMask;
+                if (dashOverviewUnitMode === "r") return r || (hasUsd ? fmtValue(absUsd) : null);
+                if (hasUsd) return fmtValue(absUsd);
+                return r;
+              })();
+              if (displayImpact) return `Potential upside if fixed: about ${displayImpact}`;
+              const currentSignal = formatInsightMetricValue(signal);
+              return currentSignal ? `Current signal: ${currentSignal}` : "Review the linked diagnostic.";
+            };
+            const snapshotTradeRows = Array.isArray(metrics?.trades) ? metrics.trades : [];
+            const snapshotTradeNumber = value => {
+              const n = Number(value);
+              return Number.isFinite(n) ? n : null;
+            };
+            const snapshotTradeResultR = trade => snapshotTradeNumber(
+              trade?.actual_rr_net
+              ?? trade?.actualRRNet
+              ?? trade?.actual_r_net
+              ?? trade?.actualR
+              ?? trade?.actual_rr
+              ?? trade?.rMultiple
+              ?? trade?.r_multiple
+              ?? trade?.rr
+            );
+            const snapshotTradePnl = trade => snapshotTradeNumber(
+              trade?.netPnl
+              ?? trade?.netPnL
+              ?? trade?.net_pnl
+              ?? trade?.pnl_dollars_net
+              ?? trade?.pnl_currency_net
+              ?? trade?.realizedPnL
+              ?? trade?.pnl
+              ?? trade?.profit
+            );
+            const snapshotTradeSymbol = trade => String(
+              trade?.symbol
+              || trade?.ticker
+              || trade?.instrument
+              || trade?.pair
+              || dashTxt("Trade","صفقة")
+            ).toUpperCase();
+            const snapshotTradeId = (trade, fallbackIndex) => String(
+              trade?.tradeId
+              || trade?.trade_id
+              || trade?.id
+              || trade?.ticket
+              || trade?.orderId
+              || trade?.order_id
+              || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
+            );
+            const snapshotTradeRankRows = snapshotTradeRows.map((trade, index) => {
+              const resultR = snapshotTradeResultR(trade);
+              const pnl = snapshotTradePnl(trade);
+              const rankValue = dashOverviewUnitMode === "r" && resultR !== null ? resultR : (pnl !== null ? pnl : resultR);
+              return {
+                trade,
+                index,
+                key:getDashTradeRowKey(trade, index),
+                tradeId:snapshotTradeId(trade, index),
+                symbol:snapshotTradeSymbol(trade),
+                resultR,
+                pnl,
+                rankValue,
+              };
+            }).filter(row => Number.isFinite(row.rankValue));
+            const snapshotBestTrades = [...snapshotTradeRankRows]
+              .sort((a,b) => b.rankValue - a.rankValue || a.index - b.index)
+              .slice(0, 4);
+            const snapshotWorstTrades = [...snapshotTradeRankRows]
+              .sort((a,b) => a.rankValue - b.rankValue || a.index - b.index)
+              .slice(0, 4);
+            const formatSnapshotTradeResult = row => {
+              if (dashValueMode === "privacy") return dashPrivacyMask;
+              if (dashOverviewUnitMode === "r" && row?.resultR !== null && row?.resultR !== undefined) {
+                const absValue = Math.abs(row.resultR);
+                const decimals = absValue >= 10 ? 1 : absValue >= 1 ? 2 : 2;
+                return `${row.resultR > 0 ? "+" : ""}${fmtNum(row.resultR, decimals)}R`;
+              }
+              if (row?.pnl !== null && row?.pnl !== undefined) return fmtValue(row.pnl);
+              return "-";
+            };
+            const openSnapshotTradePreview = (row, event=null) => {
+              if (!row?.trade) return;
+              const previewKey = String(row.key ?? row.tradeId ?? "");
+              const pageScrollX = typeof window !== "undefined" ? (window.scrollX || window.pageXOffset || 0) : 0;
+              const pageScrollY = typeof window !== "undefined" ? (window.scrollY || window.pageYOffset || 0) : 0;
+              const triggerNode = event?.currentTarget || null;
+              const rect = triggerNode?.getBoundingClientRect?.();
+              const anchorRect = rect ? {
+                left:rect.left,
+                right:rect.right,
+                top:rect.top,
+                bottom:rect.bottom,
+                width:rect.width,
+                height:rect.height,
+              } : null;
+              const anchorPageRect = rect ? {
+                left:rect.left + pageScrollX,
+                right:rect.right + pageScrollX,
+                top:rect.top + pageScrollY,
+                bottom:rect.bottom + pageScrollY,
+                width:rect.width,
+                height:rect.height,
+              } : null;
+              const contentNode =
+                triggerNode?.closest?.("[data-tlr-snapshot-layer-root='true']") ||
+                triggerNode?.closest?.("[data-tlr-snapshot-root='true']") ||
+                triggerNode?.closest?.("[data-tlr-dashboard-main='true']") ||
+                triggerNode?.closest?.("main") ||
+                (typeof document !== "undefined" ? document.querySelector("[data-tlr-snapshot-layer-root='true']") : null) ||
+                (typeof document !== "undefined" ? document.querySelector("[data-tlr-snapshot-root='true']") : null);
+              const contentRectRaw = contentNode?.getBoundingClientRect?.();
+              const contentRect = contentRectRaw ? {
+                left:contentRectRaw.left,
+                right:contentRectRaw.right,
+                top:contentRectRaw.top,
+                bottom:contentRectRaw.bottom,
+                width:contentRectRaw.width,
+                height:contentRectRaw.height,
+              } : null;
+              const contentPageRect = contentRectRaw ? {
+                left:contentRectRaw.left + pageScrollX,
+                right:contentRectRaw.right + pageScrollX,
+                top:contentRectRaw.top + pageScrollY,
+                bottom:contentRectRaw.bottom + pageScrollY,
+                width:contentRectRaw.width,
+                height:contentRectRaw.height,
+              } : null;
+              const anchorInContent = rect && contentRectRaw ? {
+                left:rect.left - contentRectRaw.left,
+                right:rect.right - contentRectRaw.left,
+                top:rect.top - contentRectRaw.top,
+                bottom:rect.bottom - contentRectRaw.top,
+                width:rect.width,
+                height:rect.height,
+              } : null;
+              setDashSnapshotTradePreview(current => current?.key === row.key ? null : {...row, previewKey, anchorRect, anchorPageRect, anchorInContent, contentRect, contentPageRect});
+            };
+            const snapshotCalendarDailyRows = btDashAggregateDailyPnlTradeCounts(snapshotTradeRows);
+            const snapshotCalendarLatestMonth = snapshotCalendarDailyRows.length
+              ? btDashMonthIso(snapshotCalendarDailyRows[snapshotCalendarDailyRows.length - 1].date)
+              : btDashMonthIso(new Date());
+            const snapshotCalendarMonth = dashSnapshotCalendarMonth || snapshotCalendarLatestMonth;
+            const formatSnapshotCalendarValue = cell => {
+              const pnl = Number(cell?.pnl) || 0;
+              if (dashOverviewUnitMode === "r") {
+                const r = Number(cell?.r) || 0;
+                return `${r >= 0 ? "+" : ""}${fmtNum(r, Math.abs(r) >= 10 ? 1 : 2)}R`;
+              }
+              return fmtValue(pnl);
+            };
+            const renderSnapshotPnlCalendarSection = () => (
+              <SummaryCard
+                title={dashTxt("Calendar","التقويم")}
+                titleDot={false}
+                minHeight={dashboardSnapshotPulseCalendarHeight}
+                style={{height:dashboardSnapshotPulseCalendarHeight,minHeight:dashboardSnapshotPulseCalendarHeight,maxHeight:dashboardSnapshotPulseCalendarHeight,padding:14,gap:12}}
+              >
+                <SnapshotPnlCalendar
+                  c={c}
+                  F={F}
+                  monthIso={snapshotCalendarMonth}
+                  dailyRows={snapshotCalendarDailyRows}
+                  formatValue={formatSnapshotCalendarValue}
+                  onMonthChange={setDashSnapshotCalendarMonth}
+                />
+              </SummaryCard>
+            );
+            const renderAccountPulseSection = () => {
+              const pulsePeriods = [
+                {id:"ALL", short:"ALL", label:"All", days:null},
+                {id:"1Y", short:"1Y", label:"1 Year", days:365},
+                {id:"6M", short:"6M", label:"6 Months", days:182},
+                {id:"3M", short:"3M", label:"3 Months", days:90},
+                {id:"1M", short:"1M", label:"1 Month", days:30},
+                {id:"1W", short:"1W", label:"1 Week", days:7},
+              ];
+              const activePeriod = pulsePeriods.find(item => item.id === dashAccountPulsePeriod) || pulsePeriods[0];
+              const selectPulsePeriod = id => {
+                setDashAccountPulsePeriod(id);
+                setDashAccountPulseMenuOpen(false);
+                setDashAccountPulseHover(null);
+              };
+              const scheduleAccountPulseHover = next => {
+                if (dashAccountPulseHoverFrameRef.current) {
+                  if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+                    window.cancelAnimationFrame(dashAccountPulseHoverFrameRef.current);
+                  } else {
+                    clearTimeout(dashAccountPulseHoverFrameRef.current);
+                  }
+                  dashAccountPulseHoverFrameRef.current = null;
+                }
+                dashAccountPulseHoverNextRef.current = null;
+                setDashAccountPulseHover(prev => {
+                  if (!next) return prev ? null : prev;
+                  if (!!prev?.showTip !== !!next?.showTip) return next;
+                  if (!next.showTip) {
+                    return prev &&
+                      prev.axisText === next.axisText &&
+                      Math.abs((prev.axisX || 0) - (next.axisX || 0)) < 4 &&
+                      Math.abs((prev.axisY || 0) - (next.axisY || 0)) < 4
+                        ? prev
+                        : next;
+                  }
+                  return prev &&
+                    prev.tradeId === next.tradeId &&
+                    prev.fullTradeId === next.fullTradeId &&
+                    prev.balanceText === next.balanceText &&
+                    prev.pnlText === next.pnlText &&
+                    prev.openText === next.openText &&
+                    prev.axisText === next.axisText &&
+                    Math.abs((prev.pointX || 0) - (next.pointX || 0)) < 1.5 &&
+                    Math.abs((prev.pointY || 0) - (next.pointY || 0)) < 1.5
+                      ? prev
+                      : next;
+                });
+              };
+              const parsePulseDate = value => {
+                if (!value) return null;
+                const date = btDashDate(value);
+                const time = date?.getTime?.();
+                return Number.isFinite(time) ? time : null;
+              };
+              const minutesToClock = value => {
+                const minutes = Number(value);
+                if (!Number.isFinite(minutes)) return null;
+                const bounded = Math.max(0, Math.min(1439, Math.round(minutes)));
+                return `${String(Math.floor(bounded / 60)).padStart(2, "0")}:${String(bounded % 60).padStart(2, "0")}`;
+              };
+              const joinDateTimeParts = (datePart, timePart) => {
+                if (datePart && timePart) return `${datePart} ${timePart}`;
+                return datePart || timePart || null;
+              };
+              const tradeOpenDateValue = trade => {
+                if (!trade) return null;
+                const direct = trade.entryTime || trade.entry_time || trade.openTime || trade.openedAt || trade.entryAt || trade.entryDateTime || trade.entry_datetime;
+                if (direct) return direct;
+                const datePart = trade.entryDate || trade.entry_date || trade.openDate || trade.open_date || trade.date || trade.calendar;
+                const timePart = trade.entryClock || trade.entry_clock || trade.openClock || trade.open_clock || trade.timeLabel || trade.time || minutesToClock(trade.timeMinutes ?? trade.entryMinutes ?? trade.openMinutes);
+                return joinDateTimeParts(datePart, timePart);
+              };
+              const tradeExitDateValue = trade => {
+                if (!trade) return null;
+                const direct = trade.exitTime || trade.exit_time || trade.closeTime || trade.closedAt || trade.exitAt || trade.exitDateTime || trade.exit_datetime;
+                if (direct) return direct;
+                const datePart = trade.exitDate || trade.exit_date || trade.closeDate || trade.close_date || trade.date || trade.calendar;
+                const timePart = trade.exitClock || trade.exit_clock || trade.closeClock || trade.close_clock || trade.closeTimeLabel || minutesToClock(trade.exitMinutes ?? trade.closeMinutes);
+                return joinDateTimeParts(datePart, timePart);
+              };
+              const tradeDateValue = trade => tradeExitDateValue(trade) || tradeOpenDateValue(trade);
+              const pulseTradeId = (trade, fallbackIndex) => String(
+                trade?.tradeId
+                || trade?.trade_id
+                || trade?.clientTradeId
+                || trade?.client_trade_id
+                || trade?.id
+                || trade?.ticket
+                || trade?.orderId
+                || trade?.order_id
+                || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
+              );
+              const pulseTradeFullId = (trade, fallbackIndex) => String(
+                trade?.trade_id
+                || trade?.client_trade_id
+                || trade?.clientTradeId
+                || trade?.id
+                || trade?.tradeId
+                || trade?.ticket
+                || trade?.orderId
+                || trade?.order_id
+                || (fallbackIndex >= 0 ? `Trade ${fallbackIndex + 1}` : "Trade")
+              );
+              const formatPulseTradeTime = value => {
+                if (!value) return "-";
+                const date = new Date(value);
+                if (!Number.isFinite(date.getTime())) return String(value);
+                const raw = String(value);
+                const includesTime = /[T\s]\d{1,2}:\d{2}/.test(raw) || /\d{1,2}:\d{2}/.test(raw);
+                const hours = String(date.getHours()).padStart(2, "0");
+                const minutes = String(date.getMinutes()).padStart(2, "0");
+                return includesTime ? `${fmtDate(value)} ${hours}:${minutes}` : fmtDate(value);
+              };
+              const formatPulseTradeClock = value => {
+                if (!value) return "-";
+                const raw = String(value);
+                const rawClock = raw.match(/\b\d{1,2}:\d{2}\b/);
+                const date = new Date(value);
+                if (!Number.isFinite(date.getTime())) return rawClock ? rawClock[0].padStart(5, "0") : raw;
+                const includesTime = /[T\s]\d{1,2}:\d{2}/.test(raw) || rawClock;
+                if (!includesTime) return fmtDate(value);
+                return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+              };
+              const formatPulseTradeAxisTime = value => {
+                const formatted = formatPulseTradeTime(value);
+                return formatted === "-" ? formatted : formatted;
+              };
+              const tradesForPulse = Array.isArray(metrics?.trades) ? metrics.trades : [];
+              const rawEquityPoints = Array.isArray(metrics?.equityPoints) && metrics.equityPoints.length >= 2
+                ? metrics.equityPoints
+                : [
+                  {value:Number(ds?.capital) || 0},
+                  {value:Number(metrics?.endingBalance) || ((Number(ds?.capital) || 0) + (Number(metrics?.totalPnl) || 0))},
+                ];
+              const firstKnownDate = tradesForPulse.map(tradeDateValue).find(Boolean) || ds?.startDate || ds?.createdAt || ds?.date;
+              const lastKnownDate = [...tradesForPulse].reverse().map(tradeDateValue).find(Boolean) || ds?.endDate || ds?.updatedAt || firstKnownDate;
+              const allPulseRows = rawEquityPoints.map((point, index) => {
+                const linkedTrade = point?.trade || point?.sourceTrade || (index > 0 ? tradesForPulse[index - 1] || null : null);
+                const rawDate = index === 0 ? firstKnownDate : (tradeDateValue(linkedTrade) || tradeDateValue(tradesForPulse[index - 1]) || lastKnownDate || firstKnownDate);
+                return {
+                  index,
+                  value:Number(point?.value ?? point?.equity ?? point?.balance ?? 0) || 0,
+                  dateMs:parsePulseDate(rawDate),
+                  labelDate:rawDate,
+                  trade:linkedTrade,
+                  tradeIndex:index - 1,
+                };
+              }).filter(row => Number.isFinite(row.value));
+              const datedRows = allPulseRows.filter(row => row.dateMs !== null);
+              const lastDateMs = datedRows.length ? datedRows[datedRows.length - 1].dateMs : null;
+              const cutoffMs = activePeriod.days && lastDateMs ? lastDateMs - activePeriod.days * 86400000 : null;
+              const filteredPulseRows = cutoffMs
+                ? allPulseRows.filter(row => row.dateMs === null || row.dateMs >= cutoffMs)
+                : allPulseRows;
+              const selectedPulseRows = filteredPulseRows.length >= 2
+                ? filteredPulseRows
+                : allPulseRows.slice(Math.max(0, allPulseRows.length - 2));
+              const pulseRows = selectedPulseRows.length >= 2 ? selectedPulseRows : [
+                selectedPulseRows[0] || {value:Number(ds?.capital) || 0, dateMs:lastDateMs, labelDate:lastKnownDate},
+                selectedPulseRows[0] || {value:Number(ds?.capital) || 0, dateMs:lastDateMs, labelDate:lastKnownDate},
+              ];
+              let runningPeak = -Infinity;
+              const peakRows = pulseRows.map(row => {
+                runningPeak = Math.max(runningPeak, row.value);
+                return {...row, peak:runningPeak};
+              });
+              const firstPulse = peakRows[0] || {value:0};
+              const lastPulse = peakRows[peakRows.length - 1] || firstPulse;
+              const pulseStartDateLabel = fmtDate(firstPulse.labelDate || firstPulse.dateMs || firstKnownDate);
+              const pulseCurrentDateLabel = fmtDate(lastPulse.labelDate || lastPulse.dateMs || lastKnownDate || new Date());
+              const highPulse = peakRows.reduce((best, row) => row.value >= best.value ? row : best, firstPulse);
+              const periodPnl = lastPulse.value - firstPulse.value;
+              const currentDrawdownAmount = Math.max(0, (highPulse.value || 0) - (lastPulse.value || 0));
+              const currentDrawdownPct = highPulse.value ? (currentDrawdownAmount / Math.abs(highPulse.value)) * 100 : 0;
+              const daysSinceHigh = highPulse.dateMs && lastPulse.dateMs ? Math.max(0, Math.round((lastPulse.dateMs - highPulse.dateMs) / 86400000)) : 0;
+              const propCapitalBase = Math.max(1, Number(ds?.capital) || Number(propConfig?.capital) || Number(metrics?.startingBalance) || 1);
+              const parseLimitCandidate = (value, mode = "amount") => {
+                if (value === undefined || value === null || value === "") return null;
+                const raw = String(value).trim();
+                const number = Number(raw.replace(/[^0-9.\-]/g, ""));
+                if (!Number.isFinite(number) || number <= 0) return null;
+                const capital = propCapitalBase;
+                if (raw.includes("%") || mode === "pct") return capital * (number / 100);
+                if (number > 0 && number <= 1 && mode !== "amount") return capital * number;
+                return number;
+              };
+              const parseFirstLimit = (values, mode = "amount") => {
+                for (const value of values) {
+                  const parsed = parseLimitCandidate(value, mode);
+                  if (parsed !== null) return parsed;
+                }
+                return null;
+              };
+              const propDrawdownModeText = [
+                propConfig?.drawdownMode,
+                propConfig?.drawdownType,
+                propConfig?.maxDrawdownType,
+                propConfig?.trailingDrawdownType,
+                propConfig?.ddType,
+                propConfig?.phaseDrawdownMode,
+              ].map(value => String(value || "").toLowerCase()).join(" ");
+              const propDrawdownMode = /eod|end\s*of\s*day|day\s*close|daily\s*close/.test(propDrawdownModeText)
+                ? "eod-trailing"
+                : /equity|intraday|live\s*trail/.test(propDrawdownModeText)
+                  ? "equity-trailing"
+                  : propConfig?.drawdownType === "trailing" || propConfig?.trailingDrawdown === true
+                    ? "equity-trailing"
+                    : "static";
+              const dailyLossLimitAmount = isPropD && propConfig ? (
+                parseFirstLimit([propConfig.dailyLossLimitAmount, propConfig.dailyLossAmount, propConfig.maxDailyLossAmount, propConfig.dailyDrawdownAmount, propConfig.dailyLossLimit, propConfig.maxDailyLoss, propConfig.dailyDrawdownLimit], "amount")
+                ?? parseFirstLimit([propConfig.dailyLossLimitPct, propConfig.dailyLossPct, propConfig.maxDailyLossPct, propConfig.dailyDrawdownPct], "pct")
+              ) : null;
+              const phaseTargetAmount = isPropD && propConfig ? (
+                parseFirstLimit([propConfig.phaseTargetAmount, propConfig.currentPhaseTargetAmount, propConfig.profitTargetAmount, propConfig.profitTarget, propConfig.targetAmount, propConfig.targetProfitAmount, propConfig.challengeTargetAmount], "amount")
+                ?? parseFirstLimit([propConfig.phaseTargetPct, propConfig.currentPhaseTargetPct, propConfig.profitTargetPct, propConfig.targetPct, propConfig.targetReturnPct, propConfig.phase1ProfitTargetPct, propConfig.phase2ProfitTargetPct], "pct")
+              ) : null;
+              const maxDrawdownAmount = isPropD && propConfig ? (
+                parseFirstLimit([propConfig.maxDrawdownAmount, propConfig.maxDrawdown, propConfig.maxDDLimitAmount, propConfig.maxDDLimit, propConfig.totalDrawdownAmount, propConfig.totalDD, propConfig.maxTotalLoss, propConfig.overallLossLimit], "amount")
+                ?? parseFirstLimit([propConfig.maxDrawdownPct, propConfig.maxDDLimitPct, propConfig.totalDrawdownPct, propConfig.drawdownLimitPct, propConfig.maxTotalLossPct, propConfig.overallLossLimitPct], "pct")
+              ) : null;
+              const pulseDayKey = row => {
+                const date = row?.dateMs != null ? new Date(row.dateMs) : btDashDate(row?.labelDate || lastKnownDate || firstKnownDate);
+                if (!(date instanceof Date) || Number.isNaN(date.getTime())) return `row-${row?.index || 0}`;
+                return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+              };
+              const lastPulseDayKey = pulseDayKey(lastPulse);
+              const latestDayFirstTradeIndex = peakRows.findIndex(row => row?.trade && pulseDayKey(row) === lastPulseDayKey);
+              const latestDayStartValue = latestDayFirstTradeIndex > 0
+                ? peakRows[latestDayFirstTradeIndex - 1].value
+                : firstPulse.value || propCapitalBase;
+              const latestPeak = Math.max(...peakRows.map(row => row.peak || row.value || 0));
+              const dailyLimitLineValue = dailyLossLimitAmount ? latestDayStartValue - dailyLossLimitAmount : null;
+              const phaseTargetLineValue = phaseTargetAmount ? propCapitalBase + phaseTargetAmount : null;
+              const eodCloseByDay = new Map();
+              peakRows.forEach(row => eodCloseByDay.set(pulseDayKey(row), row.value));
+              let eodRunningPeak = propCapitalBase;
+              const eodPeakByDay = new Map();
+              Array.from(eodCloseByDay.entries()).forEach(([day, closeValue]) => {
+                eodRunningPeak = Math.max(eodRunningPeak, Number(closeValue) || propCapitalBase);
+                eodPeakByDay.set(day, eodRunningPeak);
+              });
+              const maxLossLineRows = isPropD && maxDrawdownAmount
+                ? peakRows.map(row => {
+                  const day = pulseDayKey(row);
+                  const reference = propDrawdownMode === "equity-trailing"
+                    ? Math.max(propCapitalBase, Number(row.peak) || Number(row.value) || propCapitalBase)
+                    : propDrawdownMode === "eod-trailing"
+                      ? Math.max(propCapitalBase, Number(eodPeakByDay.get(day)) || propCapitalBase)
+                      : propCapitalBase;
+                  return {...row, limitValue:reference - maxDrawdownAmount};
+                })
+                : [];
+              const pulseValues = [
+                ...peakRows.flatMap(row => [row.value, row.peak]),
+                ...(dailyLimitLineValue !== null && Number.isFinite(dailyLimitLineValue) ? [dailyLimitLineValue] : []),
+                ...(phaseTargetLineValue !== null && Number.isFinite(phaseTargetLineValue) ? [phaseTargetLineValue] : []),
+                ...maxLossLineRows.map(row => row.limitValue).filter(value => Number.isFinite(value)),
+              ];
+              const minValue = Math.min(...pulseValues);
+              const maxValue = Math.max(...pulseValues);
+              const valueRange = Math.max(1, maxValue - minValue);
+              const yMin = minValue - valueRange * 0.07;
+              const yMax = maxValue + valueRange * 0.07;
+              const viewW = 980;
+              const viewH = 380;
+              const leftPad = 16;
+              const rightPad = 18;
+              const topPad = 14;
+              const bottomPad = 12;
+              const plotW = viewW - leftPad - rightPad;
+              const plotH = viewH - topPad - bottomPad;
+              const xFor = index => leftPad + (peakRows.length <= 1 ? 0 : (index / (peakRows.length - 1)) * plotW);
+              const yFor = value => topPad + (1 - ((value - yMin) / Math.max(1, yMax - yMin))) * plotH;
+              const curvePoints = peakRows.map((row, index) => ({...row, x:xFor(index), y:yFor(row.value), peakY:yFor(row.peak)}));
+              const curveTradePoints = curvePoints.filter(point => point.trade);
+              const equityPath = curvePoints.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+              const peakPath = curvePoints.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)} ${point.peakY.toFixed(2)}`).join(" ");
+              const reverseCurvePath = [...curvePoints].reverse().map(point => `L${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+              const drawdownArea = `${peakPath} ${reverseCurvePath} Z`;
+              const areaPath = `${equityPath} L${curvePoints[curvePoints.length - 1].x.toFixed(2)} ${yFor(yMin).toFixed(2)} L${curvePoints[0].x.toFixed(2)} ${yFor(yMin).toFixed(2)} Z`;
+              const dailyLimitY = dailyLimitLineValue !== null && Number.isFinite(dailyLimitLineValue) ? yFor(dailyLimitLineValue) : null;
+              const phaseTargetY = phaseTargetLineValue !== null && Number.isFinite(phaseTargetLineValue) ? yFor(phaseTargetLineValue) : null;
+              const maxLossLinePath = maxLossLineRows.length
+                ? maxLossLineRows.map((row, index) => {
+                  const point = curvePoints[index];
+                  if (!point || !Number.isFinite(row.limitValue)) return "";
+                  return `${index ? "L" : "M"}${point.x.toFixed(2)} ${yFor(row.limitValue).toFixed(2)}`;
+                }).filter(Boolean).join(" ")
+                : "";
+              const maxLossLabelY = maxLossLineRows.length ? yFor(maxLossLineRows[maxLossLineRows.length - 1].limitValue) : null;
+              const maxLossLabel = propDrawdownMode === "eod-trailing"
+                ? "EOD max loss limit"
+                : propDrawdownMode === "equity-trailing"
+                  ? "Equity max loss limit"
+                  : "Static max loss limit";
+              const limitLabelY = (y, offset = -6) => Math.max(topPad + 10, Math.min((Number(y) || topPad) + offset, viewH - bottomPad - 8));
+              const formatPulseEquityValue = value => {
+                const number = Number(value) || 0;
+                if (dashOverviewUnitMode === "r") return fmtSignedR(dashMoneyToR(number - dashMoneyPercentBase));
+                if (dashValueMode === "privacy") return dashPrivacyMask;
+                if (dashOverviewUnitMode === "percent") {
+                  const pct = ((number - dashMoneyPercentBase) / dashMoneyPercentBase) * 100;
+                  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+                }
+                return fmtAbsMoney(number);
+              };
+              const equityHighPoint = curvePoints.length ? curvePoints.reduce((best, point) => point.value >= best.value ? point : best, curvePoints[0]) : null;
+              const equityLowPoint = curvePoints.length ? curvePoints.reduce((best, point) => point.value <= best.value ? point : best, curvePoints[0]) : null;
+              const clampPulseLabelX = x => Math.max(leftPad + 10, Math.min(x, viewW - rightPad - 10));
+              const clampPulseLabelY = y => Math.max(topPad + 11, Math.min(y, viewH - bottomPad - 9));
+              const estimatePulseTextWidth = (text, fontSize = 9) => Math.max(28, Math.min(132, String(text || "").length * fontSize * 0.52));
+              const pulseTextRect = (x, y, width, height = 12, anchor = "start") => ({
+                x1:anchor === "end" ? x - width : anchor === "middle" ? x - width / 2 : x,
+                x2:anchor === "end" ? x : anchor === "middle" ? x + width / 2 : x + width,
+                y1:y - height + 1,
+                y2:y + 3,
+              });
+              const pulseRectsOverlap = (a, b, margin = 0) => (
+                a && b &&
+                a.x1 - margin < b.x2 &&
+                a.x2 + margin > b.x1 &&
+                a.y1 - margin < b.y2 &&
+                a.y2 + margin > b.y1
+              );
+              const pulseRectNearCurve = rect => {
+                if (!rect || !curvePoints.length) return false;
+                const expanded = {x1:rect.x1 - 3, x2:rect.x2 + 3, y1:rect.y1 - 4, y2:rect.y2 + 4};
+                for (let i = 1; i < curvePoints.length; i += 1) {
+                  const prev = curvePoints[i - 1];
+                  const point = curvePoints[i];
+                  const minX = Math.min(prev.x, point.x);
+                  const maxX = Math.max(prev.x, point.x);
+                  if (maxX < expanded.x1 || minX > expanded.x2) continue;
+                  for (let step = 0; step <= 5; step += 1) {
+                    const t = step / 5;
+                    const x = prev.x + (point.x - prev.x) * t;
+                    const y = prev.y + (point.y - prev.y) * t;
+                    if (x >= expanded.x1 && x <= expanded.x2 && y >= expanded.y1 && y <= expanded.y2) return true;
+                  }
+                }
+                return false;
+              };
+              const getPulseHighLowLabelLayout = (point, color, preferAbove = true) => {
+                if (!point) return null;
+                const valueText = formatPulseEquityValue(point.value);
+                const roomRight = viewW - rightPad - point.x;
+                const roomLeft = point.x - leftPad;
+                const toRight = roomRight >= roomLeft;
+                const estimatedWidth = Math.max(42, Math.min(90, valueText.length * 5.6));
+                const sideRoom = toRight ? roomRight : roomLeft;
+                const useConnector = sideRoom >= estimatedWidth + 28;
+                const directOffset = Math.max(20, Math.min(34, sideRoom - estimatedWidth - 10));
+                const labelMinX = leftPad + 8 + (toRight ? 0 : estimatedWidth);
+                const labelMaxX = viewW - rightPad - 8 - (toRight ? estimatedWidth : 0);
+                const clampSideLabelX = x => Math.max(labelMinX, Math.min(x, labelMaxX));
+                const lineRun = Math.max(14, Math.min(34, sideRoom - estimatedWidth - 10));
+                const labelBaselineOffset = 3.2;
+                const lineY = Math.max(topPad + 8, Math.min(point.y, viewH - bottomPad - 12));
+                const lineStartX = point.x + (toRight ? 6 : -6);
+                const lineEndX = point.x + (toRight ? lineRun : -lineRun);
+                const labelX = useConnector
+                  ? clampSideLabelX(lineEndX + (toRight ? 4 : -4))
+                  : clampSideLabelX(point.x + (toRight ? directOffset : -directOffset));
+                const textAnchor = toRight ? "start" : "end";
+                const labelY = clampPulseLabelY(lineY + labelBaselineOffset);
+                return {
+                  point,
+                  color,
+                  preferAbove,
+                  valueText,
+                  lineY,
+                  lineStartX,
+                  lineEndX,
+                  labelX,
+                  labelY,
+                  textAnchor,
+                  useConnector,
+                  rect:pulseTextRect(labelX, labelY, estimatedWidth, 12, textAnchor),
+                };
+              };
+              const renderPulseHighLowLabel = layout => {
+                if (!layout) return null;
+                return (
+                  <g key={`pulse-${layout.preferAbove ? "high" : "low"}`} pointerEvents="none">
+                    <circle cx={layout.point.x} cy={layout.point.y} r="3.2" fill={layout.color} stroke={c.bg} strokeWidth="1.5"/>
+                    {layout.useConnector ? <line x1={layout.lineStartX} x2={layout.lineEndX} y1={layout.lineY} y2={layout.lineY} stroke={layout.color} strokeWidth=".48" strokeDasharray=".8 1.6" opacity=".78"/> : null}
+                    <text x={layout.labelX} y={layout.labelY} textAnchor={layout.textAnchor} fill={layout.color} fontFamily={F} fontSize="9.3" fontWeight="950" letterSpacing=".035em">
+                      {layout.valueText}
+                    </text>
+                  </g>
+                );
+              };
+              const equityHighLabelLayout = getPulseHighLowLabelLayout(equityHighPoint, c.gn, true);
+              const equityLowLabelLayout = getPulseHighLowLabelLayout(equityLowPoint, c.rd, false);
+              const pulseReservedLabelRects = [
+                equityHighLabelLayout?.rect,
+                equityLowLabelLayout?.rect,
+              ].filter(Boolean);
+              const getPulseRuleLabelLayout = ({key, text, y, color}) => {
+                if (y === null || !Number.isFinite(y)) return null;
+                const width = estimatePulseTextWidth(text, 9);
+                const minX = leftPad + 8;
+                const maxX = Math.max(minX, viewW - rightPad - width - 8);
+                const labelY = Math.max(topPad + 9, Math.min(y, viewH - bottomPad - 9));
+                const baseX = minX;
+                const step = Math.max(68, Math.ceil(width + 26));
+                const candidateXs = Array.from(new Set([
+                  baseX,
+                  baseX + step,
+                  baseX + step * 2,
+                  baseX + step * 3,
+                  baseX + step * 4,
+                  baseX + step * 5,
+                  maxX,
+                  Math.max(minX, maxX - step),
+                  Math.max(minX, maxX - step * 2),
+                ].map(x => Math.max(minX, Math.min(maxX, x)))));
+                let best = null;
+                candidateXs.forEach((x, index) => {
+                  const rect = pulseTextRect(x, labelY, width, 12, "start");
+                  const overlaps = pulseReservedLabelRects.reduce((count, reserved) => count + (pulseRectsOverlap(rect, reserved, 5) ? 1 : 0), 0);
+                  const curvePenalty = pulseRectNearCurve(rect) ? 1 : 0;
+                  const edgePenalty = x <= minX + 1 || x >= maxX - 1 ? 0.4 : 0;
+                  const score = overlaps * 18 + curvePenalty * 7 + edgePenalty + Math.abs(x - baseX) * 0.012 + index * 0.01;
+                  if (!best || score < best.score) best = {key, text, x, y:labelY, color, width, rect, score};
+                });
+                if (best) pulseReservedLabelRects.push(best.rect);
+                return best;
+              };
+              const phaseTargetLabelLayout = getPulseRuleLabelLayout({key:"phase-target", text:"Phase target", y:phaseTargetY, color:c.gn});
+              const maxLossLabelLayout = getPulseRuleLabelLayout({key:"max-loss", text:maxLossLabel, y:maxLossLabelY, color:c.rd});
+              const dailyLimitLabelLayout = getPulseRuleLabelLayout({key:"daily-loss", text:"Daily loss limit", y:dailyLimitY, color:c.gold});
+              const renderPulseHorizontalRuleLine = ({key, y, color, strokeWidth = 1, dash = "5 5", opacity = 0.46, labelLayout}) => {
+                if (y === null || !Number.isFinite(y)) return null;
+                const x1 = leftPad;
+                const x2 = viewW - rightPad;
+                const labelGap = labelLayout ? 2.5 : 0;
+                const gapStart = labelLayout ? Math.max(x1, labelLayout.x - labelGap) : null;
+                const gapEnd = labelLayout ? Math.min(x2, labelLayout.x + labelLayout.width + labelGap) : null;
+                const segments = !labelLayout || gapEnd <= x1 || gapStart >= x2 || gapEnd <= gapStart
+                  ? [[x1, x2]]
+                  : [
+                    [x1, Math.max(x1, gapStart)],
+                    [Math.min(x2, gapEnd), x2],
+                  ].filter(([start, end]) => end - start >= 4);
+                return segments.map(([start, end], index) => (
+                  <line
+                    key={`pulse-rule-line-${key}-${index}`}
+                    x1={start}
+                    x2={end}
+                    y1={y}
+                    y2={y}
+                    stroke={color}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={dash}
+                    opacity={opacity}
+                    pointerEvents="none"
+                  />
+                ));
+              };
+              const renderPulsePathRuleLine = ({path, labelLayout, color}) => (
+                path ? (
+                  <g pointerEvents="none">
+                    <path d={path} fill="none" stroke={color} strokeWidth="1" strokeDasharray="5 5" opacity=".5"/>
+                    {labelLayout ? (
+                      <line
+                        x1={Math.max(leftPad, labelLayout.x - 7)}
+                        x2={Math.min(viewW - rightPad, labelLayout.x + labelLayout.width + 7)}
+                        y1={labelLayout.y}
+                        y2={labelLayout.y}
+                        stroke="rgba(9,11,20,0.96)"
+                        strokeWidth="4"
+                        strokeLinecap="square"
+                      />
+                    ) : null}
+                  </g>
+                ) : null
+              );
+              const renderPulseRuleLabel = layout => layout ? (
+                <text
+                  key={`pulse-rule-${layout.key}`}
+                  x={layout.x}
+                  y={layout.y}
+                  textAnchor="start"
+                  dominantBaseline="middle"
+                  fill={layout.color}
+                  fontFamily={F}
+                  fontSize="9"
+                  fontWeight="900"
+                  paintOrder="stroke"
+                  stroke={c.bg}
+                  strokeWidth="3"
+                  strokeLinejoin="round"
+                  pointerEvents="none"
+                >
+                  {layout.text}
+                </text>
+              ) : null;
+              const distanceToPulseSegment = (px, py, a, b) => {
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const lenSq = dx * dx + dy * dy;
+                const t = lenSq ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / lenSq)) : 0;
+                const x = a.x + dx * t;
+                const y = a.y + dy * t;
+                return {distance:Math.hypot(px - x, py - y), t, x, y};
+              };
+              const pulseAxisHoverForX = (x, y = topPad) => {
+                const axisX = Math.max(leftPad, Math.min(x, viewW - rightPad));
+                const axisY = Math.max(topPad, Math.min(y, viewH - bottomPad));
+                const axisRatio = btClamp((axisX - leftPad) / Math.max(1, plotW), 0, 1);
+                if (!curvePoints.length) return {axisX, axisY, axisRatio, axisText:"-"};
+                if (curvePoints.length === 1) {
+                  return {axisX, axisY, axisRatio, axisText:formatPulseTradeAxisTime(curvePoints[0].labelDate || curvePoints[0].dateMs || firstKnownDate)};
+                }
+                const scaledIndex = axisRatio * (curvePoints.length - 1);
+                const lowIndex = Math.max(0, Math.min(curvePoints.length - 1, Math.floor(scaledIndex)));
+                const highIndex = Math.max(0, Math.min(curvePoints.length - 1, Math.ceil(scaledIndex)));
+                const lowPoint = curvePoints[lowIndex];
+                const highPoint = curvePoints[highIndex] || lowPoint;
+                const t = highIndex === lowIndex ? 0 : scaledIndex - lowIndex;
+                const axisValue = Number.isFinite(lowPoint?.dateMs) && Number.isFinite(highPoint?.dateMs)
+                  ? new Date(lowPoint.dateMs + (highPoint.dateMs - lowPoint.dateMs) * t)
+                  : (t < 0.5 ? lowPoint : highPoint)?.labelDate || lastKnownDate || firstKnownDate;
+                return {axisX, axisY, axisRatio, axisText:formatPulseTradeAxisTime(axisValue)};
+              };
+              const clearAccountPulseTooltip = axisHover => {
+                scheduleAccountPulseHover(axisHover ? {showTip:false, ...axisHover} : null);
+              };
+              const updateAccountPulseHover = event => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                const localX = event.clientX - rect.left;
+                const localY = event.clientY - rect.top;
+                if (localX < 0 || localX > rect.width || localY < 0 || localY > rect.height) {
+                  scheduleAccountPulseHover(null);
+                  return;
+                }
+                const viewX = (localX / Math.max(1, rect.width)) * viewW;
+                const viewY = (localY / Math.max(1, rect.height)) * viewH;
+                const cursorX = Math.max(leftPad, Math.min(viewX, viewW - rightPad));
+                const cursorY = Math.max(topPad, Math.min(viewY, viewH - bottomPad));
+                const axisHover = pulseAxisHoverForX(cursorX, cursorY);
+                if (!curveTradePoints.length || curvePoints.length < 2) {
+                  clearAccountPulseTooltip(axisHover);
+                  return;
+                }
+                const nearestSegment = (() => {
+                  if (curvePoints.length < 2) return null;
+                  const rawIndex = ((cursorX - leftPad) / Math.max(1, plotW)) * (curvePoints.length - 1);
+                  const centerIndex = Math.max(1, Math.min(curvePoints.length - 1, Math.round(rawIndex)));
+                  const startIndex = Math.max(1, centerIndex - 6);
+                  const endIndex = Math.min(curvePoints.length - 1, centerIndex + 6);
+                  let best = null;
+                  for (let segmentIndex = startIndex; segmentIndex <= endIndex; segmentIndex += 1) {
+                    const prev = curvePoints[segmentIndex - 1];
+                    const point = curvePoints[segmentIndex];
+                    if (!prev?.trade && !point?.trade) continue;
+                    const hit = distanceToPulseSegment(viewX, viewY, prev, point);
+                    if (!best || hit.distance < best.distance) best = {prev, point, ...hit};
+                  }
+                  return best;
+                })();
+                const pendingHover = dashAccountPulseHoverNextRef.current || dashAccountPulseHover;
+                const hitDistance = pendingHover?.showTip ? 18 : 15;
+                if (!nearestSegment || nearestSegment.distance > hitDistance) {
+                  clearAccountPulseTooltip(axisHover);
+                  return;
+                }
+                const nearest = (!nearestSegment.point?.trade || (nearestSegment.prev?.trade && nearestSegment.t < 0.5))
+                  ? nearestSegment.prev
+                  : nearestSegment.point;
+                if (!nearest?.trade) {
+                  clearAccountPulseTooltip(axisHover);
+                  return;
+                }
+                const pnl = snapshotTradePnl(nearest.trade);
+                const hoverPointX = Math.max(leftPad, Math.min(nearestSegment.x, viewW - rightPad));
+                const hoverPointY = Math.max(topPad, Math.min(nearestSegment.y, viewH - bottomPad));
+                const hoverValue = Number.isFinite(nearestSegment.prev?.value) && Number.isFinite(nearestSegment.point?.value)
+                  ? nearestSegment.prev.value + (nearestSegment.point.value - nearestSegment.prev.value) * nearestSegment.t
+                  : nearest.value;
+                const hoverDateValue = Number.isFinite(nearestSegment.prev?.dateMs) && Number.isFinite(nearestSegment.point?.dateMs)
+                  ? new Date(nearestSegment.prev.dateMs + (nearestSegment.point.dateMs - nearestSegment.prev.dateMs) * nearestSegment.t)
+                  : tradeExitDateValue(nearest.trade) || tradeDateValue(nearest.trade);
+                const nearestAxisHover = {
+                  axisX:hoverPointX,
+                  axisY:hoverPointY,
+                  axisRatio:btClamp((hoverPointX - leftPad) / Math.max(1, plotW), 0, 1),
+                  axisText:formatPulseTradeAxisTime(hoverDateValue),
+                };
+                const nextHover = {
+                  showTip:true,
+                  ...nearestAxisHover,
+                  pointX:hoverPointX,
+                  pointY:hoverPointY,
+                  balanceText:formatPulseEquityValue(hoverValue),
+                  tradeId:pulseTradeId(nearest.trade, nearest.tradeIndex),
+                  fullTradeId:pulseTradeFullId(nearest.trade, nearest.tradeIndex),
+                  pnlText:pnl === null ? "-" : fmtValue(pnl),
+                  pnlColor:pnl === null ? c.tx : pnl >= 0 ? c.gn : c.rd,
+                  balanceColor:pnl === null ? c.tx : pnl >= 0 ? c.gn : c.rd,
+                  openText:formatPulseTradeTime(tradeOpenDateValue(nearest.trade)),
+                  exitText:formatPulseTradeTime(tradeExitDateValue(nearest.trade) || tradeDateValue(nearest.trade)),
+                };
+                scheduleAccountPulseHover(nextHover);
+              };
+              const StatReadout = ({label, value, sub, color}) => (
+                <div style={{minHeight:58,display:"grid",alignContent:"center",gap:5,padding:"8px 8px",border:`1px solid ${c.brH}`,background:"rgba(9,11,20,0.92)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box"}}>
+                  <div style={{fontSize:8.5,fontWeight:900,color:c.tm,letterSpacing:"0.065em",textTransform:"uppercase",whiteSpace:"normal",lineHeight:1.1}}>{label}</div>
+                  <div style={{fontSize:16.5,fontWeight:950,color,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value}</div>
+                  {sub ? <div style={{fontSize:8.4,fontWeight:820,color:c.ts,lineHeight:1.15,whiteSpace:"normal"}}>{sub}</div> : null}
+                </div>
+              );
+              const PulseHeaderStatsBox = ({items}) => (
+                <div style={{
+                  height:32,
+                  width:246,
+                  display:"grid",
+                  gridTemplateColumns:`repeat(${items.length}, minmax(0,1fr))`,
+                  border:`1px solid ${c.brH}`,
+                  background:"rgba(12,16,29,0.94)",
+                  boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",
+                  boxSizing:"border-box",
+                  overflow:"hidden",
+                  flexShrink:0,
+                }}>
+                  {items.map((item, index) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        minWidth:0,
+                        display:"grid",
+                        alignContent:"center",
+                        gap:3,
+                        padding:"0 9px",
+                        borderLeft:index ? `1px solid rgba(140,160,255,0.13)` : "none",
+                        boxSizing:"border-box",
+                      }}
+                    >
+                      <span style={{fontSize:7.2,fontWeight:950,color:c.tm,letterSpacing:"0.075em",textTransform:"uppercase",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.label}</span>
+                      <span style={{fontSize:10.8,fontWeight:950,color:item.color,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+              const pulseTooltipAccent = dashAccountPulseHover?.pnlColor || c.acL;
+              const pulseTooltipTradeIdText = String(dashAccountPulseHover?.fullTradeId || dashAccountPulseHover?.tradeId || "");
+              const pulseTooltipWidth = Math.min(260, Math.max(128, pulseTooltipTradeIdText.length * 6 + 52));
+              const pulseTooltipHeight = 58;
+              const pulseSelectedBalanceLayout = dashAccountPulseHover?.showTip ? (() => {
+                const selectedBalanceText = String(dashAccountPulseHover.balanceText || "");
+                const selectedBalanceColor = dashAccountPulseHover.balanceColor || c.acL;
+                const estimatedLabelWidth = Math.max(32, Math.min(86, selectedBalanceText.length * 5.7));
+                const pointX = Number(dashAccountPulseHover.pointX) || leftPad;
+                const pointY = Number(dashAccountPulseHover.pointY) || topPad;
+                const labelY = Math.max(topPad + 9, Math.min(pointY, viewH - bottomPad - 10));
+                const rightEdgeX = viewW - rightPad;
+                const leftEdgeX = leftPad + 6;
+                const buildCandidate = ({side, labelX, textAnchor}) => {
+                  const rect = pulseTextRect(labelX, labelY + 3.2, estimatedLabelWidth, 14, textAnchor);
+                  const labelStart = rect.x1;
+                  const labelEnd = rect.x2;
+                  const guideSegments = side === "right"
+                    ? [[
+                      Math.min(Math.max(pointX + 5, leftPad), rightEdgeX),
+                      Math.min(Math.max(labelStart - 7, leftPad), rightEdgeX),
+                    ]]
+                    : [[
+                      Math.max(Math.min(labelEnd + 7, rightEdgeX), leftPad),
+                      Math.max(Math.min(pointX - 5, rightEdgeX), leftPad),
+                    ]];
+                  const cleanGuideSegments = guideSegments.filter(([start, end]) => end - start >= 5);
+                  const reservedPenalty = pulseReservedLabelRects.reduce((sum, reserved) => (
+                    sum + (pulseRectsOverlap(rect, reserved, 7) ? 44 : 0)
+                  ), 0);
+                  const curvePenalty = pulseRectNearCurve(rect) ? 30 : 0;
+                  const pointPenalty = pointX >= rect.x1 - 12 && pointX <= rect.x2 + 12 && pointY >= rect.y1 - 12 && pointY <= rect.y2 + 12 ? 36 : 0;
+                  const guidePenalty = cleanGuideSegments.length ? 0 : 8;
+                  const sidePreferencePenalty = side === "right"
+                    ? Math.max(0, pointX - (viewW * 0.72)) * 0.04
+                    : Math.max(0, (viewW * 0.28) - pointX) * 0.04;
+                  const score = reservedPenalty + curvePenalty + pointPenalty + guidePenalty + sidePreferencePenalty;
+                  return {
+                    selectedBalanceText,
+                    selectedBalanceColor,
+                    shouldFlipRight:side === "right",
+                    side,
+                    labelX,
+                    labelY,
+                    textAnchor,
+                    guideSegments:cleanGuideSegments,
+                    pointX,
+                    pointY,
+                    rect,
+                    score,
+                  };
+                };
+                const best = [
+                  buildCandidate({side:"left", labelX:leftEdgeX, textAnchor:"start"}),
+                  buildCandidate({side:"right", labelX:rightEdgeX - 6, textAnchor:"end"}),
+                ].sort((a, b) => a.score - b.score)[0];
+                return {
+                  selectedBalanceText,
+                  selectedBalanceColor,
+                  shouldFlipRight:best.shouldFlipRight,
+                  side:best.side,
+                  labelX:best.labelX,
+                  labelY:best.labelY,
+                  textAnchor:best.textAnchor,
+                  guideSegments:best.guideSegments,
+                  pointX:best.pointX,
+                  pointY:best.pointY,
+                  rect:best.rect,
+                };
+              })() : null;
+              const pulseTooltipStyle = dashAccountPulseHover?.showTip ? (() => {
+                const pointX = Number(dashAccountPulseHover.pointX) || leftPad;
+                const pointY = Number(dashAccountPulseHover.pointY) || topPad;
+                const margin = 7;
+                const gap = 10;
+                const minLeft = margin;
+                const maxLeft = Math.max(minLeft, viewW - pulseTooltipWidth - margin);
+                const minTop = margin;
+                const maxTop = Math.max(minTop, viewH - bottomPad - pulseTooltipHeight - 22);
+                const clampRect = candidate => {
+                  const left = btClamp(candidate.left, minLeft, maxLeft);
+                  const top = btClamp(candidate.top, minTop, maxTop);
+                  return {
+                    left,
+                    top,
+                    x1:left,
+                    x2:left + pulseTooltipWidth,
+                    y1:top,
+                    y2:top + pulseTooltipHeight,
+                    clampPenalty:Math.abs(left - candidate.left) + Math.abs(top - candidate.top),
+                    name:candidate.name,
+                  };
+                };
+                const pointInsidePenalty = rect => (
+                  pointX >= rect.x1 - 8 && pointX <= rect.x2 + 8 &&
+                  pointY >= rect.y1 - 8 && pointY <= rect.y2 + 8
+                ) ? 140 : 0;
+                const tooltipReservedLabelRects = [
+                  ...pulseReservedLabelRects.map(rect => ({rect, weight:34})),
+                  pulseSelectedBalanceLayout?.rect ? {rect:pulseSelectedBalanceLayout.rect, weight:150} : null,
+                ].filter(Boolean);
+                const labelOverlapPenalty = rect => tooltipReservedLabelRects.reduce((sum, item) => (
+                  sum + (pulseRectsOverlap(rect, item.rect, 8) ? item.weight : 0)
+                ), 0);
+                const lineOverlapPenalty = rect => {
+                  if (!curvePoints.length) return 0;
+                  let hits = 0;
+                  const expanded = {x1:rect.x1 - 8, x2:rect.x2 + 8, y1:rect.y1 - 8, y2:rect.y2 + 8};
+                  for (let i = 1; i < curvePoints.length; i += 1) {
+                    const prev = curvePoints[i - 1];
+                    const point = curvePoints[i];
+                    const minX = Math.min(prev.x, point.x);
+                    const maxX = Math.max(prev.x, point.x);
+                    if (maxX < expanded.x1 || minX > expanded.x2) continue;
+                    for (let step = 0; step <= 4; step += 1) {
+                      const t = step / 4;
+                      const x = prev.x + (point.x - prev.x) * t;
+                      const y = prev.y + (point.y - prev.y) * t;
+                      if (x >= expanded.x1 && x <= expanded.x2 && y >= expanded.y1 && y <= expanded.y2) {
+                        hits += 1;
+                        break;
+                      }
+                    }
+                    if (hits > 4) break;
+                  }
+                  return hits * 12;
+                };
+                const edgePreferencePenalty = rect => (
+                  (rect.left <= minLeft + 1 || rect.left >= maxLeft - 1 ? 4 : 0) +
+                  (rect.top <= minTop + 1 || rect.top >= maxTop - 1 ? 4 : 0)
+                );
+                const candidates = [
+                  {name:"right-top", left:pointX + gap, top:pointY - pulseTooltipHeight - gap},
+                  {name:"right-bottom", left:pointX + gap, top:pointY + gap},
+                  {name:"left-top", left:pointX - pulseTooltipWidth - gap, top:pointY - pulseTooltipHeight - gap},
+                  {name:"left-bottom", left:pointX - pulseTooltipWidth - gap, top:pointY + gap},
+                  {name:"top-center", left:pointX - pulseTooltipWidth / 2, top:pointY - pulseTooltipHeight - 16},
+                  {name:"bottom-center", left:pointX - pulseTooltipWidth / 2, top:pointY + 16},
+                ];
+                const best = candidates
+                  .map(candidate => {
+                    const rect = clampRect(candidate);
+                    const centerX = rect.left + pulseTooltipWidth / 2;
+                    const centerY = rect.top + pulseTooltipHeight / 2;
+                    const distancePenalty = Math.hypot(centerX - pointX, centerY - pointY) * 0.16;
+                    const score = rect.clampPenalty * 2.8 +
+                      pointInsidePenalty(rect) +
+                      labelOverlapPenalty(rect) +
+                      lineOverlapPenalty(rect) +
+                      edgePreferencePenalty(rect) +
+                      distancePenalty;
+                    return {...rect, score};
+                  })
+                  .sort((a, b) => a.score - b.score)[0];
+                return {
+                  left:`${(best.left / viewW) * 100}%`,
+                  top:`${(best.top / viewH) * 100}%`,
+                  width:pulseTooltipWidth,
+                  minHeight:pulseTooltipHeight,
+                  transform:"none",
+                };
+              })() : null;
+              const PulseTradeReadout = ({style}) => (
+                <div
+                  style={{
+                    position:"absolute",
+                    width:pulseTooltipWidth,
+                    minHeight:pulseTooltipHeight,
+                    border:`1px solid rgba(90,108,150,0.34)`,
+                    background:"rgba(5,7,15,0.98)",
+                    boxShadow:"0 10px 22px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,255,255,0.04)",
+                    padding:"7px 8px 7px 10px",
+                    boxSizing:"border-box",
+                    pointerEvents:"none",
+                    zIndex:5,
+                    fontFamily:F,
+                    ...style,
+                  }}
+                >
+                  <span aria-hidden="true" style={{position:"absolute",left:0,top:6,bottom:6,width:1,background:`linear-gradient(180deg,transparent,${pulseTooltipAccent},transparent)`,boxShadow:`0 0 7px ${pulseTooltipAccent}`}}/>
+                  <div style={{display:"grid",gap:5,minWidth:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6,minWidth:0}}>
+                      <span style={{fontSize:7,fontWeight:950,color:c.tm,letterSpacing:"0.075em",textTransform:"uppercase",lineHeight:1}}>Trade</span>
+                      <span title={pulseTooltipTradeIdText} style={{minWidth:0,fontSize:8.5,fontWeight:950,color:c.tx,fontVariantNumeric:"tabular-nums",lineHeight:1.12,whiteSpace:"normal",overflow:"visible",overflowWrap:"anywhere",textAlign:"right"}}>{pulseTooltipTradeIdText}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                      <span style={{fontSize:7,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>P&L</span>
+                      <span style={{fontSize:11.2,fontWeight:950,color:dashAccountPulseHover.pnlColor,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{dashAccountPulseHover.pnlText}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,minWidth:0}}>
+                      <span style={{fontSize:7,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Open</span>
+                      <span style={{minWidth:0,fontSize:7.6,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{dashAccountPulseHover.openText}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+              return (
+                <SummaryCard
+                  title={dashTxt("Account Pulse","نبض الحساب")}
+                  titleDot={false}
+                  minHeight={dashboardSnapshotPulseCalendarHeight}
+                  style={{height:dashboardSnapshotPulseCalendarHeight,minHeight:dashboardSnapshotPulseCalendarHeight,maxHeight:dashboardSnapshotPulseCalendarHeight,padding:14,gap:12}}
+                  right={
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:7,minWidth:0}}>
+                      <PulseHeaderStatsBox
+                        items={[
+                          {label:"Net P&L", value:fmtValue(periodPnl), color:periodPnl >= 0 ? c.gn : c.rd},
+                          {label:"Drawdown", value:fmtPct(currentDrawdownPct,1), color:currentDrawdownPct > 0 ? c.rd : c.gn},
+                          {label:"Since High", value:`${daysSinceHigh}d`, color:c.gold},
+                        ]}
+                      />
+                      <div
+                        ref={dashAccountPulseMenuRef}
+                        className="tlr-dashboard-value-menu-wrap"
+                        aria-label="Account pulse time window"
+                        onPointerEnter={()=>scheduleAccountPulseHover(null)}
+                        onPointerMove={()=>scheduleAccountPulseHover(null)}
+                        style={{position:"relative",width:104,height:32,fontFamily:F,zIndex:dashAccountPulseMenuOpen?420:4,flex:"0 0 104px"}}
+                      >
+                        <button
+                          type="button"
+                          className={`tlr-dashboard-source-switch-redesign tlr-dashboard-value-select${dashAccountPulseMenuOpen?" tlr-dashboard-source-switch-open":""}`}
+                          onPointerDown={e=>{
+                            if (typeof e.button === "number" && e.button !== 0) return;
+                            e.preventDefault();
+                            scheduleAccountPulseHover(null);
+                            setDashAccountPulseMenuOpen(prev => !prev);
+                            setDashUnitMenuOpen(false);
+                            setDashFreshNavOpen(false);
+                            setDashCardMenu(null);
+                          }}
+                          onKeyDown={e=>{
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setDashAccountPulseMenuOpen(prev => !prev);
+                            }
+                            if (e.key === "Escape") setDashAccountPulseMenuOpen(false);
+                          }}
+                          aria-haspopup="listbox"
+                          aria-expanded={dashAccountPulseMenuOpen}
+                          style={{
+                            "--tlr-source-accent":c.acL,
+                            width:"100%",
+                            height:32,
+                            border:`1px solid ${dashAccountPulseMenuOpen?`${c.acL}66`:"rgba(140,160,255,0.14)"}`,
+                            background:dashAccountPulseMenuOpen?`${c.acL}16`:"rgba(15,19,34,0.92)",
+                            display:"grid",
+                            gridTemplateColumns:"minmax(0,1fr) 13px",
+                            gridTemplateRows:"9px 13px",
+                            alignContent:"center",
+                            alignItems:"center",
+                            columnGap:6,
+                            rowGap:2,
+                            padding:"4px 7px 4px 8px",
+                            boxSizing:"border-box",
+                            fontFamily:F,
+                            cursor:"default",
+                            outline:"none",
+                            boxShadow:dashAccountPulseMenuOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.04)",
+                            transition:"none",
+                            overflow:"hidden",
+                          }}
+                        >
+                          <span style={{gridColumn:"1 / -1",minWidth:0,fontSize:6.9,fontWeight:950,color:c.tm,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textAlign:"left"}}>
+                            Time Window
+                          </span>
+                          <span style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1,textAlign:"left"}}>
+                            <span style={{fontSize:9.8,fontWeight:950,color:c.tx,letterSpacing:"0.015em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.05,textRendering:"geometricPrecision"}}>{activePeriod.label}</span>
+                          </span>
+                          <svg data-tlr-upper-icon="true" width={13} height={13} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",color:dashAccountPulseMenuOpen?c.acL:c.tm,transform:dashAccountPulseMenuOpen?"rotate(180deg)":"none",transition:"transform 120ms ease"}}>
+                            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"/>
+                          </svg>
+                        </button>
+                        {dashAccountPulseMenuOpen ? (
+                          <div role="listbox" style={{position:"absolute",right:0,top:34,width:"100%",background:c.sf,borderTop:`2px solid ${c.acL}`,borderRight:`1px solid ${c.brH}`,borderBottom:`1px solid ${c.brH}`,borderLeft:`1px solid ${c.brH}`,boxShadow:`0 -1px 8px -3px ${c.acL}, 0 14px 34px rgba(0,0,0,0.78)`,zIndex:520,overflow:"hidden",padding:"4px 0",boxSizing:"border-box"}}>
+                            {pulsePeriods.map(period => {
+                              const active = activePeriod.id === period.id;
+                              return (
+                                <button
+                                  key={period.id}
+                                  type="button"
+                                  className="tlr-dashboard-page-menu-item"
+                                  role="option"
+                                  aria-selected={active}
+                                  onPointerDown={e=>{
+                                    if (typeof e.button === "number" && e.button !== 0) return;
+                                    e.preventDefault();
+                                    selectPulsePeriod(period.id);
+                                  }}
+                                  onClick={e=>e.preventDefault()}
+                                  style={{
+                                    height:29,
+                                    width:"100%",
+                                    border:"none",
+                                    background:active?`${c.acL}16`:"rgba(8,11,22,0.98)",
+                                    color:active?c.acL:c.tx,
+                                    position:"relative",
+                                    display:"flex",
+                                    alignItems:"center",
+                                    padding:"0 10px 0 12px",
+                                    boxSizing:"border-box",
+                                    fontFamily:F,
+                                    cursor:"default",
+                                    outline:"none",
+                                    textAlign:"left",
+                                    transition:"background 80ms ease,color 80ms ease,transform 80ms ease",
+                                  }}
+                                >
+                                  {active ? <span aria-hidden="true" style={{position:"absolute",left:0,top:"22%",bottom:"22%",width:1,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 7px ${c.acL}`}}/> : null}
+                                  <span style={{minWidth:0,fontSize:9.4,fontWeight:920,color:active?c.acL:c.tx,letterSpacing:"0.025em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1}}>{period.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  }
+                >
+                  <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:10,alignItems:"stretch",fontFamily:F,minWidth:0,flex:1,minHeight:0}}>
+                    <div style={{minWidth:0,display:"grid",minHeight:0}}>
+                      <div
+                        onPointerLeave={()=>scheduleAccountPulseHover(null)}
+                        style={{position:"relative",minWidth:0,minHeight:0,display:"grid",gridTemplateRows:"minmax(0,1fr) 18px",gap:0,background:"rgba(9,11,20,0.92)",border:`1px solid ${c.brH}`,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box",overflow:"hidden"}}
+                      >
+                        <svg
+                          width="100%"
+                          height="100%"
+                          viewBox={`0 0 ${viewW} ${viewH}`}
+                          preserveAspectRatio="none"
+                          aria-label="Account pulse equity chart"
+                          onPointerEnter={updateAccountPulseHover}
+                          onPointerMove={updateAccountPulseHover}
+                          onPointerLeave={()=>{
+                            scheduleAccountPulseHover(null);
+                          }}
+                          style={{display:"block",background:"transparent",cursor:"default"}}
+                        >
+                          <defs>
+                            <linearGradient id="tlrAccountPulseArea" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={c.gn} stopOpacity=".18"/>
+                              <stop offset="100%" stopColor={c.gn} stopOpacity=".015"/>
+                            </linearGradient>
+                            <linearGradient id="tlrAccountPulseDrawdown" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={c.rd} stopOpacity=".18"/>
+                              <stop offset="100%" stopColor={c.rd} stopOpacity=".045"/>
+                            </linearGradient>
+                          </defs>
+                          <path d={areaPath} fill="url(#tlrAccountPulseArea)" pointerEvents="none"/>
+                          <path d={drawdownArea} fill="url(#tlrAccountPulseDrawdown)" pointerEvents="none"/>
+                          {phaseTargetY !== null ? (
+                            <>
+                              {renderPulseHorizontalRuleLine({key:"phase-target", y:phaseTargetY, color:c.gn, strokeWidth:1, dash:"5 5", opacity:.46, labelLayout:phaseTargetLabelLayout})}
+                              {renderPulseRuleLabel(phaseTargetLabelLayout)}
+                            </>
+                          ) : null}
+                          {maxLossLinePath ? (
+                            <>
+                              {renderPulsePathRuleLine({path:maxLossLinePath, labelLayout:maxLossLabelLayout, color:c.rd})}
+                              {renderPulseRuleLabel(maxLossLabelLayout)}
+                            </>
+                          ) : null}
+                          {dailyLimitY !== null ? (
+                            <>
+                              {renderPulseHorizontalRuleLine({key:"daily-loss", y:dailyLimitY, color:c.gold, strokeWidth:1.2, dash:"6 7", opacity:.48, labelLayout:dailyLimitLabelLayout})}
+                              {renderPulseRuleLabel(dailyLimitLabelLayout)}
+                            </>
+                          ) : null}
+                          {curvePoints.slice(1).map((point, index) => {
+                            const prev = curvePoints[index];
+                            const up = point.value >= prev.value;
+                            return <line key={`pulse-seg-${index}`} x1={prev.x} y1={prev.y} x2={point.x} y2={point.y} stroke={up ? c.gn : c.rd} strokeWidth="1.05" strokeLinecap="square" vectorEffect="non-scaling-stroke" pointerEvents="none"/>;
+                          })}
+                          {dashAccountPulseHover?.showTip ? (
+                            <>
+                              <line
+                                x1={dashAccountPulseHover.pointX}
+                                x2={dashAccountPulseHover.pointX}
+                                y1={dashAccountPulseHover.pointY}
+                                y2={viewH - bottomPad}
+                                stroke="rgba(150,158,178,0.42)"
+                                strokeWidth=".65"
+                                shapeRendering="crispEdges"
+                                pointerEvents="none"
+                              />
+                              <circle cx={dashAccountPulseHover.pointX} cy={dashAccountPulseHover.pointY} r="4.2" fill={dashAccountPulseHover.pnlColor} stroke={c.bg} strokeWidth="1.8" pointerEvents="none"/>
+                              {pulseSelectedBalanceLayout ? (
+                                <g pointerEvents="none">
+                                  {!pulseSelectedBalanceLayout.shouldFlipRight ? <line x1={leftPad - 9} x2={leftPad - 1} y1={pulseSelectedBalanceLayout.pointY} y2={pulseSelectedBalanceLayout.pointY} stroke={pulseSelectedBalanceLayout.selectedBalanceColor} strokeWidth="1" opacity=".95"/> : null}
+                                  {pulseSelectedBalanceLayout.guideSegments.map(([start, end], index) => (
+                                    <line
+                                      key={`selected-balance-guide-${index}`}
+                                      x1={start}
+                                      x2={end}
+                                      y1={pulseSelectedBalanceLayout.pointY}
+                                      y2={pulseSelectedBalanceLayout.pointY}
+                                      stroke="rgba(150,158,178,0.42)"
+                                      strokeWidth=".65"
+                                      shapeRendering="crispEdges"
+                                    />
+                                  ))}
+                                  <text x={pulseSelectedBalanceLayout.labelX} y={pulseSelectedBalanceLayout.labelY + 3.2} textAnchor={pulseSelectedBalanceLayout.textAnchor} fill={pulseSelectedBalanceLayout.selectedBalanceColor} fontFamily={F} fontSize="8.8" fontWeight="950" letterSpacing=".025em">
+                                    {pulseSelectedBalanceLayout.selectedBalanceText}
+                                  </text>
+                                </g>
+                              ) : null}
+                            </>
+                          ) : null}
+                          {curvePoints.length ? (
+                            <>
+                              <circle cx={curvePoints[curvePoints.length - 1].x} cy={curvePoints[curvePoints.length - 1].y} r="3.5" fill={periodPnl >= 0 ? c.gn : c.rd} pointerEvents="none"/>
+                              {renderPulseHighLowLabel(equityHighLabelLayout)}
+                              {renderPulseHighLowLabel(equityLowLabelLayout)}
+                            </>
+                          ) : null}
+                        </svg>
+                        {dashAccountPulseHover?.showTip && pulseTooltipStyle ? <PulseTradeReadout style={pulseTooltipStyle}/> : null}
+                        <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,minWidth:0,padding:"0 10px 4px",boxSizing:"border-box",fontFamily:F}}>
+                          {dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText ? (() => {
+                            const axisX = dashAccountPulseHover.axisX ?? dashAccountPulseHover.pointX ?? leftPad;
+                            const axisPercent = btClamp((axisX / viewW) * 100, 0, 100);
+                            const axisText = String(dashAccountPulseHover.axisText || "");
+                            const estimatedAxisTextWidth = Math.max(58, Math.min(128, axisText.length * 5.7));
+                            const axisTextSidePad = 3;
+                            const clampedTextX = btClamp(
+                              axisX,
+                              estimatedAxisTextWidth / 2 + axisTextSidePad,
+                              viewW - estimatedAxisTextWidth / 2 - axisTextSidePad
+                            );
+                            const textPercent = btClamp((clampedTextX / viewW) * 100, 0, 100);
+                            return (
+                              <>
+                                <span aria-hidden="true" style={{
+                                  position:"absolute",
+                                  left:`${axisPercent}%`,
+                                  top:-1,
+                                  width:1,
+                                  height:6,
+                                  transform:"translateX(-50%)",
+                                  background:c.acL,
+                                  boxShadow:"none",
+                                  pointerEvents:"none",
+                                  zIndex:1,
+                                }}/>
+                                <span style={{
+                                  position:"absolute",
+                                  left:`${textPercent}%`,
+                                  top:6,
+                                  transform:"translateX(-50%)",
+                                  fontSize:8.7,
+                                  fontWeight:950,
+                                  color:c.acL,
+                                  fontVariantNumeric:"tabular-nums",
+                                  lineHeight:1,
+                                  whiteSpace:"nowrap",
+                                  letterSpacing:"0.025em",
+                                  pointerEvents:"none",
+                                  zIndex:2,
+                                }}>
+                                  {axisText}
+                                </span>
+                              </>
+                            );
+                          })() : null}
+                          <div style={{display:"inline-flex",alignItems:"baseline",gap:6,minWidth:0}}>
+                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 0) < 0.15 ? "hidden" : "visible"}}>{pulseStartDateLabel}</span>
+                          </div>
+                          <div style={{display:"inline-flex",alignItems:"baseline",gap:6,minWidth:0,textAlign:"right"}}>
+                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 1) > 0.85 ? "hidden" : "visible"}}>{pulseCurrentDateLabel}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const renderNextBestActionSection = () => {
+              const action = snapshotTopWeakness;
+              const targetLabel = action?.linkTarget ? action.linkTarget.replace(/-/g, " ") : "diagnostic";
+              return (
+                <SummaryCard
+                  title={dashTxt("Next Best Action","أفضل إجراء تال") }
+                  titleDot={false}
+                  minHeight={220}
+                  style={{padding:16,gap:12}}
+                >
+                  <div style={{display:"grid",alignContent:"center",gap:12,minHeight:142,paddingLeft:6,minWidth:0}}>
+                    {action ? (
+                      <>
+                        <div style={{display:"inline-flex",alignItems:"center",width:"fit-content",padding:"5px 8px",border:`1px solid ${c.rd}66`,background:`${c.rd}10`,color:c.rd,fontSize:8.5,fontWeight:950,letterSpacing:"0.085em",textTransform:"uppercase",fontFamily:F}}>
+                          #1 Weakness
+                        </div>
+                        <div style={{display:"grid",gap:8,minWidth:0}}>
+                          <div style={{fontSize:24,fontWeight:950,color:c.tx,lineHeight:1.08,letterSpacing:0,whiteSpace:"normal",overflowWrap:"anywhere"}}>{action.label}</div>
+                          <div style={{fontSize:11,fontWeight:850,color:c.ts,lineHeight:1.45,whiteSpace:"normal"}}>{formatInsightActionImpact(action)}</div>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                          {formatInsightMetricValue(action) ? (
+                            <div style={{padding:"7px 9px",border:`1px solid ${c.br}`,background:"rgba(10,12,20,0.68)",fontSize:11,fontWeight:950,color:c.rd,fontVariantNumeric:"tabular-nums",fontFamily:F}}>
+                              {formatInsightMetricValue(action)}
+                            </div>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="tlr-library-action tlr-add-trade-soft-action"
+                            onClick={() => {
+                              // TODO: route exists once this diagnostic page is rebuilt.
+                              setDashFreshPage(action.linkTarget || "overview");
+                            }}
+                            style={{
+                              height:32,
+                              minWidth:92,
+                              display:"inline-flex",
+                              alignItems:"center",
+                              justifyContent:"center",
+                              gap:9,
+                              padding:"0 14px",
+                              border:"1px solid transparent",
+                              background:c.acL,
+                              color:"#fff",
+                              fontFamily:F,
+                              fontSize:9,
+                              fontWeight:950,
+                              letterSpacing:"0.06em",
+                              textTransform:"uppercase",
+                              cursor:"default",
+                              boxSizing:"border-box",
+                              boxShadow:libraryGoButtonStyle.boxShadow,
+                              "--tlr-add-hover-bg":"#536fff",
+                              "--tlr-add-hover-color":"#fff",
+                              "--tlr-add-hover-border":"#536fff",
+                              "--tlr-add-hover-shadow":"0 0 13px rgba(74,106,255,0.46)",
+                              "--tlr-add-active-bg":"#3f5df6",
+                              "--tlr-add-active-color":"#fff",
+                              "--tlr-add-active-border":"#3f5df6",
+                              "--tlr-add-active-shadow":"0 0 8px rgba(74,106,255,0.34)",
+                            }}
+                          >
+                            Open {targetLabel}
+                            <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{display:"block",flexShrink:0}}>
+                              <path d="M4.1 2.75 7.45 6 4.1 9.25" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{display:"grid",gap:10,minWidth:0}}>
+                        <div style={{fontSize:20,fontWeight:950,color:c.tx,lineHeight:1.1}}>No standout fix right now</div>
+                        <div style={{fontSize:11,fontWeight:850,color:c.ts,lineHeight:1.45}}>Keep logging trades. The insight engine will surface a priority when one weakness has enough usable data.</div>
+                      </div>
+                    )}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const renderAutoInsightChipsSection = () => {
+              if (!snapshotAutoInsightChips.length) return null;
+              return (
+                <SummaryCard
+                  title={dashTxt("Auto Insights \u2192 deep-link","رؤى تلقائية")}
+                  titleDot={false}
+                  minHeight={220}
+                  style={{padding:14,gap:12}}
+                >
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",minWidth:0}}>
+                    {snapshotAutoInsightChips.map(signal => {
+                      const color = signal.direction === "strength" ? c.gn : c.rd;
+                      return (
+                        <button
+                          key={signal.id}
+                          type="button"
+                          onClick={() => {
+                            // TODO: route exists once this diagnostic page is rebuilt.
+                            setDashFreshPage(signal.linkTarget || "overview");
+                          }}
+                          style={{
+                            minHeight:34,
+                            maxWidth:"100%",
+                            display:"inline-flex",
+                            alignItems:"center",
+                            gap:8,
+                            padding:"7px 11px",
+                            border:`1px solid ${color}66`,
+                            borderRadius:999,
+                            background:"rgba(10,12,20,0.72)",
+                            boxShadow:"none",
+                            color:c.tx,
+                            fontFamily:F,
+                            cursor:"default",
+                            transition:"none",
+                            minWidth:0,
+                          }}
+                        >
+                          <span aria-hidden="true" style={{width:7,height:7,borderRadius:999,background:color,boxShadow:`0 0 8px ${color}77`,flexShrink:0}}/>
+                          <span style={{fontSize:10.6,fontWeight:900,lineHeight:1.12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0,maxWidth:260}}>
+                            {signal.label}
+                          </span>
+                          {formatInsightMetricValue(signal) ? (
+                            <span style={{fontSize:9.5,fontWeight:950,lineHeight:1,color,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums",flexShrink:0}}>
+                              {formatInsightMetricValue(signal)}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const renderSnapshotTradePreviewOverlay = () => {
+              const row = dashSnapshotTradePreview;
+              const trade = row?.trade;
+              if (!trade) return null;
+              const previewViewportWidth = typeof window !== "undefined" ? window.innerWidth : 1440;
+              const previewDocumentWidth = typeof document !== "undefined"
+                ? Math.max(document.documentElement?.scrollWidth || 0, document.body?.scrollWidth || 0, previewViewportWidth)
+                : previewViewportWidth;
+              const previewEdgeGap = 28;
+              const liveTrigger = typeof document !== "undefined" && row?.previewKey
+                ? Array.from(document.querySelectorAll(".tlr-snapshot-trade-id-button")).find(node => node.getAttribute("data-tlr-snapshot-preview-key") === row.previewKey)
+                : null;
+              const livePortalTarget =
+                liveTrigger?.closest?.("[data-tlr-snapshot-layer-root='true']") ||
+                liveTrigger?.closest?.("[data-tlr-snapshot-root='true']");
+              const previewPortalTarget = livePortalTarget || (typeof document !== "undefined" ? document.body : null);
+              const liveAnchorRect = liveTrigger?.getBoundingClientRect?.();
+              const portalRect = livePortalTarget?.getBoundingClientRect?.();
+              const previewUsesLayerTarget = !!(livePortalTarget && portalRect);
+              const fallbackContentRect = row?.contentPageRect || row?.contentRect;
+              const previewContentLeft = previewUsesLayerTarget ? 0 : Math.max(previewEdgeGap, fallbackContentRect?.left ?? previewEdgeGap);
+              const previewContentRight = previewUsesLayerTarget
+                ? Math.max(320, portalRect.width)
+                : Math.min(previewDocumentWidth - previewEdgeGap, fallbackContentRect?.right ?? previewViewportWidth - previewEdgeGap);
+              const previewContentWidth = Math.max(320, previewContentRight - previewContentLeft);
+              const previewWidth = Math.min(1440, Math.max(320, previewContentWidth - previewEdgeGap * 2));
+              const previewCenterX = previewUsesLayerTarget
+                ? Math.round(previewContentWidth / 2)
+                : Math.round(previewContentLeft + previewContentWidth / 2);
+              const fallbackAnchor = row?.anchorPageRect || row?.anchorRect;
+              const frozenLayerAnchor = row?.anchorInContent;
+              const frozenPageAnchor = row?.anchorPageRect || row?.anchorRect;
+              const previewTopTarget = previewUsesLayerTarget
+                ? (frozenLayerAnchor?.bottom ?? (liveAnchorRect ? liveAnchorRect.bottom - portalRect.top : 86)) + 3
+                : frozenPageAnchor
+                  ? frozenPageAnchor.bottom + 3
+                  : fallbackAnchor
+                    ? fallbackAnchor.bottom + 3
+                    : 86;
+              const previewTop = Math.max(8, previewTopTarget);
+              const pick = (keys, fallback="") => {
+                for (const key of keys) {
+                  const value = trade?.[key];
+                  if (value !== undefined && value !== null && value !== "") return value;
+                }
+                return fallback;
+              };
+              const asPreviewList = value => Array.isArray(value) ? value : (value ? [value] : []);
+              const chipLabel = item => typeof item === "string" ? item : item?.label || item?.name || item?.value || item?.title || "";
+              const formatPreviewDateTime = value => {
+                if (value === undefined || value === null || value === "") return "-";
+                const d = new Date(value);
+                if (Number.isNaN(d.getTime())) return String(value).slice(0, 16) || "-";
+                return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`;
+              };
+              const formatPreviewPrice = value => {
+                const n = Number(value);
+                return Number.isFinite(n) ? fmtNum(n, Math.abs(n) >= 100 ? 2 : 4) : "-";
+              };
+              const formatPreviewMoney = value => {
+                const n = Number(value);
+                return Number.isFinite(n) ? fmtValue(n) : "-";
+              };
+              const previewDirection = String(pick(["direction","side"], "Long"));
+              const previewSideColor = previewDirection.toLowerCase().includes("short") ? c.rd : c.gn;
+              const previewPnl = snapshotTradePnl(trade);
+              const previewResultR = snapshotTradeResultR(trade);
+              const previewOutcome = Number(previewPnl) < 0 ? "Loss" : Number(previewPnl) > 0 ? "Win" : "Flat";
+              const previewOutcomeColor = previewOutcome === "Loss" ? c.rd : previewOutcome === "Win" ? c.gn : c.gold;
+              const previewCloseType = String(pick(["closeType","exitType","exit_reason","resultType"], "-"));
+              const previewStatus = String(pick(["status","tradeStatus"], previewCloseType && previewCloseType !== "-" ? "Closed" : "Open"));
+              const entryRows = asPreviewList(pick(["entries","entryRows","fills"], []));
+              const targetRows = asPreviewList(pick(["planned_targets","targets","targetRows","takeProfits"], []));
+              const exitRows = asPreviewList(pick(["partial_exits","exits","actual_exits","exitRows","partialCloses"], []));
+              const firstPriceFromRows = (rows, keys) => {
+                const rowItem = rows.find(item => item !== undefined && item !== null);
+                if (rowItem && typeof rowItem === "object") {
+                  for (const key of keys) {
+                    const value = rowItem?.[key];
+                    if (value !== undefined && value !== null && value !== "") return value;
+                  }
+                }
+                return rowItem;
+              };
+              const entryPrice = firstPriceFromRows(entryRows, ["price","entryPrice","entry","openPrice","fillPrice"]) || pick(["entryPrice","entry","openPrice"], "");
+              const targetPrice = firstPriceFromRows(targetRows, ["price","takeProfit","targetPrice","target","tp"]) || pick(["takeProfit","targetPrice","target","tp"], "");
+              const exitPrice = firstPriceFromRows(exitRows, ["price","exitPrice","exit","closePrice","fillPrice"]) || pick(["exitPrice","exit","closePrice"], "");
+              const stopPrice = pick(["stopLoss","planned_sl","sl"], "");
+              const duration = pick(["durationText","dur","held","heldText"], null);
+              const minutes = Number(pick(["duration","durationMinutes","timeHeldMinutes"], NaN));
+              const durationText = duration || (Number.isFinite(minutes) && minutes > 0
+                ? minutes >= 60
+                  ? `${Math.floor(minutes / 60)}h${Math.round(minutes % 60) ? ` ${Math.round(minutes % 60)}m` : ""}`
+                  : `${Math.round(minutes)}m`
+                : "-");
+              const preItems = [...asPreviewList(trade?.preTags), ...asPreviewList(trade?.strategyTags)].map(chipLabel).filter(Boolean);
+              const postItems = asPreviewList(trade?.postTags).map(chipLabel).filter(Boolean);
+              const demons = asPreviewList(trade?.demons || trade?.demonTags || trade?.demonPatterns).map(chipLabel).filter(Boolean);
+              const noteText = String(pick(["postNotes","notes","comment","tradeNotes"], "") || "").trim();
+              const detailBadge = (text, color, soft=false) => (
+                <span style={{height:20,display:"inline-flex",alignItems:"center",padding:"0 8px",border:`1px solid ${color}66`,background:soft?`${color}12`:"rgba(10,12,20,0.58)",color,fontSize:8,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap",lineHeight:1}}>
+                  {text}
+                </span>
+              );
+              const detailRow = (label, value, color=c.ts) => (
+                <div key={label} style={{display:"grid",gridTemplateColumns:"82px minmax(0,1fr)",gap:9,alignItems:"baseline",minWidth:0}}>
+                  <span style={{fontSize:8.2,fontWeight:950,color:c.tm,letterSpacing:"0.065em",textTransform:"uppercase",lineHeight:1.25,whiteSpace:"nowrap"}}>{label}</span>
+                  <span style={{fontSize:10.4,fontWeight:900,color,lineHeight:1.2,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value || "-"}</span>
+                </div>
+              );
+              const detailGroup = (title, rows, color=c.acL) => (
+                <div style={{display:"grid",gap:7,minWidth:0}}>
+                  <div style={{display:"inline-grid",gap:4,justifySelf:"start"}}>
+                    <span style={{fontSize:8.6,fontWeight:950,color,letterSpacing:"0.08em",textTransform:"uppercase",lineHeight:1}}>{title}</span>
+                    <span aria-hidden="true" style={{height:1,width:64,background:`linear-gradient(90deg,transparent,${color},transparent)`,boxShadow:`0 0 8px ${color}88`}}/>
+                  </div>
+                  <div style={{display:"grid",gap:6,minWidth:0}}>
+                    {rows.map(([label, value, rowColor]) => detailRow(label, value, rowColor))}
+                  </div>
+                </div>
+              );
+              const chips = (items, color, empty="None") => items.length ? (
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,minWidth:0}}>
+                  {items.slice(0, 6).map((item, index) => (
+                    <span key={`${item}-${index}`} style={{height:20,display:"inline-flex",alignItems:"center",padding:"0 7px",border:`1px solid ${color}66`,background:`${color}10`,color,fontSize:7.8,fontWeight:950,letterSpacing:"0.05em",textTransform:"uppercase",whiteSpace:"nowrap",lineHeight:1}}>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span style={{fontSize:9.2,fontWeight:850,color:c.tm,lineHeight:1.2}}>{empty}</span>
+              );
+              const previewToNum = value => {
+                if (value === undefined || value === null || value === "") return null;
+                const direct = Number(value);
+                if (Number.isFinite(direct)) return direct;
+                const parsed = Number(String(value).replace(/[^0-9.+-]/g, ""));
+                return Number.isFinite(parsed) ? parsed : null;
+              };
+              const previewSignedMoney = value => {
+                const n = previewToNum(value);
+                if (n === null) return "";
+                return `${n >= 0 ? "+" : "-"}${fmtValue(Math.abs(n))}`;
+              };
+              const previewEntryNum = previewToNum(entryPrice);
+              const previewTargetNum = previewToNum(targetPrice);
+              const previewExitNum = previewToNum(exitPrice);
+              const previewStopNum = previewToNum(stopPrice);
+              const previewIsShort = previewDirection.toLowerCase().includes("short");
+              const previewRiskPerUnit = previewEntryNum !== null && previewStopNum !== null ? Math.abs(previewEntryNum - previewStopNum) : null;
+              const previewPriceR = value => {
+                if (previewEntryNum === null || previewRiskPerUnit === null || previewRiskPerUnit <= 0 || value === null) return null;
+                return previewIsShort ? (previewEntryNum - value) / previewRiskPerUnit : (value - previewEntryNum) / previewRiskPerUnit;
+              };
+              const previewPlannedR = previewPriceR(previewTargetNum) ?? previewToNum(pick(["plannedRR","planned_rr","rr","rewardToRiskRatio"], null)) ?? 2;
+              const previewActualR = previewResultR ?? previewPriceR(previewExitNum) ?? previewToNum(pick(["actualRisk","actual_rr_net","actualRR","rMultiple"], null));
+              const parsePreviewRPair = (...sources) => {
+                for (const source of sources) {
+                  if (source === undefined || source === null || source === "") continue;
+                  if (Array.isArray(source)) {
+                    const values = source.map(previewToNum).filter(value => value !== null);
+                    if (values.length >= 2) return {mfe:Math.max(0, values[0]), mae:-Math.abs(values[1])};
+                    continue;
+                  }
+                  const values = String(source).match(/[+-]?\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite) || [];
+                  if (values.length >= 2) return {mfe:Math.max(0, values[0]), mae:-Math.abs(values[1])};
+                }
+                return null;
+              };
+              const previewExcursionPair = parsePreviewRPair(pick(["mfeMaeR","mfe_mae_r","mfeMae"], null));
+              const previewMfeRRaw = previewExcursionPair?.mfe ?? previewToNum(pick(["total_mfe_r","mfe_r","total_mfe","mfe","mfe_points"], null));
+              const previewMaeRRaw = previewExcursionPair?.mae ?? previewToNum(pick(["total_mae_r","mae_r","total_mae","mae","mae_points"], null));
+              const previewMfeR = previewMfeRRaw === null || previewMfeRRaw === undefined ? null : Math.max(0, previewMfeRRaw);
+              const previewMaeR = previewMaeRRaw === null || previewMaeRRaw === undefined ? null : -Math.abs(previewMaeRRaw);
+              const previewExplicitRisk = previewToNum(pick(["riskAmount","risk_amount","riskPerTrade","originalRisk","planned_risk_amount"], null));
+              const previewDerivedRisk = previewActualR !== null && Math.abs(previewActualR) > 0.000001 && previewPnl !== null ? Math.abs(Number(previewPnl) / previewActualR) : null;
+              const previewRiskDollars = previewExplicitRisk !== null && Math.abs(previewExplicitRisk) > 0.000001 ? Math.abs(previewExplicitRisk) : previewDerivedRisk;
+              const previewMoneyFromR = (rValue, explicitValue=null) => {
+                const explicit = previewToNum(explicitValue);
+                const fromRisk = Number.isFinite(previewRiskDollars) && Number.isFinite(Number(rValue)) ? Number(rValue) * previewRiskDollars : null;
+                const value = explicit ?? fromRisk;
+                return Number.isFinite(value) ? previewSignedMoney(value) : "";
+              };
+              const previewMfeMoney = previewMoneyFromR(previewMfeR, pick(["mfe_currency","mfeCurrency","mfe_pnl","mfePnl","mfeMoney","mfe_amount"], null));
+              const previewMaeMoney = previewMoneyFromR(previewMaeR, (() => {
+                const explicit = previewToNum(pick(["mae_currency","maeCurrency","mae_pnl","maePnl","maeMoney","mae_amount"], null));
+                return explicit === null ? null : -Math.abs(explicit);
+              })());
+              const previewRiskRewardBar = () => {
+                const W = 1000;
+                const H = 88;
+                const pad = 18;
+                const plannedR = Number.isFinite(previewPlannedR) ? previewPlannedR : 2;
+                const actualR = Number.isFinite(previewActualR) ? previewActualR : null;
+                const mfeR = Number.isFinite(previewMfeR) ? previewMfeR : null;
+                const maeR = Number.isFinite(previewMaeR) ? previewMaeR : null;
+                const minR = Math.min(-1, actualR ?? 0, maeR ?? -1);
+                const maxR = Math.max(plannedR || 2, actualR ?? 0, mfeR ?? 0, 1);
+                const rangePad = Math.max(0.08, (maxR - minR) * 0.025);
+                const min = minR - rangePad;
+                const max = maxR + rangePad;
+                const x = r => pad + ((r - min) / Math.max(0.01, max - min)) * (W - pad * 2);
+                const stopX = x(-1);
+                const entryX = x(0);
+                const targetX = x(plannedR);
+                const actualX = actualR === null ? null : x(actualR);
+                const mfeX = mfeR === null ? null : x(mfeR);
+                const maeX = maeR === null ? null : x(maeR);
+                const barY = 39;
+                const barH = 9;
+                const actualY = barY + 2;
+                const excursionRailY = barY + barH / 2;
+                const label = (key, xx, yy, main, sub, color, anchor="middle") => (
+                  <g key={key}>
+                    <text x={xx} y={yy} fill={color} fontSize="8.2" fontWeight="900" letterSpacing=".055em" fontFamily={F} textAnchor={anchor}>{main}</text>
+                    {sub && <text x={xx} y={yy + 10} fill={color} opacity=".9" fontSize="7.6" fontWeight="820" letterSpacing=".035em" fontFamily={F} textAnchor={anchor}>{sub}</text>}
+                  </g>
+                );
+                const marker = (key, xx, color, title, sub, top=true, dashed=false) => {
+                  const labelX = Math.max(44, Math.min(W - 44, xx));
+                  return (
+                    <g key={key} opacity={dashed ? 0.72 : 1}>
+                      <line x1={xx} y1={barY - 8} x2={xx} y2={barY + barH + 8} stroke={color} strokeWidth={dashed ? 0.8 : 1} strokeDasharray={dashed ? "3 3" : undefined} strokeLinecap="square"/>
+                      <circle cx={xx} cy={barY + barH / 2} r={dashed ? 1.9 : 2.5} fill={color} stroke={c.bg} strokeWidth="0.8"/>
+                      {label(`${key}-label`, labelX, top ? 17 : 74, title, sub, color)}
+                    </g>
+                  );
+                };
+                return (
+                  <div style={{position:"relative",border:`1px solid ${c.br}`,background:"rgb(7,10,20)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.025)",padding:"3px 7px",boxSizing:"border-box",width:"100%",marginBottom:12}}>
+                    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} style={{display:"block",overflow:"visible"}}>
+                      <line x1={pad} y1={barY + barH / 2} x2={W - pad} y2={barY + barH / 2} stroke={c.brH} strokeWidth="1"/>
+                      <rect x={Math.min(stopX, entryX)} y={barY} width={Math.abs(entryX - stopX)} height={barH} rx="0" fill="rgba(255,80,104,0.24)" stroke="rgba(255,80,104,0.36)" strokeWidth="0.5"/>
+                      <rect x={entryX} y={barY} width={Math.max(0, targetX - entryX)} height={barH} rx="0" fill="rgba(0,212,161,0.14)" stroke="rgba(0,212,161,0.30)" strokeWidth="0.5"/>
+                      {actualX !== null && <rect x={Math.min(entryX, actualX)} y={actualY} width={Math.abs(actualX - entryX)} height={barH - 4} rx="0" fill={c.gold}/>}
+                      {maeX !== null && mfeX !== null && (
+                        <line x1={Math.min(maeX, mfeX)} y1={excursionRailY} x2={Math.max(maeX, mfeX)} y2={excursionRailY} stroke="rgba(170,180,200,0.58)" strokeWidth="2.2" strokeLinecap="square"/>
+                      )}
+                      {marker("stop", stopX, c.rd, "STOP -1R", "", false)}
+                      {marker("entry", entryX, c.acL, "ENTRY", "0R", false, true)}
+                      {marker("target", targetX, c.gn, `TARGET +${fmtNum(plannedR, 2)}R`, "", false)}
+                      {mfeX !== null && marker("mfe", mfeX, c.tm, `MFE +${fmtNum(mfeR, 2)}R`, previewMfeMoney, true, true)}
+                      {maeX !== null && marker("mae", maeX, c.tm, `MAE -${fmtNum(Math.abs(maeR), 2)}R`, previewMaeMoney, true, true)}
+                      {actualX !== null && marker("actual", actualX, c.gold, `ACTUAL ${actualR >= 0 ? "+" : "-"}${fmtNum(Math.abs(actualR), 2)}R`, previewSignedMoney(previewPnl), true)}
+                    </svg>
+                  </div>
+                );
+              };
+              const previewAccentColor = c.acL;
+              const previewContent = (
+                <div
+                  className="tlr-snapshot-trade-preview-shell"
+                  aria-hidden={false}
+                  style={{
+                    position:"absolute",
+                    left:0,
+                    top:0,
+                    width:"100%",
+                    height:0,
+                    overflow:"visible",
+                    zIndex:100004,
+                    pointerEvents:"none",
+                    isolation:"isolate",
+                  }}
+                >
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position:"absolute",
+                    inset:0,
+                    zIndex:0,
+                    pointerEvents:"none",
+                    background:"transparent",
+                  }}
+                />
+                <div
+                  ref={dashSnapshotTradePreviewCardRef}
+                  role="region"
+                  aria-label={`Trade details for ${row.tradeId}`}
+                  onPointerDown={event => event.stopPropagation()}
+                  style={{
+                    position:"absolute",
+                    left:previewCenterX,
+                    top:previewTop,
+                    transform:"translateX(-50%)",
+                    width:previewWidth,
+                    maxWidth:"calc(100vw - 56px)",
+                    boxSizing:"border-box",
+                    pointerEvents:"auto",
+                    isolation:"isolate",
+                    zIndex:1,
+                  }}
+                >
+                  <div
+                    className="tlr-scroll tlr-snapshot-trade-preview-card"
+                    style={{
+                      position:"relative",
+                      width:"100%",
+                      overflow:"visible",
+                      background:"rgb(7,10,20)",
+                      backgroundClip:"padding-box",
+                      border:"1px solid rgba(116,126,150,0.52)",
+                      boxShadow:"0 18px 44px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.035)",
+                      padding:14,
+                      fontFamily:F,
+                      boxSizing:"border-box",
+                    }}
+                  >
+                    <span aria-hidden="true" style={{position:"absolute",left:0,right:0,top:0,height:2,background:`linear-gradient(90deg,transparent,${previewAccentColor},transparent)`,boxShadow:`0 0 8px ${c.acG}`,pointerEvents:"none"}}/>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,paddingBottom:10,borderBottom:`1px solid ${c.br}`,marginBottom:12}}>
+                      <div style={{minWidth:0,display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}>
+                        <span style={{fontSize:14,fontWeight:950,color:c.tx,lineHeight:1,whiteSpace:"nowrap"}}>
+                          {row.symbol} · <span style={{color:previewSideColor}}>{previewDirection}</span>
+                        </span>
+                        {detailBadge(row.tradeId, c.acL, true)}
+                        {detailBadge(previewStatus, c.acL, true)}
+                        {detailBadge(previewCloseType, c.gold, true)}
+                        {detailBadge(previewOutcome, previewOutcomeColor, true)}
+                      </div>
+                      <button
+                        type="button"
+                        className="tlr-library-action tlr-add-trade-soft-action tlr-library-close tlr-snapshot-trade-preview-close"
+                        aria-label="Close trade details"
+                        onClick={event => {
+                          event.stopPropagation();
+                          setDashSnapshotTradePreview(null);
+                        }}
+                        style={{
+                          width:28,
+                          height:28,
+                          display:"grid",
+                          placeItems:"center",
+                          border:0,
+                          background:"transparent",
+                          color:c.tm,
+                          fontSize:22,
+                          lineHeight:1,
+                          fontWeight:900,
+                          cursor:"default",
+                          flexShrink:0,
+                          padding:0,
+                          "--tlr-add-hover-bg":"rgba(255,80,104,0.08)",
+                          "--tlr-add-hover-color":c.rd,
+                          "--tlr-add-hover-border":"transparent",
+                          "--tlr-add-hover-shadow":"none",
+                          "--tlr-add-active-bg":"rgba(255,80,104,0.14)",
+                          "--tlr-add-active-color":c.rd,
+                        }}
+                      >
+                        <I n="x" s={16} cl="currentColor"/>
+                      </button>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:16,alignItems:"start",minWidth:0}}>
+                      {detailGroup("Prices", [
+                        ["Entry", formatPreviewPrice(entryPrice), c.acL],
+                        ["TP", formatPreviewPrice(targetPrice), c.gn],
+                        ["SL", formatPreviewPrice(stopPrice), c.rd],
+                        ["Exit", formatPreviewPrice(exitPrice), c.gold],
+                      ], c.acL)}
+                      {detailGroup("Risk / Result", [
+                        ["Net P&L", formatPreviewMoney(previewPnl), Number(previewPnl) < 0 ? c.rd : c.gn],
+                        ["R", previewResultR !== null && previewResultR !== undefined ? `${previewResultR > 0 ? "+" : ""}${fmtNum(previewResultR, 2)}R` : "-", Number(previewResultR) < 0 ? c.rd : c.gn],
+                        ["Close", previewCloseType, c.tx],
+                        ["Cost", formatPreviewMoney(pick(["costs","commission","fees"], 0)), c.tm],
+                      ], c.acL)}
+                      {detailGroup("Timing", [
+                        ["Entry", formatPreviewDateTime(pick(["entryTime","openTime","entryDate","date"], "")), c.tx],
+                        ["Exit", formatPreviewDateTime(pick(["closeTime","exitTime","exitDate"], "")), c.tx],
+                        ["Held", durationText, c.tx],
+                        ["Source", String(pick(["sourceSessionName","sessionName","sourceName","sourceTitle"], "Auto")), c.gold],
+                      ], c.acL)}
+                    </div>
+                    <div style={{marginTop:12}}>
+                      {previewRiskRewardBar()}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr) minmax(260px,0.9fr)",gap:16,alignItems:"start",marginTop:14,paddingTop:12,borderTop:`1px solid ${c.br}`}}>
+                      <div style={{display:"grid",gap:7,minWidth:0}}>
+                        <span style={{fontSize:8.4,fontWeight:950,color:c.gold,letterSpacing:"0.08em",textTransform:"uppercase",lineHeight:1}}>Pre-trade Tags</span>
+                        {chips(preItems, c.gold, "No pre tags")}
+                      </div>
+                      <div style={{display:"grid",gap:7,minWidth:0}}>
+                        <span style={{fontSize:8.4,fontWeight:950,color:"#B78CFF",letterSpacing:"0.08em",textTransform:"uppercase",lineHeight:1}}>Post-trade Tags</span>
+                        {chips(postItems, "#B78CFF", "No post tags")}
+                      </div>
+                      <div style={{display:"grid",gap:7,minWidth:0}}>
+                        <span style={{fontSize:8.4,fontWeight:950,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",lineHeight:1}}>Notes / Demons</span>
+                        <div style={{display:"grid",gridTemplateColumns:"54px minmax(0,1fr)",gap:8,alignItems:"baseline"}}>
+                          <span style={{fontSize:8,fontWeight:950,color:c.tm,textTransform:"uppercase"}}>Notes</span>
+                          <span style={{fontSize:9.4,fontWeight:820,color:noteText?c.ts:c.tm,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={noteText || "No notes"}>{noteText || "No notes"}</span>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"54px minmax(0,1fr)",gap:8,alignItems:"baseline"}}>
+                          <span style={{fontSize:8,fontWeight:950,color:c.tm,textTransform:"uppercase"}}>Demons</span>
+                          {chips(demons, c.rd, "None")}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                </div>
+              );
+              return previewPortalTarget ? createPortal(previewContent, previewPortalTarget) : previewContent;
+            };
+            const renderBestWorstTradesSection = () => {
+              const hasTrades = snapshotBestTrades.length || snapshotWorstTrades.length;
+              const bestWorstColumns = "minmax(182px,1fr) minmax(42px,52px) minmax(62px,74px)";
+              const bestWorstColumnGap = 8;
+              const bestWorstCellPadding = "0 2px";
+              const renderList = (label, rows, color) => (
+                <div style={{position:"relative",zIndex:rows.some(item => dashSnapshotTradePreview?.key === item.key) ? 8 : 1,display:"grid",gap:9,minWidth:0,alignContent:"start",border:`1px solid ${c.brH}`,background:"rgba(9,12,23,0.58)",padding:"10px 12px 11px",boxSizing:"border-box",overflow:"visible"}}>
+                  <div style={{display:"inline-grid",gap:5,minWidth:0,justifySelf:"start"}}>
+                    <span style={{fontSize:9.8,fontWeight:950,color,letterSpacing:"0.08em",textTransform:"uppercase",lineHeight:1}}>{label}</span>
+                    <span className="tlr-snapshot-bestworst-line" aria-hidden="true" style={{height:1,width:58,background:`linear-gradient(90deg,transparent,${color},transparent)`,boxShadow:`0 0 8px ${color}88`}}/>
+                  </div>
+                  <div style={{display:"grid",minWidth:0}}>
+                    <div
+                      className="tlr-snapshot-bestworst-grid"
+                      aria-hidden="true"
+                      style={{
+                        minHeight:22,
+                        display:"grid",
+                        gridTemplateColumns:bestWorstColumns,
+                        alignItems:"center",
+                        columnGap:bestWorstColumnGap,
+                        padding:bestWorstCellPadding,
+                        borderBottom:`1px solid ${c.br}`,
+                        color:c.tm,
+                        fontSize:8,
+                        fontWeight:950,
+                        letterSpacing:"0.08em",
+                        textTransform:"uppercase",
+                        lineHeight:1,
+                        minWidth:0,
+                      }}
+                    >
+                      <span style={{minWidth:0,textAlign:"left",justifySelf:"stretch"}}>Trade ID</span>
+                      <span style={{minWidth:0,width:"100%",textAlign:"center",justifySelf:"stretch"}}>Symbol</span>
+                      <span style={{minWidth:0,width:"100%",textAlign:"right",justifySelf:"stretch"}}>Result</span>
+                    </div>
+                    {rows.length ? rows.map((row, rowIndex) => {
+                      const resultText = formatSnapshotTradeResult(row);
+                      const displayedValue = dashOverviewUnitMode === "r" && row.resultR !== null ? row.resultR : row.pnl;
+                      const positive = (displayedValue ?? row.resultR ?? row.pnl ?? 0) >= 0;
+                      const resultColor = positive ? c.gn : c.rd;
+                      const isPreviewActive = dashSnapshotTradePreview?.key === row.key;
+                      return (
+                        <React.Fragment key={`${row.key}-${rowIndex}`}>
+                        <div
+                          className="tlr-snapshot-bestworst-grid"
+                          style={{
+                            minHeight:32,
+                            width:"100%",
+                            display:"grid",
+                            gridTemplateColumns:bestWorstColumns,
+                            alignItems:"center",
+                            columnGap:bestWorstColumnGap,
+                            padding:bestWorstCellPadding,
+                            borderBottom:rowIndex === rows.length - 1 ? 0 : `1px solid ${c.br}`,
+                            background:"transparent",
+                            color:c.tx,
+                            fontFamily:F,
+                            minWidth:0,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="tlr-snapshot-trade-id-button"
+                            data-tlr-snapshot-preview-key={String(row.key ?? row.tradeId ?? "")}
+                            aria-pressed={isPreviewActive}
+                            onPointerDown={libraryPointerActivate(event => {
+                              event.stopPropagation();
+                              openSnapshotTradePreview(row, event);
+                            })}
+                            onKeyDown={libraryKeyActivate(event => {
+                              event.stopPropagation();
+                              openSnapshotTradePreview(row, event);
+                            })}
+                            style={{
+                              position:"relative",
+                              width:"100%",
+                              maxWidth:"100%",
+                              minHeight:24,
+                              display:"flex",
+                              alignItems:"center",
+                              justifyContent:"flex-start",
+                              gap:5,
+                              padding:"0 0 4px",
+                              border:0,
+                              background:"transparent",
+                              color:isPreviewActive ? c.acL : c.tx,
+                              fontFamily:F,
+                              fontSize:8.65,
+                              fontWeight:950,
+                              lineHeight:1.05,
+                              textAlign:"left",
+                              whiteSpace:"nowrap",
+                              overflow:"hidden",
+                              textOverflow:"ellipsis",
+                              fontVariantNumeric:"tabular-nums",
+                              cursor:"default",
+                              "--tlr-snapshot-id-color":isPreviewActive ? c.gn : c.acL,
+                              "--tlr-snapshot-id-line-opacity":isPreviewActive ? 1 : 0,
+                            }}
+                          >
+                            <span className="tlr-snapshot-bestworst-id" style={{minWidth:0,overflow:"visible",textOverflow:"clip",whiteSpace:"nowrap"}}>
+                              {row.tradeId}
+                            </span>
+                            <svg
+                              width="8"
+                              height="8"
+                              viewBox="0 0 8 8"
+                              aria-hidden="true"
+                              style={{
+                                display:"block",
+                                flexShrink:0,
+                                transform:isPreviewActive ? "rotate(180deg)" : "rotate(0deg)",
+                              }}
+                            >
+                              <path
+                                d="M1.4 2.6 4 5.2 6.6 2.6"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.4"
+                                strokeLinecap="square"
+                                strokeLinejoin="miter"
+                              />
+                            </svg>
+                          </button>
+                          <span style={{minWidth:0,width:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:10.4,fontWeight:900,lineHeight:1.05,textAlign:"center",justifySelf:"stretch",paddingLeft:0}}>
+                            {row.symbol}
+                          </span>
+                          <span style={{minWidth:0,width:"100%",fontSize:10.4,fontWeight:950,lineHeight:1,fontVariantNumeric:"tabular-nums",color:resultColor,whiteSpace:"nowrap",textAlign:"right",justifySelf:"stretch"}}>
+                            {resultText}
+                          </span>
+                        </div>
+                        </React.Fragment>
+                      );
+                    }) : (
+                      <div style={{height:30,display:"flex",alignItems:"center",padding:"0 2px",color:c.tm,fontSize:10,fontWeight:850}}>
+                        No trades yet
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+              return (
+                <>
+                  <SummaryCard
+                    title={dashTxt("Best & Worst Trades","أفضل وأسوأ الصفقات")}
+                    titleDot={false}
+                    minHeight={220}
+                    style={{padding:14,gap:12}}
+                  >
+                    {hasTrades ? (
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12,minWidth:0}}>
+                        {renderList("Best", snapshotBestTrades, c.gn)}
+                        {renderList("Worst", snapshotWorstTrades, c.rd)}
+                      </div>
+                    ) : (
+                      <div style={{minHeight:74,display:"grid",placeItems:"center",border:`1px solid ${c.br}`,background:"rgba(10,12,20,0.52)",color:c.tm,fontSize:11,fontWeight:850,lineHeight:1.2}}>
+                        No trades yet
+                      </div>
+                    )}
+                  </SummaryCard>
+                </>
+              );
+            };
+            const renderStrengthsWeaknessesSection = () => {
+              const strengths = snapshotStrengthSignals.slice(0, 3);
+              const weaknesses = snapshotWeaknessSignals.slice(0, 3);
+              if (!strengths.length && !weaknesses.length) return null;
+
+              const renderSignalRow = (item, color) => (
+                <div
+                  key={item.id}
+                  style={{
+                    minHeight:48,
+                    display:"grid",
+                    gridTemplateColumns:"auto minmax(0,1fr) auto",
+                    alignItems:"center",
+                    gap:10,
+                    padding:"10px 12px",
+                    border:`1px solid ${c.br}`,
+                    background:`linear-gradient(90deg, ${color}12, rgba(10,12,20,0.62) 42%, rgba(10,12,20,0.72))`,
+                    boxSizing:"border-box",
+                    minWidth:0,
+                  }}
+                >
+                  <span aria-hidden="true" style={{width:7,height:7,background:color,boxShadow:`0 0 9px ${color}77`,display:"block"}}/>
+                  <div style={{minWidth:0,display:"grid",gap:3}}>
+                    <div style={{fontSize:11,fontWeight:900,color:c.tx,lineHeight:1.2,letterSpacing:0,whiteSpace:"normal"}}>{item.label}</div>
+                    {item.linkTarget ? (
+                      <div style={{fontSize:8.6,fontWeight:850,color:c.tm,lineHeight:1.15,textTransform:"uppercase",letterSpacing:"0.055em"}}>{item.linkTarget.replace(/-/g, " ")}</div>
+                    ) : null}
+                  </div>
+                  {formatInsightMetricValue(item) ? (
+                    <div style={{fontSize:10.2,fontWeight:950,color,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",lineHeight:1.1,textAlign:"right"}}>{formatInsightMetricValue(item)}</div>
+                  ) : null}
+                </div>
+              );
+
+              const renderSignalColumn = (label, items, color) => (
+                <div style={{display:"grid",gap:9,minWidth:0,alignContent:"start"}}>
+                  <div style={{display:"grid",gap:6,minWidth:0,justifyItems:"start"}}>
+                    <div style={{fontSize:10,fontWeight:950,color,letterSpacing:"0.075em",textTransform:"uppercase",lineHeight:1}}>{label}</div>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        height:1,
+                        width:Math.min(94, Math.max(78, String(label).length * 8 + 24)),
+                        maxWidth:"42%",
+                        background:`linear-gradient(90deg, transparent, ${color}, transparent)`,
+                        boxShadow:`0 0 8px ${color}88`,
+                      }}
+                    />
+                  </div>
+                  <div style={{display:"grid",gap:8,minWidth:0}}>
+                    {items.map(item => renderSignalRow(item, color))}
+                  </div>
+                </div>
+              );
+
+              return (
+                <SummaryCard
+                  title={dashTxt("Strengths & Weaknesses","نقاط القوة والضعف")}
+                  titleDot={false}
+                  minHeight={214}
+                  style={{padding:16,gap:14}}
+                >
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:14,minWidth:0}}>
+                    {renderSignalColumn("Working", strengths, c.gn)}
+                    {renderSignalColumn("Hurting", weaknesses, c.rd)}
+                  </div>
+                </SummaryCard>
+              );
+            };
             return (
-              <div style={{display:"flex",flexDirection:"column",gap:22,animation:"tlrLoadFadeIn 0.1s ease"}}>
+              <div data-tlr-snapshot-root="true" className="tlr-snapshot-page" style={{position:"relative",display:"flex",flexDirection:"column",gap:22}}>
                 <div style={{display:"flex",flexDirection:"column",gap:14}}>
                   <div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:16}}>
                     <div style={{display:"inline-flex",flexDirection:"column",alignItems:"flex-start"}}>
-                      <h1 style={{margin:0,fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,letterSpacing:0,lineHeight:1}}>{dashTxt("Snapshot","لمحة")}</h1>
+                      <div style={{display:"inline-flex",alignItems:"center",gap:8,minWidth:0}}>
+                        <DashboardPageIcon id="overview" size={18} color={c.acL}/>
+                        <h1 style={{margin:0,fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,letterSpacing:0,lineHeight:1}}>{dashTxt("Snapshot","لمحة")}</h1>
+                      </div>
                       <div aria-hidden="true" style={{height:2,width:"100%",alignSelf:"stretch",marginTop:8,background:`linear-gradient(90deg,transparent,${c.acL} 46%,${c.acL} 54%,transparent)`,boxShadow:`0 0 9px ${c.acG}`}}/>
                     </div>
                     <DashboardEvidenceStrip/>
@@ -27328,68 +30131,34 @@ const TalariaV8b = () => {
                   <div aria-hidden="true" style={{height:1,width:"100%",background:c.br,opacity:.95}}/>
                 </div>
 
-                <div>
+                <div
+                  key={snapshotTopMode}
+                  data-tlr-snapshot-layer-root="true"
+                  className={`tlr-snapshot-top-mode-panel tlr-snapshot-top-mode-${snapshotTopMode}`}
+                  style={{position:"relative",display:"flex",flexDirection:"column",gap:22}}
+                >
+                  <div style={{display:"flex",flexDirection:"column"}}>
+                    {snapshotTopMode === "advanced" ? renderSnapshotAdvancedTopStrip() : renderSnapshotBasicTopStrip()}
+                  </div>
+
+                  <PropChallengeProgressSection/>
+
                   <div style={{display:"grid",gridTemplateColumns:"minmax(456px,1.18fr) minmax(0,3fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                    <CompactScoreCard/>
-                    <div style={{height:dashboardScoreCardHeight,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gridTemplateRows:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                      {overviewCarouselSlots.map(slot => <PagedMetricCard key={slot.id} slot={slot}/>)}
-                    </div>
+                    {renderSnapshotPnlCalendarSection()}
+                    {renderAccountPulseSection()}
                   </div>
-                </div>
 
-                <PropChallengeProgressSection/>
-
-                <div>
-                  {sectionTitle(dashTxt("Equity Curve","منحنى الحساب"), dashTxt("Balance line with drawdown pressure underneath.","خط الرصيد مع ضغط السحب أسفله."))}
-                  <SummaryCard title={dashTxt("Account Balance","رصيد الحساب")} minHeight={360} right={<div style={{fontSize:9,fontWeight:900,color:metrics.totalPnl>=0?c.gn:c.rd,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{fmtValue(metrics.totalPnl,metrics.avgR*metrics.tradeCount)}</div>}>
-                    <svg width="100%" height={280} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-label="Performance summary equity curve" style={{display:"block"}}>
-                      <path d={drawArea} fill={c.rd} opacity="0.12"/>
-                      <line x1={px} x2={w-px} y1={h-py} y2={h-py} stroke={c.brH}/>
-                      {equityPts.slice(1).map((p,i)=>{
-                        const prev = equityPts[i];
-                        const up = values[i+1] >= values[i];
-                        return <line key={`seg-${i}`} x1={prev.x} y1={prev.y} x2={p.x} y2={p.y} stroke={up?c.gn:c.rd} strokeWidth="2.2" strokeLinecap="square"/>;
-                      })}
-                      {equityPts.filter((_,i)=>i>0 && i%Math.max(1,Math.ceil(equityPts.length/90))===0).map((p,i)=><circle key={`pt-${i}`} cx={p.x} cy={p.y} r="1.8" fill={c.tx} opacity=".55"/>)}
-                    </svg>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:9,fontWeight:800,color:c.tm,fontFamily:F}}>
-                      <span>{fmtDate(ds.startDate)}</span>
-                      <span>{dashValueMode==="privacy"?"***":fmtAbsMoney(metrics.endingBalance)}</span>
-                      <span>{fmtDate(ds.endDate)}</span>
-                    </div>
-                  </SummaryCard>
-                </div>
-
-                <div>
-                  {sectionTitle(dashTxt("Insights","الرؤى"))}
-                  <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:14}}>
-                    <SummaryCard title={dashTxt("Performance Highlights","أبرز الأداء")} minHeight={300}>
-                      <div style={{display:"grid",gap:9}}>
-                        {highlights.map(item=>(
-                          <div key={item.label} style={{minHeight:50,display:"grid",gridTemplateColumns:"minmax(0,1fr) 84px 80px",alignItems:"center",gap:12,borderBottom:`1px solid ${c.br}`,fontFamily:F}}>
-                            <div style={{minWidth:0}}>
-                              <div style={{fontSize:8,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase"}}>{item.label}</div>
-                    <div style={{fontSize:12,fontWeight:900,color:c.tx,whiteSpace:"normal",lineHeight:1.08,overflow:"visible",marginTop:4}}>{item.row.label}</div>
-                            </div>
-                            <div style={{textAlign:"right",fontSize:10,fontWeight:900,color:item.row.pnl>=0?c.gn:c.rd,fontVariantNumeric:"tabular-nums"}}>{fmtValue(item.row.pnl, item.row.avgR)}</div>
-                            <div style={{textAlign:"right",fontSize:8,fontWeight:900,color:c.tm,lineHeight:1.4}}>{item.row.trades} trades<br/>{fmtPct(item.row.winRate,0)} win</div>
-                          </div>
-                        ))}
-                      </div>
-                    </SummaryCard>
-                    <SummaryCard title={dashTxt("Best & Worst Trades","أفضل وأسوأ الصفقات")} minHeight={300}>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}}>
-                        <div>
-                          <div style={{fontSize:8,fontWeight:900,color:c.gn,letterSpacing:"0.075em",textTransform:"uppercase",fontFamily:F,marginBottom:8}}>Best Trades</div>
-                          {winners.map(tradeLine)}
-                        </div>
-                        <div>
-                          <div style={{fontSize:8,fontWeight:900,color:c.rd,letterSpacing:"0.075em",textTransform:"uppercase",fontFamily:F,marginBottom:8}}>Worst Trades</div>
-                          {losers.map(tradeLine)}
-                        </div>
-                      </div>
-                    </SummaryCard>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                    {snapshotAutoInsightChips.length ? renderAutoInsightChipsSection() : <div aria-hidden="true" style={{minHeight:1}}/>}
+                    {renderBestWorstTradesSection()}
                   </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.55fr) minmax(320px,0.85fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                    {renderStrengthsWeaknessesSection() || <div aria-hidden="true" style={{minHeight:1}}/>}
+                    {renderNextBestActionSection()}
+                  </div>
+
+                  {renderSnapshotTradePreviewOverlay()}
                 </div>
               </div>
             );
@@ -32115,6 +34884,7 @@ const TalariaV8b = () => {
                   )}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,padding:"0 20px 0 10px",marginLeft:"auto"}}>
+                  {sessView !== "trades" && activeFreshPageId === "overview" && <SnapshotTopModeButton/>}
                   {sessView !== "trades" && <DashboardPagesButton/>}
                   {sessView === "trades" && (
                     <>

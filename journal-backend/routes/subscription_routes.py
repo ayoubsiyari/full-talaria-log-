@@ -3,6 +3,7 @@
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from sqlalchemy.exc import IntegrityError
 from models import db, User, Subscription, SubscriptionPlan, Payment, WebhookLog
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -46,6 +47,36 @@ def _maybe_revoke_user_entitlements(user):
         revoke_to_free_tier(user)
 
 
+def _get_or_create_subscription(stripe_sub_id, **fields):
+    """Idempotently create a Subscription for a Stripe subscription id.
+
+    Closes the race where the `customer.subscription.created` webhook and the
+    frontend `verify-session` fallback both try to insert the same subscription:
+    we check for an existing row first, and if a concurrent transaction wins the
+    insert (when a unique index is present) we recover the existing row instead
+    of erroring. Returns (subscription, created).
+    """
+    if stripe_sub_id:
+        existing = Subscription.query.filter_by(stripe_subscription_id=stripe_sub_id).first()
+        if existing:
+            return existing, False
+    sub = Subscription(stripe_subscription_id=stripe_sub_id, **fields)
+    db.session.add(sub)
+    try:
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        existing = (
+            Subscription.query.filter_by(stripe_subscription_id=stripe_sub_id).first()
+            if stripe_sub_id
+            else None
+        )
+        if existing:
+            return existing, False
+        raise
+    return sub, True
+
+
 def _resolve_plan_for_stripe_subscription(sub_data):
     price_id = sub_data.get('items', {}).get('data', [{}])[0].get('price', {}).get('id')
     if price_id:
@@ -81,6 +112,13 @@ CHECKOUT_MAX_PER_MINUTE = 3              # max checkout creates per IP per minut
 
 
 def _get_client_ip():
+    # Prefer X-Real-IP: nginx sets it to $remote_addr (the actual connecting
+    # address), so it cannot be spoofed by the client. X-Forwarded-For is only a
+    # fallback for setups without nginx — its left-most value is client-supplied
+    # and must not be trusted for rate-limit / brute-force counters on its own.
+    real_ip = (request.headers.get('X-Real-IP') or '').strip()
+    if real_ip:
+        return real_ip
     forwarded = request.headers.get('X-Forwarded-For', '')
     return forwarded.split(',')[0].strip() if forwarded else (request.remote_addr or '127.0.0.1')
 
@@ -856,62 +894,77 @@ def stripe_webhook():
     if not sig_header:
         return jsonify({'error': 'Missing Stripe-Signature header'}), 400
 
+    # 1) Verify the signature before doing anything else.
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-
-        event_id = event.get('id', '')
-        event_type = event.get('type', 'unknown')
-
-        # ── Idempotency: skip if we already processed this exact event ──
-        if event_id:
-            existing = WebhookLog.query.filter_by(event_id=event_id, status='processed').first()
-            if existing:
-                return jsonify({'received': True, 'duplicate': True}), 200
-
-        log = WebhookLog(
-            event_type=event_type,
-            event_id=event_id,
-            payload=payload[:5000],
-            status='received'
-        )
-        db.session.add(log)
-
-        if event_type == 'customer.subscription.created':
-            handle_subscription_created(event['data']['object'])
-            log.status = 'processed'
-
-        elif event_type == 'customer.subscription.updated':
-            handle_subscription_updated(event['data']['object'])
-            log.status = 'processed'
-
-        elif event_type == 'customer.subscription.deleted':
-            handle_subscription_deleted(event['data']['object'])
-            log.status = 'processed'
-
-        elif event_type == 'invoice.payment_succeeded':
-            handle_payment_succeeded(event['data']['object'])
-            log.status = 'processed'
-
-        elif event_type == 'invoice.payment_failed':
-            handle_payment_failed(event['data']['object'])
-            log.status = 'processed'
-
-        elif event_type == 'checkout.session.completed':
-            handle_checkout_completed(event['data']['object'])
-            log.status = 'processed'
-
-        db.session.commit()
-
-        return jsonify({'received': True}), 200
-
     except ValueError:
         return jsonify({'error': 'Invalid payload'}), 400
     except stripe.error.SignatureVerificationError:
         return jsonify({'error': 'Invalid signature'}), 400
-    except Exception as e:
-        current_app.logger.error(f"Webhook error: {e}")
+
+    event_id = event.get('id', '')
+    event_type = event.get('type', 'unknown')
+
+    # 2) Idempotency: skip if we already processed this exact event.
+    if event_id:
+        existing = WebhookLog.query.filter_by(event_id=event_id, status='processed').first()
+        if existing:
+            return jsonify({'received': True, 'duplicate': True}), 200
+
+    # 3) Persist a 'received' record up-front and commit it on its own, so we keep
+    #    an audit row even if handler processing later fails and is rolled back.
+    log = WebhookLog(
+        event_type=event_type,
+        event_id=event_id,
+        payload=payload[:5000],
+        status='received',
+    )
+    db.session.add(log)
+    try:
+        db.session.commit()
+    except Exception:
         db.session.rollback()
-        return jsonify({'error': 'Internal error'}), 500
+        log = None
+
+    def _mark_log(status, error=None):
+        if log is None:
+            return
+        try:
+            log.status = status
+            if error is not None:
+                log.error_message = str(error)[:1000]
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    handlers = {
+        'customer.subscription.created': handle_subscription_created,
+        'customer.subscription.updated': handle_subscription_updated,
+        'customer.subscription.deleted': handle_subscription_deleted,
+        'invoice.payment_succeeded': handle_payment_succeeded,
+        'invoice.payment_failed': handle_payment_failed,
+        'checkout.session.completed': handle_checkout_completed,
+    }
+    handler = handlers.get(event_type)
+
+    # 4) Event types we don't act on are acknowledged so Stripe stops retrying.
+    if handler is None:
+        _mark_log('processed')
+        return jsonify({'received': True, 'ignored': True}), 200
+
+    # 5) Run the handler. On failure, mark the event failed and return 500 so
+    #    Stripe retries later — we must never silently drop an entitlement change.
+    try:
+        handler(event['data']['object'])
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Webhook handler error for {event_type} ({event_id}): {e}")
+        _mark_log('failed', error=e)
+        return jsonify({'error': 'Webhook processing failed'}), 500
+
+    _mark_log('processed')
+    return jsonify({'received': True}), 200
 
 
 def handle_subscription_created(sub_data):
@@ -928,10 +981,10 @@ def handle_subscription_created(sub_data):
         period_start = datetime.fromtimestamp(sub_data.get('current_period_start', 0))
         period_end = datetime.fromtimestamp(sub_data.get('current_period_end', 0))
         
-        subscription = Subscription(
+        subscription, _created = _get_or_create_subscription(
+            sub_data.get('id'),
             user_id=user.id,
             plan_id=plan.id if plan else None,
-            stripe_subscription_id=sub_data.get('id'),
             stripe_customer_id=sub_data.get('customer'),
             status=sub_data.get('status'),
             started_at=period_start,
@@ -939,12 +992,14 @@ def handle_subscription_created(sub_data):
             current_period_start=period_start,
             current_period_end=period_end,
         )
-        db.session.add(subscription)
         
         _apply_plan_entitlements_to_user(user, plan)
         
     except Exception as e:
+        # Re-raise so the webhook dispatcher can mark this event failed and
+        # return 500, prompting Stripe to retry (entitlements must not be lost).
         current_app.logger.error(f"Error handling subscription created: {e}")
+        raise
 
 
 def handle_subscription_updated(sub_data):
@@ -980,6 +1035,7 @@ def handle_subscription_updated(sub_data):
 
     except Exception as e:
         current_app.logger.error(f"Error handling subscription updated: {e}")
+        raise
 
 
 def handle_subscription_deleted(sub_data):
@@ -998,6 +1054,7 @@ def handle_subscription_deleted(sub_data):
             
     except Exception as e:
         current_app.logger.error(f"Error handling subscription deleted: {e}")
+        raise
 
 
 def handle_payment_succeeded(invoice_data):
@@ -1026,6 +1083,7 @@ def handle_payment_succeeded(invoice_data):
         
     except Exception as e:
         current_app.logger.error(f"Error handling payment succeeded: {e}")
+        raise
 
 
 def handle_payment_failed(invoice_data):
@@ -1054,6 +1112,7 @@ def handle_payment_failed(invoice_data):
 
     except Exception as e:
         current_app.logger.error(f"Error handling payment failed: {e}")
+        raise
 
 
 # ─── CHECKOUT SESSION HANDLER ────────────────────────────────────────────────
@@ -1081,6 +1140,7 @@ def handle_checkout_completed(session_data):
         
     except Exception as e:
         current_app.logger.error(f"Error handling checkout completed: {e}")
+        raise
 
 
 # ─── VERIFY SESSION (FRONTEND FALLBACK) ─────────────────────────────────────
@@ -1138,10 +1198,10 @@ def verify_checkout_session():
         period_start = datetime.fromtimestamp(sub_data.get('current_period_start', 0))
         period_end = datetime.fromtimestamp(sub_data.get('current_period_end', 0))
         
-        subscription = Subscription(
+        subscription, _created = _get_or_create_subscription(
+            stripe_sub_id,
             user_id=user.id,
             plan_id=plan.id if plan else None,
-            stripe_subscription_id=stripe_sub_id,
             stripe_customer_id=session.customer,
             status=sub_data.get('status', 'active'),
             started_at=period_start,
@@ -1149,7 +1209,6 @@ def verify_checkout_session():
             current_period_start=period_start,
             current_period_end=period_end,
         )
-        db.session.add(subscription)
         
         _apply_plan_entitlements_to_user(user, plan)
         

@@ -5042,25 +5042,31 @@ async function api(url, opts = {}) {
   return res.json();
 }
 
-/** Journal admin routes (Bearer JWT) — mint from cookie session when missing. */
+/** Read a non-httpOnly cookie (used for the CSRF token). */
+function _readCookie(name) {
+  try {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch (_) { return null; }
+}
+
+/**
+ * Journal admin routes. Auth hardening: the journal JWT lives in an httpOnly
+ * cookie (sent automatically via credentials:'include'), never in JS storage.
+ * We attach the readable CSRF token so cookie-authenticated writes are accepted;
+ * a quick /api/auth/me ping re-mints the cookies if they are missing.
+ */
 async function journalApi(url, opts = {}) {
   opts.credentials = 'include';
   opts.headers = Object.assign({}, opts.headers || {});
-  let token = null;
-  try { token = localStorage.getItem('token'); } catch (_) {}
-  if (!token) {
+  let csrf = _readCookie('csrf_access_token');
+  if (!csrf) {
     try {
       const me = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
-      if (me.ok) {
-        const d = await me.json();
-        if (d && d.journal_token) {
-          token = d.journal_token;
-          try { localStorage.setItem('token', token); } catch (_) {}
-        }
-      }
+      if (me.ok) { csrf = _readCookie('csrf_access_token'); }
     } catch (_) {}
   }
-  if (token) opts.headers.Authorization = 'Bearer ' + token;
+  if (csrf) opts.headers['X-CSRF-TOKEN'] = csrf;
   const res = await fetch(url, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
