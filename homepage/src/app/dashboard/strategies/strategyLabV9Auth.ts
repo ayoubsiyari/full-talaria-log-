@@ -1,8 +1,14 @@
-/** Auth helpers for Strategy Lab V9 (same token contract as Strategies Lab). */
+/** Auth helpers for Strategy Lab V9. Auth rides on the httpOnly journal cookie
+ *  (sent automatically same-origin); we attach the CSRF token for writes. */
+import { journalCsrfToken } from "@/lib/journalApi";
 
+/**
+ * @deprecated The JWT is no longer readable from JS. Presence of the readable
+ * CSRF cookie is used as an "is authenticated" signal for callers that still
+ * call this as a guard.
+ */
 export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token");
+  return journalCsrfToken();
 }
 
 export function loginUrlWithNext(): string {
@@ -10,14 +16,13 @@ export function loginUrlWithNext(): string {
 }
 
 export function authHeaders(): Record<string, string> {
-  const token = getToken();
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  const csrf = journalCsrfToken();
+  if (csrf) h["X-CSRF-TOKEN"] = csrf;
+  return h;
 }
 
-/** Omit Bearer when logged out so public routes do not get `Bearer null`. */
+/** Same as authHeaders now — kept as a separate export for call-site stability. */
 export function fetchHeadersJson(): Record<string, string> {
-  const token = getToken();
-  const h: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) h.Authorization = `Bearer ${token}`;
-  return h;
+  return authHeaders();
 }

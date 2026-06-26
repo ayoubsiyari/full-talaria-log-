@@ -78,6 +78,27 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)  # 24 hours
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)  # 30 days
 
+    # Auth hardening: accept the access JWT from EITHER the Authorization header
+    # (legacy localStorage path) OR an httpOnly cookie set by the chart backend.
+    # During rollout both work, so nothing breaks while clients migrate.
+    # The cookie name must match the chart's JOURNAL_COOKIE_NAME ("journal_token").
+    # CSRF protection is intentionally OFF here and enabled in a later phase
+    # (double-submit token) once the frontend sends the X-CSRF-TOKEN header;
+    # SameSite=Lax on the cookie provides interim cross-site protection.
+    JWT_TOKEN_LOCATION = ['headers', 'cookies']
+    JWT_ACCESS_COOKIE_NAME = os.environ.get('JOURNAL_COOKIE_NAME', 'journal_token')
+    JWT_COOKIE_SECURE = os.environ.get('JWT_COOKIE_SECURE', 'False').lower() == 'true'
+    JWT_COOKIE_SAMESITE = os.environ.get('JWT_COOKIE_SAMESITE', 'Lax')
+    # Double-submit CSRF for cookie-authenticated writes. flask-jwt-extended ONLY
+    # enforces this for tokens read from cookies (state-changing methods) — tokens
+    # presented via the Authorization header are exempt, so the legacy localStorage
+    # path keeps working unchanged until the frontend fully switches to the cookie.
+    # The chart embeds a matching `csrf` claim and sets a readable csrf_access_token
+    # cookie; the frontend echoes it in the X-CSRF-TOKEN header.
+    JWT_COOKIE_CSRF_PROTECT = True
+    JWT_ACCESS_CSRF_COOKIE_NAME = os.environ.get('JOURNAL_CSRF_COOKIE_NAME', 'csrf_access_token')
+    JWT_CSRF_IN_COOKIES = True
+
 def init_prod_config(app):
     """Applies production-specific configurations from environment variables."""
     # Database configuration

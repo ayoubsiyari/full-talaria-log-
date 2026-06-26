@@ -35,6 +35,34 @@ export function renderSessionsView(ctx, shared) {
     if (filt === "prop") return s.tradingMode === "prop";
     return true;
   };
+  const GENERIC_SESSION_NOTES = /^(backtest session|session notes?|no description|—|-)$/i;
+  const sessionStrategyNotes = (sess) => {
+    const desc = String(sess?.strategyDesc || "").trim();
+    if (!desc || GENERIC_SESSION_NOTES.test(desc)) return "";
+    return desc;
+  };
+  const sessionHasStrategyNotes = (sess) => !!sessionStrategyNotes(sess);
+  const openSessionStrategyPopup = (sess, anchorRect) => {
+    const notes = sessionStrategyNotes(sess);
+    if (!notes) return;
+    const popupW = 300;
+    const maxH = 220;
+    const viewW = window.innerWidth / Z;
+    const viewH = window.innerHeight / Z;
+    let x = anchorRect.right / Z + 8;
+    let y = anchorRect.top / Z - 4;
+    if (x + popupW > viewW - 8) x = anchorRect.left / Z - popupW - 8;
+    if (y + maxH > viewH - 8) y = Math.max(8, viewH - maxH - 8);
+    y = Math.max(8, y);
+    setStratPopup({
+      id: sess.id,
+      x,
+      y,
+      desc: notes,
+      timeframe: sess.timeframe || "",
+      market: (sess.assetClasses || [])[0] || "",
+    });
+  };
   const modalOnly = !!shared.modalOnly;
 
   return (
@@ -438,7 +466,7 @@ export function renderSessionsView(ctx, shared) {
                 <div style={{position:"sticky",top:40,zIndex:4,background:c.bg,padding:"0 32px",width:"fit-content",minWidth:1288,margin:"0 auto",display:"flex",alignItems:"center",height:26}}>
                   <div style={{position:"absolute",bottom:0,left:32,right:32,height:1,background:c.brH,pointerEvents:"none"}}/>
                   <div style={{width:96,flexShrink:0}}></div>
-                  {[["Session",110,"name"],["Strategy",100,"strategy"],["Mode",74,"mode"],["Asset",90,"asset"],["Symbols",120,"symbol"],["Date Range",134,"date"],["Options",102,null],["Starting Bal.",88,"capital"],["Net P&L",80,"pnl"],["Win %",60,"winRate"],["Avg R:R",62,"avgRR"],["Trades",56,"trades"],["Progress",66,"progress"],["",50,null]].map(([label,w,sk])=>{
+                  {[["Session",110,"name"],["Strategy",100,"strategy"],["Mode",74,"mode"],["Market",90,"asset"],["Symbols",120,"symbol"],["Date Range",134,"date"],["Options",102,null],["Starting Bal.",88,"capital"],["Net P&L",80,"pnl"],["Win %",60,"winRate"],["Avg R:R",62,"avgRR"],["Trades",56,"trades"],["Progress",66,"progress"],["",50,null]].map(([label,w,sk])=>{
                     const isActive=sk&&sessSortBy===sk;
                     const isHov=hov===("ch_"+label);
                     return(
@@ -522,11 +550,11 @@ export function renderSessionsView(ctx, shared) {
                         {/* Row 2: Strategy name + info btn */}
                         <div style={{padding:"7px 10px",display:"flex",alignItems:"center",gap:5,borderBottom:`1px solid ${c.brH}`}}>
                           <div style={{fontSize:(sess.strategyName||"").length>22?10:(sess.strategyName||"").length>15?11:12,fontWeight:600,color:c.ts,lineHeight:1.3,fontFamily:F,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sess.strategyName||"—"}</div>
-                          {sess.strategyDesc&&(
-                            <div onClick={e=>e.stopPropagation()}
-                              onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setHov("info_"+sess.id);setStratPopup({id:sess.id,x:r.right/Z+6,y:r.top/Z,desc:sess.strategyDesc,name:sess.strategyName});}}
+                          {sessionHasStrategyNotes(sess)&&(
+                            <div onClick={e=>e.stopPropagation()} title="Session notes"
+                              onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setHov("info_"+sess.id);openSessionStrategyPopup(sess,r);}}
                               onMouseLeave={()=>{setHov(null);setStratPopup(null);}}
-                              style={{width:14,height:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:hov===("info_"+sess.id)?c.acL:c.ts,transition:"color 0.12s"}}>
+                              style={{width:16,height:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:hov===("info_"+sess.id)?c.acL:c.tm,transition:"color 0.12s"}}>
                               <svg width={12} height={12} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4"/><line x1="8" y1="7" x2="8" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="5" r="0.8" fill="currentColor"/></svg>
                             </div>
                           )}
@@ -691,12 +719,12 @@ export function renderSessionsView(ctx, shared) {
                         {/* Strategy name + info button */}
                         <div style={{width:100,flexShrink:0,padding:"0 8px 0 10px",display:"flex",alignItems:"center",gap:4,borderRight:"none"}}>
                           <div style={{fontSize:(sess.strategyName||"").length>20?9:(sess.strategyName||"").length>13?10:11,fontWeight:600,color:c.ts,lineHeight:1.35,wordBreak:"break-word",fontFamily:F,flex:1}}>{sess.strategyName||"—"}</div>
-                          {sess.strategyDesc&&(
+                          {sessionHasStrategyNotes(sess)&&(
                             <div
-                              onClick={e=>e.stopPropagation()}
-                              onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setHov("info_"+sess.id);setStratPopup({id:sess.id,x:r.right/Z+6,y:r.top/Z,desc:sess.strategyDesc,name:sess.strategyName});}}
+                              onClick={e=>e.stopPropagation()} title="Session notes"
+                              onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setHov("info_"+sess.id);openSessionStrategyPopup(sess,r);}}
                               onMouseLeave={()=>{setHov(null);setStratPopup(null);}}
-                              style={{width:14,height:14,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:hov===("info_"+sess.id)?c.acL:c.ts,transition:"color 0.12s"}}>
+                              style={{width:16,height:16,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:hov===("info_"+sess.id)?c.acL:c.tm,transition:"color 0.12s"}}>
                               <svg width={12} height={12} viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4"/><line x1="8" y1="7" x2="8" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="5" r="0.8" fill="currentColor"/></svg>
                             </div>
                           )}
@@ -706,7 +734,7 @@ export function renderSessionsView(ctx, shared) {
                         {colCell("Mode",isProp?"Prop Firm":"Standard",74,isProp?c.gold:c.acL)}
 
                         {/* Asset class — one per session */}
-                        {colCell("Asset",(sess.assetClasses||[])[0]||"—",90)}
+                        {colCell("Market",(sess.assetClasses||[])[0]||"—",90)}
 
                         {/* Symbols — 2-column grid */}
                         <div style={{width:120,flexShrink:0,padding:"0 8px",display:"flex",alignItems:"center",justifyContent:"center",borderRight:"none",overflow:"hidden",cursor:"default"}}>
@@ -846,11 +874,21 @@ export function renderSessionsView(ctx, shared) {
 
 {/* ── Strategy info popup ── */}
             {stratPopup&&(
-              <div style={{position:"fixed",top:stratPopup.y,left:stratPopup.x,zIndex:9999,width:260,background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 8px 28px rgba(0,0,0,0.7)",pointerEvents:"none",fontFamily:F}}>
-                <div style={{height:2,background:`linear-gradient(90deg,${c.acL},${c.ac})`}}/>
-                <div style={{padding:"10px 12px"}}>
-                  <div style={{fontSize:9,fontWeight:800,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:5}}>{stratPopup.name}</div>
-                  <div style={{fontSize:10,fontWeight:500,color:c.ts,lineHeight:1.6}}>{stratPopup.desc}</div>
+              <div style={{position:"fixed",top:stratPopup.y,left:stratPopup.x,zIndex:99999,width:300,maxWidth:"calc(100vw - 16px)",background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 10px 32px rgba(0,0,0,0.72)",pointerEvents:"none",fontFamily:F,overflow:"hidden"}}>
+                <div style={{position:"absolute",left:0,top:0,bottom:0,width:2,background:c.acL}}/>
+                <div style={{padding:"10px 12px 10px 14px"}}>
+                  <div style={{fontSize:7,fontWeight:700,color:c.tm,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Session notes</div>
+                  <div style={{fontSize:10,fontWeight:500,color:c.ts,lineHeight:1.65,maxHeight:180,overflowY:"auto",whiteSpace:"pre-wrap"}} className="tlr-scroll">{stratPopup.desc}</div>
+                  {(stratPopup.timeframe||stratPopup.market)&&(
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8,paddingTop:8,borderTop:`1px solid ${c.brH}`}}>
+                      {stratPopup.timeframe?(
+                        <span style={{fontSize:8,fontWeight:700,color:c.acL,letterSpacing:"0.04em",fontFamily:F,padding:"2px 6px",background:"rgba(38,67,247,0.12)",border:`1px solid rgba(38,67,247,0.22)`}}>{stratPopup.timeframe}</span>
+                      ):null}
+                      {stratPopup.market?(
+                        <span style={{fontSize:8,fontWeight:700,color:c.ts,letterSpacing:"0.04em",fontFamily:F,padding:"2px 6px",background:"rgba(255,255,255,0.04)",border:`1px solid ${c.brH}`}}>{stratPopup.market}</span>
+                      ):null}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

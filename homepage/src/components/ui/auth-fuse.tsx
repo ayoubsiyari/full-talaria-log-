@@ -115,36 +115,15 @@ export async function completeAuthLogin(
   body: AuthSuccessBody,
   opts: { email?: string; password?: string; nextPath?: string },
 ) {
-  if (body?.journal_token && typeof body.journal_token === "string") {
-    localStorage.setItem("token", body.journal_token);
-  }
-
+  // Auth hardening: the journal JWT is delivered as an httpOnly cookie by the
+  // chart auth response (login / google / me). We no longer persist it to
+  // localStorage, and the separate /journal/api/auth/login call (whose only
+  // purpose was to populate localStorage tokens) is no longer needed — both
+  // backends share the same users table and JWT secret.
   const chartUser = body?.user;
   const chartHasAccess = !!chartUser?.has_journal_access;
 
-  if (opts.email && opts.password) {
-    try {
-      const journalRes = await fetch("/journal/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: opts.email, password: opts.password }),
-      });
-      if (journalRes.ok) {
-        const journalData = await journalRes.json().catch(() => null);
-        if (journalData?.token) {
-          localStorage.setItem("token", journalData.token);
-          if (journalData.refresh_token) {
-            localStorage.setItem("refresh_token", journalData.refresh_token);
-          }
-        }
-        if (journalData?.user) {
-          localStorage.setItem("talaria_current_user", JSON.stringify(journalData.user));
-        }
-      }
-    } catch {
-      /* journal login is best-effort */
-    }
-  } else if (chartUser) {
+  if (chartUser) {
     localStorage.setItem("talaria_current_user", JSON.stringify(chartUser));
   }
 

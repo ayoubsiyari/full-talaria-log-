@@ -1383,6 +1383,37 @@ def _clear_session_cookie(response: Response):
     response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
 
 
+# Journal JWT delivered as an httpOnly cookie (auth hardening phase 1). This is
+# the same token still returned in the JSON body during rollout, so existing
+# localStorage-based clients keep working; once all clients read the cookie the
+# JSON copy can be dropped. Name/expiry kept in sync with the minted JWT (24h).
+JOURNAL_COOKIE_NAME = (os.getenv("JOURNAL_COOKIE_NAME", "journal_token").strip() or "journal_token")
+JOURNAL_COOKIE_MAX_AGE_SECONDS = int(os.getenv("JOURNAL_COOKIE_MAX_AGE_SECONDS", str(24 * 60 * 60)))
+
+
+def _set_journal_cookie(response: Response, token: str | None, request: Request | None = None):
+    if not token:
+        return
+    secure_flag = SESSION_COOKIE_SECURE
+    if _is_https_request(request):
+        secure_flag = True
+    elif request is not None:
+        secure_flag = False
+    response.set_cookie(
+        key=JOURNAL_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=secure_flag,
+        samesite=SESSION_COOKIE_SAMESITE,
+        max_age=JOURNAL_COOKIE_MAX_AGE_SECONDS,
+        path="/",
+    )
+
+
+def _clear_journal_cookie(response: Response):
+    response.delete_cookie(key=JOURNAL_COOKIE_NAME, path="/")
+
+
 def _normalize_affiliate_code(raw: str | None) -> str | None:
     if not raw:
         return None
@@ -11306,7 +11337,8 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             db.commit()
         except Exception:
             db.rollback()
-        return {"success": True, **_auth_response_with_journal_token(user, db)}
+        auth = _auth_response_with_journal_token(user, db, response=response, request=request)
+        return {"success": True, **auth}
     except HTTPException:
         raise
     except Exception as exc:
@@ -11388,7 +11420,8 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
             db.commit()
         except Exception:
             db.rollback()
-        out = {"success": True, "is_new_user": is_new, **_auth_response_with_journal_token(user, db)}
+        auth = _auth_response_with_journal_token(user, db, response=response, request=request)
+        out = {"success": True, "is_new_user": is_new, **auth}
         return out
     except HTTPException:
         raise
@@ -11439,6 +11472,8 @@ async def auth_logout(request: Request, response: Response):
         finally:
             db.close()
     _clear_session_cookie(response)
+    _clear_journal_cookie(response)
+    _clear_journal_csrf_cookie(response)
     return {"success": True}
 
 
@@ -11538,8 +11573,13 @@ def _journal_jwt_secret() -> str | None:
     return secret if len(secret) >= 32 else None
 
 
-def _mint_journal_access_token(user: User) -> str | None:
-    """Flask-JWT-Extended compatible access token for /journal/api/* (shared JWT_SECRET_KEY)."""
+def _mint_journal_access_token(user: User, csrf: str | None = None) -> str | None:
+    """Flask-JWT-Extended compatible access token for /journal/api/* (shared JWT_SECRET_KEY).
+
+    When ``csrf`` is provided it is embedded as the ``csrf`` claim so Flask can
+    enforce double-submit CSRF on cookie-authenticated writes (it compares this
+    claim to the X-CSRF-TOKEN request header).
+    """
     secret = _journal_jwt_secret()
     if not secret or pyjwt is None:
         return None
@@ -11555,17 +11595,56 @@ def _mint_journal_access_token(user: User) -> str | None:
         "fresh": False,
         "jti": secrets.token_urlsafe(16),
     }
+    if csrf:
+        payload["csrf"] = csrf
     try:
         return pyjwt.encode(payload, secret, algorithm="HS256")
     except Exception:
         return None
 
 
-def _auth_response_with_journal_token(user: User, db) -> dict:
+# Readable (NOT httpOnly) companion cookie holding the CSRF token, so frontend
+# JS can copy it into the X-CSRF-TOKEN header on journal writes. Name matches
+# flask-jwt-extended's default JWT_ACCESS_CSRF_COOKIE_NAME.
+JOURNAL_CSRF_COOKIE_NAME = (
+    os.getenv("JOURNAL_CSRF_COOKIE_NAME", "csrf_access_token").strip() or "csrf_access_token"
+)
+
+
+def _set_journal_csrf_cookie(response: Response, csrf: str | None, request: Request | None = None):
+    if not csrf:
+        return
+    secure_flag = SESSION_COOKIE_SECURE
+    if _is_https_request(request):
+        secure_flag = True
+    elif request is not None:
+        secure_flag = False
+    response.set_cookie(
+        key=JOURNAL_CSRF_COOKIE_NAME,
+        value=csrf,
+        httponly=False,  # must be readable by JS to echo into the request header
+        secure=secure_flag,
+        samesite=SESSION_COOKIE_SAMESITE,
+        max_age=JOURNAL_COOKIE_MAX_AGE_SECONDS,
+        path="/",
+    )
+
+
+def _clear_journal_csrf_cookie(response: Response):
+    response.delete_cookie(key=JOURNAL_CSRF_COOKIE_NAME, path="/")
+
+
+def _auth_response_with_journal_token(user: User, db, response: Response | None = None, request: Request | None = None) -> dict:
+    """Build the auth payload and, when a response is given, also set the httpOnly
+    journal_token cookie plus the readable CSRF cookie (auth hardening)."""
     out: dict = {"user": _user_public_dict(user, db=db)}
-    tok = _mint_journal_access_token(user)
+    csrf = secrets.token_urlsafe(32)
+    tok = _mint_journal_access_token(user, csrf=csrf)
     if tok:
         out["journal_token"] = tok
+        if response is not None:
+            _set_journal_cookie(response, tok, request=request)
+            _set_journal_csrf_cookie(response, csrf, request=request)
     return out
 
 
@@ -11641,7 +11720,7 @@ async def auth_config():
 
 
 @app.get("/api/auth/me")
-async def auth_me(request: Request):
+async def auth_me(request: Request, response: Response):
     if not AUTH_ENABLED:
         return {"user": {"id": 0, "email": "anonymous@local", "name": "Trader", "role": "admin"}}
     user = _get_user_from_request(request)
@@ -11650,7 +11729,7 @@ async def auth_me(request: Request):
     db = SessionLocal()
     try:
         _apply_entitlements_schema_migrations(engine)
-        return _auth_response_with_journal_token(user, db)
+        return _auth_response_with_journal_token(user, db, response=response, request=request)
     except HTTPException:
         raise
     except Exception as exc:

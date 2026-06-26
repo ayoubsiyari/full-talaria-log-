@@ -3,36 +3,54 @@
  */
 export const JOURNAL_API_BASE = "/journal/api";
 
-/** Persist chart session JWT for journal API calls (Flask Bearer auth). */
-export function applyJournalTokenFromAuthResponse(data: {
-  journal_token?: unknown;
-} | null | undefined): string | null {
-  if (typeof window === "undefined") return null;
-  const t = data?.journal_token;
-  if (typeof t !== "string" || !t.trim()) return null;
-  localStorage.setItem("token", t.trim());
-  return t.trim();
+/**
+ * Read a non-httpOnly cookie value by name (used for the CSRF token).
+ * The journal_token JWT itself is httpOnly and intentionally NOT readable here.
+ */
+export function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = document.cookie.match(new RegExp("(?:^|; )" + escaped + "=([^;]*)"));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/** CSRF token set by the chart alongside the httpOnly journal_token cookie. */
+export function journalCsrfToken(): string | null {
+  return readCookie("csrf_access_token");
 }
 
 /**
- * Dashboard uses cookie sessions; journal strategies use Bearer JWT in localStorage.
- * Mint/sync JWT from GET /api/auth/me when missing (same JWT_SECRET_KEY as journal-backend).
+ * Auth hardening: the journal JWT now lives in an httpOnly cookie (set by the
+ * chart on /api/auth/* and refreshed on GET /api/auth/me), not in localStorage.
+ * This is kept for compatibility but no longer persists anything to JS-readable
+ * storage; it simply returns the token the server handed back, if any.
+ */
+export function applyJournalTokenFromAuthResponse(data: {
+  journal_token?: unknown;
+} | null | undefined): string | null {
+  const t = data?.journal_token;
+  return typeof t === "string" && t.trim() ? t.trim() : null;
+}
+
+/**
+ * Ensure the httpOnly journal_token + readable csrf_access_token cookies are
+ * present by pinging GET /api/auth/me (which re-mints them from the live chart
+ * session). Returns the CSRF token (truthy) when authenticated, else null — so
+ * existing callers that used the return value as an "is authed" guard still work.
+ * Journal API calls are same-origin, so the httpOnly cookie is sent automatically.
  */
 export async function syncJournalTokenFromSession(
   opts?: { forceRefresh?: boolean },
 ): Promise<string | null> {
   if (typeof window === "undefined") return null;
   if (!opts?.forceRefresh) {
-    const existing = localStorage.getItem("token");
+    const existing = journalCsrfToken();
     if (existing) return existing;
-  } else {
-    localStorage.removeItem("token");
   }
   try {
     const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
     if (!res.ok) return null;
-    const data = (await res.json()) as { journal_token?: string };
-    return applyJournalTokenFromAuthResponse(data);
+    return journalCsrfToken();
   } catch {
     return null;
   }
@@ -62,10 +80,15 @@ export async function parseJournalJsonResponse<T>(res: Response): Promise<T> {
   }
 }
 
+/**
+ * Headers for journal API calls. Auth now rides on the httpOnly cookie (sent
+ * automatically same-origin); we only attach the CSRF token so Flask accepts
+ * cookie-authenticated writes (POST/PUT/PATCH/DELETE). No Bearer token — the
+ * JWT is no longer exposed to JavaScript.
+ */
 export function journalAuthHeaders(): Record<string, string> {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const h: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) h.Authorization = `Bearer ${token}`;
+  const csrf = journalCsrfToken();
+  if (csrf) h["X-CSRF-TOKEN"] = csrf;
   return h;
 }

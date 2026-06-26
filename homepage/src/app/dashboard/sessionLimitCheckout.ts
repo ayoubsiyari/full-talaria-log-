@@ -1,10 +1,12 @@
 import { JOURNAL_SUBSCRIPTIONS_API } from "@/lib/subscriptionApi";
-import { syncJournalTokenFromSession } from "@/lib/journalApi";
+import { syncJournalTokenFromSession, journalCsrfToken } from "@/lib/journalApi";
 
+// Auth hardening: ensure the httpOnly journal cookie + CSRF cookie exist, then
+// attach the CSRF token. The JWT itself rides on the cookie (credentials:include).
 async function authHeaders(): Promise<Record<string, string>> {
-  const token = (await syncJournalTokenFromSession()) || localStorage.getItem("token");
+  const csrf = (await syncJournalTokenFromSession()) || journalCsrfToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (csrf) headers["X-CSRF-TOKEN"] = csrf;
   return headers;
 }
 

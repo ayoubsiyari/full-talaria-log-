@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle, Loader2, ArrowRight } from "lucide-react";
 import { JOURNAL_SUBSCRIPTIONS_API } from "@/lib/subscriptionApi";
+import { syncJournalTokenFromSession } from "@/lib/journalApi";
 
 function SubscriptionSuccessInner() {
   const router = useRouter();
@@ -22,14 +23,17 @@ function SubscriptionSuccessInner() {
     let cancelled = false;
     (async () => {
       try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-        if (!token) {
+        // Auth hardening: ensure the httpOnly journal cookie + CSRF token exist,
+        // then call with credentials (cookie) + CSRF header instead of a Bearer.
+        const csrf = await syncJournalTokenFromSession();
+        if (!csrf) {
           if (!cancelled) setLoading(false);
           return;
         }
         const res = await fetch(`${JOURNAL_SUBSCRIPTIONS_API}/verify-session`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          credentials: "include",
+          headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": csrf },
           body: JSON.stringify({ session_id: sessionId }),
         });
         const data = await res.json().catch(() => ({}));

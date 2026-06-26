@@ -102,6 +102,12 @@ services:
       DOMAIN_EMAIL_USERNAME: ${DOMAIN_EMAIL_USERNAME:-}
       DOMAIN_EMAIL_PASSWORD: ${DOMAIN_EMAIL_PASSWORD:-}
       DOMAIN_EMAIL_USE_TLS: "true"
+      # "From" identity, independent of the SMTP login. REQUIRED for AWS SES
+      # (SMTP username is an access-key id, not an email). Must be a verified SES
+      # identity, e.g. no-reply@talaria-log.com. Empty = fall back to the SMTP
+      # username (correct for Gmail).
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-}
       ADMIN_ALERT_EMAIL: ${ADMIN_ALERT_EMAIL:-contact@talaria.services}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}

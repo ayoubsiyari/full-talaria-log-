@@ -136,17 +136,12 @@ export default function BootcampPage() {
   const handleJoinNow = async () => {
     setJoinMenuLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      // Auth hardening: ask the chart session (cookie) who we are instead of
+      // reading a JWT from localStorage.
       let authed = false;
-      if (token) {
-        const res = await fetch("/journal/api/auth/validate-token", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-          cache: "no-store",
-        });
-        const data = await res.json().catch(() => null);
-        authed = Boolean(res.ok && data && (data as any).user && typeof (data as any).user.id === "number");
-      }
+      const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      authed = Boolean(res.ok && data && (data as any).user && typeof (data as any).user.id === "number");
       if (authed) {
         window.location.href = "/register/";
         return;

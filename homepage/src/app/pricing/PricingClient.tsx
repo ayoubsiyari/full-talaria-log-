@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { JOURNAL_SUBSCRIPTIONS_API } from "@/lib/subscriptionApi";
+import { syncJournalTokenFromSession } from "@/lib/journalApi";
 import { accessDenialMessage, accessDenialTitle } from "@/lib/accessMessages";
 
 const F = "'Exo 2', sans-serif";
@@ -168,21 +169,25 @@ export default function PricingClient() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      if (!token) {
+      // Auth hardening: the JWT is no longer readable from JS. Ask the chart
+      // session (httpOnly cookie) who we are; this also re-mints the journal
+      // cookie + CSRF token used for the billing calls below.
+      let me: { user?: { is_admin?: boolean; role?: string } } | null = null;
+      try {
+        const meRes = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+        if (meRes.ok) me = await meRes.json().catch(() => null);
+      } catch {
+        /* treated as logged out */
+      }
+      const user = me?.user;
+      if (!user) {
         setAccessNavReady(true);
         await fetchPlans();
         if (!cancelled) setLoading(false);
         return;
       }
-      setIsLoggedIn(true);
-      let isAdmin = false;
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1] || ""));
-        isAdmin = payload.is_admin === true || payload.role === "admin";
-      } catch {
-        /* ignore */
-      }
+      if (!cancelled) setIsLoggedIn(true);
+      const isAdmin = user.is_admin === true || user.role === "admin";
       if (!cancelled) setUserIsAdmin(isAdmin);
       if (isAdmin) {
         if (!cancelled) setAccessNavReady(true);
@@ -191,7 +196,7 @@ export default function PricingClient() {
         return;
       }
       try {
-        const redirected = await checkAuthAndMaybeRedirectSubscriptionPage(token, browseMode);
+        const redirected = await checkAuthAndMaybeRedirectSubscriptionPage(browseMode);
         if (cancelled || redirected) return;
       } finally {
         if (!cancelled) setAccessNavReady(true);
@@ -205,12 +210,11 @@ export default function PricingClient() {
   }, [browseMode]);
 
   const checkAuthAndMaybeRedirectSubscriptionPage = async (
-    token: string,
     allowPricingBrowse: boolean,
   ): Promise<boolean> => {
     try {
       const res = await fetch(`${JOURNAL_SUBSCRIPTIONS_API}/my-subscription`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (!res.ok) return false;
       const data = (await res.json()) as SubscriptionPayload;
@@ -269,10 +273,11 @@ export default function PricingClient() {
     setCouponValidating(true);
     setCouponResult(null);
     try {
-      const token = localStorage.getItem("token");
+      const csrf = await syncJournalTokenFromSession();
       const res = await fetch(`${JOURNAL_SUBSCRIPTIONS_API}/validate-coupon`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-TOKEN": csrf } : {}) },
         body: JSON.stringify({ code }),
       });
       if (res.status === 429) {
@@ -316,7 +321,7 @@ export default function PricingClient() {
     }
     setCheckoutLoading(planId);
     try {
-      const token = localStorage.getItem("token");
+      const csrf = await syncJournalTokenFromSession();
       const origin = window.location.origin;
       const cancelQs = browseMode ? "?browse=1" : "";
       const body: Record<string, unknown> = {
@@ -330,7 +335,8 @@ export default function PricingClient() {
       }
       const res = await fetch(`${JOURNAL_SUBSCRIPTIONS_API}/checkout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-TOKEN": csrf } : {}) },
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));

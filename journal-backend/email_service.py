@@ -18,14 +18,33 @@ def init_mail(app):
     # Use domain email credentials if available, otherwise fall back to Gmail
     username = os.environ.get('DOMAIN_EMAIL_USERNAME') or os.environ.get('GMAIL_USERNAME')
     password = os.environ.get('DOMAIN_EMAIL_PASSWORD') or os.environ.get('GMAIL_APP_PASSWORD')
-    
+
     app.config['MAIL_USERNAME'] = username
     app.config['MAIL_PASSWORD'] = password
-    app.config['MAIL_DEFAULT_SENDER'] = username
-    
+
+    # The "From" address must be decoupled from the SMTP username. With Gmail the
+    # username *is* the email, so we fall back to it (unchanged behavior). With AWS
+    # SES the SMTP username is an access-key id (AKIA…), NOT an email — so the
+    # sender must be an explicitly verified SES identity. Set EMAIL_FROM_ADDRESS
+    # (and optionally EMAIL_FROM_NAME) to that verified address when using SES.
+    from_address = (
+        os.environ.get('EMAIL_FROM_ADDRESS')
+        or os.environ.get('MAIL_DEFAULT_SENDER')
+        or username
+    )
+    from_name = os.environ.get('EMAIL_FROM_NAME')
+    if from_name and from_address:
+        app.config['MAIL_DEFAULT_SENDER'] = (from_name, from_address)
+    else:
+        app.config['MAIL_DEFAULT_SENDER'] = from_address
+
     # Log the email configuration (without password)
-    print(f"📧 Email configured with: {username} via {app.config['MAIL_SERVER']}:{app.config['MAIL_PORT']}")
-    
+    print(
+        f"📧 Email configured: from={from_address} login={username} "
+        f"via {app.config['MAIL_SERVER']}:{app.config['MAIL_PORT']} "
+        f"(TLS={app.config['MAIL_USE_TLS']}, SSL={app.config['MAIL_USE_SSL']})"
+    )
+
     mail.init_app(app)
 
 def send_verification_email(user, verification_code):

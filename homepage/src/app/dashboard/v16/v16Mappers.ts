@@ -369,7 +369,7 @@ export function mapApiSessionToV16(
     ),
     strategyDesc:
       cfgString(cfg, "description", "session_description", "sessionDescription", "strategy_desc") ||
-      "Backtest session",
+      "",
     tickers: tickers.length ? tickers : sess.symbol ? [sess.symbol] : [],
     timeframe: cfgString(cfg, "timeframe", "tf") || "1H",
     startDate: (sess.start_date || "").slice(0, 10),

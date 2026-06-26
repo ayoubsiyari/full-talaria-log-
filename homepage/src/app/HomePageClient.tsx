@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useLanguage } from "./LanguageProvider";
 import SiteDisclosuresFooter from "@/components/SiteDisclosuresFooter";
 import { normalizeAuthUser } from "@/lib/authUser";
+import { syncJournalTokenFromSession } from "@/lib/journalApi";
 import Image from "next/image";
 import {
   TrendingUp,
@@ -137,10 +138,11 @@ export default function HomePageClient({
   const handleSaveProfile = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem("token");
+      const csrf = await syncJournalTokenFromSession();
       const res = await fetch("/journal/api/auth/profile", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-TOKEN": csrf } : {}) },
         body: JSON.stringify({ 
           name: editName.trim() || undefined, 
           phone: editPhone.trim() || undefined, 

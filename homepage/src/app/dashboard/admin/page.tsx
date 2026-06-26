@@ -6,8 +6,10 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 import { DASHBOARD_MODULE_LABELS } from "@/lib/dashboardAccess";
 
 // helpers
-const jwt=()=>typeof window!=="undefined"?localStorage.getItem("token")??"":"";
-const jh =()=>({ "Content-Type":"application/json", Authorization:`Bearer ${jwt()}` } as HeadersInit);
+// Auth hardening: journal JWT rides on the httpOnly cookie (sent same-origin);
+// we attach the CSRF token for writes instead of a Bearer header.
+import { journalCsrfToken } from "@/lib/journalApi";
+const jh =()=>{ const c=journalCsrfToken(); return { "Content-Type":"application/json", ...(c?{ "X-CSRF-TOKEN":c }:{}) } as HeadersInit; };
 const fmt=(n?:number)=>(n??0).toLocaleString();
 const fmtGB=(b?:number)=>b?(b/1e9).toFixed(1)+" GB":"—";
 

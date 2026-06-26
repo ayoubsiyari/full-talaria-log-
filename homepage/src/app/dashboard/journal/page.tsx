@@ -10,22 +10,26 @@ import {
 } from "../analytics/backtestOsCompute";
 import "../analytics/sessions-dashboard.css";
 import "../analytics/backtest-os-dashboard.css";
+import { journalCsrfToken } from "@/lib/journalApi";
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 function jApiUrl(path: string) {
   const base = (process.env.NEXT_PUBLIC_JOURNAL_API_ORIGIN ?? "").replace(/\/$/, "");
   return base ? `${base}${path.startsWith("/") ? path : `/${path}`}` : path;
 }
+// Auth hardening: journal JWT is in an httpOnly cookie (sent automatically);
+// getToken() returns the readable CSRF token, used as an "is authed" signal.
 function getToken() {
-  try { return typeof window !== "undefined" ? localStorage.getItem("token") : null; } catch { return null; }
+  return journalCsrfToken();
 }
 async function jFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
+  const csrf = journalCsrfToken();
   const res = await fetch(jApiUrl(path), {
+    credentials: "include",
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(csrf ? { "X-CSRF-TOKEN": csrf } : {}),
       ...((init?.headers ?? {}) as Record<string, string>),
     },
   });
@@ -538,13 +542,13 @@ export default function JournalPage() {
 
   // ── CSV import ──────────────────────────────────────────────────────────────
   const runCsvImport = useCallback(async (file: File) => {
-    const token = getToken();
-    if (!token) { setCsvMsg("Not logged in."); return; }
+    const csrf = journalCsrfToken();
+    if (!csrf) { setCsvMsg("Not logged in."); return; }
     setCsvBusy(true); setCsvMsg(null);
     try {
       const fd2 = new FormData(); fd2.append("file", file);
       const res = await fetch(jApiUrl("/api/journal/import/excel"), {
-        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd2,
+        method: "POST", credentials: "include", headers: { "X-CSRF-TOKEN": csrf }, body: fd2,
       });
       const body = await res.json() as { imported?: number; errors?: string[]; error?: string };
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
