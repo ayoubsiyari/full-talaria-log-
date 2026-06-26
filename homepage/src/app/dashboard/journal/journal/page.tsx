@@ -1,2 +1,5 @@
-// Trade log — rendered by the embedded journal iframe.
-export default function JournalLogPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function JournalLogPage() {
+  return <RouteRedirect to="/dashboard/?view=trades" />;
+}

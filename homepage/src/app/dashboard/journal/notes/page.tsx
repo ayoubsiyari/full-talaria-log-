@@ -1,2 +1,5 @@
-// Notes — rendered by the embedded journal iframe.
-export default function NotesPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function NotesPage() {
+  return <RouteRedirect to="/dashboard/" />;
+}

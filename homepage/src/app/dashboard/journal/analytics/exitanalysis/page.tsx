@@ -1,1 +1,5 @@
-export default function ExitAnalysisPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function ExitAnalysisPage() {
+  return <RouteRedirect to="/dashboard/" />;
+}

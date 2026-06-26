@@ -1,2 +1,5 @@
-// Trades list — rendered by the embedded journal iframe.
-export default function TradesPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function TradesPage() {
+  return <RouteRedirect to="/dashboard/?view=trades" />;
+}

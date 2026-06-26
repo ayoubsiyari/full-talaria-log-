@@ -1,1 +1,5 @@
-export default function PnlDistributionPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function PnlDistributionPage() {
+  return <RouteRedirect to="/dashboard/" />;
+}

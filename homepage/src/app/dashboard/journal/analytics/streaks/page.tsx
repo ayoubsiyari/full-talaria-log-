@@ -1,1 +1,5 @@
-export default function StreaksPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function StreaksPage() {
+  return <RouteRedirect to="/dashboard/" />;
+}

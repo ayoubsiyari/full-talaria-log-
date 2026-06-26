@@ -30,6 +30,7 @@ type Props = {
   onChange: (rules: LiveJournalPropRules) => void;
   balance: number;
   market: string;
+  accountSubtype?: string;
   embedded?: boolean;
 };
 
@@ -217,12 +218,18 @@ function PhaseLimits({
   );
 }
 
-export function LiveJournalPropRulesForm({ rules, onChange, balance, market, embedded = false }: Props) {
+export function LiveJournalPropRulesForm({ rules, onChange, balance, market, accountSubtype, embedded = false }: Props) {
   const isAmount = rules.limitMode === "amount" || market.toLowerCase() === "futures";
   const cap = Math.max(1000, balance || 50000);
   const stepFormat = liveJournalPropStepFormat(rules);
   const isFutures = market.toLowerCase() === "futures";
-  const stepOptions = isFutures ? STEP_OPTIONS.filter((opt) => opt.id !== "2-step") : STEP_OPTIONS;
+  const stepOptions = isFutures
+    ? STEP_OPTIONS.filter((opt) => {
+        if (accountSubtype === "Funded") return opt.id === "instant";
+        if (accountSubtype === "Challenge") return opt.id === "1-step";
+        return opt.id !== "2-step";
+      })
+    : STEP_OPTIONS;
   const showPhase2 = rules.numPhases === 2 && stepFormat === "2-step";
 
   const setPhase = (phaseNum: 1 | 2, key: "dl" | "dd" | "pt", val: string) => {
@@ -275,16 +282,38 @@ export function LiveJournalPropRulesForm({ rules, onChange, balance, market, emb
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <FieldLabel>Challenge steps</FieldLabel>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {stepOptions.map((opt) => (
-            <TabBtn
-              key={opt.id}
-              active={stepFormat === opt.id}
-              label={opt.label}
-              onClick={() => onChange(applyLiveJournalPropStepFormat(rules, opt.id))}
-            />
-          ))}
-        </div>
+        {stepOptions.length > 1 ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {stepOptions.map((opt) => (
+              <TabBtn
+                key={opt.id}
+                active={stepFormat === opt.id}
+                label={opt.label}
+                onClick={() => onChange(applyLiveJournalPropStepFormat(rules, opt.id))}
+              />
+            ))}
+          </div>
+        ) : stepOptions.length === 1 ? (
+          <div
+            style={{
+              height: 28,
+              padding: "0 12px",
+              display: "inline-flex",
+              alignItems: "center",
+              alignSelf: "flex-start",
+              background: `${C.ac}18`,
+              color: C.ac,
+              border: `1px solid ${C.ac}55`,
+              fontSize: 10,
+              fontWeight: 900,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              fontFamily: F,
+            }}
+          >
+            {stepOptions[0].label}
+          </div>
+        ) : null}
         <span style={{ fontSize: 8, color: C.tm, fontFamily: F, lineHeight: 1.45 }}>
           {stepFormat === "instant"
             ? isFutures

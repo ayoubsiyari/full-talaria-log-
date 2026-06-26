@@ -1,2 +1,5 @@
-// Learn — rendered by the embedded journal iframe.
-export default function LearnPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function LearnPage() {
+  return <RouteRedirect to="/dashboard/?view=resources" />;
+}

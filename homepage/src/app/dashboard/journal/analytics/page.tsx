@@ -1,2 +1,5 @@
-// Analytics overview — rendered by the embedded journal iframe.
-export default function AnalyticsPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function AnalyticsPage() {
+  return <RouteRedirect to="/dashboard/" />;
+}

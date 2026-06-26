@@ -285,25 +285,21 @@ export function LiveJournalNewAccountModal({
   React.useEffect(() => {
     if (effectiveType === "prop" && market.toLowerCase() === "futures") {
       setPropRules((prev) => {
-        if (liveJournalPropStepFormat(prev) !== "2-step") return prev;
-        return applyLiveJournalPropStepFormat(prev, "1-step");
+        let next = prev;
+        const fmt = liveJournalPropStepFormat(prev);
+        if (fmt === "2-step") {
+          next = applyLiveJournalPropStepFormat(prev, "1-step");
+        }
+        const resolved = liveJournalPropStepFormat(next);
+        if (accountSubtype === "Funded" && resolved !== "instant") {
+          next = applyLiveJournalPropStepFormat(next, "instant");
+        } else if (accountSubtype === "Challenge" && resolved === "instant") {
+          next = applyLiveJournalPropStepFormat(next, "1-step");
+        }
+        return next;
       });
     }
-  }, [effectiveType, market]);
-
-  React.useEffect(() => {
-    if (effectiveType !== "prop" || market.toLowerCase() !== "futures") return;
-    if (liveJournalPropStepFormat(propRules) === "instant") {
-      setAccountSubtype("Funded");
-    }
-  }, [effectiveType, market, propRules]);
-
-  React.useEffect(() => {
-    if (effectiveType !== "prop" || market.toLowerCase() !== "futures") return;
-    if (accountSubtype !== "Funded") return;
-    if (liveJournalPropStepFormat(propRules) === "instant") return;
-    setPropRules((prev) => applyLiveJournalPropStepFormat(prev, "instant"));
-  }, [effectiveType, market, accountSubtype, propRules]);
+  }, [effectiveType, market, accountSubtype]);
 
   React.useEffect(() => {
     setWizardStep((prev) => Math.min(Math.max(1, prev), stepCount));
@@ -760,6 +756,7 @@ export function LiveJournalNewAccountModal({
         onChange={setPropRules}
         balance={parsedBalance}
         market={market}
+        accountSubtype={accountSubtype}
       />
     </div>
   );

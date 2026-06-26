@@ -1,2 +1,5 @@
-// AI Dashboard — rendered by the embedded journal iframe.
-export default function AIDashboardPage() { return null; }
+import RouteRedirect from "@/app/dashboard/RouteRedirect";
+
+export default function AIDashboardPage() {
+  return <RouteRedirect to="/dashboard/" />;
+}
