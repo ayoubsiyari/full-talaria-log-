@@ -36577,11 +36577,6 @@ const TalariaV8b = () => {
                       </div>
                       <div style={{height:50,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"0 12px",borderTop:`1px solid ${c.brH}`,background:c.el,boxSizing:"border-box",flexShrink:0}}>
                         <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:10,overflow:"hidden"}}>
-                          {!addTradeCanSave && (
-                            <div style={{flexShrink:0,maxWidth:220,padding:"6px 9px",border:`1px solid ${c.rd}55`,background:"rgba(255,74,108,0.08)",color:c.rd,fontSize:9.2,fontWeight:850,lineHeight:1.35,fontFamily:F,boxSizing:"border-box"}}>
-                              {addTradeSaveBlockedReason}
-                            </div>
-                          )}
                           <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
                             {resultSummaryBar()}
                           </div>
