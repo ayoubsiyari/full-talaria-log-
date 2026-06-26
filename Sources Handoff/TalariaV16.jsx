@@ -25020,7 +25020,8 @@ const TalariaV8b = () => {
             };
             const fmtPrice = (value) => {
               const n = Number(value);
-              return Number.isFinite(n) ? fmtNum(n, n >= 100 ? 2 : 4) : "—";
+              if (!Number.isFinite(n) || n === 0) return "—";
+              return fmtNum(n, n >= 100 ? 2 : 4);
             };
             const fmtCompactDateTime = (value, fallback="—") => {
               if (value === undefined || value === null || value === "") return fallback;
