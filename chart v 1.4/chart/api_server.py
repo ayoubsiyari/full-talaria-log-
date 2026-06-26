@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response, HTMLResponse
@@ -136,7 +136,7 @@ from analytics_engine import (
     compute_equity_summary,
     compute_session_dashboard_extras,
 )
-from analytics_core.csv_journal import parse_trades_csv_bytes
+from analytics_core.csv_journal import parse_trades_csv_bytes, preview_trades_csv_bytes
 from analytics_core.session_seed_trades import (
     extract_session_contract,
     generate_session_seed_trades,
@@ -20298,12 +20298,43 @@ async def get_trading_session_state(session_id: int, request: Request):
         db.close()
 
 
+@app.post("/api/sessions/{session_id}/journal/import-csv/preview")
+async def preview_trading_session_journal_csv(
+    session_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+):
+    """Inspect CSV headers + sample rows and suggest column mapping before import."""
+    user = _require_paid_journal_user(request)
+    _ = session_id  # access check mirrors import; session must exist below
+    db = SessionLocal()
+    try:
+        s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not _can_access_trading_session(user, s):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    finally:
+        db.close()
+
+    raw = await file.read()
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV file too large (max 12 MB)")
+
+    preview = preview_trades_csv_bytes(raw)
+    errs = preview.get("errors") or []
+    if errs:
+        raise HTTPException(status_code=400, detail={"message": "CSV preview failed", "errors": errs[:20]})
+    return {"success": True, **preview}
+
+
 @app.post("/api/sessions/{session_id}/journal/import-csv")
 async def import_trading_session_journal_csv(
     session_id: int,
     request: Request,
     mode: str = Query("replace"),
     start_balance: float | None = Query(None, description="When set, writes session.config startBalance for return % metrics."),
+    column_mapping: str | None = Form(None, description="Optional JSON object mapping internal field keys to CSV header labels."),
     file: UploadFile = File(...),
 ):
     """Replace or append `state.journal` from a UTF-8 CSV (see `analytics_core.csv_journal`)."""
@@ -20312,11 +20343,21 @@ async def import_trading_session_journal_csv(
     if mode_clean not in {"replace", "append"}:
         raise HTTPException(status_code=400, detail="mode must be replace or append")
 
+    mapping_obj = None
+    if column_mapping and str(column_mapping).strip():
+        try:
+            parsed_map = json.loads(column_mapping)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Invalid column_mapping JSON") from exc
+        if not isinstance(parsed_map, dict):
+            raise HTTPException(status_code=400, detail="column_mapping must be a JSON object")
+        mapping_obj = {str(k): str(v) for k, v in parsed_map.items() if v is not None and str(v).strip()}
+
     raw = await file.read()
     if len(raw) > 12 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="CSV file too large (max 12 MB)")
 
-    parsed = parse_trades_csv_bytes(raw)
+    parsed = parse_trades_csv_bytes(raw, column_mapping=mapping_obj)
     errs = parsed.get("errors") or []
     if errs:
         raise HTTPException(

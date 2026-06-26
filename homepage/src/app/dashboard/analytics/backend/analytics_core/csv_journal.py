@@ -73,6 +73,39 @@ def _pick_float(row: dict[str, str], *keys: str) -> float | None:
     return _cell_to_float(raw) if raw else None
 
 
+def _row_cell(row: dict[str, str], column: str) -> str:
+    """Read a CSV cell by exact or normalized header name."""
+    if not column:
+        return ""
+    for k, v in row.items():
+        if k == column or _norm_header(k) == _norm_header(column):
+            return str(v).strip() if v is not None else ""
+    return ""
+
+
+def _pick_field(
+    row: dict[str, str],
+    field: str,
+    mapping: dict[str, str] | None,
+    *aliases: str,
+) -> str:
+    if mapping:
+        mapped = mapping.get(field)
+        if mapped:
+            return _row_cell(row, mapped)
+    return _pick(row, *aliases)
+
+
+def _pick_float_field(
+    row: dict[str, str],
+    field: str,
+    mapping: dict[str, str] | None,
+    *aliases: str,
+) -> float | None:
+    raw = _pick_field(row, field, mapping, *aliases)
+    return _cell_to_float(raw) if raw else None
+
+
 # Dashboard CSV export column aliases (TalariaV16 exportDashboardTradesCsv round-trip).
 _PNL_ALIASES = (
     "netPnL",
@@ -131,6 +164,176 @@ _TRADE_ID_ALIASES = (
     "id",
     "n",
 )
+_TICKER_ALIASES = ("ticker", "symbol", "instrument", "pair", "asset")
+_DIRECTION_ALIASES = ("direction", "side", "type", "position", "buy/sell")
+_SETUP_ALIASES = ("setup", "playbook", "strategy", "strategyName", "strategy_label")
+_QUANTITY_ALIASES = ("quantity", "qty", "position_size", "positionSize", "size", "lots", "volume")
+_RISK_ALIASES = ("riskAmount", "risk_amount", "risk_usd", "risk", "riskPerTrade", "originalRisk", "planned_risk_amount")
+_MAE_ALIASES = ("mae_r", "mae", "mae_R", "total_mae_r")
+_MFE_ALIASES = ("mfe_r", "mfe", "mfe_R", "total_mfe_r")
+_COMMISSION_ALIASES = ("commission_at_entry", "commission", "commission_per_lot", "commission_total", "commissionCost")
+_SPREAD_ALIASES = ("spread_pips_at_entry", "spread_pips", "spread")
+_PIP_VALUE_ALIASES = ("pip_value_at_entry", "pip_value", "pipValue")
+_STATUS_ALIASES = ("status", "tradeStatus", "state")
+_ENTRY_PRICE_ALIASES = ("entryPrice", "entry", "openPrice", "open_price", "array_base_price")
+_EXIT_PRICE_ALIASES = ("exitPrice", "exit", "closePrice", "close_price")
+_STOP_ALIASES = ("stopLoss", "planned_sl", "sl", "initial_sl", "stop_loss")
+_TARGET_ALIASES = ("takeProfit", "target", "targetPrice", "tp", "initial_takeProfit")
+_CLOSE_TYPE_ALIASES = ("closeType", "exit_reason", "reason", "hitType")
+_DURATION_ALIASES = ("duration", "durationMinutes", "timeHeldMinutes")
+
+# Fields exposed in the import mapper UI (key -> alias tuple used for auto-detect).
+MAPPABLE_FIELDS: dict[str, tuple[str, ...]] = {
+    "netPnL": _PNL_ALIASES,
+    "closeTime": _CLOSE_TIME_ALIASES,
+    "openTime": _OPEN_TIME_ALIASES,
+    "tradeId": _TRADE_ID_ALIASES,
+    "ticker": _TICKER_ALIASES,
+    "direction": _DIRECTION_ALIASES,
+    "setup": _SETUP_ALIASES,
+    "rMultiple": _R_ALIASES,
+    "quantity": _QUANTITY_ALIASES,
+    "riskAmount": _RISK_ALIASES,
+    "mae_r": _MAE_ALIASES,
+    "mfe_r": _MFE_ALIASES,
+    "plannedRR": _PLANNED_RR_ALIASES,
+    "entryPrice": _ENTRY_PRICE_ALIASES,
+    "exitPrice": _EXIT_PRICE_ALIASES,
+    "stopLoss": _STOP_ALIASES,
+    "takeProfit": _TARGET_ALIASES,
+    "commission_at_entry": _COMMISSION_ALIASES,
+    "spread_pips_at_entry": _SPREAD_ALIASES,
+    "pip_value_at_entry": _PIP_VALUE_ALIASES,
+    "closeType": _CLOSE_TYPE_ALIASES,
+    "durationMinutes": _DURATION_ALIASES,
+    "status": _STATUS_ALIASES,
+}
+
+_FIELD_LABELS: dict[str, str] = {
+    "netPnL": "Net profit / loss",
+    "closeTime": "Close / exit time",
+    "openTime": "Open / entry time",
+    "tradeId": "Trade ID",
+    "ticker": "Symbol / ticker",
+    "direction": "Direction (long/short)",
+    "setup": "Strategy / setup",
+    "rMultiple": "R-multiple",
+    "quantity": "Position size",
+    "riskAmount": "Risk amount ($)",
+    "mae_r": "MAE (R)",
+    "mfe_r": "MFE (R)",
+    "plannedRR": "Planned R:R",
+    "entryPrice": "Entry price",
+    "exitPrice": "Exit price",
+    "stopLoss": "Stop loss",
+    "takeProfit": "Take profit",
+    "commission_at_entry": "Commission",
+    "spread_pips_at_entry": "Spread (pips)",
+    "pip_value_at_entry": "Pip value",
+    "closeType": "Close type / reason",
+    "durationMinutes": "Duration (minutes)",
+    "status": "Status (open/closed)",
+}
+
+_REQUIRED_IMPORT_FIELDS = frozenset({"netPnL", "closeTime"})
+
+
+def import_field_catalog() -> list[dict[str, Any]]:
+    """Metadata for the CSV column-mapping UI."""
+    return [
+        {
+            "key": key,
+            "label": _FIELD_LABELS.get(key, key),
+            "required": key in _REQUIRED_IMPORT_FIELDS,
+        }
+        for key in MAPPABLE_FIELDS
+    ]
+
+
+def suggest_column_mapping(headers: list[str]) -> dict[str, str | None]:
+    """Best-effort auto-map from CSV headers to internal trade fields."""
+    by_norm = {_norm_header(h): h for h in headers if h}
+    out: dict[str, str | None] = {key: None for key in MAPPABLE_FIELDS}
+    used: set[str] = set()
+    for field, aliases in MAPPABLE_FIELDS.items():
+        for alias in aliases:
+            norm = _norm_header(alias)
+            header = by_norm.get(norm)
+            if header and header not in used:
+                out[field] = header
+                used.add(header)
+                break
+    return out
+
+
+def _detect_csv_dialect(text: str) -> csv.Dialect:
+    sample = (text or "")[:8192]
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=",;\t|")
+    except csv.Error:
+        return csv.excel
+
+
+def _csv_dict_reader(text: str, dialect: csv.Dialect | None = None) -> csv.DictReader:
+    raw = _strip_bom(text or "")
+    if dialect is None:
+        dialect = _detect_csv_dialect(raw)
+    return csv.DictReader(io.StringIO(raw), dialect=dialect)
+
+
+def preview_trades_csv_text(text: str, *, max_sample_rows: int = 5) -> dict[str, Any]:
+    """
+    Inspect a CSV for the column-mapping step: headers, sample rows, suggested mapping.
+    Does not import trades.
+    """
+    raw = _strip_bom(text or "")
+    if not raw.strip():
+        return {"headers": [], "sample_rows": [], "suggested_mapping": {}, "fields": import_field_catalog(), "errors": ["CSV is empty"]}
+
+    dialect = _detect_csv_dialect(raw)
+    reader = _csv_dict_reader(raw, dialect)
+    headers = [h for h in (reader.fieldnames or []) if h]
+    if not headers:
+        return {"headers": [], "sample_rows": [], "suggested_mapping": {}, "fields": import_field_catalog(), "errors": ["Missing header row"]}
+
+    sample_rows: list[dict[str, str]] = []
+    row_estimate = 0
+    for row in reader:
+        if not any((v or "").strip() for v in row.values()):
+            continue
+        row_estimate += 1
+        if len(sample_rows) < max_sample_rows:
+            sample_rows.append({k: str(v) if v is not None else "" for k, v in row.items()})
+
+    suggested = suggest_column_mapping(headers)
+    missing_required = [f for f in _REQUIRED_IMPORT_FIELDS if not suggested.get(f)]
+
+    return {
+        "headers": headers,
+        "sample_rows": sample_rows,
+        "suggested_mapping": suggested,
+        "fields": import_field_catalog(),
+        "delimiter": getattr(dialect, "delimiter", ","),
+        "row_count_estimate": row_estimate,
+        "missing_required": list(missing_required),
+        "errors": [],
+    }
+
+
+def preview_trades_csv_bytes(data: bytes, *, max_sample_rows: int = 5) -> dict[str, Any]:
+    if len(data) > 12 * 1024 * 1024:
+        return {"headers": [], "sample_rows": [], "suggested_mapping": {}, "fields": import_field_catalog(), "errors": ["CSV file too large (max 12 MB)"]}
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        text = data.decode("utf-8", errors="replace")
+        out = preview_trades_csv_text(text, max_sample_rows=max_sample_rows)
+        w = list(out.get("warnings") or [])
+        w.append("Non-UTF8 bytes replaced (invalid UTF-8).")
+        return {**out, "warnings": w}
+    return preview_trades_csv_text(text, max_sample_rows=max_sample_rows)
+
+
 _PASSTHROUGH_SCALAR_KEYS = (
     "entryPrice",
     "entry",
@@ -447,12 +650,19 @@ def _enrich_imported_trade(trade: dict[str, Any], row: dict[str, str]) -> dict[s
     return trade
 
 
-def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, Any]:
+def parse_trades_csv_text(
+    text: str,
+    *,
+    max_rows: int = _MAX_ROWS,
+    column_mapping: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """
     Parse CSV with header row into journal-compatible trade dicts.
 
-    Required (any alias): net PnL column, close time column.
+    Required (any alias or explicit mapping): net PnL column, close time column.
     Aliases are matched case-insensitively with spaces/dashes as underscores.
+    When ``column_mapping`` is provided, keys are internal field names and values
+    are the exact CSV header labels chosen by the user.
 
     Close / open time: ISO-8601 string, or Unix seconds, or Unix milliseconds.
     """
@@ -462,9 +672,19 @@ def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, 
     if not raw.strip():
         return {"trades": [], "errors": ["CSV is empty"], "warnings": []}
 
-    reader = csv.DictReader(io.StringIO(raw))
+    dialect = _detect_csv_dialect(raw)
+    reader = _csv_dict_reader(raw, dialect)
     if not reader.fieldnames:
         return {"trades": [], "errors": ["Missing header row"], "warnings": []}
+
+    mapping = column_mapping or None
+    if mapping:
+        for req in _REQUIRED_IMPORT_FIELDS:
+            col = mapping.get(req)
+            if not col or not str(col).strip():
+                errors.append(f"Missing required column mapping for {req}")
+        if errors:
+            return {"trades": [], "errors": errors, "warnings": warnings}
 
     out: list[dict[str, Any]] = []
 
@@ -475,8 +695,8 @@ def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, 
         if not any((v or "").strip() for v in row.values()):
             continue
 
-        pnl_s = _pick(row, *_PNL_ALIASES)
-        close_s = _pick(row, *_CLOSE_TIME_ALIASES)
+        pnl_s = _pick_field(row, "netPnL", mapping, *_PNL_ALIASES)
+        close_s = _pick_field(row, "closeTime", mapping, *_CLOSE_TIME_ALIASES)
 
         if not pnl_s:
             errors.append(f"Row {i}: missing net PnL (netPnL / pnl / …)")
@@ -491,26 +711,27 @@ def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, 
             errors.append(f"Row {i}: missing or invalid close time (closeTime / exitTime / ISO)")
             continue
 
-        open_s = _pick(row, *_OPEN_TIME_ALIASES)
+        open_s = _pick_field(row, "openTime", mapping, *_OPEN_TIME_ALIASES)
         open_ms = _cell_to_epoch_ms(open_s) if open_s else None
         if open_ms is None:
             open_ms = close_ms - 4 * 3600 * 1000
             if open_ms <= 0:
                 open_ms = close_ms - 3600 * 1000
 
-        tid = _pick(row, *_TRADE_ID_ALIASES) or f"csv-{i-2}"
-        ticker = (_pick(row, "ticker", "symbol", "instrument") or "EURUSD").replace("/", "").upper()
-        direction = (_pick(row, "direction", "side", "type") or "BUY").upper()
-        setup = _pick(row, "setup", "playbook", "strategy", "strategyName", "strategy_label") or "CSV"
+        tid = _pick_field(row, "tradeId", mapping, *_TRADE_ID_ALIASES) or f"csv-{i-2}"
+        ticker_raw = _pick_field(row, "ticker", mapping, *_TICKER_ALIASES) or "EURUSD"
+        ticker = ticker_raw.replace("/", "").upper()
+        direction = (_pick_field(row, "direction", mapping, *_DIRECTION_ALIASES) or "BUY").upper()
+        setup = _pick_field(row, "setup", mapping, *_SETUP_ALIASES) or "CSV"
 
-        r_m = _pick_float(row, *_R_ALIASES)
-        mae = _cell_to_float(_pick(row, "mae_r", "mae", "mae_R", "total_mae_r"))
-        mfe = _cell_to_float(_pick(row, "mfe_r", "mfe", "mfe_R", "total_mfe_r"))
-        qty = _cell_to_float(_pick(row, "quantity", "qty", "position_size", "positionSize", "size")) or 1.0
-        risk = _cell_to_float(_pick(row, "riskAmount", "risk_amount", "risk_usd", "risk", "riskPerTrade", "originalRisk"))
-        spread = _cell_to_float(_pick(row, "spread_pips_at_entry", "spread_pips", "spread")) or 1.0
-        comm = _cell_to_float(_pick(row, "commission_at_entry", "commission", "commission_per_lot")) or 2.0
-        pipv = _cell_to_float(_pick(row, "pip_value_at_entry", "pip_value", "pipValue")) or 10.0
+        r_m = _pick_float_field(row, "rMultiple", mapping, *_R_ALIASES)
+        mae = _cell_to_float(_pick_field(row, "mae_r", mapping, *_MAE_ALIASES))
+        mfe = _cell_to_float(_pick_field(row, "mfe_r", mapping, *_MFE_ALIASES))
+        qty = _cell_to_float(_pick_field(row, "quantity", mapping, *_QUANTITY_ALIASES)) or 1.0
+        risk = _cell_to_float(_pick_field(row, "riskAmount", mapping, *_RISK_ALIASES))
+        spread = _cell_to_float(_pick_field(row, "spread_pips_at_entry", mapping, *_SPREAD_ALIASES)) or 1.0
+        comm = _cell_to_float(_pick_field(row, "commission_at_entry", mapping, *_COMMISSION_ALIASES)) or 2.0
+        pipv = _cell_to_float(_pick_field(row, "pip_value_at_entry", mapping, *_PIP_VALUE_ALIASES)) or 10.0
 
         if r_m is None:
             r_m = 0.0
@@ -547,15 +768,20 @@ def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, 
     return {"trades": out, "errors": errors, "warnings": warnings}
 
 
-def parse_trades_csv_bytes(data: bytes, *, max_rows: int = _MAX_ROWS) -> dict[str, Any]:
+def parse_trades_csv_bytes(
+    data: bytes,
+    *,
+    max_rows: int = _MAX_ROWS,
+    column_mapping: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if len(data) > 12 * 1024 * 1024:
         return {"trades": [], "errors": ["CSV file too large (max 12 MB)"], "warnings": []}
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
         text = data.decode("utf-8", errors="replace")
-        out = parse_trades_csv_text(text, max_rows=max_rows)
+        out = parse_trades_csv_text(text, max_rows=max_rows, column_mapping=column_mapping)
         w = list(out.get("warnings") or [])
         w.append("Non-UTF8 bytes replaced (invalid UTF-8).")
         return {**out, "warnings": w}
-    return parse_trades_csv_text(text, max_rows=max_rows)
+    return parse_trades_csv_text(text, max_rows=max_rows, column_mapping=column_mapping)

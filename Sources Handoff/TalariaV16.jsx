@@ -10693,6 +10693,7 @@ const TalariaV8b = () => {
   const [dashTradesImportProgress, setDashTradesImportProgress] = useState(null);
   const dashTradesImportDismissRef = useRef(null);
   const dashTradesCsvImportRef = useRef(null);
+  const [dashCsvMapModal, setDashCsvMapModal] = useState(null);
   const [sessSeedBusy, setSessSeedBusy] = useState(null);
   const [sessSeedModal, setSessSeedModal] = useState(null);
   const [sessSeedCount, setSessSeedCount] = useState(200);
@@ -23102,9 +23103,16 @@ const TalariaV8b = () => {
             if (text && text.trim()) return text.slice(0, 280);
             return `HTTP ${status || "error"}`;
           };
-          const postSessionCsvImport = (url, file, onUploadProgress) => new Promise((resolve, reject) => {
+          const postSessionCsvImport = (url, file, onUploadProgress, columnMapping) => new Promise((resolve, reject) => {
             const fd = new FormData();
             fd.append("file", file);
+            if (columnMapping && typeof columnMapping === "object") {
+              const cleaned = {};
+              Object.entries(columnMapping).forEach(([k, v]) => {
+                if (v != null && String(v).trim()) cleaned[k] = String(v).trim();
+              });
+              if (Object.keys(cleaned).length) fd.append("column_mapping", JSON.stringify(cleaned));
+            }
             const xhr = new XMLHttpRequest();
             xhr.open("POST", url);
             xhr.withCredentials = true;
@@ -23119,7 +23127,157 @@ const TalariaV8b = () => {
             xhr.addEventListener("abort", () => reject(new Error(dashTxt("CSV upload cancelled", "تم إلغاء رفع CSV"))));
             xhr.send(fd);
           });
-          const importDashboardTradesCsv = async (file) => {
+          const previewDashboardTradesCsv = async (file) => {
+            if (!file || !ds?.id) return;
+            setDashCsvMapModal({ phase: "loading", fileName: file.name || "trades.csv", fileSize: file.size || 0 });
+            try {
+              const fd = new FormData();
+              fd.append("file", file);
+              const res = await fetch(`/api/sessions/${encodeURIComponent(String(ds.id))}/journal/import-csv/preview`, {
+                method: "POST",
+                credentials: "include",
+                body: fd,
+              });
+              const text = await res.text();
+              let body = null;
+              try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+              if (!res.ok) throw new Error(parseImportCsvError(body, text, res.status));
+              const headers = Array.isArray(body?.headers) ? body.headers : [];
+              const mapping = { ...(body?.suggested_mapping || {}) };
+              const fields = Array.isArray(body?.fields) ? body.fields : [];
+              setDashCsvMapModal({
+                phase: "map",
+                file,
+                fileName: file.name || "trades.csv",
+                fileSize: file.size || 0,
+                headers,
+                sampleRows: Array.isArray(body?.sample_rows) ? body.sample_rows : [],
+                mapping,
+                fields,
+                delimiter: body?.delimiter || ",",
+                rowCountEstimate: Number(body?.row_count_estimate) || null,
+              });
+            } catch (err) {
+              setDashCsvMapModal({
+                phase: "error",
+                fileName: file.name || "trades.csv",
+                message: err?.message || dashTxt("Could not read CSV", "تعذر قراءة CSV"),
+              });
+            }
+          };
+          const renderDashCsvMapModal = () => {
+            if (!dashCsvMapModal) return null;
+            const m = dashCsvMapModal;
+            const closeModal = () => setDashCsvMapModal(null);
+            const requiredKeys = new Set((m.fields || []).filter((f) => f.required).map((f) => f.key));
+            const mappingReady = [...requiredKeys].every((k) => m.mapping && m.mapping[k]);
+            const updateMapField = (key, value) => {
+              setDashCsvMapModal((prev) => prev ? ({
+                ...prev,
+                mapping: { ...(prev.mapping || {}), [key]: value || null },
+              }) : prev);
+            };
+            const sampleForColumn = (col) => {
+              if (!col || !Array.isArray(m.sampleRows)) return "";
+              for (const row of m.sampleRows) {
+                const val = row[col];
+                if (val != null && String(val).trim()) return String(val).trim().slice(0, 48);
+              }
+              return "";
+            };
+            return (
+              <div style={{position:"fixed",inset:0,zIndex:12000,background:"rgba(4,6,14,0.82)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,boxSizing:"border-box"}} onPointerDown={(e)=>{ if (e.target === e.currentTarget) closeModal(); }}>
+                <div style={{width:"min(920px, 96vw)",maxHeight:"min(88vh, 860px)",display:"flex",flexDirection:"column",background:"rgba(12,16,28,0.98)",border:`1px solid ${c.brH}`,boxShadow:"0 24px 80px rgba(0,0,0,0.55)"}} onPointerDown={(e)=>e.stopPropagation()}>
+                  <div style={{padding:"14px 18px",borderBottom:`1px solid ${c.brH}`,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:8.5,fontWeight:950,color:c.acL,letterSpacing:"0.08em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Map CSV columns","ربط أعمدة CSV")}</div>
+                      <div style={{marginTop:4,fontSize:13,fontWeight:850,color:c.tx,fontFamily:F}}>{m.fileName || "trades.csv"}</div>
+                      <div style={{marginTop:3,fontSize:9.5,color:c.tm,fontFamily:F}}>
+                        {dashTxt("Match your file columns to Talaria fields. Required: Net P&L and Close time.","طابق أعمدة ملفك مع حقول تalaria. المطلوب: صافي الربح/الخسارة ووقت الإغلاق.")}
+                        {m.rowCountEstimate != null ? ` · ~${Number(m.rowCountEstimate).toLocaleString()} ${dashTxt("rows","صف")}` : ""}
+                      </div>
+                    </div>
+                    <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                      onPointerDown={libraryPointerActivate(closeModal)}
+                      onKeyDown={libraryKeyActivate(closeModal)}
+                      style={{height:28,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,19,34,0.92)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:8.5,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,flexShrink:0,cursor:"default"}}>
+                      {dashTxt("Close","إغلاق")}
+                    </div>
+                  </div>
+                  {m.phase === "loading" && (
+                    <div style={{padding:28,fontSize:12.5,color:c.ts,fontFamily:F}}>{dashTxt("Reading CSV headers…","جارٍ قراءة رؤوس CSV…")}</div>
+                  )}
+                  {m.phase === "error" && (
+                    <div style={{padding:28}}>
+                      <div style={{fontSize:12.5,color:c.rd,fontFamily:F,lineHeight:1.45}}>{m.message}</div>
+                    </div>
+                  )}
+                  {m.phase === "map" && (
+                    <>
+                      <div style={{flex:1,overflow:"auto",padding:"12px 18px 8px"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"minmax(180px,1.1fr) minmax(200px,1fr) minmax(120px,0.8fr)",gap:8,padding:"0 0 8px",borderBottom:`1px solid ${c.brH}`,marginBottom:8}}>
+                          <div style={{fontSize:8,fontWeight:950,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Talaria field","حقل تalaria")}</div>
+                          <div style={{fontSize:8,fontWeight:950,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Your CSV column","عمود CSV")}</div>
+                          <div style={{fontSize:8,fontWeight:950,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>{dashTxt("Sample","عينة")}</div>
+                        </div>
+                        {(m.fields || []).map((field) => {
+                          const selected = m.mapping?.[field.key] || "";
+                          const sample = sampleForColumn(selected);
+                          return (
+                            <div key={field.key} style={{display:"grid",gridTemplateColumns:"minmax(180px,1.1fr) minmax(200px,1fr) minmax(120px,0.8fr)",gap:8,alignItems:"center",padding:"7px 0",borderBottom:`1px solid rgba(255,255,255,0.04)`}}>
+                              <div style={{fontSize:11,fontWeight:800,color:field.required ? c.tx : c.ts,fontFamily:F}}>
+                                {field.label || field.key}
+                                {field.required ? <span style={{marginLeft:6,fontSize:8,color:c.gold,fontWeight:950}}>*</span> : null}
+                              </div>
+                              <select value={selected} onChange={(e)=>updateMapField(field.key, e.target.value || null)}
+                                style={{height:32,width:"100%",background:"rgba(15,19,34,0.92)",border:`1px solid ${field.required && !selected ? "rgba(255,180,80,0.45)" : c.brH}`,color:c.tx,fontSize:11,fontWeight:700,fontFamily:F,padding:"0 8px",boxSizing:"border-box"}}>
+                                <option value="">{dashTxt("— skip —","— تخطي —")}</option>
+                                {(m.headers || []).map((h) => (
+                                  <option key={h} value={h}>{h}</option>
+                                ))}
+                              </select>
+                              <div style={{fontSize:10,color:c.tm,fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={sample}>{sample || "—"}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{padding:"12px 18px 16px",borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                        <div style={{fontSize:9.5,color:c.tm,fontFamily:F,maxWidth:520,lineHeight:1.4}}>
+                          {dashTxt("Unmapped optional fields use sensible defaults. Talaria exports re-import automatically.","الحقول الاختيارية غير المربوطة تستخدم قيمًا افتراضية. ملفات تصدير تalaria تُستورد تلقائيًا.")}
+                        </div>
+                        <div style={{display:"flex",gap:8,flexShrink:0}}>
+                          <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                            onPointerDown={libraryPointerActivate(closeModal)}
+                            onKeyDown={libraryKeyActivate(closeModal)}
+                            style={{height:34,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,19,34,0.92)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:11,fontWeight:800,fontFamily:F,cursor:"default"}}>
+                            {dashTxt("Cancel","إلغاء")}
+                          </div>
+                          <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
+                            onPointerDown={libraryPointerActivate(() => {
+                              if (!mappingReady || !m.file || dashTradesImportBusy) return;
+                              const mapCopy = { ...(m.mapping || {}) };
+                              closeModal();
+                              void importDashboardTradesCsv(m.file, mapCopy);
+                            })}
+                            onKeyDown={libraryKeyActivate(() => {
+                              if (!mappingReady || !m.file || dashTradesImportBusy) return;
+                              const mapCopy = { ...(m.mapping || {}) };
+                              closeModal();
+                              void importDashboardTradesCsv(m.file, mapCopy);
+                            })}
+                            aria-disabled={!mappingReady || dashTradesImportBusy}
+                            style={{height:34,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:mappingReady ? "rgba(74,106,255,0.22)" : "rgba(15,19,34,0.55)",border:`1px solid ${mappingReady ? "rgba(74,106,255,0.45)" : c.brH}`,color:mappingReady ? c.tx : c.tm,fontSize:11,fontWeight:900,fontFamily:F,cursor:"default",opacity:mappingReady && !dashTradesImportBusy ? 1 : 0.5,pointerEvents:mappingReady && !dashTradesImportBusy ? "auto" : "none"}}>
+                            {dashTxt("Import trades","استيراد الصفقات")}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          };
+          const importDashboardTradesCsv = async (file, columnMapping) => {
             if (!file || dashTradesImportBusy || !ds?.id) return;
             clearDashTradesImportProgress();
             setDashTradesImportBusy(true);
@@ -23173,7 +23331,7 @@ const TalariaV8b = () => {
                     ? dashTxt("Parsing and saving trades…", "جارٍ تحليل وحفظ الصفقات…")
                     : dashTxt(`Uploading… ${Math.round(ratio * 100)}%`, `جارٍ الرفع… ${Math.round(ratio * 100)}%`),
                 }) : prev);
-              });
+              }, columnMapping);
               setDashTradesImportProgress((prev) => prev ? ({
                 ...prev,
                 phase: "processing",
@@ -24304,6 +24462,7 @@ const TalariaV8b = () => {
                   </div>
                 </div>
                 {renderDashTradesImportBanner()}
+                {renderDashCsvMapModal()}
                 <div style={{display:"none",flexShrink:0,padding:"12px 0 10px",borderBottom:`1px solid ${c.br}`,background:c.bg}}>
                   <div style={{width:tradesContentWidth,maxWidth:tradesContentMaxWidth,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flexWrap:"wrap"}}>
@@ -34942,7 +35101,7 @@ const TalariaV8b = () => {
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         e.target.value = "";
-                        if (f) void importDashboardTradesCsv(f);
+                        if (f) void previewDashboardTradesCsv(f);
                       }}
                     />
                     <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}

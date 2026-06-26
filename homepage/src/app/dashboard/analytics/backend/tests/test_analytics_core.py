@@ -403,3 +403,27 @@ def test_holding_duration_open_close():
     assert h["avg_win_hours"] is not None
     assert h["avg_loss_hours"] is not None
 
+
+def test_preview_trades_csv_suggests_mapping():
+    from analytics_core.csv_journal import preview_trades_csv_text
+
+    csv_text = "Profit/Loss,Exit Date,Symbol,Side\n125.5,2020-01-15T10:00:00Z,EURUSD,Buy\n"
+    preview = preview_trades_csv_text(csv_text)
+    assert not preview["errors"]
+    assert preview["headers"] == ["Profit/Loss", "Exit Date", "Symbol", "Side"]
+    assert preview["suggested_mapping"]["netPnL"] == "Profit/Loss"
+    assert preview["suggested_mapping"]["closeTime"] == "Exit Date"
+    assert preview["suggested_mapping"]["ticker"] == "Symbol"
+
+
+def test_parse_trades_csv_with_explicit_column_mapping():
+    from analytics_core.csv_journal import parse_trades_csv_text
+
+    csv_text = "Profit,Exit Date,Pair\n50,1700003600000,EUR/USD\n"
+    mapping = {"netPnL": "Profit", "closeTime": "Exit Date", "ticker": "Pair"}
+    r = parse_trades_csv_text(csv_text, column_mapping=mapping)
+    assert not r["errors"], r["errors"]
+    t = r["trades"][0]
+    assert t["netPnL"] == 50.0
+    assert t["ticker"] == "EURUSD"
+
