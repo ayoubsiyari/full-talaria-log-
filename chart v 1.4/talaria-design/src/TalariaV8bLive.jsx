@@ -22,6 +22,8 @@ import {
   isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
 import { loadIndPinned, saveIndPinned } from "./indicatorPinStorage.js";
+import TradePathCloudPanel from "./TradePathCloudPanel.jsx";
+import { extractPathFieldsFromJournal } from "./tradePathCloudUtils.js";
 import {
   deleteV9ChartTemplateAtIndex,
   hydrateV9ChartTemplatesFromCloud,
@@ -8623,6 +8625,7 @@ function normalizeRemoteJournalListEntry(e) {
     date: ds || undefined,
     close_time: ds || undefined,
     strategy,
+    ...extractPathFieldsFromJournal(e),
   };
 }
 
@@ -8793,6 +8796,7 @@ function buildJournalAnalyticsFromOrderManager(om) {
       date: iso || undefined,
       close_time: iso || undefined,
       strategy: inferStrategyLabelFromJournal(j),
+      ...extractPathFieldsFromJournal(j),
     });
   }
 
@@ -8812,6 +8816,7 @@ function buildJournalAnalyticsFromOrderManager(om) {
       date: iso || undefined,
       close_time: iso || undefined,
       strategy: String(p.strategy || "").trim() || "Other",
+      ...extractPathFieldsFromJournal(p),
     });
   }
 
@@ -8850,15 +8855,36 @@ function mergeJournalAnalyticsRemoteLocal(remote, local) {
     const k = analyticsEntryKey(e);
     const prev = byKey.get(k);
     if (prev) {
+      const pathFrom = extractPathFieldsFromJournal(e);
+      const pathPrev = extractPathFieldsFromJournal(prev);
+      const mergedPath = {};
+      for (const key of [
+        "bar_close_r",
+        "bar_high_r",
+        "bar_low_r",
+        "post_exit_bar_close_r",
+        "post_exit_bar_high_r",
+        "post_exit_bar_low_r",
+        "trail_sl_path",
+      ]) {
+        mergedPath[key] =
+          (Array.isArray(pathFrom[key]) && pathFrom[key].length ? pathFrom[key] : null) ||
+          (Array.isArray(pathPrev[key]) && pathPrev[key].length ? pathPrev[key] : null) ||
+          [];
+      }
       byKey.set(k, {
         ...prev,
         ...e,
+        ...mergedPath,
         pnl: Number.isFinite(Number(e.pnl)) ? Number(e.pnl) : Number(prev.pnl),
         symbol: e.symbol || prev.symbol,
         strategy: e.strategy || prev.strategy,
+        mfe_r: pathFrom.mfe_r ?? pathPrev.mfe_r,
+        mae_r: pathFrom.mae_r ?? pathPrev.mae_r,
+        rMultiple: pathFrom.rMultiple ?? pathPrev.rMultiple,
       });
     } else {
-      byKey.set(k, { ...e });
+      byKey.set(k, { ...e, ...extractPathFieldsFromJournal(e) });
     }
   }
 
@@ -34027,6 +34053,7 @@ const TalariaV8bLive = () => {
                         })}
                       </div>
                     </div>
+                    <TradePathCloudPanel entries={ja?.list || []} c={c} />
                     </>
                     )}
                   </div>
