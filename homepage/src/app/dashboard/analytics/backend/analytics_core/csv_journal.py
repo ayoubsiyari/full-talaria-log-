@@ -67,6 +67,214 @@ def _pick(row: dict[str, str], *keys: str) -> str:
     return ""
 
 
+def _pick_float(row: dict[str, str], *keys: str) -> float | None:
+    raw = _pick(row, *keys)
+    return _cell_to_float(raw) if raw else None
+
+
+# Dashboard CSV export column aliases (TalariaV16 exportDashboardTradesCsv round-trip).
+_PNL_ALIASES = (
+    "netPnL",
+    "net_pnl",
+    "pnl_currency_net",
+    "pnl_dollars_net",
+    "realizedPnL",
+    "realized_pnl",
+    "pnl",
+    "profit",
+    "net_profit",
+)
+_R_ALIASES = (
+    "rMultiple",
+    "r_multiple",
+    "actual_rr_net",
+    "actualRR",
+    "actual_rr",
+    "rr",
+    "r",
+)
+_PLANNED_RR_ALIASES = (
+    "plannedRR",
+    "planned_rr",
+    "plannedRRAtEntry",
+    "planned_rr_at_entry",
+    "rewardToRiskRatio",
+    "actualRisk",
+)
+_CLOSE_TIME_ALIASES = (
+    "closeTime",
+    "close_time",
+    "exitTime",
+    "exit_time",
+    "close_ts",
+    "exit_ts",
+    "exitDate",
+    "exit_date",
+)
+_OPEN_TIME_ALIASES = (
+    "openTime",
+    "open_time",
+    "entryTime",
+    "entry_time",
+    "entryDate",
+    "entry_date",
+    "open_ts",
+    "entry_ts",
+    "date",
+)
+_TRADE_ID_ALIASES = (
+    "tradeId",
+    "trade_id",
+    "journal_trade_id",
+    "client_trade_id",
+    "id",
+    "n",
+)
+_PASSTHROUGH_SCALAR_KEYS = (
+    "entryPrice",
+    "entry",
+    "openPrice",
+    "exitPrice",
+    "exit",
+    "closePrice",
+    "stopLoss",
+    "sl",
+    "planned_sl",
+    "takeProfit",
+    "tp",
+    "target",
+    "targetPrice",
+    "closeType",
+    "exit_reason",
+    "reason",
+    "hitType",
+    "duration",
+    "durationMinutes",
+    "timeHeldMinutes",
+    "strategyName",
+    "strategy",
+    "setup_tag",
+    "sourceSessionName",
+    "sessionName",
+    "sourceName",
+    "status",
+    "tradeStatus",
+    "state",
+    "orderType",
+    "order_type",
+    "position_size",
+    "positionSize",
+    "size",
+    "originalRisk",
+    "planned_risk_amount",
+    "riskPerTrade",
+    "plannedRisk",
+    "riskPct",
+    "risk_pct",
+    "commission_total",
+    "commissionCost",
+    "spread",
+    "slippage",
+    "cost_friction_total",
+    "mfe",
+    "mae",
+    "total_mfe_r",
+    "total_mae_r",
+    "highestPrice",
+    "lowestPrice",
+)
+
+
+def _ms_to_iso_day(ms: float) -> str:
+    dt = datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc)
+    return dt.strftime("%Y-%m-%d")
+
+
+def _ms_to_hhmm(ms: float) -> str:
+    dt = datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc)
+    return dt.strftime("%H:%M")
+
+
+def _enrich_imported_trade(trade: dict[str, Any], row: dict[str, str]) -> dict[str, Any]:
+    """Add dashboard/chart aliases so CSV re-import matches export fields."""
+    pnl = float(trade["netPnL"])
+    trade["pnl"] = pnl
+    trade["pnl_currency_net"] = pnl
+    trade["pnl_dollars_net"] = pnl
+    trade["realizedPnL"] = pnl
+    trade["symbol"] = trade["ticker"]
+
+    r_m = float(trade["rMultiple"])
+    trade["rr"] = r_m
+    trade["actual_rr_net"] = r_m
+    trade["actualRR"] = abs(r_m) if r_m else 0.0
+
+    planned_rr = _pick_float(row, *_PLANNED_RR_ALIASES)
+    if planned_rr is not None and planned_rr > 0:
+        trade["plannedRR"] = float(planned_rr)
+        trade["planned_rr"] = float(planned_rr)
+        trade["rewardToRiskRatio"] = float(planned_rr)
+
+    for key in _PASSTHROUGH_SCALAR_KEYS:
+        raw = _pick(row, key)
+        if not raw:
+            continue
+        if key in {
+            "duration",
+            "durationMinutes",
+            "timeHeldMinutes",
+            "riskPct",
+            "risk_pct",
+            "plannedRisk",
+            "originalRisk",
+            "planned_risk_amount",
+            "riskPerTrade",
+            "mfe",
+            "mae",
+            "total_mfe_r",
+            "total_mae_r",
+            "commission_total",
+            "commissionCost",
+            "spread",
+            "slippage",
+            "cost_friction_total",
+        }:
+            val = _cell_to_float(raw)
+            if val is not None:
+                trade[key] = val
+        else:
+            trade[key] = raw
+
+    close_ms = float(trade["closeTime"])
+    open_ms = float(trade["openTime"])
+    trade["entryTime"] = open_ms
+    trade["exitTime"] = close_ms
+    if not trade.get("entryDate"):
+        trade["entryDate"] = _ms_to_iso_day(open_ms)
+    if not trade.get("exitDate"):
+        trade["exitDate"] = _ms_to_iso_day(close_ms)
+    if not trade.get("date"):
+        trade["date"] = trade["entryDate"]
+
+    status_raw = str(trade.get("status") or _pick(row, "status", "tradeStatus", "state")).strip().lower()
+    if status_raw:
+        trade["status"] = "closed" if status_raw in {"closed", "close"} or "closed" in status_raw else "open"
+    else:
+        trade["status"] = "closed"
+
+    if trade["status"] == "open":
+        trade["pnl"] = 0.0
+        trade["netPnL"] = 0.0
+        trade["pnl_currency_net"] = 0.0
+        trade["realizedPnL"] = 0.0
+        trade["rMultiple"] = 0.0
+        trade["rr"] = 0.0
+        trade["actual_rr_net"] = 0.0
+        trade["actualRR"] = 0.0
+
+    return trade
+
+
 def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, Any]:
     """
     Parse CSV with header row into journal-compatible trade dicts.
@@ -95,8 +303,8 @@ def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, 
         if not any((v or "").strip() for v in row.values()):
             continue
 
-        pnl_s = _pick(row, "netPnL", "net_pnl", "pnl", "profit", "net_profit")
-        close_s = _pick(row, "closeTime", "close_time", "exitTime", "exit_time", "close_ts", "exit_ts")
+        pnl_s = _pick(row, *_PNL_ALIASES)
+        close_s = _pick(row, *_CLOSE_TIME_ALIASES)
 
         if not pnl_s:
             errors.append(f"Row {i}: missing net PnL (netPnL / pnl / …)")
@@ -111,23 +319,23 @@ def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, 
             errors.append(f"Row {i}: missing or invalid close time (closeTime / exitTime / ISO)")
             continue
 
-        open_s = _pick(row, "openTime", "open_time", "entryTime", "entry_time", "open_ts")
+        open_s = _pick(row, *_OPEN_TIME_ALIASES)
         open_ms = _cell_to_epoch_ms(open_s) if open_s else None
         if open_ms is None:
             open_ms = close_ms - 4 * 3600 * 1000
             if open_ms <= 0:
                 open_ms = close_ms - 3600 * 1000
 
-        tid = _pick(row, "tradeId", "trade_id", "id") or f"csv-{i-2}"
+        tid = _pick(row, *_TRADE_ID_ALIASES) or f"csv-{i-2}"
         ticker = (_pick(row, "ticker", "symbol", "instrument") or "EURUSD").replace("/", "").upper()
         direction = (_pick(row, "direction", "side", "type") or "BUY").upper()
-        setup = _pick(row, "setup", "playbook", "strategy") or "CSV"
+        setup = _pick(row, "setup", "playbook", "strategy", "strategyName", "strategy_label") or "CSV"
 
-        r_m = _cell_to_float(_pick(row, "rMultiple", "r_multiple", "r", "rr"))
-        mae = _cell_to_float(_pick(row, "mae_r", "mae", "mae_R"))
-        mfe = _cell_to_float(_pick(row, "mfe_r", "mfe", "mfe_R"))
-        qty = _cell_to_float(_pick(row, "quantity", "qty", "size")) or 1.0
-        risk = _cell_to_float(_pick(row, "riskAmount", "risk_amount", "risk_usd", "risk"))
+        r_m = _pick_float(row, *_R_ALIASES)
+        mae = _cell_to_float(_pick(row, "mae_r", "mae", "mae_R", "total_mae_r"))
+        mfe = _cell_to_float(_pick(row, "mfe_r", "mfe", "mfe_R", "total_mfe_r"))
+        qty = _cell_to_float(_pick(row, "quantity", "qty", "position_size", "positionSize", "size")) or 1.0
+        risk = _cell_to_float(_pick(row, "riskAmount", "risk_amount", "risk_usd", "risk", "riskPerTrade", "originalRisk"))
         spread = _cell_to_float(_pick(row, "spread_pips_at_entry", "spread_pips", "spread")) or 1.0
         comm = _cell_to_float(_pick(row, "commission_at_entry", "commission", "commission_per_lot")) or 2.0
         pipv = _cell_to_float(_pick(row, "pip_value_at_entry", "pip_value", "pipValue")) or 10.0
@@ -159,7 +367,7 @@ def parse_trades_csv_text(text: str, *, max_rows: int = _MAX_ROWS) -> dict[str, 
             "setup": setup,
             "preTradeNotes": {"setup": setup},
         }
-        out.append(trade)
+        out.append(_enrich_imported_trade(trade, row))
 
     if not out and not errors:
         errors.append("No data rows after header.")

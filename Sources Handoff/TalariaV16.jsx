@@ -217,6 +217,19 @@ const formatSessionNetPnlDisplay = (pnl, theme) => {
 };
 const estimateActionMenuHeight = (actions, { rowH = 30, dividerH = 5, accentH = 2 } = {}) =>
   accentH + (actions || []).reduce((sum, action) => sum + (action?.label === "divider" ? dividerH : rowH), 0);
+/** Height-reveal wrapper so trade detail panels animate open downward on mount. */
+function DashTradeDetailReveal({ children }) {
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    const id = requestAnimationFrame(() => setOpen(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return (
+    <div className={`tlr-dashboard-trade-detail-shell${open ? " tlr-dashboard-trade-detail-shell-open" : ""}`}>
+      <div className="tlr-dashboard-trade-detail-clip">{children}</div>
+    </div>
+  );
+}
 const computeAnchoredDropdownPos = ({
   anchorTop,
   anchorBottom,
@@ -11808,8 +11821,8 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-dashboard-balance-field{transition:none!important}.tlr-dashboard-balance-field:hover,.tlr-dashboard-balance-field:focus-within{border-color:rgba(140,160,255,0.20)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05)!important;background:linear-gradient(180deg,rgba(17,21,37,0.98),rgba(9,12,24,0.96))!important}.tlr-dashboard-balance-field:hover .tlr-dashboard-balance-label{color:${c.tm}!important}.tlr-dashboard-balance-mode-icon{transition:none!important}.tlr-dashboard-balance-mode-icon:hover{background:var(--tlr-balance-icon-hover-bg,rgba(74,106,255,0.12))!important;color:var(--tlr-balance-icon-accent,#4A6AFF)!important;box-shadow:0 0 10px -8px var(--tlr-balance-icon-accent,#4A6AFF)!important}.tlr-dashboard-balance-mode-icon:active{background:var(--tlr-balance-icon-active-bg,rgba(74,106,255,0.20))!important;color:var(--tlr-balance-icon-accent,#fff)!important;transform:translateY(1px)!important}.tlr-dashboard-balance-mode-icon:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-balance-value-line{background:linear-gradient(90deg,transparent,${c.gn},transparent);box-shadow:0 0 7px rgba(0,212,161,0.62)}`;
       style.textContent += `.tlr-dashboard-filter-chip:hover{background:rgba(18,22,40,0.98)!important;border-color:rgba(74,106,255,0.46)!important;color:${tcHov}!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.055),0 0 14px -11px #4A6AFF!important}.tlr-dashboard-filter-chip:active{background:rgba(24,30,56,0.98)!important;transform:translateY(1px)!important}.tlr-dashboard-filter-option:hover{background:rgba(255,255,255,0.06)!important;color:${tcHov}!important}.tlr-dashboard-filter-option:active{background:rgba(74,106,255,0.14)!important}.tlr-dashboard-filter-option-active{background:rgba(38,67,247,0.14)!important;color:#4A6AFF!important}.tlr-dashboard-filter-option-active:hover{background:rgba(38,67,247,0.14)!important;color:#4A6AFF!important}.tlr-dashboard-filter-token:hover{background:rgba(255,255,255,0.052)!important;color:${tcHov}!important}.tlr-dashboard-filter-token:active{background:rgba(74,106,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-filter-token-active,.tlr-dashboard-filter-token-active:hover{background:transparent!important;color:var(--tlr-filter-token-active,#4A6AFF)!important}.tlr-dashboard-filter-token-active::after{content:"";position:absolute;left:3px;right:3px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,var(--tlr-filter-token-active,#4A6AFF),transparent);box-shadow:0 0 6px var(--tlr-filter-token-glow,rgba(74,106,255,0.72));pointer-events:none}.tlr-dashboard-filter-token-no-line::after{display:none!important}.tlr-dashboard-filter-chip:focus-visible,.tlr-dashboard-filter-option:focus-visible,.tlr-dashboard-filter-token:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-filter-clear,.tlr-dashboard-filter-clear *{cursor:default!important}.tlr-dashboard-filter-clear:not([aria-disabled="true"]):hover{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-filter-clear:not([aria-disabled="true"]):active{background:transparent!important;color:#fff!important;transform:translateY(1px)!important}`;
       style.textContent += `.tlr-dashboard-filter-source-row:hover{background:var(--tlr-lib-hover-bg,rgba(255,255,255,0.045))!important;border-color:var(--tlr-lib-hover-border,rgba(255,255,255,0.12))!important}.tlr-dashboard-filter-source-row:active{background:var(--tlr-lib-active-press,rgba(74,106,255,0.10))!important;transform:translateY(1px)!important}.tlr-dashboard-filter-source-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
-      style.textContent += `.tlr-dashboard-trade-row{transition:background-color 45ms linear,border-color 45ms linear!important;will-change:background-color,border-color}.tlr-dashboard-trade-row:not(.tlr-dashboard-trade-row-selected):hover{background:rgba(12,16,29,0.98)!important;border-color:rgba(140,160,255,0.18)!important}.tlr-dashboard-trade-row-selected:hover{background:rgba(17,24,54,0.94)!important;border-color:rgba(74,106,255,0.34)!important}.tlr-dashboard-trade-row:active{background:rgba(74,106,255,0.10)!important}.tlr-dashboard-trade-row-selected:active{background:rgba(17,24,54,0.94)!important}.tlr-dashboard-trade-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-trade-block{display:flex;flex-direction:column;min-width:0;overflow-anchor:none}.tlr-dashboard-trade-detail{overflow-anchor:none;flex:0 0 auto}.tlr-trades-body-scroll{scrollbar-width:none!important}.tlr-trades-body-scroll::-webkit-scrollbar{height:0!important}`;
-      style.textContent += `.tlr-trades-id-toggle{position:relative;transition:color 55ms linear,transform 45ms linear!important}.tlr-trades-id-toggle::after{content:"";position:absolute;left:7px;right:7px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 7px rgba(74,106,255,0.72);opacity:.38;pointer-events:none;transition:opacity 55ms linear}.tlr-trades-id-toggle:hover,.tlr-trades-id-toggle-active{color:#4A6AFF!important}.tlr-trades-id-toggle:hover::after,.tlr-trades-id-toggle-active::after{opacity:1}.tlr-trades-id-toggle:active{transform:translateY(1px)!important}.tlr-trades-id-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:1px}.tlr-trades-id-toggle svg{color:rgba(255,255,255,0.48);transition:color 55ms linear,transform 85ms ease}.tlr-trades-id-toggle:hover svg,.tlr-trades-id-toggle-active svg{color:#4A6AFF!important}`;
+      style.textContent += `.tlr-dashboard-trade-row{transition:background-color 180ms ease,border-color 180ms ease,box-shadow 180ms ease!important;will-change:background-color,border-color}.tlr-dashboard-trade-row:not(.tlr-dashboard-trade-row-selected):hover{background:rgba(12,16,29,0.98)!important;border-color:rgba(140,160,255,0.18)!important}.tlr-dashboard-trade-row-selected:hover{background:rgba(17,24,54,0.94)!important;border-color:rgba(74,106,255,0.34)!important}.tlr-dashboard-trade-row:active{background:rgba(74,106,255,0.10)!important}.tlr-dashboard-trade-row-selected:active{background:rgba(17,24,54,0.94)!important}.tlr-dashboard-trade-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-trade-block{display:flex;flex-direction:column;min-width:0;overflow-anchor:none}.tlr-dashboard-trade-detail-shell{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms cubic-bezier(0.22,1,0.36,1)}.tlr-dashboard-trade-detail-shell-open{grid-template-rows:1fr}.tlr-dashboard-trade-detail-clip{overflow:hidden;min-height:0}.tlr-dashboard-trade-detail{overflow-anchor:none;flex:0 0 auto;opacity:0;transform:translateY(-8px);animation:tlrTradeDetailReveal 300ms cubic-bezier(0.22,1,0.36,1) 70ms forwards;transform-origin:top center}.tlr-trades-body-scroll{overflow-anchor:none;scrollbar-width:none!important}.tlr-trades-body-scroll::-webkit-scrollbar{height:0!important}@keyframes tlrTradeDetailReveal{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}@media (prefers-reduced-motion:reduce){.tlr-dashboard-trade-detail-shell{transition:none!important}.tlr-dashboard-trade-detail{animation:none!important;opacity:1!important;transform:none!important}}`;
+      style.textContent += `.tlr-trades-id-toggle{position:relative;transition:color 55ms linear,transform 45ms linear!important}.tlr-trades-id-toggle::after{content:"";position:absolute;left:7px;right:7px;bottom:1px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 7px rgba(74,106,255,0.72);opacity:.38;pointer-events:none;transition:opacity 55ms linear}.tlr-trades-id-toggle:hover,.tlr-trades-id-toggle-active{color:#4A6AFF!important}.tlr-trades-id-toggle:hover::after,.tlr-trades-id-toggle-active::after{opacity:1}.tlr-trades-id-toggle:active{transform:translateY(1px)!important}.tlr-trades-id-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:1px}.tlr-trades-id-toggle svg{color:rgba(255,255,255,0.48);transition:color 55ms linear,transform 220ms cubic-bezier(0.22,1,0.36,1)}.tlr-trades-id-toggle:hover svg,.tlr-trades-id-toggle-active svg{color:#4A6AFF!important}.tlr-trades-id-toggle-active svg{transform:rotate(180deg)}`;
       style.textContent += `.tlr-add-trade-time-column{scrollbar-width:thin!important;scrollbar-color:rgba(140,160,255,0.34) transparent!important}.tlr-add-trade-time-column::-webkit-scrollbar{width:1px!important;height:1px!important}.tlr-add-trade-time-column::-webkit-scrollbar-track{background:transparent!important}.tlr-add-trade-time-column::-webkit-scrollbar-thumb{background:rgba(140,160,255,0.42)!important;border-radius:0!important}.tlr-add-trade-time-column::-webkit-scrollbar-thumb:hover{background:rgba(140,160,255,0.7)!important}.tlr-add-trade-time-column::-webkit-scrollbar-corner{background:transparent!important}`;
       style.textContent += `.tlr-add-trade-soft-action{transition:background-color 65ms linear,color 65ms linear,border-color 65ms linear,box-shadow 65ms linear,transform 45ms linear!important;will-change:background-color,color,border-color,box-shadow,transform}.tlr-add-trade-soft-action:not([aria-disabled="true"]):hover{background:var(--tlr-add-hover-bg,rgba(255,255,255,0.055))!important;color:var(--tlr-add-hover-color,${tcHov})!important;border-color:var(--tlr-add-hover-border,rgba(140,160,255,0.32))!important;box-shadow:var(--tlr-add-hover-shadow,0 0 12px rgba(74,106,255,0.14))!important;filter:none!important}.tlr-add-trade-soft-action:not([aria-disabled="true"]):active{background:var(--tlr-add-active-bg,rgba(74,106,255,0.14))!important;color:var(--tlr-add-active-color,var(--tlr-add-hover-color,${tcHov}))!important;border-color:var(--tlr-add-active-border,var(--tlr-add-hover-border,rgba(140,160,255,0.42)))!important;box-shadow:var(--tlr-add-active-shadow,0 0 8px rgba(74,106,255,0.20))!important;transform:translateY(1px)!important;filter:none!important}.tlr-add-trade-soft-action:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}@keyframes tlrAddTradePageSlideIn{from{opacity:.82;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}.tlr-add-trade-page-slide{animation:tlrAddTradePageSlideIn 155ms cubic-bezier(.2,.7,.2,1)}`;
       style.textContent += `.tlr-dashboard-section-check:hover{background:transparent!important;color:var(--tlr-section-check-accent,#4A6AFF)!important}.tlr-dashboard-section-check:hover .tlr-dashboard-section-check-edge,.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check-edge{stroke:var(--tlr-section-check-accent,#4A6AFF)!important;opacity:1!important}.tlr-dashboard-section-check-row:hover{opacity:1!important}.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check{color:var(--tlr-section-check-accent,#4A6AFF)!important;filter:drop-shadow(0 0 3px var(--tlr-section-check-glow,rgba(74,106,255,0.45)))}.tlr-dashboard-section-check-row:hover .tlr-dashboard-section-check-label{color:var(--tlr-section-check-label-accent,#4A6AFF)!important}.tlr-dashboard-section-check:active,.tlr-dashboard-section-check-row:active{background:transparent!important;transform:translateY(1px)!important}.tlr-dashboard-section-check:focus-visible,.tlr-dashboard-section-check-row:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:2px}`;
@@ -16510,7 +16523,6 @@ const TalariaV8b = () => {
             dashBootLoading
             || dashTradesLoading
             || !!window.__TALARIA_V16_BOOT_LOADING__
-            || (isV16LiveBoot() && !dashboardSessionPool.length && !(sessions||[]).length)
           );
           if (!ds) {
             if (liveDashBooting) {
@@ -22897,7 +22909,20 @@ const TalariaV8b = () => {
               const entryDate = firstValue(trade, ["entryDate","openDate"], entryStamp.date) || entryStamp.date || ledgerDatePart(firstValue(trade, ["date","calendar"], ""));
               const entryTime = ledgerTimePart(firstValue(trade, ["entryTime","openTime","entryClock","time"], "")) || entryStamp.time || "00:00";
               const exitDate = firstValue(trade, ["exitDate","closeDate"], exitStamp.date) || exitStamp.date;
-              const exitTime = ledgerTimePart(firstValue(trade, ["exitTime","closeClock"], "")) || exitStamp.time;
+              let exitTime = ledgerTimePart(firstValue(trade, ["exitTime","closeClock"], "")) || exitStamp.time;
+              if (!exitTime && exitDate) {
+                const closeRaw = firstValue(trade, ["closeTime","exitTime","exitTimestamp"], null);
+                const closeMs = Number(closeRaw);
+                if (Number.isFinite(closeMs) && closeMs > 1e11) {
+                  const d = new Date(closeMs);
+                  exitTime = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+                } else if (closeRaw) {
+                  const d = new Date(closeRaw);
+                  if (!Number.isNaN(d.getTime())) {
+                    exitTime = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+                  }
+                }
+              }
               const hasExcursionPrices = firstValue(trade, ["highestPrice","highest_price","highPrice","high_price","high","maxPrice","max_price"], null) != null
                 || firstValue(trade, ["lowestPrice","lowest_price","lowPrice","low_price","low","minPrice","min_price"], null) != null;
               const excursionMode = firstValue(trade, ["excursionMode","excursion_mode"], hasExcursionPrices ? "during" : "none");
@@ -22910,7 +22935,7 @@ const TalariaV8b = () => {
                 time:entryTime,
                 exitDate:exitDate || "",
                 exitTime:exitTime || "",
-                exitTimingEnabled:!!(exitDate && exitTime && exitRows.length),
+                exitTimingEnabled:!!(exitDate && exitTime),
                 unit:firstValue(trade, ["unit","sizeUnit","quantityUnit"], spec.unit || ""),
                 stopLoss:ledgerInputText(firstValue(trade, ["initial_sl","initialStopLoss","stopLoss","planned_sl","sl"], "")),
                 commission:ledgerInputText(commissionSourceValue),
@@ -23089,7 +23114,12 @@ const TalariaV8b = () => {
                 ? Math.abs(storedRisk)
                 : (ledgerFiniteNumber(currency.riskCurrency) != null ? Math.abs(ledgerFiniteNumber(currency.riskCurrency)) : Number(firstValue(t, ["riskAmount","risk_amount","riskPerTrade"], NaN)));
               const derivedCost = derived ? Number(derived.costTotal || 0) : Number(firstValue(t, ["cost_friction_total","commission_total","commissionCost"], 0));
-              const derivedStatus = derived ? (derived.closed ? "Closed" : "Open") : statusText;
+              const derivedStatus = (() => {
+                if (String(statusText).toLowerCase().includes("closed")) return "Closed";
+                if (derived?.closed) return "Closed";
+                if (derived) return "Open";
+                return statusText;
+              })();
               const derivedQuantity = ledgerFiniteNumber(calculated.totalSize) != null && Number(calculated.totalSize) > 0 ? Number(calculated.totalSize) : Number(firstValue(t, ["quantity","positionSize","position_size","size"], 0));
               const derivedEntry = preferStoredMetrics && Number.isFinite(storedEntry)
                 ? storedEntry
@@ -23108,7 +23138,7 @@ const TalariaV8b = () => {
               const derivedMae = ledgerFiniteNumber(excursion.mae) != null ? -Math.abs(Number(excursion.mae)) : (ledgerFiniteNumber(mae) ?? NaN);
               const closeReasonLabel = (reason) => ({TP_HIT:"Target", SL_HIT:"Stop", MANUAL:"Manual", TRAILING:"Trailing"}[reason] || String(reason || "").replace(/_/g, " "));
               const derivedCloseType = derived?.exitReason ? closeReasonLabel(derived.exitReason) : String(firstValue(t, ["closeType","exit_reason","reason"], "-")).replace(/_/g, " ");
-              const tradeIsOpen = String(derivedStatus).toLowerCase().includes("open") || (derived && !derived.closed);
+              const tradeIsOpen = String(derivedStatus).toLowerCase().includes("open");
               const displayPnl = tradeIsOpen ? 0 : derivedPnl;
               const displayR = tradeIsOpen ? 0 : derivedR;
               return {
@@ -23267,7 +23297,10 @@ const TalariaV8b = () => {
                 const next = opening ? new Set([rowKey]) : new Set();
                 if (opening) {
                   requestAnimationFrame(() => {
-                    requestAnimationFrame(() => ensureDashTradeDetailVisible(rowKey));
+                    requestAnimationFrame(() => {
+                      ensureDashTradeDetailVisible(rowKey);
+                      window.setTimeout(() => ensureDashTradeDetailVisible(rowKey), 340);
+                    });
                   });
                 }
                 return next;
@@ -23284,20 +23317,43 @@ const TalariaV8b = () => {
                 const row = block.querySelector(".tlr-dashboard-trade-row");
                 const detail = block.querySelector(".tlr-dashboard-trade-detail");
                 if (!row || !detail) return;
-                const scrollerRect = scroller.getBoundingClientRect();
-                const stickyHead = scroller.querySelector('[style*="position: sticky"], [style*="position:sticky"]');
-                const anchorTop = stickyHead ? stickyHead.getBoundingClientRect().bottom : scrollerRect.top;
-                const rowRect = row.getBoundingClientRect();
-                const detailRect = detail.getBoundingClientRect();
-                if (rowRect.top < anchorTop + 2) {
-                  scroller.scrollTop += rowRect.top - anchorTop - 10;
-                }
-                const nextRowRect = row.getBoundingClientRect();
-                const nextDetailRect = detail.getBoundingClientRect();
-                if (nextDetailRect.top < nextRowRect.bottom - 1) return;
-                if (nextDetailRect.bottom > scrollerRect.bottom - 10) {
-                  scroller.scrollTop += nextDetailRect.bottom - scrollerRect.bottom + 16;
-                }
+
+                const pad = 8;
+                const alignForDownwardOpen = () => {
+                  const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+                  const scrollerRect = scroller.getBoundingClientRect();
+                  const rowRect = row.getBoundingClientRect();
+                  const detailRect = detail.getBoundingClientRect();
+                  const detailH = detailRect.height;
+                  const rowOffset = rowRect.top - scrollerRect.top + scroller.scrollTop;
+                  const spaceBelow = scrollerRect.bottom - rowRect.bottom;
+
+                  // Reserve space below the row so the detail panel always opens downward.
+                  if (spaceBelow < detailH + pad) {
+                    const target = Math.max(0, Math.min(maxScroll, rowOffset - pad));
+                    if (Math.abs(scroller.scrollTop - target) > 0.5) scroller.scrollTop = target;
+                  }
+
+                  const rowRect2 = row.getBoundingClientRect();
+                  const detailRect2 = detail.getBoundingClientRect();
+                  const scrollerRect2 = scroller.getBoundingClientRect();
+
+                  // Never allow the panel to overlap or sit above the trigger row.
+                  if (detailRect2.top < rowRect2.bottom - 1) {
+                    const rowOffset2 = rowRect2.top - scrollerRect2.top + scroller.scrollTop;
+                    scroller.scrollTop = Math.max(0, Math.min(maxScroll, rowOffset2 - pad));
+                    return;
+                  }
+
+                  // If the bottom is clipped, scroll down only — never reposition above the row.
+                  if (detailRect2.bottom > scrollerRect2.bottom - pad) {
+                    const extra = detailRect2.bottom - scrollerRect2.bottom + pad;
+                    scroller.scrollTop = Math.min(maxScroll, scroller.scrollTop + extra);
+                  }
+                };
+
+                alignForDownwardOpen();
+                requestAnimationFrame(alignForDownwardOpen);
               } catch {}
             };
             const drawerRecord = null;
@@ -23578,7 +23634,7 @@ const TalariaV8b = () => {
               </div>
             );
             return (
-              <div style={{height:"100%",display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",fontFamily:F}}>
+              <div style={{flex:1,minHeight:0,height:"100%",display:"flex",flexDirection:"column",overflow:"hidden",position:"relative",fontFamily:F}}>
                 <div style={{flexShrink:0,minHeight:68,display:"flex",alignItems:"flex-end",borderBottom:`1px solid ${c.br}`,background:c.bg,boxSizing:"border-box"}}>
                   <div style={{width:tradesContentWidth,maxWidth:tradesContentMaxWidth,margin:"0 auto 14px",display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:18}}>
                     <div style={{minWidth:0,flex:"1 1 auto"}}>
@@ -23590,29 +23646,6 @@ const TalariaV8b = () => {
                       </h1>
                     </div>
                     <div style={{flex:"0 0 auto",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,marginBottom:0}}>
-                      <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
-                        onPointerDown={libraryPointerActivate(() => !dashTradesImportBusy && dashTradesCsvImportRef.current?.click())}
-                        onKeyDown={libraryKeyActivate(() => !dashTradesImportBusy && dashTradesCsvImportRef.current?.click())}
-                        aria-label={dashTxt("Import trades from CSV","استيراد الصفقات من CSV")}
-                        aria-disabled={dashTradesImportBusy}
-                        style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(15,19,34,0.96)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:8.8,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"default",boxSizing:"border-box",opacity:dashTradesImportBusy?0.55:1,pointerEvents:dashTradesImportBusy?"none":"auto",transition:dashControlTransition}}>
-                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <path d="M12 21V9M8 13l4-4 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M5 3h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                        </svg>
-                        {dashTradesImportBusy ? dashTxt("Importing…","جارٍ الاستيراد…") : dashTxt("Import CSV","استيراد CSV")}
-                      </div>
-                      <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0}
-                        onPointerDown={libraryPointerActivate(exportDashboardTradesCsv)}
-                        onKeyDown={libraryKeyActivate(exportDashboardTradesCsv)}
-                        aria-label={dashTxt("Export all trade fields to CSV","تصدير جميع حقول الصفقات")}
-                        style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(15,19,34,0.96)",border:`1px solid ${c.brH}`,color:c.ts,fontSize:8.8,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"default",boxSizing:"border-box",opacity:sortedRecords.length?1:0.45,pointerEvents:sortedRecords.length?"auto":"none",transition:dashControlTransition}}>
-                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M5 21h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                        </svg>
-                        {dashTxt("Export CSV","تصدير CSV")}
-                      </div>
                       <DashboardEvidenceStrip compact/>
                     </div>
                   </div>
@@ -23712,8 +23745,8 @@ const TalariaV8b = () => {
                   </div>
                   </div>
                 </div>
-                <div className="tlr-scroll" style={{flex:1,minHeight:0,overflow:"auto",padding:"0 0 18px"}}>
-                  <div style={{width:tradesTableWidth,maxWidth:tradesContentMaxWidth,margin:"0 auto",boxSizing:"border-box"}}>
+                <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                  <div style={{width:tradesTableWidth,maxWidth:tradesContentMaxWidth,margin:"0 auto",boxSizing:"border-box",flex:1,minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden"}}>
                   <div style={{display:"none"}}>
                     <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"flex-end"}}>
                       {dashTradesSortOpen && (
@@ -23775,7 +23808,7 @@ const TalariaV8b = () => {
                       )}
                     </div>
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns,alignItems:"center",columnGap:tradesColumnGap,height:34,minHeight:34,borderTop:`1px solid ${c.br}`,borderBottom:`1px solid ${c.brH}`,position:"sticky",top:0,zIndex:60,background:c.bg,padding:`0 ${tradesTablePadX}px`,boxSizing:"border-box",boxShadow:`0 1px 0 ${c.brH}, 0 12px 18px rgba(0,0,0,0.38)`,isolation:"isolate",transform:"translateZ(0)"}}>
+                  <div style={{display:"grid",gridTemplateColumns,alignItems:"center",columnGap:tradesColumnGap,height:34,minHeight:34,flexShrink:0,borderTop:`1px solid ${c.br}`,borderBottom:`1px solid ${c.brH}`,background:c.bg,padding:`0 ${tradesTablePadX}px`,boxSizing:"border-box",boxShadow:`0 1px 0 ${c.brH}, 0 12px 18px rgba(0,0,0,0.38)`}}>
                     {activeColumnKeys.map(key => {
                       const sortable = columnDefs[key]?.sortable;
                       const active = activeSort.key === key;
@@ -23805,6 +23838,7 @@ const TalariaV8b = () => {
                       );
                     })}
                   </div>
+                  <div className="tlr-scroll tlr-trades-body-scroll" style={{flex:1,minHeight:0,overflow:"auto",padding:"0 0 18px"}}>
                   {sortedRecords.map(record => {
                     const expanded = dashTradesExpandedRows.has(record.key);
                     return (
@@ -23838,7 +23872,7 @@ const TalariaV8b = () => {
                                     onKeyDown={e=>{e.stopPropagation(); libraryKeyActivate(()=>toggleExpandedTradeRow(record.key))(e);}}
                                     style={{height:22,minWidth:54,padding:"0 7px 3px",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:5,background:"transparent",border:0,color:expanded?c.acL:c.tx,fontSize:9,fontWeight:950,letterSpacing:"0.02em",fontVariantNumeric:"tabular-nums",cursor:"default",boxSizing:"border-box"}}>
                                     <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{value.text ?? "-"}</span>
-                                    <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" style={{display:"block",flexShrink:0,transform:expanded?"rotate(180deg)":"rotate(0deg)"}}>
+                                    <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" style={{display:"block",flexShrink:0}}>
                                       <path d="M1.4 2.6 4 5.2 6.6 2.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="square" strokeLinejoin="miter"/>
                                     </svg>
                                   </div>
@@ -23852,7 +23886,7 @@ const TalariaV8b = () => {
                             );
                           })}
                         </div>
-                        {expanded && detailCard(record)}
+                        {expanded && <DashTradeDetailReveal>{detailCard(record)}</DashTradeDetailReveal>}
                       </div>
                     );
                   })}
@@ -23861,6 +23895,7 @@ const TalariaV8b = () => {
                       No trades match this view.
                     </div>
                   )}
+                  </div>
                   </div>
                 </div>
                 {drawerRecord && (
@@ -31922,8 +31957,22 @@ const TalariaV8b = () => {
               {/* Content */}
               <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
                 {renderDashboardFiltersWindow()}
-                <div style={{flex:1,overflowY:"auto",padding:sessView === "trades" ? "0 24px 24px" : "24px",scrollbarGutter:"stable"}} className="tlr-scroll">
-                  <div style={{maxWidth:1460,margin:"0 auto",display:"flex",flexDirection:"column"}}>
+                <div style={{
+                  flex:1,
+                  overflowY:sessView === "trades" ? "hidden" : "auto",
+                  display:sessView === "trades" ? "flex" : "block",
+                  flexDirection:sessView === "trades" ? "column" : undefined,
+                  minHeight:sessView === "trades" ? 0 : undefined,
+                  padding:sessView === "trades" ? "0 24px 24px" : "24px",
+                  scrollbarGutter:"stable",
+                }} className="tlr-scroll">
+                  <div style={{
+                    maxWidth:1460,
+                    margin:"0 auto",
+                    display:"flex",
+                    flexDirection:"column",
+                    ...(sessView === "trades" ? {flex:1,minHeight:0,width:"100%"} : {}),
+                  }}>
                     {sessView === "trades" ? renderDashboardTradesPage() : renderFreshDashboardPage()}
                     {false && (<>
                     <div onDoubleClick={()=>openDashSubWindow("talaria-score","Talaria Score")} style={{minHeight:104,borderTop:`1px solid ${c.brH}`,borderRight:`1px solid ${c.brH}`,borderBottom:`1px solid ${c.brH}`,borderLeft:`3px solid ${talaria.score>=71?c.gn:talaria.score>=41?c.gold:c.rd}`,background:c.el,display:"grid",gridTemplateColumns:"300px 1fr 240px",gap:18,alignItems:"center",padding:"14px 18px",cursor:"default"}}>

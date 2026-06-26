@@ -261,7 +261,38 @@ def test_parse_trades_csv_minimal():
     assert t["tradeId"] == "1"
     assert t["ticker"] == "EURUSD"
     assert t["netPnL"] == 50.0
+    assert t["pnl"] == 50.0
+    assert t["pnl_currency_net"] == 50.0
+    assert t["status"] == "closed"
     assert "closeTime" in t
+
+
+def test_parse_trades_csv_dashboard_export_roundtrip():
+    """Columns emitted by TalariaV16 exportDashboardTradesCsv should re-import faithfully."""
+    csv_text = (
+        "journal_trade_id,symbol,side,quantity,status,entryTime,exitTime,"
+        "entryPrice,exitPrice,stopLoss,takeProfit,pnl_currency_net,rMultiple,"
+        "plannedRR,actual_rr_net,closeType,durationMinutes\n"
+        "sess-42,EURUSD,BUY,1.25,Closed,2013-05-01T08:15:00.000Z,2013-05-01T10:23:00.000Z,"
+        "1.3185,1.3210,1.3160,1.3240,125.5,1.25,2.0,1.25,Target,128\n"
+    )
+    r = parse_trades_csv_text(csv_text)
+    assert not r["errors"], r["errors"]
+    t = r["trades"][0]
+    assert t["tradeId"] == "sess-42"
+    assert t["ticker"] == "EURUSD"
+    assert t["direction"] == "BUY"
+    assert t["quantity"] == 1.25
+    assert t["status"] == "closed"
+    assert t["pnl_currency_net"] == 125.5
+    assert t["rMultiple"] == 1.25
+    assert t["plannedRR"] == 2.0
+    assert t["entryPrice"] == "1.3185"
+    assert t["exitPrice"] == "1.3210"
+    assert t["stopLoss"] == "1.3160"
+    assert t["takeProfit"] == "1.3240"
+    assert t["closeType"] == "Target"
+    assert t["durationMinutes"] == 128.0
 
 
 def test_session_dashboard_extras_bundle():

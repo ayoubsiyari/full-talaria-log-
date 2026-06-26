@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Talaria — Ideal Architecture V2 (2026 scan)</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#080b12;color:#e2e8f0;height:100vh;overflow:hidden}
+
+/* ── TOP BAR ── */
+#topbar{position:fixed;top:0;left:0;right:0;height:52px;background:#0c1018;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:14px;padding:0 20px;z-index:200}
+#topbar h1{font-size:0.92rem;font-weight:800;letter-spacing:-0.3px;color:#f8fafc;white-space:nowrap}
+#topbar h1 span{background:linear-gradient(90deg,#38bdf8,#818cf8,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.tbadge{font-size:0.6rem;padding:2px 8px;border-radius:10px;font-weight:700;white-space:nowrap}
+.tbadge.target{background:#052e16;color:#4ade80;border:1px solid #16a34a44}
+.tbadge.scan{background:#0c1830;color:#7dd3fc;border:1px solid #0ea5e944}
+.sep{width:1px;height:22px;background:#1e293b}
+.legend{display:flex;gap:10px;align-items:center;font-size:0.6rem;color:#64748b;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:4px}
+.dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+#panel-btn{margin-left:auto;background:#131b29;border:1px solid #1e293b;color:#818cf8;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:600;white-space:nowrap}
+#panel-btn:hover{border-color:#818cf844;background:#1e1b4b44}
+
+/* ── LAYOUT ── */
+#layout{position:fixed;top:52px;left:0;right:0;bottom:0;display:flex}
+#canvas-wrap{flex:1;overflow:auto;background:radial-gradient(circle at 30% 10%,#0b1120,#080b12)}
+#canvas{padding:26px;min-width:1180px}
+
+/* ── ZONES ── */
+.zone{border-radius:16px;border:1px solid;padding:16px 16px 18px;margin-bottom:18px;position:relative;background:#0a0e17cc}
+.zone-lbl{font-size:0.62rem;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;padding:3px 10px;border-radius:6px;position:absolute;top:-11px;left:16px}
+.zone-desc{font-size:0.66rem;color:#64748b;margin:2px 0 14px;max-width:760px;line-height:1.5}
+.row{display:flex;flex-wrap:wrap;gap:12px}
+
+.z-edge{border-color:#33415566}   .l-edge{background:#0c0f1a;color:#94a3b8}
+.z-web{border-color:#1d4ed855}    .l-web{background:#040d1c;color:#93c5fd}
+.z-chart{border-color:#d9770655}  .l-chart{background:#1a0e00;color:#fcd34d}
+.z-api{border-color:#9333ea55}    .l-api{background:#120616;color:#d8b4fe}
+.z-data{border-color:#05966955}   .l-data{background:#01160d;color:#34d399}
+.z-handoff{border-color:#47556955}.l-handoff{background:#0d1117;color:#94a3b8}
+.z-clean{border-color:#dc262655}  .l-clean{background:#3b1414;color:#f87171}
+
+/* ── NODES ── */
+.nd{border-radius:9px;border:1px solid;padding:9px 12px;min-width:150px;position:relative;cursor:default;transition:all 0.14s}
+.nd:hover{transform:translateY(-2px);z-index:5}
+.nd .lbl{font-size:0.74rem;font-weight:700;white-space:nowrap}
+.nd .path{font-size:0.57rem;font-family:ui-monospace,monospace;opacity:0.6;display:block;margin-top:3px;white-space:nowrap}
+.nd .sub{font-size:0.57rem;opacity:0.55;display:block;margin-top:3px;white-space:normal;max-width:230px;line-height:1.45}
+
+.n-edge{background:#0c0f1a;border-color:#334155;color:#cbd5e1}
+.n-web{background:#040d1c;border-color:#1d4ed866;color:#bfdbfe}
+.n-web:hover{border-color:#3b82f6;box-shadow:0 0 16px #3b82f622}
+.n-chart{background:#1a0e00;border-color:#d9770666;color:#fde68a}
+.n-chart:hover{border-color:#d97706;box-shadow:0 0 16px #d9770622}
+.n-api{background:#120616;border-color:#9333ea66;color:#e9d5ff}
+.n-api:hover{border-color:#a855f7;box-shadow:0 0 16px #a855f722}
+.n-data{background:#01160d;border-color:#05966966;color:#a7f3d0}
+.n-handoff{background:#0d1117;border-color:#334155;color:#94a3b8}
+.n-clean{background:#160808;border-color:#dc262655;color:#fca5a5}
+
+/* ── BADGES ── */
+.badge{position:absolute;top:-9px;right:-6px;color:#fff;border-radius:5px;font-size:0.5rem;font-weight:800;padding:2px 6px;z-index:10;letter-spacing:0.4px;white-space:nowrap}
+.b-del{background:#ef4444}
+.b-move{background:#f97316}
+.b-dedupe{background:#eab308;color:#1c1917}
+.b-refactor{background:#0ea5e9}
+.b-new{background:#22c55e}
+
+/* ── RIGHT PANEL ── */
+#panel{width:430px;flex-shrink:0;background:#0c1018;border-left:1px solid #1e293b;display:flex;flex-direction:column;transition:width 0.25s ease;overflow:hidden}
+#panel.closed{width:0;border:none}
+#ph{padding:14px 18px;border-bottom:1px solid #1e293b;flex-shrink:0}
+#ph h2{font-size:0.82rem;font-weight:800;color:#f8fafc}
+#ph p{font-size:0.64rem;color:#64748b;margin-top:3px}
+#ptabs{display:flex;border-bottom:1px solid #1e293b;flex-shrink:0}
+.ptab{flex:1;text-align:center;padding:10px 6px;font-size:0.68rem;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent}
+.ptab:hover{color:#cbd5e1}
+.ptab.active{color:#f8fafc;border-bottom-color:#818cf8}
+#pcontent{flex:1;overflow-y:auto;padding:16px 18px}
+
+.act-section{margin-bottom:18px;border-radius:10px;padding:12px 14px;border:1px solid}
+.act-section.del{background:#16080899;border-color:#dc262633}
+.act-section.fix{background:#0c182099;border-color:#0ea5e933}
+.act-section.mov{background:#1a0e0099;border-color:#f9731633}
+.act-section.add{background:#03150d99;border-color:#22c55e33}
+.act-section h3{font-size:0.72rem;font-weight:800;color:#f1f5f9;margin-bottom:10px}
+.act-item{display:flex;gap:9px;font-size:0.66rem;color:#cbd5e1;line-height:1.55;margin-bottom:8px}
+.act-icon{flex-shrink:0}
+.act-item code{background:#1e293b;color:#fde68a;padding:1px 5px;border-radius:4px;font-size:0.6rem;font-family:ui-monospace,monospace}
+
+.rtable{width:100%;border-collapse:collapse;font-size:0.62rem}
+.rtable th{text-align:left;color:#64748b;font-weight:700;padding:5px 6px;border-bottom:1px solid #1e293b}
+.rtable td{padding:5px 6px;border-bottom:1px solid #131b29;color:#cbd5e1}
+.rtable code{font-family:ui-monospace,monospace;color:#bfdbfe}
+.pill{font-size:0.52rem;font-weight:700;padding:2px 7px;border-radius:9px}
+.p-pub{background:#04122a;color:#7dd3fc}
+.p-auth{background:#1a0922;color:#d8b4fe}
+.p-app{background:#03150d;color:#6ee7b7}
+.p-admin{background:#2a0a0a;color:#fca5a5}
+.p-api{background:#0c0f1a;color:#94a3b8}
+.p-del{background:#2a0a0a;color:#f87171}
+
+.rule{margin-bottom:14px}
+.rule h4{font-size:0.7rem;color:#f1f5f9;font-weight:700;margin-bottom:4px}
+.rule p{font-size:0.66rem;color:#94a3b8;line-height:1.6}
+.rule code{background:#1e293b;color:#fde68a;padding:1px 5px;border-radius:4px;font-size:0.6rem}
+
+/* tooltip */
+#tt{position:fixed;background:#0c1018;border:1px solid #334155;border-radius:8px;padding:9px 13px;font-size:0.66rem;color:#e2e8f0;pointer-events:none;z-index:400;max-width:300px;display:none;line-height:1.6;box-shadow:0 14px 44px rgba(0,0,0,0.65)}
+
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#1e293b;border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:#334155}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>🪽 Talaria — <span>Ideal Architecture V2</span></h1>
+  <span class="tbadge target">TARGET STATE</span>
+  <span class="tbadge scan">FULL SCAN · JUN 2026</span>
+  <div class="sep"></div>
+  <div class="legend">
+    <span><i class="dot" style="background:#eab308"></i>DEDUPE</span>
+    <span><i class="dot" style="background:#f97316"></i>MOVE</span>
+    <span><i class="dot" style="background:#0ea5e9"></i>REFACTOR</span>
+    <span><i class="dot" style="background:#ef4444"></i>DELETE</span>
+    <span><i class="dot" style="background:#22c55e"></i>ADD</span>
+  </div>
+  <button id="panel-btn" onclick="togglePanel()">🗺 Migration Plan</button>
+</div>
+
+<!-- LAYOUT -->
+<div id="layout">
+  <div id="canvas-wrap">
+    <div id="canvas">
+
+      <!-- ZONE A — EDGE -->
+      <div class="zone z-edge">
+        <div class="zone-lbl l-edge">Zone A — Edge / Routing</div>
+        <div class="zone-desc">nginx inside the <code>homepage</code> container is the real routing source of truth. It serves the Next.js static export and proxies API traffic. Under <code>output:"export"</code>, Next's own <code>redirects()/rewrites()</code> do NOT run at runtime — nginx does.</div>
+        <div class="row">
+          <div class="nd n-edge" data-tip="homepage container: nginx serves the static Next export and reverse-proxies /chart/, /api/, /journal/api/ to the backends.">
+            <div class="lbl">🌐 nginx</div><span class="path">homepage/nginx.conf</span>
+            <span class="sub">:3000 → :80 · static export + reverse proxy</span>
+          </div>
+          <div class="nd n-edge" data-tip="With output:export these are compiled away. Keep route truth in nginx; treat next.config redirects as documentation only.">
+            <div class="lbl">↪ next.config redirects</div><span class="path">homepage/next.config.mjs</span>
+            <span class="badge b-refactor">VERIFY</span>
+            <span class="sub">Not applied under static export — mirror in nginx</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONE B — WEB APP -->
+      <div class="zone z-web">
+        <div class="zone-lbl l-web">Zone B — Next.js Web App (the whole site)</div>
+        <div class="zone-desc">Next.js 15 / React 19. Marketing + auth + dashboard + journal + analytics now live in ONE app (the old <code>journal-frontend</code> React SPA was removed and redirected here).</div>
+        <div class="row">
+          <div class="nd n-web" data-tip="Public marketing + legal. Legal pages now canonical here (privacy/terms/refunds/disclaimer).">
+            <div class="lbl">📣 Marketing + Legal</div><span class="path">app/(home, pricing, legal…)</span>
+            <span class="sub">/, /pricing, /privacy, /terms, /refunds, /disclaimer, /ninjatrader, /bootcamp</span>
+          </div>
+          <div class="nd n-web" data-tip="JWT auth via Flask journal-backend. Google Sign-In supported.">
+            <div class="lbl">🔐 Auth</div><span class="path">app/login, app/register</span>
+            <span class="sub">JWT (localStorage) + Google Sign-In</span>
+          </div>
+          <div class="nd n-web" data-tip="V16 single-root dashboard shell. Uses ?view= query params for trades/sessions/stratbank instead of separate routes.">
+            <div class="lbl">🖥 Dashboard shell</div><span class="path">app/dashboard</span>
+            <span class="sub">Single root · ?view=trades|sessions|stratbank</span>
+          </div>
+          <div class="nd n-web" data-tip="Trading journal: trades, notes, learn, settings, profiles, AI dashboard.">
+            <div class="lbl">📓 Journal</div><span class="path">app/dashboard/journal/*</span>
+            <span class="sub">trades · notes · settings · manage-profiles · ai</span>
+          </div>
+          <div class="nd n-web" data-tip="~15 analytics pages: equity, calendar, streaks, exit analysis, distributions, symbols, variables, combinations.">
+            <div class="lbl">📊 Analytics pages</div><span class="path">app/dashboard/journal/analytics/*</span>
+            <span class="sub">~15 routes (equity, calendar, streaks, exit…)</span>
+          </div>
+          <div class="nd n-web" data-tip="Duplicate of /pricing — should redirect to the canonical marketing pricing page.">
+            <div class="lbl">💸 /journal/pricing</div><span class="path">app/journal/pricing</span>
+            <span class="badge b-del">DEDUPE</span>
+            <span class="sub">Duplicate of /pricing — collapse to one</span>
+          </div>
+          <div class="nd n-web" data-tip="Sits at old /journal/* root while everything else is /dashboard/journal/*. Move for consistency.">
+            <div class="lbl">📄 /journal/subscription-status</div><span class="path">app/journal/subscription-status</span>
+            <span class="badge b-move">MOVE</span>
+            <span class="sub">Inconsistent namespace</span>
+          </div>
+          <div class="nd n-web" data-tip="Multiple overlapping backtest/design routes; /dashboard/backtest already redirects to ?view=sessions. Consolidate the design/handoff previews.">
+            <div class="lbl">🧪 backtest/design previews</div><span class="path">app/backtest/*, app/dashboard/*/design</span>
+            <span class="badge b-move">CONSOLIDATE</span>
+            <span class="sub">/backtest, /backtest/design, /dashboard/backtest/design, /dashboard/design/handoff</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONE C — CHART -->
+      <div class="zone z-chart">
+        <div class="zone-lbl l-chart">Zone C — Chart UI + Engine</div>
+        <div class="zone-desc">Vite React source (<code>talaria-design</code>) builds the V9/V16 chart UI to <code>chart/dist-v9</code>, served at <code>/chart/</code>. The shared engine (<code>chart.js</code> + <code>modules/*.js</code>) is loaded by URL, not bundled.</div>
+        <div class="row">
+          <div class="nd n-chart" data-tip="Canonical chart UI sources. Build: npm run build:live -> chart/dist-v9. TalariaV8b / TalariaV8bLive are the live components.">
+            <div class="lbl">⚛️ talaria-design (Vite)</div><span class="path">chart v 1.4/talaria-design/src</span>
+            <span class="sub">build:live → chart/dist-v9 → /chart/</span>
+          </div>
+          <div class="nd n-chart" data-tip="~33,000-line engine monolith. Plan a staged extraction into modules (already partially modularized under modules/).">
+            <div class="lbl">📈 chart.js engine</div><span class="path">chart v 1.4/chart/chart.js</span>
+            <span class="badge b-refactor">REFACTOR ~33k LOC</span>
+            <span class="sub">Stage module extraction</span>
+          </div>
+          <div class="nd n-chart" data-tip="~61k-line legacy monolithic page. Kept for old workflow only; do not extend or restore parallel index*.html.">
+            <div class="lbl">🗿 legacy-index.html</div><span class="path">chart/legacy-index.html</span>
+            <span class="badge b-refactor">CONTAIN ~61k LOC</span>
+            <span class="sub">Legacy only — freeze, don't extend</span>
+          </div>
+          <div class="nd n-chart" data-tip="Vite TS admin dashboard. Note: /journal/admin/feature-flags redirects to /chart/admin-dashboard.html — confirm which admin UI is canonical.">
+            <div class="lbl">🛠 admin-design (Vite TS)</div><span class="path">chart v 1.4/admin-design</span>
+            <span class="badge b-refactor">CLARIFY OWNER</span>
+            <span class="sub">vs /chart/admin-dashboard.html</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONE D — BACKENDS -->
+      <div class="zone z-api">
+        <div class="zone-lbl l-api">Zone D — Backends</div>
+        <div class="zone-desc">Three Python services. Biggest smell: entitlement / access logic is copy-pasted across them, and an analytics backend lives <em>inside</em> the Next.js source tree.</div>
+        <div class="row">
+          <div class="nd n-api" data-tip="Flask :5000. Auth (JWT), journal trades, subscriptions/Stripe, feature flags, admin, profiles. Blueprints via register_all_blueprints.">
+            <div class="lbl">🐍 journal-backend (Flask)</div><span class="path">journal-backend/ · :5000</span>
+            <span class="sub">/api/* · auth · journal · subscriptions · admin</span>
+          </div>
+          <div class="nd n-api" data-tip="FastAPI gunicorn/uvicorn :8000, APP_ROLE=api. Serves /chart/* engine, sessions, backtest, tiles. Mints Bearer tokens for /journal/api/* from chart cookie sessions.">
+            <div class="lbl">⚡ trading-chart (FastAPI)</div><span class="path">chart v 1.4/chart/api_server.py · :8000</span>
+            <span class="sub">sessions · backtest · tiles · /chart/*</span>
+          </div>
+          <div class="nd n-api" data-tip="Same image as trading-chart, APP_ROLE=worker. Binary tile builds, FirstRate nightly sync, what-if drain.">
+            <div class="lbl">⚙️ trading-chart-worker</div><span class="path">same image · APP_ROLE=worker</span>
+            <span class="sub">tile builds · FirstRate sync · whatif</span>
+          </div>
+          <div class="nd n-api" data-tip="plan_entitlements.py and dashboard_access.py exist in BOTH journal-backend/ and chart/. Extract to one shared package imported by both.">
+            <div class="lbl">📑 entitlements / access</div><span class="path">plan_entitlements.py · dashboard_access.py</span>
+            <span class="badge b-dedupe">DEDUPE ×2</span>
+            <span class="sub">Duplicated in journal-backend AND chart</span>
+          </div>
+          <div class="nd n-api" data-tip="A whole Python analytics backend nested under the Next.js app router tree. Move to a real backend package; src/app should be routes only.">
+            <div class="lbl">🧮 analytics backend in Next tree</div><span class="path">homepage/src/app/dashboard/analytics/backend</span>
+            <span class="badge b-move">MOVE OUT</span>
+            <span class="sub">Python under src/app/ — relocate</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONE E — DATA -->
+      <div class="zone z-data">
+        <div class="zone-lbl l-data">Zone E — Data &amp; Infra</div>
+        <div class="zone-desc">Shared stateful services from <code>docker-compose.yml</code>.</div>
+        <div class="row">
+          <div class="nd n-data" data-tip="Postgres 16: users, journal trades, sessions, subscriptions.">
+            <div class="lbl">🐘 Postgres 16</div><span class="path">db</span><span class="sub">users · journal · sessions</span>
+          </div>
+          <div class="nd n-data" data-tip="QuestDB 8.2: OHLCV / tick time-series. CPU-tuned worker pools.">
+            <div class="lbl">⏱ QuestDB</div><span class="path">questdb</span><span class="sub">OHLCV / tick series</span>
+          </div>
+          <div class="nd n-data" data-tip="Redis 7: cache, binary-build job queue (BRPOP), rate limits, what-if cache.">
+            <div class="lbl">🔴 Redis 7</div><span class="path">redis</span><span class="sub">cache · job queue · rate limits</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONE F — HANDOFF -->
+      <div class="zone z-handoff">
+        <div class="zone-lbl l-handoff">Zone F — Handoff / Prototypes</div>
+        <div class="zone-desc">Reference material. NOT pure dead code: <code>next.config.mjs</code> aliases <code>talaria-handoff</code> into the homepage build, so confirm what's actually imported before deleting.</div>
+        <div class="row">
+          <div class="nd n-handoff" data-tip="Aliased as 'talaria-handoff' in homepage webpack config. Audit which files the build actually pulls in.">
+            <div class="lbl">📦 Sources Handoff</div><span class="path">Sources Handoff/*</span>
+            <span class="badge b-refactor">AUDIT IMPORTS</span>
+            <span class="sub">prototype_reference, _v16, TalariaV16.jsx</span>
+          </div>
+          <div class="nd n-handoff" data-tip="Untracked new file in git status. Decide: promote into talaria-design or keep as handoff reference.">
+            <div class="lbl">🆕 TalariaV16.jsx</div><span class="path">Sources Handoff/TalariaV16.jsx</span>
+            <span class="badge b-new">UNTRACKED</span>
+            <span class="sub">Classify: source vs reference</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONE G — CLEANUP -->
+      <div class="zone z-clean">
+        <div class="zone-lbl l-clean">Zone G — Delete / Dedupe Targets</div>
+        <div class="zone-desc">Confirmed dead weight and duplicates from the scan.</div>
+        <div class="row">
+          <div class="nd n-clean" data-tip="Backup copy of an indicators module sitting in production public assets.">
+            <div class="lbl">🗑 chart-indicators-working-backup-final.js</div><span class="path">homepage/public/chart/modules</span>
+            <span class="badge b-del">DELETE</span>
+            <span class="sub">Backup file in prod assets</span>
+          </div>
+          <div class="nd n-clean" data-tip="One of /pricing or /journal/pricing must go; keep marketing /pricing canonical.">
+            <div class="lbl">🗑 duplicate pricing route</div><span class="path">app/journal/pricing</span>
+            <span class="badge b-del">DELETE</span>
+            <span class="sub">Keep /pricing only</span>
+          </div>
+          <div class="nd n-clean" data-tip="Engine + modules are duplicated between chart/ source and homepage/public/chart copies. Pick one publish path.">
+            <div class="lbl">🗑 duplicated /chart assets</div><span class="path">chart/* vs homepage/public/chart/*</span>
+            <span class="badge b-dedupe">DEDUPE</span>
+            <span class="sub">Single source → single publish</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="panel">
+    <div id="ph">
+      <h2>🗺 Migration Plan</h2>
+      <p>Steps to reach the clean target — based on the Jun 2026 full scan</p>
+    </div>
+    <div id="ptabs">
+      <div class="ptab active" data-tab="actions" onclick="showTab('actions')">Actions</div>
+      <div class="ptab" data-tab="routes" onclick="showTab('routes')">Route Map</div>
+      <div class="ptab" data-tab="rules" onclick="showTab('rules')">Design Rules</div>
+    </div>
+    <div id="pcontent"></div>
+  </div>
+</div>
+
+<div id="tt"></div>
+
+<script>
+// ── PANEL CONTENT ──
+const ACTIONS_HTML = `
+<div class="act-section del">
+  <h3>🗑 STEP 1 — Delete dead weight</h3>
+  <div class="act-item"><span class="act-icon">❌</span><div>Delete <code>homepage/public/chart/modules/chart-indicators-working-backup-final.js</code> — backup file shipped to prod.</div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Remove the duplicate <code>app/journal/pricing</code> page; keep marketing <code>/pricing</code> canonical and redirect.</div></div>
+  <div class="act-item"><span class="act-icon">❌</span><div>Audit overlapping design/preview routes: <code>/backtest/design</code>, <code>/dashboard/backtest/design</code>, <code>/dashboard/design/handoff</code> — keep one.</div></div>
+</div>
+
+<div class="act-section mov">
+  <h3>🔀 STEP 2 — Dedupe backend logic</h3>
+  <div class="act-item"><span class="act-icon">📑</span><div>Extract <code>plan_entitlements.py</code> + <code>dashboard_access.py</code> into ONE shared package imported by both <code>journal-backend</code> and <code>chart</code> (no copy-paste).</div></div>
+  <div class="act-item"><span class="act-icon">🧮</span><div>Move the analytics Python backend out of <code>homepage/src/app/dashboard/analytics/backend</code> into a real backend module. <code>src/app/</code> should contain routes only, never server Python.</div></div>
+  <div class="act-item"><span class="act-icon">🖼</span><div>Pick a single publish path for the chart engine: stop duplicating <code>chart/*</code> into <code>homepage/public/chart/*</code>.</div></div>
+</div>
+
+<div class="act-section mov">
+  <h3>🔀 STEP 3 — Normalize routes</h3>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Move <code>/journal/subscription-status</code> under the consistent <code>/dashboard/journal/*</code> namespace (the rest of the journal already lives there).</div></div>
+  <div class="act-item"><span class="act-icon">🛤</span><div>Confirm the canonical admin UI: <code>admin-design</code> (Vite) vs <code>/chart/admin-dashboard.html</code> (current redirect target). Keep one.</div></div>
+</div>
+
+<div class="act-section fix">
+  <h3>🔧 STEP 4 — Fix the routing source-of-truth gap</h3>
+  <div class="act-item"><span class="act-icon">⚠️</span><div>Because <code>next.config.mjs</code> uses <code>output:"export"</code>, its <code>redirects()</code>/<code>rewrites()</code> are NOT applied at runtime. Mirror every needed redirect in <code>homepage/nginx.conf</code> and treat next.config as documentation.</div></div>
+  <div class="act-item"><span class="act-icon">🔐</span><div>Keep the shared <code>JWT_SECRET_KEY</code> contract intact (chart mints Bearer tokens for <code>/journal/api/*</code> from chart cookie sessions). Don't fork auth.</div></div>
+</div>
+
+<div class="act-section add">
+  <h3>✅ STEP 5 — Tame the monoliths (staged)</h3>
+  <div class="act-item"><span class="act-icon">📈</span><div>Plan incremental extraction of <code>chart.js</code> (~33k LOC) into <code>modules/*</code> — one feature slice per PR, no big-bang rewrite.</div></div>
+  <div class="act-item"><span class="act-icon">🗿</span><div>Freeze <code>legacy-index.html</code> (~61k LOC): never extend; build new work in V9 sources + modules per the chart-entrypoints rule.</div></div>
+  <div class="act-item"><span class="act-icon">📦</span><div>Classify <code>Sources Handoff/TalariaV16.jsx</code> (untracked): promote into <code>talaria-design</code> or keep as reference — then commit the decision.</div></div>
+</div>
+
+<div class="act-section fix">
+  <h3>🛡 Guardrail (do not skip)</h3>
+  <div class="act-item"><span class="act-icon">🔒</span><div>None of these steps may weaken security guards (entitlement checks, redirect allowlists, Stripe webhook verification, rate limits, JWT). Dedupe must preserve behavior, not remove it.</div></div>
+</div>
+`;
+
+const ROUTES_HTML = `
+<p style="font-size:0.62rem;color:#475569;margin-bottom:10px">Live route inventory (Next.js app dir + nginx proxies)</p>
+<table class="rtable">
+<tr><th>Path</th><th>Owner</th><th>Type</th></tr>
+<tr><td><code>/</code></td><td>Next</td><td><span class="pill p-pub">Public</span></td></tr>
+<tr><td><code>/pricing</code></td><td>Next</td><td><span class="pill p-pub">Public</span></td></tr>
+<tr><td><code>/ninjatrader</code></td><td>Next</td><td><span class="pill p-pub">Public</span></td></tr>
+<tr><td><code>/bootcamp</code></td><td>Next</td><td><span class="pill p-auth">Auth</span></td></tr>
+<tr><td><code>/login</code>, <code>/register</code></td><td>Next</td><td><span class="pill p-auth">Auth</span></td></tr>
+<tr><td><code>/privacy /terms /refunds /disclaimer</code></td><td>Next</td><td><span class="pill p-pub">Legal</span></td></tr>
+<tr><td><code>/dashboard</code></td><td>Next</td><td><span class="pill p-app">App</span></td></tr>
+<tr><td><code>/dashboard/journal</code></td><td>Next</td><td><span class="pill p-app">App</span></td></tr>
+<tr><td><code>/dashboard/journal/trades|notes|learn|settings</code></td><td>Next</td><td><span class="pill p-app">App</span></td></tr>
+<tr><td><code>/dashboard/journal/manage-profiles|select-profile</code></td><td>Next</td><td><span class="pill p-app">App</span></td></tr>
+<tr><td><code>/dashboard/journal/analytics/*</code> (~15)</td><td>Next</td><td><span class="pill p-app">App</span></td></tr>
+<tr><td><code>/dashboard/journal/ai-dashboard</code></td><td>Next</td><td><span class="pill p-app">App</span></td></tr>
+<tr><td><code>/dashboard/cot|support|profile|sessions</code></td><td>Next</td><td><span class="pill p-app">App</span></td></tr>
+<tr><td><code>/dashboard/admin</code></td><td>Next</td><td><span class="pill p-admin">Admin</span></td></tr>
+<tr><td><code>/backtest</code> + design/analytics</td><td>Next</td><td><span class="pill p-app">App</span></td></tr>
+<tr><td><code>/journal/pricing</code></td><td>Next</td><td><span class="pill p-del">Dedupe</span></td></tr>
+<tr><td><code>/journal/subscription-status</code></td><td>Next</td><td><span class="pill p-del">Move</span></td></tr>
+<tr><td><code>/forbidden</code></td><td>Next</td><td><span class="pill p-pub">Error</span></td></tr>
+<tr><td><code>/api/*</code></td><td>FastAPI / Flask</td><td><span class="pill p-api">API</span></td></tr>
+<tr><td><code>/journal/api/*</code></td><td>Flask</td><td><span class="pill p-api">API</span></td></tr>
+<tr><td><code>/chart/*</code></td><td>FastAPI</td><td><span class="pill p-api">Engine</span></td></tr>
+</table>
+<p style="font-size:0.6rem;color:#475569;margin-top:10px">Legacy <code>/journal/*</code> SPA routes are 301-redirected into <code>/dashboard/journal/*</code> (via nginx; next.config documents them).</p>
+`;
+
+const RULES_HTML = `
+<div class="rule"><h4>Rule 1 — One web app</h4><p>Marketing, auth, dashboard, journal and analytics all live in the Next.js app. Never reintroduce a separate journal SPA.</p></div>
+<div class="rule"><h4>Rule 2 — Entitlements in one place</h4><p><code>plan_entitlements</code> / <code>dashboard_access</code> live in a single shared package. No copy between <code>journal-backend</code> and <code>chart</code>.</p></div>
+<div class="rule"><h4>Rule 3 — No server code in <code>src/app/</code></h4><p>The Next app router holds routes/components only. Python backends live in their own service folders.</p></div>
+<div class="rule"><h4>Rule 4 — One pricing page</h4><p><code>/pricing</code> is canonical. Any other pricing path redirects to it.</p></div>
+<div class="rule"><h4>Rule 5 — nginx is the route truth</h4><p>Under static export, <code>next.config</code> redirects don't run. Every real redirect/proxy must exist in <code>homepage/nginx.conf</code>.</p></div>
+<div class="rule"><h4>Rule 6 — Edit the right chart entrypoint</h4><p>Build the live chart from <code>talaria-design</code> → <code>dist-v9</code>. Don't add parallel <code>index*.html</code> monoliths; <code>legacy-index.html</code> is frozen.</p></div>
+<div class="rule"><h4>Rule 7 — One shared JWT</h4><p>The chart service mints Bearer tokens for <code>/journal/api/*</code> from chart cookie sessions using the same <code>JWT_SECRET_KEY</code>. Keep this contract.</p></div>
+<div class="rule"><h4>Rule 8 — Refactors never weaken security</h4><p>Dedupe and cleanup must preserve guards, allowlists, rate limits, and webhook verification.</p></div>
+<div class="rule"><h4>Rule 9 — No backup files in prod assets</h4><p>Nothing named <code>*backup*</code>/<code>*-old</code>/<code>*-copy</code> ships under <code>public/</code> or <code>modules/</code>.</p></div>
+`;
+
+const TABS = { actions: ACTIONS_HTML, routes: ROUTES_HTML, rules: RULES_HTML };
+function showTab(t){
+  document.getElementById('pcontent').innerHTML = TABS[t];
+  document.querySelectorAll('.ptab').forEach(el=>el.classList.toggle('active', el.dataset.tab===t));
+}
+showTab('actions');
+
+function togglePanel(){ document.getElementById('panel').classList.toggle('closed'); }
+
+// ── TOOLTIPS ──
+const tt = document.getElementById('tt');
+document.querySelectorAll('[data-tip]').forEach(n=>{
+  n.addEventListener('mousemove', e=>{
+    tt.textContent = n.getAttribute('data-tip');
+    tt.style.display='block';
+    let x=e.clientX+16, y=e.clientY+16;
+    if(x+300>window.innerWidth) x=e.clientX-316;
+    if(y+120>window.innerHeight) y=e.clientY-120;
+    tt.style.left=x+'px'; tt.style.top=y+'px';
+  });
+  n.addEventListener('mouseleave', ()=>{ tt.style.display='none'; });
+});
+</script>
+</body>
+</html>
