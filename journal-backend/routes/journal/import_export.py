@@ -15,6 +15,7 @@ import uuid
 import io
 import json
 import pandas as pd
+import math
 from csv_journal import parse_trades_csv_bytes, preview_trades_csv_bytes
 from . import journal_bp
 from .filters import (
@@ -419,11 +420,32 @@ def _normalize_csv_direction(raw):
     return "long"
 
 
+def _optional_trade_float(*values):
+    for value in values:
+        if value is None or value == "":
+            continue
+        try:
+            num = float(value)
+            if math.isfinite(num):
+                return num
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _chart_trade_to_journal_entry(trade, *, user_id, profile_id, batch_id=None):
     direction = _normalize_csv_direction(trade.get("direction"))
     symbol = str(trade.get("ticker") or trade.get("symbol") or "UNKNOWN").upper()
-    entry_price = float(trade.get("entryPrice") or trade.get("entry") or 0.0)
-    exit_price = float(trade.get("exitPrice") or trade.get("exit") or entry_price or 0.0)
+    entry_price = _optional_trade_float(
+        trade.get("entryPrice"), trade.get("entry"), trade.get("openPrice"), trade.get("array_base_price")
+    )
+    exit_price = _optional_trade_float(
+        trade.get("exitPrice"), trade.get("exit"), trade.get("closePrice"), trade.get("close_price")
+    )
+    if entry_price is None:
+        entry_price = 0.0
+    if exit_price is None:
+        exit_price = entry_price
     quantity = float(trade.get("quantity") or trade.get("position_size") or 1.0)
     if quantity <= 0:
         quantity = 1.0
@@ -451,8 +473,25 @@ def _chart_trade_to_journal_entry(trade, *, user_id, profile_id, batch_id=None):
     setup = str(trade.get("setup") or "CSV").strip() or "CSV"
     stop_loss = trade.get("stopLoss") or trade.get("planned_sl") or trade.get("sl")
     take_profit = trade.get("takeProfit") or trade.get("target") or trade.get("tp")
+    high_price = trade.get("highestPrice") or trade.get("high_price")
+    low_price = trade.get("lowestPrice") or trade.get("low_price")
     commission = trade.get("commission_at_entry") or trade.get("commission") or trade.get("commission_total")
     slippage = trade.get("slippage")
+    risk_amount = _optional_trade_float(trade.get("riskAmount"), trade.get("risk_amount"), trade.get("riskPerTrade"))
+    extra_payload = {
+        "csv_import": True,
+        "trade_id": trade.get("tradeId") or trade.get("trade_id") or trade.get("id"),
+        "manual_dashboard": True,
+        "mae_r": trade.get("mae_r"),
+        "mfe_r": trade.get("mfe_r"),
+        "mae_points": trade.get("mae_points"),
+        "mfe_points": trade.get("mfe_points"),
+        "entries": trade.get("entries"),
+        "targets": trade.get("targets"),
+        "exits": trade.get("exits"),
+        "highestPrice": trade.get("highestPrice"),
+        "lowestPrice": trade.get("lowestPrice"),
+    }
     return JournalEntry(
         user_id=user_id,
         profile_id=profile_id,
@@ -462,9 +501,12 @@ def _chart_trade_to_journal_entry(trade, *, user_id, profile_id, batch_id=None):
         exit_price=exit_price,
         stop_loss=float(stop_loss) if stop_loss is not None and stop_loss != "" else None,
         take_profit=float(take_profit) if take_profit is not None and take_profit != "" else None,
+        high_price=float(high_price) if high_price is not None and high_price != "" else None,
+        low_price=float(low_price) if low_price is not None and low_price != "" else None,
         quantity=quantity,
         pnl=pnl,
-        rr=rr,
+        rr=rr if rr is not None else 0.0,
+        risk_amount=risk_amount if risk_amount is not None and risk_amount > 0 else 1.0,
         notes=notes,
         strategy=setup,
         setup=setup,
@@ -476,11 +518,7 @@ def _chart_trade_to_journal_entry(trade, *, user_id, profile_id, batch_id=None):
         import_batch_id=batch_id,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
-        extra_data={
-            "csv_import": True,
-            "trade_id": trade.get("tradeId") or trade.get("trade_id") or trade.get("id"),
-            "manual_dashboard": True,
-        },
+        extra_data=extra_payload,
     )
 
 

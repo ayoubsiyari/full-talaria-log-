@@ -561,7 +561,11 @@ def _ms_to_hhmm(ms: float) -> str:
     return dt.strftime("%H:%M")
 
 
-def _enrich_imported_trade(trade: dict[str, Any], row: dict[str, str]) -> dict[str, Any]:
+def _enrich_imported_trade(
+    trade: dict[str, Any],
+    row: dict[str, str],
+    column_mapping: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Add dashboard/chart aliases so CSV re-import matches export fields."""
     pnl = float(trade["netPnL"])
     trade["pnl"] = pnl
@@ -575,36 +579,62 @@ def _enrich_imported_trade(trade: dict[str, Any], row: dict[str, str]) -> dict[s
     trade["actual_rr_net"] = r_m
     trade["actualRR"] = abs(r_m) if r_m else 0.0
 
-    planned_rr = _pick_float(row, *_PLANNED_RR_ALIASES)
+    planned_rr = _pick_float_field(row, "plannedRR", column_mapping, *_PLANNED_RR_ALIASES)
+    if planned_rr is None:
+        planned_rr = _pick_float(row, *_PLANNED_RR_ALIASES)
     if planned_rr is not None and planned_rr > 0:
         trade["plannedRR"] = float(planned_rr)
         trade["planned_rr"] = float(planned_rr)
         trade["rewardToRiskRatio"] = float(planned_rr)
 
+    _PASSTHROUGH_TO_MAPPABLE: dict[str, str] = {
+        "entryPrice": "entryPrice",
+        "entry": "entryPrice",
+        "openPrice": "entryPrice",
+        "open_price": "entryPrice",
+        "array_base_price": "entryPrice",
+        "exitPrice": "exitPrice",
+        "exit": "exitPrice",
+        "closePrice": "exitPrice",
+        "close_price": "exitPrice",
+        "stopLoss": "stopLoss",
+        "sl": "stopLoss",
+        "planned_sl": "stopLoss",
+        "stop_loss": "stopLoss",
+        "takeProfit": "takeProfit",
+        "tp": "takeProfit",
+        "target": "takeProfit",
+        "targetPrice": "takeProfit",
+        "highestPrice": "highestPrice",
+        "lowestPrice": "lowestPrice",
+        "closeType": "closeType",
+        "exit_reason": "closeType",
+        "reason": "closeType",
+        "durationMinutes": "durationMinutes",
+        "duration": "durationMinutes",
+        "timeHeldMinutes": "durationMinutes",
+    }
+    _FLOAT_PASSTHROUGH_KEYS = {
+        "duration", "durationMinutes", "timeHeldMinutes", "riskPct", "risk_pct",
+        "plannedRisk", "originalRisk", "planned_risk_amount", "riskPerTrade",
+        "mfe", "mae", "total_mfe_r", "total_mae_r", "commission_total", "commissionCost",
+        "spread", "slippage", "cost_friction_total",
+        "entryPrice", "entry", "openPrice", "open_price", "array_base_price",
+        "exitPrice", "exit", "closePrice", "close_price",
+        "stopLoss", "sl", "planned_sl", "stop_loss",
+        "takeProfit", "tp", "target", "targetPrice",
+        "highestPrice", "lowestPrice",
+    }
+
     for key in _PASSTHROUGH_SCALAR_KEYS:
-        raw = _pick(row, key)
+        mappable_key = _PASSTHROUGH_TO_MAPPABLE.get(key)
+        if column_mapping and mappable_key and mappable_key in MAPPABLE_FIELDS:
+            raw = _pick_field(row, mappable_key, column_mapping, *MAPPABLE_FIELDS[mappable_key])
+        else:
+            raw = _pick(row, key)
         if not raw:
             continue
-        if key in {
-            "duration",
-            "durationMinutes",
-            "timeHeldMinutes",
-            "riskPct",
-            "risk_pct",
-            "plannedRisk",
-            "originalRisk",
-            "planned_risk_amount",
-            "riskPerTrade",
-            "mfe",
-            "mae",
-            "total_mfe_r",
-            "total_mae_r",
-            "commission_total",
-            "commissionCost",
-            "spread",
-            "slippage",
-            "cost_friction_total",
-        }:
+        if key in _FLOAT_PASSTHROUGH_KEYS:
             val = _cell_to_float(raw)
             if val is not None:
                 trade[key] = val
@@ -758,6 +788,11 @@ def parse_trades_csv_text(
         if risk is None or risk <= 0:
             risk = max(50.0, abs(pnl) * 2 if abs(pnl) > 1e-6 else 100.0)
 
+        entry_px = _pick_float_field(row, "entryPrice", mapping, *_ENTRY_PRICE_ALIASES)
+        exit_px = _pick_float_field(row, "exitPrice", mapping, *_EXIT_PRICE_ALIASES)
+        stop_px = _pick_float_field(row, "stopLoss", mapping, *_STOP_ALIASES)
+        tp_px = _pick_float_field(row, "takeProfit", mapping, *_TARGET_ALIASES)
+
         trade: dict[str, Any] = {
             "tradeId": str(tid),
             "ticker": ticker,
@@ -776,6 +811,14 @@ def parse_trades_csv_text(
             "setup": setup,
             "preTradeNotes": {"setup": setup},
         }
+        if entry_px is not None:
+            trade["entryPrice"] = float(entry_px)
+        if exit_px is not None:
+            trade["exitPrice"] = float(exit_px)
+        if stop_px is not None:
+            trade["stopLoss"] = float(stop_px)
+        if tp_px is not None:
+            trade["takeProfit"] = float(tp_px)
         if mae_points is not None:
             trade["mae_points"] = float(mae_points)
         if mfe_points is not None:
@@ -784,7 +827,7 @@ def parse_trades_csv_text(
             trade["highestPrice"] = float(highest_price)
         if lowest_price is not None:
             trade["lowestPrice"] = float(lowest_price)
-        out.append(_enrich_imported_trade(trade, row))
+        out.append(_enrich_imported_trade(trade, row, column_mapping=mapping))
 
     if not out and not errors:
         errors.append("No data rows after header.")

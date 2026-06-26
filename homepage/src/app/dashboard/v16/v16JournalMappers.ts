@@ -137,19 +137,50 @@ export function mapLiveJournalEntryToV16Trade(
           ? false
           : true;
 
+  const entryPriceRaw = Number(entry.entry_price);
+  const exitPriceRaw = Number(entry.exit_price);
+  const stopRaw = entry.stop_loss != null ? Number(entry.stop_loss) : null;
+  const tpRaw = entry.take_profit != null ? Number(entry.take_profit) : null;
+  const qtyRaw = entry.quantity != null ? Number(entry.quantity) : null;
+  const maeR = Number(extraObj.mae_r ?? extraObj.maeR);
+  const mfeR = Number(extraObj.mfe_r ?? extraObj.mfeR);
+  const entryPrice = Number.isFinite(entryPriceRaw) && entryPriceRaw > 0 ? entryPriceRaw : null;
+  const exitPrice = Number.isFinite(exitPriceRaw) && exitPriceRaw > 0 ? exitPriceRaw : null;
+  const stopLoss = stopRaw != null && Number.isFinite(stopRaw) && stopRaw > 0 ? stopRaw : null;
+  const takeProfit = tpRaw != null && Number.isFinite(tpRaw) && tpRaw > 0 ? tpRaw : null;
+  const quantity = qtyRaw != null && Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : null;
+  const entries =
+    Array.isArray(extraObj.entries) && extraObj.entries.length
+      ? extraObj.entries
+      : entryPrice != null
+        ? [{ price: entryPrice, qty: quantity ?? 1 }]
+        : undefined;
+  const targets =
+    Array.isArray(extraObj.targets) && extraObj.targets.length
+      ? extraObj.targets
+      : takeProfit != null
+        ? [{ price: takeProfit, qty: quantity ?? 1 }]
+        : undefined;
+  const exits =
+    Array.isArray(extraObj.exits) && extraObj.exits.length
+      ? extraObj.exits
+      : exitPrice != null
+        ? [{ price: exitPrice, qty: quantity ?? 1 }]
+        : undefined;
+
   return {
     id: tradeId,
     tradeId: entry.id,
     n: index + 1,
     date,
     closeTime: entry.close_time || entry.date || "",
-    entryPrice: entry.entry_price ?? null,
-    exitPrice: entry.exit_price ?? null,
-    stopLoss: entry.stop_loss ?? null,
-    takeProfit: entry.take_profit ?? null,
+    entryPrice,
+    exitPrice,
+    stopLoss,
+    takeProfit,
     entryTime: entry.open_time || entry.date || "",
     openTime: entry.open_time || entry.date || "",
-    quantity: entry.quantity ?? null,
+    quantity,
     symbol: String(entry.symbol || "—").toUpperCase(),
     market,
     side,
@@ -159,8 +190,15 @@ export function mapLiveJournalEntryToV16Trade(
     rMultiple,
     duration: parseDurationMinutes(entry.open_time, entry.close_time),
     pnl,
-    mae: isOpen ? 0 : -Math.abs(rMultiple) * 0.5,
-    mfe: isOpen ? 0 : Math.abs(rMultiple) * 0.8,
+    mae_r: Number.isFinite(maeR) ? maeR : isOpen ? 0 : -Math.abs(rMultiple) * 0.5,
+    mfe_r: Number.isFinite(mfeR) ? mfeR : isOpen ? 0 : Math.abs(rMultiple) * 0.8,
+    mae: Number.isFinite(maeR) ? -Math.abs(maeR) : isOpen ? 0 : -Math.abs(rMultiple) * 0.5,
+    mfe: Number.isFinite(mfeR) ? Math.abs(mfeR) : isOpen ? 0 : Math.abs(rMultiple) * 0.8,
+    highestPrice: entry.high_price ?? extraObj.highestPrice ?? null,
+    lowestPrice: entry.low_price ?? extraObj.lowestPrice ?? null,
+    entries,
+    targets,
+    exits,
     plannedRR: plannedRR ?? null,
     planned_rr: plannedRR ?? null,
     actualRR: isOpen ? null : Math.abs(rMultiple),
