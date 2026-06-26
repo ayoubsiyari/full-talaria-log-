@@ -74,7 +74,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#080b12;color:#e2e8f
 #ph h2{font-size:0.82rem;font-weight:800;color:#f8fafc}
 #ph p{font-size:0.64rem;color:#64748b;margin-top:3px}
 #ptabs{display:flex;border-bottom:1px solid #1e293b;flex-shrink:0}
-.ptab{flex:1;text-align:center;padding:10px 6px;font-size:0.68rem;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent}
+.ptab{flex:1;text-align:center;padding:9px 2px;font-size:0.54rem;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
 .ptab:hover{color:#cbd5e1}
 .ptab.active{color:#f8fafc;border-bottom-color:#818cf8}
 #pcontent{flex:1;overflow-y:auto;padding:16px 18px}
@@ -312,6 +312,107 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#080b12;color:#e2e8f
         </div>
       </div>
 
+      <!-- ZONE H — ROUTE HEALTH -->
+      <div class="zone z-clean">
+        <div class="zone-lbl l-clean">Zone H — Route Health (Jun 2026 audit)</div>
+        <div class="zone-desc">From <code>ROUTE_AUDIT.md</code>. Because the site is a static export, <strong>nginx</strong> is the real router — several built pages are unreachable and a few links point at missing routes. See the <strong>Route Health</strong> tab for the full table.</div>
+        <div class="row">
+          <div class="nd n-clean" data-tip="nginx (location = /journal/pricing) 301s to /pricing/ before Next serves. Built page is unreachable in prod. Duplicate of /pricing.">
+            <div class="lbl">☠️ /journal/pricing</div><span class="path">app/journal/pricing/page.tsx</span>
+            <span class="badge b-del">DEAD DUP</span>
+            <span class="sub">nginx 301 → /pricing/</span>
+          </div>
+          <div class="nd n-clean" data-tip="nginx 301s to /pricing/?browse=1 before Next serves. Built page is unreachable.">
+            <div class="lbl">☠️ /journal/subscription-status</div><span class="path">app/journal/subscription-status/page.tsx</span>
+            <span class="badge b-del">DEAD</span>
+            <span class="sub">nginx 301 → /pricing/?browse=1</span>
+          </div>
+          <div class="nd n-clean" data-tip="Footer links in PricingClient.tsx point to /privacy-policy/ and /refund-policy/ which have no page → 404. Should be /privacy/ and /refunds/.">
+            <div class="lbl">🔗 /privacy-policy · /refund-policy</div><span class="path">app/pricing/PricingClient.tsx:860,863</span>
+            <span class="badge b-refactor">BROKEN LINK</span>
+            <span class="sub">404 — use /privacy/ + /refunds/</span>
+          </div>
+          <div class="nd n-clean" data-tip="Admin page links to /dashboard/admin/datasets/ twice but no page.tsx exists; /dashboard/* is not proxied → 404. Add page or repoint to /chart/admin-dashboard.html.">
+            <div class="lbl">🔗 /dashboard/admin/datasets</div><span class="path">app/dashboard/admin/page.tsx:184,437</span>
+            <span class="badge b-refactor">BROKEN LINK</span>
+            <span class="sub">No page → 404</span>
+          </div>
+          <div class="nd n-clean" data-tip="isJournalPublicNextPath() allowlists 7 /journal/* paths (features, contact, legal, privacy-policy, terms, cookie-policy, refund-policy) that no longer exist.">
+            <div class="lbl">🧹 stale auth allowlist</div><span class="path">auth-fuse.tsx:41-62</span>
+            <span class="badge b-dedupe">DEAD CODE ×7</span>
+            <span class="sub">Non-existent /journal/* entries</span>
+          </div>
+          <div class="nd n-clean" data-tip="/backtest, /backtest/analytics, /backtest/design are client-redirect shims into the dashboard ?view= model. Functional but redundant.">
+            <div class="lbl">↪ /backtest/* shims</div><span class="path">app/backtest/*</span>
+            <span class="badge b-move">REDUNDANT</span>
+            <span class="sub">Redirect into /dashboard/?view=</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONE I — DASHBOARD SCALING -->
+      <div class="zone z-chart">
+        <div class="zone-lbl l-chart">Zone I — Dashboard Scaling (TalariaV16)</div>
+        <div class="zone-desc"><code>Sources Handoff/TalariaV16.jsx</code> (~50k LOC) is <strong>load-bearing production code</strong> — imported live via the <code>talaria-handoff</code> alias and rendered at <code>/dashboard</code>. It holds every view (<code>?view=sessions|trades|stratbank|profile</code>) in one component. Split for load speed + render isolation; fix trade-volume lag separately. See the <strong>Scaling</strong> tab.</div>
+        <div class="row">
+          <div class="nd n-chart" data-tip="Despite the 'Sources Handoff' folder name, this is the live dashboard. Move into homepage/src or a shared package, or loudly document as load-bearing so a cleanup pass never deletes it.">
+            <div class="lbl">📦 TalariaV16.jsx (~50k LOC)</div><span class="path">Sources Handoff/TalariaV16.jsx</span>
+            <span class="badge b-move">RELOCATE / DOCUMENT</span>
+            <span class="sub">Load-bearing, not a prototype</span>
+          </div>
+          <div class="nd n-chart" data-tip="Initial git status showed it untracked (?? Sources Handoff/TalariaV16.jsx). If the prod dashboard's main component isn't committed, CI/Docker can fail or ship stale. Verify it's tracked.">
+            <div class="lbl">⚠️ untracked in git</div><span class="path">?? Sources Handoff/TalariaV16.jsx</span>
+            <span class="badge b-refactor">VERIFY COMMITTED</span>
+            <span class="sub">Highest-risk item</span>
+          </div>
+          <div class="nd n-chart" data-tip="Extract each view (SessionsView, TradesView, StrategyBuilder, ProfileView) into its own dynamic-imported module. Faster TTI + confines re-renders. Incremental, not a rewrite.">
+            <div class="lbl">✂️ split views (lazy)</div><span class="path">dashboard/v16/*View.tsx</span>
+            <span class="badge b-new">EXTRACT</span>
+            <span class="sub">Code-split + isolate state</span>
+          </div>
+          <div class="nd n-chart" data-tip="~5000 trades/session cap (MAX_JOURNAL_TRADES_PER_SESSION). No virtualization library found — plain row rendering will lag/freeze at that volume.">
+            <div class="lbl">🐢 trades table lag</div><span class="path">trade lists · cap 5000/session</span>
+            <span class="badge b-refactor">VIRTUALIZE</span>
+            <span class="sub">No react-window/TanStack Virtual yet</span>
+          </div>
+          <div class="nd n-chart" data-tip="Compute equity/distributions/metrics over large trade sets server-side (analytics_core / analytics_engine already exist) instead of in the 50k-line client component.">
+            <div class="lbl">🧮 aggregate on backend</div><span class="path">analytics_core · analytics_engine</span>
+            <span class="badge b-move">PUSH SERVER-SIDE</span>
+            <span class="sub">Send computed results, not raw math</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONE J — METRICS & SCALING -->
+      <div class="zone z-data">
+        <div class="zone-lbl l-data">Zone J — Metrics &amp; Scaling Strategy</div>
+        <div class="zone-desc">Frontend-vs-backend is the wrong axis. What scales is <strong>where the cost lands + whether it's cached</strong>. Frontend calc is server-cheap but ships raw trades &amp; lags weak devices; backend calc is authoritative but centralizes CPU — only scales with caching + compute-on-write. Use a <strong>hybrid</strong>. See the <strong>Metrics</strong> tab.</div>
+        <div class="row">
+          <div class="nd n-data" data-tip="Dataset-wide metrics (equity, distributions, all-metrics, streaks, what-if) belong server-side and authoritative. Light interactive transforms (sort/format visible rows) stay client-side.">
+            <div class="lbl">⚖️ hybrid split</div><span class="path">heavy → backend · light → client</span>
+            <span class="sub">Authoritative vs interactive</span>
+          </div>
+          <div class="nd n-data" data-tip="Let Postgres / QuestDB aggregate (GROUP BY / SAMPLE BY). DB-side aggregation is far cheaper than transferring rows and looping in Python or JS.">
+            <div class="lbl">🗄 DB-side aggregation</div><span class="path">SQL GROUP BY · QuestDB SAMPLE BY</span>
+            <span class="sub">Cheapest place to crunch</span>
+          </div>
+          <div class="nd n-data" data-tip="Cache computed metrics in Redis keyed by (user, profile, filterset, data_version); invalidate on trade write. Turns N users × M reads into one computation reused many times.">
+            <div class="lbl">⚡ Redis cache</div><span class="path">key: user·profile·filters·version</span>
+            <span class="badge b-new">COMPUTE ONCE</span>
+            <span class="sub">Biggest scalability lever</span>
+          </div>
+          <div class="nd n-data" data-tip="Update hot aggregates incrementally when a trade is added/imported, so reads are lookups not recomputations. Mirrors the existing BACKTEST_WHATIF_ASYNC + cache pattern.">
+            <div class="lbl">✍️ compute on write</div><span class="path">update aggregates on trade write</span>
+            <span class="badge b-new">NOT ON READ</span>
+            <span class="sub">Reads become cheap lookups</span>
+          </div>
+          <div class="nd n-data" data-tip="Run big imports / heavy jobs on trading-chart-worker (already separate from the API role) so a large import never blocks request handlers. Rate-limit expensive endpoints.">
+            <div class="lbl">⚙️ offload to worker</div><span class="path">trading-chart-worker · rate limits</span>
+            <span class="sub">Keep API handlers responsive</span>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -324,6 +425,9 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#080b12;color:#e2e8f
     <div id="ptabs">
       <div class="ptab active" data-tab="actions" onclick="showTab('actions')">Actions</div>
       <div class="ptab" data-tab="routes" onclick="showTab('routes')">Route Map</div>
+      <div class="ptab" data-tab="health" onclick="showTab('health')">Route Health</div>
+      <div class="ptab" data-tab="scaling" onclick="showTab('scaling')">Scaling</div>
+      <div class="ptab" data-tab="metrics" onclick="showTab('metrics')">Metrics</div>
       <div class="ptab" data-tab="rules" onclick="showTab('rules')">Design Rules</div>
     </div>
     <div id="pcontent"></div>
@@ -415,7 +519,99 @@ const RULES_HTML = `
 <div class="rule"><h4>Rule 9 — No backup files in prod assets</h4><p>Nothing named <code>*backup*</code>/<code>*-old</code>/<code>*-copy</code> ships under <code>public/</code> or <code>modules/</code>.</p></div>
 `;
 
-const TABS = { actions: ACTIONS_HTML, routes: ROUTES_HTML, rules: RULES_HTML };
+const HEALTH_HTML = `
+<p style="font-size:0.62rem;color:#475569;margin-bottom:10px">From <b style="color:#cbd5e1">ROUTE_AUDIT.md</b> · nginx is the real router (static export). Legend: ☠️ dead · 🔗 broken link · ↪ redirect shim</p>
+
+<div class="act-section del">
+  <h3>☠️ Unreachable built pages (dead duplicates)</h3>
+  <div class="act-item"><span class="act-icon">☠️</span><div><code>app/journal/pricing</code> — nginx <code>301 → /pricing/</code> (nginx.conf:140). Duplicate of <code>/pricing</code>; page never serves.</div></div>
+  <div class="act-item"><span class="act-icon">☠️</span><div><code>app/journal/subscription-status</code> — nginx <code>301 → /pricing/?browse=1</code> (nginx.conf:146). Dead.</div></div>
+</div>
+
+<div class="act-section fix">
+  <h3>🔗 Broken internal links (→ 404)</h3>
+  <div class="act-item"><span class="act-icon">🔗</span><div><code>/privacy-policy/</code> in <code>PricingClient.tsx:860</code> — no page. Use <code>/privacy/</code>.</div></div>
+  <div class="act-item"><span class="act-icon">🔗</span><div><code>/refund-policy/</code> in <code>PricingClient.tsx:863</code> — no page. Use <code>/refunds/</code>.</div></div>
+  <div class="act-item"><span class="act-icon">🔗</span><div><code>/dashboard/admin/datasets/</code> in <code>admin/page.tsx:184,437</code> — no page &amp; not proxied. Add page or point to <code>/chart/admin-dashboard.html</code>.</div></div>
+</div>
+
+<div class="act-section mov">
+  <h3>↪ Redundant redirect shims</h3>
+  <div class="act-item"><span class="act-icon">↪</span><div><code>/backtest</code> → <code>/dashboard/?view=sessions</code></div></div>
+  <div class="act-item"><span class="act-icon">↪</span><div><code>/backtest/analytics</code> → <code>/dashboard/</code></div></div>
+  <div class="act-item"><span class="act-icon">↪</span><div><code>/backtest/design</code> → <code>/dashboard/backtest/design/</code> (real V9 embed — keep)</div></div>
+</div>
+
+<div class="act-section add">
+  <h3>🧹 Dead allowlist entries</h3>
+  <div class="act-item"><span class="act-icon">🧹</span><div><code>auth-fuse.tsx:41-62</code> allows 7 non-existent <code>/journal/*</code> paths: features, contact, legal, privacy-policy, terms, cookie-policy, refund-policy. Prune.</div></div>
+</div>
+
+<div class="act-section fix">
+  <h3>⚠️ Verify at runtime</h3>
+  <div class="act-item"><span class="act-icon">⚠️</span><div>This is static analysis. Confirm status codes against a running <code>docker compose</code> stack — especially the 🔗 and ☠️ rows.</div></div>
+</div>
+`;
+
+const SCALING_HTML = `
+<p style="font-size:0.62rem;color:#475569;margin-bottom:10px">Two separate problems. <b style="color:#cbd5e1">File-splitting</b> fixes load + maintainability; it does <b>not</b> fix <b style="color:#cbd5e1">trade-volume lag</b> — that needs runtime techniques.</p>
+
+<div class="act-section fix">
+  <h3>📦 Reality check — TalariaV16.jsx is production</h3>
+  <div class="act-item"><span class="act-icon">📦</span><div><code>Sources Handoff/TalariaV16.jsx</code> (~50k LOC) is imported live via <code>talaria-handoff</code> and rendered at <code>/dashboard</code>. It holds sessions, trades, strategy builder &amp; profile in ONE component (<code>?view=</code> switches).</div></div>
+  <div class="act-item"><span class="act-icon">⚠️</span><div><b>Verify it's committed</b> — initial git status showed it untracked. The prod dashboard depending on an uncommitted file is the highest-risk item.</div></div>
+  <div class="act-item"><span class="act-icon">📁</span><div>Relocate into <code>homepage/src</code> / shared package, or document as load-bearing so cleanup never deletes it.</div></div>
+</div>
+
+<div class="act-section add">
+  <h3>✂️ Verdict — split into per-view files (lazy)</h3>
+  <div class="act-item"><span class="act-icon">⚡</span><div><b>Faster initial load:</b> opening "trades" shouldn't download strategy-builder + profile code. <code>dynamic(() =&gt; import())</code> each view.</div></div>
+  <div class="act-item"><span class="act-icon">🎯</span><div><b>Smaller re-render blast radius:</b> one mega-component means a state change anywhere re-renders the whole 50k-line tree. Per-view components confine it.</div></div>
+  <div class="act-item"><span class="act-icon">🧩</span><div>Extract incrementally — <code>SessionsView</code>, <code>TradesView</code>, <code>StrategyBuilder</code>, <code>ProfileView</code> — keep the shared shell. Not a big-bang rewrite (3 harnesses depend on it).</div></div>
+  <div class="act-item"><span class="act-icon">✅</span><div>The rest of the app already does this (each analytics page is its own file). Only the dashboard shell breaks the pattern.</div></div>
+</div>
+
+<div class="act-section mov">
+  <h3>🐢 "Many trades" lag — runtime fixes (separate from files)</h3>
+  <div class="act-item"><span class="act-icon">📜</span><div><b>Virtualize</b> the trades table (TanStack Virtual / react-window). Cap is <code>5000</code> trades/session — plain <code>.map()</code> rows will lag/freeze. No virtualization lib found yet. <b>Biggest single win.</b></div></div>
+  <div class="act-item"><span class="act-icon">🧮</span><div><b>Aggregate server-side</b> — compute equity/distributions/metrics in <code>analytics_core</code>/<code>analytics_engine</code> and send results; don't recompute over 5000 rows in the client.</div></div>
+  <div class="act-item"><span class="act-icon">🧠</span><div><b>Memoize</b> heavy calcs (<code>useMemo</code>) and rows (<code>React.memo</code>). ~103 hook calls across 50k LOC ⇒ likely under-memoized.</div></div>
+  <div class="act-item"><span class="act-icon">⏳</span><div><b>Debounce</b> filters/search; use stable <code>key</code>s; avoid new object/array literals as props each render.</div></div>
+  <div class="act-item"><span class="act-icon">🧵</span><div>For client-side math that can't move to the backend, use a <b>Web Worker</b> to keep the main thread responsive.</div></div>
+</div>
+`;
+
+const METRICS_HTML = `
+<p style="font-size:0.62rem;color:#475569;margin-bottom:10px">Frontend-vs-backend is the wrong axis. What scales = <b style="color:#cbd5e1">where cost lands + whether it's cached</b>.</p>
+
+<div class="act-section fix">
+  <h3>⚖️ The trade-off (no pure winner)</h3>
+  <div class="act-item"><span class="act-icon">🖥</span><div><b>Frontend</b> (what you have): ~zero server CPU/user (scales free) &amp; instant re-filter — BUT ships all raw trades to the browser, lags weak devices, freezes on 5000 trades, no shared caching.</div></div>
+  <div class="act-item"><span class="act-icon">🐍</span><div><b>Backend</b>: authoritative, any device, sends only results — BUT centralizes CPU; <b>without caching it scales WORSE</b> than frontend under many users.</div></div>
+</div>
+
+<div class="act-section add">
+  <h3>✅ Recommended — hybrid, compute once</h3>
+  <div class="act-item"><span class="act-icon">⚖️</span><div><b>Heavy → backend:</b> equity curves, distributions, all-metrics, streaks, what-if — anything scanning the whole trade set.</div></div>
+  <div class="act-item"><span class="act-icon">🖱</span><div><b>Light → frontend:</b> sorting/formatting visible rows, toggling a filter on already-loaded data.</div></div>
+</div>
+
+<div class="act-section mov">
+  <h3>🚀 How to make the backend scale to many users</h3>
+  <div class="act-item"><span class="act-icon">🗄</span><div><b>DB-side aggregation:</b> Postgres <code>GROUP BY</code> / QuestDB <code>SAMPLE BY</code> — cheaper than transferring rows + looping.</div></div>
+  <div class="act-item"><span class="act-icon">⚡</span><div><b>Redis cache</b> keyed by <code>(user, profile, filterset, data_version)</code>, invalidated on trade write. Turns N users × M reads into one computation. <b>Biggest lever.</b></div></div>
+  <div class="act-item"><span class="act-icon">✍️</span><div><b>Compute on write, not read:</b> update hot aggregates when a trade is added/imported → reads become cheap lookups.</div></div>
+  <div class="act-item"><span class="act-icon">⚙️</span><div><b>Offload</b> big imports/jobs to <code>trading-chart-worker</code> (already separate from the API role) so they don't block request handlers.</div></div>
+  <div class="act-item"><span class="act-icon">🛡</span><div><b>Rate-limit</b> expensive endpoints (you already do this for backtests).</div></div>
+</div>
+
+<div class="act-section fix">
+  <h3>🔁 You already have the pattern</h3>
+  <div class="act-item"><span class="act-icon">🔁</span><div>The what-if path already uses <code>BACKTEST_WHATIF_ASYNC</code> + <code>BACKTEST_WHATIF_CACHE_TTL_SEC</code> (async compute + Redis cache). Extend that exact model to dashboard/journal metrics via <code>analytics_core</code>/<code>analytics_engine</code>.</div></div>
+</div>
+`;
+
+const TABS = { actions: ACTIONS_HTML, routes: ROUTES_HTML, health: HEALTH_HTML, scaling: SCALING_HTML, metrics: METRICS_HTML, rules: RULES_HTML };
 function showTab(t){
   document.getElementById('pcontent').innerHTML = TABS[t];
   document.querySelectorAll('.ptab').forEach(el=>el.classList.toggle('active', el.dataset.tab===t));

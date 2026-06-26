@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import FlagSvg from "./backtestModal/FlagSvg";
 import { currencyCountry } from "./backtestModal/FlagSvg";
 import { SessionDateCalendar } from "./backtestModal/SessionDateCalendar";
-import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso } from "./backtestModal/dateRangeUtils";
+import { computeOverlapRange, isoToDisplay, spanFromApiFile, clampIso, overlapSpanDays, filterPresetsForSpanDays, SESSION_DATE_PRESETS, randomRangeUnitMax } from "./backtestModal/dateRangeUtils";
 import { compareSymbolsByPopularity } from "./backtestModal/symbolPopularity";
 import {
   displaySessionSymbol,
@@ -30,9 +30,7 @@ const SESSION_DESCRIPTION_MAX = 500;
 function sanitizeSessionNameInput(raw: string): string {
   return String(raw ?? "").slice(0, SESSION_NAME_MAX);
 }
-const SESSION_DESCRIPTION_MIN_ROWS = 2;
-const SESSION_DESCRIPTION_MAX_ROWS = 10;
-const SESSION_DESCRIPTION_DEFAULT_ROWS = 3;
+const SESSION_DESCRIPTION_ROWS = 5;
 function sanitizeSessionDescriptionInput(raw: string): string {
   return String(raw ?? "").slice(0, SESSION_DESCRIPTION_MAX);
 }
@@ -188,7 +186,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   const [newSessTimezone, setNewSessTimezone] = useState("America/New_York");
   const [newSessDST, setNewSessDST] = useState(true);
   const [newSessDescription, setNewSessDescription] = useState("");
-  const [newSessDescriptionRows, setNewSessDescriptionRows] = useState(SESSION_DESCRIPTION_DEFAULT_ROWS);
   const [newSessPlaybook, setNewSessPlaybook] = useState("");
   const [newSessFiles, setNewSessFiles] = useState<any[]>([]);
   const [newSessMarginCall, setNewSessMarginCall] = useState("100");
@@ -233,7 +230,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   const [newSessCalYearBase, setNewSessCalYearBase] = useState(2016);
   const [newSessStartInput, setNewSessStartInput] = useState("");
   const [newSessEndInput, setNewSessEndInput] = useState("");
-  const [newSessRandomCount, setNewSessRandomCount] = useState(3);
+  const [newSessRandomCount, setNewSessRandomCount] = useState(1);
   const [newSessRandRangeVal, setNewSessRandRangeVal] = useState(3);
   const [newSessRandRangeUnit, setNewSessRandRangeUnit] = useState("M");
   const [newSessActivePreset, setNewSessActivePreset] = useState<any>(null);
@@ -441,7 +438,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setNewSessCapital("10000");
     setSessTradingMode("standard");
     setNewSessDescription("");
-    setNewSessDescriptionRows(SESSION_DESCRIPTION_DEFAULT_ROWS);
     setNewSessPlaybook("");
     setNewSessMarginCall("100");
     setNewSessStopOut("50");
@@ -488,6 +484,15 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     });
   }, []);
 
+  const maxTickersCap = userLimits.isAdmin ? 100 : Math.max(1, userLimits.maxTickers || 5);
+  const maxSupportingCap = userLimits.isAdmin ? 100 : Math.max(0, userLimits.maxSupporting ?? 5);
+  const randomPairCount = Math.min(Math.max(1, newSessRandomCount), maxTickersCap);
+
+  useEffect(() => {
+    setNewSessRandomCount((n) => Math.min(Math.max(1, n), maxTickersCap));
+    setNewSessTickers((tickers) => (tickers.length > maxTickersCap ? tickers.slice(0, maxTickersCap) : tickers));
+  }, [maxTickersCap]);
+
   const prevOpen = useRef(false);
 
   const applySessionToForm = useCallback((sess: NonNullable<BacktestNewSessionInitialState["editSession"]>) => {
@@ -519,7 +524,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     setNewSessName(sanitizeSessionNameInput(sess.name || String(cfg.sessionName || cfg.session_name || "Backtest Session")));
     setNewSessPlaybook(playbook);
     setNewSessDescription(sanitizeSessionDescriptionInput(String(cfg.description || sess.strategyDesc || "")));
-    setNewSessDescriptionRows(SESSION_DESCRIPTION_DEFAULT_ROWS);
     setNewSessTickers(tickers.filter(Boolean));
     setNewSessSymbol(tickers[0] || "NQ");
     setNewSessTf(tf);
@@ -584,6 +588,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
   useEffect(() => {
     if (open && !prevOpen.current) {
       resetFormToDefaults();
+      setNewSessRandomCount(maxTickersCap);
       if (initialState?.editSession) {
         applySessionToForm(initialState.editSession);
       } else {
@@ -594,7 +599,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       }
     }
     prevOpen.current = open;
-  }, [open, resetFormToDefaults, initialState, applySessionToForm]);
+  }, [open, resetFormToDefaults, initialState, applySessionToForm, maxTickersCap]);
 
   useEffect(() => {
     if (!open) return;
@@ -783,8 +788,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     router.push("/dashboard/?view=stratbank&create=1");
   };
 
-  const maxTickersCap = userLimits.isAdmin ? 100 : Math.max(1, userLimits.maxTickers || 5);
-  const maxSupportingCap = userLimits.isAdmin ? 100 : Math.max(0, userLimits.maxSupporting ?? 5);
   const atSessionCap =
     !userLimits.isAdmin &&
     editSessId == null &&
@@ -833,7 +836,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     const startDate = (newSessStart || "").split("T")[0] || "";
     const endDate = (newSessEnd || "").split("T")[0] || "";
     const modeType = sessTradingMode === "prop" ? "propfirm" : "standard";
-    const tickers = newSessTickers.length > 0 ? [...newSessTickers] : [primary];
+    const tickers = (newSessTickers.length > 0 ? [...newSessTickers] : [primary]).slice(0, maxTickersCap);
 
     const resolved = await resolveInstrumentsForTickers(tickers);
     if (!resolved.primaryFileId) {
@@ -1149,6 +1152,18 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
     return computeOverlapRange(files);
   }, [newSessTickers, newSessSymbol, sessionApiFiles]);
 
+  const sessAvailDays = useMemo(() => {
+    if (!sessDateOverlap.hasOverlap) return 0;
+    return overlapSpanDays(sessDateOverlap.start, sessDateOverlap.end);
+  }, [sessDateOverlap.hasOverlap, sessDateOverlap.start, sessDateOverlap.end]);
+
+  const availableDatePresets = useMemo(() => {
+    if (!sessDateOverlap.hasOverlap) return [];
+    return filterPresetsForSpanDays(SESSION_DATE_PRESETS, sessAvailDays);
+  }, [sessDateOverlap.hasOverlap, sessAvailDays]);
+
+  const randRangeUnitMax = useMemo(() => randomRangeUnitMax(sessAvailDays), [sessAvailDays]);
+
   const todayIso = useMemo(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -1174,6 +1189,24 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
       setNewSessEndInput("");
     }
   }, [sessDateOverlap.start, sessDateOverlap.end, sessDateOverlap.hasOverlap, newSessStart, newSessEnd]);
+
+  useEffect(() => {
+    if (!newSessActivePreset) return;
+    if (!availableDatePresets.some((p) => p.l === newSessActivePreset)) {
+      setNewSessActivePreset(null);
+    }
+  }, [availableDatePresets, newSessActivePreset]);
+
+  useEffect(() => {
+    const maxForUnit = randRangeUnitMax[newSessRandRangeUnit as keyof typeof randRangeUnitMax] ?? 0;
+    if (maxForUnit < 1) {
+      const fallback = (["D", "M", "Y"] as const).find((u) => (randRangeUnitMax[u] ?? 0) >= 1) || "D";
+      setNewSessRandRangeUnit(fallback);
+      setNewSessRandRangeVal(Math.max(1, randRangeUnitMax[fallback] ?? 1));
+      return;
+    }
+    setNewSessRandRangeVal((v) => Math.min(maxForUnit, Math.max(1, v)));
+  }, [randRangeUnitMax, newSessRandRangeUnit]);
 
   const handleSessCalSelect = useCallback((iso: string) => {
     const label = isoToDisplay(iso, MON_D);
@@ -1348,30 +1381,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                             </div>
                           </div>
                           {/* Row 2: description */}
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4}}>
-                            <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",display:"flex",alignItems:"center",gap:4}}>Description</div>
-                            <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                              <span style={{fontSize:8,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F}}>Height</span>
-                              <div style={{display:"flex",alignItems:"center",gap:3}}>
-                                <button type="button" aria-label="Decrease description area height"
-                                  disabled={newSessDescriptionRows <= SESSION_DESCRIPTION_MIN_ROWS}
-                                  onClick={()=>setNewSessDescriptionRows(rows=>Math.max(SESSION_DESCRIPTION_MIN_ROWS, rows - 1))}
-                                  style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:c.el,border:`1px solid ${c.brH}`,color:newSessDescriptionRows <= SESSION_DESCRIPTION_MIN_ROWS ? c.tm : c.tx,fontSize:13,fontWeight:700,fontFamily:F,cursor:newSessDescriptionRows <= SESSION_DESCRIPTION_MIN_ROWS ? "default" : "pointer",opacity:newSessDescriptionRows <= SESSION_DESCRIPTION_MIN_ROWS ? 0.45 : 1,padding:0}}>−</button>
-                                <span style={{minWidth:16,textAlign:"center",fontSize:9,fontWeight:800,color:c.ts,fontFamily:F,fontVariantNumeric:"tabular-nums"}}>{newSessDescriptionRows}</span>
-                                <button type="button" aria-label="Increase description area height"
-                                  disabled={newSessDescriptionRows >= SESSION_DESCRIPTION_MAX_ROWS}
-                                  onClick={()=>setNewSessDescriptionRows(rows=>Math.min(SESSION_DESCRIPTION_MAX_ROWS, rows + 1))}
-                                  style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:c.el,border:`1px solid ${c.brH}`,color:newSessDescriptionRows >= SESSION_DESCRIPTION_MAX_ROWS ? c.tm : c.tx,fontSize:13,fontWeight:700,fontFamily:F,cursor:newSessDescriptionRows >= SESSION_DESCRIPTION_MAX_ROWS ? "default" : "pointer",opacity:newSessDescriptionRows >= SESSION_DESCRIPTION_MAX_ROWS ? 0.45 : 1,padding:0}}>+</button>
-                              </div>
-                            </div>
-                          </div>
+                          <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4,display:"flex",alignItems:"center",gap:4}}>Description</div>
                           <textarea value={newSessDescription}
                             onChange={e=>setNewSessDescription(sanitizeSessionDescriptionInput(e.target.value))}
                             maxLength={SESSION_DESCRIPTION_MAX}
-                            rows={newSessDescriptionRows}
+                            rows={SESSION_DESCRIPTION_ROWS}
                             placeholder="Optional notes about this session"
                             aria-describedby="new-sess-description-meta"
-                            style={{...inp({height:"auto",padding:"5px 8px",resize:"none",minHeight:newSessDescriptionRows * 18,lineHeight:1.5})}}/>
+                            style={{...inp({height:"auto",padding:"5px 8px",resize:"none",minHeight:SESSION_DESCRIPTION_ROWS * 18,lineHeight:1.5})}}/>
                           <div id="new-sess-description-meta" style={{display:"flex",justifyContent:"flex-end",marginTop:4}}>
                             <span style={{fontSize:8.5,fontWeight:700,color:newSessDescription.length >= SESSION_DESCRIPTION_MAX ? c.rd : c.tm,fontFamily:F,fontVariantNumeric:"tabular-nums",letterSpacing:"0.04em"}}>
                               {newSessDescription.length} / {SESSION_DESCRIPTION_MAX}
@@ -1426,8 +1443,6 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                         const chvSx={padding:"0 6px",cursor:"default",display:"flex",alignItems:"center",color:c.ts,borderLeft:`1px solid ${c.br}`,alignSelf:"stretch"};
                         const ChevD=({open})=>(<svg width={8} height={8} viewBox="0 0 8 8" fill="none"><path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/></svg>);
                         const applyPreset=(months,years)=>{const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;let end,start;if(sessDateOverlap.hasOverlap){end=new Date(sessDateOverlap.end+"T00:00:00");start=new Date(end);if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);const ovStart=new Date(sessDateOverlap.start+"T00:00:00");if(start<ovStart)start=ovStart;}else{end=new Date();start=new Date();if(months)start.setMonth(start.getMonth()-months);if(years)start.setFullYear(start.getFullYear()-years);}const sIso=clampIso(fi(start),sessDateOverlap.hasOverlap?sessDateOverlap.start:"1990-01-01",sessDateOverlap.hasOverlap?sessDateOverlap.end:todayIso);const eIso=clampIso(fi(end),sIso,sessDateOverlap.hasOverlap?sessDateOverlap.end:todayIso);setNewSessStart(sIso);setNewSessStartInput(fd(new Date(sIso+"T00:00:00")));setNewSessEnd(eIso);setNewSessEndInput(fd(new Date(eIso+"T00:00:00")));};
-                        const presets=[{l:"1M",months:1},{l:"3M",months:3},{l:"6M",months:6},{l:"1Y",years:1},{l:"2Y",years:2},{l:"3Y",years:3},{l:"5Y",years:5},{l:"10Y",years:10}];
-                        const unitMax={D:3650,M:120,Y:10};
                         const randomRange=()=>{const fi=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;const fd=d=>`${String(d.getDate()).padStart(2,"0")}-${MON_D[d.getMonth()]}-${d.getFullYear()}`;let lenDays=newSessRandRangeUnit==="D"?newSessRandRangeVal:newSessRandRangeUnit==="M"?Math.round(newSessRandRangeVal*30.4375):Math.round(newSessRandRangeVal*365.25);if(sessDateOverlap.hasOverlap){const earliest=new Date(sessDateOverlap.start+"T00:00:00");const latest=new Date(sessDateOverlap.end+"T00:00:00");const maxSpan=Math.max(1,Math.round((latest-earliest)/86400000));if(lenDays>maxSpan)lenDays=maxSpan;const rangeMs=Math.max(0,latest-earliest-lenDays*86400000);const s=rangeMs>0?new Date(earliest.getTime()+Math.random()*rangeMs):new Date(earliest);let e2=new Date(s.getTime()+lenDays*86400000);if(e2>latest)e2=new Date(latest);const sIso=clampIso(fi(s),sessDateOverlap.start,sessDateOverlap.end);const eIso=clampIso(fi(e2),sIso,sessDateOverlap.end);setNewSessStart(sIso);setNewSessStartInput(fd(new Date(sIso+"T00:00:00")));setNewSessEnd(eIso);setNewSessEndInput(fd(new Date(eIso+"T00:00:00")));setNewSessActivePreset(null);return;}const today=new Date();today.setHours(0,0,0,0);const earliest=new Date(today);earliest.setFullYear(earliest.getFullYear()-20);const latest=new Date(today.getTime()-lenDays*86400000);if(latest<=earliest)return;const s=new Date(earliest.getTime()+Math.random()*(latest.getTime()-earliest.getTime()));const e2=new Date(s.getTime()+lenDays*86400000);setNewSessStart(fi(s));setNewSessStartInput(fd(s));setNewSessEnd(fi(e2));setNewSessEndInput(fd(e2));setNewSessActivePreset(null);};
                         return(<>
                           {/* ─── Market + Random row ─── */}
@@ -1474,7 +1489,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                   const catKey=catMap[randomCat]||randomCat;
                                   const pool=allSymbols.filter(s=>s.cat===catKey);
                                   if(!pool.length)return;
-                                  const picks=[...pool].sort(()=>Math.random()-0.5).slice(0,Math.min(newSessRandomCount,maxTickersCap)).map(s=>s.sym);
+                                  const pickCount = Math.min(randomPairCount, maxTickersCap);
+                                  const picks=[...pool].sort(()=>Math.random()-0.5).slice(0,pickCount).map(s=>s.sym);
                                   setNewSessAssetClass(randomCat);
                                   if(randomCat==="Stocks"||randomCat==="Crypto")setSessTradingMode("standard");
                                   setNewSessTickers(picks);
@@ -1491,7 +1507,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                 Random
                               </div>
                               <div style={{position:"relative",width:49,height:27,background:c.el,border:`1px solid ${c.brH}`,boxSizing:"border-box",flexShrink:0}}>
-                                <input type="number" min={1} max={maxTickersCap} value={newSessRandomCount}
+                                <input type="number" min={1} max={maxTickersCap} value={randomPairCount}
                                   onChange={e=>setNewSessRandomCount(Math.min(maxTickersCap,Math.max(1,parseInt(e.target.value)||1)))}
                                   onClick={e=>e.stopPropagation()}
                                   className="tlr-nospinner"
@@ -1769,14 +1785,14 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                   </div>
                                   {/* Range count spinner */}
                                   <div style={{position:"relative",width:49,height:27,background:c.el,border:`1px solid ${c.brH}`,boxSizing:"border-box",flexShrink:0}}>
-                                    <input type="number" min={1} max={unitMax[newSessRandRangeUnit]} value={newSessRandRangeVal}
-                                      onChange={e=>setNewSessRandRangeVal(Math.min(unitMax[newSessRandRangeUnit],Math.max(1,parseInt(e.target.value)||1)))}
+                                    <input type="number" min={1} max={randRangeUnitMax[newSessRandRangeUnit as keyof typeof randRangeUnitMax] || 1} value={newSessRandRangeVal}
+                                      onChange={e=>setNewSessRandRangeVal(Math.min(randRangeUnitMax[newSessRandRangeUnit as keyof typeof randRangeUnitMax] || 1,Math.max(1,parseInt(e.target.value)||1)))}
                                       onClick={e=>e.stopPropagation()}
                                       className="tlr-nospinner"
                                       style={{position:"absolute",left:0,right:18,top:0,bottom:0,width:"calc(100% - 18px)",height:"100%",background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:11,fontWeight:600,fontFamily:F,fontVariantNumeric:"tabular-nums",textAlign:"center",padding:0,boxSizing:"border-box"}}/>
                                     <div style={{position:"absolute",right:0,top:0,bottom:0,width:18,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                                       {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                        <button key={i} onClick={e=>{e.stopPropagation();setNewSessRandRangeVal(v=>Math.min(unitMax[newSessRandRangeUnit],Math.max(1,v+delta)));}}
+                                        <button key={i} onClick={e=>{e.stopPropagation();setNewSessRandRangeVal(v=>Math.min(randRangeUnitMax[newSessRandRangeUnit as keyof typeof randRangeUnitMax] || 1,Math.max(1,v+delta)));}}
                                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,lineHeight:1,fontFamily:F,padding:0,borderBottom:i===0?`1px solid ${c.br}`:"none",transition:"color 0.1s"}}>
                                           {chr}
@@ -1786,7 +1802,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                   </div>
                                   {/* Unit dropdown — Days / Months / Years */}
                                   {(()=>{
-                                    const UNITS=[["D","Days"],["M","Months"],["Y","Years"]];
+                                    const UNITS=[["D","Days"],["M","Months"],["Y","Years"]].filter(([u])=>(randRangeUnitMax[u as keyof typeof randRangeUnitMax] ?? 0)>=1);
                                     const curLabel=UNITS.find(([u])=>u===newSessRandRangeUnit)?.[1]||"Months";
                                     const ddKey="randUnitDrop";
                                     return(
@@ -1803,7 +1819,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                             {UNITS.map(([u,label])=>{
                                               const isA=newSessRandRangeUnit===u;const isH=hov==="ruOpt_"+u;
                                               return(
-                                                <div key={u} onClick={e=>{e.stopPropagation();setNewSessRandRangeUnit(u);setNewSessRandRangeVal(v=>Math.min(unitMax[u],Math.max(1,v)));setDropdown(null);setDdAnchor(null);}}
+                                                <div key={u} onClick={e=>{e.stopPropagation();setNewSessRandRangeUnit(u);setNewSessRandRangeVal(v=>Math.min(randRangeUnitMax[u as keyof typeof randRangeUnitMax] || 1,Math.max(1,v)));setDropdown(null);setDdAnchor(null);}}
                                                   onMouseEnter={()=>setHov("ruOpt_"+u)} onMouseLeave={()=>setHov(null)}
                                                   style={{display:"flex",alignItems:"center",padding:"4px 10px",cursor:"default",position:"relative",background:isA?c.acD:isH?"rgba(255,255,255,0.03)":"transparent",transition:"background 0.1s"}}>
                                                   {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -1821,8 +1837,8 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                             </div>{/* end date range wrapper */}
 
                             {/* ── Preset chips ── */}
-                            <div style={{display:"flex",gap:4}}>
-                              {presets.map(p=>{
+                            {availableDatePresets.length>0&&(<div style={{display:"flex",gap:4}}>
+                              {availableDatePresets.map(p=>{
                                 const isA=newSessActivePreset===p.l;const hk="preset_"+p.l;const isH=hov===hk;
                                 return(
                                   <div key={p.l} onClick={e=>{e.stopPropagation();applyPreset(p.months,p.years);setNewSessCalOpen(false);setNewSessActivePreset(p.l);}}
@@ -1838,7 +1854,7 @@ export function BacktestNewSessionModal({ open, onClose, onSaved, initialState, 
                                   </div>
                                 );
                               })}
-                            </div>
+                            </div>)}
                           </div>
                           {/* ─── Timezone row ─── */}
                           {(()=>{

@@ -36,6 +36,11 @@ export default function TalariaV16Dashboard() {
     window.__TALARIA_V16_SYNC_SESSION_URL__ = (sessionId) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("sessionId", String(sessionId));
+      // Session dashboard URLs use sessionId only; drop ?view=sessions so the shell does not bounce back.
+      params.delete("view");
+      params.delete("tab");
+      params.delete("thread");
+      params.delete("topic");
       const base = pathname.endsWith("/") ? pathname : `${pathname}/`;
       router.replace(`${base}?${params.toString()}`, { scroll: false });
     };
@@ -94,11 +99,12 @@ export default function TalariaV16Dashboard() {
     };
   }, [pathname, router, searchParams]);
 
+  const viewParam = searchParams.get("view");
   useEffect(() => {
-    const view = normalizeV16DashboardView(searchParams.get("view"));
+    const view = normalizeV16DashboardView(viewParam);
     if (!view) return;
     window.dispatchEvent(new CustomEvent("talaria-v16-set-view", { detail: { view } }));
-  }, [searchParams]);
+  }, [viewParam]);
 
   const v16View = normalizeV16DashboardView(searchParams.get("view"));
   const profileActive = v16View === "profile";

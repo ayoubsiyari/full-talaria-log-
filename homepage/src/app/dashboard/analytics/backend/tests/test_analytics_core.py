@@ -287,12 +287,58 @@ def test_parse_trades_csv_dashboard_export_roundtrip():
     assert t["pnl_currency_net"] == 125.5
     assert t["rMultiple"] == 1.25
     assert t["plannedRR"] == 2.0
-    assert t["entryPrice"] == "1.3185"
-    assert t["exitPrice"] == "1.3210"
-    assert t["stopLoss"] == "1.3160"
-    assert t["takeProfit"] == "1.3240"
+    assert t["entryPrice"] == 1.3185
+    assert t["exitPrice"] == 1.3210
+    assert t["stopLoss"] == 1.3160
+    assert t["takeProfit"] == 1.3240
     assert t["closeType"] == "Target"
     assert t["durationMinutes"] == 128.0
+    assert isinstance(t["entries"], list)
+    assert t["entries"][0]["price"] == 1.3185
+    assert t["entries"][0]["qty"] == 1.25
+    assert isinstance(t["targets"], list)
+    assert t["targets"][0]["price"] == 1.3240
+    assert isinstance(t["exits"], list)
+    assert t["exits"][0]["price"] == 1.3210
+
+
+def test_parse_trades_csv_builds_rows_from_scalars_when_collections_missing():
+    csv_text = (
+        "journal_trade_id,symbol,side,quantity,status,entryTime,exitTime,"
+        "entryPrice,exitPrice,stopLoss,takeProfit,pnl_currency_net,rMultiple\n"
+        "10348,EURUSD,LONG,4.59,Open,2014-03-17T07:11:00.000Z,2014-03-17T07:11:00.000Z,"
+        "1.1385,,1.1383,,0,0\n"
+    )
+    r = parse_trades_csv_text(csv_text)
+    assert not r["errors"], r["errors"]
+    t = r["trades"][0]
+    assert t["entryPrice"] == 1.1385
+    assert t["stopLoss"] == 1.1383
+    assert t["quantity"] == 4.59
+    assert t["entries"] == [{"price": 1.1385, "qty": 4.59, "quantity": 4.59}]
+    assert not t.get("targets")
+    assert not t.get("exits")
+
+
+def test_parse_trades_csv_parses_json_entry_rows():
+    csv_text = (
+        "journal_trade_id,symbol,side,quantity,status,entryTime,exitTime,"
+        "entryPrice,exitPrice,stopLoss,takeProfit,pnl_currency_net,rMultiple,entries,exits\n"
+        "10348,EURUSD,LONG,4.59,Closed,2014-03-17T07:11:00.000Z,2014-03-18T07:11:00.000Z,"
+        "1.1385,1.1400,1.1383,1.1420,50,1.2,"
+        '[{"entryPrice":1.1385,"qty":4.59}],'
+        '[{"exitPrice":1.1400,"qty":4.59}]\n'
+    )
+    r = parse_trades_csv_text(csv_text)
+    assert not r["errors"], r["errors"]
+    t = r["trades"][0]
+    assert isinstance(t["entries"], list)
+    assert t["entries"][0]["price"] == 1.1385
+    assert t["entries"][0]["qty"] == 4.59
+    assert isinstance(t["exits"], list)
+    assert t["exits"][0]["price"] == 1.14
+    assert t["exitTime"] == t["closeTime"]
+    assert t["exitDate"]
 
 
 def test_session_dashboard_extras_bundle():

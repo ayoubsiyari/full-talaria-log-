@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import math
 import re
 from datetime import datetime, timezone
@@ -182,7 +183,157 @@ _PASSTHROUGH_SCALAR_KEYS = (
     "total_mae_r",
     "highestPrice",
     "lowestPrice",
+    "array_base_price",
+    "open_price",
+    "close_price",
+    "initial_takeProfit",
+    "initial_sl",
+    "stop_loss",
 )
+_JSON_COLLECTION_KEYS = (
+    "entries",
+    "entryRows",
+    "fills",
+    "targets",
+    "planned_targets",
+    "targetRows",
+    "takeProfits",
+    "exits",
+    "partial_exits",
+    "exitRows",
+    "partialCloses",
+    "actual_exits",
+)
+
+
+def _normalize_price_row(row: Any) -> dict[str, Any]:
+    if isinstance(row, (int, float)) and math.isfinite(float(row)):
+        return {"price": float(row)}
+    if not isinstance(row, dict):
+        return {}
+    out = dict(row)
+    price = _trade_float(
+        out,
+        "price",
+        "entryPrice",
+        "openPrice",
+        "fillPrice",
+        "array_base_price",
+        "open_price",
+        "exitPrice",
+        "closePrice",
+        "close_price",
+        "takeProfit",
+        "targetPrice",
+        "target",
+        "tp",
+        "value",
+    )
+    if price is not None:
+        out["price"] = price
+    qty = _trade_float(out, "qty", "quantity", "size", "lots", "contracts", "positionSize", "position_size")
+    if qty is not None and qty > 0:
+        out["qty"] = qty
+        out["quantity"] = qty
+    return out if price is not None or qty is not None else {}
+
+
+def _normalize_price_rows(rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    normalized = [_normalize_price_row(row) for row in rows]
+    return [row for row in normalized if row]
+
+
+def _parse_json_cell(raw: str) -> Any:
+    s = (raw or "").strip()
+    if not s or s[0] not in "[{":
+        return None
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        return None
+
+
+def _trade_float(trade: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        val = trade.get(key)
+        if val is None or val == "":
+            continue
+        try:
+            num = float(val)
+            if math.isfinite(num):
+                return num
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _build_price_row(price: float, qty: float | None) -> dict[str, Any]:
+    row: dict[str, Any] = {"price": price}
+    if qty is not None and qty > 0:
+        row["qty"] = qty
+        row["quantity"] = qty
+    return row
+
+
+def _sync_trade_price_aliases(trade: dict[str, Any]) -> None:
+    entry = _trade_float(
+        trade,
+        "entryPrice",
+        "entry",
+        "openPrice",
+        "array_base_price",
+        "open_price",
+    )
+    exit_px = _trade_float(trade, "exitPrice", "exit", "closePrice", "close_price")
+    stop = _trade_float(trade, "stopLoss", "planned_sl", "sl", "initial_sl", "stop_loss")
+    target = _trade_float(
+        trade,
+        "takeProfit",
+        "target",
+        "targetPrice",
+        "tp",
+        "initial_takeProfit",
+    )
+    qty = _trade_float(trade, "quantity", "position_size", "positionSize", "size")
+
+    if entry is not None:
+        trade["entryPrice"] = entry
+        trade["entry"] = entry
+        trade["openPrice"] = entry
+        trade["array_base_price"] = entry
+    if exit_px is not None:
+        trade["exitPrice"] = exit_px
+        trade["exit"] = exit_px
+        trade["closePrice"] = exit_px
+    if stop is not None:
+        trade["stopLoss"] = stop
+        trade["planned_sl"] = stop
+        trade["sl"] = stop
+        trade["initial_sl"] = stop
+    if target is not None:
+        trade["takeProfit"] = target
+        trade["target"] = target
+        trade["targetPrice"] = target
+        trade["tp"] = target
+        trade["initial_takeProfit"] = target
+    if qty is not None and qty > 0:
+        trade["quantity"] = qty
+        trade["position_size"] = qty
+        trade["positionSize"] = qty
+        trade["size"] = qty
+
+    if entry is not None and not isinstance(trade.get("entries"), list):
+        trade["entries"] = [_build_price_row(entry, qty)]
+    if target is not None and not isinstance(trade.get("targets"), list) and not isinstance(
+        trade.get("planned_targets"), list
+    ):
+        trade["targets"] = [_build_price_row(target, qty)]
+    if exit_px is not None and not isinstance(trade.get("exits"), list) and not isinstance(
+        trade.get("partial_exits"), list
+    ):
+        trade["exits"] = [_build_price_row(exit_px, qty)]
 
 
 def _ms_to_iso_day(ms: float) -> str:
@@ -244,6 +395,27 @@ def _enrich_imported_trade(trade: dict[str, Any], row: dict[str, str]) -> dict[s
                 trade[key] = val
         else:
             trade[key] = raw
+
+    for key in _JSON_COLLECTION_KEYS:
+        if isinstance(trade.get(key), list):
+            trade[key] = _normalize_price_rows(trade.get(key))
+            continue
+        parsed = _parse_json_cell(_pick(row, key))
+        if isinstance(parsed, list):
+            trade[key] = _normalize_price_rows(parsed)
+    for _raw_key, raw_val in row.items():
+        if not raw_val or not str(raw_val).strip():
+            continue
+        norm = _norm_header(_raw_key)
+        if norm in {_norm_header(k) for k in _JSON_COLLECTION_KEYS}:
+            continue
+        if str(raw_val).lstrip()[0:1] not in "[{":
+            continue
+        parsed = _parse_json_cell(str(raw_val))
+        if isinstance(parsed, list) and not isinstance(trade.get(_raw_key), list):
+            trade[_raw_key] = _normalize_price_rows(parsed)
+
+    _sync_trade_price_aliases(trade)
 
     close_ms = float(trade["closeTime"])
     open_ms = float(trade["openTime"])

@@ -107,6 +107,61 @@ const finalizeDashAddTradeLotInput = (raw) => {
   if (parsed > 0 && parsed < DASH_ADD_TRADE_LOT_MIN) return String(DASH_ADD_TRADE_LOT_MIN);
   return sanitized;
 };
+const parseDashTradeCollectionField = (value) => {
+  if (Array.isArray(value)) return value;
+  if (value == null || value === "") return [];
+  if (typeof value === "object") return [value];
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === "object") return [parsed];
+      } catch {
+        return [];
+      }
+    }
+  }
+  return [];
+};
+const parseDashTradeDateTimeParts = (dateTimeLike, fallbackDate = "", fallbackTime = "") => {
+  if (dateTimeLike == null || dateTimeLike === "") return { date: fallbackDate, time: fallbackTime };
+  if (typeof dateTimeLike === "number" && Number.isFinite(dateTimeLike)) {
+    const ms = dateTimeLike > 1e12 ? dateTimeLike : dateTimeLike * 1000;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return { date: d.toISOString().slice(0, 10), time: d.toISOString().slice(11, 16) };
+  }
+  const raw = String(dateTimeLike);
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) return { date: d.toISOString().slice(0, 10), time: d.toISOString().slice(11, 16) };
+  const match = raw.match(/(\d{4}-\d{2}-\d{2}).*?(\d{1,2}:\d{2})?/);
+  return { date: match?.[1] || fallbackDate, time: match?.[2] || fallbackTime };
+};
+const dashTradeRowPriceKeys = {
+  entry: ["price", "entryPrice", "entry", "openPrice", "fillPrice", "open_price", "array_base_price", "value"],
+  target: ["price", "takeProfit", "targetPrice", "target", "tp", "initial_takeProfit", "value"],
+  exit: ["price", "exitPrice", "exit", "closePrice", "fillPrice", "close_price", "value"],
+};
+const readDashTradeRowPrice = (row, prefix) => {
+  if (row == null) return "";
+  if (typeof row === "number" || typeof row === "string") {
+    const direct = sanitizeDashAddTradePriceInput(String(row));
+    return direct;
+  }
+  const keys = dashTradeRowPriceKeys[prefix] || dashTradeRowPriceKeys.entry;
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return sanitizeDashAddTradePriceInput(String(value));
+    }
+  }
+  return "";
+};
+const readDashTradeRowQty = (row, fallbackQty = "1") => sanitizeDashAddTradeLotInput(String(
+  row?.qty ?? row?.size ?? row?.quantity ?? row?.contracts ?? row?.lots ?? row?.positionSize ?? row?.position_size ?? fallbackQty ?? "1"
+));
 const createDashAddTradeDecimalInputGuard = (maxDecimals, onApply) => ({
   onKeyDown: (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1414,7 +1469,7 @@ const SectionNode = ({ id, data }) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if(!file || activeSlot===null) return;
-    const check = validateStrategyImageFile(file);
+    const check = validateScreenshotUploadFile(file);
     if (!check.ok) {
       _cvCb.showImageError?.(check.error);
       return;
@@ -2258,7 +2313,7 @@ const ConditionCard = ({ id, data, selected }) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if(!file || activeSlot===null) return;
-    const check = validateStrategyImageFile(file);
+    const check = validateScreenshotUploadFile(file);
     if (!check.ok) {
       _cvCb.showImageError?.(check.error);
       return;
@@ -5405,6 +5460,10 @@ const getInstFlags = id => {
 const STRATEGY_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const STRATEGY_IMAGE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp';
 const STRATEGY_IMAGE_FORMAT_HINT = 'JPEG, PNG, GIF, or WebP · max 5 MB';
+const SCREENSHOT_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+const SCREENSHOT_UPLOAD_MAX_DATA_URL_LEN = 2_800_000;
+const SCREENSHOT_UPLOAD_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,image/*';
+const SCREENSHOT_UPLOAD_FORMAT_HINT = 'PNG or JPG · max 2 MB';
 function validateStrategyImageFile(file) {
   if (!file) return { ok: false, error: 'No file selected.' };
   const mime = String(file.type || '').toLowerCase().split(';')[0].trim();
@@ -5420,6 +5479,67 @@ function validateStrategyImageFile(file) {
     return { ok: false, error: `Image too large (${mb} MB). Maximum size is 5 MB.` };
   }
   return { ok: true };
+}
+
+function validateScreenshotUploadFile(file) {
+  if (!file) return { ok: false, error: 'No file selected.' };
+  const mime = String(file.type || '').toLowerCase().split(';')[0].trim();
+  if (mime && !mime.startsWith('image/')) {
+    return { ok: false, error: 'Unsupported format. Use PNG or JPG.' };
+  }
+  if (file.size > SCREENSHOT_UPLOAD_MAX_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    return { ok: false, error: `Image too large (${mb} MB). Maximum size is 2 MB.` };
+  }
+  return { ok: true };
+}
+
+function validateScreenshotDataUrl(dataUrl) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+    return { ok: false, error: 'Invalid image data.' };
+  }
+  if (dataUrl.length > SCREENSHOT_UPLOAD_MAX_DATA_URL_LEN) {
+    return { ok: false, error: 'Image too large. Maximum size is 2 MB.' };
+  }
+  return { ok: true };
+}
+
+function readScreenshotDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const check = validateScreenshotUploadFile(file);
+    if (!check.ok) {
+      reject(new Error(check.error));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image file.'));
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result;
+      const urlCheck = validateScreenshotDataUrl(dataUrl);
+      if (!urlCheck.ok) {
+        reject(new Error(urlCheck.error));
+        return;
+      }
+      resolve(String(dataUrl));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function sanitizeScreenshotList(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((item) => {
+    const src = typeof item === 'string' ? item : (item?.src || item?.dataUrl || item?.url || '');
+    return validateScreenshotDataUrl(src).ok;
+  });
+}
+
+function sanitizeScreenshotMap(map) {
+  const src = map && typeof map === 'object' ? map : {};
+  return {
+    pre: sanitizeScreenshotList(src.pre),
+    post: sanitizeScreenshotList(src.post),
+  };
 }
 
 function compressCoverImage(file, maxW, maxH, quality) {
@@ -10098,6 +10218,32 @@ const TalariaV8b = () => {
   ]);
   const [dashAddTradeScreenshots, setDashAddTradeScreenshots] = useState({pre:[], post:[]});
   const [dashAddTradeScreenshotSlot, setDashAddTradeScreenshotSlot] = useState("pre");
+  const [dashAddTradeScreenshotError, setDashAddTradeScreenshotError] = useState("");
+  const [screenshotUploadNotice, setScreenshotUploadNotice] = useState("");
+  const screenshotUploadNoticeTimerRef = useRef(null);
+  const notifyScreenshotUploadError = useCallback((message) => {
+    const text = String(message || "").trim();
+    if (!text) return;
+    setScreenshotUploadNotice(text);
+    setDashAddTradeScreenshotError(text);
+    if (screenshotUploadNoticeTimerRef.current) clearTimeout(screenshotUploadNoticeTimerRef.current);
+    screenshotUploadNoticeTimerRef.current = setTimeout(() => {
+      setScreenshotUploadNotice("");
+      screenshotUploadNoticeTimerRef.current = null;
+    }, 7000);
+  }, []);
+  const handleScreenshotFileUpload = useCallback((file, onDataUrl) => {
+    if (!file) return;
+    readScreenshotDataUrl(file)
+      .then((dataUrl) => {
+        setDashAddTradeScreenshotError("");
+        onDataUrl(dataUrl);
+      })
+      .catch((err) => notifyScreenshotUploadError(err instanceof Error ? err.message : String(err)));
+  }, [notifyScreenshotUploadError]);
+  useEffect(() => () => {
+    if (screenshotUploadNoticeTimerRef.current) clearTimeout(screenshotUploadNoticeTimerRef.current);
+  }, []);
   const [dashAddTradeCalendar, setDashAddTradeCalendar] = useState(null);
   const [dashAddTradeTimeMenu, setDashAddTradeTimeMenu] = useState(null);
   const [dashAddTradeTimeFormat, setDashAddTradeTimeFormat] = useState("24");
@@ -12601,7 +12747,8 @@ const TalariaV8b = () => {
     setDashLibraryAppliedSelection(applied);
     dashLibraryAppliedSelectionRef.current = applied;
     persistAppliedLibrarySource(applied);
-    setSessView("dashboard");
+    flushSync(() => setSessView("dashboard"));
+    syncV16ViewUrl("dashboard");
     syncV16SessionUrl(session.id);
   };
   const mapJournalAccountToSessionRow = (account) => {
@@ -13010,38 +13157,6 @@ const TalariaV8b = () => {
       return;
     }
     const updated = sessions.filter(s => s.id !== id);
-    setSessions(updated);
-    try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
-  };
-  const duplicateSession = (e, sess) => {
-    e?.stopPropagation?.();
-    if (isV16LiveBoot()) {
-      const cfg = sess?.config && typeof sess.config === "object" ? { ...sess.config } : {};
-      const session_type =
-        sess.tradingMode === "prop" || String(sess.sessionType || "").toLowerCase().includes("prop")
-          ? "propfirm"
-          : "personal";
-      fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: `Copy of ${sess.name || "Session"}`,
-          session_type,
-          config: cfg,
-        }),
-      })
-        .then((res) => {
-          if (!res.ok) throw new Error(String(res.status));
-          reloadEmbeddedV16Boot();
-        })
-        .catch((err) => {
-          window.alert(`Failed to duplicate session: ${err?.message || err}`);
-        });
-      return;
-    }
-    const copy = { ...sess, id: Date.now(), name: `Copy of ${sess.name}`, progress: 0, trades: 0, pnl: null, winRate: null, avgRR: null, createdAt: new Date().toISOString() };
-    const updated = [copy, ...sessions];
     setSessions(updated);
     try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
   };
@@ -14354,8 +14469,6 @@ const TalariaV8b = () => {
                     {label:"divider"},
                     {label:"Edit",      handler:e=>{openEditSession(e,ms);setSessActMenu(null);}, col:hasStarted?"rgba(255,255,255,0.3)":c.ts, disabled:hasStarted, sub:hasStarted?"started":null, danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
-                    {label:"Duplicate", handler:e=>{duplicateSession(e,ms);setSessActMenu(null);}, col:c.ts, disabled:false, danger:false,
-                      icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><rect x="8" y="8" width="13" height="13" stroke="currentColor" strokeWidth="1.7"/><path d="M3 16V3h13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>},
                     ...(isV16LiveBoot() ? [{label:"Seed trades", handler:()=>{openSessSeedModal(ms);setSessActMenu(null);}, col:c.gold, disabled:!!sessSeedBusy, sub:sessSeedBusy===ms.id?"…":"QA", danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M12 3v4M12 17v4M3 12h4M17 12h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.7"/></svg>}] : []),
                     {label:"Delete",    handler:e=>{deleteSession(e,ms.id);setSessActMenu(null);}, col:c.rd, disabled:false, danger:true,
@@ -18362,11 +18475,8 @@ const TalariaV8b = () => {
               const clean = [...new Set((Array.isArray(nextValues) ? nextValues : []).map(String).filter(Boolean))];
               const isBinaryScope = id === "direction" || id === "outcome";
               if (!clean.length) {
-                setDashTradeSectionEnabled(prev => {
-                  if (prev?.[id]) return prev;
-                  setValues([]);
-                  return {...prev, [id]:false};
-                });
+                setValues([]);
+                setDashTradeSectionEnabled(prev => ({...prev, [id]: false}));
                 return;
               }
               if (!isBinaryScope && clean.length >= allOptions.length) {
@@ -18505,10 +18615,9 @@ const TalariaV8b = () => {
                       const exists = current.includes(value);
                       const binaryScope = group.id === "direction" || group.id === "outcome";
                       if (binaryScope && (group.options || []).length === 2) {
-                        group.set([value]);
+                        group.set(exists ? [] : [value]);
                         return;
                       }
-                      if (exists && current.length <= 1) return;
                       const optionOrder = new Map((group.options || []).map((item,idx)=>[String(item.value), idx]));
                       const next = exists
                         ? current.filter(item=>item!==value)
@@ -18684,12 +18793,11 @@ const TalariaV8b = () => {
             const toggleDashTagValue = (slot, groupId, value) => {
               const setValues = slot === "pre" ? setDashPreTagGroupFilter : setDashPostTagGroupFilter;
               const setEnabled = slot === "pre" ? setDashPreTagGroupEnabled : setDashPostTagGroupEnabled;
-              setEnabled(prev=>({...prev, [groupId]:true}));
               setValues(prev=>{
                 const current = Array.isArray(prev?.[groupId]) ? prev[groupId].map(String) : [];
                 const exists = current.includes(String(value));
-                if (exists && current.length <= 1) return prev;
                 const next = exists ? current.filter(item=>item!==String(value)) : [...current, String(value)];
+                setEnabled(prevEnabled=>({...prevEnabled, [groupId]: next.length > 0}));
                 return {...prev, [groupId]:next};
               });
             };
@@ -29948,6 +30056,7 @@ const TalariaV8b = () => {
             setDashAddTradePostTags({});
             setDashAddTradeScreenshots({pre:[], post:[]});
             setDashAddTradeScreenshotSlot("pre");
+            setDashAddTradeScreenshotError("");
             setDashAddTradeExcursionOpen(false);
             let pinnedLiveJournalAccount = null;
             if (isDashLiveJournalAddTradeSource(source)) {
@@ -30127,38 +30236,40 @@ const TalariaV8b = () => {
               addTradeWarningKind:String(trade.sourceType || "").toLowerCase().includes("journal") ? "journal" : "backtest",
             };
             const draftBase = buildDashAddTradeDraft(source);
-            const parseDateTime = (dateTimeLike, fallbackDate="", fallbackTime="") => {
-              if (!dateTimeLike) return {date:fallbackDate, time:fallbackTime};
-              const raw = String(dateTimeLike);
-              const d = new Date(raw);
-              if (!Number.isNaN(d.getTime())) return {date:d.toISOString().slice(0, 10), time:d.toISOString().slice(11, 16)};
-              const match = raw.match(/(\d{4}-\d{2}-\d{2}).*?(\d{1,2}:\d{2})?/);
-              return {date:match?.[1] || fallbackDate, time:match?.[2] || fallbackTime};
-            };
+            const parseDateTime = (dateTimeLike, fallbackDate="", fallbackTime="") => parseDashTradeDateTimeParts(dateTimeLike, fallbackDate, fallbackTime);
             const normalizedRows = (rows, fallbackPrice, fallbackQty, prefix) => {
-              const list = Array.isArray(rows) ? rows : [];
-              const prepared = list.map((row, index) => ({
-                id:`${prefix}-${index + 1}`,
-                price:sanitizeDashAddTradePriceInput(String(row?.price ?? row?.entry ?? row?.exit ?? row?.target ?? row?.value ?? "")),
-                qty:sanitizeDashAddTradeLotInput(String(row?.qty ?? row?.size ?? row?.quantity ?? fallbackQty ?? "1")),
-              })).filter(row => row.price !== "" || row.qty !== "");
+              const list = parseDashTradeCollectionField(rows);
+              const fallback = sanitizeDashAddTradePriceInput(String(fallbackPrice ?? ""));
+              const prepared = list.map((row, index) => {
+                let price = readDashTradeRowPrice(row, prefix);
+                const qty = readDashTradeRowQty(row, fallbackQty);
+                if (!price && fallback) price = fallback;
+                return {
+                  id:`${prefix}-${index + 1}`,
+                  price,
+                  qty,
+                };
+              }).filter(row => row.price !== "" || row.qty !== "");
               if (prepared.length) return prepared.slice(0, 5);
               return [{
                 id:`${prefix}-1`,
-                price:sanitizeDashAddTradePriceInput(String(fallbackPrice ?? "")),
-                qty:sanitizeDashAddTradeLotInput(String(fallbackQty ?? "1")),
+                price:fallback,
+                qty:readDashTradeRowQty(null, fallbackQty),
               }];
             };
             const entryStamp = parseDateTime(trade.entryTime || trade.openTime || trade.entryDate || trade.date, draftBase.date, draftBase.time);
-            const exitStamp = parseDateTime(trade.closeTime || trade.exitDate || trade.exitTime, "", "");
+            const exitStamp = parseDateTime(trade.closeTime || trade.lastExitTime || trade.exitTime || trade.exitDate, "", "");
             const side = resolveDashTradeSideLabel(trade, draftBase.side || "Long");
             const symbol = String(trade.symbol || trade.ticker || draftBase.symbol || "").toUpperCase();
             const market = trade.market || trade.asset_class || draftBase.assetClass;
             const qty = trade.quantity || trade.positionSize || trade.position_size || trade.size || "1";
-            const draftStopLoss = sanitizeDashAddTradePriceInput(String(trade.stopLoss ?? trade.planned_sl ?? trade.stop_loss ?? trade.sl ?? draftBase.stopLoss ?? ""));
-            const entryRowsForDraft = normalizedRows(trade.entries, trade.entryPrice ?? trade.entry, qty, "entry");
+            const entryPriceFallback = trade.entryPrice ?? trade.entry ?? trade.openPrice ?? trade.array_base_price ?? trade.open_price;
+            const targetPriceFallback = trade.takeProfit ?? trade.target ?? trade.targetPrice ?? trade.tp ?? trade.initial_takeProfit;
+            const exitPriceFallback = trade.exitPrice ?? trade.exit ?? trade.closePrice ?? trade.close_price;
+            const draftStopLoss = sanitizeDashAddTradePriceInput(String(trade.stopLoss ?? trade.planned_sl ?? trade.stop_loss ?? trade.sl ?? trade.initial_sl ?? draftBase.stopLoss ?? ""));
+            const entryRowsForDraft = normalizedRows(trade.entries ?? trade.entryRows ?? trade.fills, entryPriceFallback, qty, "entry");
             const targetRowsForDraft = (() => {
-              const raw = normalizedRows(trade.planned_targets || trade.targets, trade.takeProfit ?? trade.target ?? trade.tp, qty, "target");
+              const raw = normalizedRows(trade.planned_targets || trade.targets || trade.targetRows || trade.takeProfits, targetPriceFallback, qty, "target");
               const entrySized = entryRowsForDraft.map(row => ({price: Number(row.price), qty: Number(row.qty)}));
               const targetSized = raw.map(row => ({price: Number(row.price), qty: Number(row.qty)}));
               const clamped = clampDashTargetRowsToEntrySize(entrySized, targetSized, qty);
@@ -30171,7 +30282,7 @@ const TalariaV8b = () => {
                 })(),
               }));
             })();
-            const exitRowsForDraft = normalizedRows(trade.partial_exits || trade.exits, trade.exitPrice ?? trade.exit, qty, "exit");
+            const exitRowsForDraft = normalizedRows(trade.partial_exits || trade.exits || trade.exitRows || trade.partialCloses || trade.actual_exits, exitPriceFallback, qty, "exit");
             const draftWeightedPrice = rows => {
               const valid = (Array.isArray(rows) ? rows : []).map(row => ({price:Number(row.price), qty:Number(row.qty)})).filter(row => Number.isFinite(row.price));
               if (!valid.length) return null;
@@ -30227,7 +30338,9 @@ const TalariaV8b = () => {
               time:entryStamp.time || draftBase.time,
               exitDate:exitStamp.date || "",
               exitTime:exitStamp.time || "",
-              exitTimingEnabled:!!(exitStamp.date && exitStamp.time),
+              exitTimingEnabled:trade.exitTimingEnabled != null
+                ? !!trade.exitTimingEnabled
+                : !!(exitStamp.date && exitStamp.time),
               setup_tag:(() => {
                 const label = String(trade.setup_tag || trade.setup || "").trim();
                 if (isDashAddTradeDiscretionStrategyTrade(trade)) return "";
@@ -30310,13 +30423,14 @@ const TalariaV8b = () => {
               return enrichedSource;
             })();
             setDashAddTradeEditorSource(editorSource);
-            setDashAddTradeDraft(sanitizeDashAddTradeDraftNumericFields(draftWithSnapshot));
+            setDashAddTradeDraft(ensureDashAddTradeExitAfterEntry(sanitizeDashAddTradeDraftNumericFields(draftWithSnapshot)));
             setDashAddTradeEditorPage("trade");
             setDashAddTradeValidationError("");
             setDashAddTradePreTags({});
             setDashAddTradePostTags({});
-            setDashAddTradeScreenshots(trade.screenshots && typeof trade.screenshots === "object" ? trade.screenshots : {pre:[], post:[]});
+            setDashAddTradeScreenshots(sanitizeScreenshotMap(trade.screenshots && typeof trade.screenshots === "object" ? trade.screenshots : {pre:[], post:[]}));
             setDashAddTradeScreenshotSlot("pre");
+            setDashAddTradeScreenshotError("");
             setDashAddTradeExcursionOpen(false);
             setDashAddTradeEditorOpen(true);
           };
@@ -30389,14 +30503,33 @@ const TalariaV8b = () => {
           };
           const ensureDashAddTradeExitAfterEntry = draft => {
             if (!draft) return draft;
-            const entryDate = draft.date || "";
-            const entryTime = draft.time || "00:00";
-            const exitDate = draft.exitDate || entryDate;
-            const exitTime = draft.exitTime || entryTime;
+            const entryDate = String(draft.date || "").slice(0, 10);
+            const entryTime = normalizeDashAddTradeClock(draft.time || "00:00");
+            let exitDate = String(draft.exitDate || entryDate).slice(0, 10);
+            let exitTime = String(draft.exitTime || "").trim()
+              ? normalizeDashAddTradeClock(draft.exitTime)
+              : entryTime;
             const entryMs = dashAddTradeDateTimeMs(entryDate, entryTime);
-            const exitMs = dashAddTradeDateTimeMs(exitDate, exitTime);
-            if (entryMs == null || exitMs == null || exitMs >= entryMs) return draft;
-            return draft;
+            let exitMs = dashAddTradeDateTimeMs(exitDate, exitTime);
+            if (entryMs == null) return draft;
+            if (exitMs == null) {
+              return {...draft, exitDate: exitDate || entryDate, exitTime: entryTime, exitTimingEnabled: true};
+            }
+            if (exitMs >= entryMs) {
+              const changed = exitDate !== draft.exitDate || exitTime !== draft.exitTime;
+              return changed ? {...draft, exitDate, exitTime} : draft;
+            }
+            if (exitDate === entryDate) {
+              return {...draft, exitDate: entryDate, exitTime: entryTime, exitTimingEnabled: true};
+            }
+            return {...draft, exitDate: entryDate, exitTime: entryTime, exitTimingEnabled: true};
+          };
+          const navigateDashAddTradeEditorPage = pageId => {
+            setDashAddTradeCalendar(null);
+            setDashAddTradeTimeMenu(null);
+            setDashAddTradeDateInputDraft({});
+            setDashAddTradeTimeInputDraft({});
+            setDashAddTradeEditorPage(pageId);
           };
           const dashAddTradeHasExitTiming = draft => {
             if (!draft) return false;
@@ -30422,7 +30555,12 @@ const TalariaV8b = () => {
             const clampTimeForDate = (dateField, timeField) => {
               const dateIso = String(next[dateField] || "").slice(0, 10);
               if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return;
-              let time = normalizeDashAddTradeClock(next[timeField] || "00:00");
+              const rawTime = String(next[timeField] || "").trim();
+              let time = rawTime
+                ? normalizeDashAddTradeClock(rawTime)
+                : (timeField === "exitTime" && dashAddTradeHasExitTiming(next)
+                  ? normalizeDashAddTradeClock(next.time || "00:00")
+                  : normalizeDashAddTradeClock("00:00"));
               let ms = dashAddTradeDateTimeMs(dateIso, time);
               const maxMs = dateIso === todayIso
                 ? Date.now()
@@ -31442,6 +31580,17 @@ const TalariaV8b = () => {
               setDashAddTradeEditorPage("trade");
               return;
             }
+            const oversizedScreenshot = ["pre", "post"].flatMap((slot) =>
+              (dashAddTradeScreenshots?.[slot] || []).map((src, index) => ({ slot, index, src }))
+            ).find((item) => !validateScreenshotDataUrl(item.src).ok);
+            if (oversizedScreenshot) {
+              setDashAddTradeValidationError(dashTxt(
+                "One or more screenshots exceed the 2 MB limit. Remove them and upload smaller images.",
+                "تتجاوز إحدى الصور أو أكثر حد ٢ ميجابايت. احذفها وارفع صورا أصغر."
+              ));
+              setDashAddTradeEditorPage("notes");
+              return;
+            }
             const calculated = validation.calculated || calcDashAddTradeStats(draftToSave);
             const currency = calcDashManualCurrency(dashAddTradeEditorSource, calculated, draftToSave);
             const instrumentSpec = getDashInstrumentSpec(dashAddTradeEditorSource, dashAddTradeDraft.symbol, dashAddTradeDraft.assetClass);
@@ -31460,7 +31609,8 @@ const TalariaV8b = () => {
             );
             const resolvedPreTagState = normalizeDashAddTradeSingleTagState(addTradePreTagDefs, dashAddTradePreTags);
             const resolvedPostTagState = normalizeDashAddTradeSingleTagState(addTradePostTagDefs, dashAddTradePostTags);
-            const closed = dashAddTradeHasExitTiming(dashAddTradeDraft) && calculated.totalSize > 0 && calculated.exitedSize > 0 && calculated.openSize <= 0.000001;
+            const hasExitActivity = dashAddTradeHasExitTiming(dashAddTradeDraft) && calculated.exitedSize > 0;
+            const closed = hasExitActivity && calculated.totalSize > 0 && calculated.openSize <= 0.000001;
             const isJournalManualTrade = isDashJournalAddTradeSource(dashAddTradeEditorSource);
             const sourceRequiresIntegrityWarning = !!(dashAddTradeEditorSource.requiresAddTradeIntegrityWarning || dashAddTradeEditorSource.isGreenStatus);
             const selectedDraftDemons = btDashNormalizeDemons(dashAddTradeDraft.demons || []);
@@ -31489,12 +31639,15 @@ const TalariaV8b = () => {
               || String(dashAddTradeEditorSource.key || "").replace(/^(session|strategySession):/, "")
               || null;
             const entryDateTime = `${dashAddTradeDraft.date || ""}T${dashAddTradeDraft.time || "00:00"}`;
-            const exitDateTime = closed ? `${dashAddTradeDraft.exitDate || ""}T${dashAddTradeDraft.exitTime || "00:00"}` : "";
+            const exitDateTime = hasExitActivity
+              ? `${dashAddTradeDraft.exitDate || dashAddTradeDraft.date || ""}T${dashAddTradeDraft.exitTime || dashAddTradeDraft.time || "00:00"}`
+              : "";
             const closeTime = closed && Number.isFinite(Date.parse(exitDateTime)) ? new Date(exitDateTime).toISOString() : null;
+            const lastExitTime = hasExitActivity && !closed && Number.isFinite(Date.parse(exitDateTime)) ? new Date(exitDateTime).toISOString() : null;
             const entryTime = Number.isFinite(Date.parse(entryDateTime)) ? new Date(entryDateTime).toISOString() : null;
             const [hh, mm] = String(dashAddTradeDraft.time || "00:00").split(":").map(Number);
             const manualTradeId = dashAddTradeDraft.trade_id || `manual-${Date.now().toString(36)}`;
-            const manualOutcome = closed && currency.net != null
+            const manualOutcome = hasExitActivity && currency.net != null
               ? (currency.net > 0 ? "Win" : currency.net < 0 ? "Loss" : "Breakeven")
               : "";
             const manualTrade = {
@@ -31525,9 +31678,11 @@ const TalariaV8b = () => {
               date:closed ? dashAddTradeDraft.exitDate : dashAddTradeDraft.date,
               entryDate:dashAddTradeDraft.date,
               entryTime,
-              exitDate:closed ? dashAddTradeDraft.exitDate : null,
-              exitTime:closed ? dashAddTradeDraft.exitTime : null,
+              exitDate:hasExitActivity ? dashAddTradeDraft.exitDate : null,
+              exitTime:hasExitActivity ? dashAddTradeDraft.exitTime : null,
+              exitTimingEnabled:hasExitActivity,
               closeTime,
+              lastExitTime,
               timeMinutes:Number.isFinite(hh) ? hh * 60 + (Number.isFinite(mm) ? mm : 0) : null,
               market:instrumentSpec.assetClass || dashAddTradeDraft.assetClass || inferDashAssetClass(dashAddTradeEditorSource, dashAddTradeDraft.symbol),
               asset_class:instrumentSpec.assetClass || dashAddTradeDraft.assetClass || inferDashAssetClass(dashAddTradeEditorSource, dashAddTradeDraft.symbol),
@@ -31563,14 +31718,14 @@ const TalariaV8b = () => {
               risk_points:calculated.riskPerUnit,
               plannedRR:hasStop ? calculated.plannedRrValue : null,
               planned_rr:hasStop ? calculated.plannedRrValue : null,
-              actualRR:closed && hasStop ? calculated.rrValue : null,
-              actual_rr_net:closed && hasStop ? calculated.rrValue : null,
-              rMultiple:closed && hasStop ? calculated.rrValue : null,
-              rr:closed && hasStop ? calculated.rrValue : null,
-              pnl:closed ? currency.net : 0,
-              pnl_currency_gross:closed ? currency.gross : null,
-              pnl_currency_net:closed ? currency.net : 0,
-              pnl_points:closed ? calculated.pnlValue : null,
+              actualRR:hasExitActivity && hasStop ? calculated.rrValue : null,
+              actual_rr_net:hasExitActivity && hasStop ? calculated.rrValue : null,
+              rMultiple:hasExitActivity && hasStop ? calculated.rrValue : null,
+              rr:hasExitActivity && hasStop ? calculated.rrValue : null,
+              pnl:hasExitActivity ? currency.net : 0,
+              pnl_currency_gross:hasExitActivity ? currency.gross : null,
+              pnl_currency_net:hasExitActivity ? currency.net : 0,
+              pnl_points:hasExitActivity ? calculated.pnlValue : null,
               outcome:manualOutcome,
               result:manualOutcome,
               tradeOutcome:manualOutcome,
@@ -31584,7 +31739,7 @@ const TalariaV8b = () => {
               planned_risk_amount:autoRiskAmount,
               cost_friction_total:currency.frictionTotal,
               costs_estimated:false,
-              duration:closed ? calculated.durationMinutes : null,
+              duration:hasExitActivity ? calculated.durationMinutes : null,
               durationText:calculated.durationText,
               positionSize:calculated.totalSize,
               position_size:calculated.totalSize,
@@ -33166,7 +33321,7 @@ const TalariaV8b = () => {
                 const addTradePageIndex = Math.max(0, addTradePages.findIndex(page => page.id === resolvedAddTradeEditorPage));
                 const addTradeGoToPageIndex = index => {
                   const nextPage = addTradePages[Math.max(0, Math.min(addTradePages.length - 1, index))];
-                  if (nextPage && nextPage.id !== resolvedAddTradeEditorPage) setDashAddTradeEditorPage(nextPage.id);
+                  if (nextPage && nextPage.id !== resolvedAddTradeEditorPage) navigateDashAddTradeEditorPage(nextPage.id);
                 };
                 const addTradeCanGoNextPage = addTradePageIndex < addTradePages.length - 1;
                 const addTradeTabWidth = 142;
@@ -34943,6 +35098,9 @@ const TalariaV8b = () => {
                   if (raw == null) return;
                   const parsed = parseAddTradeTimeInput(raw);
                   if (parsed) updateDashAddTradeDraft(field, parsed);
+                  else if (field === "exitTime") {
+                    setDashAddTradeDraft(prev => prev ? ensureDashAddTradeExitAfterEntry(prev) : prev);
+                  }
                   setDashAddTradeTimeInputDraft(prev => {
                     const next = {...prev};
                     delete next[field];
@@ -35119,7 +35277,7 @@ const TalariaV8b = () => {
                   const arrowActive = index < addTradePageIndex;
                   return (
                     <React.Fragment key={page.id}>
-                      <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-pressed={active} onPointerDown={libraryPointerActivate(()=>setDashAddTradeEditorPage(page.id))} onKeyDown={libraryKeyActivate(()=>setDashAddTradeEditorPage(page.id))}
+                      <div className="tlr-library-action tlr-add-trade-soft-action" role="button" tabIndex={0} aria-pressed={active} onPointerDown={libraryPointerActivate(()=>navigateDashAddTradeEditorPage(page.id))} onKeyDown={libraryKeyActivate(()=>navigateDashAddTradeEditorPage(page.id))}
                         style={{position:"relative",zIndex:1,height:34,width:addTradeTabWidth,flex:`0 0 ${addTradeTabWidth}px`,padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"center",color:active?c.acL:c.ts,background:"transparent",border:"none",fontSize:9,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,boxSizing:"border-box","--tlr-add-hover-bg":"rgba(38,67,247,0.10)","--tlr-add-hover-color":c.acL,"--tlr-add-hover-border":"transparent","--tlr-add-hover-shadow":"none","--tlr-add-active-bg":"rgba(38,67,247,0.14)","--tlr-add-active-color":c.acL,"--tlr-add-active-border":"transparent","--tlr-add-active-shadow":"none"}}>
                         {page.label}
                       </div>
@@ -36339,7 +36497,7 @@ const TalariaV8b = () => {
                             style={{width:108,height:70,border:`1px dashed ${canAdd?accentTint.border:c.br}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:canAdd?accent:c.tm,opacity:canAdd?1:0.46,background:canAdd?"rgba(255,255,255,0.012)":"rgba(255,255,255,0.006)",boxSizing:"border-box",flex:"0 0 108px","--tlr-add-hover-bg":accentTint.hover,"--tlr-add-hover-color":accent,"--tlr-add-hover-border":accentTint.hoverBorder,"--tlr-add-hover-shadow":`0 0 12px ${accentTint.shadow}`,"--tlr-add-active-bg":accentTint.active,"--tlr-add-active-color":accent,"--tlr-add-active-border":accentTint.hoverBorder}}>
                             <I n="plus" s={18} cl="currentColor"/>
                             <span style={{fontSize:8.2,fontWeight:900,letterSpacing:"0.052em",textTransform:"uppercase",textAlign:"center",lineHeight:1.1}}>{addLabel}</span>
-                            {canAdd && <span style={{fontSize:7.1,fontWeight:850,color:addTradeReadableMuted,letterSpacing:"0.04em",textTransform:"uppercase"}}>{dashTxt("PNG / JPG","PNG / JPG")}</span>}
+                            {canAdd && <span style={{fontSize:7.1,fontWeight:850,color:addTradeReadableMuted,letterSpacing:"0.04em",textTransform:"uppercase"}}>{dashTxt(SCREENSHOT_UPLOAD_FORMAT_HINT, "PNG أو JPG · حد ٢ ميجابايت")}</span>}
                           </div>
                         )}
                         {!imgs.length && (
@@ -36567,6 +36725,9 @@ const TalariaV8b = () => {
                                 style={{width:"100%",height:148,marginTop:9,resize:"none",background:"rgba(255,255,255,0.012)",border:`1px solid ${c.brH}`,outline:"none",color:c.tx,fontSize:11.3,fontWeight:650,fontFamily:F,lineHeight:1.45,padding:"10px 11px",boxSizing:"border-box"}}/>
                             </div>
                             {sectionSeparator()}
+                            {dashAddTradeScreenshotError ? (
+                              <div style={{padding:"7px 9px",border:`1px solid ${c.rd}55`,background:"rgba(255,74,108,0.08)",color:c.rd,fontSize:9.2,fontWeight:850,lineHeight:1.35,fontFamily:F}}>{dashAddTradeScreenshotError}</div>
+                            ) : null}
                             <div style={{minHeight:0,display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:12}}>
                               {screenshotPanel("pre", dashTxt("Pre Trade Screenshots","صور قبل الصفقة"))}
                               {screenshotPanel("post", dashTxt("Post Trade Screenshots","صور بعد الصفقة"), addTradeIsOpen)}
@@ -36609,8 +36770,8 @@ const TalariaV8b = () => {
                           </div>
                         </div>
                       </div>
-                      <input ref={dashAddTradeFileRef} type="file" accept="image/*" style={{display:"none"}}
-                        onChange={e=>{const file=e.target.files?.[0];if(!file)return;const slot=dashAddTradeScreenshotSlot||"pre";const current=dashAddTradeScreenshots?.[slot]||[];if(current.length>=addTradeScreenshotLimit){e.target.value="";return;}const reader=new FileReader();reader.onload=ev=>setDashAddTradeScreenshots(prev=>({...prev,[slot]:[...(prev?.[slot]||[]), ev.target.result].slice(0,addTradeScreenshotLimit)}));reader.readAsDataURL(file);e.target.value="";}}/>
+                      <input ref={dashAddTradeFileRef} type="file" accept={SCREENSHOT_UPLOAD_ACCEPT} style={{display:"none"}}
+                        onChange={e=>{const file=e.target.files?.[0];e.target.value="";if(!file)return;const slot=dashAddTradeScreenshotSlot||"pre";const current=dashAddTradeScreenshots?.[slot]||[];if(current.length>=addTradeScreenshotLimit)return;handleScreenshotFileUpload(file,(dataUrl)=>setDashAddTradeScreenshots(prev=>({...prev,[slot]:[...(prev?.[slot]||[]),dataUrl].slice(0,addTradeScreenshotLimit)})));}}/>
                     </div>
                   </div>
                 );
@@ -48386,21 +48547,19 @@ const TalariaV8b = () => {
 
 
           {/* Hidden file inputs for screenshots — display:none so no grid cell consumed */}
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display:"none" }}
+          <input ref={fileInputRef} type="file" accept={SCREENSHOT_UPLOAD_ACCEPT} style={{ display:"none" }}
             onChange={e => {
-              const file = e.target.files[0]; if(!file) return;
-              const reader = new FileReader();
-              reader.onload = ev => setScreenshots(ss => [...ss, {id:Date.now(), dataUrl:ev.target.result, name:file.name}]);
-              reader.readAsDataURL(file);
+              const file = e.target.files[0];
               e.target.value = "";
+              if(!file) return;
+              handleScreenshotFileUpload(file, (dataUrl) => setScreenshots(ss => [...ss, {id:Date.now(), dataUrl, name:file.name}]));
             }}/>
-          <input ref={replaceInputRef} type="file" accept="image/*" style={{ display:"none" }}
+          <input ref={replaceInputRef} type="file" accept={SCREENSHOT_UPLOAD_ACCEPT} style={{ display:"none" }}
             onChange={e => {
-              const file = e.target.files[0]; if(!file) return;
-              const reader = new FileReader();
-              reader.onload = ev => setScreenshots(ss => ss.map(s => s.id===replaceTargetId ? {...s, dataUrl:ev.target.result, name:file.name} : s));
-              reader.readAsDataURL(file);
+              const file = e.target.files[0];
               e.target.value = "";
+              if(!file) return;
+              handleScreenshotFileUpload(file, (dataUrl) => setScreenshots(ss => ss.map(s => s.id===replaceTargetId ? {...s, dataUrl, name:file.name} : s)));
             }}/>
 
           {/* Pre-Trade Tags */}
@@ -49585,16 +49744,16 @@ const TalariaV8b = () => {
               <B hk="tc-cancel" onClick={()=>setTradeCard(null)}>Cancel</B>
               <B primary hk="tc-save" onClick={saveCard}>Save</B>
             </div>
-            <input ref={tcFileRef} type="file" accept="image/*" style={{display:"none"}}
-              onChange={e=>{const f=e.target.files[0];if(!f)return;const reader=new FileReader();reader.onload=ev=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[tcSsSlot]=[...(cur[tcSsSlot]||[]),ev.target.result];n[r.id]=cur;return n;});reader.readAsDataURL(f);e.target.value="";}}/>
+            <input ref={tcFileRef} type="file" accept={SCREENSHOT_UPLOAD_ACCEPT} style={{display:"none"}}
+              onChange={e=>{const f=e.target.files[0];e.target.value="";if(!f)return;handleScreenshotFileUpload(f,(dataUrl)=>setTradeScreenshots(prev=>{const n={...prev};const cur={...(n[r.id]||{})};cur[tcSsSlot]=[...(cur[tcSsSlot]||[]),dataUrl];n[r.id]=cur;return n;}));}}/>
           </div>
         </div>
         );
       })()}
 
       {/* ── Trade Activation Journal Popup ── */}
-      <input ref={tapFileRef} type="file" accept="image/*" style={{display:"none"}}
-        onChange={e=>{const f=e.target.files[0];if(!f||tapFileSlot===null)return;const reader=new FileReader();reader.onload=ev=>{setTapScreenshots(prev=>{const n=[...prev];n[tapFileSlot]=ev.target.result;return n;});};reader.readAsDataURL(f);e.target.value="";}}/>
+      <input ref={tapFileRef} type="file" accept={SCREENSHOT_UPLOAD_ACCEPT} style={{display:"none"}}
+        onChange={e=>{const f=e.target.files[0];e.target.value="";if(!f||tapFileSlot===null)return;handleScreenshotFileUpload(f,(dataUrl)=>{setTapScreenshots(prev=>{const n=[...prev];n[tapFileSlot]=dataUrl;return n;});});}}/>
       {tradeActPopup&&(()=>{
         const r=tradeActPopup;
         const isLong=r.side==="LONG";
@@ -49834,6 +49993,12 @@ const TalariaV8b = () => {
         </div>
         );
       })()}
+
+      {screenshotUploadNotice ? (
+        <div style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:100010,maxWidth:"min(92vw, 520px)",padding:"10px 14px",border:"1px solid rgba(255,74,108,0.45)",background:"rgba(24,8,14,0.96)",color:"#ff8a9a",fontSize:11,fontWeight:800,lineHeight:1.4,fontFamily:F,boxShadow:"0 12px 36px rgba(0,0,0,0.55)",textAlign:"center",pointerEvents:"none"}}>
+          {screenshotUploadNotice}
+        </div>
+      ) : null}
 
       {viewingScreenshot&&(
         <div onClick={()=>setViewingScreenshot(null)}
