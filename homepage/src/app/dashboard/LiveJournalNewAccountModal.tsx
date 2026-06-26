@@ -25,7 +25,12 @@ import {
 const F = "'Exo 2', sans-serif";
 
 const MARKETS = ["Forex", "Futures", "Stocks", "Crypto", "Indices"];
-const PROP_MARKETS = ["Forex", "Futures"];
+const PROP_CHALLENGE_MARKETS = ["Forex", "Futures"];
+const PROP_FUNDED_MARKETS = ["Forex", "Futures", "Crypto"];
+
+function propMarketsForSubtype(subtype: string): string[] {
+  return subtype === "Funded" ? PROP_FUNDED_MARKETS : PROP_CHALLENGE_MARKETS;
+}
 const PROP_SUBTYPES = ["Challenge", "Funded"];
 const PROP_BALANCE_PRESETS = ["10000", "25000", "50000", "100000", "200000"];
 const FUTURES_BALANCE_PRESETS = ["25000", "50000", "100000", "150000"];
@@ -131,7 +136,7 @@ export function LiveJournalNewAccountModal({
   const activeLimitBucket =
     journalLimits?.[effectiveType === "prop" ? "prop" : "personal"] ?? null;
   const parsedBalance = parseBalanceInput(startingBalance) ?? (effectiveType === "prop" ? 50000 : 10000);
-  const accountMarkets = effectiveType === "prop" ? PROP_MARKETS : MARKETS;
+  const accountMarkets = effectiveType === "prop" ? propMarketsForSubtype(accountSubtype) : MARKETS;
   const STEPS = effectiveType === "prop" ? PROP_WIZARD_STEPS : PERSONAL_WIZARD_STEPS;
   const stepCount = STEPS.length;
   const currentStep = STEPS.find((s) => s.id === wizardStep) ?? STEPS[0];
@@ -279,8 +284,10 @@ export function LiveJournalNewAccountModal({
   }, [effectiveType, accountSubtype]);
 
   React.useEffect(() => {
-    if (effectiveType === "prop" && !PROP_MARKETS.includes(market)) setMarket("Forex");
-  }, [effectiveType, market]);
+    if (effectiveType !== "prop") return;
+    const allowed = propMarketsForSubtype(accountSubtype);
+    if (!allowed.includes(market)) setMarket("Forex");
+  }, [effectiveType, market, accountSubtype]);
 
   React.useEffect(() => {
     if (effectiveType === "prop" && market.toLowerCase() === "futures") {

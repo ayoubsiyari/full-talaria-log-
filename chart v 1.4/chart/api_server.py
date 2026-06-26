@@ -20013,8 +20013,19 @@ async def list_trading_sessions(request: Request):
 
 @app.get("/api/sessions/kpis")
 async def list_all_sessions_kpis(request: Request):
-    """Dashboard batch: one request instead of N× GET /api/sessions/{id}/analytics."""
+    """Dashboard batch: one request instead of N× GET /api/sessions/{id}/analytics.
+
+    Cached per-user in Redis (versioned, invalidated on any journal/session write) so
+    repeated dashboard loads and view switches don't recompute analytics for every
+    session on every request. Falls back to live computation when Redis is unavailable.
+    """
     user = _require_paid_journal_user(request)
+
+    version = chart_redis.dashboard_get_version(user.id)
+    cached = chart_redis.dashboard_kpis_get_cache(user.id, version)
+    if isinstance(cached, dict) and isinstance(cached.get("kpis_by_session_id"), dict):
+        return cached
+
     db = SessionLocal()
     try:
         sessions = (
@@ -20040,7 +20051,9 @@ async def list_all_sessions_kpis(request: Request):
             sanitized = _sanitize_for_json(analytics)
             k = sanitized.get("kpis") if isinstance(sanitized.get("kpis"), dict) else {}
             kpis_by_id[str(s.id)] = k
-        return {"kpis_by_session_id": kpis_by_id}
+        payload = {"kpis_by_session_id": kpis_by_id}
+        chart_redis.dashboard_kpis_set_cache(user.id, version, payload, ttl_sec=300)
+        return payload
     finally:
         db.close()
 
@@ -20077,6 +20090,7 @@ async def create_trading_session(payload: TradingSessionCreateIn, request: Reque
         _verify_session_count_after_flush(db, effective_user)
         db.commit()
         db.refresh(s)
+        chart_redis.dashboard_bump_version(s.user_id)
         return {"session": _session_public_dict(s)}
     except HTTPException:
         db.rollback()
@@ -20242,6 +20256,7 @@ async def import_trading_session_journal_csv(
         st.state_json = new_state_json
         db.commit()
         db.refresh(st)
+        chart_redis.dashboard_bump_version(s.user_id)
         journal_len = len(merged)
         warning = None
         if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
@@ -20367,6 +20382,7 @@ async def seed_trading_session_demo_trades(
         st.state_json = new_state_json
         db.commit()
         db.refresh(st)
+        chart_redis.dashboard_bump_version(s.user_id)
         warning = None
         if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
             warning = (
@@ -20543,6 +20559,7 @@ async def upsert_trading_session_journal_trade(
 
         st.state_json = json.dumps(state, separators=(",", ":"))
         db.commit()
+        chart_redis.dashboard_bump_version(s.user_id)
         client_trade_id = sjs.journal_trade_client_id(trade)
         sql_row = (
             db.query(TradingSessionJournalTrade)
@@ -20695,6 +20712,7 @@ async def patch_trading_session_state(session_id: int, request: Request):
         st.state_json = new_state_json
         db.commit()
         db.refresh(st)
+        chart_redis.dashboard_bump_version(s.user_id)
         resp = {"success": True, "size_bytes": new_size}
         if warning:
             resp["warning"] = warning
@@ -20789,8 +20807,10 @@ async def delete_trading_session(session_id: int, request: Request):
             raise HTTPException(status_code=404, detail="Session not found")
         if not _can_access_trading_session(user, s):
             raise HTTPException(status_code=403, detail="Forbidden")
+        owner_id = s.user_id
         if not _purge_trading_session_rows(db, session_id):
             raise HTTPException(status_code=404, detail="Session not found")
+        chart_redis.dashboard_bump_version(owner_id)
         return {"success": True}
     except HTTPException:
         raise

@@ -24,6 +24,8 @@ _WHATIF_WAKE_LIST = f"{KEY_PREFIX}whatif:wake"
 _WHATIF_JOB_PREFIX = f"{KEY_PREFIX}whatif:job:"
 _WHATIF_CACHE_PREFIX = f"{KEY_PREFIX}whatif:cache:"
 _NEWS_HIST_CACHE_PREFIX = f"{KEY_PREFIX}news:hist:"
+_DASH_KPIS_PREFIX = f"{KEY_PREFIX}dash:kpis:"
+_DASH_VER_PREFIX = f"{KEY_PREFIX}dash:ver:"
 
 _pool = None
 _client: Redis | None = None
@@ -256,6 +258,57 @@ def news_hist_set_cache(cache_key: str, payload: dict, ttl_sec: int) -> None:
         if len(body) > 4_000_000:
             return
         c.setex(f"{_NEWS_HIST_CACHE_PREFIX}{cache_key}", max(300, int(ttl_sec)), body)
+    except Exception:
+        pass
+
+
+def dashboard_get_version(user_id: int) -> int:
+    """Per-user data version for dashboard caches. Bumped on any journal/session write.
+
+    Returns 0 when Redis is unavailable so callers can still build a (best-effort) key.
+    """
+    c = get_client()
+    if c is None:
+        return 0
+    try:
+        raw = c.get(f"{_DASH_VER_PREFIX}{int(user_id)}")
+        if raw is None:
+            return 0
+        return int(raw)
+    except Exception:
+        return 0
+
+
+def dashboard_bump_version(user_id: int) -> None:
+    """Invalidate cached dashboard payloads for a user by incrementing their version."""
+    c = get_client()
+    if c is None:
+        return
+    try:
+        c.incr(f"{_DASH_VER_PREFIX}{int(user_id)}")
+    except Exception:
+        pass
+
+
+def dashboard_kpis_get_cache(user_id: int, version: int) -> dict | None:
+    c = get_client()
+    if c is None:
+        return None
+    try:
+        return _json_load(c.get(f"{_DASH_KPIS_PREFIX}{int(user_id)}:{int(version)}"))
+    except Exception:
+        return None
+
+
+def dashboard_kpis_set_cache(user_id: int, version: int, payload: dict, ttl_sec: int) -> None:
+    c = get_client()
+    if c is None:
+        return
+    try:
+        body = json.dumps(payload, separators=(",", ":"))
+        if len(body) > 8_000_000:
+            return
+        c.setex(f"{_DASH_KPIS_PREFIX}{int(user_id)}:{int(version)}", max(60, int(ttl_sec)), body)
     except Exception:
         pass
 
