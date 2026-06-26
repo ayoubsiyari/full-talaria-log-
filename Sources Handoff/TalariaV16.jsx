@@ -8704,6 +8704,12 @@ function btDashComputeMetricsUncached(session, filters = {}) {
     }
     return true;
   });
+  rows = [...rows].sort((a, b) => {
+    const da = btDashTradeDateMs(a) ?? 0;
+    const db = btDashTradeDateMs(b) ?? 0;
+    if (da !== db) return da - db;
+    return String(a.id ?? a.trade_id ?? a.tradeId ?? "").localeCompare(String(b.id ?? b.trade_id ?? b.tradeId ?? ""));
+  });
   const isManualTrade = trade => trade?.is_manual === true || trade?.manual === true || trade?.data_source === "manual";
   const excursionRows = rows.filter(trade => {
     if (isManualTrade(trade)) return false;
@@ -28813,8 +28819,19 @@ const TalariaV8b = () => {
                   {value:Number(ds?.capital) || 0},
                   {value:Number(metrics?.endingBalance) || ((Number(ds?.capital) || 0) + (Number(metrics?.totalPnl) || 0))},
                 ];
-              const firstKnownDate = tradesForPulse.map(tradeDateValue).find(Boolean) || ds?.startDate || ds?.createdAt || ds?.date;
-              const lastKnownDate = [...tradesForPulse].reverse().map(tradeDateValue).find(Boolean) || ds?.endDate || ds?.updatedAt || firstKnownDate;
+              const pulseTradeDateEntries = tradesForPulse
+                .map(trade => {
+                  const raw = tradeDateValue(trade);
+                  const ms = parsePulseDate(raw);
+                  return raw && ms != null ? {raw, ms} : null;
+                })
+                .filter(Boolean);
+              const firstKnownDate = pulseTradeDateEntries.length
+                ? pulseTradeDateEntries.reduce((min, entry) => entry.ms < min.ms ? entry : min).raw
+                : ds?.startDate || ds?.createdAt || ds?.date;
+              const lastKnownDate = pulseTradeDateEntries.length
+                ? pulseTradeDateEntries.reduce((max, entry) => entry.ms > max.ms ? entry : max).raw
+                : ds?.endDate || ds?.updatedAt || firstKnownDate;
               const allPulseRows = rawEquityPoints.map((point, index) => {
                 const linkedTrade = point?.trade || point?.sourceTrade || (index > 0 ? tradesForPulse[index - 1] || null : null);
                 const rawDate = index === 0 ? firstKnownDate : (tradeDateValue(linkedTrade) || tradeDateValue(tradesForPulse[index - 1]) || lastKnownDate || firstKnownDate);
@@ -28828,7 +28845,7 @@ const TalariaV8b = () => {
                 };
               }).filter(row => Number.isFinite(row.value));
               const datedRows = allPulseRows.filter(row => row.dateMs !== null);
-              const lastDateMs = datedRows.length ? datedRows[datedRows.length - 1].dateMs : null;
+              const lastDateMs = datedRows.length ? Math.max(...datedRows.map(row => row.dateMs)) : null;
               const cutoffMs = activePeriod.days && lastDateMs ? lastDateMs - activePeriod.days * 86400000 : null;
               const filteredPulseRows = cutoffMs
                 ? allPulseRows.filter(row => row.dateMs === null || row.dateMs >= cutoffMs)
@@ -28847,8 +28864,20 @@ const TalariaV8b = () => {
               });
               const firstPulse = peakRows[0] || {value:0};
               const lastPulse = peakRows[peakRows.length - 1] || firstPulse;
-              const pulseStartDateLabel = fmtDate(firstPulse.labelDate || firstPulse.dateMs || firstKnownDate);
-              const pulseCurrentDateLabel = fmtDate(lastPulse.labelDate || lastPulse.dateMs || lastKnownDate || new Date());
+              const pulseDateExtents = peakRows.reduce((acc, row) => {
+                if (row.dateMs == null) return acc;
+                if (acc.minMs == null || row.dateMs < acc.minMs) {
+                  acc.minMs = row.dateMs;
+                  acc.minLabel = row.labelDate;
+                }
+                if (acc.maxMs == null || row.dateMs > acc.maxMs) {
+                  acc.maxMs = row.dateMs;
+                  acc.maxLabel = row.labelDate;
+                }
+                return acc;
+              }, {minMs:null, maxMs:null, minLabel:null, maxLabel:null});
+              const pulseStartDateLabel = fmtDate(pulseDateExtents.minLabel || pulseDateExtents.minMs || firstPulse.labelDate || firstKnownDate);
+              const pulseCurrentDateLabel = fmtDate(pulseDateExtents.maxLabel || pulseDateExtents.maxMs || lastPulse.labelDate || lastKnownDate || new Date());
               const highPulse = peakRows.reduce((best, row) => row.value >= best.value ? row : best, firstPulse);
               const periodPnl = lastPulse.value - firstPulse.value;
               const currentDrawdownAmount = Math.max(0, (highPulse.value || 0) - (lastPulse.value || 0));
