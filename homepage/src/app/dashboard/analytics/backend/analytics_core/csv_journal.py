@@ -169,8 +169,12 @@ _DIRECTION_ALIASES = ("direction", "side", "type", "position", "buy/sell")
 _SETUP_ALIASES = ("setup", "playbook", "strategy", "strategyName", "strategy_label")
 _QUANTITY_ALIASES = ("quantity", "qty", "position_size", "positionSize", "size", "lots", "volume")
 _RISK_ALIASES = ("riskAmount", "risk_amount", "risk_usd", "risk", "riskPerTrade", "originalRisk", "planned_risk_amount")
-_MAE_ALIASES = ("mae_r", "mae", "mae_R", "total_mae_r")
-_MFE_ALIASES = ("mfe_r", "mfe", "mfe_R", "total_mfe_r")
+_MAE_ALIASES = ("mae_r", "mae_R", "total_mae_r", "totalMaeR", "mae")
+_MFE_ALIASES = ("mfe_r", "mfe_R", "total_mfe_r", "totalMfeR", "mfe")
+_MAE_POINTS_ALIASES = ("mae_points", "maePoints", "mae_price", "mae_pips", "mae_dollars", "mae_pts", "total_mae")
+_MFE_POINTS_ALIASES = ("mfe_points", "mfePoints", "mfe_price", "mfe_pips", "mfe_dollars", "mfe_pts", "total_mfe")
+_HIGHEST_PRICE_ALIASES = ("highestPrice", "highest_price", "high_price", "high_during_trade")
+_LOWEST_PRICE_ALIASES = ("lowestPrice", "lowest_price", "low_price", "low_during_trade")
 _COMMISSION_ALIASES = ("commission_at_entry", "commission", "commission_per_lot", "commission_total", "commissionCost")
 _SPREAD_ALIASES = ("spread_pips_at_entry", "spread_pips", "spread")
 _PIP_VALUE_ALIASES = ("pip_value_at_entry", "pip_value", "pipValue")
@@ -196,6 +200,10 @@ MAPPABLE_FIELDS: dict[str, tuple[str, ...]] = {
     "riskAmount": _RISK_ALIASES,
     "mae_r": _MAE_ALIASES,
     "mfe_r": _MFE_ALIASES,
+    "mae_points": _MAE_POINTS_ALIASES,
+    "mfe_points": _MFE_POINTS_ALIASES,
+    "highestPrice": _HIGHEST_PRICE_ALIASES,
+    "lowestPrice": _LOWEST_PRICE_ALIASES,
     "plannedRR": _PLANNED_RR_ALIASES,
     "entryPrice": _ENTRY_PRICE_ALIASES,
     "exitPrice": _EXIT_PRICE_ALIASES,
@@ -220,8 +228,12 @@ _FIELD_LABELS: dict[str, str] = {
     "rMultiple": "R-multiple",
     "quantity": "Position size",
     "riskAmount": "Risk amount ($)",
-    "mae_r": "MAE (R)",
-    "mfe_r": "MFE (R)",
+    "mae_r": "MAE (R-multiple)",
+    "mfe_r": "MFE (R-multiple)",
+    "mae_points": "MAE (price / points / pips)",
+    "mfe_points": "MFE (price / points / pips)",
+    "highestPrice": "Highest price during trade",
+    "lowestPrice": "Lowest price during trade",
     "plannedRR": "Planned R:R",
     "entryPrice": "Entry price",
     "exitPrice": "Exit price",
@@ -727,6 +739,10 @@ def parse_trades_csv_text(
         r_m = _pick_float_field(row, "rMultiple", mapping, *_R_ALIASES)
         mae = _cell_to_float(_pick_field(row, "mae_r", mapping, *_MAE_ALIASES))
         mfe = _cell_to_float(_pick_field(row, "mfe_r", mapping, *_MFE_ALIASES))
+        mae_points = _cell_to_float(_pick_field(row, "mae_points", mapping, *_MAE_POINTS_ALIASES))
+        mfe_points = _cell_to_float(_pick_field(row, "mfe_points", mapping, *_MFE_POINTS_ALIASES))
+        highest_price = _cell_to_float(_pick_field(row, "highestPrice", mapping, *_HIGHEST_PRICE_ALIASES))
+        lowest_price = _cell_to_float(_pick_field(row, "lowestPrice", mapping, *_LOWEST_PRICE_ALIASES))
         qty = _cell_to_float(_pick_field(row, "quantity", mapping, *_QUANTITY_ALIASES)) or 1.0
         risk = _cell_to_float(_pick_field(row, "riskAmount", mapping, *_RISK_ALIASES))
         spread = _cell_to_float(_pick_field(row, "spread_pips_at_entry", mapping, *_SPREAD_ALIASES)) or 1.0
@@ -760,6 +776,14 @@ def parse_trades_csv_text(
             "setup": setup,
             "preTradeNotes": {"setup": setup},
         }
+        if mae_points is not None:
+            trade["mae_points"] = float(mae_points)
+        if mfe_points is not None:
+            trade["mfe_points"] = float(mfe_points)
+        if highest_price is not None:
+            trade["highestPrice"] = float(highest_price)
+        if lowest_price is not None:
+            trade["lowestPrice"] = float(lowest_price)
         out.append(_enrich_imported_trade(trade, row))
 
     if not out and not errors:

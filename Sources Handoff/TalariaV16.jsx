@@ -804,8 +804,12 @@ const DASH_CSV_FIELD_CATALOG = [
   { key: "rMultiple", label: "R-multiple", required: false },
   { key: "quantity", label: "Position size", required: false },
   { key: "riskAmount", label: "Risk amount ($)", required: false },
-  { key: "mae_r", label: "MAE (R)", required: false },
-  { key: "mfe_r", label: "MFE (R)", required: false },
+  { key: "mae_r", label: "MAE (R-multiple)", required: false },
+  { key: "mfe_r", label: "MFE (R-multiple)", required: false },
+  { key: "mae_points", label: "MAE (price / points / pips)", required: false },
+  { key: "mfe_points", label: "MFE (price / points / pips)", required: false },
+  { key: "highestPrice", label: "Highest price during trade", required: false },
+  { key: "lowestPrice", label: "Lowest price during trade", required: false },
   { key: "plannedRR", label: "Planned R:R", required: false },
   { key: "entryPrice", label: "Entry price", required: false },
   { key: "exitPrice", label: "Exit price", required: false },
@@ -831,6 +835,10 @@ const DASH_CSV_FIELD_ALIASES = {
   riskAmount: ["riskAmount", "risk_amount", "risk_usd", "risk", "riskPerTrade", "originalRisk", "planned_risk_amount"],
   mae_r: ["mae_r", "mae", "total_mae_r"],
   mfe_r: ["mfe_r", "mfe", "total_mfe_r"],
+  mae_points: ["mae_points", "mae_price", "mae_pips", "total_mae"],
+  mfe_points: ["mfe_points", "mfe_price", "mfe_pips", "total_mfe"],
+  highestPrice: ["highestPrice", "highest_price", "high_price"],
+  lowestPrice: ["lowestPrice", "lowest_price", "low_price"],
   plannedRR: ["plannedRR", "planned_rr", "rewardToRiskRatio"],
   entryPrice: ["entryPrice", "entry", "openPrice", "open_price"],
   exitPrice: ["exitPrice", "exit", "closePrice", "close_price"],
@@ -12536,7 +12544,7 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-phase-nav-group,.tlr-phase-nav-item{transition:none!important;will-change:background-color,color;touch-action:manipulation}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):hover,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):active,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):active{background:rgba(74,106,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-phase-nav-group-active,.tlr-phase-nav-group-active:hover,.tlr-phase-nav-item-active,.tlr-phase-nav-item-active:hover{background:${c.acD}!important;color:${c.acL}!important}.tlr-phase-nav-group:focus-visible,.tlr-phase-nav-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-source-switch-redesign,.tlr-dashboard-value-select{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-dashboard-source-switch-redesign span,.tlr-dashboard-source-switch-redesign div,.tlr-dashboard-value-select span{text-shadow:none!important}.tlr-dashboard-source-switch-redesign:hover{background:rgba(255,255,255,0.055)!important;border-color:var(--tlr-source-accent)!important;box-shadow:0 0 14px -12px var(--tlr-source-accent)!important}.tlr-dashboard-source-switch-redesign:active{background:rgba(74,106,255,0.13)!important;transform:translateY(1px)!important}.tlr-dashboard-source-switch-redesign:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-source-switch-redesign [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign [data-tlr-upper-icon]{transition:color 0.04s linear}.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-icon],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-icon]{color:var(--tlr-source-accent)!important}.tlr-dashboard-page-menu-item:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-dashboard-page-menu-item:active{background:rgba(74,106,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-dashboard-page-menu-item-active,.tlr-dashboard-page-menu-item-active:hover,.tlr-dashboard-page-menu-item-active:active{background:${c.acD}!important;color:${c.acL}!important;transform:none!important}.tlr-dashboard-page-menu-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-summary-card{transition:none!important}.tlr-dashboard-summary-card:hover{border-color:${c.br}!important;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)!important}.tlr-dashboard-summary-card:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-info-target{transition:none!important}.tlr-dashboard-info-target:hover,.tlr-dashboard-info-target:focus-visible{filter:none!important;outline:none!important;box-shadow:none!important}.tlr-dashboard-shape-hover{transition:filter 90ms ease!important;cursor:default}.tlr-dashboard-score-arrow:hover,.tlr-dashboard-card-info:hover{color:${c.acL}!important;filter:drop-shadow(0 0 3px rgba(74,106,255,0.28))!important}.tlr-dashboard-score-arrow:active,.tlr-dashboard-card-info:active{transform:translateY(1px)!important}.tlr-dashboard-score-footer:hover{border-color:${c.brL}!important;color:${c.tx}!important;background:${c.well}!important}.tlr-dashboard-score-footer:active{transform:translateY(1px)!important;color:#fff!important}.tlr-dashboard-view-breakdown:hover{color:${tcHov}!important}.tlr-dashboard-view-breakdown:active{color:#fff!important;transform:translateY(1px)!important}@keyframes tlrScoreSlideInRight{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}@keyframes tlrScoreSlideInLeft{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}`;
       style.textContent += `.tlr-dashboard-score-row:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-row:active{background:rgba(74,106,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-score-row:focus-visible,.tlr-dashboard-radar-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-radar-toggle:hover{color:${tcHov}!important;background:rgba(255,255,255,0.052)!important}.tlr-dashboard-radar-toggle:active{transform:translateY(1px)!important;background:rgba(74,106,255,0.12)!important}.tlr-dashboard-radar-toggle-active,.tlr-dashboard-radar-toggle-active:hover{color:${c.acL}!important;background:transparent!important}.tlr-dashboard-radar-toggle-active:after{content:"";position:absolute;left:4px;right:4px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG};pointer-events:none}`;
-      style.textContent += `@keyframes tlrSnapshotTopBasicIn{0%{opacity:.38;transform:translateX(-26px) scale(.992);filter:blur(1px)}64%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}}@keyframes tlrSnapshotTopAdvancedIn{0%{opacity:.38;transform:translateX(26px) scale(.992);filter:blur(1px)}64%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}}.tlr-snapshot-top-mode-panel{transform-origin:50% 22px;will-change:opacity,transform}.tlr-snapshot-top-mode-basic{animation:tlrSnapshotTopBasicIn 360ms cubic-bezier(.18,.82,.18,1) both}.tlr-snapshot-top-mode-advanced{animation:tlrSnapshotTopAdvancedIn 360ms cubic-bezier(.18,.82,.18,1) both}@media (prefers-reduced-motion:reduce){.tlr-snapshot-top-mode-basic,.tlr-snapshot-top-mode-advanced{animation:none!important}}`;
+      style.textContent += `@keyframes tlrSnapshotTopBasicIn{0%{opacity:.38;transform:translateX(-26px) scale(.992);filter:blur(1px)}64%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}}@keyframes tlrSnapshotTopAdvancedIn{0%{opacity:.38;transform:translateX(26px) scale(.992);filter:blur(1px)}64%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}}.tlr-snapshot-top-mode-panel{transform-origin:50% 22px;will-change:opacity,transform}.tlr-snapshot-top-mode-basic{animation:tlrSnapshotTopBasicIn 360ms cubic-bezier(.18,.82,.18,1) both}.tlr-snapshot-top-mode-advanced{animation:tlrSnapshotTopAdvancedIn 360ms cubic-bezier(.18,.82,.18,1) both}@keyframes tlrKpiPageSlideInRight{0%{opacity:0;transform:translateX(24px);filter:blur(1px)}100%{opacity:1;transform:translateX(0);filter:blur(0)}}@keyframes tlrKpiPageSlideInLeft{0%{opacity:0;transform:translateX(-24px);filter:blur(1px)}100%{opacity:1;transform:translateX(0);filter:blur(0)}}.tlr-dashboard-kpi-page-shell{overflow:hidden;flex:1;min-height:0;display:flex;flex-direction:column}.tlr-dashboard-kpi-page-slide-right{animation:tlrKpiPageSlideInRight 340ms cubic-bezier(.18,.82,.18,1) both}.tlr-dashboard-kpi-page-slide-left{animation:tlrKpiPageSlideInLeft 340ms cubic-bezier(.18,.82,.18,1) both}@keyframes tlrSnapshotBasicCardIn{0%{opacity:0;transform:translateY(12px) translateX(-12px)}100%{opacity:1;transform:translateY(0) translateX(0)}}.tlr-snapshot-basic-card{animation:tlrSnapshotBasicCardIn 380ms cubic-bezier(.18,.82,.18,1) both;animation-delay:var(--tlr-card-delay,0ms)!important}@keyframes tlrSnapshotAdvKpiIn{0%{opacity:0;transform:translateX(16px) scale(.988)}100%{opacity:1;transform:translateX(0) scale(1)}}.tlr-snapshot-adv-kpi-card{animation:tlrSnapshotAdvKpiIn 360ms cubic-bezier(.18,.82,.18,1) both;animation-delay:var(--tlr-card-delay,0ms)!important}@keyframes tlrSnapshotEquityAreaBuild{0%{clip-path:inset(0 100% 0 0);opacity:.12}100%{clip-path:inset(0 0 0 0);opacity:1}}@keyframes tlrSnapshotEquityDrawBuild{0%{stroke-dashoffset:var(--tlr-eq-len,120);opacity:.2}100%{stroke-dashoffset:0;opacity:1}}.tlr-snapshot-equity-area-build{animation:tlrSnapshotEquityAreaBuild 760ms cubic-bezier(.22,.82,.22,1) both}.tlr-snapshot-equity-dd-build{animation:tlrSnapshotEquityAreaBuild 760ms cubic-bezier(.22,.82,.22,1) both;animation-delay:120ms!important}.tlr-snapshot-equity-seg-build{stroke-dasharray:var(--tlr-eq-len,120);stroke-dashoffset:var(--tlr-eq-len,120);animation:tlrSnapshotEquityDrawBuild 560ms cubic-bezier(.22,.82,.22,1) forwards;animation-delay:calc(var(--tlr-eq-i,0)*7ms)!important}@keyframes tlrSnapshotEquityDotIn{0%{opacity:0;transform:scale(.4)}100%{opacity:1;transform:scale(1)}}.tlr-snapshot-equity-dot-build{transform-box:fill-box;transform-origin:center;animation:tlrSnapshotEquityDotIn 280ms cubic-bezier(.18,.82,.18,1) both;animation-delay:calc(420ms + var(--tlr-eq-i,0)*7ms)!important}@media (prefers-reduced-motion:reduce){.tlr-snapshot-top-mode-basic,.tlr-snapshot-top-mode-advanced,.tlr-dashboard-kpi-page-slide-right,.tlr-dashboard-kpi-page-slide-left,.tlr-snapshot-basic-card,.tlr-snapshot-adv-kpi-card,.tlr-snapshot-equity-area-build,.tlr-snapshot-equity-dd-build,.tlr-snapshot-equity-seg-build,.tlr-snapshot-equity-dot-build{animation:none!important}.tlr-snapshot-equity-seg-build{stroke-dashoffset:0!important;opacity:1!important}}`;
       style.textContent += `.tlr-snapshot-calendar-panel{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform;transform-origin:50% 42%}.tlr-snapshot-calendar-cell{transition:background 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease!important}.tlr-snapshot-calendar-title-btn{transition:background-color 130ms ease,color 130ms ease,transform 90ms ease!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.11)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-snapshot-calendar-cell:active{filter:brightness(1.08)!important}.tlr-snapshot-calendar-cell-selected{transition:background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,color 150ms ease!important}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel{animation:none!important}.tlr-snapshot-calendar-cell,.tlr-snapshot-calendar-title-btn{transition:none!important}}`;
       style.textContent += `.tlr-snapshot-calendar-panel{animation:none!important;will-change:auto!important}.tlr-snapshot-calendar-panel-animate{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform!important;transform-origin:50% 42%}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel-animate{animation:none!important}}`;
       style.textContent += `.tlr-snapshot-page,.tlr-snapshot-page *{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout paint;transform:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{transform:none!important;filter:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card span,.tlr-snapshot-page .tlr-dashboard-summary-card div{min-width:0}.tlr-snapshot-calendar-cell{transform:none!important;will-change:background,border-color,box-shadow}.tlr-snapshot-calendar-cell:hover{transform:none!important;filter:none!important}.tlr-snapshot-calendar-cell:active{transform:none!important;filter:brightness(1.04)!important}.tlr-snapshot-calendar-title-btn{border:0!important;box-shadow:none!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.10)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.17)!important;color:#fff!important}.tlr-snapshot-trade-preview-shell{pointer-events:none}.tlr-snapshot-trade-preview-card{background:rgb(7,10,20)!important;border:1px solid rgba(116,126,150,0.50)!important;box-shadow:0 18px 44px rgba(0,0,0,0.58),inset 0 1px 0 rgba(255,255,255,0.035)!important}.tlr-snapshot-trade-preview-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 8px ${c.acG};pointer-events:none}.tlr-snapshot-trade-id-button{display:inline-flex!important;align-items:center!important;gap:5px!important;line-height:1.05!important;vertical-align:middle!important}.tlr-snapshot-trade-id-button::after{left:0!important;right:13px!important;bottom:1px!important;height:1px!important;background:linear-gradient(90deg,transparent,${c.acL},transparent)!important;box-shadow:0 0 7px ${c.acG}!important}.tlr-snapshot-trade-id-button:hover,.tlr-snapshot-trade-id-button[aria-pressed="true"]{color:${c.acL}!important}.tlr-snapshot-trade-id-button:hover::after,.tlr-snapshot-trade-id-button[aria-pressed="true"]::after{opacity:1!important}.tlr-snapshot-trade-preview-close{border:0!important;background:transparent!important;box-shadow:none!important}.tlr-snapshot-trade-preview-close:hover{background:transparent!important;color:${c.rd}!important;filter:drop-shadow(0 0 5px rgba(255,80,104,.58))!important}.tlr-snapshot-trade-preview-close:active{background:transparent!important;color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-bestworst-grid{grid-template-columns:minmax(182px,1fr) minmax(42px,52px) minmax(62px,74px)!important;column-gap:8px!important}.tlr-snapshot-bestworst-id{font-size:7.85px!important;letter-spacing:-.01em!important;overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-bestworst-line{width:58px!important;max-width:58px!important}.tlr-snapshot-chip-row:hover{transform:none!important;filter:none!important}.tlr-snapshot-basic-card-title-line{height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG}}`;
@@ -27311,7 +27319,7 @@ const TalariaV8b = () => {
             const dashboardKpiCardGap = 12;
             const dashboardScoreCardHeight = dashboardKpiCardHeight * 2 + dashboardKpiCardGap;
             const dashboardSnapshotPulseCalendarHeight = dashboardScoreCardHeight;
-            const PagedMetricCard = ({slot}) => {
+            const PagedMetricCard = ({slot, animIndex=0}) => {
               const pages = (slot.pages || []).filter(Boolean);
               const safeIndex = Math.min(Math.max(0, dashKpiPageIndex[slot.id] || 0), Math.max(0, pages.length - 1));
               const page = pages[safeIndex] || pages[0];
@@ -27359,15 +27367,17 @@ const TalariaV8b = () => {
                 });
               };
               return (
-                <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{minWidth:0,height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight}}>
+                <div className="tlr-snapshot-adv-kpi-card" style={{minWidth:0,height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight,["--tlr-card-delay"]:`${Math.min(animIndex, 7) * 42}ms`}} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
                   <SummaryCard title={page.label} titleDot={false} titleFull titleFontSize={titleFit.fontSize} titleLetterSpacing={titleFit.letterSpacing} titleLineMinWidth={titleFit.lineMin} minHeight={0} resourceId={page.resourceId || dashboardResourceIdFor(page.label)} right={<KpiPager slotId={slot.id} pages={pages} activeIndex={safeIndex}/>} onClick={()=>openDashSubWindow(page.target || "trade-journal", page.label)} style={{height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight,padding:14,gap:8,opacity:page.dim ? .72 : 1}}>
-                    <div key={`${slot.id}-${page.id || safeIndex}`} className={slideClass} onAnimationEnd={slideClass ? clearSlideClass : undefined} style={{display:"flex",flexDirection:"column",gap:8,flex:1,minHeight:0}}>
+                    <div className="tlr-dashboard-kpi-page-shell">
+                      <div key={`${slot.id}-${page.id || safeIndex}`} className={slideClass} onAnimationEnd={slideClass ? clearSlideClass : undefined} style={{display:"flex",flexDirection:"column",gap:8,flex:1,minHeight:0}}>
                       <div {...dashInfoHandlers({title:page.label, body:page.info || dashboardMetricInfo[page.label] || "Headline value calculated from the current source and filters.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{fontSize:valueFontSize,fontWeight:800,color:page.color || c.acL,fontFamily:F,fontVariantNumeric:"tabular-nums",lineHeight:1.08,whiteSpace:"normal",overflow:"visible",minHeight:25,display:"flex",alignItems:"baseline",gap:8,outline:"none",flexWrap:"wrap"}}>
                         <span style={{minWidth:0,overflow:"visible"}}>{page.value}</span>
                         {page.valueSuffix ? <span style={{fontSize:valueFontSize > 19 ? 12 : 10.5,fontWeight:850,color:signedSuffixColor,letterSpacing:"0.02em",lineHeight:1,flexShrink:0}}>{page.valueSuffix}</span> : null}
                       </div>
                       {page.sub ? <div style={{fontSize:subFontSize,fontWeight:650,color:c.ts,fontFamily:F,lineHeight:1.22,minHeight:24,whiteSpace:"normal",overflow:"visible"}}>{page.sub}</div> : null}
                       <div {...dashInfoHandlers({title:`${page.label} visual`, body:page.visualInfo || dashboardVisualInfo[page.label] || "Mini visual for the metric trend or distribution.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{marginTop:"auto",height:visualHeight,display:"flex",alignItems:"center",minWidth:0,overflow:"visible",outline:"none"}}>{page.visual}</div>
+                    </div>
                     </div>
                   </SummaryCard>
                 </div>
@@ -28085,7 +28095,7 @@ const TalariaV8b = () => {
                 </div>
               );
             };
-            const BasicMetricCard = ({title, value, sub, color=c.tx, accent=c.acL, onClick=null, children=null, visual=null}) => {
+            const BasicMetricCard = ({title, value, sub, color=c.tx, accent=c.acL, onClick=null, children=null, visual=null, animIndex=0}) => {
               const clickable = typeof onClick === "function";
               const handleKeyDown = (event) => {
                 if (!clickable) return;
@@ -28096,11 +28106,13 @@ const TalariaV8b = () => {
               };
               return (
                 <div
+                  className="tlr-snapshot-basic-card"
                   role={clickable ? "button" : undefined}
                   tabIndex={clickable ? 0 : undefined}
                   onClick={clickable ? onClick : undefined}
                   onKeyDown={clickable ? handleKeyDown : undefined}
                   style={{
+                    ["--tlr-card-delay"]: `${Math.min(animIndex, 7) * 48}ms`,
                     position:"relative",
                     minHeight:132,
                     height:132,
@@ -28169,6 +28181,7 @@ const TalariaV8b = () => {
             const renderSnapshotBasicTopStrip = () => (
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(174px,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                 <BasicMetricCard
+                  animIndex={0}
                   title={dashTxt("Talaria Score","درجة تالاريا")}
                   value={<>{basicScoreValue}<span style={{fontSize:12,color:c.ts,marginLeft:4}}>/100</span></>}
                   sub={`${basicScoreTier} · ${basicScoreDeltaText}`}
@@ -28178,18 +28191,20 @@ const TalariaV8b = () => {
                 >
                   <BasicScoreRing value={basicScoreValue} color={basicScoreColor}/>
                 </BasicMetricCard>
-                <BasicMetricCard title="Net P&L" value={basicNetPnlValue} sub={`${fmtPct(metrics.returnPct,1)} since start`} color={basicNetPnlColor} visual={<BasicMiniLine points={basicEquityValues} color={basicNetPnlColor} fill/>}/>
-                <BasicMetricCard title="Win Rate" value={fmtPct(metrics.winRate,0)} sub={`${metrics.wins || 0} W · ${metrics.losses || 0} L`} color={Number(metrics.winRate || 0) >= 50 ? c.gn : c.rd} visual={<BasicScoreRing value={metrics.winRate} color={c.gn} trackColor={c.rd}/>}/>
-                <BasicMetricCard title="Profit Factor" value={fmtNum(metrics.profitFactor,2)} sub={dashProfitFactorSub.replace("made for every", "made per")} color={Number(metrics.profitFactor || 0) >= 1 ? c.gn : c.rd} visual={<BasicMiniUpDownBars positive={basicGrossWinValue || Number(metrics.profitFactor || 0)} negative={basicGrossLossValue || 1}/>}/>
-                <BasicMetricCard title="Avg Trade" value={basicAvgTradeValue} sub={`expectancy · n ${(metrics.tradeCount || 0).toLocaleString()}`} color={Number(metrics.expectancyDollarsPerTrade || 0) >= 0 ? c.gn : c.rd} visual={<BasicMiniPnlBars values={basicTradePnlDecileValues} avg={basicAvgTradeBucketValue}/>}/>
-                <BasicMetricCard title="Max Drawdown" value={basicMaxDrawdownValue} sub={`worst · ${fmtPct(metrics.maxDDPct,1)}`} color={c.rd} accent={c.rd} visual={<BasicMiniLine points={basicDrawdownSeries} color={c.rd} fill/>}/>
+                <BasicMetricCard animIndex={1} title="Net P&L" value={basicNetPnlValue} sub={`${fmtPct(metrics.returnPct,1)} since start`} color={basicNetPnlColor} visual={<BasicMiniLine points={basicEquityValues} color={basicNetPnlColor} fill/>}/>
+                <BasicMetricCard animIndex={2} title="Win Rate" value={fmtPct(metrics.winRate,0)} sub={`${metrics.wins || 0} W · ${metrics.losses || 0} L`} color={Number(metrics.winRate || 0) >= 50 ? c.gn : c.rd} visual={<BasicScoreRing value={metrics.winRate} color={c.gn} trackColor={c.rd}/>}/>
+                <BasicMetricCard animIndex={3} title="Profit Factor" value={fmtNum(metrics.profitFactor,2)} sub={dashProfitFactorSub.replace("made for every", "made per")} color={Number(metrics.profitFactor || 0) >= 1 ? c.gn : c.rd} visual={<BasicMiniUpDownBars positive={basicGrossWinValue || Number(metrics.profitFactor || 0)} negative={basicGrossLossValue || 1}/>}/>
+                <BasicMetricCard animIndex={4} title="Avg Trade" value={basicAvgTradeValue} sub={`expectancy · n ${(metrics.tradeCount || 0).toLocaleString()}`} color={Number(metrics.expectancyDollarsPerTrade || 0) >= 0 ? c.gn : c.rd} visual={<BasicMiniPnlBars values={basicTradePnlDecileValues} avg={basicAvgTradeBucketValue}/>}/>
+                <BasicMetricCard animIndex={5} title="Max Drawdown" value={basicMaxDrawdownValue} sub={`worst · ${fmtPct(metrics.maxDDPct,1)}`} color={c.rd} accent={c.rd} visual={<BasicMiniLine points={basicDrawdownSeries} color={c.rd} fill/>}/>
               </div>
             );
             const renderSnapshotAdvancedTopStrip = () => (
               <div style={{display:"grid",gridTemplateColumns:"minmax(456px,1.18fr) minmax(0,3fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                <CompactScoreCard/>
+                <div className="tlr-snapshot-adv-kpi-card" style={{["--tlr-card-delay"]:"0ms",minWidth:0}}>
+                  <CompactScoreCard/>
+                </div>
                 <div style={{height:dashboardScoreCardHeight,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gridTemplateRows:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                  {overviewCarouselSlots.map(slot => <PagedMetricCard key={slot.id} slot={slot}/>)}
+                  {overviewCarouselSlots.map((slot, index) => <PagedMetricCard key={slot.id} slot={slot} animIndex={index + 1}/>)}
                 </div>
               </div>
             );
@@ -29701,8 +29716,9 @@ const TalariaV8b = () => {
                               <stop offset="100%" stopColor={c.rd} stopOpacity=".045"/>
                             </linearGradient>
                           </defs>
-                          <path d={areaPath} fill="url(#tlrAccountPulseArea)" pointerEvents="none"/>
-                          <path d={drawdownArea} fill="url(#tlrAccountPulseDrawdown)" pointerEvents="none"/>
+                          <g key={`pulse-equity-${dashAccountPulsePeriod}-${peakRows.length}-${Math.round(lastPulse.value)}`}>
+                          <path d={areaPath} fill="url(#tlrAccountPulseArea)" pointerEvents="none" className="tlr-snapshot-equity-area-build"/>
+                          <path d={drawdownArea} fill="url(#tlrAccountPulseDrawdown)" pointerEvents="none" className="tlr-snapshot-equity-dd-build"/>
                           {phaseTargetY !== null ? (
                             <>
                               {renderPulseHorizontalRuleLine({key:"phase-target", y:phaseTargetY, color:c.gn, strokeWidth:1, dash:"5 5", opacity:.46, labelLayout:phaseTargetLabelLayout})}
@@ -29724,7 +29740,23 @@ const TalariaV8b = () => {
                           {curvePoints.slice(1).map((point, index) => {
                             const prev = curvePoints[index];
                             const up = point.value >= prev.value;
-                            return <line key={`pulse-seg-${index}`} x1={prev.x} y1={prev.y} x2={point.x} y2={point.y} stroke={up ? c.gn : c.rd} strokeWidth="1.05" strokeLinecap="square" vectorEffect="non-scaling-stroke" pointerEvents="none"/>;
+                            const segLen = Math.max(1, Math.hypot(point.x - prev.x, point.y - prev.y));
+                            return (
+                              <line
+                                key={`pulse-seg-${index}`}
+                                className="tlr-snapshot-equity-seg-build"
+                                style={{"--tlr-eq-len":segLen, "--tlr-eq-i":index}}
+                                x1={prev.x}
+                                y1={prev.y}
+                                x2={point.x}
+                                y2={point.y}
+                                stroke={up ? c.gn : c.rd}
+                                strokeWidth="1.05"
+                                strokeLinecap="square"
+                                vectorEffect="non-scaling-stroke"
+                                pointerEvents="none"
+                              />
+                            );
                           })}
                           {dashAccountPulseHover?.showTip ? (
                             <>
@@ -29763,11 +29795,12 @@ const TalariaV8b = () => {
                           ) : null}
                           {curvePoints.length ? (
                             <>
-                              <circle cx={curvePoints[curvePoints.length - 1].x} cy={curvePoints[curvePoints.length - 1].y} r="3.5" fill={periodPnl >= 0 ? c.gn : c.rd} pointerEvents="none"/>
+                              <circle className="tlr-snapshot-equity-dot-build" style={{"--tlr-eq-i":Math.max(0, curvePoints.length - 2)}} cx={curvePoints[curvePoints.length - 1].x} cy={curvePoints[curvePoints.length - 1].y} r="3.5" fill={periodPnl >= 0 ? c.gn : c.rd} pointerEvents="none"/>
                               {renderPulseHighLowLabel(equityHighLabelLayout)}
                               {renderPulseHighLowLabel(equityLowLabelLayout)}
                             </>
                           ) : null}
+                          </g>
                         </svg>
                         {dashAccountPulseHover?.showTip && pulseTooltipStyle ? <PulseTradeReadout style={pulseTooltipStyle}/> : null}
                         <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,minWidth:0,padding:"0 10px 4px",boxSizing:"border-box",fontFamily:F}}>
