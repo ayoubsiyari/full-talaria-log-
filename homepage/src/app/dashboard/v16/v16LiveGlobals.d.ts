@@ -60,6 +60,7 @@ declare global {
       accountTypeKey?: "personal" | "prop";
       lockAccountType?: boolean;
       goToTradesAfterCreate?: boolean;
+      goToCsvImportAfterCreate?: boolean;
       editAccount?: import("./v16SourceTypes").ApiLiveJournalAccount | null;
     }) => void;
     /** Edit a persisted live journal account. */

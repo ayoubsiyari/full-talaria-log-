@@ -24,6 +24,8 @@ export type LiveJournalNewAccountOpenOptions = {
   lockAccountType?: boolean;
   /** After save, switch embedded V16 to Trades and open Add Trade for the new account. */
   goToTradesAfterCreate?: boolean;
+  /** After save, switch embedded V16 to Trades and open CSV import for the new account. */
+  goToCsvImportAfterCreate?: boolean;
   /** Edit an existing persisted live journal account. */
   editAccount?: ApiLiveJournalAccount | null;
 };
@@ -162,10 +164,14 @@ export function LiveJournalNewAccountProvider({
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("talaria-v16-reload-boot"));
       window.dispatchEvent(new CustomEvent("talaria-v16-close-source"));
-      if (opts?.goToTradesAfterCreate && !opts?.editAccount) {
+      if (!opts?.editAccount && (opts?.goToTradesAfterCreate || opts?.goToCsvImportAfterCreate)) {
         window.dispatchEvent(
           new CustomEvent("talaria-v16-journal-created", {
-            detail: { account: account || {}, goToTradesAfterCreate: true },
+            detail: {
+              account: account || {},
+              goToTradesAfterCreate: !!opts?.goToTradesAfterCreate,
+              goToCsvImportAfterCreate: !!opts?.goToCsvImportAfterCreate,
+            },
           })
         );
       }

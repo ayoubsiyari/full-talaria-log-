@@ -10326,6 +10326,7 @@ const TalariaV8b = () => {
   const pendingJournalAddTradeRef = useRef(null);
   const pendingJournalPinRef = useRef(null);
   const pendingJournalGoTradesRef = useRef(false);
+  const pendingJournalCsvImportRef = useRef(false);
   const pendingJournalCreatedRef = useRef(null);
   const [newSessionKindPickerOpen, setNewSessionKindPickerOpen] = useState(false);
   const [newSessionJournalKindOpen, setNewSessionJournalKindOpen] = useState(false);
@@ -11280,16 +11281,51 @@ const TalariaV8b = () => {
       };
       tryOpen();
     };
+    const finishJournalCreateCsvImport = () => {
+      if (!pendingJournalCsvImportRef.current) return;
+      const apiAccount = pendingJournalCreatedRef.current;
+      if (!apiAccount?.id && apiAccount?.profile_id == null) return;
+      const tryOpen = (attempt = 0) => {
+        if (!pendingJournalCsvImportRef.current) return;
+        const boot = getV16JournalBoot();
+        if (!boot?.accounts?.length) {
+          if (attempt < 24) setTimeout(() => tryOpen(attempt + 1), 120);
+          return;
+        }
+        const target = resolveLiveJournalAccountTarget(apiAccount, boot);
+        if (!target?.liveAccountId && target?.profileId == null) {
+          if (attempt < 24) setTimeout(() => tryOpen(attempt + 1), 120);
+          return;
+        }
+        pendingJournalCsvImportRef.current = false;
+        pendingJournalCreatedRef.current = null;
+        applyEmbeddedJournalSelection(target);
+        flushSync(() => setSessView("trades"));
+        syncV16ViewUrl("trades");
+        setTimeout(() => dashTradesCsvImportRef.current?.click(), 80);
+      };
+      tryOpen();
+    };
     const onJournalCreated = (e) => {
-      if (!e?.detail?.goToTradesAfterCreate) return;
-      pendingJournalGoTradesRef.current = true;
+      if (!e?.detail?.goToTradesAfterCreate && !e?.detail?.goToCsvImportAfterCreate) return;
       pendingJournalCreatedRef.current = e.detail.account || null;
       applyEmbeddedJournalSelection(pendingJournalCreatedRef.current);
+      if (e.detail.goToCsvImportAfterCreate) {
+        pendingJournalCsvImportRef.current = true;
+        flushSync(() => setSessView("trades"));
+        syncV16ViewUrl("trades");
+        finishJournalCreateCsvImport();
+        return;
+      }
+      pendingJournalGoTradesRef.current = true;
       flushSync(() => setSessView("trades"));
       syncV16ViewUrl("trades");
       finishJournalCreateGoTrades();
     };
-    const onBootUpdated = () => finishJournalCreateGoTrades();
+    const onBootUpdated = () => {
+      finishJournalCreateGoTrades();
+      finishJournalCreateCsvImport();
+    };
     window.addEventListener("talaria-v16-journal-created", onJournalCreated);
     window.addEventListener("talaria-v16-boot-updated", onBootUpdated);
     return () => {
@@ -13872,6 +13908,14 @@ const TalariaV8b = () => {
             goToTradesAfterCreate: true,
           });
         };
+        const startCsvJournalFromPicker = () => {
+          closeNewSessionJournalMethodPicker();
+          openDashboardNewLiveJournal({
+            accountTypeKey: newSessionJournalAccountType === "prop" ? "prop" : "personal",
+            lockAccountType: true,
+            goToCsvImportAfterCreate: true,
+          });
+        };
         const backFromJournalKindPicker = () => {
           closeNewSessionJournalKindPicker();
           setNewSessionKindPickerOpen(true);
@@ -15048,10 +15092,12 @@ const TalariaV8b = () => {
                   id:"csv",
                   label:"CSV import",
                   desc:"Upload a CSV export from your platform to bulk-import trades.",
-                  comingSoon:true,
-                  iconBg:"rgba(255,255,255,0.04)",
-                  iconColor:c.tm,
+                  iconBg:"rgba(74,106,255,0.14)",
+                  iconColor:c.acL,
+                  border:"rgba(74,106,255,0.18)",
+                  hoverBorder:"rgba(74,106,255,0.45)",
                   icon:<svg width={18} height={18} viewBox="0 0 24 24" fill="none"><path d="M12 3v12M8 11l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+                  onClick:startCsvJournalFromPicker,
                 },
                 {
                   id:"broker",
@@ -23099,11 +23145,39 @@ const TalariaV8b = () => {
               if (Array.isArray(d.errors) && d.errors.length) return d.errors.slice(0, 12).join("; ");
               if (typeof d.message === "string" && d.message.trim()) return d.message;
             }
+            if (typeof body?.error === "string" && body.error.trim()) return body.error;
             if (typeof body?.message === "string" && body.message.trim()) return body.message;
+            if (Array.isArray(body?.errors) && body.errors.length) return body.errors.slice(0, 12).join("; ");
             if (text && text.trim()) return text.slice(0, 280);
             return `HTTP ${status || "error"}`;
           };
-          const postSessionCsvImport = (url, file, onUploadProgress, columnMapping) => new Promise((resolve, reject) => {
+          const readDashJournalCsrfToken = () => {
+            if (typeof document === "undefined") return null;
+            const match = document.cookie.match(/(?:^|; )csrf_access_token=([^;]*)/);
+            return match ? decodeURIComponent(match[1]) : null;
+          };
+          const resolveDashCsvImportContext = () => {
+            const journalLiveId = ds?.liveAccountId ?? ds?._journalAccount?.liveAccountId;
+            if (isJournalDashboardSession && journalLiveId != null) {
+              const liveId = String(journalLiveId);
+              return {
+                kind: "liveJournal",
+                previewUrl: `/journal/api/journal/live-accounts/${encodeURIComponent(liveId)}/import-csv/preview`,
+                importUrl: `/journal/api/journal/live-accounts/${encodeURIComponent(liveId)}/import-csv`,
+              };
+            }
+            const sessionId = ds?.id;
+            if (sessionId != null && /^\d+$/.test(String(sessionId))) {
+              const sid = String(sessionId);
+              return {
+                kind: "session",
+                previewUrl: `/api/sessions/${encodeURIComponent(sid)}/journal/import-csv/preview`,
+                importUrl: `/api/sessions/${encodeURIComponent(sid)}/journal/import-csv`,
+              };
+            }
+            return null;
+          };
+          const postSessionCsvImport = (url, file, onUploadProgress, columnMapping, opts = {}) => new Promise((resolve, reject) => {
             const fd = new FormData();
             fd.append("file", file);
             if (columnMapping && typeof columnMapping === "object") {
@@ -23116,6 +23190,10 @@ const TalariaV8b = () => {
             const xhr = new XMLHttpRequest();
             xhr.open("POST", url);
             xhr.withCredentials = true;
+            if (opts.useJournalCsrf) {
+              const csrf = readDashJournalCsrfToken();
+              if (csrf) xhr.setRequestHeader("X-CSRF-TOKEN", csrf);
+            }
             xhr.upload.addEventListener("progress", (event) => {
               if (!event.lengthComputable || typeof onUploadProgress !== "function") return;
               onUploadProgress(event.loaded, event.total);
@@ -23128,14 +23206,19 @@ const TalariaV8b = () => {
             xhr.send(fd);
           });
           const previewDashboardTradesCsv = async (file) => {
-            if (!file || !ds?.id) return;
+            const importCtx = resolveDashCsvImportContext();
+            if (!file || !importCtx) return;
             setDashCsvMapModal({ phase: "loading", fileName: file.name || "trades.csv", fileSize: file.size || 0 });
             try {
               const fd = new FormData();
               fd.append("file", file);
-              const res = await fetch(`/api/sessions/${encodeURIComponent(String(ds.id))}/journal/import-csv/preview`, {
+              const previewHeaders = {};
+              const previewCsrf = readDashJournalCsrfToken();
+              if (importCtx.kind === "liveJournal" && previewCsrf) previewHeaders["X-CSRF-TOKEN"] = previewCsrf;
+              const res = await fetch(importCtx.previewUrl, {
                 method: "POST",
                 credentials: "include",
+                headers: previewHeaders,
                 body: fd,
               });
               const text = await res.text();
@@ -23278,7 +23361,8 @@ const TalariaV8b = () => {
             );
           };
           const importDashboardTradesCsv = async (file, columnMapping) => {
-            if (!file || dashTradesImportBusy || !ds?.id) return;
+            const importCtx = resolveDashCsvImportContext();
+            if (!file || dashTradesImportBusy || !importCtx) return;
             clearDashTradesImportProgress();
             setDashTradesImportBusy(true);
             const baseProgress = {
@@ -23319,7 +23403,9 @@ const TalariaV8b = () => {
               }));
               const q = new URLSearchParams();
               q.set("mode", "append");
-              const url = `/api/sessions/${encodeURIComponent(String(ds.id))}/journal/import-csv?${q.toString()}`;
+              const url = importCtx.kind === "liveJournal"
+                ? importCtx.importUrl
+                : `${importCtx.importUrl}?${q.toString()}`;
               const { status, text } = await postSessionCsvImport(url, file, (loaded, total) => {
                 const ratio = total > 0 ? loaded / total : 0;
                 const pct = Math.min(72, Math.round(ratio * 58) + 14);
@@ -23331,7 +23417,7 @@ const TalariaV8b = () => {
                     ? dashTxt("Parsing and saving trades…", "جارٍ تحليل وحفظ الصفقات…")
                     : dashTxt(`Uploading… ${Math.round(ratio * 100)}%`, `جارٍ الرفع… ${Math.round(ratio * 100)}%`),
                 }) : prev);
-              }, columnMapping);
+              }, columnMapping, { useJournalCsrf: importCtx.kind === "liveJournal" });
               setDashTradesImportProgress((prev) => prev ? ({
                 ...prev,
                 phase: "processing",

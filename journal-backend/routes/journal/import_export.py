@@ -6,14 +6,16 @@ Handles: Excel import, CSV export, import history
 
 from flask import request, jsonify, send_file, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, JournalEntry, User, ImportBatch
-from datetime import datetime
+from models import db, JournalEntry, User, ImportBatch, LiveJournalAccount, Profile
+from datetime import datetime, timezone
 import os
 import re
 import base64
 import uuid
 import io
+import json
 import pandas as pd
+from csv_journal import parse_trades_csv_bytes, preview_trades_csv_bytes
 from . import journal_bp
 from .filters import (
     get_active_profile_id, 
@@ -396,6 +398,219 @@ def download_imported_file(batch_id):
     except Exception as e:
         print(" download_imported_file error:", e)
         return jsonify({'error': str(e)}), 500
+
+
+def _ms_to_naive_dt(ms):
+    if ms is None:
+        return None
+    try:
+        value = float(ms)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return datetime.fromtimestamp(value / 1000.0, tz=timezone.utc).replace(tzinfo=None)
+
+
+def _normalize_csv_direction(raw):
+    text = str(raw or "buy").strip().lower()
+    if text in {"sell", "short", "s", "-1", "0"}:
+        return "short"
+    return "long"
+
+
+def _chart_trade_to_journal_entry(trade, *, user_id, profile_id, batch_id=None):
+    direction = _normalize_csv_direction(trade.get("direction"))
+    symbol = str(trade.get("ticker") or trade.get("symbol") or "UNKNOWN").upper()
+    entry_price = float(trade.get("entryPrice") or trade.get("entry") or 0.0)
+    exit_price = float(trade.get("exitPrice") or trade.get("exit") or entry_price or 0.0)
+    quantity = float(trade.get("quantity") or trade.get("position_size") or 1.0)
+    if quantity <= 0:
+        quantity = 1.0
+    pnl_raw = trade.get("netPnL")
+    if pnl_raw is None:
+        pnl_raw = trade.get("pnl")
+    pnl = float(pnl_raw) if pnl_raw is not None else None
+    rr_raw = trade.get("rMultiple")
+    if rr_raw is None:
+        rr_raw = trade.get("rr")
+    rr = float(rr_raw) if rr_raw is not None else None
+    open_time = _ms_to_naive_dt(trade.get("openTime") or trade.get("entryTime"))
+    close_time = _ms_to_naive_dt(trade.get("closeTime") or trade.get("exitTime"))
+    trade_date = open_time or close_time or datetime.utcnow()
+    notes_parts = []
+    for key in ("preTradeNotes", "notes", "postNotes", "postTradeNotes"):
+        val = trade.get(key)
+        if isinstance(val, dict):
+            text = val.get("setup") or val.get("text") or val.get("notes")
+            if text:
+                notes_parts.append(str(text))
+        elif val:
+            notes_parts.append(str(val))
+    notes = "\n\n".join(dict.fromkeys([p for p in notes_parts if p])) or None
+    setup = str(trade.get("setup") or "CSV").strip() or "CSV"
+    stop_loss = trade.get("stopLoss") or trade.get("planned_sl") or trade.get("sl")
+    take_profit = trade.get("takeProfit") or trade.get("target") or trade.get("tp")
+    commission = trade.get("commission_at_entry") or trade.get("commission") or trade.get("commission_total")
+    slippage = trade.get("slippage")
+    return JournalEntry(
+        user_id=user_id,
+        profile_id=profile_id,
+        symbol=symbol,
+        direction=direction,
+        entry_price=entry_price,
+        exit_price=exit_price,
+        stop_loss=float(stop_loss) if stop_loss is not None and stop_loss != "" else None,
+        take_profit=float(take_profit) if take_profit is not None and take_profit != "" else None,
+        quantity=quantity,
+        pnl=pnl,
+        rr=rr,
+        notes=notes,
+        strategy=setup,
+        setup=setup,
+        commission=float(commission) if commission is not None and commission != "" else None,
+        slippage=float(slippage) if slippage is not None and slippage != "" else None,
+        open_time=open_time,
+        close_time=close_time,
+        date=trade_date,
+        import_batch_id=batch_id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        extra_data={
+            "csv_import": True,
+            "trade_id": trade.get("tradeId") or trade.get("trade_id") or trade.get("id"),
+            "manual_dashboard": True,
+        },
+    )
+
+
+def _get_live_journal_account(user_id, account_id):
+    return LiveJournalAccount.query.filter_by(
+        id=account_id,
+        user_id=user_id,
+        status="active",
+    ).first()
+
+
+def _activate_live_journal_profile(user_id, profile_id):
+    Profile.query.filter_by(user_id=user_id).update({"is_active": False})
+    profile = Profile.query.filter_by(id=profile_id, user_id=user_id).first()
+    if profile:
+        profile.is_active = True
+        profile.updated_at = datetime.utcnow()
+
+
+@journal_bp.route('/live-accounts/<int:account_id>/import-csv/preview', methods=['POST'])
+@jwt_required()
+def preview_live_account_csv(account_id):
+    """Inspect CSV headers and suggest column mapping before live journal import."""
+    try:
+        user_id = int(get_jwt_identity())
+        row = _get_live_journal_account(user_id, account_id)
+        if not row:
+            return jsonify({"success": False, "error": "Live journal account not found"}), 404
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file provided"}), 400
+        file = request.files['file']
+        if not file.filename:
+            return jsonify({"success": False, "error": "No file selected"}), 400
+        raw = file.read()
+        if len(raw) > 12 * 1024 * 1024:
+            return jsonify({"success": False, "error": "CSV file too large (max 12 MB)"}), 413
+        preview = preview_trades_csv_bytes(raw)
+        errs = preview.get("errors") or []
+        if errs:
+            return jsonify({"success": False, "message": "CSV preview failed", "errors": errs[:20]}), 400
+        return jsonify({"success": True, **preview}), 200
+    except Exception as exc:
+        print(" preview_live_account_csv error:", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@journal_bp.route('/live-accounts/<int:account_id>/import-csv', methods=['POST'])
+@jwt_required()
+def import_live_account_csv(account_id):
+    """Bulk-import CSV trades into a live journal account profile."""
+    try:
+        user_id = int(get_jwt_identity())
+        row = _get_live_journal_account(user_id, account_id)
+        if not row:
+            return jsonify({"success": False, "error": "Live journal account not found"}), 404
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "No file provided"}), 400
+        file = request.files['file']
+        if not file.filename:
+            return jsonify({"success": False, "error": "No file selected"}), 400
+
+        mapping_obj = None
+        column_mapping = request.form.get("column_mapping")
+        if column_mapping and str(column_mapping).strip():
+            try:
+                parsed_map = json.loads(column_mapping)
+            except json.JSONDecodeError:
+                return jsonify({"success": False, "error": "Invalid column_mapping JSON"}), 400
+            if not isinstance(parsed_map, dict):
+                return jsonify({"success": False, "error": "column_mapping must be a JSON object"}), 400
+            mapping_obj = {
+                str(k): str(v)
+                for k, v in parsed_map.items()
+                if v is not None and str(v).strip()
+            }
+
+        raw = file.read()
+        if len(raw) > 12 * 1024 * 1024:
+            return jsonify({"success": False, "error": "CSV file too large (max 12 MB)"}), 413
+
+        parsed = parse_trades_csv_bytes(raw, column_mapping=mapping_obj)
+        errs = parsed.get("errors") or []
+        if errs:
+            return jsonify({"success": False, "message": "CSV parse errors", "errors": errs[:80]}), 400
+        trades = parsed.get("trades") or []
+        if not trades:
+            return jsonify({"success": False, "error": "No trades parsed from CSV"}), 400
+
+        unique_filename = f"{uuid.uuid4()}_{file.filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
+        with open(filepath, "wb") as handle:
+            handle.write(raw)
+
+        batch = ImportBatch(
+            user_id=user_id,
+            profile_id=row.profile_id,
+            filename=file.filename,
+            filepath=filepath,
+            imported_at=datetime.utcnow(),
+        )
+        db.session.add(batch)
+        db.session.flush()
+
+        _activate_live_journal_profile(user_id, row.profile_id)
+        imported_count = 0
+        for trade in trades:
+            entry = _chart_trade_to_journal_entry(
+                trade,
+                user_id=user_id,
+                profile_id=row.profile_id,
+                batch_id=batch.id,
+            )
+            db.session.add(entry)
+            imported_count += 1
+
+        db.session.commit()
+        journal_len = JournalEntry.query.filter_by(user_id=user_id, profile_id=row.profile_id).count()
+        warnings = list(parsed.get("warnings") or [])
+        return jsonify({
+            "success": True,
+            "imported": imported_count,
+            "journal_len": journal_len,
+            "mode": "append",
+            "batch_id": batch.id,
+            "warnings": warnings[:20],
+        }), 201
+    except Exception as exc:
+        db.session.rollback()
+        print(" import_live_account_csv error:", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @journal_bp.route('/import/<int:batch_id>', methods=['DELETE'])
