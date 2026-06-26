@@ -305,13 +305,34 @@ def extract_session_contract(session_public: dict[str, Any]) -> dict[str, Any]:
             "base": _to_float(row.get("reference_price") or row.get("base_price"), float(fallback["base"])) or float(fallback["base"]),
         }
 
+    pre_var_defs, post_var_defs = _strategy_variable_defs(cfg)
+    mfe_mae = cfg.get("mfe_mae") if isinstance(cfg.get("mfe_mae"), dict) else {}
+    post_exit_candles = int(
+        _to_float(
+            cfg.get("post_exit_tracking_candles")
+            or mfe_mae.get("post_exit_candles")
+            or cfg.get("postExitTrackingCandles"),
+            50,
+        )
+        or 50
+    )
+    strategy_id = cfg.get("strategy_id") or cfg.get("strategyId")
+    try:
+        strategy_id = int(strategy_id) if strategy_id is not None else None
+    except (TypeError, ValueError):
+        strategy_id = None
+
     return {
         "session_id": session_public.get("id"),
         "session_name": str(session_public.get("name") or cfg.get("sessionName") or "Session"),
         "session_type": str(session_public.get("session_type") or cfg.get("type") or "personal"),
         "trading_mode": str(cfg.get("trading_mode") or cfg.get("tradingMode") or "standard"),
         "timeframe": str(cfg.get("timeframe") or "1H"),
-        "strategy": str(cfg.get("strategy_name") or cfg.get("playbook") or "General"),
+        "strategy": str(cfg.get("strategy_name") or cfg.get("playbook_display") or cfg.get("playbook") or "General"),
+        "strategy_id": strategy_id,
+        "pre_var_defs": pre_var_defs,
+        "post_var_defs": post_var_defs,
+        "post_exit_candles": max(5, min(post_exit_candles, 120)),
         "tickers": tickers,
         "instruments": instruments,
         "start_ms": start_ms,
@@ -341,6 +362,157 @@ def _bar_at_or_after(bars: list[dict[str, Any]], ts_ms: int) -> dict[str, Any] |
     if idx >= len(bars):
         return bars[-1]
     return bars[idx]
+
+
+def _bars_in_range(bars: list[dict[str, Any]], start_ms: int, end_ms: int) -> list[dict[str, Any]]:
+    if not bars:
+        return []
+    times = [int(b["t"]) for b in bars]
+    lo = bisect.bisect_left(times, start_ms)
+    hi = bisect.bisect_right(times, end_ms)
+    return bars[lo:hi]
+
+
+def _bars_after(bars: list[dict[str, Any]], from_ms: int, count: int) -> list[dict[str, Any]]:
+    if not bars or count <= 0:
+        return []
+    times = [int(b["t"]) for b in bars]
+    idx = bisect.bisect_right(times, from_ms)
+    return bars[idx : idx + count]
+
+
+def _excursion_r_values(
+    direction: str,
+    array_base: float,
+    initial_sl: float,
+    candle: dict[str, Any],
+) -> dict[str, float] | None:
+    planned_risk = abs(array_base - initial_sl)
+    if not (planned_risk > 0):
+        return None
+    try:
+        high = float(candle.get("h") or candle.get("high"))
+        low = float(candle.get("l") or candle.get("low"))
+        close = float(candle.get("c") or candle.get("close"))
+    except (TypeError, ValueError):
+        return None
+    if direction == "BUY":
+        return {
+            "bar_high_r": (high - array_base) / planned_risk,
+            "bar_low_r": (array_base - low) / planned_risk,
+            "bar_close_r": (close - array_base) / planned_risk,
+        }
+    return {
+        "bar_high_r": (array_base - low) / planned_risk,
+        "bar_low_r": (high - array_base) / planned_risk,
+        "bar_close_r": (array_base - close) / planned_risk,
+    }
+
+
+def _build_trade_path_arrays(
+    bars: list[dict[str, Any]],
+    *,
+    entry_ms: int,
+    exit_ms: int,
+    direction: str,
+    array_base: float,
+    initial_sl: float,
+    post_exit_candles: int,
+) -> dict[str, Any]:
+    in_trade = _bars_in_range(bars, entry_ms, exit_ms)
+    if not in_trade and bars:
+        anchor = _bar_at_or_before(bars, entry_ms)
+        if anchor:
+            idx = bars.index(anchor)
+            in_trade = bars[idx : min(idx + 8, len(bars))]
+
+    bar_close_r: list[float] = []
+    bar_high_r: list[float] = []
+    bar_low_r: list[float] = []
+    for bar in in_trade:
+        r_vals = _excursion_r_values(direction, array_base, initial_sl, bar)
+        if not r_vals:
+            continue
+        bar_close_r.append(round(r_vals["bar_close_r"], 4))
+        bar_high_r.append(round(r_vals["bar_high_r"], 4))
+        bar_low_r.append(round(r_vals["bar_low_r"], 4))
+
+    post_exit = _bars_after(bars, exit_ms, post_exit_candles)
+    post_exit_bar_close_r: list[float] = []
+    post_exit_bar_high_r: list[float] = []
+    post_exit_bar_low_r: list[float] = []
+    for bar in post_exit:
+        r_vals = _excursion_r_values(direction, array_base, initial_sl, bar)
+        if not r_vals:
+            continue
+        post_exit_bar_close_r.append(round(r_vals["bar_close_r"], 4))
+        post_exit_bar_high_r.append(round(r_vals["bar_high_r"], 4))
+        post_exit_bar_low_r.append(round(r_vals["bar_low_r"], 4))
+
+    return {
+        "bar_close_r": bar_close_r,
+        "bar_high_r": bar_high_r,
+        "bar_low_r": bar_low_r,
+        "post_exit_bar_close_r": post_exit_bar_close_r,
+        "post_exit_bar_high_r": post_exit_bar_high_r,
+        "post_exit_bar_low_r": post_exit_bar_low_r,
+        "post_exit_anchor_time": float(exit_ms),
+        "final_exit_bar": len(bar_close_r) if bar_close_r else 0,
+    }
+
+
+def _strategy_variable_defs(cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    raw = cfg.get("strategy_variables") or cfg.get("strategyVariables") or []
+    if not isinstance(raw, list):
+        return [], []
+    pre: list[dict[str, Any]] = []
+    post: list[dict[str, Any]] = []
+    for row in raw:
+        if not isinstance(row, dict) or row.get("type") == "divider":
+            continue
+        timing = str(row.get("timing") or "pre").lower()
+        if timing == "post":
+            post.append(row)
+        else:
+            pre.append(row)
+    return pre, post
+
+
+def _sample_strategy_variable_values(
+    defs: list[dict[str, Any]],
+    rng: random.Random,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for d in defs:
+        vtype = str(d.get("vtype") or "yesno").lower()
+        if vtype == "multi":
+            opts = [str(o) for o in (d.get("options") or []) if str(o).strip()]
+            value = rng.choice(opts) if opts else "Yes"
+        else:
+            value = rng.choice(["Yes", "No"])
+        out.append(
+            {
+                "id": str(d.get("id") or d.get("name") or ""),
+                "name": str(d.get("name") or d.get("id") or ""),
+                "vtype": "multi" if vtype == "multi" else "yesno",
+                "value": value,
+            }
+        )
+    return out
+
+
+def _tags_from_strategy_variables(vars_: list[dict[str, Any]]) -> list[str]:
+    tags: list[str] = []
+    for v in vars_:
+        name = str(v.get("name") or v.get("id") or "").strip()
+        val = str(v.get("value") or "").strip()
+        if name and val:
+            tags.append(f"{name}: {val}")
+        elif name:
+            tags.append(name)
+        elif val:
+            tags.append(val)
+    return tags
 
 
 def _hold_range_ms(timeframe: str, rng: random.Random) -> tuple[int, int]:
@@ -507,6 +679,30 @@ def generate_session_seed_trades(
         side = "Long" if direction == "BUY" else "Short"
         post_tag = "Win" if pnl > 0 else "Loss" if pnl < 0 else "BE"
 
+        pre_vars = _sample_strategy_variable_values(contract.get("pre_var_defs") or [], rng)
+        post_vars = _sample_strategy_variable_values(contract.get("post_var_defs") or [], rng)
+        pre_tags = _tags_from_strategy_variables(pre_vars)
+        post_tags = _tags_from_strategy_variables(post_vars)
+        if not pre_tags:
+            pre_tags = [strategy]
+        if not post_tags:
+            post_tags = [post_tag]
+        else:
+            post_tags = list(dict.fromkeys(post_tags + [post_tag]))
+
+        array_base = entry
+        path = _build_trade_path_arrays(
+            bars,
+            entry_ms=entry_ms,
+            exit_ms=exit_ms,
+            direction=direction,
+            array_base=array_base,
+            initial_sl=stop,
+            post_exit_candles=int(contract.get("post_exit_candles") or 50),
+        )
+        capture_ratio = round(abs(r_mult) / mfe_r, 4) if mfe_r else 0.0
+        commission_total = round(commission * 2, 2) if commission else round(rng.uniform(0, 3.5), 2)
+
         trades.append({
             "tradeId": trade_id,
             "client_trade_id": str(i + 1),
@@ -533,14 +729,21 @@ def generate_session_seed_trades(
             "takeProfit": target,
             "initial_sl": stop,
             "initial_takeProfit": target,
+            "active_sl_at_exit": stop,
+            "active_tps_at_exit": [{"price": target, "percentage": 100, "hit": close_type == "TP"}],
+            "array_base_price": array_base,
             "netPnL": pnl,
             "pnl": pnl,
             "realizedPnL": pnl,
+            "finalClosePnL": pnl,
             "rMultiple": round(r_mult, 4),
             "actual_rr_net": round(abs(r_mult), 4),
             "actualRR": round(abs(r_mult), 4),
+            "actual_rr_gross": round(abs(r_mult), 4),
+            "actual_risk_r": 1.0,
             "rewardToRiskRatio": planned_rr,
             "plannedRR": planned_rr,
+            "plannedRRAtEntry": round(planned_rr, 4),
             "riskAmount": round(risk_amount, 2),
             "riskPerTrade": round(risk_amount, 2),
             "originalRiskAmount": round(risk_amount, 2),
@@ -554,19 +757,27 @@ def generate_session_seed_trades(
             "mae": mae_price,
             "mfe_r": round(mfe_r, 4),
             "mae_r": round(mae_r, 4),
+            "total_mfe_r": round(mfe_r, 4),
             "highestPrice": highest,
             "lowestPrice": lowest,
             "spread_pips_at_entry": spread,
             "commission_at_entry": commission,
+            "commission_total": commission_total,
             "pip_value_at_entry": pip_value,
             "setup": strategy,
             "tag": strategy,
+            "strategy_id": contract.get("strategy_id"),
+            "strategy_variables": pre_vars or None,
+            "post_strategy_variables": post_vars or None,
             "market": market,
             "dayOfWeek": DAYS[entry_dt.weekday()],
             "month": MONTHS[entry_dt.month - 1],
             "year": entry_dt.year,
             "hourOfEntry": entry_dt.hour,
             "hourOfExit": datetime.fromtimestamp(exit_ms / 1000.0, tz=timezone.utc).hour,
+            "entryMarkerTimeMs": float(entry_ms),
+            "mfeTime": float(entry_ms + rng.randint(1000, max(2000, (exit_ms - entry_ms) // 2))),
+            "maeTime": float(exit_ms - rng.randint(1000, min(600000, max(2000, (exit_ms - entry_ms) // 3)))),
             "sourceSessionName": session_name,
             "sourceSessionId": session_id,
             "trading_session_id": session_id,
@@ -580,14 +791,34 @@ def generate_session_seed_trades(
             "rulesFollowed": outcome["rules_followed"],
             "hasPartialCloses": outcome["has_partial"],
             "partialClosePnL": round(pnl * 0.5, 2) if outcome["has_partial"] else 0,
+            "partialCloses": [{"pct": 50, "pnl": round(pnl * 0.5, 2)}] if outcome["has_partial"] else [],
             "isSplitEntry": outcome["is_split"],
             "isScaledTrade": outcome["is_scaled"],
             "would_have_won": outcome["would_have_won"],
-            "preTags": [strategy],
-            "postTags": [post_tag],
-            "postTradeNotes": {"seed": True, "alignedToSession": True, "scenario": trade_scenario, "profile": scenario_key},
+            "preTags": pre_tags,
+            "postTags": post_tags,
+            "tags": list(dict.fromkeys(pre_tags + post_tags)),
+            "postTradeNotes": {
+                "seed": True,
+                "alignedToSession": True,
+                "scenario": trade_scenario,
+                "profile": scenario_key,
+                "postStrategyVariables": post_vars or None,
+            },
             "balance_at_creation": round(balance - pnl, 2),
             "balance_at_exit": balance_after,
+            "capture_ratio": capture_ratio,
+            "exit_confirmed": True,
+            "exit_timing_gap": round(mfe_r - abs(r_mult), 4),
+            "entry_offset_r": 0.0,
+            "bar_close_r": path["bar_close_r"],
+            "bar_high_r": path["bar_high_r"],
+            "bar_low_r": path["bar_low_r"],
+            "post_exit_bar_close_r": path["post_exit_bar_close_r"],
+            "post_exit_bar_high_r": path["post_exit_bar_high_r"],
+            "post_exit_bar_low_r": path["post_exit_bar_low_r"],
+            "post_exit_anchor_time": path["post_exit_anchor_time"],
+            "final_exit_bar": path["final_exit_bar"],
             "n": i + 1,
             "chart_trade_id": i + 1,
         })
