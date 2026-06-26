@@ -5,6 +5,7 @@ import "./globals.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
+import SentryInit from "@/components/SentryInit";
 import { JsonLdScript } from "@/components/seo/JsonLdScript";
 import {
   buildPublicAlternates,
@@ -118,6 +119,7 @@ export default function RootLayout({
       </head>
       <body className={`${zain.variable} font-sans antialiased`}>
         <LanguageProvider>
+          <SentryInit />
           {children}
           <CookieConsent />
           <PwaInstallPrompt />

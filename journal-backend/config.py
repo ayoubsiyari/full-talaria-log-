@@ -87,6 +87,26 @@ def init_prod_config(app):
     else:
         print("⚠️  Using SQLite database (development mode)")
 
+    # Connection pool tuning (Postgres only — SQLite uses a non-QueuePool and
+    # rejects pool_size). pool_pre_ping drops connections the DB closed while
+    # idle so requests don't 500 with "server closed the connection"; the rest
+    # bound how many connections each gunicorn worker can hold.
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI') or ''
+    if uri.startswith(('postgresql://', 'postgresql+psycopg2://', 'postgres://')):
+        def _int_env(name, default):
+            try:
+                return int(os.environ.get(name, str(default)))
+            except (TypeError, ValueError):
+                return default
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_size': _int_env('DB_POOL_SIZE', 10),
+            'max_overflow': _int_env('DB_MAX_OVERFLOW', 20),
+            'pool_timeout': _int_env('DB_POOL_TIMEOUT', 30),
+            'pool_recycle': _int_env('DB_POOL_RECYCLE', 1800),
+            'pool_pre_ping': True,
+        }
+        print("✅ DB connection pool configured (pre-ping on, recycle 1800s)")
+
     # CORS configuration
     cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS')
     if cors_origins_env:

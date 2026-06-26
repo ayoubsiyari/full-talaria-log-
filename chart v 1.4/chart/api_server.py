@@ -168,6 +168,30 @@ from firstrate_ingest import (
     normalize_firstrate_csv_to_standard,
 )
 
+# Error tracking (opt-in): only initializes when SENTRY_DSN is set, so any deploy
+# without a DSN behaves exactly as before. sentry-sdk auto-enables its FastAPI/
+# Starlette integration when those packages are importable.
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+
+        def _float_env(name: str, default: float) -> float:
+            try:
+                return float(os.environ.get(name, str(default)))
+            except (TypeError, ValueError):
+                return default
+
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
+            traces_sample_rate=_float_env("SENTRY_TRACES_SAMPLE_RATE", 0.0),
+            send_default_pii=False,
+        )
+        print("✅ Sentry error tracking enabled (trading-chart)")
+    except Exception as _exc:  # never let observability setup break boot
+        print(f"⚠️  Sentry init skipped (trading-chart): {_exc}")
+
 # Initialize FastAPI
 app = FastAPI(title="Trading Chart API")
 
@@ -447,7 +471,33 @@ if sqlite_target_path is not None:
 
 # SQLite-specific connection args
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+# Connection pool tuning. SQLite uses its own (non-network) pool, so only apply
+# QueuePool sizing to networked databases (Postgres). pool_pre_ping discards
+# connections that the DB/proxy dropped while idle (prevents "server closed the
+# connection" 500s); pool_recycle guards against stale long-lived connections.
+# Sized per gunicorn worker process — keep (pool_size + max_overflow) × workers
+# comfortably under Postgres max_connections.
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args=connect_args)
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args=connect_args,
+        pool_size=_int_env("DB_POOL_SIZE", 10),
+        max_overflow=_int_env("DB_MAX_OVERFLOW", 20),
+        pool_timeout=_int_env("DB_POOL_TIMEOUT", 30),
+        pool_recycle=_int_env("DB_POOL_RECYCLE", 1800),
+        pool_pre_ping=True,
+    )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 _DATABASE_USES_ROW_LOCK = not DATABASE_URL.startswith("sqlite")
 

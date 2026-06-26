@@ -1,7 +1,14 @@
 services:
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
+    # Headroom: 256mb was tight once bar/what-if/dashboard caches + per-user rate-limit
+    # windows share one instance. 512mb default (override via REDIS_MAXMEMORY) keeps the
+    # working set resident so the LRU rarely evicts hot keys. allkeys-lru is kept so Redis
+    # never rejects writes under pressure (availability over strict retention); cache and
+    # rate-limit keys all carry TTLs, and the tiny per-user version counters are cheap to
+    # rebuild if ever evicted. If retention of rate-limit windows becomes critical, move
+    # them to a dedicated Redis instance rather than weakening this one.
+    command: redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save ""
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -54,6 +61,11 @@ services:
 
   db:
     image: postgres:16-alpine
+    # Headroom over the default max_connections=100: each gunicorn worker holds a
+    # SQLAlchemy pool (DB_POOL_SIZE + DB_MAX_OVERFLOW). With chart(2) + worker(1) +
+    # journal(2) workers a simultaneous burst can approach ~150 connections, so we
+    # lift the ceiling to 200. Lower DB_* envs or add PgBouncer if RAM is tight.
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-200}"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-talaria}
       POSTGRES_USER: ${POSTGRES_USER:-talaria}
@@ -93,6 +105,10 @@ services:
       ADMIN_ALERT_EMAIL: ${ADMIN_ALERT_EMAIL:-contact@talaria.services}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      # Error tracking (optional): leave SENTRY_DSN empty to disable entirely.
+      SENTRY_DSN: ${SENTRY_DSN_JOURNAL:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
     depends_on:
       db:
         condition: service_healthy
@@ -155,6 +171,10 @@ services:
       FIrstrate_SCHEDULE_ADAPTIVE_PERIOD: ${FIrstrate_SCHEDULE_ADAPTIVE_PERIOD:-true}
       FIrstrate_SCHEDULE_AUTO_REPAIR: ${FIrstrate_SCHEDULE_AUTO_REPAIR:-true}
       FIrstrate_SCHEDULE_TICK_SEC: ${FIrstrate_SCHEDULE_TICK_SEC:-120}
+      # Error tracking (optional): leave SENTRY_DSN empty to disable entirely.
+      SENTRY_DSN: ${SENTRY_DSN_CHART:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
       BINARY_BUILD_MODE: ${BINARY_BUILD_MODE:-queue}
       # 5s (was 2s): jobs still wake instantly via Redis BRPOP; this only widens the
       # idle fallback poll so we issue fewer "claim next job" queries against Postgres.
@@ -304,6 +324,9 @@ services:
       args:
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         NEXT_PUBLIC_SITE_URL: ${FRONTEND_URL:-http://localhost:3000}
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
+        NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+        NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
     ports:
       - "3000:80"
     volumes:

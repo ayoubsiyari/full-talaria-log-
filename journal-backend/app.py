@@ -13,6 +13,30 @@ from db_schema import ensure_users_schema
 
 import jwt as pyjwt
 
+# Error tracking (opt-in): only initializes when SENTRY_DSN is set, so local/dev
+# and any deploy without a DSN behave exactly as before. The Flask integration
+# is auto-enabled by sentry-sdk when Flask is importable.
+_SENTRY_DSN = os.environ.get('SENTRY_DSN', '').strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+
+        def _float_env(name, default):
+            try:
+                return float(os.environ.get(name, str(default)))
+            except (TypeError, ValueError):
+                return default
+
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            environment=os.environ.get('SENTRY_ENVIRONMENT', os.environ.get('FLASK_ENV', 'production')),
+            traces_sample_rate=_float_env('SENTRY_TRACES_SAMPLE_RATE', 0.0),
+            send_default_pii=False,
+        )
+        print('✅ Sentry error tracking enabled (journal-backend)')
+    except Exception as _exc:  # never let observability setup break boot
+        print(f'⚠️  Sentry init skipped (journal-backend): {_exc}')
+
 app = Flask(__name__)
 app.config.from_object(Config)
 

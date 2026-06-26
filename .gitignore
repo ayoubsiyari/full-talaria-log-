@@ -90,5 +90,9 @@ chart\ v\ 1.4/chart/dist/
 # Docker COPY target for dashboard analytics backend (source: homepage/.../analytics/backend)
 chart\ v\ 1.4/chart/analytics_backend/
 
+# Postgres backup dumps (scripts/backup-postgres.sh) — never commit DB contents
+backups/
+*.sql.gz
+
 
 
