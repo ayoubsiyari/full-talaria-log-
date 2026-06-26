@@ -20136,6 +20136,17 @@ const TalariaV8b = () => {
           }));
           const libraryJournalConnectionTypeCats = libraryJournalConnectionGroups.flatMap(group=>group.connections);
           const libraryJournalAccountTotal = libraryAllJournalAccountRows.length || libraryJournalConnections.reduce((sum,connection)=>sum+connection.count,0);
+          const libraryLiveJournalAccountCount = libraryAllJournalAccountRows.filter(
+            (account) => !v16JournalBoot || account?.isLiveJournalAccount !== false
+          ).length;
+          const libraryHasLiveJournalAccounts = libraryLiveJournalAccountCount > 0;
+          const libraryActionDisabledStyle = {
+            opacity: 0.38,
+            pointerEvents: "none",
+            cursor: "default",
+            boxShadow: "none",
+            filter: "none",
+          };
           const libraryJournalCats = [
             {id:"all",label:dashTxt("All Connections","كل الاتصالات"),color:c.gn,count:libraryJournalAccountTotal,match:()=>true},
             ...libraryJournalAccountTypeCats,
@@ -21107,10 +21118,10 @@ const TalariaV8b = () => {
                 <div className="tlr-library-action tlr-library-primary-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true, goToTradesAfterCreate: true }))} onKeyDown={libraryKeyActivate(()=>openDashboardNewLiveJournal({ accountTypeKey: typeKey, lockAccountType: true, goToTradesAfterCreate: true }))} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.gn,color:"#04110e",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
                   {dashTxt("Create Journal","إنشاء يومية")}
                 </div>
-                <div className="tlr-library-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(()=>liveJournalAddTradeBridgeRef.current?.open?.())} onKeyDown={libraryKeyActivate(()=>liveJournalAddTradeBridgeRef.current?.open?.())} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.acL,color:"#fff",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer",boxShadow:`0 0 8px ${c.acG}`}}>
+                <div className="tlr-library-action tlr-library-primary-action-disabled" role="presentation" aria-disabled="true" tabIndex={-1} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",background:c.acL,color:"#fff",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,...libraryActionDisabledStyle}}>
                   {dashTxt("Add Trade","إضافة صفقة")}
                 </div>
-                <div className="tlr-library-action" role="button" tabIndex={0} onPointerDown={libraryPointerActivate(openLiveJournalImportFlow)} onKeyDown={libraryKeyActivate(openLiveJournalImportFlow)} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.brH}`,color:c.ts,fontSize:9,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,cursor:"pointer"}}>
+                <div className="tlr-library-action tlr-library-primary-action-disabled" role="presentation" aria-disabled="true" tabIndex={-1} style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.brH}`,color:c.ts,fontSize:9,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,...libraryActionDisabledStyle}}>
                   {dashTxt("Import trades","استيراد الصفقات")}
                 </div>
               </div>
@@ -21144,6 +21155,7 @@ const TalariaV8b = () => {
                 label:dashTxt("Add Trade","إضافة صفقة"),
                 color:c.acL,
                 shadow:c.acG,
+                disabled:!libraryHasLiveJournalAccounts,
                 onClick:()=>liveJournalAddTradeBridgeRef.current?.open?.(),
               }
             : null;
@@ -30170,7 +30182,6 @@ const TalariaV8b = () => {
                 || boot.accounts.find(item => item.isLiveJournalAccount);
             }
             if (!target?.liveAccountId && !target?.profileId) {
-              openDashboardNewLiveJournal({ accountTypeKey: libraryLiveJournalTypeFromSelection(), lockAccountType: true, goToTradesAfterCreate: true });
               return;
             }
             const key = `journalAccount:${target.id}`;
@@ -32491,13 +32502,13 @@ const TalariaV8b = () => {
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                         {!dashCompareOpen && libraryJournalSecondaryAction && (
-                          <div className="tlr-library-action" role="button" tabIndex={0} aria-label={libraryJournalSecondaryAction.label}
-                            onClick={e=>{e.stopPropagation();libraryJournalSecondaryAction.onClick();}}
-                            onKeyDown={libraryKeyActivate(e=>{e.stopPropagation();libraryJournalSecondaryAction.onClick();})}
+                          <div className={`tlr-library-action${libraryJournalSecondaryAction.disabled ? " tlr-library-primary-action-disabled" : ""}`} role="button" tabIndex={libraryJournalSecondaryAction.disabled ? -1 : 0} aria-disabled={libraryJournalSecondaryAction.disabled ? "true" : "false"} aria-label={libraryJournalSecondaryAction.label}
+                            onClick={libraryJournalSecondaryAction.disabled ? undefined : (e=>{e.stopPropagation();libraryJournalSecondaryAction.onClick();})}
+                            onKeyDown={libraryJournalSecondaryAction.disabled ? undefined : libraryKeyActivate(e=>{e.stopPropagation();libraryJournalSecondaryAction.onClick();})}
                             onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}
-                            onMouseDown={e=>{e.currentTarget.style.transform=dashPressTransform;}}
+                            onMouseDown={libraryJournalSecondaryAction.disabled ? undefined : (e=>{e.currentTarget.style.transform=dashPressTransform;})}
                             onMouseUp={e=>{e.currentTarget.style.transform="translateY(0)";}}
-                            style={{"--tlr-action-glow":libraryJournalSecondaryAction.shadow,height:30,minWidth:118,padding:"0 13px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:libraryJournalSecondaryAction.color,color:"#fff",fontSize:9.6,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:"pointer",boxShadow:`0 0 8px ${libraryJournalSecondaryAction.shadow}`,filter:"brightness(1)",opacity:1,transition:dashControlTransition,boxSizing:"border-box",transform:"translateY(0)"}}>
+                            style={{"--tlr-action-glow":libraryJournalSecondaryAction.shadow,height:30,minWidth:118,padding:"0 13px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:libraryJournalSecondaryAction.color,color:"#fff",fontSize:9.6,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",cursor:libraryJournalSecondaryAction.disabled?"default":"pointer",boxShadow:libraryJournalSecondaryAction.disabled?"none":`0 0 8px ${libraryJournalSecondaryAction.shadow}`,filter:"brightness(1)",opacity:libraryJournalSecondaryAction.disabled?0.38:1,transition:dashControlTransition,boxSizing:"border-box",transform:"translateY(0)",pointerEvents:libraryJournalSecondaryAction.disabled?"none":"auto"}}>
                             <svg width={13} height={13} viewBox="0 0 12 12" fill="none" style={{flexShrink:0}}>
                               <line x1="6" y1="1.5" x2="6" y2="10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="square"/>
                               <line x1="1.5" y1="6" x2="10.5" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="square"/>
