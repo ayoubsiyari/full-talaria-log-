@@ -1974,6 +1974,10 @@
                     ? chart._countVisiblePlotBars() : 0;
                 const _settleUntil = chart._multichartViewportSettleUntil;
                 const _withinSettle = Number.isFinite(_settleUntil) && _fiNow < _settleUntil;
+                if (chart._multichartBootViewportPositioned && _withinSettle) {
+                    if (m && m.causationId) state.applied.add(m.causationId);
+                    return;
+                }
                 if (chart._multichartViewportMirroredWithHost && _vis > 1 && _withinSettle) {
                     if (m && m.causationId) state.applied.add(m.causationId);
                     return;

@@ -62,7 +62,12 @@
         var now = (typeof performance !== 'undefined' && performance.now)
             ? performance.now()
             : Date.now();
-        chart._multichartViewportSettleUntil = now + (ms || 2500);
+        var until = now + (ms || 3200);
+        if (Number.isFinite(chart._multichartViewportSettleUntil)) {
+            chart._multichartViewportSettleUntil = Math.max(chart._multichartViewportSettleUntil, until);
+        } else {
+            chart._multichartViewportSettleUntil = until;
+        }
     }
 
     function pollFor(predicate, intervalMs, maxMs, onReady, onTimeout) {
@@ -297,7 +302,7 @@
             return;
         }
         try {
-            markViewportBootSettle(ch, hostReadyForPanelClone() ? 400 : 2800);
+            markViewportBootSettle(ch, 3200);
             // Hint timeframe BEFORE load so first-paint resamples to the
             // correct tf instead of paint-then-resample.
             if (tf && typeof ch.currentTimeframe === 'string') {
@@ -755,8 +760,9 @@
                     scheduleMcRedraw('boot-raf');
                 });
             } catch (_) {}
-            var afterLoad = function () {
-                markViewportBootSettle(ch, 500);
+            var afterLoad = function (opts) {
+                opts = opts || {};
+                markViewportBootSettle(ch, 3200);
                 // Only switch tf when it actually differs — calling
                 // setTimeframe with the already-loaded tf would trigger a
                 // redundant re-fetch that, in replay, can re-anchor the
@@ -765,18 +771,20 @@
                     && ch.currentTimeframe !== tf) {
                     try { ch.setTimeframe(tf); } catch (_) {}
                 }
-                try {
-                    if (typeof ch.render === 'function') ch.render();
-                } catch (_) {}
+                if (!opts.skipPaint) {
+                    try {
+                        if (typeof ch.render === 'function') ch.render();
+                    } catch (_) {}
+                    try {
+                        if (ch.drawingManager && typeof ch.drawingManager.redrawAll === 'function'
+                            && ch.xScale && ch.yScale) {
+                            ch.drawingManager.redrawAll();
+                        }
+                    } catch (_) {}
+                }
                 try {
                     if (typeof ch.updateChartOHLCSymbol === 'function' && ch.currentSymbol) {
                         ch.updateChartOHLCSymbol(ch.currentSymbol);
-                    }
-                } catch (_) {}
-                try {
-                    if (ch.drawingManager && typeof ch.drawingManager.redrawAll === 'function'
-                        && ch.xScale && ch.yScale) {
-                        ch.drawingManager.redrawAll();
                     }
                 } catch (_) {}
                 // DO NOT call ch.drawingManager.loadDrawings() here.
@@ -938,12 +946,12 @@
                         ch._multichartPairLoadInFlight = false;
                         if (samePairBoot) {
                             notifyPanelCacheReady();
-                            markViewportBootSettle(ch, 400);
-                        } else {
-                            markViewportBootSettle(ch, 500);
                         }
+                        markViewportBootSettle(ch, 3200);
                         if (useMcBoot) {
-                            afterLoad();
+                            // loadMultichartPanelFromHost already rendered; extra paint here
+                            // made tiles jump during the first few seconds of boot.
+                            afterLoad({ skipPaint: true });
                             return;
                         }
                         if (!Number.isFinite(playheadTs)) {
@@ -1005,7 +1013,7 @@
                     && ch._multichartMirrorViewportFromHost()) {
                     reportToShell('info', 'boot: parent mirror viewport (no fetch) fileId=' + loadFid);
                     notifyPanelCacheReady();
-                    markViewportBootSettle(ch, 400);
+                    markViewportBootSettle(ch, 3200);
                     try {
                         if (typeof ch.render === 'function') ch.render();
                     } catch (_) {}

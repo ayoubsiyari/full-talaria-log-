@@ -2100,8 +2100,9 @@ class Chart {
         return true;
     }
 
-    /** Same backtest file as host — share replay master / pan-load without viewport sync. */
+    /** Same backtest file as host — share replay master / pan-load only when range/time sync is on. */
     _multichartSamePairDataShareActive() {
+        if (!this._multichartVisibleRangeSyncOn) return false;
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
         if (typeof this._isIndependentMultichartPair === 'function'
             && this._isIndependentMultichartPair()) {
@@ -2402,7 +2403,17 @@ class Chart {
             try { this.constrainOffset(); } catch (_c) { /* ignore */ }
         }
         this._multichartViewportMirroredWithHost = true;
+        this._multichartBootViewportPositioned = true;
         this._syncIndicatorsAfterMultichartDataShare();
+        // Range/time sync OFF: keep the boot viewport geometry but clone bar arrays so
+        // panning one tile (e.g. B) cannot mutate shared refs and y-zoom C/D.
+        if (!this._multichartVisibleRangeSyncOn
+            && typeof this._multichartDetachViewportFromHost === 'function') {
+            try { this._multichartDetachViewportFromHost(); } catch (_) { /* ignore */ }
+        }
+        if (typeof this._markMultichartViewportSettled === 'function') {
+            try { this._markMultichartViewportSettled(); } catch (_) { /* ignore */ }
+        }
         return true;
     }
 
@@ -2443,7 +2454,9 @@ class Chart {
      */
     _multichartDetachViewportFromHost() {
         if (!this._isMultichartEmbedPanel()) return;
-        this._multichartViewportMirroredWithHost = false;
+        // Keep _multichartViewportMirroredWithHost true so sync-bridge boot guards
+        // still block redundant forceInitialSync re-mirrors during the settle window.
+        this._multichartViewportDataDetached = true;
         if (Array.isArray(this.data) && this.data.length > 0) {
             this.data = this.data.slice();
         }
@@ -3064,7 +3077,9 @@ class Chart {
                 const samePairEmbed = !this._isIndependentMultichartPair();
                 setTimeout(function () {
                     if (String(selfMc.currentFileId) !== String(fidMc)) return;
-                    if (samePairEmbed && typeof selfMc._multichartMirrorViewportFromHost === 'function') {
+                    if (samePairEmbed
+                        && selfMc._multichartVisibleRangeSyncOn
+                        && typeof selfMc._multichartMirrorViewportFromHost === 'function') {
                         try {
                             if (selfMc._multichartMirrorViewportFromHost() && typeof selfMc.render === 'function') {
                                 selfMc.render();
@@ -3316,9 +3331,15 @@ class Chart {
      * chart.w=0 on first paint). Repeated calls within the settle window merge.
      */
     _finalizeMultichartPanelAfterPairLoad() {
-        const settleMs = this._isMultichartEmbedPanel?.() ? 1200 : 300;
+        const settleMs = this._isMultichartEmbedPanel?.() ? 3200 : 300;
         try {
-            this._multichartViewportSettleUntil = performance.now() + settleMs;
+            const now = performance.now();
+            const until = now + settleMs;
+            if (Number.isFinite(this._multichartViewportSettleUntil)) {
+                this._multichartViewportSettleUntil = Math.max(this._multichartViewportSettleUntil, until);
+            } else {
+                this._multichartViewportSettleUntil = until;
+            }
         } catch (_) {}
 
         if (this._finalizePairLoadTimer) {
@@ -3730,6 +3751,7 @@ class Chart {
      * @returns {boolean}
      */
     _tryExtendReplayMasterFromParent(opts = {}) {
+        if (!this._multichartVisibleRangeSyncOn) return false;
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
         const lite = !!(opts && opts.lite);
         const replay = this.replaySystem;
@@ -14758,7 +14780,7 @@ class Chart {
         const now = (typeof performance !== 'undefined' && performance.now)
             ? performance.now()
             : Date.now();
-        const settleMs = 1200;
+        const settleMs = 3200;
         this._multichartViewportSettleUntil = now + settleMs;
         this._multichartViewportJustResetUntil = now + settleMs;
         // Only lock fitToView when bars are actually on screen — otherwise blank

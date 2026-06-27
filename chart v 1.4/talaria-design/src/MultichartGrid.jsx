@@ -2178,8 +2178,6 @@ export default function MultichartGrid({
             if (typeof mgr.flushPendingRangeSync === "function") {
                 try { mgr.flushPendingRangeSync(); } catch (_) {}
             }
-            // Position the (still invisible) panels first.
-            syncAllIframesToHost(mgr);
         }
         // Reveal panels only AFTER the host re-anchor/align pass below, so they
         // fade in already positioned instead of popping in (opacity 0 → 1) and then
@@ -2187,6 +2185,7 @@ export default function MultichartGrid({
         // the boot "shaking". silentPanelBoot keeps them at opacity:0 until
         // showPanelFrame. The safety timer guarantees they are never left hidden if
         // the align path bails for any reason.
+        const BOOT_REVEAL_AFTER_ALIGN_MS = 1200;
         let revealTimer = 0;
         const t = setTimeout(() => {
             if (isDraggingRef.current) { revealAll(); return; }
@@ -2201,11 +2200,12 @@ export default function MultichartGrid({
                 syncAllIframesToHost(mgr);
             } else {
                 scheduleAlignHostOnly(mgr, 0);
+                syncAllIframesToHost(mgr);
             }
-            // Give the align one more beat to land, then fade the panels in.
-            revealTimer = setTimeout(revealAll, 200);
+            // Give align + iframe mirror one settle beat before fade-in (~3s boot window).
+            revealTimer = setTimeout(revealAll, BOOT_REVEAL_AFTER_ALIGN_MS);
         }, 80);
-        const safetyReveal = setTimeout(revealAll, 1500);
+        const safetyReveal = setTimeout(revealAll, 4500);
         return () => {
             clearTimeout(t);
             clearTimeout(revealTimer);
