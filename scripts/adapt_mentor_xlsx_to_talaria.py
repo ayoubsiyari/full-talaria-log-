@@ -1,0 +1,740 @@
+#!/usr/bin/env python3
+"""
+Adapt mentor-platform backtest Excel (e.g. mentor data/alae2.xlsx) to Talaria journal trades.
+
+Maps mentor columns (variables_json, high/low price, etc.) onto the full dashboard trade
+schema used by QA sessions — including MAE/MFE, strategy variables/tags, and bar paths.
+
+Default target session: QA T1 · EURUSD Scalper BT (strategy id 57).
+
+Usage:
+  py scripts/adapt_mentor_xlsx_to_talaria.py
+  py scripts/adapt_mentor_xlsx_to_talaria.py "mentor data/alae2.xlsx" -o "mentor data/alae2-talaria-adapted.xlsx"
+  py scripts/adapt_mentor_xlsx_to_talaria.py --upload --session-name "QA T1 · EURUSD Scalper BT"
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CHART_SCRIPTS = ROOT / "chart v 1.4" / "chart" / "scripts"
+ANALYTICS_CORE = ROOT / "homepage" / "src" / "app" / "dashboard" / "analytics" / "backend"
+for p in (CHART_SCRIPTS, ANALYTICS_CORE):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+from generate_dashboard_session_samples import COLUMNS, DAYS, MONTHS  # noqa: E402
+from analytics_core.session_seed_trades import (  # noqa: E402
+    _FALLBACK_INSTRUMENTS,
+    _build_trade_path_arrays,
+    _norm_sym,
+    _price_fmt,
+    _tags_from_strategy_variables,
+)
+
+try:
+    from openpyxl import Workbook, load_workbook
+except ImportError as exc:  # pragma: no cover
+    raise SystemExit("openpyxl is required: pip install openpyxl") from exc
+
+DEFAULT_INPUT = ROOT / "mentor data" / "alae2.xlsx"
+DEFAULT_OUTPUT = ROOT / "mentor data" / "alae2-talaria-adapted.xlsx"
+DEFAULT_SESSION_NAME = "QA T1 · EURUSD Scalper BT"
+DEFAULT_STRATEGY_ID = 57
+DEFAULT_STRATEGY_LABEL = "1-Min Momentum Scalper"
+DEFAULT_SESSION_ID = 0  # resolved on --upload
+DEFAULT_TIMEFRAME_MINUTES = 5
+POST_EXIT_CANDLES = 20
+
+SYM_ALIASES = {
+    "XAU/USD": "XAUUSD",
+    "GOLD": "XAUUSD",
+    "GC": "XAUUSD",
+}
+
+# Strategy variable contract aligned to mentor "dol" field (maps to our pre-trade variables / tags).
+PRE_VAR_DEFS: list[dict[str, Any]] = [
+    {
+        "id": "dol",
+        "name": "dol",
+        "vtype": "multi",
+        "options": ["taken", "not taken"],
+        "timing": "pre",
+    }
+]
+
+POST_VAR_DEFS: list[dict[str, Any]] = [
+    {
+        "id": "outcome_review",
+        "name": "Outcome review",
+        "vtype": "yesno",
+        "timing": "post",
+    }
+]
+
+
+def _iso_z(ms: int) -> str:
+    return datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def _parse_dt(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            dt = datetime.strptime(text.replace("Z", ""), fmt.replace("Z", ""))
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _to_float(value: Any, default: float | None = None) -> float | None:
+    if value is None or value == "":
+        return default
+    try:
+        n = float(value)
+        return n if math.isfinite(n) else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _infer_symbol(raw_symbol: Any, entry: float) -> str:
+    if raw_symbol is not None and str(raw_symbol).strip():
+        sym = str(raw_symbol).strip()
+        if sym in SYM_ALIASES:
+            return SYM_ALIASES[sym]
+        return _norm_sym(sym)
+    # Missing symbol — infer from price magnitude (mentor export quirk).
+    if entry > 50 and entry < 250:
+        return "USDJPY"
+    if entry > 10000:
+        return "NQ"
+    if entry > 1500:
+        return "XAUUSD"
+    if 1.15 <= entry <= 1.35:
+        return "GBPUSD"
+    if 0.92 <= entry <= 1.02:
+        return "AUDUSD"
+    if 1.0 <= entry <= 1.15:
+        return "EURUSD"
+    if 0.95 <= entry < 1.0:
+        return "USDCHF"
+    return "EURUSD"
+
+
+def _instrument(ticker: str) -> dict[str, Any]:
+    fb = _FALLBACK_INSTRUMENTS.get(ticker) or _FALLBACK_INSTRUMENTS["EURUSD"]
+    return {
+        "ticker": ticker,
+        "pip": float(fb["pip"]),
+        "spread": float(fb["spread"]),
+        "pip_value": float(fb["pip_value"]),
+        "commission": 0.0,
+        "market": str(fb["market"]),
+    }
+
+
+def _direction(raw: Any) -> str:
+    s = str(raw or "long").strip().lower()
+    return "SELL" if s in {"short", "sell", "s"} else "BUY"
+
+
+def _side(direction: str) -> str:
+    return "Long" if direction == "BUY" else "Short"
+
+
+def _close_type(exit_px: float, stop: float, target: float, entry: float, pip: float) -> str:
+    tol = max(pip * 2, abs(entry) * 1e-6)
+    if abs(exit_px - target) <= tol:
+        return "TP"
+    if abs(exit_px - stop) <= tol:
+        return "SL"
+    if abs(exit_px - entry) <= tol:
+        return "BE"
+    return "Manual"
+
+
+def _excursions(
+    direction: str,
+    entry: float,
+    stop: float,
+    high: float,
+    low: float,
+    exit_px: float,
+    r_mult: float,
+) -> tuple[float, float, float, float, float, float]:
+    risk = abs(entry - stop)
+    if risk <= 0:
+        risk = max(abs(entry) * 1e-5, 1e-8)
+    if direction == "BUY":
+        mfe_r = max(0.0, (high - entry) / risk)
+        mae_r = max(0.0, (entry - low) / risk)
+        mfe_price = _price_fmt(high, _pip_for(entry))
+        mae_price = _price_fmt(low, _pip_for(entry))
+        highest = _price_fmt(max(high, entry, exit_px), _pip_for(entry))
+        lowest = _price_fmt(min(low, entry, exit_px), _pip_for(entry))
+    else:
+        mfe_r = max(0.0, (entry - low) / risk)
+        mae_r = max(0.0, (high - entry) / risk)
+        mfe_price = _price_fmt(low, _pip_for(entry))
+        mae_price = _price_fmt(high, _pip_for(entry))
+        highest = _price_fmt(max(high, entry, exit_px), _pip_for(entry))
+        lowest = _price_fmt(min(low, entry, exit_px), _pip_for(entry))
+    mfe_r = max(mfe_r, 0.05)
+    mae_r = max(mae_r, 0.05)
+    if r_mult >= 0:
+        mae_r = min(mae_r, max(abs(r_mult), 0.1))
+    else:
+        mfe_r = min(mfe_r, 1.2)
+    return mfe_r, mae_r, mfe_price, mae_price, highest, lowest
+
+
+def _pip_for(entry: float) -> float:
+    if entry > 1000:
+        return 0.01 if entry < 5000 else 1.0
+    if entry > 50:
+        return 0.01
+    return 0.0001
+
+
+def _parse_mentor_variables(row: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    raw = row.get("variables_json")
+    if raw:
+        try:
+            obj = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(obj, dict):
+                for name, val in obj.items():
+                    if isinstance(val, list) and val:
+                        value = str(val[0])
+                    else:
+                        value = str(val)
+                    out.append(
+                        {
+                            "id": str(name),
+                            "name": str(name),
+                            "vtype": "multi",
+                            "value": value,
+                        }
+                    )
+        except (json.JSONDecodeError, TypeError):
+            pass
+    for i in range(1, 11):
+        key = f"var{i}"
+        val = row.get(key)
+        if val is not None and str(val).strip():
+            out.append({"id": key, "name": key, "vtype": "multi", "value": str(val).strip()})
+    if not out:
+        for d in PRE_VAR_DEFS:
+            out.append(
+                {
+                    "id": d["id"],
+                    "name": d["name"],
+                    "vtype": d.get("vtype", "multi"),
+                    "value": "not taken",
+                }
+            )
+    return out
+
+
+def _post_variables(pnl: float) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "outcome_review",
+            "name": "Outcome review",
+            "vtype": "yesno",
+            "value": "Yes" if pnl >= 0 else "No",
+        }
+    ]
+
+
+def _synthetic_bars(
+    entry_ms: int,
+    exit_ms: int,
+    *,
+    entry: float,
+    exit_px: float,
+    high: float,
+    low: float,
+    bar_ms: int,
+) -> list[dict[str, Any]]:
+    span = max(exit_ms - entry_ms, bar_ms)
+    n = max(3, min(int(span / bar_ms) + 1, 120))
+    bars: list[dict[str, Any]] = []
+    for i in range(n):
+        t = i / max(n - 1, 1)
+        ts = entry_ms + int(t * (exit_ms - entry_ms))
+        close = entry + (exit_px - entry) * t
+        # Widen range toward observed high/low mid-trade.
+        mid_w = math.sin(math.pi * t)
+        h = close + (high - close) * mid_w * 0.85
+        l = close - (close - low) * mid_w * 0.85
+        h = max(h, close, low)
+        l = min(l, close, high)
+        bars.append({"t": ts, "o": close, "h": h, "l": l, "c": close})
+    return bars
+
+
+def _post_exit_bars(exit_ms: int, exit_px: float, entry: float, bar_ms: int, count: int) -> list[dict[str, Any]]:
+    bars: list[dict[str, Any]] = []
+    drift = (entry - exit_px) * 0.15
+    for i in range(count):
+        ts = exit_ms + (i + 1) * bar_ms
+        close = exit_px + drift * (i + 1) / count
+        bars.append({"t": ts, "o": close, "h": close, "l": close, "c": close})
+    return bars
+
+
+def _cell_value(key: str, val: Any) -> Any:
+    if val is None:
+        return ""
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)) and key not in {
+        "bar_close_r", "bar_high_r", "bar_low_r",
+        "post_exit_bar_close_r", "post_exit_bar_high_r", "post_exit_bar_low_r",
+    }:
+        return val
+    if isinstance(val, (list, dict)):
+        return json.dumps(val, ensure_ascii=False)
+    return val
+
+
+def _empty_row() -> dict[str, Any]:
+    return {c: "" for c in COLUMNS}
+
+
+def convert_mentor_row(
+    row: dict[str, Any],
+    *,
+    index: int,
+    session_id: int,
+    session_name: str,
+    strategy_label: str,
+    strategy_id: int,
+    balance_before: float,
+    bar_ms: int,
+    post_exit_candles: int,
+) -> tuple[dict[str, Any], float]:
+    entry = _to_float(row.get("entry_price"))
+    exit_px = _to_float(row.get("exit_price"))
+    stop = _to_float(row.get("stop_loss"))
+    target = _to_float(row.get("take_profit"))
+    high = _to_float(row.get("high_price"))
+    low = _to_float(row.get("low_price"))
+    if None in (entry, exit_px, stop, target, high, low):
+        raise ValueError("missing required prices")
+
+    ticker = _infer_symbol(row.get("symbol"), float(entry))
+    inst = _instrument(ticker)
+    pip = float(inst["pip"])
+
+    entry = _price_fmt(float(entry), pip)
+    exit_px = _price_fmt(float(exit_px), pip)
+    stop = _price_fmt(float(stop), pip)
+    target = _price_fmt(float(target), pip)
+    high = _price_fmt(float(high), pip)
+    low = _price_fmt(float(low), pip)
+
+    direction = _direction(row.get("direction"))
+    entry_dt = _parse_dt(row.get("entry_datetime") or row.get("trade_date"))
+    exit_dt = _parse_dt(row.get("exit_datetime") or row.get("exit_datetime"))
+    if not entry_dt:
+        raise ValueError("missing entry datetime")
+    if not exit_dt:
+        exit_dt = entry_dt
+    entry_ms = int(entry_dt.timestamp() * 1000)
+    exit_ms = int(exit_dt.timestamp() * 1000)
+    if exit_ms <= entry_ms:
+        exit_ms = entry_ms + bar_ms
+
+    pnl = _to_float(row.get("pnl"), 0.0) or 0.0
+    risk_amount = _to_float(row.get("risk_amount"), 1000.0) or 1000.0
+    r_mult = _to_float(row.get("rr"), 0.0)
+    if r_mult is None:
+        r_mult = (pnl / risk_amount) if risk_amount else 0.0
+
+    sl_dist = abs(entry - stop) or pip
+    tp_dist = abs(target - entry)
+    planned_rr = round(tp_dist / sl_dist, 4) if sl_dist else 1.0
+
+    mfe_r, mae_r, mfe_price, mae_price, highest, lowest = _excursions(
+        direction, entry, stop, high, low, exit_px, float(r_mult)
+    )
+
+    close_type = _close_type(exit_px, stop, target, entry, pip)
+    hold_ms = exit_ms - entry_ms
+    hold_minutes = max(1, int(round(hold_ms / 60000)))
+
+    pre_vars = _parse_mentor_variables(row)
+    post_vars = _post_variables(pnl)
+    pre_tags = _tags_from_strategy_variables(pre_vars)
+    post_tag = "Win" if pnl > 0 else "Loss" if pnl < 0 else "BE"
+    post_tags = _tags_from_strategy_variables(post_vars) + [post_tag]
+    post_tags = list(dict.fromkeys(post_tags))
+
+    in_bars = _synthetic_bars(
+        entry_ms, exit_ms, entry=entry, exit_px=exit_px, high=high, low=low, bar_ms=bar_ms
+    )
+    all_bars = in_bars + _post_exit_bars(exit_ms, exit_px, entry, bar_ms, post_exit_candles)
+    path = _build_trade_path_arrays(
+        all_bars,
+        entry_ms=entry_ms,
+        exit_ms=exit_ms,
+        direction=direction,
+        array_base=entry,
+        initial_sl=stop,
+        post_exit_candles=post_exit_candles,
+    )
+
+    qty = _to_float(row.get("quantity"), 1.0) or 1.0
+    balance_after = round(balance_before + pnl, 2)
+    trade_id = f"mentor-alae2-{row.get('id') or index}"
+    numeric_id = int(row.get("id") or (session_id * 10000 + index))
+
+    entry_screenshot = str(row.get("entry_screenshot") or "").strip()
+    exit_screenshot = str(row.get("exit_screenshot") or "").strip()
+    notes = str(row.get("notes") or "").strip()
+
+    capture_ratio = round(abs(float(r_mult)) / mfe_r, 4) if mfe_r else 0.0
+    mfe_time = entry_ms + max(1000, hold_ms // 2)
+    mae_time = exit_ms - max(1000, min(hold_ms // 3, 600000))
+
+    out = _empty_row()
+    out.update({
+        "journal_trade_id": numeric_id,
+        "trade_id": numeric_id,
+        "client_trade_id": index,
+        "tradeId": trade_id,
+        "id": numeric_id,
+        "n": index,
+        "sourceSessionName": session_name,
+        "setup": strategy_label,
+        "symbol": ticker,
+        "ticker": ticker,
+        "direction": direction,
+        "side": _side(direction),
+        "type": direction,
+        "orderType": "market",
+        "quantity": qty,
+        "status": "closed",
+        "entryTime": entry_ms,
+        "openTime": entry_ms,
+        "entryDate": _iso_z(entry_ms),
+        "date": entry_dt.strftime("%Y-%m-%d"),
+        "exitTime": exit_ms,
+        "closeTime": _iso_z(exit_ms),
+        "exitDate": _iso_z(exit_ms),
+        "entryPrice": entry,
+        "openPrice": entry,
+        "exitPrice": exit_px,
+        "closePrice": exit_px,
+        "stopLoss": stop,
+        "takeProfit": target,
+        "pnl": pnl,
+        "pnl_dollars_net": pnl,
+        "realizedPnL": pnl,
+        "rMultiple": round(float(r_mult), 4),
+        "actual_rr_net": round(abs(float(r_mult)), 4),
+        "actualRR": round(abs(float(r_mult)), 4),
+        "rewardToRiskRatio": planned_rr,
+        "riskAmount": risk_amount,
+        "riskPerTrade": risk_amount,
+        "plannedRR": planned_rr,
+        "duration": hold_minutes,
+        "closeType": close_type,
+        "mfe": mfe_price,
+        "mae": mae_price,
+        "mfe_r": round(mfe_r, 4),
+        "mae_r": round(mae_r, 4),
+        "total_mfe_r": round(mfe_r, 4),
+        "highestPrice": highest,
+        "lowestPrice": lowest,
+        "commission_total": _to_float(row.get("commission"), 0.0) or 0.0,
+        "commission_at_entry": _to_float(row.get("commission"), 0.0) or 0.0,
+        "spread_pips_at_entry": inst["spread"],
+        "postTradeNotes": {
+            "mentorImport": True,
+            "mentorTradeId": row.get("id"),
+            "entryScreenshotUrl": entry_screenshot or None,
+            "exitScreenshotUrl": exit_screenshot or None,
+            "notes": notes or None,
+            "postStrategyVariables": post_vars,
+        },
+        "preTags": pre_tags,
+        "postTags": post_tags,
+        "tags": list(dict.fromkeys(pre_tags + post_tags)),
+        "strategy_variables": pre_vars,
+        "post_strategy_variables": post_vars,
+        "partialCloses": [],
+        "entryScreenshot": entry_screenshot,
+        "exitScreenshot": exit_screenshot,
+        "railScreenshots": [],
+        "sourceSessionId": session_id,
+        "trading_session_id": session_id,
+        "savedAt": int(datetime.now(tz=timezone.utc).timestamp() * 1000),
+        "active_sl_at_exit": stop,
+        "active_tps_at_exit": [{"price": target, "percentage": 100, "hit": close_type == "TP"}],
+        "actual_risk_r": 1.0,
+        "actual_rr_gross": round(abs(float(r_mult)), 4),
+        "array_base_price": entry,
+        "balance_at_creation": round(balance_before, 2),
+        "balance_at_exit": balance_after,
+        "bar_close_r": path["bar_close_r"],
+        "bar_high_r": path["bar_high_r"],
+        "bar_low_r": path["bar_low_r"],
+        "capture_ratio": capture_ratio,
+        "chart_trade_id": index,
+        "dayOfWeek": DAYS[entry_dt.weekday()],
+        "entries_locked": False,
+        "entryMarkerTimeMs": float(entry_ms),
+        "entry_offset_r": 0.0,
+        "exit_confirmed": True,
+        "exit_timing_gap": round(mfe_r - abs(float(r_mult)), 4),
+        "finalClosePnL": pnl,
+        "final_exit_bar": path["final_exit_bar"],
+        "hasMultipleTakeProfits": False,
+        "hasPartialCloses": False,
+        "holdingTimeDays": round(hold_ms / 86400000, 4),
+        "holdingTimeHours": round(hold_ms / 3600000, 4),
+        "holdingTimeMs": hold_ms,
+        "hourOfEntry": entry_dt.hour,
+        "hourOfExit": exit_dt.hour,
+        "initial_sl": stop,
+        "initial_takeProfit": target,
+        "isScaledTrade": False,
+        "isSplitEntry": False,
+        "maeTime": float(mae_time),
+        "management_gap": 0.0,
+        "market": inst["market"],
+        "mfeTime": float(mfe_time),
+        "month": MONTHS[entry_dt.month - 1],
+        "multiTpSnapshot": [target],
+        "netPnL": pnl,
+        "originalRiskAmount": risk_amount,
+        "partialClosePnL": 0,
+        "pip_value_at_entry": inst["pip_value"],
+        "plannedEntrySnapshot": entry,
+        "plannedRRAtEntry": planned_rr,
+        "plannedTpSnapshot": target,
+        "planned_risk_pct": round((risk_amount / max(balance_before, 1)) * 100, 4),
+        "pnl_dollars_gross": pnl,
+        "post_checkpoints": [],
+        "post_exit_anchor_time": path["post_exit_anchor_time"],
+        "post_exit_bar_close_r": path["post_exit_bar_close_r"],
+        "post_exit_bar_high_r": path["post_exit_bar_high_r"],
+        "post_exit_bar_low_r": path["post_exit_bar_low_r"],
+        "preTradeNotes": {"mentorSource": "alae2.xlsx"},
+        "rulesFollowed": True,
+        "session": session_name,
+        "sl_modifications": [],
+        "sourceFileId": 0,
+        "sourceFilterKey": f"session:{session_id}",
+        "sourceKey": f"session:{session_id}",
+        "sourceLabel": session_name,
+        "sourceType": "backtest",
+        "splitGroupId": None,
+        "splitIndex": None,
+        "splitTotal": None,
+        "tag": strategy_label,
+        "total_bars_held": len(path["bar_close_r"]),
+        "trail_sl_path": [],
+        "v9PostTradeTags": post_tags,
+        "v9TradeNotes": notes or f"Imported from mentor backtest (id={row.get('id')})",
+        "would_have_won": False,
+        "year": entry_dt.year,
+        "accountType": "private",
+        "planAdherence": "according-to-plan",
+        "demons": [],
+        "originSource": "mentor_import",
+        "session_mode": "standard_backtest",
+        "category_sheet": "Standard Backtest",
+        "strategy_id": strategy_id,
+        "entries": [{"price": entry, "qty": qty, "quantity": qty}],
+        "targets": [{"price": target, "qty": qty, "quantity": qty}],
+        "exits": [{"price": exit_px, "qty": qty, "quantity": qty}],
+    })
+    return out, balance_after
+
+
+def read_mentor_rows(path: Path) -> list[dict[str, Any]]:
+    wb = load_workbook(path, read_only=True, data_only=True)
+    sheet = wb["Journal"] if "Journal" in wb.sheetnames else wb.active
+    rows_iter = sheet.iter_rows(values_only=True)
+    header = next(rows_iter)
+    headers = [str(h) if h is not None else "" for h in header]
+    out: list[dict[str, Any]] = []
+    for raw in rows_iter:
+        if not any(v is not None and str(v).strip() for v in raw):
+            continue
+        out.append({headers[i]: raw[i] for i in range(len(headers))})
+    wb.close()
+    return out
+
+
+def write_workbook(path: Path, trades: list[dict[str, Any]]) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Journal"
+    ws.append(COLUMNS)
+    for trade in trades:
+        ws.append([_cell_value(k, trade.get(k)) for k in COLUMNS])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(path)
+
+
+def convert_file(
+    input_path: Path,
+    *,
+    session_id: int,
+    session_name: str,
+    strategy_label: str,
+    strategy_id: int,
+    start_balance: float = 10000.0,
+) -> list[dict[str, Any]]:
+    mentor_rows = read_mentor_rows(input_path)
+    bar_ms = DEFAULT_TIMEFRAME_MINUTES * 60 * 1000
+    trades: list[dict[str, Any]] = []
+    errors: list[str] = []
+    balance = start_balance
+    for i, row in enumerate(mentor_rows, start=1):
+        try:
+            trade, balance = convert_mentor_row(
+                row,
+                index=i,
+                session_id=session_id,
+                session_name=session_name,
+                strategy_label=strategy_label,
+                strategy_id=strategy_id,
+                balance_before=balance,
+                bar_ms=bar_ms,
+                post_exit_candles=POST_EXIT_CANDLES,
+            )
+            trades.append(trade)
+        except Exception as exc:
+            errors.append(f"row {i} (mentor id={row.get('id')}): {exc}")
+    if errors:
+        print("Conversion warnings:", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+    trades.sort(key=lambda t: (float(t["entryTime"]), str(t["tradeId"])))
+    for idx, trade in enumerate(trades, start=1):
+        trade["n"] = idx
+        trade["client_trade_id"] = idx
+        trade["chart_trade_id"] = idx
+    return trades
+
+
+def upload_journal(trades: list[dict[str, Any]], *, session_id: int, origin: str, email: str, password: str) -> None:
+    seed_script = ROOT / "scripts" / "seed_session_demo_trades.py"
+    if str(ROOT / "scripts") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts"))
+    from seed_session_demo_trades import Client, patch_journal  # noqa: E402
+
+    client = Client(origin)
+    client.login(email, password)
+    print(f"Uploading {len(trades)} trades to session {session_id} ...")
+    patch_journal(client, session_id, trades)
+    print("Upload complete.")
+
+
+def resolve_session_id(origin: str, email: str, password: str, session_name: str) -> int:
+    from seed_session_demo_trades import Client, find_session  # noqa: E402
+
+    client = Client(origin)
+    client.login(email, password)
+    session = find_session(client, session_id=None, session_name=session_name)
+    return int(session["id"])
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Adapt mentor backtest Excel to Talaria journal trades")
+    parser.add_argument("input", nargs="?", default=str(DEFAULT_INPUT))
+    parser.add_argument("-o", "--output", default=str(DEFAULT_OUTPUT))
+    parser.add_argument("--json-output", default="")
+    parser.add_argument("--session-id", type=int, default=DEFAULT_SESSION_ID)
+    parser.add_argument("--session-name", default=DEFAULT_SESSION_NAME)
+    parser.add_argument("--strategy-id", type=int, default=DEFAULT_STRATEGY_ID)
+    parser.add_argument("--strategy-label", default=DEFAULT_STRATEGY_LABEL)
+    parser.add_argument("--start-balance", type=float, default=10000.0)
+    parser.add_argument("--origin", default="http://31.97.192.82:3000")
+    parser.add_argument("--email", default="data@talaria-log.com")
+    parser.add_argument("--password", default="data@talaria-log.com")
+    parser.add_argument("--upload", action="store_true")
+    parser.add_argument("--resolve-session", action="store_true", help="Look up session id by name on origin")
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    if not input_path.is_file():
+        print(f"Input not found: {input_path}", file=sys.stderr)
+        return 1
+
+    session_id = args.session_id
+    if args.upload or args.resolve_session:
+        session_id = resolve_session_id(args.origin, args.email, args.password, args.session_name)
+        print(f"Resolved session id={session_id} ({args.session_name})")
+
+    trades = convert_file(
+        input_path,
+        session_id=session_id,
+        session_name=args.session_name,
+        strategy_label=args.strategy_label,
+        strategy_id=args.strategy_id,
+        start_balance=args.start_balance,
+    )
+    if not trades:
+        print("No trades converted.", file=sys.stderr)
+        return 1
+
+    out_path = Path(args.output)
+    write_workbook(out_path, trades)
+    print(f"Wrote {len(trades)} trades -> {out_path}")
+
+    json_path = Path(args.json_output) if args.json_output else out_path.with_suffix(".json")
+    json_path.write_text(json.dumps(trades, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Wrote JSON -> {json_path}")
+
+    with_paths = sum(1 for t in trades if t.get("bar_close_r"))
+    with_vars = sum(1 for t in trades if t.get("strategy_variables"))
+    print(
+        f"Summary: wins={sum(1 for t in trades if float(t['pnl']) > 0)} "
+        f"losses={sum(1 for t in trades if float(t['pnl']) < 0)} "
+        f"bar_paths={with_paths} strategy_variables={with_vars}"
+    )
+    sample = trades[0]
+    print(
+        f"Sample: {sample['ticker']} {sample['direction']} pnl={sample['pnl']} "
+        f"mae_r={sample['mae_r']} mfe_r={sample['mfe_r']} "
+        f"bar_close_r len={len(sample.get('bar_close_r') or [])} "
+        f"preTags={sample.get('preTags')}"
+    )
+
+    if args.upload:
+        upload_journal(
+            trades,
+            session_id=session_id,
+            origin=args.origin,
+            email=args.email,
+            password=args.password,
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
