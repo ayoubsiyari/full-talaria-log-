@@ -28461,6 +28461,11 @@ const TalariaV8b = () => {
                   onClick(event);
                 }
               };
+              const basicValueText = typeof value === "string" || typeof value === "number" ? String(value) : "";
+              const basicValueLen = basicValueText.length;
+              const basicValueFontSize = basicValueLen >= 15 ? 11.5 : basicValueLen >= 13 ? 12.5 : basicValueLen >= 11 ? 14 : basicValueLen >= 9 ? 16 : basicValueLen >= 7 ? 18.5 : 23;
+              const basicVisualWidth = basicValueLen >= 13 ? 52 : basicValueLen >= 10 ? 60 : basicValueLen >= 8 ? 68 : 82;
+              const basicVisualHeight = basicValueLen >= 13 ? 52 : basicValueLen >= 10 ? 60 : 72;
               return (
                 <div
                   role={clickable ? "button" : undefined}
@@ -28493,12 +28498,12 @@ const TalariaV8b = () => {
                     </span>
                     <DashboardCardInfoButton articleId={dashboardResourceIdFor(title)} label={title}/>
                   </div>
-                  <div style={{minHeight:0,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,overflow:"hidden"}}>
-                    <div style={{minWidth:0,display:"flex",flexDirection:"column",gap:6,overflow:"hidden"}}>
-                      <div style={{fontSize:23,fontWeight:950,color,fontVariantNumeric:"tabular-nums",lineHeight:1.02,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value}</div>
+                  <div style={{minHeight:0,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,overflow:"visible"}}>
+                    <div style={{minWidth:0,flex:"1 1 auto",display:"flex",flexDirection:"column",gap:6,overflow:"visible"}}>
+                      <div style={{fontSize:basicValueFontSize,fontWeight:950,color,fontVariantNumeric:"tabular-nums",lineHeight:1.02,whiteSpace:"nowrap",overflow:"visible",maxWidth:"100%",letterSpacing:basicValueLen >= 11 ? "-0.015em" : 0}}>{value}</div>
                       {sub ? <div style={{fontSize:10,fontWeight:800,color:c.ts,lineHeight:1.3,whiteSpace:"normal",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{sub}</div> : null}
                     </div>
-                    <div style={{width:82,height:72,display:"grid",placeItems:"center",flexShrink:0,overflow:"hidden"}}>
+                    <div style={{width:basicVisualWidth,height:basicVisualHeight,display:"grid",placeItems:"center",flexShrink:0,overflow:"hidden",transition:"width 120ms ease,height 120ms ease"}}>
                       {visual || children}
                     </div>
                   </div>
