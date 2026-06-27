@@ -397,7 +397,37 @@
     MultichartManager.prototype.showPanelFrame = function (id) {
         const c = this.charts.get(id);
         if (!c || c.host || !c.frame) return;
+        let revealAfter = 0;
+        try {
+            if (typeof window !== 'undefined' && Number.isFinite(window.__multichartBootRevealAfter)) {
+                revealAfter = window.__multichartBootRevealAfter;
+            }
+        } catch (_) {}
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        if (revealAfter > now) {
+            const self = this;
+            const waitMs = Math.ceil(revealAfter - now);
+            setTimeout(function () { self.showPanelFrame(id); }, waitMs);
+            return;
+        }
         try { c.frame.style.opacity = '1'; } catch (_) {}
+    };
+
+    MultichartManager.prototype._markBootRevealHold = function (holdMs) {
+        const ms = Number.isFinite(holdMs) ? holdMs : 3600;
+        const until = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now() + ms
+            : Date.now() + ms;
+        try {
+            if (typeof window !== 'undefined') {
+                window.__multichartBootRevealAfter = Math.max(
+                    window.__multichartBootRevealAfter || 0,
+                    until,
+                );
+            }
+        } catch (_) {}
     };
 
     MultichartManager.prototype._scheduleInitialSyncToChart = function (sourceChart) {
@@ -415,6 +445,7 @@
     };
 
     MultichartManager.prototype.flushPendingRangeSync = function () {
+        this._markBootRevealHold(3600);
         const self = this;
         const ids = Array.from(this._pendingRangeSyncIds);
         this._pendingRangeSyncIds.clear();
@@ -559,6 +590,16 @@
         let range = null;
         try { range = host.directRead(); } catch (_) { range = null; }
         if (!range || !Number.isFinite(range.startSec) || !Number.isFinite(range.endSec)) return;
+        const sig = String(range.startSec) + '|' + String(range.endSec) + '|'
+            + (Number.isFinite(range.offsetX) ? range.offsetX.toFixed(1) : 'x');
+        const now = Date.now();
+        if (newChart._lastInitialSyncSig === sig
+            && Number.isFinite(newChart._lastInitialSyncAt)
+            && (now - newChart._lastInitialSyncAt) < 3500) {
+            return;
+        }
+        newChart._lastInitialSyncSig = sig;
+        newChart._lastInitialSyncAt = now;
         // Bypass the syncMode gate by calling _send directly with a
         // visibleRange envelope. _send doesn't consult syncMode (only
         // _fanOut does), so this initial snap delivers even when the

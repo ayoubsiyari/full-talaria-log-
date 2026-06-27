@@ -1958,7 +1958,7 @@
                 if (chart._multichartViewportMirroredWithHost
                     && state._lastForceInitSig === _fiSig
                     && Number.isFinite(state._lastForceInitAt)
-                    && (_fiNow - state._lastForceInitAt) < 1500) {
+                    && (_fiNow - state._lastForceInitAt) < 3500) {
                     if (m && m.causationId) state.applied.add(m.causationId);
                     return;
                 }

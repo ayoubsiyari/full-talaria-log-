@@ -897,6 +897,7 @@ function resolveHostReplayPlayheadMs(ch, mgr) {
 function alignHostChartForMultichart(ch, mgr) {
     if (!ch) return;
     if (_hostViewportFrozenCheck()) return;
+    const bootSoft = isMultichartBootSettling();
     try {
         const rs = ch.replaySystem;
         // User panned this tile — don't recenter on playhead after split/resize.
@@ -910,7 +911,7 @@ function alignHostChartForMultichart(ch, mgr) {
             if (rs && rs.isActive && typeof rs.syncReplayViewportToPlayhead === "function") {
                 rs.syncReplayViewportToPlayhead(ch, {
                     centerPlayhead: true,
-                    resetPriceScale: true,
+                    resetPriceScale: !bootSoft,
                     render: true,
                 });
                 return;
@@ -940,7 +941,7 @@ function alignHostChartForMultichart(ch, mgr) {
         if (typeof rs.syncReplayViewportToPlayhead === "function") {
             rs.syncReplayViewportToPlayhead(ch, {
                 centerPlayhead: true,
-                resetPriceScale: true,
+                resetPriceScale: !bootSoft,
                 render: true,
             });
         } else if (typeof ch.render === "function") {
@@ -951,6 +952,17 @@ function alignHostChartForMultichart(ch, mgr) {
 
 function syncHostReplayViewport(ch) {
     alignHostChartForMultichart(ch, null);
+}
+
+function isMultichartBootSettling() {
+    try {
+        if (typeof window !== "undefined"
+            && Number.isFinite(window.__multichartBootRevealAfter)
+            && performance.now() < window.__multichartBootRevealAfter) {
+            return true;
+        }
+    } catch (_) {}
+    return false;
 }
 
 function syncAllIframesToHost(mgr) {
@@ -1290,10 +1302,18 @@ function resizeIframeInCell(cell) {
             const oldH = ch.h;
             ch._lastResizeDpr = 0;
             ch.resize();
-            if (typeof ch._syncMultichartViewportFromHost === "function") {
-                try { ch._syncMultichartViewportFromHost({ render: false }); } catch (_) {}
-            } else if (typeof ch._realignMultichartViewportAfterResize === "function") {
-                try { ch._realignMultichartViewportAfterResize(oldW, oldH); } catch (_) {}
+            const bootLocked = isMultichartBootSettling()
+                || (ch._multichartBootViewportPositioned
+                    && Number.isFinite(ch._multichartViewportSettleUntil)
+                    && performance.now() < ch._multichartViewportSettleUntil
+                    && typeof ch._countVisiblePlotBars === "function"
+                    && ch._countVisiblePlotBars() > 0);
+            if (!bootLocked) {
+                if (typeof ch._syncMultichartViewportFromHost === "function") {
+                    try { ch._syncMultichartViewportFromHost({ render: false }); } catch (_) {}
+                } else if (typeof ch._realignMultichartViewportAfterResize === "function") {
+                    try { ch._realignMultichartViewportAfterResize(oldW, oldH); } catch (_) {}
+                }
             }
             if (typeof ch.render === "function") ch.render();
         }
@@ -2177,6 +2197,8 @@ export default function MultichartGrid({
         if (mgr) {
             if (typeof mgr.flushPendingRangeSync === "function") {
                 try { mgr.flushPendingRangeSync(); } catch (_) {}
+            } else if (typeof mgr._markBootRevealHold === "function") {
+                try { mgr._markBootRevealHold(3600); } catch (_) {}
             }
         }
         // Reveal panels only AFTER the host re-anchor/align pass below, so they
@@ -2185,7 +2207,8 @@ export default function MultichartGrid({
         // the boot "shaking". silentPanelBoot keeps them at opacity:0 until
         // showPanelFrame. The safety timer guarantees they are never left hidden if
         // the align path bails for any reason.
-        const BOOT_REVEAL_AFTER_ALIGN_MS = 1200;
+        const BOOT_ALIGN_DELAY_MS = 120;
+        const BOOT_REVEAL_AFTER_ALIGN_MS = 2000;
         let revealTimer = 0;
         const t = setTimeout(() => {
             if (isDraggingRef.current) { revealAll(); return; }
@@ -2202,10 +2225,25 @@ export default function MultichartGrid({
                 scheduleAlignHostOnly(mgr, 0);
                 syncAllIframesToHost(mgr);
             }
-            // Give align + iframe mirror one settle beat before fade-in (~3s boot window).
-            revealTimer = setTimeout(revealAll, BOOT_REVEAL_AFTER_ALIGN_MS);
-        }, 80);
-        const safetyReveal = setTimeout(revealAll, 4500);
+            // Hold opacity:0 until settle window completes; showPanelFrame also
+            // defers via __multichartBootRevealAfter set in flushPendingRangeSync.
+            revealTimer = setTimeout(() => {
+                try {
+                    if (typeof window !== "undefined") {
+                        window.__multichartBootRevealAfter = 0;
+                    }
+                } catch (_) {}
+                revealAll();
+            }, BOOT_REVEAL_AFTER_ALIGN_MS);
+        }, BOOT_ALIGN_DELAY_MS);
+        const safetyReveal = setTimeout(() => {
+            try {
+                if (typeof window !== "undefined") {
+                    window.__multichartBootRevealAfter = 0;
+                }
+            } catch (_) {}
+            revealAll();
+        }, 5200);
         return () => {
             clearTimeout(t);
             clearTimeout(revealTimer);
@@ -2228,6 +2266,7 @@ export default function MultichartGrid({
             const panelId = tile.id;
             const ro = new ResizeObserver(() => {
                 if (isDraggingRef.current) return;
+                if (isMultichartBootSettling()) return;
                 clearTimeout(timers.get(panelId));
                 timers.set(panelId, setTimeout(() => {
                     if (isDraggingRef.current) return;

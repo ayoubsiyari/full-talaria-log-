@@ -2219,6 +2219,10 @@ class Chart {
     _realignMultichartViewportAfterResize(oldW, oldH) {
         void oldH;
         void oldW;
+        if (typeof this._isMultichartBootViewportLocked === 'function'
+            && this._isMultichartBootViewportLocked()) {
+            return false;
+        }
         if (!this._multichartVisibleRangeSyncOn) return false;
         if (typeof this._multichartSamePairAsHost !== 'function'
             || !this._multichartSamePairAsHost(this.currentFileId)) {
@@ -2425,6 +2429,10 @@ class Chart {
      */
     _syncMultichartViewportFromHost(opts = {}) {
         if (!this._multichartVisibleRangeSyncOn) return false;
+        if (typeof this._isMultichartBootViewportLocked === 'function'
+            && this._isMultichartBootViewportLocked()) {
+            return false;
+        }
         const shouldRender = opts.render !== false;
         if (typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel()) {
             if (shouldRender && typeof this.render === 'function') {
@@ -3077,6 +3085,7 @@ class Chart {
                 const samePairEmbed = !this._isIndependentMultichartPair();
                 setTimeout(function () {
                     if (String(selfMc.currentFileId) !== String(fidMc)) return;
+                    if (selfMc._multichartBootViewportPositioned) return;
                     if (samePairEmbed
                         && selfMc._multichartVisibleRangeSyncOn
                         && typeof selfMc._multichartMirrorViewportFromHost === 'function') {
@@ -3355,7 +3364,16 @@ class Chart {
             this._finalizePairLoadTimer = null;
             this._finalizePairLoadRaf = null;
             try {
+                const bootLocked = this._multichartBootViewportPositioned
+                    && Number.isFinite(this._multichartViewportSettleUntil)
+                    && performance.now() < this._multichartViewportSettleUntil
+                    && typeof this._countVisiblePlotBars === 'function'
+                    && this._countVisiblePlotBars() > 0;
                 if (typeof this.resize === 'function') this.resize();
+                if (bootLocked) {
+                    if (typeof this.render === 'function') this.render();
+                    return;
+                }
                 const justReset = typeof this._isMultichartViewportJustReset === 'function'
                     && this._isMultichartViewportJustReset();
                 const replay = this.replaySystem;
@@ -14860,6 +14878,22 @@ class Chart {
             ? performance.now()
             : Date.now();
         return now < until;
+    }
+
+    /** Embed boot: bars are positioned — block resize/sync passes from re-anchoring. */
+    _isMultichartBootViewportLocked() {
+        if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) {
+            return false;
+        }
+        if (!this._multichartBootViewportPositioned) return false;
+        const until = this._multichartViewportSettleUntil;
+        if (!Number.isFinite(until)) return false;
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        if (now >= until) return false;
+        return typeof this._countVisiblePlotBars === 'function'
+            && this._countVisiblePlotBars() > 0;
     }
 
     /**

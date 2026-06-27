@@ -714,6 +714,20 @@
                 var __mcRedrawScheduled = false;
                 function scheduleMcRedraw(reason) {
                     if (__mcRedrawScheduled) return;
+                    try {
+                        var settleUntil = ch._multichartViewportSettleUntil;
+                        var nowMc = (typeof performance !== 'undefined' && performance.now)
+                            ? performance.now()
+                            : Date.now();
+                        if (ch._multichartBootViewportPositioned
+                            && Number.isFinite(settleUntil)
+                            && nowMc < settleUntil) {
+                            var visMc = typeof ch._countVisiblePlotBars === 'function'
+                                ? ch._countVisiblePlotBars()
+                                : 0;
+                            if (visMc > 0 && reason !== 'chartDataLoaded') return;
+                        }
+                    } catch (_) {}
                     __mcRedrawScheduled = true;
                     requestAnimationFrame(function () {
                         __mcRedrawScheduled = false;
