@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en" class="multichart-embed">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+    (function () {
+        var p = new URLSearchParams(window.location.search);
+        window.__TALARIA_CHART_BUILD_ID = p.get('v') || '20260624b149';
+        window.__TALARIA_EMBED_LITE = true;
+    })();
+    </script>
+    <title>Talaria — multichart panel</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #07080E; }
+        #chart-container, #chartWrapper { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; touch-action: none; }
+        #chartCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: transparent; }
+        #drawingSvg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; overflow: hidden; }
+        #priceAxisZone { position: absolute; right: 0; top: 5px; bottom: 30px; width: 14px; background: transparent; z-index: 5; cursor: ns-resize; }
+        #timeAxisZone { position: absolute; left: 0; right: 60px; bottom: 0; height: 10px; background: transparent; z-index: 5; cursor: ew-resize; }
+        .crosshair-vertical, .crosshair-horizontal { position: absolute; pointer-events: none; z-index: 10; display: none; }
+        .crosshair-vertical { width: 1px; height: 100%; background: repeating-linear-gradient(to bottom, rgba(150,155,165,.8) 0 6px, transparent 6px 10px); }
+        .crosshair-horizontal { width: 100%; height: 1px; background: repeating-linear-gradient(to right, rgba(150,155,165,.8) 0 6px, transparent 6px 10px); }
+        .price-label, .time-label { position: absolute; pointer-events: none; z-index: 20; display: none; font: 500 12px Roboto, sans-serif; color: #fff; padding: 3px 6px; background: #434651; }
+        .time-label { background: #131722; bottom: 6px; }
+        #orderPanel { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; visibility: hidden; pointer-events: none; }
+    </style>
+    <script>
+    (function () {
+        var p = new URLSearchParams(window.location.search);
+        if (p.get('multichart') !== '1') {
+            try { p.set('multichart', '1'); history.replaceState(null, '', '?' + p.toString()); } catch (_) {}
+        }
+    })();
+    </script>
+    <script>
+    (function () {
+        var V = window.__TALARIA_CHART_BUILD_ID || '';
+        function inject(src) {
+            var s = document.createElement('script');
+            s.src = src + (V ? ('?v=' + V) : '');
+            s.async = false;
+            document.head.appendChild(s);
+        }
+        inject('/chart/multichart-prod/engine-api-guards.js');
+        inject('/chart/multichart-prod/sync-bridge.js');
+        inject('/chart/multichart-prod/embed-bridge.js');
+        inject('/chart/multichart-prod/panel-cmd-bridge.js');
+    })();
+    </script>
+    <script>
+    (function () {
+        function redirectToLogin() {
+            var next = window.location.pathname + window.location.search;
+            var loginUrl = '/login/?next=' + encodeURIComponent(next);
+            try {
+                if (window.top && window.top !== window.self) { window.top.location.href = loginUrl; return; }
+            } catch (e) {}
+            window.location.href = loginUrl;
+        }
+        fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+            .then(function (res) { if (!res.ok) { redirectToLogin(); return null; } return res.json(); })
+            .then(function (data) {
+                if (data && data.user && data.user.id) {
+                    window.__talariaUserId = data.user.id;
+                    try { localStorage.setItem('_uid', String(data.user.id)); } catch (e) {}
+                }
+            })
+            .catch(function () { redirectToLogin(); });
+    })();
+    </script>
+    <script>
+    (function () {
+        var uid = null;
+        try { uid = localStorage.getItem('_uid'); } catch (e) {}
+        window.userKey = function (key) {
+            var id = uid || window.__talariaUserId;
+            if (!id) { try { id = localStorage.getItem('_uid'); } catch (e) {} }
+            if (id) { uid = id; return 'u' + id + '_' + key; }
+            return key;
+        };
+        window.userStorage = {
+            getItem: function (key) {
+                var scoped = localStorage.getItem(window.userKey(key));
+                if (scoped !== null) return scoped;
+                var legacy = localStorage.getItem(key);
+                if (legacy !== null && uid) {
+                    try { localStorage.setItem(window.userKey(key), legacy); localStorage.removeItem(key); } catch (e) {}
+                }
+                return legacy;
+            },
+            setItem: function (key, val) { localStorage.setItem(window.userKey(key), val); },
+            removeItem: function (key) { localStorage.removeItem(window.userKey(key)); }
+        };
+    })();
+    </script>
+    <script>
+        window.waitForD3 = new Promise(function (resolve, reject) {
+            window.__resolveD3 = resolve;
+            window.__rejectD3 = reject;
+        });
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"
+            onload="window.__resolveD3 && window.__resolveD3();"
+            onerror="window.__rejectD3 && window.__rejectD3(new Error('d3 cdn failed'));"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+    (function () {
+        var V = window.__TALARIA_CHART_BUILD_ID || '';
+        var q = V ? ('?v=' + V) : '';
+        var paths = [
+            '/chart/modules/preferences-sync.js',
+            '/chart/modules/preferences-init.js',
+            '/chart/modules/market-calculations.js',
+            '/chart/modules/chart-env.defaults.js',
+            '/chart/modules/chart-env.generated.js',
+            '/chart/modules/drawing-tools-base.js',
+            '/chart/modules/drawing-tools-lines.js',
+            '/chart/modules/drawing-tools-shapes.js',
+            '/chart/modules/drawing-tools-fibonacci.js',
+            '/chart/modules/drawing-tools-text.js',
+            '/chart/modules/drawing-tools-emoji.js',
+            '/chart/modules/drawing-tools-image.js',
+            '/chart/modules/emoji-picker.js',
+            '/chart/modules/emoji-picker-simple.js',
+            '/chart/modules/drawing-tools-advanced-volume.js',
+            '/chart/modules/drawing-tools-advanced.js',
+            '/chart/modules/drawing-tools-extended.js',
+            '/chart/modules/drawing-tools-patterns.js',
+            '/chart/modules/drawing-tools-fib-gann.js',
+            '/chart/modules/drawing-tools-channels.js',
+            '/chart/modules/drawing-tools-ui.js',
+            '/chart/modules/color-picker.js',
+            '/chart/modules/drawing-toolbar.js',
+            '/chart/modules/undo-redo-manager.js',
+            '/chart/modules/drawing-tools-manager.js',
+            '/chart/modules/favorites-manager.js',
+            '/chart/modules/keyboard-shortcuts.js',
+            '/chart/modules/timezone-manager.js',
+            '/chart/modules/viewport-data-manager.js',
+            '/chart/modules/chart-data-pipeline.js',
+            '/chart/modules/talaria-toast-stack.js',
+            '/chart/chart.js',
+            '/chart/modules/v9-theme-bridge.js',
+            '/chart/modules/replay-system.js',
+            '/chart/modules/replay-dashboard-sync.js',
+            '/chart/modules/order-event-bus.js',
+            '/chart/modules/order-service.js',
+            '/chart/modules/order-manager.js',
+            '/chart/modules/chart-indicators-full.js',
+            '/chart/modules/indicator-ui.js'
+        ];
+        for (var i = 0; i < paths.length; i++) {
+            document.write('<script defer src="' + paths[i] + q + '"><\/script>');
+        }
+    })();
+    </script>
+</head>
+<body class="multichart-embed">
+    <div id="chart-container">
+        <div id="chartWrapper" class="chart-wrapper">
+            <canvas id="chartCanvas"></canvas>
+            <svg id="drawingSvg"></svg>
+            <div id="priceAxisZone" class="axis-cursor-zone price-axis-zone"></div>
+            <div id="timeAxisZone" class="axis-cursor-zone time-axis-zone"></div>
+            <div class="crosshair-vertical"></div>
+            <div class="crosshair-horizontal"></div>
+            <div class="price-label"></div>
+            <div class="time-label"></div>
+            <div class="ohlc-info" id="ohlcInfo">
+                <div class="ohlc-header">
+                    <span id="chartSymbol"></span>
+                    <span id="chartTimeframe"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="orderPanel" aria-hidden="true">
+        <input id="orderEntryPrice" type="hidden" value="0" />
+        <input id="orderQuantity" type="hidden" value="1" />
+    </div>
+    <div id="replayToolbar" aria-hidden="true" style="display:none">
+        <button type="button" id="replayModeBtn" tabindex="-1"></button>
+    </div>
+    <script>
+    if (typeof window.getActiveChart !== 'function') {
+        window.getActiveChart = function () { return window.chart || null; };
+    }
+    if (!window.panelDrawingSync) {
+        window.panelDrawingSync = {
+            enabled: false,
+            hasSameSymbol: function () { return true; },
+            syncDrawing: function () {},
+            syncAllDrawings: function () {},
+            isSameDrawing: function () { return false; },
+            normalizeDrawingForTarget: function (d) { return d; }
+        };
+    }
+    </script>
+</body>
+</html>

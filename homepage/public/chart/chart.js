@@ -32799,7 +32799,6 @@ class Chart {
                         existingById.style = { ...(existingById.style || {}), ...drawingData.style };
                     }
                     dm.renderDrawing(existingById);
-                    if (!isLiveId) dm.saveDrawings();
                 } else {
                 
                 // CRITICAL: Convert timestamp points to indices for THIS panel's data
@@ -32872,7 +32871,6 @@ class Chart {
                             }
                         }, 200);
                     }
-                    if (!isLiveId) dm.saveDrawings();
                     
                 } else {
                 }
@@ -32885,7 +32883,6 @@ class Chart {
                     const index = dm.drawings.indexOf(existingDrawing);
                     dm.drawings.splice(index, 1);
                     existingDrawing.destroy();
-                    dm.saveDrawings();
                 }
             } else if (action === 'update') {
                 // Find and update drawing by ID
@@ -32933,15 +32930,6 @@ class Chart {
                     }
                     
                     dm.renderDrawing(existingDrawing);
-
-                    if (!isLiveId) {
-                    // Debounce save during rapid live updates (drag/resize) to
-                    // avoid serialising all drawings to localStorage on every frame.
-                    clearTimeout(this._syncUpdateSaveTimer);
-                    this._syncUpdateSaveTimer = setTimeout(() => {
-                        dm.saveDrawings();
-                    }, 300);
-                    }
                 } else {
                     // Robustness: if a panel missed the live "add", treat final update as add.
                     this.receiveDrawingChange('add', drawing, drawingIndex);
@@ -32949,7 +32937,7 @@ class Chart {
             } else if (action === 'clear') {
                 // Use full clear path (SVG + storage) without re-broadcasting sync storms
                 if (typeof dm.clearDrawings === 'function') {
-                    dm.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
+                    dm.clearDrawings({ confirmPrompt: false, skipBroadcast: true, skipPersist: true });
                 } else {
                     dm.drawings.forEach(d => {
                         try { d.destroy(); } catch (_) {}
@@ -32963,7 +32951,6 @@ class Chart {
                             dm.drawingsGroup.selectAll('*').remove();
                         }
                     }
-                    dm.saveDrawings();
                 }
 
                 if (Array.isArray(this.drawings) && this.drawings.length > 0) {

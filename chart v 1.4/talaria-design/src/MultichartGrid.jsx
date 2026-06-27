@@ -686,7 +686,8 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
             ? String(window.__TALARIA_CHART_BUILD_ID)
             : "";
     if (buildV) params.set("v", buildV);
-    return "/chart/dist-v9/index.html?" + params.toString();
+    // Lightweight chart-only page — no React bundle per iframe (major multichart perf win).
+    return "/chart/multichart-prod/chart-embed.html?" + params.toString();
 }
 
 // ─── loading overlay keyframes (injected once into parent /chart/ head) ─────

@@ -52,7 +52,8 @@ This folder is **dormant infrastructure** for the in-page multi-panel feature (P
 
 | File | Change | Risk to /chart/ |
 |---|---|---|
-| `chart/dist-v9/index.html` | Add `?multichart=1` shim (~30 lines). When `?multichart=1` is **absent** the shim is a no-op — single-chart `/chart/` is byte-identical to today. When **present** (only inside future iframes), the shim adds `html.multichart-embed` class, injects style hiding `[data-v9-chrome="1"]`, and loads the four scripts in this folder. | **None** — fully gated. |
+| `chart/dist-v9/index.html` | Add `?multichart=1` shim (~30 lines). When `?multichart=1` is **absent** the shim is a no-op — single-chart `/chart/` is byte-identical to today. When **present** (legacy path), the shim adds `html.multichart-embed` class, injects style hiding `[data-v9-chrome="1"]`, and loads the four scripts in this folder. **Production iframes** use `chart/multichart-prod/chart-embed.html` instead (no React). | **None** — fully gated. |
+| `chart/multichart-prod/chart-embed.html` | Lightweight multichart iframe entry: chart engine + bridges only (no `talaria-v9-live.js`). Loaded by `MultichartGrid.buildIframeSrc`. | **None** — iframe-only. |
 | `talaria-design/live/index.html` | Same shim (this is the source-of-truth that `npm run build:live` ships to `chart/dist-v9/index.html`). | None |
 | `homepage/public/chart/dist-v9/index.html` | Same shim (mirror copy). | None |
 | `chart/api_server.py` | Add static mount: `/chart/multichart-prod/` → this folder. **No entry route at `/chart/multi`** — the only way to reach this code is via iframes spawned by the future `<MultichartGrid>` React component. | None — purely additive static asset mount. |

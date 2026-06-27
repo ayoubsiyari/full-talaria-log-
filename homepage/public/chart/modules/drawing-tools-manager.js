@@ -1369,6 +1369,17 @@ class DrawingToolsManager {
         }
     }
 
+    /** Multichart iframe tiles: read shared localStorage only — host A owns cloud GET/POST. */
+    _shouldSkipDrawingsCloudOnLoad() {
+        try {
+            return !!(this.chart
+                && typeof this.chart._isMultichartEmbedPanel === 'function'
+                && this.chart._isMultichartEmbedPanel());
+        } catch (_) {
+            return false;
+        }
+    }
+
     /**
      * Server-first load with timestamp merge (chart_drawings API is canonical when logged in).
      */
@@ -1378,6 +1389,13 @@ class DrawingToolsManager {
         const localData = this._readLocalDrawingsCache(key);
         const localMeta = this._readDrawingsCacheMeta(key);
         const localMs = this._parseUpdatedAtMs(localMeta?.client_updated_at || localMeta?.updated_at);
+
+        if (this._shouldSkipDrawingsCloudOnLoad()) {
+            if (localData) {
+                return { data: localData, source: 'local' };
+            }
+            return { data: null, source: 'none' };
+        }
 
         if (hasToken) {
             const apiResult = await this.loadDrawingsFromAPI();
@@ -10155,15 +10173,17 @@ class DrawingToolsManager {
      * @param {boolean} [options.confirmPrompt=true]
      * @returns {boolean} - True if drawings were cleared
      */
-    clearDrawings({ confirmPrompt = true, skipBroadcast = false } = {}) {
+    clearDrawings({ confirmPrompt = true, skipBroadcast = false, skipPersist = false } = {}) {
         const count = this.drawings.length;
         if (count === 0) {
             if (this.drawingsGroup) {
                 this.drawingsGroup.selectAll('*').remove();
             }
-            try {
-                this.saveDrawings();
-            } catch (_) {}
+            if (!skipPersist) {
+                try {
+                    this.saveDrawings();
+                } catch (_) {}
+            }
             return false;
         }
 
@@ -10197,7 +10217,9 @@ class DrawingToolsManager {
                 this.chart.scheduleRender();
             }
         }
-        this.saveDrawings();
+        if (!skipPersist) {
+            this.saveDrawings();
+        }
         
         // Broadcast to other panels in real-time (skip when toolbar clears all charts explicitly)
         if (!skipBroadcast && this.chart.broadcastDrawingChange) {
@@ -10467,6 +10489,11 @@ class DrawingToolsManager {
      * @param {string|null} fileIdOverride — when set, persist under this dataset id (pair switch before chart.currentFileId updates).
      */
     saveDrawings(fileIdOverride = null) {
+        // Follower panels apply synced drawings for display only — source tile already persisted.
+        if (this.chart && this.chart._receivingDrawingSync) {
+            return;
+        }
+
         // Ensure all drawings have chart reference before saving
         this.drawings.forEach(d => {
             this._ensureDrawingId(d);
