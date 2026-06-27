@@ -10836,8 +10836,10 @@ const TalariaV8b = () => {
   const [dashAccountPulsePeriod, setDashAccountPulsePeriod] = useState("ALL");
   const [dashAccountPulseMenuOpen, setDashAccountPulseMenuOpen] = useState(false);
   const [dashAccountPulseHover, setDashAccountPulseHover] = useState(null);
+  const [dashAccountPulseZoom, setDashAccountPulseZoom] = useState({ start: 0, end: 1 });
   const dashAccountPulseHoverFrameRef = useRef(null);
   const dashAccountPulseHoverNextRef = useRef(null);
+  const dashAccountPulseWheelHandlerRef = useRef(() => {});
   const [dashSnapshotTradePreview, setDashSnapshotTradePreview] = useState(null);
   const dashSnapshotTradePreviewCardRef = useRef(null);
   const [dashSnapshotTopMode, setDashSnapshotTopMode] = useState("basic");
@@ -11590,6 +11592,9 @@ const TalariaV8b = () => {
       setDashSnapshotCardsSettled(true);
     }, delay);
     return () => clearTimeout(timer);
+  }, [dashFreshPage, dashSnapshotTopMode, dashAccountPulsePeriod]);
+  useEffect(() => {
+    setDashAccountPulseZoom({ start: 0, end: 1 });
   }, [dashFreshPage, dashSnapshotTopMode, dashAccountPulsePeriod]);
   useEffect(() => {
     try { localStorage.setItem("talaria_backtest_advanced_nav_collapsed", dashAdvNavCollapsed ? "1" : "0"); } catch {}
@@ -28750,6 +28755,7 @@ const TalariaV8b = () => {
                 setDashAccountPulsePeriod(id);
                 setDashAccountPulseMenuOpen(false);
                 setDashAccountPulseHover(null);
+                setDashAccountPulseZoom({ start: 0, end: 1 });
               };
               const scheduleAccountPulseHover = next => {
                 if (dashAccountPulseHoverFrameRef.current) {
@@ -28930,6 +28936,28 @@ const TalariaV8b = () => {
               }, {minMs:null, maxMs:null, minLabel:null, maxLabel:null});
               const pulseStartDateLabel = fmtDate(pulseDateExtents.minLabel || pulseDateExtents.minMs || firstPulse.labelDate || firstKnownDate);
               const pulseCurrentDateLabel = fmtDate(pulseDateExtents.maxLabel || pulseDateExtents.maxMs || lastPulse.labelDate || lastKnownDate || new Date());
+              const pulseZoomStart = btClamp(Number(dashAccountPulseZoom?.start) || 0, 0, 1);
+              const pulseZoomEnd = btClamp(Number(dashAccountPulseZoom?.end) || 1, pulseZoomStart, 1);
+              const pulseZoomSpan = Math.max(0.001, pulseZoomEnd - pulseZoomStart);
+              const pulseIndexToRatio = index => peakRows.length <= 1 ? 0 : index / (peakRows.length - 1);
+              const pulseRatioToIndex = ratio => {
+                if (peakRows.length <= 1) return 0;
+                return btClamp(ratio, 0, 1) * (peakRows.length - 1);
+              };
+              const pulseVisibleRowSlice = peakRows.filter((_, index) => {
+                const ratio = pulseIndexToRatio(index);
+                return ratio >= pulseZoomStart - 0.0001 && ratio <= pulseZoomEnd + 0.0001;
+              });
+              const pulseZoomStartDateLabel = (() => {
+                const idx = Math.max(0, Math.min(peakRows.length - 1, Math.round(pulseRatioToIndex(pulseZoomStart))));
+                const row = peakRows[idx];
+                return fmtDate(row?.labelDate || row?.dateMs || pulseStartDateLabel);
+              })();
+              const pulseZoomEndDateLabel = (() => {
+                const idx = Math.max(0, Math.min(peakRows.length - 1, Math.round(pulseRatioToIndex(pulseZoomEnd))));
+                const row = peakRows[idx];
+                return fmtDate(row?.labelDate || row?.dateMs || pulseCurrentDateLabel);
+              })();
               const highPulse = peakRows.reduce((best, row) => row.value >= best.value ? row : best, firstPulse);
               const periodPnl = lastPulse.value - firstPulse.value;
               const currentDrawdownAmount = Math.max(0, (highPulse.value || 0) - (lastPulse.value || 0));
@@ -29013,7 +29041,7 @@ const TalariaV8b = () => {
                 })
                 : [];
               const pulseValues = [
-                ...peakRows.flatMap(row => [row.value, row.peak]),
+                ...(pulseVisibleRowSlice.length ? pulseVisibleRowSlice : peakRows).flatMap(row => [row.value, row.peak]),
                 ...(dailyLimitLineValue !== null && Number.isFinite(dailyLimitLineValue) ? [dailyLimitLineValue] : []),
                 ...(phaseTargetLineValue !== null && Number.isFinite(phaseTargetLineValue) ? [phaseTargetLineValue] : []),
                 ...maxLossLineRows.map(row => row.limitValue).filter(value => Number.isFinite(value)),
@@ -29031,7 +29059,14 @@ const TalariaV8b = () => {
               const bottomPad = 12;
               const plotW = viewW - leftPad - rightPad;
               const plotH = viewH - topPad - bottomPad;
-              const xFor = index => leftPad + (peakRows.length <= 1 ? 0 : (index / (peakRows.length - 1)) * plotW);
+              const xFor = index => {
+                const ratio = pulseIndexToRatio(index);
+                const normalized = (ratio - pulseZoomStart) / pulseZoomSpan;
+                return leftPad + normalized * plotW;
+              };
+              const pulsePlotRatioForX = x => btClamp((x - leftPad) / Math.max(1, plotW), 0, 1);
+              const pulseDataRatioForPlotRatio = plotRatio => pulseZoomStart + plotRatio * pulseZoomSpan;
+              const pulseDataRatioForX = x => pulseDataRatioForPlotRatio(pulsePlotRatioForX(x));
               const yFor = value => topPad + (1 - ((value - yMin) / Math.max(1, yMax - yMin))) * plotH;
               const curvePoints = peakRows.map((row, index) => ({...row, x:xFor(index), y:yFor(row.value), peakY:yFor(row.peak)}));
               const curveTradePoints = curvePoints.filter(point => point.trade);
@@ -29066,8 +29101,22 @@ const TalariaV8b = () => {
                 }
                 return fmtAbsMoney(number);
               };
-              const equityHighPoint = curvePoints.length ? curvePoints.reduce((best, point) => point.value >= best.value ? point : best, curvePoints[0]) : null;
-              const equityLowPoint = curvePoints.length ? curvePoints.reduce((best, point) => point.value <= best.value ? point : best, curvePoints[0]) : null;
+              const equityHighPoint = (() => {
+                const scoped = curvePoints.filter((_, index) => {
+                  const ratio = pulseIndexToRatio(index);
+                  return ratio >= pulseZoomStart - 0.0001 && ratio <= pulseZoomEnd + 0.0001;
+                });
+                const points = scoped.length ? scoped : curvePoints;
+                return points.length ? points.reduce((best, point) => point.value >= best.value ? point : best, points[0]) : null;
+              })();
+              const equityLowPoint = (() => {
+                const scoped = curvePoints.filter((_, index) => {
+                  const ratio = pulseIndexToRatio(index);
+                  return ratio >= pulseZoomStart - 0.0001 && ratio <= pulseZoomEnd + 0.0001;
+                });
+                const points = scoped.length ? scoped : curvePoints;
+                return points.length ? points.reduce((best, point) => point.value <= best.value ? point : best, points[0]) : null;
+              })();
               const clampPulseLabelX = x => Math.max(leftPad + 10, Math.min(x, viewW - rightPad - 10));
               const clampPulseLabelY = y => Math.max(topPad + 11, Math.min(y, viewH - bottomPad - 9));
               const estimatePulseTextWidth = (text, fontSize = 9) => Math.max(28, Math.min(132, String(text || "").length * fontSize * 0.52));
@@ -29270,12 +29319,14 @@ const TalariaV8b = () => {
               const pulseAxisHoverForX = (x, y = topPad) => {
                 const axisX = Math.max(leftPad, Math.min(x, viewW - rightPad));
                 const axisY = Math.max(topPad, Math.min(y, viewH - bottomPad));
-                const axisRatio = btClamp((axisX - leftPad) / Math.max(1, plotW), 0, 1);
+                const plotRatio = pulsePlotRatioForX(axisX);
+                const axisRatio = plotRatio;
+                const dataRatio = pulseDataRatioForPlotRatio(plotRatio);
                 if (!curvePoints.length) return {axisX, axisY, axisRatio, axisText:"-"};
                 if (curvePoints.length === 1) {
                   return {axisX, axisY, axisRatio, axisText:formatPulseTradeAxisTime(curvePoints[0].labelDate || curvePoints[0].dateMs || firstKnownDate)};
                 }
-                const scaledIndex = axisRatio * (curvePoints.length - 1);
+                const scaledIndex = pulseRatioToIndex(dataRatio);
                 const lowIndex = Math.max(0, Math.min(curvePoints.length - 1, Math.floor(scaledIndex)));
                 const highIndex = Math.max(0, Math.min(curvePoints.length - 1, Math.ceil(scaledIndex)));
                 const lowPoint = curvePoints[lowIndex];
@@ -29308,7 +29359,7 @@ const TalariaV8b = () => {
                 }
                 const nearestSegment = (() => {
                   if (curvePoints.length < 2) return null;
-                  const rawIndex = ((cursorX - leftPad) / Math.max(1, plotW)) * (curvePoints.length - 1);
+                  const rawIndex = pulseRatioToIndex(pulseDataRatioForX(cursorX));
                   const centerIndex = Math.max(1, Math.min(curvePoints.length - 1, Math.round(rawIndex)));
                   const startIndex = Math.max(1, centerIndex - 6);
                   const endIndex = Math.min(curvePoints.length - 1, centerIndex + 6);
@@ -29347,7 +29398,7 @@ const TalariaV8b = () => {
                 const nearestAxisHover = {
                   axisX:hoverPointX,
                   axisY:hoverPointY,
-                  axisRatio:btClamp((hoverPointX - leftPad) / Math.max(1, plotW), 0, 1),
+                  axisRatio:btClamp(pulsePlotRatioForX(hoverPointX), 0, 1),
                   axisText:formatPulseTradeAxisTime(hoverDateValue),
                 };
                 const nextHover = {
@@ -29365,6 +29416,62 @@ const TalariaV8b = () => {
                   exitText:formatPulseTradeTime(tradeExitDateValue(nearest.trade) || tradeDateValue(nearest.trade)),
                 };
                 scheduleAccountPulseHover(nextHover);
+              };
+              const pulseAxisStartLabel = pulseZoomSpan < 0.9995 ? pulseZoomStartDateLabel : pulseStartDateLabel;
+              const pulseAxisEndLabel = pulseZoomSpan < 0.9995 ? pulseZoomEndDateLabel : pulseCurrentDateLabel;
+              dashAccountPulseWheelHandlerRef.current = event => {
+                if (peakRows.length < 2) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const host = event.currentTarget;
+                const rect = host.getBoundingClientRect();
+                const localX = event.clientX - rect.left;
+                const viewX = (localX / Math.max(1, rect.width)) * viewW;
+                const plotRatio = pulsePlotRatioForX(viewX);
+                const currentStart = btClamp(Number(dashAccountPulseZoom?.start) || 0, 0, 1);
+                const currentEnd = btClamp(Number(dashAccountPulseZoom?.end) || 1, currentStart, 1);
+                const currentSpan = Math.max(0.001, currentEnd - currentStart);
+                const minSpan = Math.max(0.004, 3 / Math.max(3, peakRows.length - 1));
+                if (event.shiftKey) {
+                  const panDelta = ((event.deltaY || 0) + (event.deltaX || 0)) * currentSpan * 0.0016;
+                  let nextStart = currentStart + panDelta;
+                  let nextEnd = currentEnd + panDelta;
+                  if (nextStart < 0) {
+                    nextEnd -= nextStart;
+                    nextStart = 0;
+                  }
+                  if (nextEnd > 1) {
+                    nextStart -= nextEnd - 1;
+                    nextEnd = 1;
+                  }
+                  nextStart = Math.max(0, nextStart);
+                  nextEnd = Math.min(1, Math.max(nextStart + minSpan, nextEnd));
+                  setDashAccountPulseZoom({ start: nextStart, end: nextEnd });
+                  scheduleAccountPulseHover(null);
+                  return;
+                }
+                const anchorDataRatio = currentStart + plotRatio * currentSpan;
+                const zoomIn = event.deltaY < 0;
+                let nextSpan = currentSpan * (zoomIn ? 0.82 : 1.22);
+                nextSpan = btClamp(nextSpan, minSpan, 1);
+                let nextStart = anchorDataRatio - plotRatio * nextSpan;
+                let nextEnd = nextStart + nextSpan;
+                if (nextStart < 0) {
+                  nextEnd -= nextStart;
+                  nextStart = 0;
+                }
+                if (nextEnd > 1) {
+                  nextStart -= nextEnd - 1;
+                  nextEnd = 1;
+                }
+                nextStart = Math.max(0, nextStart);
+                nextEnd = Math.min(1, Math.max(nextStart + minSpan, nextEnd));
+                if (nextEnd - nextStart >= 0.9995) {
+                  setDashAccountPulseZoom({ start: 0, end: 1 });
+                } else {
+                  setDashAccountPulseZoom({ start: nextStart, end: nextEnd });
+                }
+                scheduleAccountPulseHover(null);
               };
               const StatReadout = ({label, value, sub, color}) => (
                 <div style={{minHeight:58,display:"grid",alignContent:"center",gap:5,padding:"8px 8px",border:`1px solid ${c.brH}`,background:"rgba(9,11,20,0.92)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box"}}>
@@ -29728,7 +29835,16 @@ const TalariaV8b = () => {
                     <div style={{minWidth:0,display:"grid",minHeight:0}}>
                       <div
                         onPointerLeave={()=>scheduleAccountPulseHover(null)}
-                        style={{position:"relative",minWidth:0,minHeight:0,display:"grid",gridTemplateRows:"minmax(0,1fr) 18px",gap:0,background:"rgba(9,11,20,0.92)",border:`1px solid ${c.brH}`,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box",overflow:"hidden"}}
+                        onDoubleClick={()=>{
+                          setDashAccountPulseZoom({ start: 0, end: 1 });
+                          scheduleAccountPulseHover(null);
+                        }}
+                        ref={node => {
+                          if (!node || node.__tlrPulseWheelBound) return;
+                          node.__tlrPulseWheelBound = true;
+                          node.addEventListener("wheel", event => dashAccountPulseWheelHandlerRef.current(event), { passive: false });
+                        }}
+                        style={{position:"relative",minWidth:0,minHeight:0,display:"grid",gridTemplateRows:"minmax(0,1fr) 18px",gap:0,background:"rgba(9,11,20,0.92)",border:`1px solid ${c.brH}`,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box",overflow:"hidden",overscrollBehavior:"contain"}}
                       >
                         <svg
                           width="100%"
@@ -29744,6 +29860,9 @@ const TalariaV8b = () => {
                           style={{display:"block",background:"transparent",cursor:"default"}}
                         >
                           <defs>
+                            <clipPath id="tlrAccountPulsePlotClip">
+                              <rect x={leftPad} y={topPad} width={plotW} height={plotH}/>
+                            </clipPath>
                             <linearGradient id="tlrAccountPulseArea" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="0%" stopColor={c.gn} stopOpacity=".18"/>
                               <stop offset="100%" stopColor={c.gn} stopOpacity=".015"/>
@@ -29753,7 +29872,7 @@ const TalariaV8b = () => {
                               <stop offset="100%" stopColor={c.rd} stopOpacity=".045"/>
                             </linearGradient>
                           </defs>
-                          <g key={`pulse-equity-${dashAccountPulsePeriod}-${peakRows.length}`}>
+                          <g key={`pulse-equity-${dashAccountPulsePeriod}-${peakRows.length}-${pulseZoomStart.toFixed(4)}-${pulseZoomEnd.toFixed(4)}`} clipPath="url(#tlrAccountPulsePlotClip)">
                           <path d={areaPath} fill="url(#tlrAccountPulseArea)" pointerEvents="none" className={dashSnapshotCardsSettled ? undefined : "tlr-snapshot-equity-area-build"}/>
                           <path d={drawdownArea} fill="url(#tlrAccountPulseDrawdown)" pointerEvents="none" className={dashSnapshotCardsSettled ? undefined : "tlr-snapshot-equity-dd-build"}/>
                           {phaseTargetY !== null ? (
@@ -29832,7 +29951,19 @@ const TalariaV8b = () => {
                           ) : null}
                           {curvePoints.length ? (
                             <>
-                              <circle className={dashSnapshotCardsSettled ? undefined : "tlr-snapshot-equity-dot-build"} style={dashSnapshotCardsSettled ? undefined : {"--tlr-eq-i":Math.max(0, curvePoints.length - 2)}} cx={curvePoints[curvePoints.length - 1].x} cy={curvePoints[curvePoints.length - 1].y} r="3.5" fill={periodPnl >= 0 ? c.gn : c.rd} pointerEvents="none"/>
+                              {(() => {
+                                let endPoint = curvePoints[curvePoints.length - 1];
+                                for (let i = curvePoints.length - 1; i >= 0; i -= 1) {
+                                  const ratio = pulseIndexToRatio(i);
+                                  if (ratio >= pulseZoomStart - 0.0001 && ratio <= pulseZoomEnd + 0.0001) {
+                                    endPoint = curvePoints[i];
+                                    break;
+                                  }
+                                }
+                                return (
+                                  <circle className={dashSnapshotCardsSettled ? undefined : "tlr-snapshot-equity-dot-build"} style={dashSnapshotCardsSettled ? undefined : {"--tlr-eq-i":Math.max(0, curvePoints.length - 2)}} cx={endPoint.x} cy={endPoint.y} r="3.5" fill={periodPnl >= 0 ? c.gn : c.rd} pointerEvents="none"/>
+                                );
+                              })()}
                               {renderPulseHighLowLabel(equityHighLabelLayout)}
                               {renderPulseHighLowLabel(equityLowLabelLayout)}
                             </>
@@ -29888,10 +30019,10 @@ const TalariaV8b = () => {
                             );
                           })() : null}
                           <div style={{display:"inline-flex",alignItems:"baseline",gap:6,minWidth:0}}>
-                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 0) < 0.15 ? "hidden" : "visible"}}>{pulseStartDateLabel}</span>
+                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 0) < 0.15 ? "hidden" : "visible"}}>{pulseAxisStartLabel}</span>
                           </div>
                           <div style={{display:"inline-flex",alignItems:"baseline",gap:6,minWidth:0,textAlign:"right"}}>
-                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 1) > 0.85 ? "hidden" : "visible"}}>{pulseCurrentDateLabel}</span>
+                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 1) > 0.85 ? "hidden" : "visible"}}>{pulseAxisEndLabel}</span>
                           </div>
                         </div>
                       </div>
