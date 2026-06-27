@@ -11885,6 +11885,192 @@ const TalariaV8b = () => {
       try { fn(); } catch (err) { console.error("[V16] confirm action failed", err); }
     }
   }, [closeAppConfirm]);
+  const renderAppConfirmPortal = () => {
+    if (!appConfirm || typeof document === "undefined") return null;
+    const accent = appConfirm.danger ? c.rd : c.acL;
+    return createPortal(
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="v16-app-confirm-title"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 2147483646,
+          background: "rgba(0,0,0,0.56)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) closeAppConfirm();
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: 440,
+            maxWidth: "calc(100vw - 48px)",
+            background: c.el,
+            border: `1px solid ${c.brH}`,
+            boxShadow: "0 26px 80px rgba(0,0,0,0.9)",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            fontFamily: F,
+          }}
+        >
+          <div
+            style={{
+              height: 2,
+              background: `linear-gradient(90deg,transparent,${accent},transparent)`,
+              boxShadow: `0 0 10px ${appConfirm.danger ? "rgba(255,80,104,0.35)" : c.acG}`,
+              flexShrink: 0,
+            }}
+          />
+          <div
+            style={{
+              height: 48,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              padding: "0 14px",
+              borderBottom: `1px solid ${c.brH}`,
+              background: c.sf,
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              id="v16-app-confirm-title"
+              style={{
+                fontSize: 13,
+                fontWeight: 900,
+                color: c.tx,
+                letterSpacing: "0.04em",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {appConfirm.title}
+            </div>
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label={profileLang === "arabic" ? "إغلاق" : "Close"}
+              onClick={closeAppConfirm}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  closeAppConfirm();
+                }
+              }}
+              style={{
+                width: 30,
+                height: 30,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "default",
+                background: "transparent",
+                flexShrink: 0,
+                color: c.ts,
+              }}
+            >
+              <I n="x" s={18} cl="currentColor" />
+            </div>
+          </div>
+          <div style={{ padding: "16px 16px 14px" }}>
+            <div style={{ fontSize: 12, fontWeight: 850, color: c.tx, lineHeight: 1.55 }}>
+              {appConfirm.message}
+            </div>
+          </div>
+          <div
+            style={{
+              height: 50,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: 8,
+              padding: "0 14px",
+              borderTop: `1px solid ${c.brH}`,
+              background: c.sf,
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={closeAppConfirm}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  closeAppConfirm();
+                }
+              }}
+              style={{
+                height: 32,
+                minWidth: 90,
+                padding: "0 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: c.ts,
+                border: `1px solid ${c.brH}`,
+                background: "transparent",
+                fontSize: 9,
+                fontWeight: 900,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontFamily: F,
+                boxSizing: "border-box",
+                cursor: "default",
+              }}
+            >
+              {appConfirm.cancelLabel}
+            </div>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={acceptAppConfirm}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  acceptAppConfirm();
+                }
+              }}
+              style={{
+                height: 32,
+                minWidth: 90,
+                padding: "0 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: appConfirm.danger ? c.rd : c.acL,
+                color: "#fff",
+                border: "1px solid transparent",
+                fontSize: 9,
+                fontWeight: 950,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontFamily: F,
+                boxShadow: appConfirm.danger
+                  ? "0 0 14px rgba(255,80,104,0.28)"
+                  : `0 0 14px ${c.acG}`,
+                boxSizing: "border-box",
+                cursor: "default",
+              }}
+            >
+              {appConfirm.confirmLabel}
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
   const [profileCat, setProfileCat] = useState("account");
   const [profilePos, setProfilePos] = useState({ x: 0, y: 0 });
   const [profileName, setProfileName] = useState("Trader");
@@ -13856,21 +14042,23 @@ const TalariaV8b = () => {
   };
   const deleteSession = (e, id) => {
     e?.stopPropagation?.();
-    if (isV16LiveBoot()) {
-      openAppConfirm({
-        title: profileLang === "arabic" ? "حذف الجلسة" : "Delete session",
-        message: profileLang === "arabic"
-          ? "حذف هذه الجلسة؟ لا يمكن التراجع."
-          : "Delete this session? This cannot be undone.",
-        confirmLabel: profileLang === "arabic" ? "حذف" : "Delete",
-        danger: true,
-        onConfirm: () => performDeleteSession(id),
-      });
-      return;
-    }
-    const updated = sessions.filter(s => s.id !== id);
-    setSessions(updated);
-    try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
+    openAppConfirm({
+      title: profileLang === "arabic" ? "حذف الجلسة" : "Delete session",
+      message: profileLang === "arabic"
+        ? "حذف هذه الجلسة؟ لا يمكن التراجع."
+        : "Delete this session? This cannot be undone.",
+      confirmLabel: profileLang === "arabic" ? "حذف" : "Delete",
+      danger: true,
+      onConfirm: () => {
+        if (isV16LiveBoot()) {
+          performDeleteSession(id);
+          return;
+        }
+        const updated = sessions.filter((s) => s.id !== id);
+        setSessions(updated);
+        try { localStorage.setItem("talaria_sessions", JSON.stringify(updated)); } catch {}
+      },
+    });
   };
   const openEditSession = (e, sess) => {
     e?.stopPropagation?.();
@@ -15204,7 +15392,7 @@ const TalariaV8b = () => {
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     ...(isV16LiveBoot() ? [{label:"Seed trades", handler:()=>{openSessSeedModal(ms);setSessActMenu(null);}, col:c.gold, disabled:!!sessSeedBusy, sub:sessSeedBusy===ms.id?"…":"QA", danger:false,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M12 3v4M12 17v4M3 12h4M17 12h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.7"/></svg>}] : []),
-                    {label:"Delete",    handler:e=>{deleteSession(e,ms.id);setSessActMenu(null);}, col:c.rd, disabled:false, danger:true,
+                    {label:"Delete",    handler:e=>{e?.stopPropagation?.();deleteSession(e,ms.id);setSessActMenu(null);}, col:c.rd, disabled:false, danger:true,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ].map(({label,handler,col,disabled,sub,danger,icon})=>{
                     if(label==="divider")return<div key="div" style={{height:1,background:c.br,margin:"2px 0"}}/>;
@@ -53653,61 +53841,6 @@ const TalariaV8b = () => {
         );
       })()}
 
-      {appConfirm ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="v16-app-confirm-title"
-          style={{position:"fixed",inset:0,zIndex:100010,background:"rgba(0,0,0,0.56)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}
-          onMouseDown={closeAppConfirm}
-        >
-          <div
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{width:440,maxWidth:"calc(100vw - 48px)",background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 26px 80px rgba(0,0,0,0.9)",display:"flex",flexDirection:"column",overflow:"hidden",fontFamily:F}}
-          >
-            <div style={{height:2,background:`linear-gradient(90deg,transparent,${appConfirm.danger ? c.rd : c.acL},transparent)`,boxShadow:`0 0 10px ${appConfirm.danger ? "rgba(255,80,104,0.35)" : c.acG}`,flexShrink:0}}/>
-            <div style={{height:48,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"0 14px",borderBottom:`1px solid ${c.brH}`,background:c.sf,boxSizing:"border-box"}}>
-              <div id="v16-app-confirm-title" style={{fontSize:13,fontWeight:900,color:c.tx,letterSpacing:"0.04em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                {appConfirm.title}
-              </div>
-              <div
-                role="button"
-                tabIndex={0}
-                aria-label={profileLang === "arabic" ? "إغلاق" : "Close"}
-                onClick={closeAppConfirm}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); closeAppConfirm(); } }}
-                style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:"transparent",flexShrink:0,color:c.ts}}
-              >
-                <I n="x" s={18} cl="currentColor"/>
-              </div>
-            </div>
-            <div style={{padding:"16px 16px 14px"}}>
-              <div style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.55}}>{appConfirm.message}</div>
-            </div>
-            <div style={{height:50,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,padding:"0 14px",borderTop:`1px solid ${c.brH}`,background:c.sf,boxSizing:"border-box"}}>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={closeAppConfirm}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); closeAppConfirm(); } }}
-                style={{height:32,minWidth:90,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",color:c.ts,border:`1px solid ${c.brH}`,background:"transparent",fontSize:9,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxSizing:"border-box",cursor:"default"}}
-              >
-                {appConfirm.cancelLabel}
-              </div>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={acceptAppConfirm}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); acceptAppConfirm(); } }}
-                style={{height:32,minWidth:90,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:appConfirm.danger ? c.rd : c.acL,color:"#fff",border:"1px solid transparent",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxShadow:appConfirm.danger ? "0 0 14px rgba(255,80,104,0.28)" : `0 0 14px ${c.acG}`,boxSizing:"border-box",cursor:"default"}}
-              >
-                {appConfirm.confirmLabel}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {screenshotUploadNotice ? (
         <div style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:100010,maxWidth:"min(92vw, 520px)",padding:"10px 14px",border:"1px solid rgba(255,74,108,0.45)",background:"rgba(24,8,14,0.96)",color:"#ff8a9a",fontSize:11,fontWeight:800,lineHeight:1.4,fontFamily:F,boxShadow:"0 12px 36px rgba(0,0,0,0.55)",textAlign:"center",pointerEvents:"none"}}>
           {screenshotUploadNotice}
@@ -53729,6 +53862,7 @@ const TalariaV8b = () => {
       )}
       </>
       )}
+      {renderAppConfirmPortal()}
     </div>
   );
 };
