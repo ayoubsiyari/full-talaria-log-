@@ -8239,10 +8239,17 @@ const btDashPropConfig = (session = {}) => {
   const minDays = btDashNumber(session.propConfig?.minDays ?? session.minDays);
   if (profitTargetPct == null && dailyLossLimitPct == null && maxDDLimitPct == null && minDays == null) return null;
   return {
+    configured:true,
     profitTargetPct,
     dailyLossLimitPct,
     maxDDLimitPct,
     minDays:minDays != null ? Math.max(0, minDays) : null,
+    dailyLossEnabled:session.propConfig?.dailyLossEnabled !== false && session.dailyLossEnabled !== false,
+    drawdownType:session.propConfig?.drawdownType === "trailing" || session.propConfig?.trailingDrawdown === true ? "trailing" : "static",
+    numPhases:session.propConfig?.numPhases,
+    challengeType:session.propConfig?.challengeType,
+    currentPhase:session.propConfig?.currentPhase,
+    stepFormat:session.propConfig?.stepFormat,
   };
 };
 const btDashSlMods = (trade = {}) => Array.isArray(trade.sl_modifications)
@@ -9610,6 +9617,7 @@ function btDashPropStatus(session, metrics) {
   const minDaysPass = activeDays >= minDays;
   const state = dailyFail || ddFail ? "failed" : targetHit && minDaysPass ? "passed" : "inProgress";
   return {
+    configured: true,
     state,
     title: state === "failed" ? "Rule breach detected" : state === "passed" ? "Challenge passed" : "Challenge in progress",
     detail: state === "failed"
@@ -26713,7 +26721,14 @@ const TalariaV8b = () => {
             const avgWinLossRatio = avgLoss ? avgWin / avgLoss : 0;
             const kpiGoalPct = metrics.goalConfig?.targetReturnPct ?? null;
             const goalConfigured = kpiGoalPct != null && kpiGoalPct > 0;
-            const propConfigured = !!(propStatus?.configured && propConfig?.configured !== false);
+            const propConfigured = propConfig?.configured !== false && (
+              !!propStatus?.configured
+              || !!propConfig?.configured
+              || propConfig?.profitTargetPct != null
+              || propConfig?.dailyLossLimitPct != null
+              || propConfig?.maxDDLimitPct != null
+              || propConfig?.minDays != null
+            );
             const sortinoDisplay = metrics.sortino === Infinity ? "∞" : Number.isFinite(Number(metrics.sortino)) ? fmtNum(metrics.sortino,2) : "-";
             const sharpeDisplay = Number.isFinite(Number(metrics.sharpe)) ? fmtNum(metrics.sharpe,2) : "-";
             const shapeArrow = metrics.shapeTone === "up" ? "▲" : metrics.shapeTone === "down" ? "▼" : "→";
@@ -28228,7 +28243,13 @@ const TalariaV8b = () => {
               if (!isPropD) return null;
               const sectionConfig = propConfig || { configured:false };
               const sectionStatus = propStatus || btDashPropStatus(ds, {...metrics, propConfig:sectionConfig}) || btDashPropSetupStatus();
-              const configured = !!sectionConfig?.configured;
+              const configured = sectionConfig?.configured !== false && (
+                !!sectionConfig?.configured
+                || sectionConfig?.profitTargetPct != null
+                || sectionConfig?.dailyLossLimitPct != null
+                || sectionConfig?.maxDDLimitPct != null
+                || sectionConfig?.minDays != null
+              );
               const rules = Array.isArray(sectionStatus?.rules) ? sectionStatus.rules : [];
               const coreRuleNames = ["max drawdown", "trailing drawdown", "daily loss", "daily loss limit", "profit target", "min trading days"];
               const coreRules = rules.filter(rule => coreRuleNames.some(name => String(rule?.rule || "").toLowerCase().includes(name)));

@@ -228,6 +228,78 @@ def count_active_live(client: Client, account_type: str) -> int:
     )
 
 
+def get_live_journal_limits(client: Client) -> dict[str, dict[str, int]]:
+    data = client._request(
+        f"{client.journal_journal_base}/live-accounts",
+        use_journal_token=True,
+    )
+    limits = data.get("limits") or {}
+    out: dict[str, dict[str, int]] = {}
+    for key in ("personal", "prop"):
+        block = limits.get(key) or {}
+        out[key] = {
+            "count": int(block.get("count") or 0),
+            "max": int(block.get("max") or 5),
+        }
+    return out
+
+
+def bump_user_live_journal_caps(
+    client: Client,
+    *,
+    user_id: int,
+    personal_min: int | None = None,
+    prop_min: int | None = None,
+    admin_email: str,
+    admin_password: str,
+) -> bool:
+    """Raise live journal caps via journal admin API (requires admin login)."""
+    admin = Client(client.origin)
+    admin.login(admin_email, admin_password)
+    try:
+        admin._request(
+            f"{admin.journal_base}/admin/users/{user_id}",
+            use_journal_token=True,
+        )
+    except Exception:
+        return False
+    payload: dict[str, Any] = {}
+    if personal_min is not None:
+        payload["max_personal_live_journals"] = max(0, int(personal_min))
+    if prop_min is not None:
+        payload["max_prop_live_journals"] = max(0, int(prop_min))
+    if not payload:
+        return True
+    admin._request(
+        f"{admin.journal_base}/admin/users/{user_id}",
+        "PUT",
+        payload,
+        use_journal_token=True,
+        csrf=True,
+    )
+    return True
+
+
+def resolve_mentor_input_path(mentor_dir: Path, filename: str) -> Path:
+    direct = mentor_dir / filename
+    if direct.is_file():
+        return direct
+    matches = sorted(mentor_dir.rglob(filename))
+    if matches:
+        return matches[0]
+    return direct
+
+
+def archive_mentor_personal_live_journals(client: Client, account_ids: list[int]) -> None:
+    for aid in account_ids:
+        try:
+            archive_live_account(client, aid)
+            print(f"  archived personal live journal id={aid}")
+        except Exception as exc:
+            if "404" not in str(exc):
+                print(f"  skip archive id={aid}: {exc}")
+
+
 def upload_live_trades(client: Client, profile_id: int, trades: list[dict[str, Any]]) -> None:
     url = f"{client.journal_base}/journal/add"
     total = len(trades)
@@ -236,6 +308,96 @@ def upload_live_trades(client: Client, profile_id: int, trades: list[dict[str, A
         client._request(url, "POST", payload, use_journal_token=True, csrf=True)
         if i % 25 == 0 or i == total:
             print(f"    uploaded {i}/{total} live trades ...")
+
+
+def default_prop_rules_for_live(
+    market: str,
+    balance: float | str = 10000,
+    firm: str = "FTMO",
+    *,
+    num_phases: int = 1,
+) -> dict[str, Any]:
+    """Match journal-backend _default_prop_rules / LiveJournalNewAccountModal defaults."""
+    is_futures = str(market or "").strip().lower() == "futures"
+    cap = max(1000.0, float(balance or 10000))
+    dl_pct = 2.5 if str(firm or "").lower() == "topstep" and is_futures else 5.0
+    dd_pct = 6.0 if is_futures else 10.0
+    pt_pct = 10.0 if num_phases == 1 else 8.0
+    p2_pt_pct = 5.0
+    return {
+        "numPhases": 2 if num_phases == 2 else 1,
+        "challengeType": "Evaluation",
+        "currentPhase": 1,
+        "limitMode": "amount" if is_futures else "percent",
+        "p1Pct": {"dl": str(dl_pct), "dd": str(dd_pct), "pt": str(pt_pct)},
+        "p2Pct": {"dl": str(dl_pct), "dd": str(dd_pct), "pt": str(p2_pt_pct)},
+        "p1Amt": {
+            "dl": str(int(round(cap * dl_pct / 100))),
+            "dd": str(int(round(cap * dd_pct / 100))),
+            "pt": str(int(round(cap * pt_pct / 100))),
+        },
+        "p2Amt": {
+            "dl": str(int(round(cap * dl_pct / 100))),
+            "dd": str(int(round(cap * dd_pct / 100))),
+            "pt": str(int(round(cap * p2_pt_pct / 100))),
+        },
+        "minTradingDaysEnabled": True,
+        "minTradingDays": "2" if is_futures else "4",
+        "consistencyEnabled": False,
+        "consistencyPct": "30",
+        "trailingDrawdown": not is_futures,
+        "dailyLossEnabled": True,
+        "weekendHold": False,
+    }
+
+
+def prop_rules_complete(rules: Any) -> bool:
+    if not isinstance(rules, dict) or not rules:
+        return False
+    for phase_key in ("p1Pct", "p2Pct"):
+        block = rules.get(phase_key)
+        if not isinstance(block, dict):
+            return False
+        for field in ("dl", "dd", "pt"):
+            val = str(block.get(field) or "").strip()
+            if not val or not val.replace(".", "", 1).isdigit():
+                return False
+    if rules.get("minTradingDaysEnabled") is False:
+        return True
+    min_days = str(rules.get("minTradingDays") or "").strip()
+    return bool(min_days and min_days.isdigit() and int(min_days) > 0)
+
+
+def patch_live_account_prop_rules(client: Client, account: dict[str, Any]) -> dict[str, Any]:
+    """Ensure prop live journal has full challenge rules persisted."""
+    rules = account.get("prop_rules")
+    if prop_rules_complete(rules):
+        return account
+    market = str(account.get("market") or "Forex")
+    balance = account.get("starting_balance") or 10000
+    firm = str(account.get("prop_firm") or "FTMO")
+    full_rules = default_prop_rules_for_live(market, balance, firm)
+    payload = {
+        "name": account.get("name") or "Journal",
+        "market": market,
+        "starting_balance": str(balance),
+        "account_type": "prop",
+        "account_subtype": account.get("account_subtype") or "Challenge",
+        "prop_firm": firm,
+        "prop_rules": full_rules,
+        "notes": account.get("notes"),
+    }
+    aid = int(account["id"])
+    data = client._request(
+        f"{client.journal_journal_base}/live-accounts/{aid}",
+        "PATCH",
+        payload,
+        use_journal_token=True,
+        csrf=True,
+    )
+    patched = data.get("account") or account
+    print(f"  patched prop_rules on live account id={aid}: {patched.get('name')}")
+    return patched
 
 
 def build_live_account_payload(
@@ -263,22 +425,7 @@ def build_live_account_payload(
     }
     if is_prop:
         payload["prop_firm"] = "FTMO"
-        payload["prop_rules"] = {
-            "numPhases": 2,
-            "challengeType": "Evaluation",
-            "currentPhase": 1,
-            "limitMode": "percent",
-            "p1Pct": {"dl": "5", "dd": "10", "pt": "8"},
-            "p2Pct": {"dl": "5", "dd": "10", "pt": "5"},
-            "p1Amt": {"dl": "500", "dd": "1000", "pt": "800"},
-            "p2Amt": {"dl": "500", "dd": "1000", "pt": "500"},
-            "minTradingDaysEnabled": True,
-            "minTradingDays": "4",
-            "consistencyEnabled": False,
-            "trailingDrawdown": market.lower() != "futures",
-            "dailyLossEnabled": True,
-            "weekendHold": False,
-        }
+        payload["prop_rules"] = default_prop_rules_for_live(market, payload["starting_balance"], "FTMO")
     return payload
 
 
@@ -384,6 +531,8 @@ def ensure_live_account(
     if skip_existing and name.lower() in existing:
         acc = get_live_account(client, name)
         if acc:
+            if source_kind == "live_prop":
+                acc = patch_live_account_prop_rules(client, acc)
             print(f"  REUSE existing live journal: {name} (id={acc.get('id')})")
             return acc
         return None
@@ -412,12 +561,18 @@ def process_file(
     skip_existing: bool,
     dry_run: bool,
     min_trades: int,
+    mentor_dir: Path | None = None,
+    output_dir: Path | None = None,
+    session_prefix: str | None = None,
 ) -> dict[str, Any]:
-    input_path = MENTOR_DIR / filename
+    base_dir = mentor_dir or MENTOR_DIR
+    out_dir = output_dir or base_dir
+    prefix = session_prefix if session_prefix is not None else SESSION_PREFIX
+    input_path = resolve_mentor_input_path(base_dir, filename)
     stem = slug_stem(filename)
-    display_name = source_display_name(stem)
-    out_xlsx = MENTOR_DIR / f"{stem}-talaria-adapted.xlsx"
-    out_json = MENTOR_DIR / f"{stem}-talaria-adapted.json"
+    display_name = f"{prefix}{stem}"
+    out_xlsx = out_dir / f"{stem}-talaria-adapted.xlsx"
+    out_json = out_dir / f"{stem}-talaria-adapted.json"
 
     print(f"\n=== {filename} → {display_name} ({source_kind}) ===")
     if not input_path.is_file():
@@ -504,10 +659,14 @@ def process_file(
         print(f"  uploaded {len(trades)} trades to backtest session {source_id}")
     else:
         want_type = "personal" if source_kind == "live_personal" else "prop"
-        if count_active_live(client, want_type) >= 5 and display_name.lower() not in existing_live:
+        limit_key = "personal" if want_type == "personal" else "prop"
+        live_limits = get_live_journal_limits(client)
+        cap = int(live_limits.get(limit_key, {}).get("max") or 5)
+        used = int(live_limits.get(limit_key, {}).get("count") or count_active_live(client, want_type))
+        if used >= cap and display_name.lower() not in existing_live:
             raise RuntimeError(
-                f"{want_type} live journal limit reached (5/5). "
-                "Run with --prepare-four-sources to archive QA journals first."
+                f"{want_type} live journal limit reached ({used}/{cap}). "
+                "Archive existing journals or raise max_personal_live_journals via admin."
             )
         acc = ensure_live_account(
             client,

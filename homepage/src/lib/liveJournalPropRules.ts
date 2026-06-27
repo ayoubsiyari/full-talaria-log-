@@ -23,6 +23,7 @@ export type LiveJournalPropRules = {
 };
 
 export type LiveJournalPropConfig = {
+  configured: boolean;
   profitTargetPct: number | null;
   dailyLossLimitPct: number | null;
   maxDDLimitPct: number | null;
@@ -31,6 +32,8 @@ export type LiveJournalPropConfig = {
   challengeType: string;
   currentPhase: 1 | 2;
   stepFormat: LiveJournalPropStepFormat;
+  dailyLossEnabled?: boolean;
+  drawdownType?: "static" | "trailing";
 };
 
 const num = (raw: unknown): number | null => {
@@ -199,6 +202,7 @@ export function flattenLiveJournalPropConfig(
   }
 
   return {
+    configured: true,
     profitTargetPct,
     dailyLossLimitPct,
     maxDDLimitPct,
@@ -207,6 +211,8 @@ export function flattenLiveJournalPropConfig(
     challengeType: rules.challengeType,
     currentPhase: activePhase,
     stepFormat: liveJournalPropStepFormat(rules),
+    dailyLossEnabled: rules.dailyLossEnabled,
+    drawdownType: rules.trailingDrawdown ? "trailing" : "static",
   };
 }
 

@@ -46,6 +46,7 @@ export type V16JournalAccountRow = {
   propFirm?: string | null;
   propRules?: Record<string, unknown> | null;
   propConfig?: {
+    configured?: boolean;
     profitTargetPct: number | null;
     dailyLossLimitPct: number | null;
     maxDDLimitPct: number | null;
