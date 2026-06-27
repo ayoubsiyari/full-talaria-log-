@@ -10842,11 +10842,6 @@ const TalariaV8b = () => {
   const [dashAccountPulseMenuOpen, setDashAccountPulseMenuOpen] = useState(false);
   const [dashAccountPulseHover, setDashAccountPulseHover] = useState(null);
   const [dashAccountPulseZoom, setDashAccountPulseZoom] = useState({ start: 0, end: 1 });
-  const [dashAccountPulseZoomView, setDashAccountPulseZoomView] = useState({ start: 0, end: 1 });
-  const dashAccountPulseZoomTargetRef = useRef({ start: 0, end: 1 });
-  const dashAccountPulseZoomViewRef = useRef({ start: 0, end: 1 });
-  const dashAccountPulseZoomAnimRef = useRef(null);
-  const snapAccountPulseZoomRef = useRef(() => {});
   const dashAccountPulseHoverFrameRef = useRef(null);
   const dashAccountPulseHoverNextRef = useRef(null);
   const dashAccountPulseWheelHandlerRef = useRef(() => {});
@@ -11569,58 +11564,6 @@ const TalariaV8b = () => {
     return () => document.removeEventListener("pointerdown", closeDashboardPageMenu, true);
   }, [dashFreshNavOpen, dashSnapshotTopModeOpen]);
   useEffect(() => {
-    dashAccountPulseZoomTargetRef.current = dashAccountPulseZoom;
-  }, [dashAccountPulseZoom]);
-  useEffect(() => {
-    snapAccountPulseZoomRef.current = next => {
-      const target = {
-        start: btClamp(Number(next?.start) || 0, 0, 1),
-        end: btClamp(Number(next?.end) || 1, 0, 1),
-      };
-      if (target.end < target.start) target.end = target.start;
-      dashAccountPulseZoomTargetRef.current = target;
-      dashAccountPulseZoomViewRef.current = target;
-      if (dashAccountPulseZoomAnimRef.current) {
-        cancelAnimationFrame(dashAccountPulseZoomAnimRef.current);
-        dashAccountPulseZoomAnimRef.current = null;
-      }
-      setDashAccountPulseZoom(target);
-      setDashAccountPulseZoomView(target);
-    };
-  });
-  useEffect(() => {
-    dashAccountPulseZoomViewRef.current = dashAccountPulseZoomView;
-  }, [dashAccountPulseZoomView]);
-  useEffect(() => {
-    const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    if (prefersReducedMotion) {
-      dashAccountPulseZoomViewRef.current = dashAccountPulseZoom;
-      setDashAccountPulseZoomView(dashAccountPulseZoom);
-      return undefined;
-    }
-    let cancelled = false;
-    const step = () => {
-      if (cancelled) return;
-      const prev = dashAccountPulseZoomViewRef.current;
-      const target = dashAccountPulseZoomTargetRef.current;
-      const ease = 0.2;
-      const nextStart = prev.start + (target.start - prev.start) * ease;
-      const nextEnd = prev.end + (target.end - prev.end) * ease;
-      const done = Math.abs(nextStart - target.start) < 0.00028 && Math.abs(nextEnd - target.end) < 0.00028;
-      const next = done ? { start: target.start, end: target.end } : { start: nextStart, end: nextEnd };
-      dashAccountPulseZoomViewRef.current = next;
-      setDashAccountPulseZoomView(next);
-      if (!done) dashAccountPulseZoomAnimRef.current = requestAnimationFrame(step);
-      else dashAccountPulseZoomAnimRef.current = null;
-    };
-    if (dashAccountPulseZoomAnimRef.current) cancelAnimationFrame(dashAccountPulseZoomAnimRef.current);
-    dashAccountPulseZoomAnimRef.current = requestAnimationFrame(step);
-    return () => {
-      cancelled = true;
-      if (dashAccountPulseZoomAnimRef.current) cancelAnimationFrame(dashAccountPulseZoomAnimRef.current);
-    };
-  }, [dashAccountPulseZoom]);
-  useEffect(() => {
     if (!dashAccountPulseMenuOpen) return;
     const closeDashboardPulseMenu = e => {
       if (e.target?.closest?.(".tlr-dashboard-value-menu-wrap")) return;
@@ -11660,7 +11603,7 @@ const TalariaV8b = () => {
     return () => clearTimeout(timer);
   }, [dashFreshPage, dashSnapshotTopMode, dashAccountPulsePeriod]);
   useEffect(() => {
-    snapAccountPulseZoomRef.current({ start: 0, end: 1 });
+    setDashAccountPulseZoom({ start: 0, end: 1 });
   }, [dashFreshPage, dashSnapshotTopMode, dashAccountPulsePeriod]);
   useEffect(() => {
     try { localStorage.setItem("talaria_backtest_advanced_nav_collapsed", dashAdvNavCollapsed ? "1" : "0"); } catch {}
@@ -28821,7 +28764,7 @@ const TalariaV8b = () => {
                 setDashAccountPulsePeriod(id);
                 setDashAccountPulseMenuOpen(false);
                 setDashAccountPulseHover(null);
-                snapAccountPulseZoomRef.current({ start: 0, end: 1 });
+                setDashAccountPulseZoom({ start: 0, end: 1 });
               };
               const scheduleAccountPulseHover = next => {
                 if (dashAccountPulseHoverFrameRef.current) {
@@ -29002,8 +28945,8 @@ const TalariaV8b = () => {
               }, {minMs:null, maxMs:null, minLabel:null, maxLabel:null});
               const pulseStartDateLabel = fmtDate(pulseDateExtents.minLabel || pulseDateExtents.minMs || firstPulse.labelDate || firstKnownDate);
               const pulseCurrentDateLabel = fmtDate(pulseDateExtents.maxLabel || pulseDateExtents.maxMs || lastPulse.labelDate || lastKnownDate || new Date());
-              const pulseZoomStart = btClamp(Number(dashAccountPulseZoomView?.start) || 0, 0, 1);
-              const pulseZoomEnd = btClamp(Number(dashAccountPulseZoomView?.end) || 1, pulseZoomStart, 1);
+              const pulseZoomStart = btClamp(Number(dashAccountPulseZoom?.start) || 0, 0, 1);
+              const pulseZoomEnd = btClamp(Number(dashAccountPulseZoom?.end) || 1, pulseZoomStart, 1);
               const pulseZoomSpan = Math.max(0.001, pulseZoomEnd - pulseZoomStart);
               const pulseIndexToRatio = index => peakRows.length <= 1 ? 0 : index / (peakRows.length - 1);
               const pulseRatioToIndex = ratio => {
@@ -29494,8 +29437,8 @@ const TalariaV8b = () => {
                 const localX = event.clientX - rect.left;
                 const viewX = (localX / Math.max(1, rect.width)) * viewW;
                 const plotRatio = pulsePlotRatioForX(viewX);
-                const currentStart = btClamp(Number(dashAccountPulseZoomTargetRef.current?.start) || 0, 0, 1);
-                const currentEnd = btClamp(Number(dashAccountPulseZoomTargetRef.current?.end) || 1, currentStart, 1);
+                const currentStart = btClamp(Number(dashAccountPulseZoom?.start) || 0, 0, 1);
+                const currentEnd = btClamp(Number(dashAccountPulseZoom?.end) || 1, currentStart, 1);
                 const currentSpan = Math.max(0.001, currentEnd - currentStart);
                 const minSpan = Math.max(0.004, 3 / Math.max(3, peakRows.length - 1));
                 if (event.shiftKey) {
@@ -29905,7 +29848,7 @@ const TalariaV8b = () => {
                       <div
                         onPointerLeave={()=>scheduleAccountPulseHover(null)}
                         onDoubleClick={()=>{
-                          snapAccountPulseZoomRef.current({ start: 0, end: 1 });
+                          setDashAccountPulseZoom({ start: 0, end: 1 });
                           scheduleAccountPulseHover(null);
                         }}
                         ref={node => {
