@@ -76,6 +76,8 @@ declare global {
     __TALARIA_OPEN_EDIT_SESSION__?: (sess: Record<string, unknown>) => void;
     /** True while embedded bootstrap is fetching sessions/trades (show loading UI). */
     __TALARIA_V16_BOOT_LOADING__?: boolean;
+    /** True while KPIs, journal entries, and community data are loading after first paint. */
+    __TALARIA_V16_BOOT_ENRICHING__?: boolean;
     /** Reload journal strategies and refresh boot.strategyBank (Add Trade tags). */
     __TALARIA_V16_REFRESH_STRATEGY_BANK__?: () => Promise<Record<string, unknown>[]>;
     /** Persist Strategy Builder row to journal-backend. */

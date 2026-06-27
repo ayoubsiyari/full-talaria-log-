@@ -284,11 +284,12 @@ export function useV16LiveBootstrap(): BootState {
   useLayoutEffect(() => {
     let cancelled = false;
     const hadSessions = Boolean(window.__TALARIA_V16_BOOT__?.sessions?.length);
-    if (!hadSessions || bootNonce > 0) {
-      window.__TALARIA_V16_BOOT_LOADING__ = true;
-    }
 
-    if (!hadSessions) {
+    window.__TALARIA_V16_BOOT_LOADING__ = true;
+    window.__TALARIA_V16_BOOT_ENRICHING__ = true;
+    window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
+
+    if (!hadSessions || bootNonce > 0) {
       setState({ status: "loading" });
     }
 
@@ -315,6 +316,7 @@ export function useV16LiveBootstrap(): BootState {
         window.__TALARIA_V16_BOOT_LOADING__ = false;
         publishBoot(boot);
         setState({ status: "ready", boot });
+        window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
 
         void (async () => {
           try {
@@ -338,15 +340,23 @@ export function useV16LiveBootstrap(): BootState {
               searchParams.get("sessionId")
             );
 
+            window.__TALARIA_V16_BOOT_ENRICHING__ = false;
             publishBoot(enriched);
             setState({ status: "ready", boot: enriched });
+            window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
           } catch (err) {
             console.warn("[V16] background boot enrich failed:", err);
+            if (!cancelled && enrichGenRef.current === enrichGen) {
+              window.__TALARIA_V16_BOOT_ENRICHING__ = false;
+              window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
+            }
           }
         })();
       } catch (e) {
         if (cancelled) return;
         window.__TALARIA_V16_BOOT_LOADING__ = false;
+        window.__TALARIA_V16_BOOT_ENRICHING__ = false;
+        window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
         setState({
           status: "error",
           message: e instanceof Error ? e.message : String(e),
@@ -357,6 +367,7 @@ export function useV16LiveBootstrap(): BootState {
     return () => {
       cancelled = true;
       window.__TALARIA_V16_BOOT_LOADING__ = false;
+      window.__TALARIA_V16_BOOT_ENRICHING__ = false;
     };
   }, [bootNonce]);
 

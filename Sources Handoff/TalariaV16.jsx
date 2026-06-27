@@ -10534,8 +10534,7 @@ const TalariaV8b = () => {
   const [dashBootLoading, setDashBootLoading] = useState(
     () =>
       isV16Embedded() &&
-      !!window.__TALARIA_V16_BOOT_LOADING__ &&
-      !window.__TALARIA_V16_BOOT__?.sessions?.length
+      (!!window.__TALARIA_V16_BOOT_LOADING__ || !!window.__TALARIA_V16_BOOT_ENRICHING__)
   );
   const [v16BootRevision, setV16BootRevision] = useState(0);
   const [dashTradesLoading, setDashTradesLoading] = useState(false);
@@ -10548,7 +10547,7 @@ const TalariaV8b = () => {
     if (!isV16Embedded()) return;
     const syncBoot = () => {
       setDashBootLoading(
-        !!window.__TALARIA_V16_BOOT_LOADING__ && !window.__TALARIA_V16_BOOT__?.sessions?.length
+        !!window.__TALARIA_V16_BOOT_LOADING__ || !!window.__TALARIA_V16_BOOT_ENRICHING__
       );
       setV16BootRevision((n) => n + 1);
       if (!isV16LiveBoot()) return;
@@ -11859,6 +11858,33 @@ const TalariaV8b = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileTab, setProfileTab] = useState("account");
   const [profileLang, setProfileLang] = useState("english");
+  const [appConfirm, setAppConfirm] = useState(null);
+  const appConfirmRef = useRef(null);
+  const closeAppConfirm = useCallback(() => {
+    appConfirmRef.current = null;
+    setAppConfirm(null);
+  }, []);
+  const openAppConfirm = useCallback((opts) => {
+    const rtl = profileLang === "arabic";
+    const t = (en, ar) => (rtl ? ar : en);
+    const payload = {
+      title: opts.title || t("Confirm", "تأكيد"),
+      message: opts.message || "",
+      confirmLabel: opts.confirmLabel || t("Confirm", "تأكيد"),
+      cancelLabel: opts.cancelLabel || t("Cancel", "إلغاء"),
+      danger: opts.danger !== false,
+      onConfirm: typeof opts.onConfirm === "function" ? opts.onConfirm : null,
+    };
+    appConfirmRef.current = payload;
+    setAppConfirm(payload);
+  }, [profileLang]);
+  const acceptAppConfirm = useCallback(() => {
+    const fn = appConfirmRef.current?.onConfirm;
+    closeAppConfirm();
+    if (typeof fn === "function") {
+      try { fn(); } catch (err) { console.error("[V16] confirm action failed", err); }
+    }
+  }, [closeAppConfirm]);
   const [profileCat, setProfileCat] = useState("account");
   const [profilePos, setProfilePos] = useState({ x: 0, y: 0 });
   const [profileName, setProfileName] = useState("Trader");
@@ -13742,7 +13768,7 @@ const TalariaV8b = () => {
     if (custom) return Math.min(2000, Math.max(1, parseInt(custom, 10) || sessSeedCount));
     return Math.min(2000, Math.max(1, Number(sessSeedCount) || 200));
   };
-  const runSessSeedTrades = () => {
+  const executeSessSeedTrades = () => {
     const sess = sessSeedModal;
     if (!isV16LiveBoot() || !sess?.id || sessSeedBusy) return;
     const count = resolveSessSeedCount();
@@ -13751,7 +13777,6 @@ const TalariaV8b = () => {
     const name = String(sess.name || "Session");
     const scenarioMeta = (sessSeedScenarios || SEED_TRADE_SCENARIO_FALLBACK).find((s) => s.id === scenario);
     const scenarioLabel = scenarioMeta?.label || scenario;
-    if (mode === "replace" && !globalThis.confirm(`Replace existing trades in "${name}" with ${count} seeded trades (${scenarioLabel})?`)) return;
     setSessSeedBusy(sess.id);
     const qs = new URLSearchParams({ count: String(count), mode, scenario });
     fetch(`/api/sessions/${encodeURIComponent(String(sess.id))}/seed-demo-trades?${qs}`, {
@@ -13787,27 +13812,60 @@ const TalariaV8b = () => {
       })
       .finally(() => setSessSeedBusy(null));
   };
+  const runSessSeedTrades = () => {
+    const sess = sessSeedModal;
+    if (!isV16LiveBoot() || !sess?.id || sessSeedBusy) return;
+    const count = resolveSessSeedCount();
+    const scenario = String(sessSeedScenario || "balanced");
+    const mode = sessSeedMode === "append" ? "append" : "replace";
+    const name = String(sess.name || "Session");
+    const scenarioMeta = (sessSeedScenarios || SEED_TRADE_SCENARIO_FALLBACK).find((s) => s.id === scenario);
+    const scenarioLabel = scenarioMeta?.label || scenario;
+    if (mode === "replace") {
+      openAppConfirm({
+        title: profileLang === "arabic" ? "استبدال الصفقات" : "Replace trades",
+        message: profileLang === "arabic"
+          ? `استبدال الصفقات الحالية في "${name}" بـ ${count} صفقة تجريبية (${scenarioLabel})؟`
+          : `Replace existing trades in "${name}" with ${count} seeded trades (${scenarioLabel})?`,
+        confirmLabel: profileLang === "arabic" ? "استبدال" : "Replace",
+        danger: true,
+        onConfirm: executeSessSeedTrades,
+      });
+      return;
+    }
+    executeSessSeedTrades();
+  };
+  const performDeleteSession = (id) => {
+    fetch(`/api/sessions/${encodeURIComponent(String(id))}`, {
+      method: "DELETE",
+      credentials: "include",
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          const detail = body?.detail ? String(body.detail) : `HTTP ${res.status}`;
+          throw new Error(detail);
+        }
+        setSessions((prev) => prev.filter((s) => String(s.id) !== String(id)));
+        if (String(dashSessId) === String(id)) setDashSessId(null);
+        reloadEmbeddedV16Boot();
+      })
+      .catch((err) => {
+        window.alert(`Failed to delete session: ${err?.message || err}`);
+      });
+  };
   const deleteSession = (e, id) => {
     e?.stopPropagation?.();
     if (isV16LiveBoot()) {
-      if (!globalThis.confirm("Delete this session? This cannot be undone.")) return;
-      fetch(`/api/sessions/${encodeURIComponent(String(id))}`, {
-        method: "DELETE",
-        credentials: "include",
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const body = await res.json().catch(() => null);
-            const detail = body?.detail ? String(body.detail) : `HTTP ${res.status}`;
-            throw new Error(detail);
-          }
-          setSessions((prev) => prev.filter((s) => String(s.id) !== String(id)));
-          if (String(dashSessId) === String(id)) setDashSessId(null);
-          reloadEmbeddedV16Boot();
-        })
-        .catch((err) => {
-          window.alert(`Failed to delete session: ${err?.message || err}`);
-        });
+      openAppConfirm({
+        title: profileLang === "arabic" ? "حذف الجلسة" : "Delete session",
+        message: profileLang === "arabic"
+          ? "حذف هذه الجلسة؟ لا يمكن التراجع."
+          : "Delete this session? This cannot be undone.",
+        confirmLabel: profileLang === "arabic" ? "حذف" : "Delete",
+        danger: true,
+        onConfirm: () => performDeleteSession(id),
+      });
       return;
     }
     const updated = sessions.filter(s => s.id !== id);
@@ -15098,8 +15156,21 @@ const TalariaV8b = () => {
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><path d="M4 20h4l11-11-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></svg>},
                     {label:"Delete", handler:()=>{
                       if(!journalAccount?.liveAccountId) return;
-                      if(!window.confirm("Archive this journal? It will be removed from your list but existing trades stay saved.")) return;
-                      void deleteLiveJournalAccount(journalAccount.liveAccountId).then((ok)=>{ if(ok) reloadEmbeddedV16Boot(); setSessActMenu(null); });
+                      const liveId = journalAccount.liveAccountId;
+                      openAppConfirm({
+                        title: profileLang === "arabic" ? "أرشفة اليومية" : "Archive journal",
+                        message: profileLang === "arabic"
+                          ? "أرشفة هذه اليومية؟ ستُزال من قائمتك لكن الصفقات المحفوظة تبقى."
+                          : "Archive this journal? It will be removed from your list but existing trades stay saved.",
+                        confirmLabel: profileLang === "arabic" ? "أرشفة" : "Archive",
+                        danger: true,
+                        onConfirm: () => {
+                          void deleteLiveJournalAccount(liveId).then((ok) => {
+                            if (ok) reloadEmbeddedV16Boot();
+                          });
+                        },
+                      });
+                      setSessActMenu(null);
                     }, col:c.rd, disabled:!journalAccount?.liveAccountId, danger:true,
                       icon:<svg width={14} height={14} viewBox="0 0 24 24" fill="none"><polyline points="3,6 5,6 21,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M19,6l-1,14H6L5,6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/><path d="M10,11v6M14,11v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M9,6V4h6v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>},
                   ].map(({label,handler,col,disabled,sub,danger,icon})=>{
@@ -17309,7 +17380,8 @@ const TalariaV8b = () => {
           const liveDashBooting = isV16Embedded() && (
             dashBootLoading
             || dashTradesLoading
-            || (!window.__TALARIA_V16_BOOT__?.sessions?.length && !!window.__TALARIA_V16_BOOT_LOADING__)
+            || !!window.__TALARIA_V16_BOOT_LOADING__
+            || !!window.__TALARIA_V16_BOOT_ENRICHING__
           );
           if (!ds) {
             if (liveDashBooting) {
@@ -41061,26 +41133,38 @@ const TalariaV8b = () => {
             }
             const apiId = parseStratApiId(source.id);
             const removeKey = strategyRowKey(source);
-            const removeLocal = () => {
-              setMyStrategies(prev=>prev.filter(s=>strategyRowKey(s)!==removeKey));
-              if (stratShareStrat && sameStrategyRowId(stratShareStrat, source)) setStratShareStrat(null);
-              if (stratEditId != null && sameStrategyRowId({ id: stratEditId }, source)) {
-                setStratBuilderOpen(false);
-                setStratEditId(null);
+            const strategyName = String(source.name || source.strategyName || "this strategy").trim();
+            const runDelete = () => {
+              const removeLocal = () => {
+                setMyStrategies(prev=>prev.filter(s=>strategyRowKey(s)!==removeKey));
+                if (stratShareStrat && sameStrategyRowId(stratShareStrat, source)) setStratShareStrat(null);
+                if (stratEditId != null && sameStrategyRowId({ id: stratEditId }, source)) {
+                  setStratBuilderOpen(false);
+                  setStratEditId(null);
+                }
+              };
+              const deleter = typeof window !== "undefined" ? window.__TALARIA_V16_DELETE_STRATEGY__ : null;
+              if (isV16LiveBoot() && apiId != null && typeof deleter === "function") {
+                removeLocal();
+                deleter(apiId).catch((err) => {
+                  console.error("[V16] strategy delete failed", err);
+                  window.alert(err?.message || "Could not delete strategy.");
+                  const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
+                  if (typeof refresh === "function") refresh().catch(() => {});
+                });
+                return;
               }
-            };
-            const deleter = typeof window !== "undefined" ? window.__TALARIA_V16_DELETE_STRATEGY__ : null;
-            if (isV16LiveBoot() && apiId != null && typeof deleter === "function") {
               removeLocal();
-              deleter(apiId).catch((err) => {
-                console.error("[V16] strategy delete failed", err);
-                window.alert(err?.message || "Could not delete strategy.");
-                const refresh = typeof window !== "undefined" ? window.__TALARIA_V16_REFRESH_STRATEGY_BANK__ : null;
-                if (typeof refresh === "function") refresh().catch(() => {});
-              });
-              return;
-            }
-            removeLocal();
+            };
+            openAppConfirm({
+              title: profileLang === "arabic" ? "حذف الاستراتيجية" : "Delete strategy",
+              message: profileLang === "arabic"
+                ? `حذف "${strategyName}"؟ لا يمكن التراجع.`
+                : `Delete "${strategyName}"? This cannot be undone.`,
+              confirmLabel: profileLang === "arabic" ? "حذف" : "Delete",
+              danger: true,
+              onConfirm: runDelete,
+            });
           };
 
           const saveBuilder = () => {
@@ -53510,6 +53594,61 @@ const TalariaV8b = () => {
         </div>
         );
       })()}
+
+      {appConfirm ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="v16-app-confirm-title"
+          style={{position:"fixed",inset:0,zIndex:100010,background:"rgba(0,0,0,0.56)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}
+          onMouseDown={closeAppConfirm}
+        >
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{width:440,maxWidth:"calc(100vw - 48px)",background:c.el,border:`1px solid ${c.brH}`,boxShadow:"0 26px 80px rgba(0,0,0,0.9)",display:"flex",flexDirection:"column",overflow:"hidden",fontFamily:F}}
+          >
+            <div style={{height:2,background:`linear-gradient(90deg,transparent,${appConfirm.danger ? c.rd : c.acL},transparent)`,boxShadow:`0 0 10px ${appConfirm.danger ? "rgba(255,80,104,0.35)" : c.acG}`,flexShrink:0}}/>
+            <div style={{height:48,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"0 14px",borderBottom:`1px solid ${c.brH}`,background:c.sf,boxSizing:"border-box"}}>
+              <div id="v16-app-confirm-title" style={{fontSize:13,fontWeight:900,color:c.tx,letterSpacing:"0.04em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                {appConfirm.title}
+              </div>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={profileLang === "arabic" ? "إغلاق" : "Close"}
+                onClick={closeAppConfirm}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); closeAppConfirm(); } }}
+                style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:"transparent",flexShrink:0,color:c.ts}}
+              >
+                <I n="x" s={18} cl="currentColor"/>
+              </div>
+            </div>
+            <div style={{padding:"16px 16px 14px"}}>
+              <div style={{fontSize:12,fontWeight:850,color:c.tx,lineHeight:1.55}}>{appConfirm.message}</div>
+            </div>
+            <div style={{height:50,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,padding:"0 14px",borderTop:`1px solid ${c.brH}`,background:c.sf,boxSizing:"border-box"}}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={closeAppConfirm}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); closeAppConfirm(); } }}
+                style={{height:32,minWidth:90,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",color:c.ts,border:`1px solid ${c.brH}`,background:"transparent",fontSize:9,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxSizing:"border-box",cursor:"default"}}
+              >
+                {appConfirm.cancelLabel}
+              </div>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={acceptAppConfirm}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); acceptAppConfirm(); } }}
+                style={{height:32,minWidth:90,padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"center",background:appConfirm.danger ? c.rd : c.acL,color:"#fff",border:"1px solid transparent",fontSize:9,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:F,boxShadow:appConfirm.danger ? "0 0 14px rgba(255,80,104,0.28)" : `0 0 14px ${c.acG}`,boxSizing:"border-box",cursor:"default"}}
+              >
+                {appConfirm.confirmLabel}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {screenshotUploadNotice ? (
         <div style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:100010,maxWidth:"min(92vw, 520px)",padding:"10px 14px",border:"1px solid rgba(255,74,108,0.45)",background:"rgba(24,8,14,0.96)",color:"#ff8a9a",fontSize:11,fontWeight:800,lineHeight:1.4,fontFamily:F,boxShadow:"0 12px 36px rgba(0,0,0,0.55)",textAlign:"center",pointerEvents:"none"}}>
