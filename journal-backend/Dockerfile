@@ -1,3 +1,7 @@
+# syntax=docker/dockerfile:1.4
+# Build context MUST be ./journal-backend (see docker-compose.yml additional_contexts).
+# CI passes talaria-security=./securty/python as an extra build context.
+
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -5,13 +9,13 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY journal-backend/requirements.txt /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY securty/python /opt/talaria_security_lib
+COPY --from=talaria-security . /opt/talaria_security_lib
 ENV PYTHONPATH=/opt/talaria_security_lib
 
-COPY journal-backend/ /app/
+COPY . /app/
 
 RUN addgroup --system app && adduser --system --ingroup app --home /app app \
     && chown -R app:app /app

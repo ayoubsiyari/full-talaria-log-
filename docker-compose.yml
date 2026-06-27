@@ -129,8 +129,10 @@ services:
     # (scripts/deploy.sh does this) so the VPS pulls instead of compiling.
     image: ${JOURNAL_BACKEND_IMAGE:-talaria-journal-backend:latest}
     build:
-      context: .
-      dockerfile: journal-backend/Dockerfile
+      context: ./journal-backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        talaria-security: ./securty/python
     restart: unless-stopped
     environment:
       # DB_HOST defaults to `db` (direct). Set DB_HOST=pgbouncer in .env (with the

@@ -19,6 +19,7 @@ on:
       - "Sources Handoff/scoreEngine.js"
       - "Sources Handoff/v16AppliedSourceStorage.js"
       - "journal-backend/**"
+      - "securty/**"
       - "shared/**"
       - "docker-compose.yml"
       - ".github/workflows/build-images.yml"
@@ -49,8 +50,9 @@ jobs:
             dockerfile: homepage/Dockerfile
           - name: journal-backend
             image: talaria-journal-backend
-            context: .
-            dockerfile: ./journal-backend/Dockerfile
+            context: ./journal-backend
+            dockerfile: Dockerfile
+            build_contexts: talaria-security=./securty/python
     steps:
       - uses: actions/checkout@v4
 
@@ -72,6 +74,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          build-contexts: ${{ matrix.build_contexts }}
           push: true
           build-args: |
             GIT_COMMIT=${{ github.sha }}
