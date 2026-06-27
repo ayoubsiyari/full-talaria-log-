@@ -414,6 +414,10 @@ export function buildJournalBootFromApi(
       .filter(Boolean)
       .sort()[0] as string | undefined;
 
+    const liveTradeCount =
+      liveMeta && typeof liveMeta.trade_count === "number" ? liveMeta.trade_count : 0;
+    const accountTradeCount = bucket.length > 0 ? bucket.length : liveTradeCount;
+
     accounts.push({
       id: key,
       name: liveMeta ? liveMeta.name : `${info.connection} / ${info.market}`,
@@ -425,7 +429,7 @@ export function buildJournalBootFromApi(
       accountTypeKey: info.accountTypeKey,
       accountTypeLabel: info.accountTypeKey === "prop" ? "Prop" : "Personal",
       market: info.market,
-      trades: bucket.length,
+      trades: accountTradeCount,
       pnl,
       pnlPct: liveMeta?.starting_balance
         ? pnl / Number(liveMeta.starting_balance) * 100
@@ -440,7 +444,7 @@ export function buildJournalBootFromApi(
         bucket.map((e) => e.updated_at).filter(Boolean).sort().slice(-1)[0] ||
           liveMeta?.created_at
       ),
-      totalTrades: bucket.length,
+      totalTrades: accountTradeCount,
       primarySession: null,
       sessions: [],
       strategyIds,
@@ -715,18 +719,26 @@ export function buildAppliedSourceForSession(
   };
 }
 
-export async function fetchJournalApiData(): Promise<{
+export type JournalApiData = {
   entries: ApiJournalEntry[];
   connections: ApiBrokerConnection[];
   strategies: { id: number; name: string; strategy_definition?: Record<string, unknown> | null }[];
   activeProfile: ApiJournalProfile | null;
   liveAccounts: ApiLiveJournalAccount[];
-}> {
+};
+
+export async function fetchJournalApiData(opts?: {
+  /** When false, skip heavy journal/list fetches (live-accounts still returns trade_count). */
+  includeEntries?: boolean;
+}): Promise<JournalApiData> {
   await syncJournalTokenFromSession();
   const headers = authHeaders();
+  const includeEntries = opts?.includeEntries !== false;
 
   const [entriesRes, connectionsRes, strategiesRes, profilesRes, liveAccountsRes] = await Promise.all([
-    fetch(`${JOURNAL_API_BASE}/journal/list`, { headers, cache: "no-store" }).catch(() => null),
+    includeEntries
+      ? fetch(`${JOURNAL_API_BASE}/journal/list`, { headers, cache: "no-store" }).catch(() => null)
+      : Promise.resolve(null),
     fetch(`${JOURNAL_API_BASE}/journal/broker/list`, { headers, cache: "no-store" }).catch(() => null),
     fetch(`${JOURNAL_API_BASE}/strategies`, { headers, cache: "no-store" }).catch(() => null),
     fetch(`${JOURNAL_API_BASE}/profile/profiles`, { headers, cache: "no-store" }).catch(() => null),
@@ -747,29 +759,31 @@ export async function fetchJournalApiData(): Promise<{
     }
   };
 
-  if (entriesRes?.ok) {
+  if (includeEntries && entriesRes?.ok) {
     const data = (await entriesRes.json()) as ApiJournalEntry[] | { trades?: ApiJournalEntry[] };
     mergeEntries(Array.isArray(data) ? data : Array.isArray(data?.trades) ? data.trades : []);
   }
 
-  const profileIds = [
-    ...new Set(
-      liveAccounts
-        .map((a) => a.profile_id)
-        .filter((id): id is number => typeof id === "number" && id > 0)
-    ),
-  ];
-  await Promise.all(
-    profileIds.map(async (profileId) => {
-      const res = await fetch(
-        `${JOURNAL_API_BASE}/journal/list?profile_id=${profileId}`,
-        { headers, cache: "no-store" }
-      ).catch(() => null);
-      if (!res?.ok) return;
-      const data = (await res.json()) as ApiJournalEntry[] | { trades?: ApiJournalEntry[] };
-      mergeEntries(Array.isArray(data) ? data : Array.isArray(data?.trades) ? data.trades : []);
-    })
-  );
+  if (includeEntries) {
+    const profileIds = [
+      ...new Set(
+        liveAccounts
+          .map((a) => a.profile_id)
+          .filter((id): id is number => typeof id === "number" && id > 0)
+      ),
+    ];
+    await Promise.all(
+      profileIds.map(async (profileId) => {
+        const res = await fetch(
+          `${JOURNAL_API_BASE}/journal/list?profile_id=${profileId}`,
+          { headers, cache: "no-store" }
+        ).catch(() => null);
+        if (!res?.ok) return;
+        const data = (await res.json()) as ApiJournalEntry[] | { trades?: ApiJournalEntry[] };
+        mergeEntries(Array.isArray(data) ? data : Array.isArray(data?.trades) ? data.trades : []);
+      })
+    );
+  }
 
   const entries = Array.from(entryById.values());
 

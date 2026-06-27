@@ -1,18 +1,10 @@
 import { Suspense } from "react";
 import TalariaV16Dashboard from "./v16/TalariaV16Dashboard";
+import V16DashboardLoading from "./v16/V16DashboardLoading";
 
 export default function DashboardPage() {
   return (
-    <Suspense
-      fallback={
-        <div
-          className="bt-os-dashboard"
-          style={{ fontFamily: "'Exo 2', sans-serif", padding: 24, color: "rgba(255,255,255,0.6)" }}
-        >
-          Loading dashboard…
-        </div>
-      }
-    >
+    <Suspense fallback={<V16DashboardLoading />}>
       <TalariaV16Dashboard />
     </Suspense>
   );

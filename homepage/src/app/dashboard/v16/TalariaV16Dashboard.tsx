@@ -3,20 +3,23 @@
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useLayoutEffect } from "react";
+import { useLanguage } from "@/app/LanguageProvider";
 import { useBacktestNewSession } from "../BacktestNewSessionContext";
 import { primeV16EmbeddedShell } from "./v16EmptyBoot";
 import { useV16LiveBootstrap } from "./useV16LiveBootstrap";
 import { normalizeV16DashboardView } from "./v16DashboardRoutes";
 import { V16ProfilePortal } from "./V16ProfilePortal";
 import { V16SupportChatPopover } from "./V16SupportChatPopover";
+import V16DashboardLoading from "./V16DashboardLoading";
 
 const TalariaV16 = dynamic(() => import("talaria-handoff/TalariaV16.jsx"), {
   ssr: false,
-  loading: () => null,
+  loading: () => <V16DashboardLoading />,
 });
 
 export default function TalariaV16Dashboard() {
   const boot = useV16LiveBootstrap();
+  const { isArabic } = useLanguage();
   const { registerOnSaved } = useBacktestNewSession();
   const router = useRouter();
   const pathname = usePathname();
@@ -121,6 +124,7 @@ export default function TalariaV16Dashboard() {
         overflow: "hidden",
       }}
     >
+      {boot.status === "loading" ? <V16DashboardLoading isArabic={isArabic} /> : null}
       {boot.status === "error" ? (
         <div
           style={{
@@ -143,7 +147,19 @@ export default function TalariaV16Dashboard() {
       ) : null}
       <V16ProfilePortal active={profileActive} />
       <V16SupportChatPopover />
-      <TalariaV16 key="v16-embedded" />
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          visibility: boot.status === "ready" ? "visible" : "hidden",
+          pointerEvents: boot.status === "ready" ? "auto" : "none",
+        }}
+      >
+        <TalariaV16 key="v16-embedded" />
+      </div>
     </div>
   );
 }
