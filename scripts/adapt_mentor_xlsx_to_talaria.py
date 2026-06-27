@@ -81,6 +81,42 @@ STRATEGY_BY_TICKER: dict[str, tuple[int, str]] = {
 
 LIVE_DEMONS = ["revenge", "fomo", "overtrade", "early_exit", "late_entry", "size_up"]
 
+DEMON_LABELS: dict[str, str] = {
+    "revenge": "Revenge Trading",
+    "fomo": "FOMO",
+    "overtrade": "Overtrading",
+    "early_exit": "Early Exit",
+    "late_entry": "Late Entry",
+    "size_up": "Size Up",
+}
+
+DEMON_EVIDENCE: dict[str, str] = {
+    "revenge": "Increased aggression after a prior loss in the session.",
+    "fomo": "Entered after the move was already extended without a fresh setup.",
+    "overtrade": "Took an extra trade outside the planned session window.",
+    "early_exit": "Closed before the planned target without a rule-based trigger.",
+    "late_entry": "Entered after the optimal entry window had passed.",
+    "size_up": "Position size exceeded the planned risk envelope.",
+}
+
+PLAN_ADHERENCE_TO_REVIEW: dict[str, str] = {
+    "according-to-plan": "according_to_plan",
+    "out-of-plan": "out_of_plan",
+    "missed-trade": "missed_trade",
+}
+
+PLAN_ADHERENCE_TO_OUTCOME: dict[str, str] = {
+    "according-to-plan": "followed",
+    "out-of-plan": "violated",
+    "missed-trade": "missed",
+}
+
+PLAN_ADHERENCE_TO_REASON: dict[str, str] = {
+    "according-to-plan": "According to plan",
+    "out-of-plan": "Out of plan",
+    "missed-trade": "Missed trade",
+}
+
 SOURCE_KINDS = frozenset(
     {"backtest", "prop_backtest", "live_personal", "live_prop"}
 )
@@ -523,6 +559,147 @@ def _variables_dict_from_row(row: dict[str, Any]) -> dict[str, list[str]]:
     return out
 
 
+def _demon_cost_r(trade: dict[str, Any]) -> float:
+    r_mult = abs(float(trade.get("rMultiple") or trade.get("actual_rr_net") or 0))
+    return round(max(0.35, min(2.5, r_mult if r_mult > 0 else 0.75)), 2)
+
+
+def _make_synthetic_demon(
+    trade: dict[str, Any],
+    demon_type: str,
+    *,
+    source: str = "auto",
+    state: str = "detected",
+) -> dict[str, Any]:
+    cost_r = _demon_cost_r(trade)
+    risk_amount = abs(float(trade.get("riskAmount") or trade.get("riskPerTrade") or 1000))
+    return {
+        "type": demon_type,
+        "label": DEMON_LABELS.get(demon_type, demon_type.replace("_", " ").title()),
+        "source": source,
+        "state": state,
+        "cost_R": cost_r,
+        "cost_$": int(round(cost_r * risk_amount)),
+        "evidence": DEMON_EVIDENCE.get(demon_type, "Behavioral pattern detected on review."),
+        "detected_at": trade.get("closeTime") or trade.get("exitTime") or trade.get("entryTime"),
+    }
+
+
+def _synthesize_live_journal_discipline(
+    trade: dict[str, Any],
+    rng: Any,
+    mentor_plan_adherence: str,
+) -> str:
+    """Assign a demo-rich discipline/demon mix for live journal imports only."""
+    roll = rng.random() * 100.0
+    if mentor_plan_adherence in {"out-of-plan", "missed-trade"}:
+        bucket = mentor_plan_adherence
+        manual_demon = False
+    elif roll < 76.0:
+        bucket = "according-to-plan"
+        manual_demon = False
+    elif roll < 84.0:
+        bucket = "discipline_breach_sl"
+        manual_demon = False
+    elif roll < 90.0:
+        bucket = "out-of-plan"
+        manual_demon = False
+    elif roll < 94.0:
+        bucket = "out-of-plan"
+        manual_demon = True
+    elif roll < 97.0:
+        bucket = "missed-trade"
+        manual_demon = False
+    else:
+        bucket = "discipline_breach_risk"
+        manual_demon = False
+
+    if bucket == "discipline_breach_sl":
+        entry = float(trade.get("entryPrice") or 0)
+        stop = float(trade.get("stopLoss") or trade.get("initial_sl") or entry)
+        risk_pts = abs(entry - stop) or max(abs(entry) * 0.001, 0.0001)
+        direction = str(trade.get("direction") or "BUY").upper()
+        widen = risk_pts * rng.uniform(0.12, 0.28)
+        if direction == "BUY":
+            widened_stop = _price_fmt(stop - widen, _pip_for(entry))
+        else:
+            widened_stop = _price_fmt(stop + widen, _pip_for(entry))
+        trade["sl_modifications"] = [
+            {
+                "field": "SL",
+                "trigger": "MANUAL",
+                "old": stop,
+                "new": widened_stop,
+                "at": trade.get("entryTime"),
+            }
+        ]
+        bucket = "according-to-plan"
+    elif bucket == "discipline_breach_risk":
+        trade["planned_risk_r"] = 1.0
+        trade["actual_risk_r"] = round(rng.uniform(1.25, 1.65), 2)
+        bucket = "according-to-plan"
+
+    plan_adherence = bucket
+    plan_review = PLAN_ADHERENCE_TO_REVIEW[plan_adherence]
+    plan_outcome = PLAN_ADHERENCE_TO_OUTCOME[plan_adherence]
+    reason = PLAN_ADHERENCE_TO_REASON[plan_adherence]
+
+    trade["planAdherence"] = plan_adherence
+    trade["planReviewKey"] = plan_review
+    trade["planReview"] = plan_review
+    trade["planOutcome"] = plan_outcome
+    trade["plan_behavior"] = reason
+    trade["planBehavior"] = reason
+    trade["rulesFollowed"] = plan_adherence == "according-to-plan"
+    trade["missedTrade"] = plan_adherence == "missed-trade"
+    trade["would_have_won"] = plan_adherence == "missed-trade" and float(trade.get("mfe_r") or 0) > 1.0
+
+    demons: list[dict[str, Any]] = []
+    demon_catcher: dict[str, Any] | None = None
+    if plan_adherence == "out-of-plan":
+        if manual_demon or rng.random() < 0.35:
+            demon_type = rng.choice(LIVE_DEMONS)
+            demon_catcher = {
+                "planReview": plan_review,
+                "category": DEMON_LABELS.get(demon_type, demon_type),
+                "trigger": DEMON_EVIDENCE.get(demon_type, "Manual review flagged a behavioral slip."),
+                "correction": "Pause one bar, re-check the setup checklist, then re-enter only on plan.",
+            }
+            trade["demon_category"] = demon_catcher["category"]
+            trade["demon_trigger"] = demon_catcher["trigger"]
+            trade["demon_correction"] = demon_catcher["correction"]
+            demons.append(
+                _make_synthetic_demon(trade, demon_type, source="manual", state="confirmed")
+            )
+        elif rng.random() < 0.72:
+            for demon_type in rng.sample(LIVE_DEMONS, k=rng.randint(1, 2)):
+                demons.append(_make_synthetic_demon(trade, demon_type))
+
+    trade["demons"] = demons
+    trade["demonCatcher"] = demon_catcher
+
+    notes = trade.get("postTradeNotes")
+    if not isinstance(notes, dict):
+        notes = {}
+    notes.update(
+        {
+            "rule_outcome": plan_outcome,
+            "reason": reason,
+            "planAdherence": plan_adherence,
+            "syntheticDiscipline": True,
+        }
+    )
+    trade["postTradeNotes"] = notes
+
+    pre_notes = trade.get("preTradeNotes")
+    if isinstance(pre_notes, dict):
+        pre_notes["planAdherence"] = plan_adherence
+    else:
+        trade["preTradeNotes"] = {"planAdherence": plan_adherence}
+
+    return plan_adherence
+
+
 def _apply_source_metadata(
     trade: dict[str, Any],
     *,
@@ -578,16 +755,27 @@ def _apply_source_metadata(
         "live_prop": 4,
     }.get(source_kind, 1)
     trade["source_type"] = source_type_num
-    trade["demons"] = (
-        rng.sample(LIVE_DEMONS, k=rng.randint(1, 2))
-        if plan_adherence == "out-of-plan"
-        else []
-    )
-    trade["would_have_won"] = plan_adherence == "missed-trade" and float(trade.get("mfe_r") or 0) > 1.0
-    trade["preTradeNotes"] = {
-        "mentorSource": mentor_filename,
-        "planAdherence": plan_adherence,
-    }
+    if is_live:
+        plan_adherence = _synthesize_live_journal_discipline(trade, rng, plan_adherence)
+    else:
+        trade["demons"] = (
+            rng.sample(LIVE_DEMONS, k=rng.randint(1, 2))
+            if plan_adherence == "out-of-plan"
+            else []
+        )
+        trade["would_have_won"] = plan_adherence == "missed-trade" and float(trade.get("mfe_r") or 0) > 1.0
+    if not is_live:
+        trade["preTradeNotes"] = {
+            "mentorSource": mentor_filename,
+            "planAdherence": plan_adherence,
+        }
+    elif isinstance(trade.get("preTradeNotes"), dict):
+        trade["preTradeNotes"]["mentorSource"] = mentor_filename
+    else:
+        trade["preTradeNotes"] = {
+            "mentorSource": mentor_filename,
+            "planAdherence": plan_adherence,
+        }
     if is_prop:
         trade["propFirm"] = trade.get("propFirm") or "FTMO"
 

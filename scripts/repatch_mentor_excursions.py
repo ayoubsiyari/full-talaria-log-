@@ -225,6 +225,7 @@ def main() -> int:
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--only", default="", help="Filter by filename stem or substring")
+    parser.add_argument("--live-only", action="store_true", help="Repatch live journal accounts only")
     args = parser.parse_args()
 
     audit = audit_all_mentor_xlsx(MENTOR_DIR, COMMUNITY_DIR)
@@ -239,6 +240,8 @@ def main() -> int:
         return 0
 
     summaries = load_summaries()
+    if args.live_only:
+        summaries = [s for s in summaries if s.get("source_kind") in {"live_personal", "live_prop"}]
     if args.only:
         needle = args.only.lower()
         summaries = [

@@ -119,23 +119,39 @@ export function mapLiveJournalEntryToV16Trade(
   const tradeId = `live-${entry.id}`;
   const extra = entry.extra_data;
   const extraObj = extra && typeof extra === "object" ? (extra as Record<string, unknown>) : {};
+  const ttObj =
+    extraObj.talaria_trade && typeof extraObj.talaria_trade === "object"
+      ? (extraObj.talaria_trade as Record<string, unknown>)
+      : {};
+  const planAdherenceRaw = String(extraObj.planAdherence ?? ttObj.planAdherence ?? "").trim();
+  const planReviewFromAdherence =
+    planAdherenceRaw === "out-of-plan"
+      ? "out_of_plan"
+      : planAdherenceRaw === "missed-trade"
+        ? "missed_trade"
+        : planAdherenceRaw === "according-to-plan"
+          ? "according_to_plan"
+          : "";
   const plannedRR = computePlannedRrFromEntry(entry, extraObj);
-  const planReviewKey = String(
-    extraObj.plan_review ||
-      extraObj.planReview ||
-      (extraObj.post_tag_state && typeof extraObj.post_tag_state === "object"
-        ? (extraObj.post_tag_state as Record<string, unknown>).planReview
-        : "") ||
-      ""
-  ).trim() || null;
+  const planReviewKey =
+    String(
+      extraObj.plan_review ??
+        extraObj.planReview ??
+        ttObj.planReviewKey ??
+        ttObj.planReview ??
+        planReviewFromAdherence ??
+        ""
+    ).trim() || null;
   const rulesFollowed =
     typeof extraObj.rules_followed === "boolean"
       ? extraObj.rules_followed
-      : planReviewKey === "according_to_plan"
-        ? true
-        : planReviewKey
-          ? false
-          : true;
+      : typeof ttObj.rulesFollowed === "boolean"
+        ? ttObj.rulesFollowed
+        : planReviewKey === "according_to_plan"
+          ? true
+          : planReviewKey
+            ? false
+            : true;
 
   const entryPriceRaw = Number(entry.entry_price);
   const exitPriceRaw = Number(entry.exit_price);
@@ -207,7 +223,27 @@ export function mapLiveJournalEntryToV16Trade(
     planReview: planReviewKey,
     planReviewKey,
     plan_behavior: extraObj.plan_behavior ?? extraObj.planBehavior ?? null,
-    missedTrade: planReviewKey === "missed_trade" || extraObj.missed_trade === true,
+    missedTrade:
+      planReviewKey === "missed_trade" ||
+      extraObj.missed_trade === true ||
+      ttObj.missedTrade === true,
+    demons: Array.isArray(extraObj.demons)
+      ? extraObj.demons
+      : Array.isArray(ttObj.demons)
+        ? ttObj.demons
+        : [],
+    demonCatcher: extraObj.demon_catcher ?? ttObj.demonCatcher ?? null,
+    demon_category: extraObj.demon_category ?? ttObj.demon_category ?? ttObj.demonCategory ?? null,
+    planAdherence: planAdherenceRaw || null,
+    planOutcome: extraObj.plan_outcome ?? ttObj.planOutcome ?? null,
+    postTradeNotes:
+      ttObj.postTradeNotes && typeof ttObj.postTradeNotes === "object"
+        ? ttObj.postTradeNotes
+        : null,
+    sl_modifications: Array.isArray(ttObj.sl_modifications) ? ttObj.sl_modifications : [],
+    slModifications: Array.isArray(ttObj.sl_modifications) ? ttObj.sl_modifications : [],
+    planned_risk_r: ttObj.planned_risk_r ?? null,
+    actual_risk_r: ttObj.actual_risk_r ?? null,
     extra_data: extraObj,
     preTags: [tag],
     postTags: [pnl >= 0 ? "Win" : "Loss"],
