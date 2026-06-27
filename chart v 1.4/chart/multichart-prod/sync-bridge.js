@@ -2053,6 +2053,12 @@
 
             // Host-led range: mirror tile A data + scroll on pan release / ongoing date-range sync.
             if (isEmbedPanelChart()
+                && typeof chart._isMultichartBootViewportLocked === 'function'
+                && chart._isMultichartBootViewportLocked()) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
+            if (isEmbedPanelChart()
                 && isHostLedRangeMessage(m)
                 && !panSync
                 && (chart._multichartVisibleRangeSyncOn || m.forceInitialSync)

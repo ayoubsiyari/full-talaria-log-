@@ -3,6 +3,7 @@ import { flushSync, createPortal } from "react-dom";
 import { ReactFlow, ReactFlowProvider, useReactFlow, useStore, Handle, Position, Background, BackgroundVariant, MiniMap, getBezierPath, BaseEdge, EdgeLabelRenderer, MarkerType, addEdge, applyNodeChanges, applyEdgeChanges, PanOnScrollMode } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { SCORE_CONFIG, DIM_KEYS, computeTalariaScore, computeTrend, buildInsightSignals } from "./scoreEngine.js";
+import { clampReturnDistributionConfidence, computeEmpiricalReturnDistribution, computeMovingAverageRegime, computePeriodBreakdown, computeProfitConcentration, computeReturnsGrowthEquityCurve, computeReturnsGrowthMetricStrip } from "./metrics/index.js";
 import {
   deleteV9ChartTemplateAtIndex,
   hydrateV9ChartTemplatesFromCloud,
@@ -10854,30 +10855,49 @@ const TalariaV8b = () => {
   const [dashSnapshotCalendarMonth, setDashSnapshotCalendarMonth] = useState(null);
   const [dashFreshPage, setDashFreshPage] = useState(() => {
     try {
-      const hashMatch = String(window.location.hash || "").match(/#\/?dashboard\/fresh\/([^/]+)/);
+      const hashPage = window.location.hash.match(/#dashboard\/fresh\/([^/?#]+)/)?.[1];
+      if (["overview", "returns-growth"].includes(hashPage)) return hashPage;
       const legacyMap = {
         "performance-summary":"overview",
-        "equity-returns":"performance",
-        "drawdown":"performance",
-        "win-loss-distribution":"numbers",
-        "calendar-time":"numbers",
-        "breakdowns":"numbers",
-        "streaks-consistency-risk-adjusted-metrics":"performance",
-        "trade-journal":"journal",
-        "trade-quality-analysis-mae-mfe":"trade-quality",
-        "what-if-simulator":"what-if-lab",
-        "statistics":"performance",
-        "patterns-behavior":"edge-behavior",
-        "strategy-health":"edge-behavior",
-        "strategy-source":"strategy-sources",
-        "export-comparison":"strategy-sources",
+        "equity-returns":"returns-growth",
+        "drawdown":"returns-growth",
+        "streaks-consistency-risk-adjusted-metrics":"returns-growth",
+        "statistics":"returns-growth",
+        "performance":"returns-growth",
       };
-      const raw = hashMatch?.[1] || localStorage.getItem("talaria_dashboard_fresh_page") || "overview";
+      const raw = hashPage || localStorage.getItem("talaria_dashboard_fresh_page") || "overview";
       const saved = legacyMap[raw] || raw;
-      return ["overview","performance","numbers","trade-quality","what-if-lab","edge-behavior","journal","prop-challenge","live-discipline","strategy-sources"].includes(saved) ? saved : "overview";
+      return ["overview", "returns-growth"].includes(saved) ? saved : "overview";
+    } catch {
+      return "overview";
     }
-    catch { return "overview"; }
   });
+  const [dashReturnsCurveMode, setDashReturnsCurveMode] = useState("balance");
+  const [dashReturnsCurveAggregation, setDashReturnsCurveAggregation] = useState("daily");
+  const [dashReturnsCurveMenuOpen, setDashReturnsCurveMenuOpen] = useState(null);
+  const [dashReturnsCurveHover, setDashReturnsCurveHover] = useState(null);
+  const [dashReturnsPeriodHover, setDashReturnsPeriodHover] = useState(null);
+  const [dashReturnsCurveView, setDashReturnsCurveView] = useState({zoom:1, pan:0, dragging:false, dragX:0, dragPan:0});
+  const [dashReturnsMaEnabled, setDashReturnsMaEnabled] = useState(false);
+  const [dashReturnsMaPeriod, setDashReturnsMaPeriod] = useState(20);
+  const [dashReturnsMaPeriodDraft, setDashReturnsMaPeriodDraft] = useState("");
+  const [dashReturnsMetricStripExpanded, setDashReturnsMetricStripExpanded] = useState(false);
+  const [dashReturnsPeriodGrain, setDashReturnsPeriodGrain] = useState("trades");
+  const [dashReturnsPeriodBreakdownGrain, setDashReturnsPeriodBreakdownGrain] = useState("auto");
+  const [dashReturnsRollingWindow, setDashReturnsRollingWindow] = useState(20);
+  const [dashReturnsRollingAggregation, setDashReturnsRollingAggregation] = useState("trades");
+  const [dashReturnsRollingWindowDraft, setDashReturnsRollingWindowDraft] = useState("20");
+  const [dashReturnsDistributionAggregation, setDashReturnsDistributionAggregation] = useState("trades");
+  const [dashReturnsCostAggregation, setDashReturnsCostAggregation] = useState("trades");
+  const [dashReturnsCostHover, setDashReturnsCostHover] = useState(null);
+  const [dashReturnsDistributionCi, setDashReturnsDistributionCi] = useState(95);
+  const [dashReturnsDistributionCiDraft, setDashReturnsDistributionCiDraft] = useState("95");
+  const [dashProfitConcentrationPct, setDashProfitConcentrationPct] = useState(10);
+  const [dashProfitConcentrationPctDraft, setDashProfitConcentrationPctDraft] = useState("10");
+  const [dashProfitConcentrationAggregation, setDashProfitConcentrationAggregation] = useState("trades");
+  const dashReturnsCurveMenuRef = useRef(null);
+  const dashReturnsMaInputRef = useRef(null);
+  const dashReturnsMaEditingRef = useRef(false);
   const [dashRadarCompare, setDashRadarCompare] = useState("prior");
   const [dashScoreCompareWindow, setDashScoreCompareWindow] = useState("30d");
   const [dashScoreCompareOpen, setDashScoreCompareOpen] = useState(false);
@@ -11562,6 +11582,27 @@ const TalariaV8b = () => {
     document.addEventListener("pointerdown", closeDashboardPageMenu, true);
     return () => document.removeEventListener("pointerdown", closeDashboardPageMenu, true);
   }, [dashFreshNavOpen, dashSnapshotTopModeOpen]);
+  useEffect(() => {
+    if (!dashReturnsCurveMenuOpen) return;
+    const closeDashboardReturnsCurveMenu = (e) => {
+      const menu = dashReturnsCurveMenuRef.current;
+      if (menu && menu.contains(e.target)) return;
+      if (e.target?.closest?.(".tlr-dashboard-value-menu-wrap")) return;
+      setDashReturnsCurveMenuOpen(null);
+    };
+    document.addEventListener("pointerdown", closeDashboardReturnsCurveMenu, true);
+    return () => document.removeEventListener("pointerdown", closeDashboardReturnsCurveMenu, true);
+  }, [dashReturnsCurveMenuOpen]);
+  useEffect(() => {
+    if (dashReturnsCurveMenuOpen !== "regime" || !dashReturnsMaEditingRef.current) return;
+    const focusInput = () => {
+      const activeInput = dashReturnsMaInputRef.current;
+      if (!activeInput || dashReturnsCurveMenuOpen !== "regime") return;
+      activeInput.focus();
+      activeInput.select?.();
+    };
+    focusInput();
+  }, [dashReturnsMaPeriodDraft, dashReturnsCurveMenuOpen]);
   useEffect(() => {
     if (!dashAccountPulseMenuOpen) return;
     const closeDashboardPulseMenu = e => {
@@ -12792,6 +12833,7 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-session-nav-item{transition:none!important;will-change:background-color,color;touch-action:manipulation}.tlr-session-nav-item:hover{background:rgba(255,255,255,0.075)!important;color:${tcHov}!important}.tlr-session-nav-item:active{background:rgba(74,106,255,0.14)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-session-nav-item-active,.tlr-session-nav-item-active:hover,.tlr-session-nav-item-active:active{background:${c.acD}!important;color:${c.acL}!important;transform:none!important}.tlr-session-nav-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-phase-nav-group,.tlr-phase-nav-item{transition:none!important;will-change:background-color,color;touch-action:manipulation}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):hover,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-phase-nav-group:not(.tlr-phase-nav-group-active):not(.tlr-phase-nav-group-disabled):active,.tlr-phase-nav-item:not(.tlr-phase-nav-item-active):active{background:rgba(74,106,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-phase-nav-group-active,.tlr-phase-nav-group-active:hover,.tlr-phase-nav-item-active,.tlr-phase-nav-item-active:hover{background:${c.acD}!important;color:${c.acL}!important}.tlr-phase-nav-group:focus-visible,.tlr-phase-nav-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-source-switch-redesign,.tlr-dashboard-value-select{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-dashboard-source-switch-redesign span,.tlr-dashboard-source-switch-redesign div,.tlr-dashboard-value-select span{text-shadow:none!important}.tlr-dashboard-source-switch-redesign:hover{background:rgba(255,255,255,0.055)!important;border-color:var(--tlr-source-accent)!important;box-shadow:0 0 14px -12px var(--tlr-source-accent)!important}.tlr-dashboard-source-switch-redesign:active{background:rgba(74,106,255,0.13)!important;transform:translateY(1px)!important}.tlr-dashboard-source-switch-redesign:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-source-switch-redesign [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign [data-tlr-upper-icon]{transition:color 0.04s linear}.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign:hover [data-tlr-upper-icon],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-accent],.tlr-dashboard-source-switch-redesign.tlr-dashboard-source-switch-open [data-tlr-upper-icon]{color:var(--tlr-source-accent)!important}.tlr-dashboard-page-menu-item:hover{background:rgba(255,255,255,0.055)!important;color:${tcHov}!important}.tlr-dashboard-page-menu-item:active{background:rgba(74,106,255,0.13)!important;color:${tcHov}!important;transform:translateY(1px)!important}.tlr-dashboard-page-menu-item-active,.tlr-dashboard-page-menu-item-active:hover,.tlr-dashboard-page-menu-item-active:active{background:${c.acD}!important;color:${c.acL}!important;transform:none!important}.tlr-dashboard-page-menu-item:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-summary-card{transition:none!important}.tlr-dashboard-summary-card:hover{border-color:${c.br}!important;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)!important}.tlr-dashboard-summary-card:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-info-target{transition:none!important}.tlr-dashboard-info-target:hover,.tlr-dashboard-info-target:focus-visible{filter:none!important;outline:none!important;box-shadow:none!important}.tlr-dashboard-shape-hover{transition:filter 90ms ease!important;cursor:default}.tlr-dashboard-score-arrow:hover,.tlr-dashboard-card-info:hover{color:${c.acL}!important;filter:drop-shadow(0 0 3px rgba(74,106,255,0.28))!important}.tlr-dashboard-score-arrow:active,.tlr-dashboard-card-info:active{transform:translateY(1px)!important}.tlr-dashboard-score-footer:hover{border-color:${c.brL}!important;color:${c.tx}!important;background:${c.well}!important}.tlr-dashboard-score-footer:active{transform:translateY(1px)!important;color:#fff!important}.tlr-dashboard-view-breakdown:hover{color:${tcHov}!important}.tlr-dashboard-view-breakdown:active{color:#fff!important;transform:translateY(1px)!important}@keyframes tlrScoreSlideInRight{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}@keyframes tlrScoreSlideInLeft{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}`;
+      style.textContent += `.tlr-return-period-control:focus-within{border-color:rgba(76,105,255,0.72)!important;background:rgba(20,27,49,0.98)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,0.045),0 0 12px -9px rgba(76,105,255,0.9)!important}.tlr-return-period-step{cursor:default!important;transition:color 90ms ease,transform 90ms ease}.tlr-return-period-step:hover{background:transparent!important;color:var(--tlr-step-accent)!important}.tlr-return-period-step:active{transform:scale(0.88);background:transparent!important;color:#fff!important}`;
       style.textContent += `.tlr-dashboard-score-row:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-row:active{background:rgba(74,106,255,0.10)!important;transform:translateY(1px)!important}.tlr-dashboard-score-row:focus-visible,.tlr-dashboard-radar-toggle:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}.tlr-dashboard-radar-toggle:hover{color:${tcHov}!important;background:rgba(255,255,255,0.052)!important}.tlr-dashboard-radar-toggle:active{transform:translateY(1px)!important;background:rgba(74,106,255,0.12)!important}.tlr-dashboard-radar-toggle-active,.tlr-dashboard-radar-toggle-active:hover{color:${c.acL}!important;background:transparent!important}.tlr-dashboard-radar-toggle-active:after{content:"";position:absolute;left:4px;right:4px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG};pointer-events:none}`;
       style.textContent += `@keyframes tlrDashSkeletonShimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}.tlr-dash-skeleton-shimmer{animation:tlrDashSkeletonShimmer 1.35s ease-in-out infinite}.tlr-snapshot-page-loading .tlr-snapshot-basic-card,.tlr-snapshot-page-loading .tlr-snapshot-adv-kpi-card,.tlr-snapshot-page-loading .tlr-snapshot-equity-area-build,.tlr-snapshot-page-loading .tlr-snapshot-equity-dd-build,.tlr-snapshot-page-loading .tlr-snapshot-equity-seg-build,.tlr-snapshot-page-loading .tlr-snapshot-equity-dot-build{animation:none!important}@keyframes tlrSnapshotTopBasicIn{0%{opacity:.92;transform:translateX(-14px) scale(.996)}100%{opacity:1;transform:translateX(0) scale(1)}}@keyframes tlrSnapshotTopAdvancedIn{0%{opacity:.92;transform:translateX(14px) scale(.996)}100%{opacity:1;transform:translateX(0) scale(1)}}.tlr-snapshot-top-mode-panel{transform-origin:50% 22px;will-change:opacity,transform}.tlr-snapshot-top-mode-basic:not(.tlr-snapshot-top-mode-settled){animation:tlrSnapshotTopBasicIn 360ms cubic-bezier(.18,.82,.18,1) both}.tlr-snapshot-top-mode-advanced:not(.tlr-snapshot-top-mode-settled){animation:tlrSnapshotTopAdvancedIn 360ms cubic-bezier(.18,.82,.18,1) both}.tlr-snapshot-top-mode-settled{animation:none!important;opacity:1!important;transform:none!important;will-change:auto!important}@keyframes tlrKpiPageSlideInRight{0%{opacity:.9;transform:translateX(18px)}100%{opacity:1;transform:translateX(0)}}@keyframes tlrKpiPageSlideInLeft{0%{opacity:.9;transform:translateX(-18px)}100%{opacity:1;transform:translateX(0)}}.tlr-dashboard-kpi-page-shell{overflow:hidden;flex:1;min-height:0;display:flex;flex-direction:column}.tlr-dashboard-kpi-page-slide-right{animation:tlrKpiPageSlideInRight 340ms cubic-bezier(.18,.82,.18,1) both}.tlr-dashboard-kpi-page-slide-left{animation:tlrKpiPageSlideInLeft 340ms cubic-bezier(.18,.82,.18,1) both}@keyframes tlrSnapshotBasicCardIn{0%{opacity:.94;transform:translateY(8px) translateX(-8px)}100%{opacity:1;transform:translateY(0) translateX(0)}}.tlr-snapshot-basic-card:not(.tlr-snapshot-card-settled){animation:tlrSnapshotBasicCardIn 380ms cubic-bezier(.18,.82,.18,1) both;animation-delay:var(--tlr-card-delay,0ms)!important}.tlr-snapshot-adv-kpi-card:not(.tlr-snapshot-card-settled){animation:tlrSnapshotAdvKpiIn 360ms cubic-bezier(.18,.82,.18,1) both;animation-delay:var(--tlr-card-delay,0ms)!important}@keyframes tlrSnapshotAdvKpiIn{0%{opacity:.94;transform:translateX(10px) scale(.992)}100%{opacity:1;transform:translateX(0) scale(1)}}.tlr-snapshot-card-settled{animation:none!important;opacity:1!important;transform:none!important;filter:none!important;will-change:auto!important}@keyframes tlrSnapshotEquityAreaBuild{0%{clip-path:inset(0 100% 0 0);opacity:.55}100%{clip-path:inset(0 0 0 0);opacity:1}}@keyframes tlrSnapshotEquityDrawBuild{0%{stroke-dashoffset:var(--tlr-eq-len,120);opacity:.55}100%{stroke-dashoffset:0;opacity:1}}.tlr-snapshot-equity-area-build{animation:tlrSnapshotEquityAreaBuild 760ms cubic-bezier(.22,.82,.22,1) both}.tlr-snapshot-equity-dd-build{animation:tlrSnapshotEquityAreaBuild 760ms cubic-bezier(.22,.82,.22,1) both;animation-delay:120ms!important}.tlr-snapshot-equity-seg-build{stroke-dasharray:var(--tlr-eq-len,120);stroke-dashoffset:var(--tlr-eq-len,120);animation:tlrSnapshotEquityDrawBuild 560ms cubic-bezier(.22,.82,.22,1) forwards;animation-delay:calc(var(--tlr-eq-i,0)*7ms)!important}@keyframes tlrSnapshotEquityDotIn{0%{opacity:.55;transform:scale(.82)}100%{opacity:1;transform:scale(1)}}.tlr-snapshot-equity-dot-build{transform-box:fill-box;transform-origin:center;animation:tlrSnapshotEquityDotIn 280ms cubic-bezier(.18,.82,.18,1) both;animation-delay:calc(420ms + var(--tlr-eq-i,0)*7ms)!important}@media (prefers-reduced-motion:reduce){.tlr-snapshot-top-mode-basic,.tlr-snapshot-top-mode-advanced,.tlr-dashboard-kpi-page-slide-right,.tlr-dashboard-kpi-page-slide-left,.tlr-snapshot-basic-card,.tlr-snapshot-adv-kpi-card,.tlr-snapshot-equity-area-build,.tlr-snapshot-equity-dd-build,.tlr-snapshot-equity-seg-build,.tlr-snapshot-equity-dot-build{animation:none!important}.tlr-snapshot-equity-seg-build{stroke-dashoffset:0!important;opacity:1!important}}`;
       style.textContent += `.tlr-snapshot-calendar-panel{animation:none!important;will-change:auto!important}.tlr-snapshot-calendar-cell{transition:background 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease!important}.tlr-snapshot-calendar-title-btn{transition:background-color 130ms ease,color 130ms ease,transform 90ms ease!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.11)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-snapshot-calendar-cell:active{filter:brightness(1.08)!important}.tlr-snapshot-calendar-cell-selected{transition:background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,color 150ms ease!important}@keyframes tlrSnapshotCalendarSwitch{0%{opacity:.88;transform:translateY(5px) scale(.993)}100%{opacity:1;transform:translateY(0) scale(1)}}.tlr-snapshot-calendar-panel-animate{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform!important;transform-origin:50% 42%}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel-animate{animation:none!important}.tlr-snapshot-calendar-cell,.tlr-snapshot-calendar-title-btn{transition:none!important}}`;
@@ -23264,26 +23306,19 @@ const TalariaV8b = () => {
           const dashboardNavGroups = [
             {label:dashTxt("Dashboard","لوحة التحكم"), pages:[
               {id:"overview",label:dashTxt("Snapshot","لمحة"), question:dashTxt("How am I doing right now?","كيف أدائي الآن؟"), enabled:true},
-              {id:"performance",label:dashTxt("Performance","الأداء"), question:dashTxt("Is my account growing, and how risky is the ride?","هل الحساب ينمو وما حجم المخاطرة؟"), enabled:true},
-              {id:"numbers",label:dashTxt("The Numbers","الأرقام"), question:dashTxt("What do my trades look like in aggregate?","كيف تبدو صفقاتي إجمالا؟"), enabled:true},
-              {id:"trade-quality",label:dashTxt("Trade Quality","جودة الصفقة"), question:dashTxt("Am I entering, managing, and exiting well?","هل أدخل وأدير وأخرج بشكل جيد؟"), enabled:true},
-              {id:"what-if-lab",label:dashTxt("What-If Lab","مختبر ماذا لو"), question:dashTxt("What should I change, and would it help?","ما الذي أغيره وهل سيساعد؟"), enabled:true},
-              {id:"edge-behavior",label:dashTxt("Edge & Behavior","الميزة والسلوك"), question:dashTxt("Where is my edge, and what sabotages it?","أين ميزتي وما الذي يفسدها؟"), enabled:true},
-              {id:"journal",label:dashTxt("Journal","السجل"), question:dashTxt("Let me review my individual trades.","دعني أراجع صفقاتي الفردية."), enabled:true},
-            ]},
-            {label:dashTxt("Mode Pages","صفحات الوضع"), pages:[
-              {id:"prop-challenge",label:dashTxt("Prop Challenge","تحدي التمويل"), question:dashTxt("Can I pass a funded evaluation?","هل يمكنني اجتياز التقييم؟"), enabled:isPropD},
-              {id:"live-discipline",label:dashTxt("Live Discipline","انضباط التداول الحي"), question:dashTxt("Am I trading my plan?","هل أتداول خطتي؟"), enabled:dashboardSourceCapabilities.isLived},
+              {id:"returns-growth",label:dashTxt("Returns & Growth","العوائد والنمو"), question:dashTxt("Is the account growing — and what builds or drains it?","هل الحساب ينمو وما الذي يبنيه أو يستنزفه؟"), enabled:true},
             ]},
           ].map(group => ({...group, pages:group.pages.filter(page => page.enabled)})).filter(group => group.pages.length);
           const activeFreshPageMeta = dashboardNavGroups.flatMap(group=>group.pages).find(page=>page.id===dashFreshPage) || dashboardNavGroups[0].pages[0];
           const activeFreshPageId = activeFreshPageMeta.id;
           const activeFreshPageLabel = activeFreshPageMeta.label || dashTxt("Snapshot","لمحة");
-          const DashboardPageIcon = ({id, size=14, color="currentColor"}) => {
+          const isSnapshotDashboardContext = sessView !== "trades" && activeFreshPageId === "overview";
+          const DashboardPageIcon = ({id, size=14, color="currentColor", style=null}) => {
             const common = {stroke:color, strokeWidth:1.8, strokeLinecap:"square", strokeLinejoin:"miter"};
             const dot = {fill:color};
             const icon = {
               overview:<><path d="M3 5V3h2M11 3h2v2M13 11v2h-2M5 13H3v-2" {...common} fill="none"/><path d="M8 4.9l2.2 3.1L8 11.1 5.8 8 8 4.9z" {...common} fill="none"/><circle cx="8" cy="8" r=".9" {...dot}/></>,
+              "returns-growth":<><path d="M2.75 12.5h10.5" stroke={color} strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity=".46" fill="none"/><path d="M3.35 10.55 6.35 7.5 8.55 9.35 12.7 4.55" stroke={color} strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" fill="none"/><path d="M10.05 4.55h2.65v2.65" stroke={color} strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" fill="none"/></>,
               performance:<><path d="M2 11.8h12" {...common}/><path d="M3 10l2.4-2.7 2.1 1.3 3.7-5.2 1.8 1.7" {...common} fill="none"/></>,
               numbers:<><path d="M3.2 4h9.6M3.2 8h9.6M3.2 12h9.6" {...common}/><circle cx="2" cy="4" r=".7" {...dot}/><circle cx="2" cy="8" r=".7" {...dot}/><circle cx="2" cy="12" r=".7" {...dot}/></>,
               "trade-quality":<><path d="M8 2.2l4.8 2.1v3.6c0 3-1.9 5-4.8 6-2.9-1-4.8-3-4.8-6V4.3L8 2.2z" {...common} fill="none"/><path d="M5.8 8l1.4 1.4 3-3.2" {...common} fill="none"/></>,
@@ -23293,7 +23328,7 @@ const TalariaV8b = () => {
               "prop-challenge":<><path d="M8 2.2l5 2.2v3.5c0 2.9-2 4.9-5 5.9-3-1-5-3-5-5.9V4.4l5-2.2z" {...common} fill="none"/><path d="M6.1 8.2l1.2 1.3 2.8-3.1" {...common} fill="none"/></>,
               "live-discipline":<><path d="M2.6 8h2.1l1.3-3.2 2.2 6.3 1.4-3.1h3.8" {...common} fill="none"/><path d="M11.5 2.8l1.8 1.8-1.8 1.8" {...common} fill="none"/></>,
             }[id] || <><rect x="3" y="3" width="10" height="10" {...common} fill="none"/></>;
-            return <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",flexShrink:0,color}}>{icon}</svg>;
+            return <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" shapeRendering="geometricPrecision" style={{display:"block",flexShrink:0,color,overflow:"visible",...(style||{})}}>{icon}</svg>;
           };
           const selectFreshDashboardPage = (page) => {
             if (!page?.enabled) return;
@@ -26290,6 +26325,14 @@ const TalariaV8b = () => {
               "Streaks":"metric-streaks",
               "Account Balance":"equity-curve",
               "Equity Curve":"equity-curve",
+              "Annualized return":"equity-curve",
+              "Total return":"equity-curve",
+              "Time above water":"equity-curve",
+              "New highs":"equity-curve",
+              "Total R captured":"equity-curve",
+              "Positive months":"equity-curve",
+              "Avg monthly return":"equity-curve",
+              "Longest flat stretch":"equity-curve",
             };
             const dashboardResourceIdFor = (title) => dashboardResourceMap[String(title || "")] || "dash-what";
             const openDashboardResource = (articleId) => {
@@ -26306,8 +26349,8 @@ const TalariaV8b = () => {
               <button type="button" aria-label={`Open guide for ${label}`} className="tlr-dashboard-card-info"
                 onClick={(e)=>{e.stopPropagation();openDashboardResource(articleId);}}
                 onKeyDown={(e)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();openDashboardResource(articleId);}}}
-                style={{width:12,height:12,border:"none",background:"transparent",padding:0,display:"grid",placeItems:"center",color:c.tm,lineHeight:1,cursor:"default",outline:"none",flexShrink:0}}>
-                <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{display:"block"}}>
+                style={{width:14,height:14,border:"none",background:"transparent",padding:0,display:"grid",placeItems:"center",color:c.tx,opacity:.74,lineHeight:1,cursor:"default",outline:"none",flexShrink:0}}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{display:"block"}}>
                   <circle cx="7" cy="7" r="4.85" stroke="currentColor" strokeWidth="1.35"/>
                   <path d="M7 6.35v3.05" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
                   <circle cx="7" cy="4.55" r=".62" fill="currentColor"/>
@@ -26318,15 +26361,14 @@ const TalariaV8b = () => {
               <section className="tlr-dashboard-summary-card" onMouseLeave={onMouseLeave || undefined} style={{position:"relative",minHeight,background:c.sf,border:`1px solid ${c.br}`,boxShadow:"inset 0 1px 3px rgba(0,0,0,0.3)",boxSizing:"border-box",padding:14,display:"flex",flexDirection:"column",gap:12,cursor:"default",overflow:"visible",...(style||{})}}>
                 <span aria-hidden="true" style={{position:"absolute",left:0,right:0,top:0,height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 8px ${c.acG}`,pointerEvents:"none"}}/>
                 <div style={{minHeight:24,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:titleDot?7:0,minWidth:0,flex:"1 1 auto"}}>
-                    {titleDot && <span style={{width:5,height:5,transform:"rotate(45deg)",background:c.acL,boxShadow:`0 0 8px ${c.acG}`,flexShrink:0}}/>}
+                  <div style={{display:"flex",alignItems:"center",gap:0,minWidth:0,flex:"1 1 auto"}}>
                     <span style={{display:"inline-flex",alignItems:"flex-start",gap:8,minWidth:0,maxWidth:"100%",flexWrap:"wrap"}}>
-                      <span style={{display:"inline-flex",flexDirection:"column",gap:4,minWidth:0,maxWidth:"100%"}}>
-                        <span style={{display:"inline-flex",alignItems:"center",gap:6,minWidth:0,maxWidth:"100%",flexWrap:"wrap"}}>
+                      <span style={{display:"inline-flex",alignItems:"flex-start",gap:6,minWidth:0,maxWidth:"100%"}}>
+                        <span style={{display:"inline-flex",flexDirection:"column",gap:4,minWidth:0,maxWidth:"100%"}}>
                           <span style={{fontSize:titleFontSize,fontWeight:800,color:c.acL,letterSpacing:titleLetterSpacing,textTransform:"uppercase",fontFamily:titleDot?F:scoreFont,whiteSpace:"normal",lineHeight:1.12,overflow:"visible",minWidth:0,maxWidth:"100%",overflowWrap:"normal",wordBreak:"normal"}}>{title}</span>
-                          <DashboardCardInfoButton articleId={resourceId || dashboardResourceIdFor(title)} label={title}/>
+                          <span aria-hidden="true" style={{height:1,width:"100%",minWidth:titleLineMinWidth,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>
                         </span>
-                        <span aria-hidden="true" style={{height:1,width:"100%",minWidth:titleLineMinWidth,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>
+                        <DashboardCardInfoButton articleId={resourceId || dashboardResourceIdFor(title)} label={title}/>
                       </span>
                       {titleExtra && <span style={{display:"inline-flex",alignItems:"center",height:18,flexShrink:0}}>{titleExtra}</span>}
                     </span>
@@ -26995,14 +27037,7 @@ const TalariaV8b = () => {
             const avgWinLossRatio = avgLoss ? avgWin / avgLoss : 0;
             const kpiGoalPct = metrics.goalConfig?.targetReturnPct ?? null;
             const goalConfigured = kpiGoalPct != null && kpiGoalPct > 0;
-            const propConfigured = propConfig?.configured !== false && (
-              !!propStatus?.configured
-              || !!propConfig?.configured
-              || propConfig?.profitTargetPct != null
-              || propConfig?.dailyLossLimitPct != null
-              || propConfig?.maxDDLimitPct != null
-              || propConfig?.minDays != null
-            );
+            const propConfigured = !!(propStatus?.configured && propConfig?.configured !== false);
             const sortinoDisplay = metrics.sortino === Infinity ? "∞" : Number.isFinite(Number(metrics.sortino)) ? fmtNum(metrics.sortino,2) : "-";
             const sharpeDisplay = Number.isFinite(Number(metrics.sharpe)) ? fmtNum(metrics.sharpe,2) : "-";
             const shapeArrow = metrics.shapeTone === "up" ? "▲" : metrics.shapeTone === "down" ? "▼" : "→";
@@ -27018,7 +27053,9 @@ const TalariaV8b = () => {
                   ? c.gn
                   : c.rd;
             const riskAdjustedSubline = `Sharpe ${sharpeDisplay} · ${riskAdjustedDim ? `low confidence (${metrics.riskAdjustedObs} ${riskAdjustedObsUnit})` : metrics.shapeLabel}`;
-            const profitConcentrationDisplayPct = metrics.top10ProfitShare == null ? null : Math.max(0, Math.min(100, Number(metrics.top10ProfitShare) || 0));
+            const profitConcentrationTop10DisplayPct = metrics.profitConcentrationTop10Share == null ? null : Math.max(0, Math.min(100, Number(metrics.profitConcentrationTop10Share) || 0));
+            const profitConcentrationTop20DisplayPct = metrics.profitConcentrationTop20Share == null ? null : Math.max(0, Math.min(100, Number(metrics.profitConcentrationTop20Share) || 0));
+            const profitConcentrationGiniValue = metrics.profitConcentrationGini == null ? null : Math.max(0, Math.min(1, Number(metrics.profitConcentrationGini) || 0));
             const profitRobustnessHoldPct = metrics.profitRobustnessHoldPct != null
               ? metrics.profitRobustnessHoldPct
               : Number(metrics.totalPnl) > 0
@@ -27031,15 +27068,21 @@ const TalariaV8b = () => {
             const profitRobustnessGateText = profitRobustnessGateMet
               ? `Needs positive profit sample · ${profitRobustnessGateCurrent.toLocaleString()} trades so far`
               : `Needs ${profitRobustnessGateTarget.toLocaleString()} trades · ${profitRobustnessGateCurrent.toLocaleString()} so far`;
-            const profitConcentrationThresholdPct = Math.max(0, Math.min(100, Number(metrics.profitConcentrationThresholdPct ?? KPI_CONFIG.profitConcentrationThresholdPct) || 0));
+            const profitConcentrationGiniDistributedMax = Math.max(0, Math.min(1, Number(metrics.profitConcentrationGiniDistributedMax ?? 0.25) || 0.25));
+            const profitConcentrationGiniConcentratedMin = Math.max(0, Math.min(1, Number(metrics.profitConcentrationGiniConcentratedMin ?? 0.45) || 0.45));
             const profitRobustnessFloorPct = Math.max(0, Math.min(100, Number(metrics.profitRobustnessFloorPct ?? KPI_CONFIG.profitRobustnessFloorPct) || 0));
-            const profitConcentrationTopPctLabel = Math.round((Number(metrics.profitRobustnessSecondTopPct ?? KPI_CONFIG.profitRobustnessSecondTopPct) || 0) * 100);
-            const profitConcentrationIsConcentrated = profitConcentrationDisplayPct != null && profitConcentrationDisplayPct >= profitConcentrationThresholdPct;
-            const profitConcentrationVerdict = profitConcentrationDisplayPct == null ? "-" : profitConcentrationIsConcentrated ? "Concentrated" : "Distributed";
-            const profitConcentrationColor = profitConcentrationDisplayPct == null ? c.tm : profitConcentrationIsConcentrated ? c.gold : c.gn;
-            const profitConcentrationSentence = profitConcentrationDisplayPct == null
+            const profitConcentrationTopPctLabel = 10;
+            const profitConcentrationVerdict = metrics.profitConcentrationVerdict || "-";
+            const profitConcentrationColor = profitConcentrationGiniValue == null
+              ? c.tm
+              : profitConcentrationVerdict === "Concentrated"
+                ? c.gold
+                : profitConcentrationVerdict === "Moderate"
+                  ? c.acL
+                  : c.gn;
+            const profitConcentrationSentence = profitConcentrationGiniValue == null
               ? "No profit sample yet."
-              : `Your top ${profitConcentrationTopPctLabel}% made ${fmtPct(profitConcentrationDisplayPct,0)} of profit - ${profitConcentrationIsConcentrated ? "over" : "under"} the ${fmtPct(profitConcentrationThresholdPct,0)} concentration line.`;
+              : `Gini ${fmtNum(profitConcentrationGiniValue, 2)} · top 10% winners made ${fmtPct(profitConcentrationTop10DisplayPct ?? 0,0)} · top 20% made ${fmtPct(profitConcentrationTop20DisplayPct ?? 0,0)}.`;
             const profitRobustnessIsRobust = profitRobustnessHasValue && profitRobustnessHoldPct >= profitRobustnessFloorPct;
             const profitRobustnessVerdict = !profitRobustnessHasValue ? "Needs sample" : profitRobustnessIsRobust ? "Robust" : "Fragile";
             const profitRobustnessColor = !profitRobustnessHasValue ? c.gold : profitRobustnessIsRobust ? c.gn : c.gold;
@@ -27048,30 +27091,17 @@ const TalariaV8b = () => {
               : `${fmtPct(profitRobustnessHoldPct,0)} of your edge holds without your top ${profitConcentrationTopPctLabel}% - ${profitRobustnessIsRobust ? "above" : "below"} the ${fmtPct(profitRobustnessFloorPct,0)} floor.`;
             const costDragValue = metrics.costDragPct == null ? "-" : fmtPct(metrics.costDragPct,1);
             const privacyMoney = (value, fallbackR=0) => fmtValue(value, fallbackR);
-            const privacyAbsMoney = (value) => dashValueMode === "privacy" ? dashPrivacyMask : dashOverviewUnitMode === "percent" ? fmtAbsMoneyPct(value) : fmtAbsMoney(value);
+            const privacyAbsMoney = (value) => {
+              if (dashOverviewUnitMode === "r") {
+                const dollarPerR = Number(metrics?.dollarPerR) || 0;
+                if (dollarPerR <= 0) return "-";
+                const absR = Math.abs((Number(value) || 0) / dollarPerR);
+                return `${fmtNum(absR, absR >= 10 ? 1 : 2)}R`;
+              }
+              if (dashValueMode === "privacy") return dashPrivacyMask;
+              return dashOverviewUnitMode === "percent" ? fmtAbsMoneyPct(value) : fmtAbsMoney(value);
+            };
             const netPnlTrades = Array.isArray(metrics.trades) ? metrics.trades : [];
-            const dashRiskLossUnitLabel = dashOverviewRPrimary ? "1R lost" : dashOverviewPercentPrimary ? "1% lost" : "$1 lost";
-            const dashProfitFactorSub = `made for every ${dashRiskLossUnitLabel}`;
-            const formatRecoveryFactorSub = () => {
-              if (metrics.recoveryFactor == null) return "No drawdown yet";
-              const value = Math.abs(Number(metrics.recoveryFactor) || 0);
-              const direction = Number(metrics.recoveryFactor) >= 0 ? "profit" : "lost";
-              if (dashOverviewRPrimary) return `${fmtNum(value,2)}R ${direction} per 1R of worst drawdown`;
-              if (dashOverviewPercentPrimary) return `${fmtNum(value,2)}% ${direction} per 1% of worst drawdown`;
-              return `$${fmtNum(value,2)} ${direction} per $1 of worst drawdown`;
-            };
-            const formatInsightMetricValue = signal => {
-              const raw = signal?.metricValue;
-              if (!raw) return null;
-              const rawText = String(raw);
-              if (!rawText.includes("$")) return rawText;
-              const usd = Number(signal?.impactUSD);
-              if (!Number.isFinite(usd) || Math.abs(usd) <= 0) return dashValueMode === "privacy" ? dashPrivacyMask : rawText;
-              const sign = /^\s*-/.test(rawText) ? -1 : 1;
-              const formattedImpact = dashMoneyMetricValue(sign * Math.abs(usd));
-              const suffixMatch = rawText.match(/^[+-]?\$[\d,]+(?:\.\d+)?(.*)$/);
-              return `${formattedImpact}${suffixMatch?.[1] || ""}`;
-            };
             const netPnlUseR = dashOverviewUnitMode === "r";
             const fmtSignedR = (value, digits=2) => `${Number(value || 0) >= 0 ? "+" : ""}${fmtNum(value || 0, digits)}R`;
             const fmtAbsR = (value, digits=2) => `${fmtNum(Math.abs(Number(value) || 0), digits)}R`;
@@ -27146,6 +27176,28 @@ const TalariaV8b = () => {
               return "";
             };
             const dashDualInline = (rValue, moneyValue, options={}) => `${dashDualValue(rValue, moneyValue, options)}${dashDualSuffix(rValue, moneyValue, {...options, approximate:false}) ? ` · ${dashDualSuffix(rValue, moneyValue, {...options, approximate:false})}` : ""}`;
+            const dashRiskLossUnitLabel = dashOverviewRPrimary ? "1R lost" : dashOverviewPercentPrimary ? "1% lost" : "$1 lost";
+            const dashProfitFactorSub = `made for every ${dashRiskLossUnitLabel}`;
+            const formatRecoveryFactorSub = () => {
+              if (metrics.recoveryFactor == null) return "No drawdown yet";
+              const value = Math.abs(Number(metrics.recoveryFactor) || 0);
+              const direction = Number(metrics.recoveryFactor) >= 0 ? "profit" : "lost";
+              if (dashOverviewRPrimary) return `${fmtNum(value,2)}R ${direction} per 1R of worst drawdown`;
+              if (dashOverviewPercentPrimary) return `${fmtNum(value,2)}% ${direction} per 1% of worst drawdown`;
+              return `$${fmtNum(value,2)} ${direction} per $1 of worst drawdown`;
+            };
+            const formatInsightMetricValue = signal => {
+              const raw = signal?.metricValue;
+              if (!raw) return null;
+              const rawText = String(raw);
+              if (!rawText.includes("$")) return rawText;
+              const usd = Number(signal?.impactUSD);
+              if (!Number.isFinite(usd) || Math.abs(usd) <= 0) return dashValueMode === "privacy" ? dashPrivacyMask : rawText;
+              const sign = /^\s*-/.test(rawText) ? -1 : 1;
+              const formattedImpact = dashMoneyMetricValue(sign * Math.abs(usd));
+              const suffixMatch = rawText.match(/^[+-]?\$[\d,]+(?:\.\d+)?(.*)$/);
+              return `${formattedImpact}${suffixMatch?.[1] || ""}`;
+            };
             const netPnlWinsAddDollars = netPnlTradeCount ? (Number(metrics.grossWin) || 0) / netPnlTradeCount : 0;
             const netPnlLossesCostDollars = netPnlTradeCount ? (Number(metrics.grossLoss) || 0) / netPnlTradeCount : 0;
             const netPnlExpectancyDollars = netPnlTradeCount ? (Number(metrics.totalPnl) || 0) / netPnlTradeCount : (Number(metrics.expectancyDollarsPerTrade) || 0);
@@ -27385,10 +27437,10 @@ const TalariaV8b = () => {
             };
             const TopShareMini = () => (
               <VerdictThresholdBarMini
-                value={profitConcentrationDisplayPct}
-                threshold={profitConcentrationThresholdPct}
+                value={profitConcentrationGiniValue == null ? null : profitConcentrationGiniValue * 100}
+                threshold={profitConcentrationGiniConcentratedMin * 100}
                 color={profitConcentrationColor}
-                thresholdLabel={fmtPct(profitConcentrationThresholdPct,0)}
+                thresholdLabel={`Gini ${fmtNum(profitConcentrationGiniConcentratedMin, 2)}`}
                 emptyLabel="No profit"
               />
             );
@@ -27624,7 +27676,7 @@ const TalariaV8b = () => {
             const dashboardKpiCardGap = 12;
             const dashboardScoreCardHeight = dashboardKpiCardHeight * 2 + dashboardKpiCardGap;
             const dashboardSnapshotPulseCalendarHeight = dashboardScoreCardHeight;
-            const PagedMetricCard = ({slot, animIndex=0}) => {
+            const PagedMetricCard = ({slot}) => {
               const pages = (slot.pages || []).filter(Boolean);
               const safeIndex = Math.min(Math.max(0, dashKpiPageIndex[slot.id] || 0), Math.max(0, pages.length - 1));
               const page = pages[safeIndex] || pages[0];
@@ -27672,17 +27724,15 @@ const TalariaV8b = () => {
                 });
               };
               return (
-                <div className={`tlr-snapshot-adv-kpi-card${dashSnapshotCardsSettled ? " tlr-snapshot-card-settled" : ""}`} style={{minWidth:0,height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight,["--tlr-card-delay"]:`${Math.min(animIndex, 7) * 42}ms`}} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+                <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{minWidth:0,height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight}}>
                   <SummaryCard title={page.label} titleDot={false} titleFull titleFontSize={titleFit.fontSize} titleLetterSpacing={titleFit.letterSpacing} titleLineMinWidth={titleFit.lineMin} minHeight={0} resourceId={page.resourceId || dashboardResourceIdFor(page.label)} right={<KpiPager slotId={slot.id} pages={pages} activeIndex={safeIndex}/>} onClick={()=>openDashSubWindow(page.target || "trade-journal", page.label)} style={{height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight,padding:14,gap:8,opacity:page.dim ? .72 : 1}}>
-                    <div className="tlr-dashboard-kpi-page-shell">
-                      <div key={`${slot.id}-${page.id || safeIndex}`} className={slideClass} onAnimationEnd={slideClass ? clearSlideClass : undefined} style={{display:"flex",flexDirection:"column",gap:8,flex:1,minHeight:0}}>
+                    <div key={`${slot.id}-${page.id || safeIndex}`} className={slideClass} onAnimationEnd={slideClass ? clearSlideClass : undefined} style={{display:"flex",flexDirection:"column",gap:8,flex:1,minHeight:0}}>
                       <div {...dashInfoHandlers({title:page.label, body:page.info || dashboardMetricInfo[page.label] || "Headline value calculated from the current source and filters.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{fontSize:valueFontSize,fontWeight:800,color:page.color || c.acL,fontFamily:F,fontVariantNumeric:"tabular-nums",lineHeight:1.08,whiteSpace:"normal",overflow:"visible",minHeight:25,display:"flex",alignItems:"baseline",gap:8,outline:"none",flexWrap:"wrap"}}>
                         <span style={{minWidth:0,overflow:"visible"}}>{page.value}</span>
                         {page.valueSuffix ? <span style={{fontSize:valueFontSize > 19 ? 12 : 10.5,fontWeight:850,color:signedSuffixColor,letterSpacing:"0.02em",lineHeight:1,flexShrink:0}}>{page.valueSuffix}</span> : null}
                       </div>
                       {page.sub ? <div style={{fontSize:subFontSize,fontWeight:650,color:c.ts,fontFamily:F,lineHeight:1.22,minHeight:24,whiteSpace:"normal",overflow:"visible"}}>{page.sub}</div> : null}
                       <div {...dashInfoHandlers({title:`${page.label} visual`, body:page.visualInfo || dashboardVisualInfo[page.label] || "Mini visual for the metric trend or distribution.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{marginTop:"auto",height:visualHeight,display:"flex",alignItems:"center",minWidth:0,overflow:"visible",outline:"none"}}>{page.visual}</div>
-                    </div>
                     </div>
                   </SummaryCard>
                 </div>
@@ -27718,9 +27768,11 @@ const TalariaV8b = () => {
               ? <><span style={{color:c.gn}}>{fmtSignedR(bestR,1)}</span> <span style={{color:c.tm}}> / </span><span style={{color:c.rd}}>{fmtSignedR(worstR,1)}</span></>
               : <><span style={{color:c.gn}}>{dashSignedMoney(bestRMoney)}</span> <span style={{color:c.tm}}> / </span><span style={{color:c.rd}}>{dashSignedMoney(worstRMoney)}</span></>;
             const bestWorstPage = {id:"metric-streaks-best-worst", label:"Best / Worst", value:bestWorstValue, sub:"best and worst trade result", color:Math.abs(bestR)>=Math.abs(worstR)?c.gn:c.gold, visual:<BestWorstMini/>, valueFontSize:13.2, target:"trade-journal", resourceId:"metric-streaks"};
-            const drawdownMoneyLabel = dashOverviewUnitMode === "percent"
-                ? fmtAbsMoneyPct(metrics.maxDD, 1)
-                : dashValueMode === "privacy" ? dashPrivacyMask : fmtAbsMoney(metrics.maxDD);
+            const drawdownMoneyLabel = dashDualValue(
+              Math.abs(dashMoneyToR(metrics.maxDD)),
+              Math.abs(Number(metrics.maxDD) || 0),
+              {signedR:false, moneySign:false}
+            );
             const drawdownHeadline = drawdownMoneyLabel;
             const drawdownSubline = metrics.maxDDWiped
               ? "Account reached zero; depth capped at 100%"
@@ -27729,7 +27781,7 @@ const TalariaV8b = () => {
             const propLossBudgetMain = propRisk.hasDailyLimit ? propRisk.dailyLossBudgetTrades : propRisk.maxLossBudgetTrades;
             const propLossBudgetCount = propLossBudgetMain == null ? null : Math.max(0, Math.floor(Number(propLossBudgetMain)));
             const propNativeRiskLabel = propRisk.nativeUnit === "money"
-              ? (propRisk.typicalRiskMoney == null ? "risk unavailable" : `${fmtAbsMoney(propRisk.typicalRiskMoney)} typical risk`)
+              ? (propRisk.typicalRiskMoney == null ? "risk unavailable" : `${dashDualValue(dashMoneyToR(propRisk.typicalRiskMoney), propRisk.typicalRiskMoney, {signedR:false, moneySign:false})} typical risk`)
               : (propRisk.typicalRiskPct == null ? "risk unavailable" : `${fmtPct(propRisk.typicalRiskPct,2)} typical risk`);
             const propLossBudgetSub = propRisk.hasDailyLimit
               ? `Daily limit · ${propNativeRiskLabel}`
@@ -27839,7 +27891,7 @@ const TalariaV8b = () => {
                 pages:[
                   {id:"metric-win-rate", label:"Win Rate + RR", value:<>{fmtPct(metrics.winRate,0)} <span style={{color:c.tm}}>·</span> {payoffText}</>, sub:breakevenText, color:(metrics.winRateCushion ?? 0)>=0?c.gn:c.rd, visual:<WinRatePayoffMini/>, target:"trade-journal"},
                   streaksSlidePage,
-                  {id:"metric-profit-factor", label:"Profit Factor", value:fmtNum(metrics.profitFactor,2), sub:"made for every $1 lost", color:metrics.profitFactor>=1?c.gn:c.rd, visual:<ProfitFactorPerDollarMini/>, target:"r-multiple"},
+                  {id:"metric-profit-factor", label:"Profit Factor", value:fmtNum(metrics.profitFactor,2), sub:dashProfitFactorSub, color:metrics.profitFactor>=1?c.gn:c.rd, visual:<ProfitFactorPerDollarMini/>, target:"r-multiple"},
                   expectancyPage,
                 ],
               },
@@ -27848,7 +27900,7 @@ const TalariaV8b = () => {
                 pages:[
                   {id:"metric-drawdown", label:"Drawdown", value:drawdownHeadline, sub:drawdownSubline, color:c.rd, visual:<DrawdownMergedMini/>, visualHeight:76, target:"drawdown"},
                   ...propDrawdownPages,
-                  {id:"metric-recovery-factor", label:"Recovery Factor", value:metrics.recoveryFactor==null?"-":`${fmtNum(metrics.recoveryFactor,2)}x`, sub:metrics.recoveryFactor==null?"No drawdown yet":Number(metrics.recoveryFactor) >= 0 ? `$${fmtNum(metrics.recoveryFactor,2)} of profit per $1 of worst drawdown` : `$${fmtNum(Math.abs(Number(metrics.recoveryFactor)),2)} lost per $1 of worst drawdown`, color:Number(metrics.recoveryFactor) < 0 ? c.rd : (metrics.recoveryFactor||0)>=KPI_CONFIG.recoveryFactorGood?c.gn:c.gold, visual:<RecoveryMini/>, target:"drawdown"},
+                  {id:"metric-recovery-factor", label:"Recovery Factor", value:metrics.recoveryFactor==null?"-":`${fmtNum(metrics.recoveryFactor,2)}x`, sub:formatRecoveryFactorSub(), color:Number(metrics.recoveryFactor) < 0 ? c.rd : (metrics.recoveryFactor||0)>=KPI_CONFIG.recoveryFactorGood?c.gn:c.gold, visual:<RecoveryMini/>, target:"drawdown"},
                 ],
               },
               {
@@ -28400,7 +28452,7 @@ const TalariaV8b = () => {
                 </div>
               );
             };
-            const BasicMetricCard = ({title, value, sub, color=c.tx, accent=c.acL, onClick=null, children=null, visual=null, animIndex=0}) => {
+            const BasicMetricCard = ({title, value, sub, color=c.tx, accent=c.acL, onClick=null, children=null, visual=null}) => {
               const clickable = typeof onClick === "function";
               const handleKeyDown = (event) => {
                 if (!clickable) return;
@@ -28411,13 +28463,11 @@ const TalariaV8b = () => {
               };
               return (
                 <div
-                  className={`tlr-snapshot-basic-card${dashSnapshotCardsSettled ? " tlr-snapshot-card-settled" : ""}`}
                   role={clickable ? "button" : undefined}
                   tabIndex={clickable ? 0 : undefined}
                   onClick={clickable ? onClick : undefined}
                   onKeyDown={clickable ? handleKeyDown : undefined}
                   style={{
-                    ["--tlr-card-delay"]: `${Math.min(animIndex, 7) * 48}ms`,
                     position:"relative",
                     minHeight:132,
                     height:132,
@@ -28486,7 +28536,6 @@ const TalariaV8b = () => {
             const renderSnapshotBasicTopStrip = () => (
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(174px,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                 <BasicMetricCard
-                  animIndex={0}
                   title={dashTxt("Talaria Score","درجة تالاريا")}
                   value={<>{basicScoreValue}<span style={{fontSize:12,color:c.ts,marginLeft:4}}>/100</span></>}
                   sub={`${basicScoreTier} · ${basicScoreDeltaText}`}
@@ -28496,20 +28545,18 @@ const TalariaV8b = () => {
                 >
                   <BasicScoreRing value={basicScoreValue} color={basicScoreColor}/>
                 </BasicMetricCard>
-                <BasicMetricCard animIndex={1} title="Net P&L" value={basicNetPnlValue} sub={`${fmtPct(metrics.returnPct,1)} since start`} color={basicNetPnlColor} visual={<BasicMiniLine points={basicEquityValues} color={basicNetPnlColor} fill/>}/>
-                <BasicMetricCard animIndex={2} title="Win Rate" value={fmtPct(metrics.winRate,0)} sub={`${metrics.wins || 0} W · ${metrics.losses || 0} L`} color={Number(metrics.winRate || 0) >= 50 ? c.gn : c.rd} visual={<BasicScoreRing value={metrics.winRate} color={c.gn} trackColor={c.rd}/>}/>
-                <BasicMetricCard animIndex={3} title="Profit Factor" value={fmtNum(metrics.profitFactor,2)} sub={dashProfitFactorSub.replace("made for every", "made per")} color={Number(metrics.profitFactor || 0) >= 1 ? c.gn : c.rd} visual={<BasicMiniUpDownBars positive={basicGrossWinValue || Number(metrics.profitFactor || 0)} negative={basicGrossLossValue || 1}/>}/>
-                <BasicMetricCard animIndex={4} title="Avg Trade" value={basicAvgTradeValue} sub={`expectancy · n ${(metrics.tradeCount || 0).toLocaleString()}`} color={Number(metrics.expectancyDollarsPerTrade || 0) >= 0 ? c.gn : c.rd} visual={<BasicMiniPnlBars values={basicTradePnlDecileValues} avg={basicAvgTradeBucketValue}/>}/>
-                <BasicMetricCard animIndex={5} title="Max Drawdown" value={basicMaxDrawdownValue} sub={`worst · ${fmtPct(metrics.maxDDPct,1)}`} color={c.rd} accent={c.rd} visual={<BasicMiniLine points={basicDrawdownSeries} color={c.rd} fill/>}/>
+                <BasicMetricCard title="Net P&L" value={basicNetPnlValue} sub={`${fmtPct(metrics.returnPct,1)} since start`} color={basicNetPnlColor} visual={<BasicMiniLine points={basicEquityValues} color={basicNetPnlColor} fill/>}/>
+                <BasicMetricCard title="Win Rate" value={fmtPct(metrics.winRate,0)} sub={`${metrics.wins || 0} W · ${metrics.losses || 0} L`} color={Number(metrics.winRate || 0) >= 50 ? c.gn : c.rd} visual={<BasicScoreRing value={metrics.winRate} color={c.gn} trackColor={c.rd}/>}/>
+                <BasicMetricCard title="Profit Factor" value={fmtNum(metrics.profitFactor,2)} sub={dashProfitFactorSub.replace("made for every", "made per")} color={Number(metrics.profitFactor || 0) >= 1 ? c.gn : c.rd} visual={<BasicMiniUpDownBars positive={basicGrossWinValue || Number(metrics.profitFactor || 0)} negative={basicGrossLossValue || 1}/>}/>
+                <BasicMetricCard title="Avg Trade" value={basicAvgTradeValue} sub={`expectancy · n ${(metrics.tradeCount || 0).toLocaleString()}`} color={Number(metrics.expectancyDollarsPerTrade || 0) >= 0 ? c.gn : c.rd} visual={<BasicMiniPnlBars values={basicTradePnlDecileValues} avg={basicAvgTradeBucketValue}/>}/>
+                <BasicMetricCard title="Max Drawdown" value={basicMaxDrawdownValue} sub={`worst · ${fmtPct(metrics.maxDDPct,1)}`} color={c.rd} accent={c.rd} visual={<BasicMiniLine points={basicDrawdownSeries} color={c.rd} fill/>}/>
               </div>
             );
             const renderSnapshotAdvancedTopStrip = () => (
               <div style={{display:"grid",gridTemplateColumns:"minmax(456px,1.18fr) minmax(0,3fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                <div className="tlr-snapshot-adv-kpi-card" style={{["--tlr-card-delay"]:"0ms",minWidth:0}}>
-                  <CompactScoreCard/>
-                </div>
+                <CompactScoreCard/>
                 <div style={{height:dashboardScoreCardHeight,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gridTemplateRows:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                  {overviewCarouselSlots.map((slot, index) => <PagedMetricCard key={slot.id} slot={slot} animIndex={index + 1}/>)}
+                  {overviewCarouselSlots.map(slot => <PagedMetricCard key={slot.id} slot={slot}/>)}
                 </div>
               </div>
             );
@@ -28517,13 +28564,7 @@ const TalariaV8b = () => {
               if (!isPropD) return null;
               const sectionConfig = propConfig || { configured:false };
               const sectionStatus = propStatus || btDashPropStatus(ds, {...metrics, propConfig:sectionConfig}) || btDashPropSetupStatus();
-              const configured = sectionConfig?.configured !== false && (
-                !!sectionConfig?.configured
-                || sectionConfig?.profitTargetPct != null
-                || sectionConfig?.dailyLossLimitPct != null
-                || sectionConfig?.maxDDLimitPct != null
-                || sectionConfig?.minDays != null
-              );
+              const configured = !!sectionConfig?.configured;
               const rules = Array.isArray(sectionStatus?.rules) ? sectionStatus.rules : [];
               const coreRuleNames = ["max drawdown", "trailing drawdown", "daily loss", "daily loss limit", "profit target", "min trading days"];
               const coreRules = rules.filter(rule => coreRuleNames.some(name => String(rule?.rule || "").toLowerCase().includes(name)));
@@ -29024,7 +29065,6 @@ const TalariaV8b = () => {
                 setDashAccountPulsePeriod(id);
                 setDashAccountPulseMenuOpen(false);
                 setDashAccountPulseHover(null);
-                setDashAccountPulseZoom({ start: 0, end: 1 });
               };
               const scheduleAccountPulseHover = next => {
                 if (dashAccountPulseHoverFrameRef.current) {
@@ -29146,19 +29186,8 @@ const TalariaV8b = () => {
                   {value:Number(ds?.capital) || 0},
                   {value:Number(metrics?.endingBalance) || ((Number(ds?.capital) || 0) + (Number(metrics?.totalPnl) || 0))},
                 ];
-              const pulseTradeDateEntries = tradesForPulse
-                .map(trade => {
-                  const raw = tradeDateValue(trade);
-                  const ms = parsePulseDate(raw);
-                  return raw && ms != null ? {raw, ms} : null;
-                })
-                .filter(Boolean);
-              const firstKnownDate = pulseTradeDateEntries.length
-                ? pulseTradeDateEntries.reduce((min, entry) => entry.ms < min.ms ? entry : min).raw
-                : ds?.startDate || ds?.createdAt || ds?.date;
-              const lastKnownDate = pulseTradeDateEntries.length
-                ? pulseTradeDateEntries.reduce((max, entry) => entry.ms > max.ms ? entry : max).raw
-                : ds?.endDate || ds?.updatedAt || firstKnownDate;
+              const firstKnownDate = tradesForPulse.map(tradeDateValue).find(Boolean) || ds?.startDate || ds?.createdAt || ds?.date;
+              const lastKnownDate = [...tradesForPulse].reverse().map(tradeDateValue).find(Boolean) || ds?.endDate || ds?.updatedAt || firstKnownDate;
               const allPulseRows = rawEquityPoints.map((point, index) => {
                 const linkedTrade = point?.trade || point?.sourceTrade || (index > 0 ? tradesForPulse[index - 1] || null : null);
                 const rawDate = index === 0 ? firstKnownDate : (tradeDateValue(linkedTrade) || tradeDateValue(tradesForPulse[index - 1]) || lastKnownDate || firstKnownDate);
@@ -29172,7 +29201,7 @@ const TalariaV8b = () => {
                 };
               }).filter(row => Number.isFinite(row.value));
               const datedRows = allPulseRows.filter(row => row.dateMs !== null);
-              const lastDateMs = datedRows.length ? Math.max(...datedRows.map(row => row.dateMs)) : null;
+              const lastDateMs = datedRows.length ? datedRows[datedRows.length - 1].dateMs : null;
               const cutoffMs = activePeriod.days && lastDateMs ? lastDateMs - activePeriod.days * 86400000 : null;
               const filteredPulseRows = cutoffMs
                 ? allPulseRows.filter(row => row.dateMs === null || row.dateMs >= cutoffMs)
@@ -29191,42 +29220,8 @@ const TalariaV8b = () => {
               });
               const firstPulse = peakRows[0] || {value:0};
               const lastPulse = peakRows[peakRows.length - 1] || firstPulse;
-              const pulseDateExtents = peakRows.reduce((acc, row) => {
-                if (row.dateMs == null) return acc;
-                if (acc.minMs == null || row.dateMs < acc.minMs) {
-                  acc.minMs = row.dateMs;
-                  acc.minLabel = row.labelDate;
-                }
-                if (acc.maxMs == null || row.dateMs > acc.maxMs) {
-                  acc.maxMs = row.dateMs;
-                  acc.maxLabel = row.labelDate;
-                }
-                return acc;
-              }, {minMs:null, maxMs:null, minLabel:null, maxLabel:null});
-              const pulseStartDateLabel = fmtDate(pulseDateExtents.minLabel || pulseDateExtents.minMs || firstPulse.labelDate || firstKnownDate);
-              const pulseCurrentDateLabel = fmtDate(pulseDateExtents.maxLabel || pulseDateExtents.maxMs || lastPulse.labelDate || lastKnownDate || new Date());
-              const pulseZoomStart = btClamp(Number(dashAccountPulseZoom?.start) || 0, 0, 1);
-              const pulseZoomEnd = btClamp(Number(dashAccountPulseZoom?.end) || 1, pulseZoomStart, 1);
-              const pulseZoomSpan = Math.max(0.001, pulseZoomEnd - pulseZoomStart);
-              const pulseIndexToRatio = index => peakRows.length <= 1 ? 0 : index / (peakRows.length - 1);
-              const pulseRatioToIndex = ratio => {
-                if (peakRows.length <= 1) return 0;
-                return btClamp(ratio, 0, 1) * (peakRows.length - 1);
-              };
-              const pulseVisibleRowSlice = peakRows.filter((_, index) => {
-                const ratio = pulseIndexToRatio(index);
-                return ratio >= pulseZoomStart - 0.0001 && ratio <= pulseZoomEnd + 0.0001;
-              });
-              const pulseZoomStartDateLabel = (() => {
-                const idx = Math.max(0, Math.min(peakRows.length - 1, Math.round(pulseRatioToIndex(pulseZoomStart))));
-                const row = peakRows[idx];
-                return fmtDate(row?.labelDate || row?.dateMs || pulseStartDateLabel);
-              })();
-              const pulseZoomEndDateLabel = (() => {
-                const idx = Math.max(0, Math.min(peakRows.length - 1, Math.round(pulseRatioToIndex(pulseZoomEnd))));
-                const row = peakRows[idx];
-                return fmtDate(row?.labelDate || row?.dateMs || pulseCurrentDateLabel);
-              })();
+              const pulseStartDateLabel = fmtDate(firstPulse.labelDate || firstPulse.dateMs || firstKnownDate);
+              const pulseCurrentDateLabel = fmtDate(lastPulse.labelDate || lastPulse.dateMs || lastKnownDate || new Date());
               const highPulse = peakRows.reduce((best, row) => row.value >= best.value ? row : best, firstPulse);
               const periodPnl = lastPulse.value - firstPulse.value;
               const currentDrawdownAmount = Math.max(0, (highPulse.value || 0) - (lastPulse.value || 0));
@@ -29310,7 +29305,7 @@ const TalariaV8b = () => {
                 })
                 : [];
               const pulseValues = [
-                ...(pulseVisibleRowSlice.length ? pulseVisibleRowSlice : peakRows).flatMap(row => [row.value, row.peak]),
+                ...peakRows.flatMap(row => [row.value, row.peak]),
                 ...(dailyLimitLineValue !== null && Number.isFinite(dailyLimitLineValue) ? [dailyLimitLineValue] : []),
                 ...(phaseTargetLineValue !== null && Number.isFinite(phaseTargetLineValue) ? [phaseTargetLineValue] : []),
                 ...maxLossLineRows.map(row => row.limitValue).filter(value => Number.isFinite(value)),
@@ -29328,14 +29323,7 @@ const TalariaV8b = () => {
               const bottomPad = 12;
               const plotW = viewW - leftPad - rightPad;
               const plotH = viewH - topPad - bottomPad;
-              const xFor = index => {
-                const ratio = pulseIndexToRatio(index);
-                const normalized = (ratio - pulseZoomStart) / pulseZoomSpan;
-                return leftPad + normalized * plotW;
-              };
-              const pulsePlotRatioForX = x => btClamp((x - leftPad) / Math.max(1, plotW), 0, 1);
-              const pulseDataRatioForPlotRatio = plotRatio => pulseZoomStart + plotRatio * pulseZoomSpan;
-              const pulseDataRatioForX = x => pulseDataRatioForPlotRatio(pulsePlotRatioForX(x));
+              const xFor = index => leftPad + (peakRows.length <= 1 ? 0 : (index / (peakRows.length - 1)) * plotW);
               const yFor = value => topPad + (1 - ((value - yMin) / Math.max(1, yMax - yMin))) * plotH;
               const curvePoints = peakRows.map((row, index) => ({...row, x:xFor(index), y:yFor(row.value), peakY:yFor(row.peak)}));
               const curveTradePoints = curvePoints.filter(point => point.trade);
@@ -29370,22 +29358,8 @@ const TalariaV8b = () => {
                 }
                 return fmtAbsMoney(number);
               };
-              const equityHighPoint = (() => {
-                const scoped = curvePoints.filter((_, index) => {
-                  const ratio = pulseIndexToRatio(index);
-                  return ratio >= pulseZoomStart - 0.0001 && ratio <= pulseZoomEnd + 0.0001;
-                });
-                const points = scoped.length ? scoped : curvePoints;
-                return points.length ? points.reduce((best, point) => point.value >= best.value ? point : best, points[0]) : null;
-              })();
-              const equityLowPoint = (() => {
-                const scoped = curvePoints.filter((_, index) => {
-                  const ratio = pulseIndexToRatio(index);
-                  return ratio >= pulseZoomStart - 0.0001 && ratio <= pulseZoomEnd + 0.0001;
-                });
-                const points = scoped.length ? scoped : curvePoints;
-                return points.length ? points.reduce((best, point) => point.value <= best.value ? point : best, points[0]) : null;
-              })();
+              const equityHighPoint = curvePoints.length ? curvePoints.reduce((best, point) => point.value >= best.value ? point : best, curvePoints[0]) : null;
+              const equityLowPoint = curvePoints.length ? curvePoints.reduce((best, point) => point.value <= best.value ? point : best, curvePoints[0]) : null;
               const clampPulseLabelX = x => Math.max(leftPad + 10, Math.min(x, viewW - rightPad - 10));
               const clampPulseLabelY = y => Math.max(topPad + 11, Math.min(y, viewH - bottomPad - 9));
               const estimatePulseTextWidth = (text, fontSize = 9) => Math.max(28, Math.min(132, String(text || "").length * fontSize * 0.52));
@@ -29588,14 +29562,12 @@ const TalariaV8b = () => {
               const pulseAxisHoverForX = (x, y = topPad) => {
                 const axisX = Math.max(leftPad, Math.min(x, viewW - rightPad));
                 const axisY = Math.max(topPad, Math.min(y, viewH - bottomPad));
-                const plotRatio = pulsePlotRatioForX(axisX);
-                const axisRatio = plotRatio;
-                const dataRatio = pulseDataRatioForPlotRatio(plotRatio);
+                const axisRatio = btClamp((axisX - leftPad) / Math.max(1, plotW), 0, 1);
                 if (!curvePoints.length) return {axisX, axisY, axisRatio, axisText:"-"};
                 if (curvePoints.length === 1) {
                   return {axisX, axisY, axisRatio, axisText:formatPulseTradeAxisTime(curvePoints[0].labelDate || curvePoints[0].dateMs || firstKnownDate)};
                 }
-                const scaledIndex = pulseRatioToIndex(dataRatio);
+                const scaledIndex = axisRatio * (curvePoints.length - 1);
                 const lowIndex = Math.max(0, Math.min(curvePoints.length - 1, Math.floor(scaledIndex)));
                 const highIndex = Math.max(0, Math.min(curvePoints.length - 1, Math.ceil(scaledIndex)));
                 const lowPoint = curvePoints[lowIndex];
@@ -29628,7 +29600,7 @@ const TalariaV8b = () => {
                 }
                 const nearestSegment = (() => {
                   if (curvePoints.length < 2) return null;
-                  const rawIndex = pulseRatioToIndex(pulseDataRatioForX(cursorX));
+                  const rawIndex = ((cursorX - leftPad) / Math.max(1, plotW)) * (curvePoints.length - 1);
                   const centerIndex = Math.max(1, Math.min(curvePoints.length - 1, Math.round(rawIndex)));
                   const startIndex = Math.max(1, centerIndex - 6);
                   const endIndex = Math.min(curvePoints.length - 1, centerIndex + 6);
@@ -29667,7 +29639,7 @@ const TalariaV8b = () => {
                 const nearestAxisHover = {
                   axisX:hoverPointX,
                   axisY:hoverPointY,
-                  axisRatio:btClamp(pulsePlotRatioForX(hoverPointX), 0, 1),
+                  axisRatio:btClamp((hoverPointX - leftPad) / Math.max(1, plotW), 0, 1),
                   axisText:formatPulseTradeAxisTime(hoverDateValue),
                 };
                 const nextHover = {
@@ -29685,62 +29657,6 @@ const TalariaV8b = () => {
                   exitText:formatPulseTradeTime(tradeExitDateValue(nearest.trade) || tradeDateValue(nearest.trade)),
                 };
                 scheduleAccountPulseHover(nextHover);
-              };
-              const pulseAxisStartLabel = pulseZoomSpan < 0.9995 ? pulseZoomStartDateLabel : pulseStartDateLabel;
-              const pulseAxisEndLabel = pulseZoomSpan < 0.9995 ? pulseZoomEndDateLabel : pulseCurrentDateLabel;
-              dashAccountPulseWheelHandlerRef.current = event => {
-                if (peakRows.length < 2) return;
-                event.preventDefault();
-                event.stopPropagation();
-                const host = event.currentTarget;
-                const rect = host.getBoundingClientRect();
-                const localX = event.clientX - rect.left;
-                const viewX = (localX / Math.max(1, rect.width)) * viewW;
-                const plotRatio = pulsePlotRatioForX(viewX);
-                const currentStart = btClamp(Number(dashAccountPulseZoom?.start) || 0, 0, 1);
-                const currentEnd = btClamp(Number(dashAccountPulseZoom?.end) || 1, currentStart, 1);
-                const currentSpan = Math.max(0.001, currentEnd - currentStart);
-                const minSpan = Math.max(0.004, 3 / Math.max(3, peakRows.length - 1));
-                if (event.shiftKey) {
-                  const panDelta = ((event.deltaY || 0) + (event.deltaX || 0)) * currentSpan * 0.0016;
-                  let nextStart = currentStart + panDelta;
-                  let nextEnd = currentEnd + panDelta;
-                  if (nextStart < 0) {
-                    nextEnd -= nextStart;
-                    nextStart = 0;
-                  }
-                  if (nextEnd > 1) {
-                    nextStart -= nextEnd - 1;
-                    nextEnd = 1;
-                  }
-                  nextStart = Math.max(0, nextStart);
-                  nextEnd = Math.min(1, Math.max(nextStart + minSpan, nextEnd));
-                  setDashAccountPulseZoom({ start: nextStart, end: nextEnd });
-                  scheduleAccountPulseHover(null);
-                  return;
-                }
-                const anchorDataRatio = currentStart + plotRatio * currentSpan;
-                const zoomIn = event.deltaY < 0;
-                let nextSpan = currentSpan * (zoomIn ? 0.82 : 1.22);
-                nextSpan = btClamp(nextSpan, minSpan, 1);
-                let nextStart = anchorDataRatio - plotRatio * nextSpan;
-                let nextEnd = nextStart + nextSpan;
-                if (nextStart < 0) {
-                  nextEnd -= nextStart;
-                  nextStart = 0;
-                }
-                if (nextEnd > 1) {
-                  nextStart -= nextEnd - 1;
-                  nextEnd = 1;
-                }
-                nextStart = Math.max(0, nextStart);
-                nextEnd = Math.min(1, Math.max(nextStart + minSpan, nextEnd));
-                if (nextEnd - nextStart >= 0.9995) {
-                  setDashAccountPulseZoom({ start: 0, end: 1 });
-                } else {
-                  setDashAccountPulseZoom({ start: nextStart, end: nextEnd });
-                }
-                scheduleAccountPulseHover(null);
               };
               const StatReadout = ({label, value, sub, color}) => (
                 <div style={{minHeight:58,display:"grid",alignContent:"center",gap:5,padding:"8px 8px",border:`1px solid ${c.brH}`,background:"rgba(9,11,20,0.92)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box"}}>
@@ -29982,7 +29898,7 @@ const TalariaV8b = () => {
                   title={dashTxt("Account Pulse","نبض الحساب")}
                   titleDot={false}
                   minHeight={dashboardSnapshotPulseCalendarHeight}
-                  style={{height:dashboardSnapshotPulseCalendarHeight,minHeight:dashboardSnapshotPulseCalendarHeight,maxHeight:dashboardSnapshotPulseCalendarHeight,padding:14,gap:12,contain:dashAccountPulseMenuOpen?"layout":undefined,overflow:dashAccountPulseMenuOpen?"visible":undefined}}
+                  style={{height:dashboardSnapshotPulseCalendarHeight,minHeight:dashboardSnapshotPulseCalendarHeight,maxHeight:dashboardSnapshotPulseCalendarHeight,padding:14,gap:12}}
                   right={
                     <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:7,minWidth:0}}>
                       <PulseHeaderStatsBox
@@ -29996,10 +29912,9 @@ const TalariaV8b = () => {
                         ref={dashAccountPulseMenuRef}
                         className="tlr-dashboard-value-menu-wrap"
                         aria-label="Account pulse time window"
-                        onPointerDown={e=>e.stopPropagation()}
                         onPointerEnter={()=>scheduleAccountPulseHover(null)}
                         onPointerMove={()=>scheduleAccountPulseHover(null)}
-                        style={{position:"relative",width:104,height:32,fontFamily:F,zIndex:dashAccountPulseMenuOpen?520:4,flex:"0 0 104px"}}
+                        style={{position:"relative",width:104,height:32,fontFamily:F,zIndex:dashAccountPulseMenuOpen?420:4,flex:"0 0 104px"}}
                       >
                         <button
                           type="button"
@@ -30007,7 +29922,6 @@ const TalariaV8b = () => {
                           onPointerDown={e=>{
                             if (typeof e.button === "number" && e.button !== 0) return;
                             e.preventDefault();
-                            e.stopPropagation();
                             scheduleAccountPulseHover(null);
                             setDashAccountPulseMenuOpen(prev => !prev);
                             setDashUnitMenuOpen(false);
@@ -30070,7 +29984,6 @@ const TalariaV8b = () => {
                                   onPointerDown={e=>{
                                     if (typeof e.button === "number" && e.button !== 0) return;
                                     e.preventDefault();
-                                    e.stopPropagation();
                                     selectPulsePeriod(period.id);
                                   }}
                                   onClick={e=>e.preventDefault()}
@@ -30107,16 +30020,9 @@ const TalariaV8b = () => {
                     <div style={{minWidth:0,display:"grid",minHeight:0}}>
                       <div
                         onPointerLeave={()=>scheduleAccountPulseHover(null)}
-                        onDoubleClick={()=>{
-                          setDashAccountPulseZoom({ start: 0, end: 1 });
-                          scheduleAccountPulseHover(null);
-                        }}
-                        ref={node => {
-                          if (!node || node.__tlrPulseWheelBound) return;
-                          node.__tlrPulseWheelBound = true;
-                          node.addEventListener("wheel", event => dashAccountPulseWheelHandlerRef.current(event), { passive: false });
-                        }}
-                        style={{position:"relative",minWidth:0,minHeight:0,display:"grid",gridTemplateRows:"minmax(0,1fr) 18px",gap:0,background:"rgba(9,11,20,0.92)",border:`1px solid ${c.brH}`,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box",overflow:"hidden",overscrollBehavior:"contain"}}
+                        onPointerCancel={()=>scheduleAccountPulseHover(null)}
+                        onMouseLeave={()=>scheduleAccountPulseHover(null)}
+                        style={{position:"relative",minWidth:0,minHeight:0,display:"grid",gridTemplateRows:"minmax(0,1fr) 18px",gap:0,background:"rgba(9,11,20,0.92)",border:`1px solid ${c.brH}`,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",boxSizing:"border-box",overflow:"hidden"}}
                       >
                         <svg
                           width="100%"
@@ -30129,12 +30035,11 @@ const TalariaV8b = () => {
                           onPointerLeave={()=>{
                             scheduleAccountPulseHover(null);
                           }}
+                          onPointerCancel={()=>scheduleAccountPulseHover(null)}
+                          onMouseLeave={()=>scheduleAccountPulseHover(null)}
                           style={{display:"block",background:"transparent",cursor:"default"}}
                         >
                           <defs>
-                            <clipPath id="tlrAccountPulsePlotClip">
-                              <rect x={leftPad} y={topPad} width={plotW} height={plotH}/>
-                            </clipPath>
                             <linearGradient id="tlrAccountPulseArea" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="0%" stopColor={c.gn} stopOpacity=".18"/>
                               <stop offset="100%" stopColor={c.gn} stopOpacity=".015"/>
@@ -30144,9 +30049,8 @@ const TalariaV8b = () => {
                               <stop offset="100%" stopColor={c.rd} stopOpacity=".045"/>
                             </linearGradient>
                           </defs>
-                          <g key={`pulse-equity-${dashAccountPulsePeriod}-${peakRows.length}`} clipPath="url(#tlrAccountPulsePlotClip)">
-                          <path d={areaPath} fill="url(#tlrAccountPulseArea)" pointerEvents="none" className={dashSnapshotCardsSettled ? undefined : "tlr-snapshot-equity-area-build"}/>
-                          <path d={drawdownArea} fill="url(#tlrAccountPulseDrawdown)" pointerEvents="none" className={dashSnapshotCardsSettled ? undefined : "tlr-snapshot-equity-dd-build"}/>
+                          <path d={areaPath} fill="url(#tlrAccountPulseArea)" pointerEvents="none"/>
+                          <path d={drawdownArea} fill="url(#tlrAccountPulseDrawdown)" pointerEvents="none"/>
                           {phaseTargetY !== null ? (
                             <>
                               {renderPulseHorizontalRuleLine({key:"phase-target", y:phaseTargetY, color:c.gn, strokeWidth:1, dash:"5 5", opacity:.46, labelLayout:phaseTargetLabelLayout})}
@@ -30168,23 +30072,7 @@ const TalariaV8b = () => {
                           {curvePoints.slice(1).map((point, index) => {
                             const prev = curvePoints[index];
                             const up = point.value >= prev.value;
-                            const segLen = Math.max(1, Math.hypot(point.x - prev.x, point.y - prev.y));
-                            return (
-                              <line
-                                key={`pulse-seg-${index}`}
-                                className={dashSnapshotCardsSettled ? undefined : "tlr-snapshot-equity-seg-build"}
-                                style={dashSnapshotCardsSettled ? undefined : {"--tlr-eq-len":segLen, "--tlr-eq-i":index}}
-                                x1={prev.x}
-                                y1={prev.y}
-                                x2={point.x}
-                                y2={point.y}
-                                stroke={up ? c.gn : c.rd}
-                                strokeWidth="1.05"
-                                strokeLinecap="square"
-                                vectorEffect="non-scaling-stroke"
-                                pointerEvents="none"
-                              />
-                            );
+                            return <line key={`pulse-seg-${index}`} x1={prev.x} y1={prev.y} x2={point.x} y2={point.y} stroke={up ? c.gn : c.rd} strokeWidth="1.05" strokeLinecap="square" vectorEffect="non-scaling-stroke" pointerEvents="none"/>;
                           })}
                           {dashAccountPulseHover?.showTip ? (
                             <>
@@ -30223,24 +30111,11 @@ const TalariaV8b = () => {
                           ) : null}
                           {curvePoints.length ? (
                             <>
-                              {(() => {
-                                let endPoint = curvePoints[curvePoints.length - 1];
-                                for (let i = curvePoints.length - 1; i >= 0; i -= 1) {
-                                  const ratio = pulseIndexToRatio(i);
-                                  if (ratio >= pulseZoomStart - 0.0001 && ratio <= pulseZoomEnd + 0.0001) {
-                                    endPoint = curvePoints[i];
-                                    break;
-                                  }
-                                }
-                                return (
-                                  <circle className={dashSnapshotCardsSettled ? undefined : "tlr-snapshot-equity-dot-build"} style={dashSnapshotCardsSettled ? undefined : {"--tlr-eq-i":Math.max(0, curvePoints.length - 2)}} cx={endPoint.x} cy={endPoint.y} r="3.5" fill={periodPnl >= 0 ? c.gn : c.rd} pointerEvents="none"/>
-                                );
-                              })()}
+                              <circle cx={curvePoints[curvePoints.length - 1].x} cy={curvePoints[curvePoints.length - 1].y} r="3.5" fill={periodPnl >= 0 ? c.gn : c.rd} pointerEvents="none"/>
                               {renderPulseHighLowLabel(equityHighLabelLayout)}
                               {renderPulseHighLowLabel(equityLowLabelLayout)}
                             </>
                           ) : null}
-                          </g>
                         </svg>
                         {dashAccountPulseHover?.showTip && pulseTooltipStyle ? <PulseTradeReadout style={pulseTooltipStyle}/> : null}
                         <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,minWidth:0,padding:"0 10px 4px",boxSizing:"border-box",fontFamily:F}}>
@@ -30291,10 +30166,10 @@ const TalariaV8b = () => {
                             );
                           })() : null}
                           <div style={{display:"inline-flex",alignItems:"baseline",gap:6,minWidth:0}}>
-                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 0) < 0.15 ? "hidden" : "visible"}}>{pulseAxisStartLabel}</span>
+                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 0) < 0.15 ? "hidden" : "visible"}}>{pulseStartDateLabel}</span>
                           </div>
                           <div style={{display:"inline-flex",alignItems:"baseline",gap:6,minWidth:0,textAlign:"right"}}>
-                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 1) > 0.85 ? "hidden" : "visible"}}>{pulseAxisEndLabel}</span>
+                            <span style={{fontSize:9.4,fontWeight:920,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",visibility:dashAccountPulseHover?.showTip && dashAccountPulseHover?.axisText && (dashAccountPulseHover.axisRatio ?? 1) > 0.85 ? "hidden" : "visible"}}>{pulseCurrentDateLabel}</span>
                           </div>
                         </div>
                       </div>
@@ -31071,74 +30946,17 @@ const TalariaV8b = () => {
                 </SummaryCard>
               );
             };
-            const DashSkeletonBlock = ({height, width="100%", style=null}) => (
-              <div aria-hidden="true" style={{position:"relative",overflow:"hidden",height,width,background:"rgba(255,255,255,0.045)",border:`1px solid ${c.brH}`,boxSizing:"border-box",...(style||{})}}>
-                <div className="tlr-dash-skeleton-shimmer" style={{position:"absolute",inset:0,background:"linear-gradient(90deg,transparent 0%, rgba(140,160,255,0.10) 45%, rgba(0,212,161,0.08) 55%, transparent 100%)"}}/>
-              </div>
-            );
-            const renderSnapshotDashboardSkeleton = () => (
-              <div data-tlr-snapshot-root="true" className="tlr-snapshot-page tlr-snapshot-page-loading" style={{position:"relative",display:"flex",flexDirection:"column",gap:22}} aria-busy="true" aria-live="polite">
-                <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                  <div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:16}}>
-                    <div style={{display:"inline-flex",flexDirection:"column",alignItems:"flex-start",gap:10,minWidth:0}}>
-                      <div style={{display:"inline-flex",alignItems:"center",gap:8,minWidth:0}}>
-                        <DashboardPageIcon id="overview" size={18} color={c.acL}/>
-                        <h1 style={{margin:0,fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,letterSpacing:0,lineHeight:1}}>{dashTxt("Snapshot","لمحة")}</h1>
-                      </div>
-                      <div aria-hidden="true" style={{height:2,width:220,background:`linear-gradient(90deg,transparent,${c.acL} 46%,${c.acL} 54%,transparent)`,boxShadow:`0 0 9px ${c.acG}`,opacity:.55}}/>
-                    </div>
-                    <DashSkeletonBlock height={28} width={200}/>
-                  </div>
-                  <div aria-hidden="true" style={{height:1,width:"100%",background:c.br,opacity:.95}}/>
-                </div>
-                <div data-tlr-snapshot-layer-root="true" style={{display:"flex",flexDirection:"column",gap:22}}>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(174px,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                    {Array.from({length:6}).map((_, index) => (
-                      <div key={`snap-kpi-sk-${index}`} style={{minHeight:136,padding:12,background:c.sf,border:`1px solid ${c.br}`,display:"grid",gridTemplateRows:"auto 1fr auto",gap:10,boxSizing:"border-box"}}>
-                        <DashSkeletonBlock height={10} width="42%"/>
-                        <DashSkeletonBlock height={28} width="68%"/>
-                        <DashSkeletonBlock height={10} width="54%"/>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"minmax(456px,1.18fr) minmax(0,3fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                    <div style={{minHeight:dashboardSnapshotPulseCalendarHeight,padding:14,background:c.sf,border:`1px solid ${c.br}`,display:"grid",gridTemplateRows:"auto 1fr",gap:12,boxSizing:"border-box"}}>
-                      <DashSkeletonBlock height={12} width={88}/>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",gap:6,alignContent:"start"}}>
-                        {Array.from({length:35}).map((_, index) => <DashSkeletonBlock key={`snap-cal-sk-${index}`} height={34}/>)}
-                      </div>
-                    </div>
-                    <div style={{minHeight:dashboardSnapshotPulseCalendarHeight,padding:14,background:c.sf,border:`1px solid ${c.br}`,display:"grid",gridTemplateRows:"auto 1fr",gap:12,boxSizing:"border-box"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
-                        <DashSkeletonBlock height={12} width={108}/>
-                        <DashSkeletonBlock height={32} width={246}/>
-                      </div>
-                      <DashSkeletonBlock height="100%" style={{minHeight:320}}/>
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                    <DashSkeletonBlock height={120}/>
-                    <DashSkeletonBlock height={120}/>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.55fr) minmax(320px,0.85fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
-                    <DashSkeletonBlock height={214}/>
-                    <DashSkeletonBlock height={214}/>
-                  </div>
-                </div>
-              </div>
-            );
-            const dashSnapshotDataPending = isV16Embedded() && (dashBootLoading || dashTradesLoading);
-            if (dashSnapshotDataPending) return renderSnapshotDashboardSkeleton();
             return (
               <div data-tlr-snapshot-root="true" className="tlr-snapshot-page" style={{position:"relative",display:"flex",flexDirection:"column",gap:22}}>
                 <div style={{display:"flex",flexDirection:"column",gap:14}}>
                   <div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:16}}>
-                    <div style={{display:"inline-flex",flexDirection:"column",alignItems:"flex-start"}}>
-                      <div style={{display:"inline-flex",alignItems:"center",gap:8,minWidth:0}}>
-                        <DashboardPageIcon id="overview" size={18} color={c.acL}/>
-                        <h1 style={{margin:0,fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,letterSpacing:0,lineHeight:1}}>{dashTxt("Snapshot","لمحة")}</h1>
-                      </div>
-                      <div aria-hidden="true" style={{height:2,width:"100%",alignSelf:"stretch",marginTop:8,background:`linear-gradient(90deg,transparent,${c.acL} 46%,${c.acL} 54%,transparent)`,boxShadow:`0 0 9px ${c.acG}`}}/>
+                    <div style={{display:"inline-flex",alignItems:"center",gap:10,minWidth:0,flexWrap:"wrap"}}>
+                        <DashboardPageIcon id="overview" size={18} color={c.acL} style={{flexShrink:0,alignSelf:"center"}}/>
+                        <div style={{display:"inline-flex",flexDirection:"column",alignItems:"flex-start",flexShrink:0}}>
+                          <h1 style={{margin:0,fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,letterSpacing:0,lineHeight:1}}>{dashTxt("Snapshot","لمحة")}</h1>
+                          <div aria-hidden="true" style={{height:2,width:"100%",marginTop:8,background:`linear-gradient(90deg,transparent,${c.acL} 46%,${c.acL} 54%,transparent)`,boxShadow:`0 0 9px ${c.acG}`}}/>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:800,color:c.ts,fontFamily:F,letterSpacing:"0.01em",lineHeight:1.1,whiteSpace:"nowrap",alignSelf:"center"}}>- {dashTxt("Account health at a glance.","لمحة سريعة عن صحة الحساب.")}</span>
                     </div>
                     <DashboardEvidenceStrip/>
                   </div>
@@ -31146,14 +30964,12 @@ const TalariaV8b = () => {
                 </div>
 
                 <div
+                  key={snapshotTopMode}
                   data-tlr-snapshot-layer-root="true"
+                  className={`tlr-snapshot-top-mode-panel tlr-snapshot-top-mode-${snapshotTopMode}`}
                   style={{position:"relative",display:"flex",flexDirection:"column",gap:22}}
                 >
-                  <div
-                    key={snapshotTopMode}
-                    className={`tlr-snapshot-top-mode-panel tlr-snapshot-top-mode-${snapshotTopMode}${dashSnapshotCardsSettled ? " tlr-snapshot-top-mode-settled" : ""}`}
-                    style={{display:"flex",flexDirection:"column"}}
-                  >
+                  <div style={{display:"flex",flexDirection:"column"}}>
                     {snapshotTopMode === "advanced" ? renderSnapshotAdvancedTopStrip() : renderSnapshotBasicTopStrip()}
                   </div>
 
@@ -32954,6 +32770,4295 @@ const TalariaV8b = () => {
             return null;
           };
 
+          const renderReturnsGrowthPage = () => {
+            const capital = Number(ds?.capital) || 0;
+            const curveRows = computeReturnsGrowthEquityCurve(metrics.trades || [], capital, {
+              aggregation: dashReturnsCurveAggregation,
+              rollingWindow: 20,
+            });
+            const dailyCurveRows = dashReturnsCurveAggregation === "daily" ? curveRows : computeReturnsGrowthEquityCurve(metrics.trades || [], capital, {
+              aggregation: "daily",
+              rollingWindow: 20,
+            });
+            const modeMeta = {
+              balance: {label:"Balance", key:"balance", color:c.acL},
+              pnl: {label:"Cumulative P&L", key:"cumPnl", color:c.gn},
+              return: {label:"Return %", key:"returnPct", color:c.gold},
+              rolling: {label:"Rolling-R", key:"rollingR", color:c.acL},
+            };
+            const activeMode = modeMeta[dashReturnsCurveMode] || modeMeta.balance;
+            const aggregationBaseOptions = [
+              {id:"trades", label:"Trades"},
+              {id:"daily", label:"Daily"},
+              {id:"weekly", label:"Weekly"},
+              {id:"monthly", label:"Monthly"},
+            ];
+            const modeOptions = Object.entries(modeMeta).map(([id, meta]) => ({id, ...meta}));
+            const miniTrack = "rgba(112,123,152,0.34)";
+            const returnsCardBg = "rgba(9,12,23,0.985)";
+            const returnsChartBg = "rgba(8,11,22,0.96)";
+            const returnsMetricBg = "rgba(12,16,29,0.97)";
+            const returnsReadableGray = "rgba(202,209,226,0.92)";
+            const returnsMutedGray = "rgba(156,166,190,0.88)";
+            const returnsCrispSvgText = {
+              display:"block",
+              fontFamily:F,
+              textRendering:"geometricPrecision",
+              WebkitFontSmoothing:"antialiased",
+              MozOsxFontSmoothing:"grayscale",
+              fontVariantLigatures:"none",
+              fontSynthesis:"none",
+              shapeRendering:"geometricPrecision",
+            };
+            const ReturnsCardInfoButton = ({title, resourceId}) => {
+              const articleId = resourceId || (typeof dashboardResourceIdFor === "function" ? dashboardResourceIdFor(title) : "equity-curve");
+              return (
+                <button
+                  type="button"
+                  aria-label={`Open guide for ${title}`}
+                  className="tlr-dashboard-card-info"
+                  onClick={(event)=>{
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openDashboardResource(articleId || "equity-curve");
+                  }}
+                  onKeyDown={(event)=>{
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openDashboardResource(articleId || "equity-curve");
+                    }
+                  }}
+                  style={{
+                    width:15,
+                    height:15,
+                    border:"none",
+                    background:"transparent",
+                    padding:0,
+                    display:"grid",
+                    placeItems:"center",
+                    color:returnsReadableGray,
+                    opacity:.88,
+                    lineHeight:1,
+                    cursor:"pointer",
+                    outline:"none",
+                    flex:"0 0 15px",
+                    marginLeft:2,
+                  }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true" style={{display:"block"}}>
+                    <circle cx="7.5" cy="7.5" r="5.2" stroke="currentColor" strokeWidth="1.35"/>
+                    <path d="M7.5 6.8v3.2" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
+                    <circle cx="7.5" cy="4.85" r=".64" fill="currentColor"/>
+                  </svg>
+                </button>
+              );
+            };
+            const SummaryCard = ({
+              title,
+              children,
+              right=null,
+              titleExtra=null,
+              minHeight=120,
+              style=null,
+              titleDot=true,
+              titleFontSize=11,
+              titleLetterSpacing="0.06em",
+              titleLineMinWidth=78,
+              resourceId=null,
+            }) => (
+              <section
+                className="tlr-dashboard-summary-card"
+                style={{
+                  position:"relative",
+                  minHeight,
+                  background:returnsCardBg,
+                  border:`1px solid ${c.br}`,
+                  boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035), 0 12px 30px rgba(0,0,0,0.18)",
+                  boxSizing:"border-box",
+                  padding:14,
+                  display:"flex",
+                  flexDirection:"column",
+                  gap:12,
+                  cursor:"default",
+                  overflow:"visible",
+                  WebkitFontSmoothing:"antialiased",
+                  MozOsxFontSmoothing:"grayscale",
+                  textRendering:"geometricPrecision",
+                  fontSynthesis:"none",
+                  ...(style||{}),
+                }}
+              >
+                <span aria-hidden="true" style={{position:"absolute",left:0,right:0,top:0,height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 8px ${c.acG}`,pointerEvents:"none"}}/>
+                <div style={{minHeight:24,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:0,minWidth:0,flex:"1 1 auto"}}>
+                    <span style={{display:"inline-flex",alignItems:"flex-start",gap:8,minWidth:0,maxWidth:"100%",flexWrap:"wrap"}}>
+                      <span style={{display:"inline-flex",alignItems:"flex-start",gap:6,minWidth:0,maxWidth:"100%"}}>
+                        <span style={{display:"inline-flex",flexDirection:"column",gap:4,minWidth:0,maxWidth:"100%"}}>
+                          <span style={{fontSize:titleFontSize,fontWeight:850,color:c.acL,letterSpacing:titleLetterSpacing,textTransform:"uppercase",fontFamily:F,whiteSpace:"normal",lineHeight:1.12,overflow:"visible",minWidth:0,maxWidth:"100%",wordBreak:"normal",textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased",fontSynthesis:"none"}}>{title}</span>
+                          <span aria-hidden="true" style={{height:1,width:"100%",minWidth:titleLineMinWidth,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>
+                        </span>
+                        <ReturnsCardInfoButton title={title} resourceId={resourceId}/>
+                      </span>
+                      {titleExtra && <span style={{display:"inline-flex",alignItems:"center",height:18,flexShrink:0}}>{titleExtra}</span>}
+                    </span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
+                    {right}
+                  </div>
+                </div>
+                {children}
+              </section>
+            );
+            const clampLocal = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0));
+            const zoom = clampLocal(dashReturnsCurveView.zoom || 1, 1, 8);
+            const windowSize = Math.max(2, Math.ceil(curveRows.length / zoom));
+            const maxStart = Math.max(0, curveRows.length - windowSize);
+            const startIndex = Math.round(clampLocal(dashReturnsCurveView.pan || 0, 0, 1) * maxStart);
+            const visibleRows = curveRows.slice(startIndex, startIndex + windowSize);
+            const curveRowCountForAggregation = (aggregation) => {
+              const rows = aggregation === dashReturnsCurveAggregation ? curveRows : computeReturnsGrowthEquityCurve(metrics.trades || [], capital, {
+                aggregation,
+                rollingWindow:20,
+              });
+              return Math.max(0, rows.length - 1);
+            };
+            const visiblePeriodCountForAggregation = (aggregation) => {
+              const rowCount = curveRowCountForAggregation(aggregation);
+              if (!rowCount) return 0;
+              return Math.min(rowCount, Math.max(2, Math.ceil(rowCount / zoom)));
+            };
+            const aggregationOptions = aggregationBaseOptions.map(option => ({
+              ...option,
+              detail:`${visiblePeriodCountForAggregation(option.id)}`,
+            }));
+            const activeAggregation = aggregationOptions.find(option => option.id === dashReturnsCurveAggregation) || aggregationOptions[0];
+            const valueForRow = (row) => {
+              if (dashReturnsCurveMode === "pnl") return Number(row.cumPnl) || 0;
+              if (dashReturnsCurveMode === "return") return Number(row.returnPct) || 0;
+              if (dashReturnsCurveMode === "rolling") return Number(row.rollingR) || 0;
+              return Number(row.balance) || 0;
+            };
+            const peakForRow = (row, index) => {
+              if (dashReturnsCurveMode === "pnl") return (Number(row.peak) || capital) - capital;
+              if (dashReturnsCurveMode === "return") return capital ? (((Number(row.peak) || capital) - capital) / capital) * 100 : 0;
+              if (dashReturnsCurveMode === "rolling") {
+                return visibleRows.slice(0, index + 1).reduce((peak, item) => Math.max(peak, Number(item.rollingR) || 0), Number.NEGATIVE_INFINITY);
+              }
+              return Number(row.peak) || Number(row.balance) || 0;
+            };
+            const displayValue = (value, row=null) => {
+              if (dashReturnsCurveMode === "rolling") return `${Number(value || 0) >= 0 ? "+" : ""}${fmtNum(value, 2)}R`;
+              if (dashReturnsCurveMode === "return") return `${Number(value || 0) >= 0 ? "+" : ""}${fmtPct(value, 1)}`;
+              if (dashValueMode === "privacy") return dashPrivacyMask;
+              if (dashOverviewUnitMode === "percent") {
+                const pctValue = dashReturnsCurveMode === "balance"
+                  ? (capital ? ((Number(value || 0) - capital) / capital) * 100 : 0)
+                  : (capital ? (Number(value || 0) / capital) * 100 : 0);
+                return `${pctValue >= 0 ? "+" : ""}${fmtPct(pctValue, 2)}`;
+              }
+              if (dashOverviewUnitMode === "r") {
+                const rValueShown = row?.rEquity ?? (Number(metrics?.dollarPerR) ? Number(value || 0) / Number(metrics.dollarPerR) : null);
+                return Number.isFinite(Number(rValueShown)) ? `${Number(rValueShown) >= 0 ? "+" : ""}${fmtNum(rValueShown, 2)}R` : "—";
+              }
+              return dashReturnsCurveMode === "balance"
+                ? `${Math.round(Number(value || 0)).toLocaleString()}`
+                : fmtMoney(Number(value || 0));
+            };
+            const returnsMaDisabled = dashReturnsCurveMode === "rolling";
+            const returnsMaEnabled = dashReturnsMaEnabled;
+            const returnsMaActive = dashReturnsMaEnabled && !returnsMaDisabled;
+            const returnsMaPeriodBounds = dashReturnsCurveAggregation === "trades"
+              ? {min:5, max:200}
+              : dashReturnsCurveAggregation === "weekly"
+                ? {min:2, max:104}
+                : dashReturnsCurveAggregation === "monthly"
+                  ? {min:2, max:60}
+                  : {min:5, max:252};
+            const clampReturnsMaPeriod = value => clampLocal(
+              Math.round(Number(value) || 20),
+              returnsMaPeriodBounds.min,
+              returnsMaPeriodBounds.max
+            );
+            const returnsMaPeriodValue = clampReturnsMaPeriod(dashReturnsMaPeriod);
+            const returnsMaUnit = dashReturnsCurveAggregation === "trades"
+              ? "trades"
+              : dashReturnsCurveAggregation === "weekly"
+                ? "weeks"
+                : dashReturnsCurveAggregation === "monthly"
+                  ? "months"
+                  : "days";
+            const returnsMaPeriodText = `${returnsMaPeriodValue} ${returnsMaUnit}`;
+            const returnsMaSeriesInput = curveRows.map(row => ({
+              value: row?.key === "start" ? null : valueForRow(row),
+            }));
+            const returnsMaRegime = computeMovingAverageRegime(returnsMaSeriesInput, returnsMaPeriodValue);
+            const returnsMaVisibleRows = returnsMaRegime.maSeries.slice(startIndex, startIndex + windowSize);
+            const returnsMaVisibleValues = returnsMaActive
+              ? returnsMaVisibleRows.map(row => row.ma).filter(value => Number.isFinite(Number(value)))
+              : [];
+            const returnsMaLatestBelow = returnsMaRegime.latestState === "below";
+            const returnsMaStateColor = returnsMaRegime.latestState === "insufficient"
+              ? c.ts
+              : returnsMaLatestBelow ? c.gold : c.gn;
+            const returnsMaIsLiveSource = btDashIsLiveSource(ds) || btDashSourceTypeCode(ds) === 3 || btDashSourceTypeCode(ds) === 4;
+            const returnsMaStateCopy = returnsMaRegime.latestState === "insufficient"
+              ? `Need ${returnsMaPeriodText} to establish the regime line.`
+              : returnsMaIsLiveSource
+                ? (returnsMaLatestBelow
+                  ? `Below the ${returnsMaPeriodText} regime line - consider reducing size.`
+                  : `Above the ${returnsMaPeriodText} regime line - risk normal.`)
+                : (returnsMaLatestBelow
+                  ? `Currently below the ${returnsMaPeriodText} regime line.`
+                  : `Currently above the ${returnsMaPeriodText} regime line.`);
+            const returnsMinutesToClock = value => {
+              const minutes = Number(value);
+              if (!Number.isFinite(minutes)) return null;
+              const bounded = Math.max(0, Math.min(1439, Math.round(minutes)));
+              return `${String(Math.floor(bounded / 60)).padStart(2, "0")}:${String(bounded % 60).padStart(2, "0")}`;
+            };
+            const returnsJoinDateTimeParts = (datePart, timePart) => {
+              if (datePart && timePart) return `${datePart} ${timePart}`;
+              return datePart || timePart || null;
+            };
+            const returnsTradeOpenDateValue = trade => {
+              if (!trade) return null;
+              const direct = trade.entryTime || trade.entry_time || trade.openTime || trade.openedAt || trade.entryAt || trade.entryDateTime || trade.entry_datetime;
+              if (direct) return direct;
+              const datePart = trade.entryDate || trade.entry_date || trade.openDate || trade.open_date || trade.date || trade.calendar;
+              const timePart = trade.entryClock || trade.entry_clock || trade.openClock || trade.open_clock || trade.timeLabel || trade.time || returnsMinutesToClock(trade.timeMinutes ?? trade.entryMinutes ?? trade.openMinutes);
+              return returnsJoinDateTimeParts(datePart, timePart);
+            };
+            const formatReturnsTradeTime = value => {
+              if (!value) return "—";
+              const date = new Date(value);
+              if (!Number.isFinite(date.getTime())) return String(value);
+              const raw = String(value);
+              const includesTime = /[T\s]\d{1,2}:\d{2}/.test(raw) || /\d{1,2}:\d{2}/.test(raw);
+              const hours = String(date.getHours()).padStart(2, "0");
+              const minutes = String(date.getMinutes()).padStart(2, "0");
+              return includesTime ? `${fmtDate(value)} ${hours}:${minutes}` : fmtDate(value);
+            };
+            const axisDateLabel = (row) => {
+              if (!row) return "—";
+              if (dashReturnsCurveAggregation === "trades") {
+                return formatReturnsTradeTime(row.firstDateIso || row.date || row.label);
+              }
+              return row?.date || row?.label || "—";
+            };
+            const chartW = 1560;
+            const chartH = 488;
+            const returnsPropRulesEnabled = !!(isPropD && propConfig && dashReturnsCurveMode !== "rolling");
+            const returnsPropCapitalBase = Math.max(1, Number(ds?.capital) || Number(propConfig?.capital) || Number(metrics?.startingBalance) || capital || 1);
+            const parseReturnsLimitCandidate = (value, mode = "amount") => {
+              if (value === undefined || value === null || value === "") return null;
+              const raw = String(value).trim();
+              const number = Number(raw.replace(/[^0-9.\-]/g, ""));
+              if (!Number.isFinite(number) || number <= 0) return null;
+              if (raw.includes("%") || mode === "pct") return returnsPropCapitalBase * (number / 100);
+              if (number > 0 && number <= 1 && mode !== "amount") return returnsPropCapitalBase * number;
+              return number;
+            };
+            const parseFirstReturnsLimit = (values, mode = "amount") => {
+              for (const value of values) {
+                const parsed = parseReturnsLimitCandidate(value, mode);
+                if (parsed !== null) return parsed;
+              }
+              return null;
+            };
+            const returnsDailyLossLimitAmount = returnsPropRulesEnabled ? (
+              parseFirstReturnsLimit([propConfig.dailyLossLimitAmount, propConfig.dailyLossAmount, propConfig.maxDailyLossAmount, propConfig.dailyDrawdownAmount, propConfig.dailyLossLimit, propConfig.maxDailyLoss, propConfig.dailyDrawdownLimit], "amount")
+              ?? parseFirstReturnsLimit([propConfig.dailyLossLimitPct, propConfig.dailyLossPct, propConfig.maxDailyLossPct, propConfig.dailyDrawdownPct], "pct")
+            ) : null;
+            const returnsPhaseTargetAmount = returnsPropRulesEnabled ? (
+              parseFirstReturnsLimit([propConfig.phaseTargetAmount, propConfig.currentPhaseTargetAmount, propConfig.profitTargetAmount, propConfig.profitTarget, propConfig.targetAmount, propConfig.targetProfitAmount, propConfig.challengeTargetAmount], "amount")
+              ?? parseFirstReturnsLimit([propConfig.phaseTargetPct, propConfig.currentPhaseTargetPct, propConfig.profitTargetPct, propConfig.targetPct, propConfig.targetReturnPct, propConfig.phase1ProfitTargetPct, propConfig.phase2ProfitTargetPct], "pct")
+            ) : null;
+            const returnsMaxDrawdownAmount = returnsPropRulesEnabled ? (
+              parseFirstReturnsLimit([propConfig.maxDrawdownAmount, propConfig.maxDrawdown, propConfig.maxDDLimitAmount, propConfig.maxDDLimit, propConfig.totalDrawdownAmount, propConfig.totalDD, propConfig.maxTotalLoss, propConfig.overallLossLimit], "amount")
+              ?? parseFirstReturnsLimit([propConfig.maxDrawdownPct, propConfig.maxDDLimitPct, propConfig.totalDrawdownPct, propConfig.drawdownLimitPct, propConfig.maxTotalLossPct, propConfig.overallLossLimitPct], "pct")
+            ) : null;
+            const returnsDrawdownModeText = [
+              propConfig?.drawdownMode,
+              propConfig?.drawdownType,
+              propConfig?.maxDrawdownType,
+              propConfig?.trailingDrawdownType,
+              propConfig?.ddType,
+              propConfig?.phaseDrawdownMode,
+            ].map(value => String(value || "").toLowerCase()).join(" ");
+            const returnsDrawdownMode = /eod|end\s*of\s*day|day\s*close|daily\s*close/.test(returnsDrawdownModeText)
+              ? "eod-trailing"
+              : /equity|intraday|live\s*trail/.test(returnsDrawdownModeText)
+                ? "equity-trailing"
+                : propConfig?.drawdownType === "trailing" || propConfig?.trailingDrawdown === true
+                  ? "equity-trailing"
+                  : "static";
+            const returnsRuleDateKey = row => {
+              const raw = row?.lastDateIso || row?.firstDateIso || row?.date || row?.label;
+              const date = raw ? new Date(String(raw).replace(" ", "T")) : null;
+              if (!date || Number.isNaN(date.getTime())) return `row-${row?.index || 0}`;
+              return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+            };
+            const visibleLastRow = visibleRows[visibleRows.length - 1] || null;
+            const visibleLastDayKey = returnsRuleDateKey(visibleLastRow);
+            const latestDayFirstIndex = curveRows.findIndex(row => returnsRuleDateKey(row) === visibleLastDayKey);
+            const latestDayStartBalance = latestDayFirstIndex > 0
+              ? (Number(curveRows[latestDayFirstIndex - 1]?.balance) || returnsPropCapitalBase)
+              : returnsPropCapitalBase;
+            const returnsDailyLimitBalance = returnsDailyLossLimitAmount ? latestDayStartBalance - returnsDailyLossLimitAmount : null;
+            const returnsPhaseTargetBalance = returnsPhaseTargetAmount ? returnsPropCapitalBase + returnsPhaseTargetAmount : null;
+            const returnsBalanceToCurveValue = balanceValue => {
+              const number = Number(balanceValue);
+              if (!Number.isFinite(number) || !returnsPropRulesEnabled) return null;
+              if (dashReturnsCurveMode === "pnl") return number - returnsPropCapitalBase;
+              if (dashReturnsCurveMode === "return") return returnsPropCapitalBase ? ((number - returnsPropCapitalBase) / returnsPropCapitalBase) * 100 : null;
+              return number;
+            };
+            const rowsThroughVisibleWindow = curveRows.slice(0, Math.max(0, startIndex + windowSize));
+            const eodPeakByReturnsDay = new Map();
+            let eodRunningPeakForReturns = returnsPropCapitalBase;
+            rowsThroughVisibleWindow.forEach(row => {
+              const balance = Number(row?.balance) || returnsPropCapitalBase;
+              eodRunningPeakForReturns = Math.max(eodRunningPeakForReturns, balance);
+              eodPeakByReturnsDay.set(returnsRuleDateKey(row), eodRunningPeakForReturns);
+            });
+            const returnsMaxLossLineRows = returnsPropRulesEnabled && returnsMaxDrawdownAmount
+              ? visibleRows.map(row => {
+                const reference = returnsDrawdownMode === "equity-trailing"
+                  ? Math.max(returnsPropCapitalBase, Number(row?.peak) || Number(row?.balance) || returnsPropCapitalBase)
+                  : returnsDrawdownMode === "eod-trailing"
+                    ? Math.max(returnsPropCapitalBase, Number(eodPeakByReturnsDay.get(returnsRuleDateKey(row))) || returnsPropCapitalBase)
+                    : returnsPropCapitalBase;
+                const limitBalance = reference - returnsMaxDrawdownAmount;
+                return {...row, limitBalance, limitCurveValue:returnsBalanceToCurveValue(limitBalance)};
+              })
+              : [];
+            const returnsDailyLimitCurveValue = returnsBalanceToCurveValue(returnsDailyLimitBalance);
+            const returnsPhaseTargetCurveValue = returnsBalanceToCurveValue(returnsPhaseTargetBalance);
+            const returnsPropRuleScaleValues = [
+              returnsDailyLimitCurveValue,
+              returnsPhaseTargetCurveValue,
+              ...returnsMaxLossLineRows.map(row => row.limitCurveValue),
+            ].filter(Number.isFinite);
+            const valuesForScale = [
+              ...visibleRows.flatMap((row, index) => [valueForRow(row), peakForRow(row, index)]),
+              ...returnsMaVisibleValues,
+              ...returnsPropRuleScaleValues,
+            ].filter(Number.isFinite);
+            const rawMin = valuesForScale.length ? Math.min(...valuesForScale) : 0;
+            const rawMax = valuesForScale.length ? Math.max(...valuesForScale) : 1;
+            const rawSpan = rawMax - rawMin;
+            const yPad = rawSpan === 0 ? Math.max(1, Math.abs(rawMax || 1) * 0.04) : rawSpan * 0.12;
+            const yMin = rawMin - yPad;
+            const yMax = rawMax + yPad;
+            const ySpan = Math.max(1, yMax - yMin);
+            const returnsYAxisLabelGap = 10;
+            const returnsYAxisLabelWidth = (() => {
+              const sampleValues = [
+                yMin,
+                yMax,
+                rawMin,
+                rawMax,
+                returnsDailyLimitCurveValue,
+                returnsPhaseTargetCurveValue,
+                ...returnsMaxLossLineRows.map(row => row.limitCurveValue),
+              ].filter(value => Number.isFinite(Number(value)));
+              const labels = sampleValues.length ? sampleValues.map(value => displayValue(value)) : [displayValue(0)];
+              const maxChars = Math.max(4, ...labels.map(label => String(label || "").length));
+              return Math.min(132, Math.max(46, Math.ceil(maxChars * 7.2 + 10)));
+            })();
+            const pad = {l:Math.max(42, returnsYAxisLabelWidth + returnsYAxisLabelGap + 12), r:14, t:18, b:24};
+            const plotW = chartW - pad.l - pad.r;
+            const plotH = chartH - pad.t - pad.b;
+            const baselineY = chartH - pad.b;
+            const returnsYAxisLabelLeft = Math.max(4, pad.l - returnsYAxisLabelGap - returnsYAxisLabelWidth);
+            const valueToY = (value) => pad.t + (1 - ((value - yMin) / ySpan)) * plotH;
+            const niceAxisStep = (span) => {
+              const rough = Math.max(Math.abs(span) / 3, 0.0001);
+              const power = Math.pow(10, Math.floor(Math.log10(rough)));
+              const normalized = rough / power;
+              const multiplier = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10;
+              return multiplier * power;
+            };
+            const yAxisTicks = (() => {
+              const step = niceAxisStep(ySpan);
+              const start = Math.ceil(yMin / step) * step;
+              const ticks = [];
+              for (let value = start; value <= yMax + step * 0.2 && ticks.length < 5; value += step) {
+                if (value >= yMin - step * 0.1 && value <= yMax + step * 0.1) {
+                  ticks.push({value, y:valueToY(value)});
+                }
+              }
+              if (ticks.length < 2) {
+                return [
+                  {value:yMin, y:valueToY(yMin)},
+                  {value:yMax, y:valueToY(yMax)},
+                ];
+              }
+              return ticks;
+            })();
+            const pointFor = (row, index, peak=false) => {
+              const value = peak ? peakForRow(row, index) : valueForRow(row);
+              return {
+                x: pad.l + (visibleRows.length <= 1 ? plotW / 2 : (index / (visibleRows.length - 1)) * plotW),
+                y: valueToY(value),
+                value,
+                row,
+                index,
+              };
+            };
+            const points = visibleRows.map((row, index) => pointFor(row, index));
+            const peakPoints = visibleRows.map((row, index) => pointFor(row, index, true));
+            const linePath = (items) => items.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+            const underlayPath = points.length > 1
+              ? `${linePath(peakPoints)} ${points.slice().reverse().map(point => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ")} Z`
+              : "";
+            const areaPath = points.length > 1
+              ? `${linePath(points)} L ${points[points.length - 1].x.toFixed(2)} ${baselineY.toFixed(2)} L ${points[0].x.toFixed(2)} ${baselineY.toFixed(2)} Z`
+              : "";
+            const returnsMaPoints = returnsMaActive
+              ? returnsMaVisibleRows.map((maRow, index) => {
+                const basePoint = points[index];
+                if (!basePoint || !maRow.valid || !Number.isFinite(Number(maRow.ma))) return null;
+                return {
+                  x:basePoint.x,
+                  y:valueToY(Number(maRow.ma)),
+                  value:Number(maRow.ma),
+                  below:maRow.below,
+                  row:basePoint.row,
+                  index,
+                };
+              })
+              : [];
+            const returnsMaLineSegments = (() => {
+              const segments = [];
+              let current = [];
+              returnsMaPoints.forEach(point => {
+                if (point) {
+                  current.push(point);
+                  return;
+                }
+                if (current.length > 1) segments.push(linePath(current));
+                current = [];
+              });
+              if (current.length > 1) segments.push(linePath(current));
+              return segments;
+            })();
+            const returnsMaBelowSegments = returnsMaActive && points.length > 1
+              ? returnsMaVisibleRows.map((maRow, index) => {
+                if (!maRow?.below || !points[index]) return null;
+                const left = index === 0 ? pad.l : (points[index - 1].x + points[index].x) / 2;
+                const right = index === points.length - 1 ? chartW - pad.r : (points[index].x + points[index + 1].x) / 2;
+                return {x:left, width:Math.max(1, right - left)};
+              }).filter(Boolean)
+              : [];
+            const hoverPoint = dashReturnsCurveHover && points[dashReturnsCurveHover.index] ? points[dashReturnsCurveHover.index] : null;
+            const highPoint = points.reduce((best, point) => !best || point.value > best.value ? point : best, null);
+            const lowPoint = points.reduce((best, point) => !best || point.value < best.value ? point : best, null);
+            const xAxisTicks = (() => {
+              if (!points.length) return [];
+              const indexes = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]))
+                .filter(index => index >= 0 && points[index]);
+              return indexes.map(index => ({key:`x-${index}`, point:points[index], label:axisDateLabel(points[index].row)}));
+            })();
+            const returnsDailyLimitY = Number.isFinite(returnsDailyLimitCurveValue) ? valueToY(returnsDailyLimitCurveValue) : null;
+            const returnsPhaseTargetY = Number.isFinite(returnsPhaseTargetCurveValue) ? valueToY(returnsPhaseTargetCurveValue) : null;
+            const returnsMaxLossLinePath = returnsMaxLossLineRows.length
+              ? returnsMaxLossLineRows.map((row, index) => {
+                const point = points[index];
+                if (!point || !Number.isFinite(row.limitCurveValue)) return "";
+                return `${index ? "L" : "M"} ${point.x.toFixed(2)} ${valueToY(row.limitCurveValue).toFixed(2)}`;
+              }).filter(Boolean).join(" ")
+              : "";
+            const returnsMaxLossLabelY = returnsMaxLossLineRows.length
+              ? valueToY(returnsMaxLossLineRows[returnsMaxLossLineRows.length - 1].limitCurveValue)
+              : null;
+            const returnsMaxLossLabel = returnsDrawdownMode === "eod-trailing"
+              ? "EOD max loss limit"
+              : returnsDrawdownMode === "equity-trailing"
+                ? "Equity max loss limit"
+                : "Static max loss limit";
+            const buttonStyle = (active, color=c.acL) => ({
+              height:28,
+              padding:"0 10px",
+              border:`1px solid ${active ? `${color}77` : c.br}`,
+              background:active ? `${color}18` : c.el,
+              color:active ? color : c.ts,
+              fontSize:9,
+              fontWeight:900,
+              letterSpacing:"0.055em",
+              textTransform:"uppercase",
+              fontFamily:F,
+              cursor:"default",
+              boxShadow:active ? `inset 0 -1px 0 ${color}, 0 8px 18px -18px ${color}` : "none",
+            });
+            const pointFromCurveEvent = (event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              const scaleX = chartW / Math.max(1, rect.width);
+              const scaleY = chartH / Math.max(1, rect.height);
+              return {
+                x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * chartW,
+                y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * chartH,
+                scaleX,
+                scaleY,
+              };
+            };
+            const pointInsideCurvePlot = point => (
+              point.x >= pad.l &&
+              point.x <= chartW - pad.r &&
+              point.y >= pad.t &&
+              point.y <= chartH - pad.b
+            );
+            const distanceToReturnsSegment = (cursor, a, b) => {
+              const dx = b.x - a.x;
+              const dy = b.y - a.y;
+              const lenSq = dx * dx + dy * dy;
+              const t = lenSq ? clampLocal(((cursor.x - a.x) * dx + (cursor.y - a.y) * dy) / lenSq, 0, 1) : 0;
+              const x = a.x + dx * t;
+              const y = a.y + dy * t;
+              const distance = Math.hypot(
+                (cursor.x - x) / Math.max(0.0001, cursor.scaleX || 1),
+                (cursor.y - y) / Math.max(0.0001, cursor.scaleY || 1)
+              );
+              return {distance, t, x, y};
+            };
+            const nearestIndexFromEvent = (event) => {
+              const point = pointFromCurveEvent(event);
+              if (!pointInsideCurvePlot(point)) return null;
+              const hitDistance = dashReturnsCurveHover ? 18 : 15;
+              if (points.length === 1) {
+                const only = points[0];
+                const distance = Math.hypot(
+                  (point.x - only.x) / Math.max(0.0001, point.scaleX || 1),
+                  (point.y - only.y) / Math.max(0.0001, point.scaleY || 1)
+                );
+                return distance <= hitDistance ? 0 : null;
+              }
+              if (points.length < 2) return null;
+              const x = clampLocal(point.x, pad.l, chartW - pad.r);
+              const rawIndex = ((x - pad.l) / Math.max(1, plotW)) * (points.length - 1);
+              const centerIndex = clampLocal(Math.round(rawIndex), 1, points.length - 1);
+              const startIndex = Math.max(1, centerIndex - 6);
+              const endIndex = Math.min(points.length - 1, centerIndex + 6);
+              let best = null;
+              for (let segmentIndex = startIndex; segmentIndex <= endIndex; segmentIndex += 1) {
+                const prev = points[segmentIndex - 1];
+                const next = points[segmentIndex];
+                const hit = distanceToReturnsSegment(point, prev, next);
+                if (!best || hit.distance < best.distance) best = {segmentIndex, ...hit};
+              }
+              if (!best || best.distance > hitDistance) return null;
+              return best.t < 0.5 ? best.segmentIndex - 1 : best.segmentIndex;
+            };
+            const handleCurvePointerMove = (event) => {
+              const index = nearestIndexFromEvent(event);
+              if (index === null) {
+                setDashReturnsCurveHover(null);
+                return;
+              }
+              setDashReturnsCurveHover(prev => prev?.index === index ? prev : {index});
+            };
+            const clearReturnsCurveHover = () => setDashReturnsCurveHover(null);
+            const handleCurveWheel = (event) => {
+              event.preventDefault();
+              setDashReturnsCurveView(prev => {
+                const nextZoom = clampLocal((prev.zoom || 1) * (event.deltaY < 0 ? 1.18 : 0.84), 1, 8);
+                return {...prev, zoom:nextZoom, pan:clampLocal(prev.pan || 0, 0, 1), dragging:false};
+              });
+            };
+            const handleCurvePointerDown = (event) => {
+              if (typeof event.button === "number" && event.button !== 0) return;
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              setDashReturnsCurveView(prev => ({...prev, dragging:true, dragX:event.clientX, dragPan:prev.pan || 0}));
+            };
+            const stopCurveDrag = (event) => {
+              try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch {}
+              setDashReturnsCurveView(prev => ({...prev, dragging:false}));
+            };
+            const ReturnsCurveSelect = ({openKey, title, active, options, onSelect, width=144}) => {
+              const open = dashReturnsCurveMenuOpen === openKey;
+              const accent = active?.color || c.acL;
+              return (
+                <div
+                  className="tlr-dashboard-value-menu-wrap"
+                  style={{position:"relative",width,height:32,fontFamily:F,zIndex:open?420:4,flex:`0 0 ${width}px`,isolation:"isolate"}}
+                >
+                  <button
+                    type="button"
+                    className={`tlr-dashboard-source-switch-redesign tlr-dashboard-value-select${open?" tlr-dashboard-source-switch-open":""}`}
+                    aria-haspopup="listbox"
+                    aria-expanded={open}
+                    onPointerDown={event=>{
+                      if (typeof event.button === "number" && event.button !== 0) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDashReturnsCurveMenuOpen(prev => prev === openKey ? null : openKey);
+                      setDashAccountPulseMenuOpen(false);
+                      setDashFreshNavOpen(false);
+                      setDashSnapshotTopModeOpen(false);
+                      setDashUnitMenuOpen(false);
+                      setDashCardMenu(null);
+                    }}
+                    onKeyDown={event=>{
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setDashReturnsCurveMenuOpen(prev => prev === openKey ? null : openKey);
+                      }
+                      if (event.key === "Escape") setDashReturnsCurveMenuOpen(null);
+                    }}
+                    style={{
+                      "--tlr-source-accent":accent,
+                      width:"100%",
+                      height:32,
+                      border:`1px solid ${open?`${accent}66`:c.brH}`,
+                      background:open?`${accent}16`:returnsMetricBg,
+                      display:"grid",
+                      gridTemplateColumns:"minmax(0,1fr) 13px",
+                      gridTemplateRows:"9px 13px",
+                      alignContent:"center",
+                      alignItems:"center",
+                      columnGap:6,
+                      rowGap:2,
+                      padding:"4px 7px 4px 8px",
+                      boxSizing:"border-box",
+                      fontFamily:F,
+                      cursor:"default",
+                      outline:"none",
+                      boxShadow:open?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${accent}`:"inset 0 1px 0 rgba(255,255,255,0.035)",
+                      transition:"background 120ms ease,border-color 120ms ease,box-shadow 120ms ease",
+                      overflow:"hidden",
+                    }}
+                  >
+                    <span style={{gridColumn:"1 / -1",minWidth:0,fontSize:7.2,fontWeight:950,color:returnsMutedGray,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textAlign:"left",textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased"}}>
+                      {title}
+                    </span>
+                    <span style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1,textAlign:"left",height:13,overflow:"hidden"}}>
+                      <span style={{display:"block",fontSize:9.8,fontWeight:950,color:c.tx,letterSpacing:"0.015em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"13px",textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased",fontVariantLigatures:"none"}}>{active?.label || "—"}</span>
+                    </span>
+                    <svg data-tlr-upper-icon="true" width={13} height={13} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",color:open?accent:c.tm,transform:open?"rotate(180deg)":"none",transition:"transform 120ms ease"}}>
+                      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"/>
+                    </svg>
+                  </button>
+                  {open ? (
+                    <div
+                      className="tlr-dashboard-menu-pop"
+                      role="listbox"
+                      style={{
+                        position:"absolute",
+                        right:0,
+                        top:34,
+                        width:"100%",
+                      background:returnsCardBg,
+                        borderTop:`2px solid ${accent}`,
+                        borderRight:`1px solid ${c.brH}`,
+                        borderBottom:`1px solid ${c.brH}`,
+                        borderLeft:`1px solid ${c.brH}`,
+                        boxShadow:`0 -1px 8px -3px ${accent}, 0 14px 34px rgba(0,0,0,0.78)`,
+                        zIndex:520,
+                        overflow:"hidden",
+                        maxHeight:220,
+                        padding:"4px 0",
+                        boxSizing:"border-box",
+                      }}
+                    >
+                      {options.map(option => {
+                        const selected = option.id === active?.id;
+                        const optionColor = option.color || c.acL;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={selected}
+                            className="tlr-dashboard-page-menu-item"
+                            onClick={()=>{
+                              onSelect(option.id);
+                              setDashReturnsCurveMenuOpen(null);
+                              setDashReturnsCurveHover(null);
+                            }}
+                            style={{
+                              "--tlr-source-accent":optionColor,
+                              width:"100%",
+                              height:29,
+                              border:0,
+                              background:selected?`${optionColor}16`:returnsChartBg,
+                              color:selected?optionColor:c.tx,
+                              position:"relative",
+                              display:"flex",
+                              alignItems:"center",
+                              justifyContent:"space-between",
+                              padding:"0 10px 0 12px",
+                              boxSizing:"border-box",
+                              fontFamily:F,
+                              fontSize:9.6,
+                              fontWeight:920,
+                              letterSpacing:"0.025em",
+                              textTransform:"uppercase",
+                              cursor:"default",
+                              outline:"none",
+                              boxShadow:"none",
+                              transition:"background 80ms ease,color 80ms ease,transform 80ms ease",
+                              gap:8,
+                            }}
+                          >
+                            {selected ? <span aria-hidden="true" style={{position:"absolute",left:0,top:"22%",bottom:"22%",width:1,background:`linear-gradient(180deg,transparent,${optionColor},transparent)`,boxShadow:`0 0 7px ${optionColor}`}}/> : null}
+                            <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{option.label}</span>
+                            {option.detail ? (
+                              <span style={{flexShrink:0,minWidth:18,textAlign:"right",fontSize:7.7,fontWeight:900,color:selected?optionColor:returnsMutedGray,letterSpacing:"0.055em",whiteSpace:"nowrap",textTransform:"uppercase",fontVariantNumeric:"tabular-nums"}}>
+                                {option.detail}
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            };
+            const ReturnsMaControl = () => {
+              const open = dashReturnsCurveMenuOpen === "regime";
+              const accent = c.acL;
+              const setRegimePeriod = value => {
+                setDashReturnsMaPeriod(clampReturnsMaPeriod(value));
+                setDashReturnsMaPeriodDraft("");
+                setDashReturnsCurveHover(null);
+              };
+              const returnsMaDraftNumber = dashReturnsMaPeriodDraft === "" ? returnsMaPeriodValue : Number(dashReturnsMaPeriodDraft);
+              const returnsMaInputValue = dashReturnsMaPeriodDraft === "" ? String(returnsMaPeriodValue) : dashReturnsMaPeriodDraft;
+              const stepRegimePeriod = direction => setRegimePeriod((Number.isFinite(returnsMaDraftNumber) ? returnsMaDraftNumber : returnsMaPeriodValue) + direction);
+              const regimeArrowButton = (direction, label, top) => (
+                <button
+                  type="button"
+                  aria-label={label}
+                  onPointerDown={event=>{
+                    event.preventDefault();
+                    event.stopPropagation();
+                    stepRegimePeriod(direction);
+                  }}
+                  onKeyDown={event=>{
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      stepRegimePeriod(direction);
+                    }
+                  }}
+                  onMouseEnter={event=>{
+                    event.currentTarget.style.color = c.acL;
+                    event.currentTarget.style.background = "rgba(38,67,247,0.12)";
+                  }}
+                  onMouseLeave={event=>{
+                    event.currentTarget.style.color = c.tm;
+                    event.currentTarget.style.background = "transparent";
+                    event.currentTarget.style.transform = "scale(1)";
+                  }}
+                  onMouseDown={event=>{ event.currentTarget.style.transform = "scale(0.88)"; }}
+                  onMouseUp={event=>{ event.currentTarget.style.transform = "scale(1)"; }}
+                  style={{
+                    position:"absolute",
+                    right:1,
+                    top,
+                    width:18,
+                    height:12,
+                    display:"grid",
+                    placeItems:"center",
+                    border:0,
+                    background:"transparent",
+                    color:returnsReadableGray,
+                    opacity:0.88,
+                    cursor:"default",
+                    outline:"none",
+                    padding:0,
+                    transition:"none",
+                    touchAction:"none",
+                    userSelect:"none",
+                  }}
+                >
+                  <svg width={7} height={5} viewBox="0 0 8 6" aria-hidden="true" style={{display:"block"}}>
+                    <path d={direction > 0 ? "M1 5 4 1 7 5" : "M1 1 4 5 7 1"} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter"/>
+                  </svg>
+                </button>
+              );
+              return (
+                <div
+                  className="tlr-dashboard-value-menu-wrap"
+                  style={{position:"relative",width:136,height:32,fontFamily:F,zIndex:open?430:4,flex:"0 0 136px",opacity:returnsMaDisabled ? .5 : 1}}
+                  title={returnsMaDisabled ? "Equity Regime is disabled in Rolling-R mode." : ""}
+                >
+                  <button
+                    type="button"
+                    className={`tlr-dashboard-source-switch-redesign tlr-dashboard-value-select${open?" tlr-dashboard-source-switch-open":""}`}
+                    aria-haspopup="listbox"
+                    aria-expanded={open}
+                    disabled={returnsMaDisabled}
+                    onPointerDown={event=>{
+                      if (returnsMaDisabled || (typeof event.button === "number" && event.button !== 0)) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDashReturnsMaPeriodDraft("");
+                      setDashReturnsCurveMenuOpen(open ? null : "regime");
+                      setDashAccountPulseMenuOpen(false);
+                      setDashFreshNavOpen(false);
+                      setDashSnapshotTopModeOpen(false);
+                      setDashUnitMenuOpen(false);
+                      setDashCardMenu(null);
+                    }}
+                    onKeyDown={event=>{
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setDashReturnsMaPeriodDraft("");
+                        setDashReturnsCurveMenuOpen(open ? null : "regime");
+                      }
+                      if (event.key === "Escape") {
+                        setDashReturnsMaPeriodDraft("");
+                        setDashReturnsCurveMenuOpen(null);
+                      }
+                    }}
+                    style={{
+                      "--tlr-source-accent":accent,
+                      width:"100%",
+                      height:32,
+                      border:`1px solid ${open ? `${accent}66` : c.brH}`,
+                      background:open ? `${accent}16` : "rgba(12,16,29,0.94)",
+                      display:"grid",
+                      gridTemplateColumns:"minmax(0,1fr) 13px",
+                      gridTemplateRows:"9px 13px",
+                      alignContent:"center",
+                      alignItems:"center",
+                      columnGap:6,
+                      rowGap:2,
+                      padding:"4px 7px 4px 8px",
+                      boxSizing:"border-box",
+                      fontFamily:F,
+                      cursor:returnsMaDisabled ? "not-allowed" : "default",
+                      outline:"none",
+                      boxShadow:open ? `inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${accent}` : "inset 0 1px 0 rgba(255,255,255,0.035)",
+                      transition:"background 120ms ease,border-color 120ms ease,box-shadow 120ms ease",
+                      overflow:"hidden",
+                    }}
+                  >
+                    <span style={{gridColumn:"1 / -1",minWidth:0,fontSize:6.9,fontWeight:950,color:c.tm,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textAlign:"left"}}>
+                      Equity Regime
+                    </span>
+                    <span style={{minWidth:0,display:"flex",alignItems:"center",lineHeight:1,textAlign:"left",height:13,overflow:"hidden"}}>
+                      <span style={{display:"block",fontSize:9.8,fontWeight:950,color:returnsMaEnabled ? c.tx : c.tm,letterSpacing:"0.015em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:"13px",textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased",fontVariantLigatures:"none"}}>
+                        {returnsMaEnabled ? returnsMaPeriodText : "Off"}
+                      </span>
+                    </span>
+                    <svg data-tlr-upper-icon="true" width={13} height={13} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{display:"block",color:open?accent:c.tm,transform:open?"rotate(180deg)":"none",transition:"transform 120ms ease"}}>
+                      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter"/>
+                    </svg>
+                  </button>
+                  {open ? (
+                    <div
+                      className="tlr-dashboard-menu-pop-centered"
+                      role="listbox"
+                      onPointerDown={event=>event.stopPropagation()}
+                      style={{
+                        position:"absolute",
+                        left:"50%",
+                        top:34,
+                        transform:"translateX(-50%)",
+                        width:238,
+                        background:c.sf,
+                        borderTop:`1px solid ${accent}`,
+                        borderRight:`1px solid ${c.brH}`,
+                        borderBottom:`1px solid ${c.brH}`,
+                        borderLeft:`1px solid ${c.brH}`,
+                        boxShadow:"0 12px 24px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.035)",
+                        zIndex:540,
+                        overflow:"hidden",
+                        padding:"4px 0 6px",
+                        boxSizing:"border-box",
+                      }}
+                    >
+                      <span aria-hidden="true" style={{position:"absolute",left:0,right:0,top:0,height:1,background:`linear-gradient(90deg,transparent,${accent},transparent)`,boxShadow:`0 0 6px ${accent}`}}/>
+                      <div style={{height:34,display:"grid",gridTemplateColumns:"minmax(0,1fr) 36px",alignItems:"center",gap:8,padding:"0 10px 0 12px",boxSizing:"border-box",borderBottom:`1px solid ${c.br}`,background:"rgba(8,11,22,0.98)"}}>
+                        <span style={{fontSize:9.2,fontWeight:950,color:returnsMaEnabled ? c.tx : c.tm,letterSpacing:"0.045em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {returnsMaEnabled ? "On" : "Off"}
+                        </span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={returnsMaEnabled}
+                          onClick={()=>{
+                            setDashReturnsMaEnabled(prev => !prev);
+                            setDashReturnsCurveHover(null);
+                          }}
+                          onMouseEnter={event=>{event.currentTarget.style.background=returnsMaEnabled?"rgba(38,67,247,0.26)":"rgba(38,67,247,0.10)";event.currentTarget.style.borderColor=`${c.acL}88`;}}
+                          onMouseLeave={event=>{event.currentTarget.style.background=returnsMaEnabled?"rgba(38,67,247,0.18)":"rgba(12,16,30,0.98)";event.currentTarget.style.borderColor=returnsMaEnabled?`${c.acL}77`:c.brH;event.currentTarget.style.transform="translateY(0)";}}
+                          onMouseDown={event=>{event.currentTarget.style.transform="translateY(1px)";}}
+                          onMouseUp={event=>{event.currentTarget.style.transform="translateY(0)";}}
+                          style={{
+                            position:"relative",
+                            width:34,
+                            height:16,
+                            border:`1px solid ${returnsMaEnabled ? `${c.acL}77` : c.brH}`,
+                            background:returnsMaEnabled ? "rgba(38,67,247,0.18)" : "rgba(12,16,30,0.98)",
+                            boxShadow:returnsMaEnabled ? `0 0 12px -8px ${c.acL}, inset 0 1px 0 rgba(255,255,255,0.05)` : "inset 0 1px 0 rgba(255,255,255,0.035)",
+                            borderRadius:999,
+                            cursor:"default",
+                            padding:0,
+                            outline:"none",
+                            transition:"background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,transform 80ms ease",
+                          }}
+                        >
+                          <span aria-hidden="true" style={{position:"absolute",top:3,left:3,width:8,height:8,borderRadius:"50%",background:returnsMaEnabled?c.acL:c.tm,boxShadow:returnsMaEnabled?`0 0 8px ${c.acG}`:"none",transform:returnsMaEnabled?"translateX(20px)":"translateX(0)",transition:"transform 170ms cubic-bezier(.18,.82,.18,1),background 130ms ease,box-shadow 130ms ease"}}/>
+                        </button>
+                      </div>
+                      <label style={{height:42,display:"grid",gridTemplateColumns:"66px 86px minmax(58px,1fr)",alignItems:"center",gap:8,padding:"0 12px",boxSizing:"border-box",background:"rgba(8,11,22,0.98)"}}>
+                        <span style={{fontSize:7.4,fontWeight:950,color:c.tm,letterSpacing:"0.075em",textTransform:"uppercase"}}>Lookback</span>
+                        <span style={{position:"relative",minWidth:0}}>
+                          <input
+                            ref={dashReturnsMaInputRef}
+                            type="text"
+                            inputMode="numeric"
+                            value={returnsMaInputValue}
+                            onFocus={()=>{
+                              dashReturnsMaEditingRef.current = true;
+                            }}
+                            onChange={(event)=>{
+                              dashReturnsMaEditingRef.current = true;
+                              const digits = String(event.target.value || "").replace(/[^\d]/g, "").slice(0, 3);
+                              setDashReturnsMaPeriodDraft(digits);
+                              setDashReturnsCurveHover(null);
+                            }}
+                            onBlur={()=>{
+                              dashReturnsMaEditingRef.current = false;
+                              setRegimePeriod(dashReturnsMaPeriodDraft === "" ? returnsMaPeriodValue : dashReturnsMaPeriodDraft);
+                            }}
+                            onKeyDown={event=>{
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                dashReturnsMaEditingRef.current = false;
+                                setRegimePeriod(dashReturnsMaPeriodDraft === "" ? returnsMaPeriodValue : dashReturnsMaPeriodDraft);
+                                setDashReturnsCurveMenuOpen(null);
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                dashReturnsMaEditingRef.current = false;
+                                setDashReturnsMaPeriodDraft("");
+                                setDashReturnsCurveMenuOpen(null);
+                              }
+                            }}
+                            style={{
+                              height:27,
+                              width:"100%",
+                              minWidth:0,
+                              border:`1px solid ${c.acL}55`,
+                              background:"rgba(15,19,34,0.96)",
+                              color:c.tx,
+                              fontFamily:F,
+                              fontSize:11.8,
+                              fontWeight:950,
+                              fontVariantNumeric:"tabular-nums",
+                              outline:"none",
+                              textAlign:"center",
+                              padding:"0 21px 0 7px",
+                              boxSizing:"border-box",
+                            }}
+                          />
+                          {regimeArrowButton(1, "Increase lookback", 2)}
+                          {regimeArrowButton(-1, "Decrease lookback", 14)}
+                        </span>
+                        <span style={{fontSize:7.4,fontWeight:900,color:c.acL,letterSpacing:"0.055em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"visible",textOverflow:"clip"}}>
+                          {returnsMaUnit}
+                        </span>
+                      </label>
+                      <div style={{padding:"0 12px 4px",fontSize:7.2,fontWeight:850,color:c.ts,letterSpacing:"0.035em",lineHeight:1.25,background:"rgba(8,11,22,0.98)"}}>
+                        {`Range ${returnsMaPeriodBounds.min}-${returnsMaPeriodBounds.max} ${String(returnsMaUnit || "").toLowerCase()}. Follows aggregation.`}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            };
+            const ReturnsMaStatusBox = () => {
+              const boxEnabled = returnsMaEnabled && !returnsMaDisabled;
+              if (!boxEnabled) return null;
+              const stateLabel = returnsMaRegime.latestState === "insufficient"
+                ? "Waiting"
+                : returnsMaRegime.latestState === "below"
+                  ? "Below"
+                  : "Above";
+              const stateColor = returnsMaStateColor;
+              const secondaryLabel = returnsMaRegime.latestState === "insufficient" ? "Lookback" : "Below Rate";
+              const secondaryValue = returnsMaRegime.latestState === "insufficient" ? returnsMaPeriodText : fmtPct(returnsMaRegime.percentBelow, 0);
+              const statusItems = [
+                {label:"Regime", value:stateLabel, color:stateColor},
+                {label:secondaryLabel, value:secondaryValue, color:stateColor},
+              ];
+              return (
+                <div
+                  aria-label={`Equity regime status: ${stateLabel}. ${secondaryLabel}: ${secondaryValue}`}
+                  style={{
+                    height:32,
+                    width:176,
+                    display:"grid",
+                    gridTemplateColumns:"repeat(2, minmax(0,1fr))",
+                    border:`1px solid ${c.brH}`,
+                    background:"rgba(12,16,29,0.94)",
+                    boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",
+                    boxSizing:"border-box",
+                    overflow:"hidden",
+                    flex:"0 0 176px",
+                  }}
+                >
+                  {statusItems.map((item, index) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        minWidth:0,
+                        display:"grid",
+                        alignContent:"center",
+                        gap:3,
+                        padding:"0 9px",
+                        borderLeft:index ? `1px solid rgba(140,160,255,0.13)` : "none",
+                        boxSizing:"border-box",
+                      }}
+                    >
+                      <span style={{fontSize:7.2,fontWeight:950,color:c.tm,letterSpacing:"0.075em",textTransform:"uppercase",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        {item.label}
+                      </span>
+                      <span style={{fontSize:10.8,fontWeight:950,color:item.color,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        {item.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            };
+            const headerLine = (
+              <div ref={dashReturnsCurveMenuRef} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"nowrap",justifyContent:"flex-end"}}>
+                {ReturnsMaStatusBox()}
+                {ReturnsMaControl()}
+                <ReturnsCurveSelect
+                  openKey="aggregation"
+                  title="Aggregation"
+                  active={activeAggregation}
+                  options={aggregationOptions}
+                  onSelect={setDashReturnsCurveAggregation}
+                  width={118}
+                />
+              </div>
+            );
+            const returnsMetricStrip = computeReturnsGrowthMetricStrip(metrics.trades || [], capital, {dailyCurve:dailyCurveRows});
+            const signedPctLabel = (value, decimals=0) => `${Number(value || 0) >= 0 ? "+" : ""}${fmtPct(value, decimals)}`;
+            const compactSignedPctLabel = (value, decimals=0) => {
+              const n = Number(value);
+              if (!Number.isFinite(n)) return "—";
+              const abs = Math.abs(n);
+              const sign = n >= 0 ? "+" : "";
+              if (abs >= 1000) return `${sign}${(n / 1000).toFixed(abs >= 10000 ? 0 : 1)}k%`;
+              return `${sign}${fmtPct(n, decimals)}`;
+            };
+            const stripMoneyLabel = (value) => dashValueMode === "privacy" ? dashPrivacyMask : fmtMoney(value);
+            const totalReturnDollars = Number(metrics.totalPnl ?? returnsMetricStrip.totalReturnDollars) || 0;
+            const totalReturnPct = capital ? (totalReturnDollars / capital) * 100 : (Number(returnsMetricStrip.totalReturnPct) || 0);
+            const totalReturnLabel = dashOverviewUnitMode === "percent"
+              ? `${signedPctLabel(totalReturnPct, 1)} (${stripMoneyLabel(totalReturnDollars)})`
+              : `${stripMoneyLabel(totalReturnDollars)} · ${signedPctLabel(totalReturnPct, 1)}`;
+            const activeAggregationBucketMeta = {
+              trades: {plural:"trades", avgLabel:"Avg trade return", suffix:"/ trade"},
+              daily: {plural:"days", avgLabel:"Avg daily return", suffix:"/ day"},
+              weekly: {plural:"weeks", avgLabel:"Avg weekly return", suffix:"/ wk"},
+              monthly: {plural:"months", avgLabel:"Avg monthly return", suffix:"/ mo"},
+            }[dashReturnsCurveAggregation] || {plural:"buckets", avgLabel:"Avg bucket return", suffix:"/ bucket"};
+            const activeAggregationRows = curveRows
+              .map((row, index) => ({row, previous:curveRows[index - 1] || null}))
+              .filter(item => item.row && item.row.key !== "start");
+            const positiveAggregationPct = activeAggregationRows.length
+              ? (activeAggregationRows.filter(item => Number(item.row?.pnl) > 0).length / activeAggregationRows.length) * 100
+              : 0;
+            const aggregationReturnRows = activeAggregationRows
+              .map(item => {
+                const pnl = Number(item.row?.pnl);
+                const base = Number(item.previous?.balance);
+                return Number.isFinite(pnl) && Number.isFinite(base) && Math.abs(base) > 1e-9 ? (pnl / base) * 100 : null;
+              })
+              .filter(Number.isFinite);
+            const avgAggregationReturnPct = aggregationReturnRows.length
+              ? aggregationReturnRows.reduce((sum, value) => sum + value, 0) / aggregationReturnRows.length
+              : 0;
+            const stripMetricCards = [
+              {
+                id:"annualized",
+                label:"Annualized return",
+                value:returnsMetricStrip.annualizedReturnPct == null ? "—" : `${compactSignedPctLabel(returnsMetricStrip.annualizedReturnPct, 0)} / yr`,
+                sub:"growth rate normalized for time",
+                color:(Number(returnsMetricStrip.annualizedReturnPct) || 0) >= 0 ? c.gn : c.rd,
+                info:"CAGR from the first daily equity point to the latest daily equity point.",
+              },
+              {
+                id:"total-return",
+                label:"Total return",
+                value:totalReturnLabel,
+                sub:"same net P&L source as Snapshot",
+                color:totalReturnDollars >= 0 ? c.gn : c.rd,
+                info:"Net P&L divided by starting capital. Money display follows dollars, percent, and privacy display modes.",
+              },
+              {
+                id:"time-above-water",
+                label:"Time above water",
+                value:fmtPct(returnsMetricStrip.timeAboveWaterPct, 0),
+                sub:"daily points at or above prior peak",
+                color:c.acL,
+                info:"Percent of daily equity points that closed at or above the prior equity high.",
+              },
+              {
+                id:"new-highs",
+                label:"New highs",
+                value:Math.round(Number(returnsMetricStrip.newHighCount) || 0).toLocaleString(),
+                sub:"fresh equity peaks",
+                color:c.gn,
+                info:"Count of daily equity closes that created a new high.",
+              },
+              {
+                id:"total-r",
+                label:"Total R captured",
+                value:`${Number(returnsMetricStrip.totalRCaptured || 0) >= 0 ? "+" : ""}${fmtNum(returnsMetricStrip.totalRCaptured, 2)}R`,
+                sub:"sum of actual trade R",
+                color:Number(returnsMetricStrip.totalRCaptured || 0) >= 0 ? c.gn : c.rd,
+                info:"Pure R total. It does not change when the display mode switches between dollars, percent, or privacy.",
+              },
+              {
+                id:"positive-months",
+                label:`Positive ${activeAggregationBucketMeta.plural}`,
+                value:fmtPct(positiveAggregationPct, 0),
+                sub:`green ${activeAggregationBucketMeta.plural}`,
+                color:Number(positiveAggregationPct || 0) >= 50 ? c.gn : c.gold,
+                info:`Percent of ${activeAggregationBucketMeta.plural} with positive net P&L.`,
+              },
+              {
+                id:"avg-monthly",
+                label:activeAggregationBucketMeta.avgLabel,
+                value:`${signedPctLabel(avgAggregationReturnPct, 1)} ${activeAggregationBucketMeta.suffix}`,
+                sub:`mean ${activeAggregationBucketMeta.plural.replace(/s$/, "")} return`,
+                color:Number(avgAggregationReturnPct || 0) >= 0 ? c.gn : c.rd,
+                info:`Average return percentage across ${activeAggregationBucketMeta.plural}.`,
+              },
+              {
+                id:"flat-stretch",
+                label:"Longest flat stretch",
+                value:`${Math.round(Number(returnsMetricStrip.longestFlatStretchDays) || 0).toLocaleString()} days`,
+                sub:"longest wait for a new high",
+                color:c.gold,
+                info:"Longest calendar-day gap from one equity high to the next daily equity high.",
+              },
+            ];
+            const ReturnsMetricResourceButton = ({item}) => {
+              const articleId = typeof dashboardResourceIdFor === "function" ? dashboardResourceIdFor(item?.label) : "equity-curve";
+              return (
+                <button
+                  type="button"
+                  aria-label={`Open resources for ${item?.label || "this metric"}`}
+                  className="tlr-dashboard-card-info"
+                  onPointerEnter={hideDashboardInfo}
+                  onFocus={hideDashboardInfo}
+                  onClick={(event)=>{
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openDashboardResource(articleId || "equity-curve");
+                  }}
+                  onKeyDown={(event)=>{
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openDashboardResource(articleId || "equity-curve");
+                    }
+                  }}
+                  style={{
+                    width:13,
+                    height:13,
+                    border:"none",
+                    background:"transparent",
+                    padding:0,
+                    display:"grid",
+                    placeItems:"center",
+                    color:returnsReadableGray,
+                    lineHeight:1,
+                    cursor:"default",
+                    outline:"none",
+                    flexShrink:0,
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{display:"block"}}>
+                    <circle cx="7" cy="7" r="4.85" stroke="currentColor" strokeWidth="1.35"/>
+                    <path d="M7 6.35v3.05" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
+                    <circle cx="7" cy="4.55" r=".62" fill="currentColor"/>
+                  </svg>
+                </button>
+              );
+            };
+            const renderReturnsMetricCard = (item) => (
+              <div key={item.id} style={{minHeight:50,background:returnsMetricBg,border:`1px solid ${c.brH}`,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.04)",display:"grid",alignContent:"center",gap:6,padding:"8px 9px",boxSizing:"border-box",minWidth:item.minWidth ?? 0,flex:item.flex,WebkitFontSmoothing:"antialiased",MozOsxFontSmoothing:"grayscale",textRendering:"geometricPrecision",fontSynthesis:"none",overflow:"hidden"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
+                  <span style={{fontSize:item.labelSize ?? 8.1,fontWeight:930,color:item.labelColor ?? returnsReadableGray,letterSpacing:"0.052em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:item.fullLabel ? "visible" : "hidden",textOverflow:item.fullLabel ? "clip" : "ellipsis",lineHeight:1.08,textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased"}}>{item.label}</span>
+                </div>
+                <div style={{display:"flex",alignItems:"baseline",gap:6,minWidth:0}}>
+                  <span style={{fontSize:item.valueSize ?? 13.8,fontWeight:950,color:item.color,fontFamily:F,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.04,textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased",fontSynthesis:"none"}}>{item.value}</span>
+                </div>
+              </div>
+            );
+            const periodDateValue = trade => (
+              trade?.date
+              || trade?.calendar
+              || trade?.closeDate
+              || trade?.close_date
+              || trade?.exitDate
+              || trade?.exit_date
+              || trade?.exitTime
+              || trade?.exit_time
+              || trade?.entryDate
+              || trade?.entry_date
+              || trade?.entryTime
+              || trade?.entry_time
+            );
+            const periodTradePnl = trade => Number(
+              trade?.pnl
+              ?? trade?.netPnl
+              ?? trade?.net_pnl
+              ?? trade?.profit
+              ?? trade?.result
+              ?? trade?.p_l
+              ?? 0
+            ) || 0;
+            const periodTradeR = trade => Number(
+              trade?.rMultiple
+              ?? trade?.r
+              ?? trade?.actualR
+              ?? trade?.actual_r
+              ?? trade?.actualRR
+              ?? trade?.actual_rr_net
+              ?? trade?.actual_rr
+              ?? 0
+            ) || 0;
+            const periodIsoDay = value => {
+              const date = btDashDate(value);
+              return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+            };
+            const periodMonthKey = value => periodIsoDay(value).slice(0, 7);
+            const periodWeekStartKey = value => {
+              const raw = btDashDate(value);
+              if (Number.isNaN(raw.getTime())) return "";
+              const monday = new Date(Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate()));
+              const day = monday.getUTCDay() || 7;
+              monday.setUTCDate(monday.getUTCDate() - day + 1);
+              return monday.toISOString().slice(0, 10);
+            };
+            const periodShortDateLabel = value => {
+              const date = btDashDate(value);
+              if (Number.isNaN(date.getTime())) return "—";
+              return date.toLocaleDateString("en-US", {month:"short", day:"numeric", timeZone:"UTC"});
+            };
+            const periodFullDateLabel = value => {
+              const date = btDashDate(value);
+              if (Number.isNaN(date.getTime())) return "—";
+              return date.toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric", timeZone:"UTC"});
+            };
+            const periodWeekEndKey = value => {
+              const start = btDashDate(value);
+              if (Number.isNaN(start.getTime())) return "";
+              const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 6));
+              return end.toISOString().slice(0, 10);
+            };
+            const periodWeekRangeLabel = value => {
+              const start = btDashDate(value);
+              if (Number.isNaN(start.getTime())) return "—";
+              const end = btDashDate(periodWeekEndKey(value));
+              if (Number.isNaN(end.getTime())) return periodFullDateLabel(value);
+              const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+              const sameMonth = sameYear && start.getUTCMonth() === end.getUTCMonth();
+              if (sameMonth) {
+                const month = start.toLocaleDateString("en-US", {month:"short", timeZone:"UTC"});
+                return `${month} ${start.getUTCDate()}-${end.getUTCDate()}, ${start.getUTCFullYear()}`;
+              }
+              const startText = start.toLocaleDateString("en-US", {month:"short", day:"numeric", timeZone:"UTC"});
+              const endText = end.toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric", timeZone:"UTC"});
+              return `${startText}-${endText}`;
+            };
+            const periodMonthLabel = value => {
+              const key = periodMonthKey(value);
+              if (!key) return "—";
+              const [year, month] = key.split("-");
+              return new Date(Date.UTC(Number(year), Number(month) - 1, 1)).toLocaleDateString("en-US", {month:"short", year:"numeric", timeZone:"UTC"});
+            };
+            const buildLocalPeriodRows = (grain=dashReturnsPeriodGrain) => {
+              const sourceTrades = Array.isArray(metrics.trades) ? metrics.trades : [];
+              const sortedTrades = [...sourceTrades].sort((a, b) => {
+                const aDate = String(periodDateValue(a) || "");
+                const bDate = String(periodDateValue(b) || "");
+                return aDate.localeCompare(bDate) || String(a?.id || "").localeCompare(String(b?.id || ""));
+              });
+              let runningEquity = Number(capital) || 0;
+              if (grain === "trades") {
+                return sortedTrades.map((trade, index) => {
+                  const date = periodDateValue(trade);
+                  const pnl = periodTradePnl(trade);
+                  const r = periodTradeR(trade);
+                  const startEquity = runningEquity;
+                  runningEquity += pnl;
+                  const id = trade?.id || trade?.tradeId || trade?.trade_id || `Trade ${index + 1}`;
+                  return {
+                    key:`trade-${id}-${index}`,
+                    label:`T${index + 1}`,
+                    fullLabel:id,
+                    grain,
+                    date,
+                    startEquity,
+                    pnl,
+                    rSum:r,
+                    trades:1,
+                    wins:pnl > 0 ? 1 : 0,
+                    returnPct:startEquity ? (pnl / startEquity) * 100 : 0,
+                    returnRaw:startEquity ? pnl / startEquity : 0,
+                    avgR:r,
+                    winRate:pnl > 0 ? 100 : 0,
+                  };
+                });
+              }
+              const grouped = new Map();
+              sortedTrades.forEach(trade => {
+                const date = periodDateValue(trade);
+                const key = grain === "daily"
+                  ? periodIsoDay(date)
+                  : grain === "weekly"
+                    ? periodWeekStartKey(date)
+                    : periodMonthKey(date);
+                if (!key) return;
+                if (!grouped.has(key)) {
+                  grouped.set(key, {
+                    key,
+                    label: grain === "daily"
+                      ? periodShortDateLabel(date)
+                      : grain === "weekly"
+                        ? `Week of ${periodShortDateLabel(key)}`
+                        : periodMonthLabel(date),
+                    grain,
+                    date:key,
+                    startEquity:runningEquity,
+                    pnl:0,
+                    rSum:0,
+                    trades:0,
+                    wins:0,
+                  });
+                }
+                const row = grouped.get(key);
+                const pnl = periodTradePnl(trade);
+                row.pnl += pnl;
+                row.rSum += periodTradeR(trade);
+                row.trades += 1;
+                row.wins += pnl > 0 ? 1 : 0;
+                runningEquity += pnl;
+              });
+              return [...grouped.values()].map(row => ({
+                ...row,
+                returnPct:row.startEquity ? (row.pnl / row.startEquity) * 100 : 0,
+                returnRaw:row.startEquity ? row.pnl / row.startEquity : 0,
+                avgR:row.trades ? row.rSum / row.trades : 0,
+                winRate:row.trades ? row.wins / row.trades * 100 : 0,
+              }));
+            };
+            const periodRowsForGrain = (grain=dashReturnsPeriodGrain) => {
+              if (grain === "trades" || grain === "daily") return buildLocalPeriodRows(grain);
+              if (grain === "weekly") return (metrics.weeklyReturnRows?.length ? metrics.weeklyReturnRows : buildLocalPeriodRows("weekly")) || [];
+              return (metrics.monthlyReturnRows?.length ? metrics.monthlyReturnRows : buildLocalPeriodRows("monthly")) || [];
+            };
+            const periodAxisDateValue = row => row?.firstDateIso || row?.date || row?.key || row?.lastDateIso || "";
+            const periodBottomDateLabel = (row, grain=dashReturnsPeriodGrain) => {
+              const value = periodAxisDateValue(row);
+              if (!value) return "—";
+              if (grain === "monthly") return periodMonthLabel(value);
+              return periodShortDateLabel(value);
+            };
+            const periodResultValue = row => {
+              if (dashOverviewUnitMode === "percent") return Number(row?.returnPct) || 0;
+              if (dashOverviewUnitMode === "r") return Number(row?.rSum) || 0;
+              return Number(row?.pnl) || 0;
+            };
+            const periodResultLabel = (value) => {
+              if (dashValueMode === "privacy") return dashPrivacyMask;
+              if (dashOverviewUnitMode === "percent") return `${value >= 0 ? "+" : ""}${fmtPct(value, 1)}`;
+              if (dashOverviewUnitMode === "r") return `${value >= 0 ? "+" : ""}${fmtNum(value, 2)}R`;
+              return fmtMoney(value);
+            };
+            const renderPeriodicReturnsCard = () => {
+              const grainOptions = [
+                {id:"trades", label:"Trades", detail:`${periodRowsForGrain("trades").length}`, color:c.acL},
+                {id:"daily", label:"Daily", detail:`${periodRowsForGrain("daily").length}`, color:c.acL},
+                {id:"weekly", label:"Weekly", detail:`${periodRowsForGrain("weekly").length}`, color:c.acL},
+                {id:"monthly", label:"Monthly", detail:`${periodRowsForGrain("monthly").length}`, color:c.acL},
+              ];
+              const activeGrain = grainOptions.find(option => option.id === dashReturnsPeriodGrain) || grainOptions[0];
+              const periodRows = periodRowsForGrain();
+              const periodValue = periodResultValue;
+              const periodValueLabel = periodResultLabel;
+              const periodValues = periodRows.map(periodValue);
+              const maxAbs = Math.max(1, ...periodValues.map(value => Math.abs(value)).filter(Number.isFinite));
+              const total = periodValues.reduce((sum, value) => sum + value, 0);
+              const best = periodRows.reduce((top, row) => !top || periodValue(row) > periodValue(top) ? row : top, null);
+              const worst = periodRows.reduce((low, row) => !low || periodValue(row) < periodValue(low) ? row : low, null);
+              const w = 620;
+              const h = 262;
+              const p = {l:64, r:18, t:20, b:42};
+              const plotW2 = w - p.l - p.r;
+              const plotH2 = h - p.t - p.b;
+              const zeroY = p.t + plotH2 / 2;
+              const periodYForValue = value => zeroY - (Number(value || 0) / maxAbs) * (plotH2 / 2 - 8);
+              const axisTicks = [
+                {id:"high", value:maxAbs, y:periodYForValue(maxAbs)},
+                {id:"zero", value:0, y:zeroY},
+                {id:"low", value:-maxAbs, y:periodYForValue(-maxAbs)},
+              ];
+              const periodAxisLabel = value => Number(value) === 0 ? "0" : periodValueLabel(value);
+              const idealBarGap = periodRows.length > 360 ? 0.15 : periodRows.length > 180 ? 0.35 : periodRows.length > 100 ? 0.75 : periodRows.length > 48 ? 1.4 : periodRows.length > 26 ? 2 : 4;
+              const barGap = periodRows.length > 1
+                ? Math.max(0.12, Math.min(idealBarGap, (plotW2 - periodRows.length * 0.55) / Math.max(1, periodRows.length - 1)))
+                : 0;
+              const barW = periodRows.length ? Math.max(0.55, (plotW2 - barGap * Math.max(0, periodRows.length - 1)) / periodRows.length) : 0;
+              const labelEvery = Math.max(1, Math.ceil(periodRows.length / 8));
+              const periodLabelText = row => String(row?.fullLabel || row?.label || "Period");
+              const periodTooltipLabelText = row => {
+                if (!row) return "—";
+                if (dashReturnsPeriodGrain === "daily") return periodFullDateLabel(row.date || row.key);
+                if (dashReturnsPeriodGrain === "weekly") return periodWeekRangeLabel(row.date || row.key);
+                if (dashReturnsPeriodGrain === "monthly") return periodMonthLabel(row.date || row.key);
+                const tradeLabel = String(row.fullLabel || row.label || "Trade");
+                const dateLabel = periodFullDateLabel(row.date);
+                return dateLabel && dateLabel !== "—" ? `${dateLabel} · ${tradeLabel}` : tradeLabel;
+              };
+              const periodBars = periodRows.map((row, index) => {
+                const value = periodValue(row);
+                const positive = value >= 0;
+                const height = Math.max(2, Math.abs(value) / maxAbs * (plotH2 / 2 - 8));
+                const x = p.l + index * (barW + barGap);
+                const y = positive ? zeroY - height : zeroY;
+                const color = positive ? c.gn : c.rd;
+                return {row, index, value, positive, height, x, y, color};
+              });
+              const hoveredPeriodBar = dashReturnsPeriodHover?.grain === dashReturnsPeriodGrain
+                ? periodBars[dashReturnsPeriodHover.index]
+                : null;
+              const periodTooltipData = (() => {
+                if (!hoveredPeriodBar) return null;
+                const {row, value, positive, height, x, y, color} = hoveredPeriodBar;
+                const periodText = periodTooltipLabelText(row);
+                const valueText = periodValueLabel(value);
+                const tradeCount = Number(row?.trades) || 0;
+                const tradesText = `${tradeCount} trade${tradeCount === 1 ? "" : "s"}`;
+                const tooltipW = Math.max(156, Math.min(286, 72 + periodText.length * 5.5));
+                const tooltipH = 56;
+                const anchorX = x + barW / 2;
+                const anchorY = positive ? y : y + height;
+                const placeRight = anchorX < w - p.r - tooltipW - 16;
+                const placeBelow = positive ? anchorY < p.t + tooltipH + 16 : anchorY < h - p.b - tooltipH - 16;
+                const left = Math.round(anchorX);
+                const top = Math.round(anchorY);
+                const transform = `translate(${placeRight ? "10px" : "calc(-100% - 10px)"}, ${placeBelow ? "10px" : "calc(-100% - 10px)"})`;
+                const label = dashReturnsPeriodGrain === "trades"
+                  ? "Trade"
+                  : dashReturnsPeriodGrain === "daily"
+                    ? "Day"
+                    : dashReturnsPeriodGrain === "weekly"
+                      ? "Week"
+                      : "Month";
+                return {periodText, valueText, tradesText, color, tooltipW, left, top, transform, label};
+              })();
+              const renderPeriodTooltipOverlay = () => {
+                if (!periodTooltipData) return null;
+                return (
+                  <div
+                    style={{
+                      position:"absolute",
+                      zIndex:8,
+                      left:periodTooltipData.left,
+                      top:periodTooltipData.top,
+                      transform:periodTooltipData.transform,
+                      width:periodTooltipData.tooltipW,
+                      minHeight:56,
+                      background:"rgba(5,7,15,0.98)",
+                      border:"1px solid rgba(90,108,150,0.34)",
+                      boxShadow:"0 10px 22px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,255,255,0.04)",
+                      boxSizing:"border-box",
+                      pointerEvents:"none",
+                      fontFamily:F,
+                      WebkitFontSmoothing:"antialiased",
+                      MozOsxFontSmoothing:"grayscale",
+                      textRendering:"geometricPrecision",
+                      fontSynthesis:"none",
+                      padding:"6px 8px 6px 10px",
+                    }}
+                  >
+                    <span aria-hidden="true" style={{position:"absolute",left:0,top:5,bottom:5,width:1,background:`linear-gradient(180deg,transparent,${periodTooltipData.color},transparent)`,boxShadow:`0 0 6px ${periodTooltipData.color}`}}/>
+                    <div style={{display:"grid",gap:5,minWidth:0}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                        <span style={{color:returnsMutedGray,fontSize:7.8,fontWeight:950,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>{periodTooltipData.label}</span>
+                        <span title={periodTooltipData.periodText} style={{color:c.tx,fontSize:9.2,fontWeight:950,lineHeight:1.08,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{periodTooltipData.periodText}</span>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                        <span style={{color:returnsMutedGray,fontSize:7.8,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>P&L</span>
+                        <span style={{color:periodTooltipData.color,fontSize:12,fontWeight:950,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{periodTooltipData.valueText}</span>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                        <span style={{color:returnsMutedGray,fontSize:7.8,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Trades</span>
+                        <span style={{color:c.tx,fontSize:9.2,fontWeight:900,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{periodTooltipData.tradesText}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
+              const header = (
+                <ReturnsCurveSelect
+                  openKey="periodicAggregation"
+                  title="Aggregation"
+                  active={activeGrain}
+                  options={grainOptions}
+                  onSelect={(id)=>{ setDashReturnsPeriodGrain(id); setDashReturnsPeriodHover(null); }}
+                  width={144}
+                />
+              );
+              const periodicMetricCards = [
+                {id:"period-count", label:"Periods", value:periodRows.length, color:c.acL},
+                {id:"period-net", label:"Net", value:periodValueLabel(total), color:total >= 0 ? c.gn : c.rd},
+                {id:"period-best", label:"Best", value:best ? periodValueLabel(periodValue(best), best) : "—", color:c.gn},
+                {id:"period-worst", label:"Worst", value:worst ? periodValueLabel(periodValue(worst), worst) : "—", color:c.rd},
+              ];
+              return (
+                <SummaryCard title="Periodic Returns" minHeight={449} right={header} titleFull style={{padding:14,gap:12}}>
+                  <div
+                    onPointerLeave={()=>setDashReturnsPeriodHover(null)}
+                    onPointerCancel={()=>setDashReturnsPeriodHover(null)}
+                    onMouseLeave={()=>setDashReturnsPeriodHover(null)}
+                    style={{height:319,background:returnsChartBg,border:`1px solid ${c.brH}`,boxSizing:"border-box",overflow:"hidden",position:"relative",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}
+                  >
+                    {periodRows.length ? (
+                      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={`Periodic returns by ${activeGrain.label.toLowerCase()}`} style={returnsCrispSvgText} onPointerLeave={()=>setDashReturnsPeriodHover(null)} onPointerCancel={()=>setDashReturnsPeriodHover(null)} onMouseLeave={()=>setDashReturnsPeriodHover(null)}>
+                        <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+                        <line x1={p.l} x2={p.l} y1={p.t} y2={p.t + plotH2} stroke={c.brH} strokeWidth="1" opacity=".82" vectorEffect="non-scaling-stroke"/>
+                        {axisTicks.map(tick => (
+                          <g key={tick.id}>
+                            <line x1={p.l - 4} x2={p.l} y1={tick.y} y2={tick.y} stroke={c.brH} strokeWidth="1" opacity=".75" vectorEffect="non-scaling-stroke"/>
+                            <text x={p.l - 8} y={tick.y + 3} textAnchor="end" fill={tick.value === 0 ? returnsReadableGray : tick.value > 0 ? c.gn : c.rd} fontFamily={F} fontSize="8.2" fontWeight="900">
+                              {periodAxisLabel(tick.value)}
+                            </text>
+                          </g>
+                        ))}
+                        <line x1={p.l} x2={w-p.r} y1={zeroY} y2={zeroY} stroke={c.brH} strokeWidth="1" opacity=".75" vectorEffect="non-scaling-stroke"/>
+                        {periodBars.map(({row, index, positive, height, x, y, color}) => {
+                          const active = hoveredPeriodBar?.index === index;
+                          const selectedColor = active ? (positive ? "#008A72" : "#B5314E") : color;
+                          const activeX = x;
+                          const activeY = y;
+                          const activeW = barW;
+                          const activeH = height;
+                          const hitW = Math.max(activeW, 4.5);
+                          const hitX = clampLocal(x - (hitW - activeW) / 2, p.l, w - p.r - hitW);
+                          return (
+                            <g
+                              key={row.key || index}
+                              onPointerEnter={()=>setDashReturnsPeriodHover({grain:dashReturnsPeriodGrain,index})}
+                              onPointerMove={()=>setDashReturnsPeriodHover(prev => prev?.grain === dashReturnsPeriodGrain && prev?.index === index ? prev : {grain:dashReturnsPeriodGrain,index})}
+                              onPointerLeave={()=>setDashReturnsPeriodHover(null)}
+                              style={{cursor:"default"}}
+                            >
+                              <rect
+                                x={hitX.toFixed(2)}
+                                y={(Math.max(p.t, activeY - 3)).toFixed(2)}
+                                width={hitW.toFixed(2)}
+                                height={Math.min(plotH2, activeH + 6).toFixed(2)}
+                                fill="transparent"
+                                pointerEvents="all"
+                              />
+                              <rect
+                                x={activeX.toFixed(2)}
+                                y={activeY.toFixed(2)}
+                                width={activeW.toFixed(2)}
+                                height={activeH.toFixed(2)}
+                                fill={selectedColor}
+                                opacity={active ? "1" : ".88"}
+                                pointerEvents="none"
+                              />
+                              {index % labelEvery === 0 || index === periodRows.length - 1 ? (
+                                <text x={(x + barW / 2).toFixed(2)} y={h - 18} textAnchor="middle" fill={returnsReadableGray} fontFamily={F} fontSize="8.5" fontWeight="850">
+                                  {periodBottomDateLabel(row, dashReturnsPeriodGrain)}
+                                </text>
+                              ) : null}
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    ) : (
+                      <div style={{height:"100%",display:"grid",placeItems:"center",fontFamily:F,fontSize:11,fontWeight:900,color:returnsMutedGray,textTransform:"uppercase",letterSpacing:"0.06em"}}>No period data</div>
+                    )}
+                    {periodRows.length ? renderPeriodTooltipOverlay() : null}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
+                    {periodicMetricCards.map(renderReturnsMetricCard)}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const renderPeriodBreakdownCard = () => {
+              const rowsFor = grain => periodRowsForGrain(grain).filter(row => row && Number.isFinite(Number(row.pnl)));
+              const monthlyRows = rowsFor("monthly");
+              const weeklyRows = rowsFor("weekly");
+              const dailyRows = rowsFor("daily");
+              const fallbackBreakdownGrain = monthlyRows.length >= 2 ? "monthly" : "weekly";
+              const activeBreakdownGrain = ["daily", "weekly", "monthly"].includes(dashReturnsPeriodBreakdownGrain)
+                ? dashReturnsPeriodBreakdownGrain
+                : fallbackBreakdownGrain;
+              const breakdownOptions = [
+                {id:"daily", label:"Days", detail:`${dailyRows.length}`, color:c.acL},
+                {id:"weekly", label:"Weeks", detail:`${weeklyRows.length}`, color:c.acL},
+                {id:"monthly", label:"Months", detail:`${monthlyRows.length}`, color:c.acL},
+              ];
+              const activeOption = breakdownOptions.find(option => option.id === activeBreakdownGrain) || breakdownOptions[1];
+              const periodRows = activeBreakdownGrain === "daily" ? dailyRows : activeBreakdownGrain === "weekly" ? weeklyRows : monthlyRows;
+              const breakdown = computePeriodBreakdown(periodRows, activeBreakdownGrain);
+              const periodNoun = activeBreakdownGrain === "daily" ? "days" : activeBreakdownGrain === "weekly" ? "weeks" : "months";
+              const periodSingular = activeBreakdownGrain === "daily" ? "day" : activeBreakdownGrain === "weekly" ? "week" : "month";
+              const displayTotalFor = rows => rows.reduce((sum, row) => sum + periodResultValue(row), 0);
+              const winningDisplayTotal = displayTotalFor(breakdown.winningRows);
+              const losingDisplayTotal = displayTotalFor(breakdown.losingRows);
+              const flatDisplayTotal = displayTotalFor(breakdown.flatRows);
+              const avgDisplayPerPeriod = breakdown.count ? displayTotalFor(breakdown.rows) / breakdown.count : 0;
+              const safePct = value => clampLocal(Number(value) || 0, 0, 100);
+              const winPct = safePct(breakdown.winRatePct);
+              const lossPct = safePct(breakdown.lossRatePct);
+              const flatPct = safePct(breakdown.flatRatePct);
+              const periodCountUnit = breakdown.count === 1 ? periodSingular : periodNoun;
+              const flatCountUnit = breakdown.flatCount === 1 ? periodSingular : periodNoun;
+              const avgPeriodUnit = `/ ${periodSingular}`;
+              const countTile = ({label, count, total, color}) => (
+                <div style={{background:returnsMetricBg,border:`1px solid ${c.brH}`,padding:"9px 10px",boxSizing:"border-box",minHeight:59,display:"grid",gap:5,alignContent:"center",minWidth:0,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.04)",WebkitFontSmoothing:"antialiased",MozOsxFontSmoothing:"grayscale",textRendering:"geometricPrecision",fontSynthesis:"none"}}>
+                  <div style={{fontSize:8.4,fontWeight:950,color,letterSpacing:"0.075em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.08}}>{label}</div>
+                  <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,minWidth:0}}>
+                    <span style={{fontSize:17,fontWeight:950,color:c.tx,fontFamily:F,lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{count}</span>
+                    <span style={{fontSize:12,fontWeight:950,color,fontFamily:F,lineHeight:1,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{periodResultLabel(total)}</span>
+                  </div>
+                </div>
+              );
+              const breakdownMetricCard = item => (
+                <div key={item.id} style={{minHeight:50,background:returnsMetricBg,border:`1px solid ${c.brH}`,boxShadow:"inset 0 1px 0 rgba(255,255,255,0.04)",display:"grid",alignContent:"center",gap:6,padding:"8px 9px",boxSizing:"border-box",minWidth:0,WebkitFontSmoothing:"antialiased",MozOsxFontSmoothing:"grayscale",textRendering:"geometricPrecision",fontSynthesis:"none",overflow:"hidden"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5,minWidth:0}}>
+                    <span style={{fontSize:8.1,fontWeight:930,color:returnsReadableGray,letterSpacing:"0.052em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.08}}>{item.label}</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",alignItems:"baseline",gap:8,minWidth:0}}>
+                    <span style={{fontSize:13.8,fontWeight:950,color:item.color,fontFamily:F,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.04}}>{item.value}</span>
+                    <span style={{fontSize:7.8,fontWeight:920,color:returnsMutedGray,fontFamily:F,letterSpacing:"0.055em",textTransform:"uppercase",whiteSpace:"nowrap",lineHeight:1}}>
+                      {item.unit}
+                    </span>
+                  </div>
+                </div>
+              );
+              return (
+                <SummaryCard
+                  title="Period Breakdown"
+                  minHeight={0}
+                  right={
+                    <ReturnsCurveSelect
+                      openKey="periodBreakdownAggregation"
+                      title="Aggregation"
+                      active={activeOption}
+                      options={breakdownOptions}
+                      onSelect={setDashReturnsPeriodBreakdownGrain}
+                      width={128}
+                    />
+                  }
+                  titleFull
+                  style={{padding:14,gap:11}}
+                >
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:9}}>
+                    {countTile({label:`Winning ${periodNoun}`, count:breakdown.winningCount, total:winningDisplayTotal, color:c.gn})}
+                    {countTile({label:`Losing ${periodNoun}`, count:breakdown.losingCount, total:losingDisplayTotal, color:c.rd})}
+                  </div>
+                  <div style={{display:"grid",gap:6,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,fontFamily:F,minWidth:0}}>
+                      <span style={{fontSize:8.5,fontWeight:950,color:returnsMutedGray,letterSpacing:"0.065em",textTransform:"uppercase",whiteSpace:"nowrap"}}>
+                        Win-period rate
+                      </span>
+                      <span style={{fontSize:10.2,fontWeight:950,color:c.gn,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+                        {Math.round(breakdown.winRatePct)}% · {breakdown.count} {breakdown.count === 1 ? periodSingular : periodNoun}
+                        {breakdown.flatCount ? ` · ${breakdown.flatCount} flat` : ""}
+                      </span>
+                    </div>
+                    <div aria-hidden="true" style={{height:10,background:miniTrack,border:`1px solid ${c.br}`,display:"flex",overflow:"hidden"}}>
+                      <span style={{width:`${winPct}%`,background:c.gn,boxShadow:`0 0 10px ${c.gn}55`}} />
+                      <span style={{width:`${lossPct}%`,background:c.rd,boxShadow:`0 0 10px ${c.rd}44`}} />
+                      {flatPct ? <span style={{width:`${flatPct}%`,background:c.yl,boxShadow:`0 0 10px ${c.yl}44`}} /> : null}
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
+                    {[
+                      {id:"period-breakdown-count", label:"Periods", value:breakdown.count, color:c.acL, unit:periodCountUnit},
+                      {id:"period-breakdown-flat", label:"Flat", value:breakdown.flatCount ? `${breakdown.flatCount} · ${periodResultLabel(flatDisplayTotal)}` : "0", color:breakdown.flatCount ? c.yl : c.tm, unit:flatCountUnit},
+                      {id:"period-breakdown-avg", label:"Avg / period", value:breakdown.count ? periodResultLabel(avgDisplayPerPeriod) : "—", color:avgDisplayPerPeriod >= 0 ? c.gn : c.rd, unit:avgPeriodUnit},
+                    ].map(breakdownMetricCard)}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const renderGoalsTargetsCard = () => {
+              const sourceAllowsGoalsTargets = source => {
+                const code = btDashSourceTypeCode(source);
+                if (code === 2 || code === 4) return true;
+                return (source?.sessions || []).some(session => {
+                  const sessionCode = btDashSourceTypeCode(session);
+                  return sessionCode === 2 || sessionCode === 4;
+                });
+              };
+              const goalsTargetsEnabled = dashboardCapabilitySourceItems.some(sourceAllowsGoalsTargets) || sourceAllowsGoalsTargets(ds);
+              const goalNumber = value => {
+                if (value === null || value === undefined || value === "") return null;
+                const number = typeof value === "number" ? value : Number(String(value).replace(/[^0-9.+-]/g, ""));
+                return Number.isFinite(number) ? number : null;
+              };
+              const firstGoalNumber = (...values) => {
+                for (const value of values) {
+                  const number = goalNumber(value);
+                  if (number !== null) return number;
+                }
+                return null;
+              };
+              const goalPctToAmount = pctValue => capital && pctValue != null ? capital * pctValue / 100 : null;
+              const personalGoal = metrics.goalConfig || ds?.goalConfig || ds?.goals || ds?.goal || ds?.targetConfig || {};
+              const propTargetPct = isPropD ? firstGoalNumber(
+                propConfig?.profitTargetPct,
+                propConfig?.currentPhaseTargetPct,
+                propConfig?.phaseTargetPct,
+                propConfig?.phase2ProfitTargetPct,
+                propConfig?.phase1ProfitTargetPct,
+                propConfig?.targetReturnPct,
+                propConfig?.targetPct,
+              ) : null;
+              const propTargetAmount = isPropD ? firstGoalNumber(
+                propConfig?.profitTargetAmount,
+                propConfig?.targetProfitAmount,
+                propConfig?.phaseTargetAmount,
+                propConfig?.currentPhaseTargetAmount,
+                propConfig?.challengeTargetAmount,
+                propConfig?.targetAmount,
+              ) ?? goalPctToAmount(propTargetPct) : null;
+              const personalTargetPct = goalsTargetsEnabled && !isPropD ? firstGoalNumber(
+                personalGoal?.targetReturnPct,
+                personalGoal?.returnTargetPct,
+                personalGoal?.monthlyReturnPct,
+                personalGoal?.periodTargetPct,
+                personalGoal?.targetPct,
+                ds?.targetReturnPct,
+                ds?.goalTargetPct,
+                ds?.returnTargetPct,
+                ds?.targetPct,
+              ) : null;
+              const personalTargetAmount = goalsTargetsEnabled && !isPropD ? firstGoalNumber(
+                personalGoal?.targetAmount,
+                personalGoal?.profitTargetAmount,
+                personalGoal?.monthlyTargetAmount,
+                personalGoal?.monthlyProfitTarget,
+                personalGoal?.periodTargetAmount,
+                ds?.targetAmount,
+                ds?.profitTargetAmount,
+                ds?.monthlyTargetAmount,
+                ds?.monthlyProfitTarget,
+              ) ?? goalPctToAmount(personalTargetPct) : null;
+              const targetPct = isPropD ? propTargetPct : personalTargetPct;
+              const targetAmount = isPropD ? propTargetAmount : personalTargetAmount;
+              const minDays = firstGoalNumber(
+                isPropD ? propConfig?.minDays : personalGoal?.minTradingDays,
+                isPropD ? propConfig?.minimumTradingDays : personalGoal?.minimumTradingDays,
+                isPropD ? propConfig?.minTradingDays : personalGoal?.minDays,
+                !isPropD ? ds?.minTradingDays : null,
+                !isPropD ? ds?.minimumTradingDays : null,
+              );
+              const activePeriodRows = periodRowsForGrain();
+              const activePeriod = activePeriodRows[activePeriodRows.length - 1] || null;
+              const activePnl = activePeriod ? Number(activePeriod.pnl) || 0 : Number(metrics.totalPnl) || 0;
+              const activeReturnPct = activePeriod ? Number(activePeriod.returnPct) || 0 : Number(metrics.returnPct) || 0;
+              const targetConfigured = (targetAmount != null && targetAmount > 0) || (targetPct != null && targetPct > 0);
+              const targetProgress = targetAmount != null && targetAmount > 0
+                ? (activePnl / targetAmount) * 100
+                : targetPct != null && targetPct > 0
+                  ? (activeReturnPct / targetPct) * 100
+                  : null;
+              const progressClamped = targetProgress == null ? 0 : Math.max(0, Math.min(100, targetProgress));
+              const localWeekKey = value => {
+                const raw = value ? new Date(String(value).replace(" ", "T")) : null;
+                if (!raw || Number.isNaN(raw.getTime())) return null;
+                const monday = new Date(Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate()));
+                const day = monday.getUTCDay() || 7;
+                monday.setUTCDate(monday.getUTCDate() - day + 1);
+                return monday.toISOString().slice(0, 10);
+              };
+              const dayRows = metrics.dailyReturnRows?.length ? metrics.dailyReturnRows : metrics.dailyRows || [];
+              const daysInActivePeriod = activePeriod
+                ? dayRows.filter(day => {
+                    const date = day?.date || day?.key;
+                    if (!date) return false;
+                    if (dashReturnsPeriodGrain === "trades" || dashReturnsPeriodGrain === "daily") {
+                      const activeDate = activePeriod?.date || activePeriod?.key;
+                      return String(date).slice(0, 10) === String(activeDate).slice(0, 10);
+                    }
+                    if (dashReturnsPeriodGrain === "weekly") return localWeekKey(date) === activePeriod.key;
+                    return String(date).slice(0, 7) === String(activePeriod.key).slice(0, 7);
+                  })
+                : dayRows;
+              const daysTraded = daysInActivePeriod.filter(day => Math.abs(Number(day?.pnl) || 0) > 0 || Number(day?.trades) > 0).length;
+              const dayProgress = minDays != null && minDays > 0 ? Math.max(0, Math.min(100, (daysTraded / minDays) * 100)) : null;
+              const positivePeriods = activePeriodRows.filter(row => Number(row.pnl) > 0).length;
+              const periodCount = activePeriodRows.length;
+              const consistencyPct = periodCount ? (positivePeriods / periodCount) * 100 : null;
+              const consistencyLabel = consistencyPct == null ? "No period read" : consistencyPct >= 65 ? "Steady" : consistencyPct >= 45 ? "Mixed" : "Uneven";
+              const onTrack = targetProgress != null && targetProgress >= 100 && (dayProgress == null || dayProgress >= 100);
+              const behind = targetProgress != null && targetProgress < 45 && activePnl < (targetAmount || 1);
+              const verdictColor = !goalsTargetsEnabled ? c.tm : !targetConfigured ? c.tm : onTrack ? c.gn : behind ? c.rd : c.gold;
+              const verdictLabel = !goalsTargetsEnabled ? "Inactive" : !targetConfigured ? "Set a target" : onTrack ? "On track" : behind ? "Behind pace" : "In progress";
+              const sourceLabel = goalsTargetsEnabled ? "Challenge rules" : "Type 2/4 only";
+              const sourceLabelColor = goalsTargetsEnabled ? c.gold : c.tm;
+              const goalValueLabel = value => {
+                if (value == null) return "—";
+                if (dashValueMode === "privacy") return dashPrivacyMask;
+                if (dashOverviewUnitMode === "percent") {
+                  const pctValue = targetPct != null && value === targetAmount ? targetPct : capital ? (Number(value) / capital) * 100 : 0;
+                  return `${pctValue >= 0 ? "+" : ""}${fmtPct(pctValue, 1)}`;
+                }
+                if (dashOverviewUnitMode === "r") {
+                  const r = Number(metrics.dollarPerR) ? Number(value) / Number(metrics.dollarPerR) : null;
+                  return r == null ? "—" : `${r >= 0 ? "+" : ""}${fmtNum(r, 2)}R`;
+                }
+                return fmtMoney(value);
+              };
+              const currentLabel = dashOverviewUnitMode === "percent"
+                ? `${activeReturnPct >= 0 ? "+" : ""}${fmtPct(activeReturnPct, 1)}`
+                : goalValueLabel(activePnl);
+              const targetLabel = targetAmount != null ? goalValueLabel(targetAmount) : targetPct != null ? `${fmtPct(targetPct, 1)}` : "—";
+              const periodLabel = activePeriod?.label || (
+                dashReturnsPeriodGrain === "trades"
+                  ? "Current trade"
+                  : dashReturnsPeriodGrain === "daily"
+                    ? "Current day"
+                    : dashReturnsPeriodGrain === "weekly"
+                      ? "Current week"
+                      : "Current month"
+              );
+              const progressBar = (value, color) => (
+                <div style={{height:8,background:miniTrack,position:"relative",overflow:"hidden"}}>
+                  <span aria-hidden="true" style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.max(0,Math.min(100,value || 0))}%`,background:color,boxShadow:`0 0 10px ${color}55`}}/>
+                </div>
+              );
+              const goalProgressColor = targetProgress != null && targetProgress >= 100 ? c.gn : targetProgress != null && targetProgress < 45 ? c.rd : c.gold;
+              const goalMetricCards = [
+                {id:"goals-period", label:"Period", value:goalsTargetsEnabled ? periodLabel : "—", color:goalsTargetsEnabled ? c.tx : c.tm},
+                {id:"goals-progress", label:"Progress", value:goalsTargetsEnabled && targetProgress != null ? `${Math.round(targetProgress)}%` : "—", color:goalsTargetsEnabled ? goalProgressColor : c.tm},
+                {id:"goals-verdict", label:"Verdict", value:verdictLabel, color:verdictColor},
+              ];
+              return (
+                <SummaryCard
+                  title="Goals & Targets"
+                  minHeight={0}
+                  right={<div style={{fontSize:8,fontWeight:900,color:sourceLabelColor,letterSpacing:"0.065em",textTransform:"uppercase",fontFamily:F}}>{sourceLabel}</div>}
+                  titleFull
+                  style={{padding:14,gap:12}}
+                >
+                  {!goalsTargetsEnabled ? (
+                    <div style={{minHeight:104,border:`1px solid ${c.brH}`,background:returnsChartBg,display:"grid",alignContent:"center",gap:8,padding:14,boxSizing:"border-box",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}>
+                      <div style={{fontSize:18,fontWeight:950,color:c.ts,fontFamily:F,lineHeight:1}}>Goals inactive</div>
+                      <div style={{fontSize:11,fontWeight:850,color:returnsMutedGray,fontFamily:F,lineHeight:1.35,maxWidth:520}}>
+                        Goals and targets are available for type 2 and type 4 sources only.
+                      </div>
+                    </div>
+                  ) : targetConfigured ? (
+                    <div style={{display:"grid",gap:10}}>
+                      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:10,alignItems:"end"}}>
+                        <div style={{display:"grid",gap:5,minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:10,fontFamily:F}}>
+                            <span style={{fontSize:8.2,fontWeight:900,color:c.tm,letterSpacing:"0.065em",textTransform:"uppercase"}}>Target progress</span>
+                            <span style={{fontSize:10,fontWeight:900,color:c.tx,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{currentLabel} / {targetLabel}</span>
+                          </div>
+                          {progressBar(progressClamped, progressClamped >= 100 ? c.gn : c.gold)}
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
+                        <div style={{display:"grid",gap:5,minWidth:0}}>
+                          <div style={{display:"flex",justifyContent:"space-between",gap:8,fontFamily:F}}>
+                            <span style={{fontSize:8.2,fontWeight:900,color:c.tm,letterSpacing:"0.065em",textTransform:"uppercase"}}>Trading days</span>
+                            <span style={{fontSize:10,fontWeight:900,color:dayProgress == null ? c.tm : dayProgress >= 100 ? c.gn : c.gold,fontVariantNumeric:"tabular-nums"}}>{minDays ? `${daysTraded} / ${minDays}` : `${daysTraded}`}</span>
+                          </div>
+                          {progressBar(dayProgress == null ? Math.min(100, daysTraded * 8) : dayProgress, dayProgress == null ? c.acL : dayProgress >= 100 ? c.gn : c.gold)}
+                        </div>
+                        <div style={{display:"grid",gap:5,minWidth:0}}>
+                          <div style={{display:"flex",justifyContent:"space-between",gap:8,fontFamily:F}}>
+                            <span style={{fontSize:8.2,fontWeight:900,color:c.tm,letterSpacing:"0.065em",textTransform:"uppercase"}}>Consistency</span>
+                            <span style={{fontSize:10,fontWeight:900,color:consistencyPct == null ? c.tm : consistencyPct >= 65 ? c.gn : consistencyPct >= 45 ? c.gold : c.rd,fontVariantNumeric:"tabular-nums"}}>{consistencyLabel}</span>
+                          </div>
+                          {progressBar(consistencyPct || 0, consistencyPct == null ? c.tm : consistencyPct >= 65 ? c.gn : consistencyPct >= 45 ? c.gold : c.rd)}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{minHeight:104,border:`1px solid ${c.brH}`,background:returnsChartBg,display:"grid",alignContent:"center",gap:8,padding:14,boxSizing:"border-box",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}>
+                      <div style={{fontSize:18,fontWeight:950,color:c.gold,fontFamily:F,lineHeight:1}}>Set a target</div>
+                      <div style={{fontSize:11,fontWeight:850,color:c.ts,fontFamily:F,lineHeight:1.35,maxWidth:520}}>
+                        {isPropD
+                          ? "Add challenge profit target and minimum trading days in source setup to track prop progress here."
+                          : "Add a period profit target and minimum trading days to turn this into a live goal tracker."}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8}}>
+                    {goalMetricCards.map(renderReturnsMetricCard)}
+                  </div>
+                  {goalsTargetsEnabled && isPropD ? (
+                    <div style={{fontSize:8,fontWeight:900,color:c.tm,letterSpacing:"0.055em",textTransform:"uppercase",fontFamily:F}}>
+                      Read-only challenge config. Snapshot prop rules remain source of truth.
+                    </div>
+                  ) : null}
+                </SummaryCard>
+              );
+            };
+            const renderRollingReturnCard = () => {
+              const rollingBoundsFor = grain => {
+                if (grain === "daily") return {min:1, max:252, unit:"days"};
+                if (grain === "weekly") return {min:1, max:104, unit:"weeks"};
+                if (grain === "monthly") return {min:1, max:60, unit:"months"};
+                return {min:1, max:500, unit:"trades"};
+              };
+              const rollingBounds = rollingBoundsFor(dashReturnsRollingAggregation);
+              const clampRollingWindow = (value, grain=dashReturnsRollingAggregation) => {
+                const bounds = rollingBoundsFor(grain);
+                const parsed = Math.round(Number(value));
+                const fallback = Math.min(Math.max(20, bounds.min), bounds.max);
+                return Math.max(bounds.min, Math.min(bounds.max, Number.isFinite(parsed) && parsed > 0 ? parsed : fallback));
+              };
+              const commitRollingWindow = (value, grain=dashReturnsRollingAggregation) => {
+                const next = clampRollingWindow(value, grain);
+                setDashReturnsRollingWindow(next);
+                setDashReturnsRollingWindowDraft(String(next));
+              };
+              const handleRollingAggregationSelect = (value) => {
+                const nextWindow = clampRollingWindow(dashReturnsRollingWindow, value);
+                setDashReturnsRollingAggregation(value);
+                setDashReturnsRollingWindow(nextWindow);
+                setDashReturnsRollingWindowDraft(String(nextWindow));
+              };
+              const rollingAggregationOptions = [
+                {id:"trades", label:"Trades", detail:`${periodRowsForGrain("trades").length}`, color:c.acL},
+                {id:"daily", label:"Daily", detail:`${periodRowsForGrain("daily").length}`, color:c.acL},
+                {id:"weekly", label:"Weekly", detail:`${periodRowsForGrain("weekly").length}`, color:c.acL},
+                {id:"monthly", label:"Monthly", detail:`${periodRowsForGrain("monthly").length}`, color:c.acL},
+              ];
+              const activeRollingAggregation = rollingAggregationOptions.find(option => option.id === dashReturnsRollingAggregation) || rollingAggregationOptions[0];
+              const activeWindow = clampRollingWindow(dashReturnsRollingWindow);
+              const rollingSourceRows = periodRowsForGrain(dashReturnsRollingAggregation).filter(row => row && (
+                Number.isFinite(Number(row.pnl)) ||
+                Number.isFinite(Number(row.rSum)) ||
+                Number.isFinite(Number(row.returnPct))
+              ));
+              const rollingRows = rollingSourceRows.map((row, index) => {
+                const windowRows = rollingSourceRows.slice(Math.max(0, index - activeWindow + 1), index + 1);
+                const startEquity = Number(windowRows[0]?.startEquity) || capital;
+                const pnl = windowRows.reduce((sum, item) => sum + (Number(item.pnl) || 0), 0);
+                const rSum = windowRows.reduce((sum, item) => sum + (Number(item.rSum) || 0), 0);
+                const trades = windowRows.reduce((sum, item) => sum + (Number(item.trades) || 0), 0);
+                return {
+                  ...row,
+                  key:`rolling-${dashReturnsRollingAggregation}-${activeWindow}-${row.key || index}`,
+                  label:row.label || row.fullLabel || `${index + 1}`,
+                  pnl,
+                  rSum,
+                  trades,
+                  periods:windowRows.length,
+                  returnPct:startEquity ? (pnl / startEquity) * 100 : 0,
+                  returnRaw:startEquity ? pnl / startEquity : 0,
+                };
+              });
+              const rollingValue = row => {
+                if (dashOverviewUnitMode === "percent") return Number(row.returnPct) || 0;
+                if (dashOverviewUnitMode === "r") return Number(row.rSum) || 0;
+                return Number(row.pnl) || 0;
+              };
+              const rollingValueLabel = value => {
+                if (dashValueMode === "privacy") return dashPrivacyMask;
+                if (dashOverviewUnitMode === "percent") return `${value >= 0 ? "+" : ""}${fmtPct(value, 1)}`;
+                if (dashOverviewUnitMode === "r") return `${value >= 0 ? "+" : ""}${fmtNum(value, 2)}R`;
+                return fmtMoney(value);
+              };
+              const values = rollingRows.map(rollingValue).filter(Number.isFinite);
+              const latestValue = values.length ? values[values.length - 1] : 0;
+              const bestValue = values.length ? Math.max(...values) : 0;
+              const worstValue = values.length ? Math.min(...values) : 0;
+              const w = 620;
+              const h = 262;
+              const p = {l:64, r:18, t:20, b:42};
+              const plotW2 = w - p.l - p.r;
+              const plotH2 = h - p.t - p.b;
+              const maxAbsRolling = Math.max(1, ...values.map(value => Math.abs(value)).filter(Number.isFinite));
+              const zeroY = p.t + plotH2 / 2;
+              const rollingYForValue = value => zeroY - (Number(value || 0) / maxAbsRolling) * (plotH2 / 2 - 8);
+              const rollingAxisTicks = [
+                {id:"high", value:maxAbsRolling, y:rollingYForValue(maxAbsRolling)},
+                {id:"zero", value:0, y:zeroY},
+                {id:"low", value:-maxAbsRolling, y:rollingYForValue(-maxAbsRolling)},
+              ];
+              const pointFor = (row, index) => {
+                const value = rollingValue(row);
+                return {
+                  x: p.l + (rollingRows.length <= 1 ? plotW2 / 2 : (index / Math.max(1, rollingRows.length - 1)) * plotW2),
+                  y: rollingYForValue(value),
+                  value,
+                  row,
+                  index,
+                };
+              };
+              const points = rollingRows.map(pointFor);
+              const rollingLabelEvery = Math.max(1, Math.ceil(points.length / 8));
+              const rollingAxisLabels = points.filter(point => point.index % rollingLabelEvery === 0 || point.index === points.length - 1);
+              const linePath2 = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+              const positiveArea = points.length > 1
+                ? `${linePath2} L ${points[points.length - 1].x.toFixed(2)} ${zeroY.toFixed(2)} L ${points[0].x.toFixed(2)} ${zeroY.toFixed(2)} Z`
+                : "";
+              const latestPoint = points[points.length - 1];
+              const rollingDraftValue = dashReturnsRollingWindowDraft;
+              const header = (
+                <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                  <div
+                    className="tlr-dashboard-value-menu-wrap tlr-return-period-control"
+                    style={{
+                      "--tlr-step-accent":c.acL,
+                      width:92,
+                      height:32,
+                      flex:"0 0 92px",
+                      position:"relative",
+                      background:"rgba(12,16,29,0.94)",
+                      border:`1px solid ${c.brH}`,
+                      boxSizing:"border-box",
+                      display:"grid",
+                      gridTemplateColumns:"minmax(0,1fr) 18px",
+                      gridTemplateRows:"9px 15px",
+                      alignContent:"center",
+                      alignItems:"center",
+                      columnGap:7,
+                      rowGap:2,
+                      padding:"4px 5px 4px 8px",
+                      fontFamily:F,
+                      boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",
+                      overflow:"hidden",
+                      transition:"background 120ms ease,border-color 120ms ease,box-shadow 120ms ease",
+                    }}
+                  >
+                    <span style={{gridColumn:"1",minWidth:0,fontSize:6.9,fontWeight:950,color:c.tm,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textAlign:"left"}}>
+                      Period
+                    </span>
+                    <input
+                      className="tlr-nospinner"
+                      value={rollingDraftValue}
+                      inputMode="numeric"
+                      aria-label="Rolling period"
+                      onPointerDown={event => event.stopPropagation()}
+                      onChange={(event) => {
+                        const raw = event.target.value.replace(/[^\d]/g, "").slice(0, 3);
+                        setDashReturnsRollingWindowDraft(raw);
+                        if (raw !== "") setDashReturnsRollingWindow(clampRollingWindow(raw));
+                      }}
+                      onBlur={() => commitRollingWindow(rollingDraftValue || activeWindow)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                        if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          commitRollingWindow(activeWindow + 1);
+                        }
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          commitRollingWindow(activeWindow - 1);
+                        }
+                      }}
+                      style={{
+                        width:"100%",
+                        height:15,
+                        minWidth:0,
+                        border:0,
+                        outline:0,
+                        background:"transparent",
+                        color:c.tx,
+                        fontSize:10.2,
+                        fontWeight:950,
+                        fontFamily:F,
+                        textAlign:"center",
+                        fontVariantNumeric:"tabular-nums",
+                        lineHeight:"15px",
+                        padding:0,
+                        textRendering:"geometricPrecision",
+                        WebkitFontSmoothing:"antialiased",
+                      }}
+                    />
+                    <span style={{gridColumn:2,gridRow:"1 / 3",height:24,display:"grid",gridTemplateRows:"1fr 1fr",borderLeft:`1px solid ${c.br}`,alignSelf:"center",overflow:"hidden"}}>
+                      <button
+                        type="button"
+                        aria-label="Increase rolling period"
+                        className="tlr-return-period-step"
+                        onPointerDown={event => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={() => commitRollingWindow(activeWindow + 1)}
+                        style={{border:0,background:"transparent",color:c.tm,lineHeight:1,cursor:"default",padding:0,display:"grid",placeItems:"center",fontFamily:F}}
+                      >
+                        <svg width={8} height={5} viewBox="0 0 8 5" fill="none" style={{display:"block"}}>
+                          <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Decrease rolling period"
+                        className="tlr-return-period-step"
+                        onPointerDown={event => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={() => commitRollingWindow(activeWindow - 1)}
+                        style={{border:0,background:"transparent",color:c.tm,lineHeight:1,cursor:"default",padding:0,display:"grid",placeItems:"center",fontFamily:F}}
+                      >
+                        <svg width={8} height={5} viewBox="0 0 8 5" fill="none" style={{display:"block"}}>
+                          <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </span>
+                  </div>
+                  <ReturnsCurveSelect
+                    openKey="rollingAggregation"
+                    title="Aggregation"
+                    active={activeRollingAggregation}
+                    options={rollingAggregationOptions}
+                    onSelect={handleRollingAggregationSelect}
+                    width={132}
+                  />
+                </div>
+              );
+              const rollingMetricCards = [
+                {id:"rolling-window", label:"Window", value:`${activeWindow} ${rollingBounds.unit}`, color:c.acL},
+                {id:"rolling-latest", label:"Latest", value:rollingValueLabel(latestValue), color:latestValue >= 0 ? c.gn : c.rd},
+                {id:"rolling-best", label:"Best", value:rollingValueLabel(bestValue), color:c.gn},
+                {id:"rolling-worst", label:"Worst", value:rollingValueLabel(worstValue), color:c.rd},
+              ];
+              return (
+                <SummaryCard title="Rolling Return" minHeight={449} right={header} titleFull style={{padding:14,gap:12}}>
+                  <div style={{height:319,background:returnsChartBg,border:`1px solid ${c.brH}`,boxSizing:"border-box",overflow:"hidden",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}>
+                    {rollingRows.length ? (
+                      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={`${activeWindow} ${rollingBounds.unit} rolling return`} style={returnsCrispSvgText}>
+                        <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+                        <line x1={p.l} x2={p.l} y1={p.t} y2={p.t + plotH2} stroke={c.brH} strokeWidth="1" opacity=".82" vectorEffect="non-scaling-stroke"/>
+                        {rollingAxisTicks.map(tick => (
+                          <g key={tick.id}>
+                            <line x1={p.l - 4} x2={p.l} y1={tick.y} y2={tick.y} stroke={c.brH} strokeWidth="1" opacity=".75" vectorEffect="non-scaling-stroke"/>
+                            <text x={p.l - 8} y={tick.y + 3} textAnchor="end" fill={tick.value === 0 ? returnsReadableGray : tick.value > 0 ? c.gn : c.rd} fontFamily={F} fontSize="8.2" fontWeight="900">
+                              {rollingValueLabel(tick.value)}
+                            </text>
+                          </g>
+                        ))}
+                        <line x1={p.l} x2={w-p.r} y1={zeroY} y2={zeroY} stroke={c.brH} strokeWidth="1" opacity=".75" vectorEffect="non-scaling-stroke"/>
+                        {positiveArea && <path d={positiveArea} fill={latestValue >= 0 ? c.gn : c.rd} opacity=".08"/>}
+                        {points.slice(1).map((point, index) => {
+                          const prev = points[index];
+                          const up = point.value >= prev.value;
+                          return <path key={`${point.row.key}-${index}`} d={`M ${prev.x.toFixed(2)} ${prev.y.toFixed(2)} L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`} stroke={up ? c.gn : c.rd} strokeWidth="1.8" fill="none" vectorEffect="non-scaling-stroke"/>;
+                        })}
+                        {points.length === 1 && <circle cx={points[0].x} cy={points[0].y} r="3" fill={c.acL}/>}
+                        {latestPoint && (
+                          <g pointerEvents="none">
+                            <circle cx={latestPoint.x} cy={latestPoint.y} r="3.6" fill={latestValue >= 0 ? c.gn : c.rd} stroke={c.bg} strokeWidth="1.25"/>
+                            <text x={Math.min(w - p.r - 6, Math.max(p.l + 28, latestPoint.x))} y={latestPoint.y > p.t + 24 ? latestPoint.y - 14 : latestPoint.y + 22} textAnchor="middle" fill={latestValue >= 0 ? c.gn : c.rd} fontFamily={F} fontSize="8.7" fontWeight="950">
+                              {rollingValueLabel(latestValue)}
+                            </text>
+                          </g>
+                        )}
+                        {rollingAxisLabels.map(point => {
+                          const isFirst = point.index === 0;
+                          const isLast = point.index === points.length - 1;
+                          return (
+                            <text
+                              key={`rolling-x-${point.row?.key || point.index}`}
+                              x={point.x.toFixed(2)}
+                              y={h - 18}
+                              textAnchor={isFirst ? "start" : isLast ? "end" : "middle"}
+                              fill={returnsReadableGray}
+                              fontFamily={F}
+                              fontSize="8.5"
+                              fontWeight="850"
+                            >
+                              {periodBottomDateLabel(point.row, dashReturnsRollingAggregation)}
+                            </text>
+                          );
+                        })}
+                      </svg>
+                    ) : (
+                      <div style={{height:"100%",display:"grid",placeItems:"center",fontFamily:F,fontSize:11,fontWeight:900,color:returnsMutedGray,textTransform:"uppercase",letterSpacing:"0.06em"}}>No rolling data</div>
+                    )}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
+                    {rollingMetricCards.map(renderReturnsMetricCard)}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const renderReturnDistributionCard = () => {
+              const modeKey = dashOverviewUnitMode === "percent" ? "percent" : dashOverviewUnitMode === "money" ? "money" : "r";
+              const baseDistribution = metrics.returnDistributionByMode?.[modeKey] || metrics.returnDistributionByMode?.r || {values:[],buckets:[],count:0,mean:0,median:0,min:0,max:0,maxCount:1};
+              const distributionAggregationOptions = [
+                {id:"trades", label:"Trades", detail:`${periodRowsForGrain("trades").length}`, color:c.acL},
+                {id:"daily", label:"Daily", detail:`${periodRowsForGrain("daily").length}`, color:c.acL},
+                {id:"weekly", label:"Weekly", detail:`${periodRowsForGrain("weekly").length}`, color:c.acL},
+                {id:"monthly", label:"Monthly", detail:`${periodRowsForGrain("monthly").length}`, color:c.acL},
+              ];
+              const activeDistributionAggregation = distributionAggregationOptions.find(option => option.id === dashReturnsDistributionAggregation) || distributionAggregationOptions[0];
+              const distributionRows = periodRowsForGrain(activeDistributionAggregation.id);
+              const distributionRowValue = row => {
+                if (modeKey === "percent") {
+                  const pct = Number(row?.returnPct);
+                  if (Number.isFinite(pct)) return pct;
+                  const raw = Number(row?.returnRaw);
+                  return Number.isFinite(raw) ? raw * 100 : 0;
+                }
+                if (modeKey === "money") {
+                  const pnl = Number(row?.pnl ?? row?.netPnl ?? row?.value);
+                  return Number.isFinite(pnl) ? pnl : 0;
+                }
+                const rValue = Number(row?.rSum ?? row?.r ?? row?.resultR ?? row?.avgR);
+                return Number.isFinite(rValue) ? rValue : 0;
+              };
+              const distributionValues = distributionRows.map(distributionRowValue).filter(Number.isFinite);
+              const activeCi = clampReturnDistributionConfidence(dashReturnsDistributionCi);
+              const distribution = computeEmpiricalReturnDistribution(modeKey, distributionValues.length ? distributionValues : (baseDistribution.values || []), {
+                ciLevel: activeCi,
+                bucketCount: baseDistribution.buckets?.length || undefined,
+                bootstrapSamples: 800,
+              });
+              const valueLabel = (value, compact=false) => {
+                if (dashValueMode === "privacy" && modeKey === "money") return dashPrivacyMask;
+                if (modeKey === "percent") return `${value >= 0 ? "+" : ""}${fmtPct(value, compact ? 0 : 1)}`;
+                if (modeKey === "money") return fmtMoney(value);
+                return `${value >= 0 ? "+" : ""}${fmtNum(value, compact ? 1 : 2)}R`;
+              };
+              const aggregationUnit = activeDistributionAggregation.id === "trades"
+                ? "Trade"
+                : activeDistributionAggregation.id === "daily"
+                  ? "Day"
+                  : activeDistributionAggregation.id === "weekly"
+                    ? "Week"
+                    : "Month";
+              const modeLabel = modeKey === "percent" ? `${aggregationUnit} %` : modeKey === "money" ? `${aggregationUnit} P&L` : `${aggregationUnit} R`;
+              const w = 620;
+              const h = 262;
+              const p = {l:38, r:18, t:26, b:34};
+              const plotW2 = w - p.l - p.r;
+              const plotH2 = h - p.t - p.b;
+              const range = Math.max(1e-9, Number(distribution.max) - Number(distribution.min));
+              const xForValue = value => p.l + ((Number(value) - Number(distribution.min)) / range) * plotW2;
+              const zeroX = clampLocal(xForValue(0), p.l, w - p.r);
+              const meanX = clampLocal(xForValue(distribution.mean), p.l + 8, w - p.r - 8);
+              const medianX = clampLocal(xForValue(distribution.median), p.l + 8, w - p.r - 8);
+              const ciLowX = clampLocal(xForValue(distribution.outcomeBand?.low), p.l, w - p.r);
+              const ciHighX = clampLocal(xForValue(distribution.outcomeBand?.high), p.l, w - p.r);
+              const estimateMarkerTextWidth = (text, minWidth=44) => Math.max(minWidth, String(text || "").length * 4.9);
+              const meanMarkerText = `MEAN ${valueLabel(distribution.mean, true)}`;
+              const medianMarkerText = `MEDIAN ${valueLabel(distribution.median, true)}`;
+              const markerTopY = Math.max(11, p.t - 8);
+              const markerBottomY = p.t + 14;
+              const ciLowLabel = `${activeCi}% LOW ${valueLabel(distribution.outcomeBand?.low, true)}`;
+              const ciHighLabel = `${activeCi}% HIGH ${valueLabel(distribution.outcomeBand?.high, true)}`;
+              const placeDistributionMarkers = markers => {
+                const rowRight = [-Infinity, -Infinity];
+                const placed = new Map();
+                [...markers]
+                  .map(marker => {
+                    const width = estimateMarkerTextWidth(marker.label, marker.minWidth || 44);
+                    const textX = clampLocal(marker.x, p.l + width / 2, w - p.r - width / 2);
+                    return {...marker, width, textX};
+                  })
+                  .sort((a, b) => a.textX - b.textX)
+                  .forEach(marker => {
+                    const left = marker.textX - marker.width / 2;
+                    const right = marker.textX + marker.width / 2;
+                    const topFits = left > rowRight[0] + 8;
+                    const bottomFits = left > rowRight[1] + 8;
+                    const row = topFits ? 0 : bottomFits ? 1 : (rowRight[0] <= rowRight[1] ? 0 : 1);
+                    rowRight[row] = Math.max(rowRight[row], right);
+                    placed.set(marker.key, {...marker, y: row === 0 ? markerTopY : markerBottomY});
+                  });
+                return markers.map(marker => placed.get(marker.key));
+              };
+              const distributionMarkers = placeDistributionMarkers([
+                {key:"ci-low", label:ciLowLabel, x:ciLowX, color:c.acL, lineColor:c.acL, dash:null, minWidth:56, opacity:.86},
+                {key:"mean", label:meanMarkerText, x:meanX, color:c.gold, lineColor:c.gold, dash:null, minWidth:44, opacity:.92},
+                {key:"median", label:medianMarkerText, x:medianX, color:c.tx, lineColor:c.tx, dash:"3 4", minWidth:54, opacity:.92},
+                {key:"ci-high", label:ciHighLabel, x:ciHighX, color:c.acL, lineColor:c.acL, dash:null, minWidth:56, opacity:.86},
+              ]);
+              const bucketGap = distribution.buckets?.length > 11 ? 3 : 5;
+              const bucketW = distribution.buckets?.length ? Math.max(8, (plotW2 - bucketGap * Math.max(0, distribution.buckets.length - 1)) / distribution.buckets.length) : 0;
+              const maxCount = Math.max(1, Number(distribution.maxCount) || 1);
+              const commitDistributionCi = (rawValue = dashReturnsDistributionCiDraft) => {
+                const level = clampReturnDistributionConfidence(rawValue);
+                setDashReturnsDistributionCi(level);
+                setDashReturnsDistributionCiDraft(String(level));
+              };
+              const stepDistributionCi = delta => commitDistributionCi(activeCi + delta);
+              const distributionMetricCards = [
+                {id:"distribution-outcome-band", label:`${activeCi}% band`, value:`${valueLabel(distribution.outcomeBand?.low, true)} → ${valueLabel(distribution.outcomeBand?.high, true)}`, color:c.acL, flex:"1.1 1 126px", minWidth:118},
+                {id:"distribution-mean-ci", label:"Avg confidence interval", value:`${valueLabel(distribution.meanCi?.low, true)} → ${valueLabel(distribution.meanCi?.high, true)}`, color:(distribution.mean || 0) >= 0 ? c.gn : c.rd, flex:"1.55 1 174px", minWidth:166, fullLabel:true},
+                {id:"distribution-mean", label:"Mean", value:valueLabel(distribution.mean), color:(distribution.mean || 0) >= 0 ? c.gn : c.rd, flex:"0.82 1 96px", minWidth:88},
+                {id:"distribution-median", label:"Median", value:valueLabel(distribution.median), color:(distribution.median || 0) >= 0 ? c.gn : c.rd, flex:"0.86 1 100px", minWidth:92},
+                {id:"distribution-wins", label:"Winners", value:fmtPct(distribution.winPct || 0, 0), color:(distribution.winPct || 0) >= 50 ? c.gn : c.gold, flex:"0.86 1 100px", minWidth:92},
+                {id:"distribution-sample", label:"Sample", value:String(distribution.count || 0), color:c.ts, flex:"0.8 1 92px", minWidth:84},
+              ];
+              const header = (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,fontFamily:F,minWidth:0}}>
+                  <div
+                    className="tlr-dashboard-value-menu-wrap tlr-return-period-control"
+                    style={{
+                      "--tlr-step-accent":c.acL,
+                      width:152,
+                      height:32,
+                      flex:"0 0 152px",
+                      background:returnsMetricBg,
+                      border:`1px solid ${c.brH}`,
+                      boxSizing:"border-box",
+                      display:"grid",
+                      gridTemplateColumns:"minmax(0,1fr) 12px 18px",
+                      gridTemplateRows:"8px 14px",
+                      alignContent:"center",
+                      alignItems:"center",
+                      columnGap:5,
+                      rowGap:2,
+                      padding:"4px 6px 4px 8px",
+                      fontFamily:F,
+                      boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",
+                      overflow:"hidden",
+                      textRendering:"geometricPrecision",
+                      WebkitFontSmoothing:"antialiased",
+                    }}
+                  >
+                    <span style={{gridColumn:"1 / 3",gridRow:1,minWidth:0,fontSize:7.1,fontWeight:950,color:returnsMutedGray,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textAlign:"left",textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased"}}>
+                      Confidence Interval
+                    </span>
+                    <input
+                      value={dashReturnsDistributionCiDraft}
+                      inputMode="numeric"
+                      aria-label="Return distribution confidence interval"
+                      onChange={(event)=>{
+                        const raw = String(event.target.value || "").replace(/[^\d]/g, "").slice(0, 2);
+                        setDashReturnsDistributionCiDraft(raw);
+                        const numeric = Number(raw);
+                        if (raw.length === 2 && numeric >= 50 && numeric <= 99) {
+                          setDashReturnsDistributionCi(numeric);
+                        }
+                      }}
+                      onBlur={()=>commitDistributionCi()}
+                      onKeyDown={(event)=>{
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                        if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          stepDistributionCi(1);
+                        }
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          stepDistributionCi(-1);
+                        }
+                      }}
+                      style={{
+                        gridColumn:1,
+                        gridRow:2,
+                        width:"100%",
+                        minWidth:0,
+                        height:14,
+                        border:"none",
+                        outline:"none",
+                        background:"transparent",
+                        color:c.tx,
+                        fontFamily:F,
+                        fontSize:10.2,
+                        fontWeight:950,
+                        textAlign:"left",
+                        fontVariantNumeric:"tabular-nums",
+                        lineHeight:"14px",
+                        padding:0,
+                        textRendering:"geometricPrecision",
+                        WebkitFontSmoothing:"antialiased",
+                        MozOsxFontSmoothing:"grayscale",
+                        fontSynthesis:"none",
+                      }}
+                    />
+                    <span style={{gridColumn:2,gridRow:2,fontSize:8,fontWeight:900,color:returnsReadableGray,lineHeight:"14px",textAlign:"right"}}>%</span>
+                    <span style={{gridColumn:3,gridRow:"1 / 3",height:24,display:"grid",gridTemplateRows:"1fr 1fr",borderLeft:`1px solid ${c.br}`,alignSelf:"center",overflow:"hidden"}}>
+                      <button
+                        type="button"
+                        aria-label="Increase confidence interval"
+                        className="tlr-return-period-step"
+                        onPointerDown={event => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={() => stepDistributionCi(1)}
+                        style={{border:0,background:"transparent",color:c.tm,lineHeight:1,cursor:"default",padding:0,display:"grid",placeItems:"center",fontFamily:F}}
+                      >
+                        <svg width={8} height={5} viewBox="0 0 8 5" fill="none" style={{display:"block"}}>
+                          <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Decrease confidence interval"
+                        className="tlr-return-period-step"
+                        onPointerDown={event => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={() => stepDistributionCi(-1)}
+                        style={{border:0,background:"transparent",color:c.tm,lineHeight:1,cursor:"default",padding:0,display:"grid",placeItems:"center",fontFamily:F}}
+                      >
+                        <svg width={8} height={5} viewBox="0 0 8 5" fill="none" style={{display:"block"}}>
+                          <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </span>
+                  </div>
+                  <ReturnsCurveSelect
+                    openKey="distributionAggregation"
+                    title="Aggregation"
+                    active={activeDistributionAggregation}
+                    options={distributionAggregationOptions}
+                    onSelect={setDashReturnsDistributionAggregation}
+                    width={132}
+                  />
+                </div>
+              );
+              return (
+                <SummaryCard title="Return Distribution" minHeight={449} right={header} titleFull style={{padding:14,gap:12}}>
+                  <div style={{height:319,background:returnsChartBg,border:`1px solid ${c.brH}`,boxSizing:"border-box",overflow:"hidden",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}>
+                    {distribution.buckets?.length ? (
+                      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Return distribution histogram in ${modeLabel}`} style={returnsCrispSvgText}>
+                        <style>{`
+                          .tlr-return-dist-tip{opacity:0;transition:none}
+                          .tlr-return-dist-bar:hover .tlr-return-dist-tip{opacity:1}
+                          .tlr-return-dist-shade{opacity:0;transition:none}
+                          .tlr-return-dist-bar:hover .tlr-return-dist-shade{opacity:.2}
+                        `}</style>
+                        <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+                        <rect
+                          x={Math.min(ciLowX, ciHighX)}
+                          y={p.t}
+                          width={Math.max(1, Math.abs(ciHighX - ciLowX))}
+                          height={plotH2}
+                          fill={c.acL}
+                          opacity=".045"
+                        />
+                        <line x1={zeroX} x2={zeroX} y1={p.t} y2={h-p.b} stroke={c.brH} strokeDasharray="3 5" strokeWidth="1" opacity=".9" vectorEffect="non-scaling-stroke"/>
+                        <text x={zeroX} y={h - 12} textAnchor="middle" fill={returnsReadableGray} fontFamily={F} fontSize="8.4" fontWeight="900">0</text>
+                        {distributionMarkers.map(marker => (
+                          <g key={marker.key} pointerEvents="none">
+                            <line x1={marker.x} x2={marker.x} y1={p.t} y2={h-p.b} stroke={marker.lineColor} strokeWidth="1" strokeDasharray={marker.dash || undefined} opacity={marker.opacity} vectorEffect="non-scaling-stroke"/>
+                            <text x={marker.textX} y={marker.y} textAnchor="middle" fill={marker.color} fontFamily={F} fontSize="8.2" fontWeight="900" opacity={marker.opacity}>
+                              {marker.label}
+                            </text>
+                          </g>
+                        ))}
+                        <text x={p.l} y={h - 12} fill={returnsReadableGray} fontFamily={F} fontSize="8.5" fontWeight="850">{valueLabel(distribution.min, true)}</text>
+                        <text x={w - p.r} y={h - 12} textAnchor="end" fill={returnsReadableGray} fontFamily={F} fontSize="8.5" fontWeight="850">{valueLabel(distribution.max, true)}</text>
+                        {distribution.buckets.map((bucket, index) => {
+                          const count = Number(bucket.count) || 0;
+                          const x = p.l + index * (bucketW + bucketGap);
+                          const barH = Math.max(count ? 3 : 1, (count / maxCount) * (plotH2 - 30));
+                          const y = h - p.b - barH;
+                          const color = bucket.end <= 0 ? c.rd : bucket.start >= 0 ? c.gn : c.gold;
+                          const hitW = Math.max(bucketW, 7);
+                          const hitX = clampLocal(x - (hitW - bucketW) / 2, p.l, w - p.r - hitW);
+                          const tooltipW = 158;
+                          const tooltipH = 56;
+                          const anchorX = x + bucketW / 2;
+                          const tooltipX = clampLocal(anchorX - tooltipW / 2, p.l + 4, w - p.r - tooltipW - 4);
+                          const preferredTooltipY = y > p.t + tooltipH + 10 ? y - tooltipH - 8 : y + barH + 8;
+                          const tooltipY = clampLocal(preferredTooltipY, p.t + 4, h - p.b - tooltipH - 4);
+                          const unitName = aggregationUnit.toLowerCase();
+                          const rangeText = `${valueLabel(bucket.start, true)} to ${valueLabel(bucket.end, true)}`;
+                          const countText = `${count} ${unitName}${count === 1 ? "" : "s"}`;
+                          const shareText = distribution.count ? fmtPct((count / distribution.count) * 100, count > 0 && count < distribution.count ? 1 : 0) : "0%";
+                          return (
+                            <g key={bucket.index} className="tlr-return-dist-bar" style={{cursor:count ? "default" : "inherit"}}>
+                              {count ? (
+                                <rect
+                                  x={hitX.toFixed(2)}
+                                  y={p.t}
+                                  width={hitW.toFixed(2)}
+                                  height={plotH2}
+                                  fill="transparent"
+                                  pointerEvents="all"
+                                  aria-label={`${rangeText}, ${countText}, ${shareText}`}
+                                />
+                              ) : null}
+                              <rect x={x.toFixed(2)} y={y.toFixed(2)} width={bucketW.toFixed(2)} height={barH.toFixed(2)} fill={color} opacity={count ? ".86" : ".2"} pointerEvents="none"/>
+                              {count ? (
+                                <rect className="tlr-return-dist-shade" x={x.toFixed(2)} y={y.toFixed(2)} width={bucketW.toFixed(2)} height={barH.toFixed(2)} fill="#000" pointerEvents="none"/>
+                              ) : null}
+                              {count ? (
+                                <foreignObject className="tlr-return-dist-tip" x={tooltipX.toFixed(2)} y={tooltipY.toFixed(2)} width={tooltipW} height={tooltipH} pointerEvents="none">
+                                  <div
+                                    xmlns="http://www.w3.org/1999/xhtml"
+                                    style={{
+                                      position:"relative",
+                                      width:"100%",
+                                      height:"100%",
+                                      background:"rgba(5,7,15,0.98)",
+                                      border:"1px solid rgba(90,108,150,0.34)",
+                                      boxShadow:"0 10px 22px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,255,255,0.04)",
+                                      boxSizing:"border-box",
+                                      padding:"5px 7px 5px 9px",
+                                      fontFamily:F,
+                                      WebkitFontSmoothing:"antialiased",
+                                      MozOsxFontSmoothing:"grayscale",
+                                      textRendering:"geometricPrecision",
+                                      fontSynthesis:"none",
+                                    }}
+                                  >
+                                    <span aria-hidden="true" style={{position:"absolute",left:0,top:5,bottom:5,width:1,background:`linear-gradient(180deg,transparent,${color},transparent)`,boxShadow:`0 0 6px ${color}`}}/>
+                                    <div style={{display:"grid",gap:4,minWidth:0}}>
+                                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                        <span style={{color:returnsMutedGray,fontSize:7,fontWeight:950,letterSpacing:"0.075em",textTransform:"uppercase",lineHeight:1}}>Range</span>
+                                        <span style={{color:c.tx,fontSize:8.2,fontWeight:950,lineHeight:1.08,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}} title={rangeText}>{rangeText}</span>
+                                      </div>
+                                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                        <span style={{color:returnsMutedGray,fontSize:7,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Count</span>
+                                        <span style={{color,fontSize:11.2,fontWeight:950,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{countText}</span>
+                                      </div>
+                                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                        <span style={{color:returnsMutedGray,fontSize:7,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Share</span>
+                                        <span style={{color:c.tx,fontSize:8.2,fontWeight:900,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{shareText}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </foreignObject>
+                              ) : null}
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    ) : (
+                      <div style={{height:"100%",display:"grid",placeItems:"center",fontFamily:F,fontSize:11,fontWeight:900,color:returnsMutedGray,textTransform:"uppercase",letterSpacing:"0.06em"}}>No distribution data</div>
+                    )}
+                  </div>
+                  <div style={{display:"flex",alignItems:"stretch",gap:8,width:"100%",minWidth:0}}>
+                    {distributionMetricCards.map(renderReturnsMetricCard)}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const renderCostFeeDragCard = () => {
+              const rawSeries = Array.isArray(metrics.costDragGrossNetSeries)
+                ? metrics.costDragGrossNetSeries
+                : Array.isArray(metrics.costDragSeries)
+                  ? metrics.costDragSeries
+                  : [];
+              const aggregateCostSeries = (grain="trades") => {
+                if (grain === "trades") return rawSeries;
+                const grouped = new Map();
+                rawSeries.forEach((row, index) => {
+                  const date = row?.date || row?.trade?.date || row?.trade?.exitTime || row?.trade?.entryTime;
+                  const key = grain === "daily"
+                    ? periodIsoDay(date)
+                    : grain === "weekly"
+                      ? periodWeekStartKey(date)
+                      : periodMonthKey(date);
+                  if (!key) return;
+                  if (!grouped.has(key)) {
+                    grouped.set(key, {
+                      key:`cost-${grain}-${key}`,
+                      date:key,
+                      label: grain === "daily"
+                        ? periodShortDateLabel(key)
+                        : grain === "weekly"
+                          ? `Week of ${periodShortDateLabel(key)}`
+                          : periodMonthLabel(key),
+                      cost:0,
+                      trades:0,
+                      lastIndex:index,
+                      last:row,
+                    });
+                  }
+                  const group = grouped.get(key);
+                  group.cost += Math.max(0, Number(row?.cost) || 0);
+                  group.trades += 1;
+                  if (index >= group.lastIndex) {
+                    group.lastIndex = index;
+                    group.last = row;
+                  }
+                });
+                return [...grouped.values()].map(group => ({
+                  ...group.last,
+                  key:group.key,
+                  date:group.date,
+                  label:group.label,
+                  cost:group.cost,
+                  trades:group.trades,
+                }));
+              };
+              const costAggregationOptions = [
+                {id:"trades", label:"Trades", detail:`${aggregateCostSeries("trades").length}`, color:c.acL},
+                {id:"daily", label:"Daily", detail:`${aggregateCostSeries("daily").length}`, color:c.acL},
+                {id:"weekly", label:"Weekly", detail:`${aggregateCostSeries("weekly").length}`, color:c.acL},
+                {id:"monthly", label:"Monthly", detail:`${aggregateCostSeries("monthly").length}`, color:c.acL},
+              ];
+              const activeCostAggregation = costAggregationOptions.find(option => option.id === dashReturnsCostAggregation) || costAggregationOptions[0];
+              const activeRawSeries = aggregateCostSeries(activeCostAggregation.id);
+              const series = activeRawSeries.length
+                ? [{
+                    key:"start",
+                    label:activeRawSeries[0]?.label || "Start",
+                    date:activeRawSeries[0]?.date || null,
+                    grossEquity:capital,
+                    netEquity:capital,
+                    grossPnl:0,
+                    netPnl:0,
+                    cumulativeCost:0,
+                  }, ...activeRawSeries]
+                : [];
+              const totalCost = Math.max(0, Number(metrics.costDragDollars ?? metrics.costDragTotalCost) || 0);
+              const grossPnl = Number(metrics.costDragGrossPnl ?? metrics.grossBeforeCosts) || 0;
+              const netPnl = Number(metrics.costDragNetPnl ?? metrics.totalPnl) || 0;
+              const costPct = Number(metrics.costDragPct);
+              const hasCostPct = Number.isFinite(costPct);
+              const valueInActiveUnit = (value, absolute=false) => {
+                const number = Number(value) || 0;
+                if (dashValueMode === "privacy" && dashOverviewUnitMode !== "r") return dashPrivacyMask;
+                if (dashOverviewUnitMode === "percent") {
+                  const pctValue = capital ? (number / capital) * 100 : 0;
+                  return `${absolute ? "" : pctValue >= 0 ? "+" : ""}${fmtPct(Math.abs(pctValue), 2)}`;
+                }
+                if (dashOverviewUnitMode === "r") {
+                  const perR = Number(metrics?.dollarPerR) || 0;
+                  if (!perR) return "—";
+                  const r = number / perR;
+                  return `${absolute ? "" : r >= 0 ? "+" : ""}${fmtNum(Math.abs(r), Math.abs(r) >= 10 ? 1 : 2)}R`;
+                }
+                return absolute ? fmtAbsMoney(number) : fmtMoney(number);
+              };
+              const costAxisLabel = (value) => {
+                const number = Number(value) || 0;
+                if (dashValueMode === "privacy" && dashOverviewUnitMode !== "r") return dashPrivacyMask;
+                if (dashOverviewUnitMode === "percent") {
+                  const pctValue = capital ? ((number - capital) / capital) * 100 : 0;
+                  return `${pctValue >= 0 ? "+" : ""}${fmtPct(pctValue, 1)}`;
+                }
+                if (dashOverviewUnitMode === "r") {
+                  const perR = Number(metrics?.dollarPerR) || 0;
+                  if (!perR) return "—";
+                  const r = (number - capital) / perR;
+                  return `${r >= 0 ? "+" : ""}${fmtNum(r, Math.abs(r) >= 10 ? 1 : 2)}R`;
+                }
+                return fmtMoney(number);
+              };
+              const w = 620;
+              const h = 262;
+              const p = {l:68, r:20, t:30, b:34};
+              const plotW2 = w - p.l - p.r;
+              const plotH2 = h - p.t - p.b;
+              const scaleValues = series.flatMap(row => [Number(row.grossEquity), Number(row.netEquity)]).filter(Number.isFinite);
+              const rawMin2 = scaleValues.length ? Math.min(...scaleValues) : capital;
+              const rawMax2 = scaleValues.length ? Math.max(...scaleValues) : capital + 1;
+              const span2 = Math.max(1, rawMax2 - rawMin2);
+              const yMin2 = rawMin2 - span2 * 0.12;
+              const yMax2 = rawMax2 + span2 * 0.14;
+              const ySpan2 = Math.max(1, yMax2 - yMin2);
+              const pointForCost = (row, index, key) => {
+                const value = Number(row[key]) || capital;
+                return {
+                  x:p.l + (series.length <= 1 ? plotW2 / 2 : (index / (series.length - 1)) * plotW2),
+                  y:p.t + (1 - ((value - yMin2) / ySpan2)) * plotH2,
+                  value,
+                  row,
+                };
+              };
+              const grossPoints = series.map((row, index) => pointForCost(row, index, "grossEquity"));
+              const netPoints = series.map((row, index) => pointForCost(row, index, "netEquity"));
+              const pathForCost = pointsList => pointsList.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+              const grossPath = grossPoints.length > 1 ? pathForCost(grossPoints) : "";
+              const netPath = netPoints.length > 1 ? pathForCost(netPoints) : "";
+              const gapPath = grossPath && netPath
+                ? `${grossPath} ${netPoints.slice().reverse().map(point => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ")} Z`
+                : "";
+              const costAxisTicks = [
+                {id:"high", value:yMax2},
+                {id:"mid", value:(yMax2 + yMin2) / 2},
+                {id:"low", value:yMin2},
+              ].map(tick => ({
+                ...tick,
+                y:p.t + (1 - ((tick.value - yMin2) / ySpan2)) * plotH2,
+              }));
+              const activeCostHover = dashReturnsCostHover?.aggregation === dashReturnsCostAggregation ? dashReturnsCostHover : null;
+              const hoveredCostIndex = activeCostHover && series.length
+                ? Math.max(0, Math.min(series.length - 1, Number(activeCostHover.index) || 0))
+                : null;
+              const hoveredGrossPoint = hoveredCostIndex !== null ? grossPoints[hoveredCostIndex] : null;
+              const hoveredNetPoint = hoveredCostIndex !== null ? netPoints[hoveredCostIndex] : null;
+              const costTooltip = (() => {
+                if (!hoveredGrossPoint || !hoveredNetPoint) return null;
+                const row = hoveredNetPoint.row || {};
+                const label = activeCostAggregation.id === "trades"
+                  ? String(row?.trade?.id || row?.key || row?.label || "Trade")
+                  : activeCostAggregation.id === "daily"
+                    ? periodFullDateLabel(row.date || row.key)
+                    : activeCostAggregation.id === "weekly"
+                      ? periodWeekRangeLabel(row.date || row.key)
+                      : periodMonthLabel(row.date || row.key);
+                const color = (Number(row?.cost) || 0) > 0 ? c.gold : (netPnl >= 0 ? c.gn : c.rd);
+                const tooltipW = Math.max(154, Math.min(252, 66 + label.length * 4.9));
+                const tooltipH = 62;
+                const anchorX = hoveredNetPoint.x;
+                const anchorY = Math.min(hoveredNetPoint.y, hoveredGrossPoint.y);
+                const x = clampLocal(anchorX + 10, p.l + 4, w - p.r - tooltipW - 4);
+                const y = clampLocal(anchorY - tooltipH - 10, p.t + 4, h - p.b - tooltipH - 4);
+                return {
+                  x,
+                  y,
+                  width:tooltipW,
+                  height:tooltipH,
+                  label,
+                  color,
+                  gross:costAxisLabel(row.grossEquity),
+                  net:costAxisLabel(row.netEquity),
+                  cost:valueInActiveUnit(row.cost, true),
+                };
+              })();
+              const header = (
+                <ReturnsCurveSelect
+                  openKey="costAggregation"
+                  title="Aggregation"
+                  active={activeCostAggregation}
+                  options={costAggregationOptions}
+                  onSelect={(id)=>{ setDashReturnsCostAggregation(id); setDashReturnsCostHover(null); }}
+                  width={132}
+                />
+              );
+              const costMetricCards = [
+                {id:"cost-gross", label:"Gross before costs", value:valueInActiveUnit(grossPnl), color:c.gold, fullLabel:true},
+                {id:"cost-net", label:"Net after costs", value:valueInActiveUnit(netPnl), color:netPnl >= 0 ? c.gn : c.rd},
+                {id:"cost-total", label:"Total cost", value:valueInActiveUnit(totalCost, true), color:c.gold},
+                {id:"cost-percent", label:"Cost / gross", value:hasCostPct ? fmtPct(costPct, 1) : "—", color:c.gold},
+              ];
+              return (
+                <SummaryCard title="Cost / Fee Drag" minHeight={449} right={header} titleFull style={{padding:14,gap:12}}>
+                  <div
+                    onPointerLeave={()=>setDashReturnsCostHover(null)}
+                    onPointerCancel={()=>setDashReturnsCostHover(null)}
+                    onMouseLeave={()=>setDashReturnsCostHover(null)}
+                    style={{height:319,background:returnsChartBg,border:`1px solid ${c.brH}`,boxSizing:"border-box",overflow:"hidden",position:"relative",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}
+                  >
+                    {series.length > 1 ? (
+                      <div style={{position:"absolute",top:9,right:12,zIndex:2,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:14,fontFamily:F,pointerEvents:"none"}}>
+                        {[
+                          ["Gross", c.gold, 1.5],
+                          ["Net", netPnl >= 0 ? c.gn : c.rd, 1.7],
+                        ].map(([label, color, width]) => (
+                          <div key={label} style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                            <span aria-hidden="true" style={{width:26,height:Number(width),background:color,boxShadow:`0 0 8px ${color}55`,display:"block"}}/>
+                            <span style={{fontSize:8.5,fontWeight:900,color,letterSpacing:"0.06em",textTransform:"uppercase",lineHeight:1,whiteSpace:"nowrap"}}>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {series.length > 1 ? (
+                      <svg
+                        width="100%"
+                        height="100%"
+                        viewBox={`0 0 ${w} ${h}`}
+                        preserveAspectRatio="none"
+                        role="img"
+                        aria-label="Gross before costs versus net after costs"
+                        style={returnsCrispSvgText}
+                        onPointerMove={(event)=>{
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          if (!rect.width || !series.length) return;
+                          const svgX = ((event.clientX - rect.left) / rect.width) * w;
+                          const nearestIndex = netPoints.reduce((best, point, index) => {
+                            const distance = Math.abs(point.x - svgX);
+                            return distance < best.distance ? {index, distance} : best;
+                          }, {index:0, distance:Infinity}).index;
+                          setDashReturnsCostHover(prev => prev?.aggregation === dashReturnsCostAggregation && prev?.index === nearestIndex ? prev : {aggregation:dashReturnsCostAggregation,index:nearestIndex});
+                        }}
+                        onPointerLeave={()=>setDashReturnsCostHover(null)}
+                        onPointerCancel={()=>setDashReturnsCostHover(null)}
+                        onMouseLeave={()=>setDashReturnsCostHover(null)}
+                      >
+                        <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+                        <line x1={p.l} x2={p.l} y1={p.t} y2={h-p.b} stroke={c.brH} strokeWidth="1" opacity=".72" vectorEffect="non-scaling-stroke"/>
+                        {costAxisTicks.map(tick => (
+                          <g key={tick.id} pointerEvents="none">
+                            <line x1={p.l - 4} x2={p.l} y1={tick.y} y2={tick.y} stroke={c.brH} strokeWidth="1" opacity=".75" vectorEffect="non-scaling-stroke"/>
+                            <text x={p.l - 8} y={tick.y + 3} textAnchor="end" fill={returnsReadableGray} fontFamily={F} fontSize="8.2" fontWeight="900">{costAxisLabel(tick.value)}</text>
+                          </g>
+                        ))}
+                        {[0.25,0.5,0.75].map(mark => <line key={mark} x1={p.l} x2={w-p.r} y1={p.t + plotH2 * mark} y2={p.t + plotH2 * mark} stroke={c.brH} strokeWidth=".8" opacity=".14"/>)}
+                        {gapPath && <path d={gapPath} fill={c.gold} opacity=".13"/>}
+                        {grossPath && <path d={grossPath} fill="none" stroke={c.gold} strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
+                        {netPath && <path d={netPath} fill="none" stroke={netPnl >= 0 ? c.gn : c.rd} strokeWidth="1.7" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
+                        {hoveredNetPoint ? (
+                          <g pointerEvents="none">
+                            <line x1={hoveredNetPoint.x} x2={hoveredNetPoint.x} y1={p.t} y2={h-p.b} stroke={c.brH} strokeWidth=".9" opacity=".55" vectorEffect="non-scaling-stroke"/>
+                            <circle cx={hoveredGrossPoint.x} cy={hoveredGrossPoint.y} r="3.2" fill={c.gold} stroke={c.bg} strokeWidth="1" vectorEffect="non-scaling-stroke"/>
+                            <circle cx={hoveredNetPoint.x} cy={hoveredNetPoint.y} r="3.2" fill={netPnl >= 0 ? c.gn : c.rd} stroke={c.bg} strokeWidth="1" vectorEffect="non-scaling-stroke"/>
+                          </g>
+                        ) : null}
+                        <line x1={p.l} x2={w-p.r} y1={h-p.b} y2={h-p.b} stroke={c.brH} strokeWidth="1" opacity=".7"/>
+                        <text x={p.l} y={h - 12} fill={returnsReadableGray} fontFamily={F} fontSize="8.5" fontWeight="850">{series[0]?.label || "Start"}</text>
+                        <text x={w - p.r} y={h - 12} textAnchor="end" fill={returnsReadableGray} fontFamily={F} fontSize="8.5" fontWeight="850">{activeRawSeries[activeRawSeries.length - 1]?.label || "Current"}</text>
+                        {costTooltip ? (
+                          <foreignObject x={costTooltip.x.toFixed(2)} y={costTooltip.y.toFixed(2)} width={costTooltip.width} height={costTooltip.height} pointerEvents="none">
+                            <div
+                              xmlns="http://www.w3.org/1999/xhtml"
+                              style={{
+                                position:"relative",
+                                width:"100%",
+                                height:"100%",
+                                background:"rgba(5,7,15,0.98)",
+                                border:"1px solid rgba(90,108,150,0.34)",
+                                boxShadow:"0 10px 22px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,255,255,0.04)",
+                                boxSizing:"border-box",
+                                padding:"5px 7px 5px 9px",
+                                fontFamily:F,
+                                WebkitFontSmoothing:"antialiased",
+                                MozOsxFontSmoothing:"grayscale",
+                                textRendering:"geometricPrecision",
+                                fontSynthesis:"none",
+                              }}
+                            >
+                              <span aria-hidden="true" style={{position:"absolute",left:0,top:5,bottom:5,width:1,background:`linear-gradient(180deg,transparent,${costTooltip.color},transparent)`,boxShadow:`0 0 6px ${costTooltip.color}`}}/>
+                              <div style={{display:"grid",gap:4,minWidth:0}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                  <span style={{color:returnsMutedGray,fontSize:7,fontWeight:950,letterSpacing:"0.075em",textTransform:"uppercase",lineHeight:1}}>Period</span>
+                                  <span style={{color:c.tx,fontSize:8.2,fontWeight:950,lineHeight:1.08,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}} title={costTooltip.label}>{costTooltip.label}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                  <span style={{color:returnsMutedGray,fontSize:7,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Gross</span>
+                                  <span style={{color:c.gold,fontSize:10.2,fontWeight:950,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{costTooltip.gross}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                  <span style={{color:returnsMutedGray,fontSize:7,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Net</span>
+                                  <span style={{color:netPnl >= 0 ? c.gn : c.rd,fontSize:10.2,fontWeight:950,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{costTooltip.net}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                  <span style={{color:returnsMutedGray,fontSize:7,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Cost</span>
+                                  <span style={{color:c.tx,fontSize:8.2,fontWeight:900,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{costTooltip.cost}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </foreignObject>
+                        ) : null}
+                      </svg>
+                    ) : (
+                      <div style={{height:"100%",display:"grid",placeItems:"center",fontFamily:F,fontSize:11,fontWeight:900,color:returnsMutedGray,textTransform:"uppercase",letterSpacing:"0.06em"}}>No cost series</div>
+                    )}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
+                    {costMetricCards.map(renderReturnsMetricCard)}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const returnsPairedCardHeight = 449;
+            const returnsPairedChartHeight = 319;
+            const renderProfitConcentrationCard = () => {
+              const concentrationAggregationMeta = {
+                trades:{label:"Trades", singular:"trade", plural:"trades", color:c.acL},
+                daily:{label:"Daily", singular:"day", plural:"days", color:c.acL},
+                weekly:{label:"Weekly", singular:"week", plural:"weeks", color:c.acL},
+                monthly:{label:"Monthly", singular:"month", plural:"months", color:c.acL},
+              };
+              const concentrationRowsForGrain = grain => periodRowsForGrain(grain)
+                .map((row, index) => ({
+                  key:row?.key || `${grain}-${index}`,
+                  label:row?.fullLabel || row?.label || `${concentrationAggregationMeta[grain]?.singular || "row"} ${index + 1}`,
+                  pnl:Number(row?.pnl) || 0,
+                }));
+              const rawConcentrationAggregationOptions = ["trades","daily","weekly","monthly"].map(id => {
+                const rowCount = concentrationRowsForGrain(id).length;
+                return {
+                  id,
+                  label:concentrationAggregationMeta[id].label,
+                  detail:String(rowCount),
+                  color:concentrationAggregationMeta[id].color,
+                  rowCount,
+                };
+              });
+              const concentrationAggregationOptions = rawConcentrationAggregationOptions.filter(option => option.rowCount >= 100);
+              const activeConcentrationAggregation = concentrationAggregationOptions.find(option => option.id === dashProfitConcentrationAggregation)
+                || concentrationAggregationOptions[0]
+                || rawConcentrationAggregationOptions[0];
+              const activeConcentrationUnit = concentrationAggregationMeta[activeConcentrationAggregation.id] || concentrationAggregationMeta.trades;
+              const maxConcentrationPct = 50;
+              const selectedConcentrationPct = Math.max(1, Math.min(maxConcentrationPct, Math.round(Number(dashProfitConcentrationPct) || 10)));
+              const selectedConcentrationFraction = selectedConcentrationPct / 100;
+              const buildConcentrationSeries = grain => {
+                const rows = concentrationRowsForGrain(grain);
+                const total = rows.reduce((sum, row) => sum + (Number(row.pnl) || 0), 0);
+                return {
+                  rows,
+                  ...computeProfitConcentration(rows, total, {
+                    profitConcentrationTopPct:selectedConcentrationFraction,
+                    profitRobustnessSecondTopPct:0.10,
+                  }),
+                };
+              };
+              const concentrationSeries = buildConcentrationSeries(activeConcentrationAggregation.id);
+              const curve = concentrationSeries.profitConcentrationCurve || [];
+              const winningTradeCountForConcentration = Math.max(0, Number(concentrationSeries.profitConcentrationWinnerCount) || Math.max(0, curve.length - 1));
+              const selectedProfitCount = Math.max(0, Number(concentrationSeries.profitConcentrationTopN) || 0);
+              const selectedShare = Number(concentrationSeries.top5ProfitShare);
+              const selectedPoint = concentrationSeries.profitConcentrationTopPoint || null;
+              const hasData = curve.length > 1 && Number.isFinite(selectedShare);
+              const giniValue = concentrationSeries.profitConcentrationGini == null ? null : Number(concentrationSeries.profitConcentrationGini);
+              const giniDistributedMax = Number(concentrationSeries.profitConcentrationGiniDistributedMax ?? 0.25);
+              const giniConcentratedMin = Number(concentrationSeries.profitConcentrationGiniConcentratedMin ?? 0.45);
+              const verdict = hasData ? (concentrationSeries.profitConcentrationVerdict || "Distributed") : "No winners";
+              const verdictColor = hasData
+                ? verdict === "Concentrated"
+                  ? c.gold
+                  : verdict === "Moderate"
+                    ? c.acL
+                    : c.gn
+                : c.tm;
+              const concentrationCurveColor = c.gold;
+              const selectedMarkerColor = c.acL;
+              const top10Share = Number(concentrationSeries.profitConcentrationTop10Share);
+              const top10Profit = Number(concentrationSeries.profitConcentrationTop10Profit) || 0;
+              const top10Count = Math.max(0, Number(concentrationSeries.profitConcentrationTop10N) || 0);
+              const top20Share = Number(concentrationSeries.profitConcentrationTop20Share);
+              const top20Profit = Number(concentrationSeries.profitConcentrationTop20Profit) || 0;
+              const top20Count = Math.max(0, Number(concentrationSeries.profitConcentrationTop20N) || 0);
+              const concentrationCountLabel = (count) => `${count} winning ${count === 1 ? activeConcentrationUnit.singular : activeConcentrationUnit.plural}`;
+              const commitConcentrationPct = (rawValue = dashProfitConcentrationPctDraft) => {
+                const next = Math.max(1, Math.min(maxConcentrationPct, Math.round(Number(rawValue) || selectedConcentrationPct)));
+                setDashProfitConcentrationPct(next);
+                setDashProfitConcentrationPctDraft(String(next));
+              };
+              const stepConcentrationPct = (delta) => commitConcentrationPct(selectedConcentrationPct + delta);
+              const displayProfitValue = (value) => {
+                const number = Number(value) || 0;
+                if (dashValueMode === "privacy" && dashOverviewUnitMode !== "r") return dashPrivacyMask;
+                if (dashOverviewUnitMode === "percent") return fmtPct(capital ? number / capital * 100 : 0, 1);
+                if (dashOverviewUnitMode === "r") {
+                  const perR = Number(metrics?.dollarPerR) || 0;
+                  return perR ? `${fmtNum(number / perR, Math.abs(number / perR) >= 10 ? 1 : 2)}R` : "—";
+                }
+                return fmtMoney(number);
+              };
+              const w = 620;
+              const h = 262;
+              const p = {l:42, r:24, t:24, b:36};
+              const plotW2 = w - p.l - p.r;
+              const plotH2 = h - p.t - p.b;
+              const xFor = value => p.l + Math.max(0, Math.min(100, Number(value) || 0)) / 100 * plotW2;
+              const yFor = value => p.t + (1 - Math.max(0, Math.min(100, Number(value) || 0)) / 100) * plotH2;
+              const curvePath = hasData
+                ? curve.map((point, index) => `${index ? "L" : "M"} ${xFor(point.xPct).toFixed(2)} ${yFor(point.yPct).toFixed(2)}`).join(" ")
+                : "";
+              const concentrationTextShadow = "0 1px 2px rgba(0,0,0,0.75)";
+              const concentrationOverlapArea = (a, b) => {
+                const x = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+                const y = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+                return x * y;
+              };
+              const concentrationPointInRect = (x, y, rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+              const concentrationOrientation = (a, b, point) => {
+                const value = (b.y - a.y) * (point.x - b.x) - (b.x - a.x) * (point.y - b.y);
+                if (Math.abs(value) < 0.001) return 0;
+                return value > 0 ? 1 : 2;
+              };
+              const concentrationOnSegment = (a, b, point) => (
+                point.x <= Math.max(a.x, b.x) + 0.001
+                && point.x + 0.001 >= Math.min(a.x, b.x)
+                && point.y <= Math.max(a.y, b.y) + 0.001
+                && point.y + 0.001 >= Math.min(a.y, b.y)
+              );
+              const concentrationSegmentsIntersect = (a, b, edgeA, edgeB) => {
+                const o1 = concentrationOrientation(a, b, edgeA);
+                const o2 = concentrationOrientation(a, b, edgeB);
+                const o3 = concentrationOrientation(edgeA, edgeB, a);
+                const o4 = concentrationOrientation(edgeA, edgeB, b);
+                if (o1 !== o2 && o3 !== o4) return true;
+                if (o1 === 0 && concentrationOnSegment(a, b, edgeA)) return true;
+                if (o2 === 0 && concentrationOnSegment(a, b, edgeB)) return true;
+                if (o3 === 0 && concentrationOnSegment(edgeA, edgeB, a)) return true;
+                if (o4 === 0 && concentrationOnSegment(edgeA, edgeB, b)) return true;
+                return false;
+              };
+              const concentrationSegmentHitsRect = (x1, y1, x2, y2, rect, pad=5) => {
+                const padded = {left:rect.left - pad, top:rect.top - pad, right:rect.right + pad, bottom:rect.bottom + pad};
+                if (Math.max(x1, x2) < padded.left || Math.min(x1, x2) > padded.right || Math.max(y1, y2) < padded.top || Math.min(y1, y2) > padded.bottom) return false;
+                if (concentrationPointInRect(x1, y1, padded) || concentrationPointInRect(x2, y2, padded)) return true;
+                const a = {x:x1, y:y1};
+                const b = {x:x2, y:y2};
+                const edges = [
+                  [{x:padded.left, y:padded.top}, {x:padded.right, y:padded.top}],
+                  [{x:padded.right, y:padded.top}, {x:padded.right, y:padded.bottom}],
+                  [{x:padded.right, y:padded.bottom}, {x:padded.left, y:padded.bottom}],
+                  [{x:padded.left, y:padded.bottom}, {x:padded.left, y:padded.top}],
+                ];
+                return edges.some(([edgeA, edgeB]) => concentrationSegmentsIntersect(a, b, edgeA, edgeB));
+              };
+              const concentrationAvoidSegments = [
+                {x1:p.l, y1:h - p.b, x2:w - p.r, y2:p.t, weight:1100},
+                ...(hasData ? curve.slice(1).map((point, index) => {
+                  const previous = curve[index];
+                  return {
+                    x1:xFor(previous.xPct),
+                    y1:yFor(previous.yPct),
+                    x2:xFor(point.xPct),
+                    y2:yFor(point.yPct),
+                    weight:1600,
+                  };
+                }) : []),
+              ];
+              const placeConcentrationMarkers = (items) => {
+                const reserved = [
+                  {left:w - p.r - 104, top:p.t + 1, right:w - p.r + 4, bottom:p.t + 19},
+                  {left:p.l - 4, top:h - 25, right:p.l + 70, bottom:h - 5},
+                  {left:w - p.r - 76, top:h - 25, right:w - p.r + 4, bottom:h - 5},
+                ];
+                const placed = [];
+                return items
+                  .filter(item => item.point && item.point.yPct != null)
+                  .map(item => {
+                    const x = xFor(item.point.xPct);
+                    const y = yFor(item.point.yPct);
+                    const primaryText = `${item.label} ${fmtPct(item.point.yPct, 0)}`;
+                    const secondaryText = concentrationCountLabel(item.point.count);
+                    const width = Math.max(56, Math.min(118, Math.max(primaryText.length * 4.9, secondaryText.length * 4.2) + 8));
+                    const height = 23;
+                    const gapX = 11;
+                    const gapY = 12;
+                    const rawCandidates = [
+                      {name:"top-right", left:x + gapX, top:y - height - gapY},
+                      {name:"top-left", left:x - width - gapX, top:y - height - gapY},
+                      {name:"bottom-right", left:x + gapX, top:y + gapY},
+                      {name:"bottom-left", left:x - width - gapX, top:y + gapY},
+                      {name:"right-mid", left:x + gapX, top:y - height / 2},
+                      {name:"left-mid", left:x - width - gapX, top:y - height / 2},
+                      {name:"top-center", left:x - width / 2, top:y - height - gapY - 5},
+                      {name:"bottom-center", left:x - width / 2, top:y + gapY + 5},
+                    ];
+                    const order = item.preferred === "top"
+                      ? ["top-right","top-left","right-mid","left-mid","bottom-right","bottom-left","top-center","bottom-center"]
+                      : ["bottom-left","bottom-right","left-mid","right-mid","top-left","top-right","bottom-center","top-center"];
+                    const candidates = order
+                      .map(name => rawCandidates.find(candidate => candidate.name === name))
+                      .filter(Boolean)
+                      .map(candidate => {
+                        const left = clampLocal(candidate.left, p.l + 4, w - p.r - width - 4);
+                        const top = clampLocal(candidate.top, p.t + 4, h - p.b - height - 7);
+                        const rect = {left, top, right:left + width, bottom:top + height};
+                        const lineCollisionPenalty = concentrationAvoidSegments.reduce((sum, segment) => (
+                          sum + (concentrationSegmentHitsRect(segment.x1, segment.y1, segment.x2, segment.y2, rect) ? segment.weight : 0)
+                        ), 0);
+                        const verticalLineHitsLabel = x >= rect.left - 2 && x <= rect.right + 2 && rect.bottom >= Math.min(y, h - p.b) && rect.top <= Math.max(y, h - p.b);
+                        const markerInsideLabel = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+                        const overlapPenalty = [...placed, ...reserved].reduce((sum, other) => sum + concentrationOverlapArea(rect, other), 0);
+                        const clampPenalty = Math.abs(candidate.left - left) + Math.abs(candidate.top - top);
+                        const distancePenalty = Math.abs((left + width / 2) - x) * 0.03 + Math.abs((top + height / 2) - y) * 0.05;
+                        const score = overlapPenalty * 9 + lineCollisionPenalty + clampPenalty * 1.2 + distancePenalty + (verticalLineHitsLabel ? 900 : 0) + (markerInsideLabel ? 1200 : 0);
+                        return {...candidate, ...rect, width, height, score};
+                      })
+                      .sort((a, b) => a.score - b.score);
+                    const layout = candidates[0];
+                    placed.push(layout);
+                    return {...item, x, y, primaryText, secondaryText, layout};
+                  });
+              };
+              const concentrationMarkerLayouts = placeConcentrationMarkers([
+                {key:"selected", point:selectedPoint, label:`Top ${fmtPct(selectedConcentrationPct, 0)}`, color:selectedMarkerColor, preferred:selectedPoint?.yPct > 58 ? "bottom" : "top"},
+              ]);
+              const selectedAxisX = selectedPoint ? xFor(selectedPoint.xPct) : null;
+              const selectedAxisLabelText = selectedPoint ? `Top ${fmtPct(selectedConcentrationPct, 0)}` : "";
+              const selectedAxisTextAnchor = selectedAxisX == null
+                ? "middle"
+                : selectedAxisX < p.l + 78
+                  ? "start"
+                  : selectedAxisX > w - p.r - 78
+                    ? "end"
+                    : "middle";
+              const selectedAxisLabelX = selectedAxisX == null
+                ? 0
+                : selectedAxisTextAnchor === "start"
+                  ? selectedAxisX + 5
+                  : selectedAxisTextAnchor === "end"
+                    ? selectedAxisX - 5
+                    : selectedAxisX;
+              const hideStartWinnersAxisLabel = selectedAxisX != null && selectedAxisX < p.l + 88;
+              const hideEndWinnersAxisLabel = selectedAxisX != null && selectedAxisX > w - p.r - 88;
+              const marker = (item) => {
+                if (!item || !item.layout) return null;
+                const {x, y, color, layout, primaryText, secondaryText, key} = item;
+                const labelIsRight = layout.left + layout.width / 2 >= x;
+                const leaderX = labelIsRight ? layout.left - 3 : layout.right + 3;
+                const leaderY = layout.top + 9;
+                return (
+                  <g key={key} pointerEvents="none">
+                    <line x1={x} x2={x} y1={y} y2={h - p.b} stroke={color} strokeDasharray="2 4" strokeWidth="1" opacity=".75" vectorEffect="non-scaling-stroke"/>
+                    <line x1={x} x2={leaderX} y1={y} y2={leaderY} stroke={color} strokeDasharray="2 4" strokeWidth=".8" opacity=".5" vectorEffect="non-scaling-stroke"/>
+                    <circle cx={x} cy={y} r="3.2" fill={color} stroke={c.bg} strokeWidth="1" vectorEffect="non-scaling-stroke"/>
+                    <rect x={layout.left - 3} y={layout.top} width={layout.width + 6} height={layout.height} fill="rgba(5,8,18,0.88)" opacity=".94"/>
+                    <text x={layout.left} y={layout.top + 9} textAnchor="start" fill={color} fontFamily={F} fontSize="9.4" fontWeight="950" style={{textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased",textShadow:concentrationTextShadow}}>
+                      {primaryText}
+                    </text>
+                    <text x={layout.left} y={layout.top + 20} textAnchor="start" fill={c.tx} fontFamily={F} fontSize="8.2" fontWeight="900" opacity=".92" style={{textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased",textShadow:concentrationTextShadow}}>
+                      {secondaryText}
+                    </text>
+                  </g>
+                );
+              };
+              const concentrationMetricText = {labelColor:c.tx, subColor:c.tx, labelSize:8.2, subSize:8.2, valueSize:14};
+              const concentrationMetricCards = [
+                {
+                  id:"concentration-top-10",
+                  label:"Top 10%",
+                  value:Number.isFinite(top10Share) ? fmtPct(top10Share, 0) : "—",
+                  color:Number.isFinite(top10Share) ? c.gn : c.tm,
+                  sub:top10Count ? `${concentrationCountLabel(top10Count)} · ${displayProfitValue(top10Profit)}` : "no winners",
+                  ...concentrationMetricText,
+                },
+                {
+                  id:"concentration-top-20",
+                  label:"Top 20%",
+                  value:Number.isFinite(top20Share) ? fmtPct(top20Share, 0) : "—",
+                  color:Number.isFinite(top20Share) ? c.gold : c.tm,
+                  sub:top20Count ? `${concentrationCountLabel(top20Count)} · ${displayProfitValue(top20Profit)}` : "no winners",
+                  ...concentrationMetricText,
+                },
+                {
+                  id:"concentration-explorer",
+                  label:"Explorer",
+                  value:Number.isFinite(selectedShare) ? fmtPct(selectedShare, 0) : "—",
+                  color:Number.isFinite(selectedShare) ? selectedMarkerColor : c.tm,
+                  sub:selectedProfitCount
+                    ? selectedConcentrationPct >= maxConcentrationPct
+                      ? `Capped at ${maxConcentrationPct}%; right edge is definitional`
+                      : `Top ${fmtPct(selectedConcentrationPct, 0)} · ${concentrationCountLabel(selectedProfitCount)}`
+                    : "no winners",
+                  ...concentrationMetricText,
+                },
+                {
+                  id:"concentration-gini",
+                  label:"Gini",
+                  value:giniValue == null ? "—" : fmtNum(giniValue, 2),
+                  color:giniValue == null ? c.tm : verdictColor,
+                  sub:`D <${fmtNum(giniDistributedMax, 2)} · M <${fmtNum(giniConcentratedMin, 2)} · C >=${fmtNum(giniConcentratedMin, 2)}`,
+                  ...concentrationMetricText,
+                },
+                {
+                  id:"concentration-verdict",
+                  label:"Verdict",
+                  value:verdict,
+                  color:verdictColor,
+                  sub:winningTradeCountForConcentration ? concentrationCountLabel(winningTradeCountForConcentration) : "no winners",
+                  ...concentrationMetricText,
+                },
+              ];
+              const header = (
+                <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"flex-end",fontFamily:F,minWidth:0}}>
+                  <div
+                    className="tlr-dashboard-value-menu-wrap tlr-return-period-control"
+                    style={{
+                      "--tlr-step-accent":c.acL,
+                      width:118,
+                      height:32,
+                      flex:"0 0 118px",
+                      background:"rgba(12,16,29,0.94)",
+                      border:`1px solid ${c.brH}`,
+                      boxSizing:"border-box",
+                      display:"grid",
+                      gridTemplateColumns:"minmax(0,1fr) 12px 18px",
+                      gridTemplateRows:"8px 14px",
+                      alignContent:"center",
+                      alignItems:"center",
+                      columnGap:5,
+                      rowGap:2,
+                      padding:"4px 6px 4px 8px",
+                      boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)",
+                      overflow:"hidden",
+                      textRendering:"geometricPrecision",
+                      WebkitFontSmoothing:"antialiased",
+                    }}
+                  >
+                    <span style={{gridColumn:"1 / 3",gridRow:1,minWidth:0,fontSize:7.3,fontWeight:950,color:c.tx,opacity:.9,letterSpacing:"0.07em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1,textAlign:"left"}}>
+                      Top winners
+                    </span>
+                    <input
+                      value={dashProfitConcentrationPctDraft}
+                      inputMode="numeric"
+                      aria-label="Profit concentration top trade percentage"
+                      onChange={(event)=>{
+                        const raw = String(event.target.value || "").replace(/[^\d]/g, "").slice(0, 2);
+                        const numeric = Number(raw);
+                        const cappedRaw = raw !== "" && numeric > maxConcentrationPct ? String(maxConcentrationPct) : raw;
+                        setDashProfitConcentrationPctDraft(cappedRaw);
+                        if (cappedRaw !== "" && Number(cappedRaw) >= 1 && Number(cappedRaw) <= maxConcentrationPct) {
+                          setDashProfitConcentrationPct(Number(cappedRaw));
+                        }
+                      }}
+                      onBlur={()=>commitConcentrationPct()}
+                      onKeyDown={(event)=>{
+                        if (event.key === "Enter") event.currentTarget.blur();
+                        if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          stepConcentrationPct(1);
+                        }
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          stepConcentrationPct(-1);
+                        }
+                      }}
+                      style={{
+                        gridColumn:1,
+                        gridRow:2,
+                        width:"100%",
+                        minWidth:0,
+                        height:14,
+                        border:"none",
+                        outline:"none",
+                        background:"transparent",
+                        color:c.tx,
+                        fontFamily:F,
+                        fontSize:10.8,
+                        fontWeight:950,
+                        textAlign:"left",
+                        fontVariantNumeric:"tabular-nums",
+                        lineHeight:"14px",
+                        padding:0,
+                        textRendering:"geometricPrecision",
+                        WebkitFontSmoothing:"antialiased",
+                      }}
+                    />
+                    <span style={{gridColumn:2,gridRow:2,fontSize:8.4,fontWeight:900,color:c.tx,opacity:.9,lineHeight:"14px",textAlign:"right"}}>%</span>
+                    <span style={{gridColumn:3,gridRow:"1 / 3",height:24,display:"grid",gridTemplateRows:"1fr 1fr",borderLeft:`1px solid ${c.br}`,alignSelf:"center",overflow:"hidden"}}>
+                      <button
+                        type="button"
+                        aria-label="Increase concentration percentage"
+                        className="tlr-return-period-step"
+                        onPointerDown={event => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={() => stepConcentrationPct(1)}
+                        style={{border:0,background:"transparent",color:c.tm,lineHeight:1,cursor:"default",padding:0,display:"grid",placeItems:"center",fontFamily:F}}
+                      >
+                        <svg width={8} height={5} viewBox="0 0 8 5" fill="none" style={{display:"block"}}>
+                          <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Decrease concentration percentage"
+                        className="tlr-return-period-step"
+                        onPointerDown={event => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={() => stepConcentrationPct(-1)}
+                        style={{border:0,background:"transparent",color:c.tm,lineHeight:1,cursor:"default",padding:0,display:"grid",placeItems:"center",fontFamily:F}}
+                      >
+                        <svg width={8} height={5} viewBox="0 0 8 5" fill="none" style={{display:"block"}}>
+                          <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </span>
+                  </div>
+                  <ReturnsCurveSelect
+                    openKey="profitConcentrationAggregation"
+                    title="Aggregation"
+                    active={activeConcentrationAggregation}
+                    options={concentrationAggregationOptions}
+                    onSelect={id=>{
+                      if (!concentrationAggregationOptions.some(option => option.id === id)) return;
+                      setDashProfitConcentrationAggregation(id);
+                    }}
+                    width={118}
+                  />
+                </div>
+              );
+              return (
+                <SummaryCard title="Profit Concentration" minHeight={returnsPairedCardHeight} right={header} titleFull style={{padding:14,gap:12,height:returnsPairedCardHeight}}>
+                  <div style={{height:returnsPairedChartHeight,flex:`0 0 ${returnsPairedChartHeight}px`,background:returnsChartBg,border:`1px solid ${c.brH}`,boxSizing:"border-box",overflow:"hidden",position:"relative",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}>
+                    {hasData ? (
+                      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label="Profit concentration curve" style={returnsCrispSvgText}>
+                        <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+                        <path d={`M ${p.l} ${h-p.b} L ${w-p.r} ${p.t}`} stroke={c.ts} strokeDasharray="4 5" strokeWidth="1" opacity=".65" fill="none" vectorEffect="non-scaling-stroke"/>
+                        <text x={w - p.r - 4} y={p.t - 7} textAnchor="end" fill={c.tx} fontFamily={F} fontSize="8.6" fontWeight="900" opacity=".9" style={{textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased",textShadow:concentrationTextShadow}}>even distribution</text>
+                        <path d={curvePath} stroke={concentrationCurveColor} strokeWidth="2" strokeLinejoin="round" fill="none" vectorEffect="non-scaling-stroke"/>
+                        {concentrationMarkerLayouts.map(marker)}
+                        <line x1={p.l} x2={w-p.r} y1={h-p.b} y2={h-p.b} stroke={c.brH} strokeWidth="1" opacity=".75"/>
+                        <line x1={p.l} x2={p.l} y1={p.t} y2={h-p.b} stroke={c.brH} strokeWidth="1" opacity=".75"/>
+                        {!hideStartWinnersAxisLabel ? (
+                          <text x={p.l} y={h - 12} fill={c.tx} fontFamily={F} fontSize="8.4" fontWeight="900" opacity=".9" style={{textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased"}}>{`0% winning ${activeConcentrationUnit.plural}`}</text>
+                        ) : null}
+                        {!hideEndWinnersAxisLabel ? (
+                          <text x={w - p.r} y={h - 12} textAnchor="end" fill={c.tx} fontFamily={F} fontSize="8.4" fontWeight="900" opacity=".9" style={{textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased"}}>{`100% winning ${activeConcentrationUnit.plural}`}</text>
+                        ) : null}
+                        {selectedAxisX != null ? (
+                          <text x={selectedAxisLabelX} y={h - 12} textAnchor={selectedAxisTextAnchor} fill={selectedMarkerColor} fontFamily={F} fontSize="8.6" fontWeight="950" opacity=".96" style={{textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased",textShadow:concentrationTextShadow}}>{selectedAxisLabelText}</text>
+                        ) : null}
+                        <text x={p.l - 36} y={p.t - 7} fill={c.tx} fontFamily={F} fontSize="8.4" fontWeight="900" opacity=".9" style={{textRendering:"geometricPrecision",WebkitFontSmoothing:"antialiased"}}>profit share</text>
+                      </svg>
+                    ) : (
+                      <div style={{height:"100%",display:"grid",placeItems:"center",fontFamily:F,fontSize:11,fontWeight:900,color:returnsMutedGray,textTransform:"uppercase",letterSpacing:"0.06em"}}>No winning trades</div>
+                    )}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:8}}>
+                    {concentrationMetricCards.map(renderReturnsMetricCard)}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const renderBalanceWaterfallCard = () => {
+              const rawSeries = Array.isArray(metrics.costDragGrossNetSeries)
+                ? metrics.costDragGrossNetSeries
+                : Array.isArray(metrics.costDragSeries)
+                  ? metrics.costDragSeries
+                  : [];
+              const capitalBase = Number(metrics.startingBalance ?? capital) || 0;
+              const endingBalance = Number(metrics.endingBalance ?? (capitalBase + (Number(metrics.totalPnl) || 0))) || capitalBase;
+              const netPnl = Number(metrics.costDragNetPnl ?? metrics.totalPnl ?? (endingBalance - capitalBase)) || 0;
+              const totalCost = Math.max(0, Number(metrics.costDragDollars ?? metrics.costDragTotalCost) || 0);
+              let grossWins = 0;
+              let grossLosses = 0;
+              if (rawSeries.length) {
+                let previousGrossPnl = 0;
+                rawSeries.forEach(row => {
+                  const grossPnl = Number(row?.grossPnl);
+                  if (!Number.isFinite(grossPnl)) return;
+                  const delta = grossPnl - previousGrossPnl;
+                  previousGrossPnl = grossPnl;
+                  if (delta >= 0) grossWins += delta;
+                  else grossLosses += Math.abs(delta);
+                });
+              } else {
+                grossWins = Math.max(0, Number(metrics.grossWin) || 0);
+                grossLosses = Math.max(0, Number(metrics.grossLoss) || 0);
+              }
+              const costStep = totalCost || Math.max(0, grossWins - grossLosses - netPnl);
+              const startValue = capitalBase;
+              const afterWins = startValue + grossWins;
+              const afterLosses = afterWins - grossLosses;
+              const afterCosts = afterLosses - costStep;
+              const reconcileDelta = endingBalance - afterCosts;
+              const displayWaterfallValue = (value, {balance=false, signed=true, absolute=false} = {}) => {
+                const number = Number(value) || 0;
+                if (dashValueMode === "privacy" && dashOverviewUnitMode !== "r") return dashPrivacyMask;
+                if (dashOverviewUnitMode === "percent") {
+                  const pctValue = capitalBase ? (number / capitalBase) * 100 : 0;
+                  const sign = !balance && signed && pctValue >= 0 ? "+" : "";
+                  return `${sign}${fmtPct(absolute ? Math.abs(pctValue) : pctValue, balance ? 1 : 2)}`;
+                }
+                if (dashOverviewUnitMode === "r" && !balance) {
+                  const perR = Number(metrics?.dollarPerR) || 0;
+                  if (!perR) return "—";
+                  const rValue = number / perR;
+                  const sign = signed && rValue >= 0 ? "+" : "";
+                  return `${sign}${fmtNum(absolute ? Math.abs(rValue) : rValue, Math.abs(rValue) >= 10 ? 1 : 2)}R`;
+                }
+                if (balance) return fmtAbsMoney(number);
+                return absolute ? fmtAbsMoney(number) : fmtMoney(number);
+              };
+              const steps = [
+                {id:"start", label:"Starting balance", short:"Start", kind:"neutral", amount:startValue, from:startValue, to:startValue, color:c.ts, balance:true},
+                {id:"wins", label:"Gross wins", short:"Wins", kind:"up", amount:grossWins, from:startValue, to:afterWins, color:c.gn},
+                {id:"losses", label:"Gross losses", short:"Losses", kind:"down", amount:-grossLosses, from:afterWins, to:afterLosses, color:c.rd},
+                {id:"costs", label:"Costs", short:"Costs", kind:"cost", amount:-costStep, from:afterLosses, to:afterCosts, color:c.gold},
+                {id:"end", label:"Ending balance", short:"End", kind:"neutral", amount:endingBalance, from:endingBalance, to:endingBalance, color:endingBalance >= startValue ? c.gn : c.rd, balance:true},
+              ];
+              const scaleValues = steps.flatMap(step => [step.from, step.to]);
+              const rawMin = Math.min(...scaleValues, startValue, endingBalance);
+              const rawMax = Math.max(...scaleValues, startValue, endingBalance);
+              const span = Math.max(1, rawMax - rawMin);
+              const yMin = rawMin - span * 0.18;
+              const yMax = rawMax + span * 0.18;
+              const ySpan = Math.max(1, yMax - yMin);
+              const w = 620;
+              const h = 262;
+              const p = {l:48, r:42, t:26, b:46};
+              const plotW2 = w - p.l - p.r;
+              const plotH2 = h - p.t - p.b;
+              const xFor = index => p.l + (steps.length <= 1 ? plotW2 / 2 : (index / (steps.length - 1)) * plotW2);
+              const yFor = value => p.t + (1 - ((value - yMin) / ySpan)) * plotH2;
+              const barW = 56;
+              const header = (
+                <div style={{fontSize:8,fontWeight:900,color:netPnl >= 0 ? c.gn : c.rd,letterSpacing:"0.065em",textTransform:"uppercase",fontFamily:F}}>
+                  Net {displayWaterfallValue(netPnl)}
+                </div>
+              );
+              const summaryItems = [
+                {id:"waterfall-start", label:"Start", value:displayWaterfallValue(startValue, {balance:true, signed:false}), color:c.ts},
+                {id:"waterfall-won", label:"Won", value:displayWaterfallValue(grossWins), color:c.gn},
+                {id:"waterfall-lost", label:"Lost", value:displayWaterfallValue(-grossLosses), color:c.rd},
+                {id:"waterfall-costs", label:"Costs", value:displayWaterfallValue(-costStep), color:c.gold},
+              ];
+              return (
+                <SummaryCard title="Balance Waterfall" minHeight={returnsPairedCardHeight} right={header} titleFull style={{padding:14,gap:12,height:returnsPairedCardHeight}}>
+                  <div style={{height:returnsPairedChartHeight,flex:`0 0 ${returnsPairedChartHeight}px`,background:returnsChartBg,border:`1px solid ${c.brH}`,boxSizing:"border-box",overflow:"hidden",position:"relative",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}>
+                    <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label="Starting balance to ending balance waterfall" style={returnsCrispSvgText}>
+                      <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+                      {steps.slice(0, -1).map((step, index) => {
+                        const next = steps[index + 1];
+                        const x1 = xFor(index) + barW / 2;
+                        const x2 = xFor(index + 1) - barW / 2;
+                        const y = yFor(step.to);
+                        return <line key={`${step.id}-connector`} x1={x1} x2={x2} y1={y} y2={y} stroke={c.ts} strokeWidth="1.35" opacity=".74" vectorEffect="non-scaling-stroke"/>;
+                      })}
+                      {steps.map((step, index) => {
+                        const x = xFor(index);
+                        const fromY = yFor(step.from);
+                        const toY = yFor(step.to);
+                        const isNeutral = step.kind === "neutral";
+                        const rectY = isNeutral ? toY - 4 : Math.min(fromY, toY);
+                        const rectH = isNeutral ? 8 : Math.max(5, Math.abs(toY - fromY));
+                        const labelY = step.kind === "down" || step.kind === "cost" ? Math.min(h - p.b + 28, Math.max(fromY, toY) + 18) : Math.max(13, Math.min(fromY, toY) - 10);
+                        const amountText = step.balance
+                          ? displayWaterfallValue(step.amount, {balance:true, signed:false})
+                          : displayWaterfallValue(step.amount);
+                        return (
+                          <g key={step.id}>
+                            {isNeutral ? (
+                              <line
+                                x1={(x - barW / 2).toFixed(2)}
+                                x2={(x + barW / 2).toFixed(2)}
+                                y1={toY.toFixed(2)}
+                                y2={toY.toFixed(2)}
+                                stroke={step.color}
+                                strokeWidth="4.6"
+                                strokeLinecap="butt"
+                                opacity=".82"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            ) : (
+                              <rect
+                                x={(x - barW / 2).toFixed(2)}
+                                y={rectY.toFixed(2)}
+                                width={barW}
+                                height={rectH.toFixed(2)}
+                                fill={step.color}
+                                opacity=".86"
+                                stroke="transparent"
+                                strokeWidth="1"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            )}
+                            <text x={x} y={labelY} textAnchor="middle" fill={step.color} fontFamily={F} fontSize="8.5" fontWeight="900">
+                              {amountText}
+                            </text>
+                            <text x={x} y={h - 16} textAnchor="middle" fill={step.color} fontFamily={F} fontSize="8.5" fontWeight="900">
+                              {step.short}
+                            </text>
+                            <text x={x} y={h - 6} textAnchor="middle" fill={c.ts} fontFamily={F} fontSize="7.5" fontWeight="850">
+                              {step.label}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      {Math.abs(reconcileDelta) > 0.01 ? (
+                        <text x={w - p.r} y={p.t - 9} textAnchor="end" fill={c.tm} fontFamily={F} fontSize="8" fontWeight="850">
+                          reconciled to ending balance
+                        </text>
+                      ) : null}
+                    </svg>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
+                    {summaryItems.map(renderReturnsMetricCard)}
+                  </div>
+                </SummaryCard>
+              );
+            };
+            const returnsTradesMode = dashReturnsCurveAggregation === "trades";
+            const returnsHoverRow = hoverPoint?.row || null;
+            const returnsHoverTrade = Array.isArray(returnsHoverRow?.rawTrades) ? returnsHoverRow.rawTrades[0] : null;
+            const returnsHoverTradeIdText = hoverPoint ? String(returnsHoverRow?.tradeIds?.[0] || returnsHoverRow?.label || returnsHoverRow?.key || "Trade") : "";
+            const returnsHoverTradePnl = hoverPoint ? Number(returnsHoverRow?.pnl) || 0 : 0;
+            const returnsHoverTradePnlColor = returnsHoverTradePnl >= 0 ? c.gn : c.rd;
+            const returnsHoverTradePnlText = hoverPoint
+              ? (dashValueMode === "privacy" ? dashPrivacyMask : fmtMoney(returnsHoverTradePnl))
+              : "";
+            const returnsHoverOpenText = hoverPoint
+              ? formatReturnsTradeTime(returnsTradeOpenDateValue(returnsHoverTrade) || returnsHoverRow?.firstDateIso || returnsHoverRow?.date)
+              : "";
+            const returnsHoverPeriodPnl = hoverPoint ? Number(returnsHoverRow?.pnl) || 0 : 0;
+            const returnsHoverPeriodPnlColor = returnsHoverPeriodPnl >= 0 ? c.gn : c.rd;
+            const returnsHoverPeriodPnlText = hoverPoint
+              ? (dashValueMode === "privacy" ? dashPrivacyMask : fmtMoney(returnsHoverPeriodPnl))
+              : "";
+            const returnsFormatShortDate = value => {
+              if (!value) return "—";
+              const date = new Date(String(value).replace(" ", "T"));
+              if (!Number.isFinite(date.getTime())) return String(value);
+              return date.toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"});
+            };
+            const returnsHoverPeriodLabel = dashReturnsCurveAggregation === "weekly"
+              ? "Week"
+              : dashReturnsCurveAggregation === "monthly"
+                ? "Month"
+                : dashReturnsCurveAggregation === "daily"
+                  ? "Day"
+                  : "Period";
+            const returnsHoverPeriodDateText = (() => {
+              if (!hoverPoint) return "";
+              if (dashReturnsCurveAggregation === "weekly") {
+                const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(String(returnsHoverRow?.key || ""))
+                  ? new Date(`${returnsHoverRow.key}T00:00:00Z`)
+                  : new Date(String(returnsHoverRow?.firstDateIso || returnsHoverRow?.date || "").replace(" ", "T"));
+                if (Number.isFinite(weekStart.getTime())) {
+                  const weekEnd = new Date(weekStart);
+                  weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+                  return `${returnsFormatShortDate(weekStart.toISOString())} - ${returnsFormatShortDate(weekEnd.toISOString())}`;
+                }
+                const start = returnsFormatShortDate(returnsHoverRow?.firstDateIso || returnsHoverRow?.date);
+                const end = returnsFormatShortDate(returnsHoverRow?.lastDateIso || returnsHoverRow?.date);
+                return start === end ? start : `${start} - ${end}`;
+              }
+              if (dashReturnsCurveAggregation === "monthly") return String(returnsHoverRow?.label || axisDateLabel(returnsHoverRow));
+              if (dashReturnsCurveAggregation === "daily") return returnsFormatShortDate(returnsHoverRow?.date || returnsHoverRow?.firstDateIso);
+              return axisDateLabel(returnsHoverRow);
+            })();
+            const hoverDateText = hoverPoint ? axisDateLabel(hoverPoint.row) : "";
+            const hoverValueText = hoverPoint ? displayValue(hoverPoint.value, hoverPoint.row) : "";
+            const hoverValueColor = hoverPoint && hoverPoint.index > 0
+              ? (hoverPoint.value >= points[hoverPoint.index - 1].value ? c.gn : c.rd)
+              : activeMode.color;
+            const estimateReturnsTooltipWidth = (text, px = 5.4) => String(text || "").length * px;
+            const returnsTradesTooltipWidth = Math.min(236, Math.max(
+              124,
+              estimateReturnsTooltipWidth(returnsHoverTradeIdText, 5.15) + 46,
+              estimateReturnsTooltipWidth(returnsHoverTradePnlText, 5.55) + 44,
+              estimateReturnsTooltipWidth(hoverValueText, 5.35) + 44,
+              estimateReturnsTooltipWidth(returnsHoverOpenText, 4.8) + 44
+            ));
+            const tooltipW = hoverPoint && returnsTradesMode
+              ? returnsTradesTooltipWidth
+              : Math.min(194, Math.max(
+                134,
+                estimateReturnsTooltipWidth(returnsHoverPeriodDateText, 4.9) + 44,
+                estimateReturnsTooltipWidth(returnsHoverPeriodPnlText, 5.55) + 44,
+                estimateReturnsTooltipWidth(hoverValueText, 5.3) + 44
+              ));
+            const tooltipH = hoverPoint && returnsTradesMode ? 62 : 56;
+            const hoverDateTextWidth = hoverDateText.length * 5.7;
+            const hoverDateX = hoverPoint
+              ? clampLocal(hoverPoint.x, pad.l + hoverDateTextWidth / 2 + 4, chartW - pad.r - hoverDateTextWidth / 2 - 4)
+              : 0;
+            const estimateReturnsAxisTextWidth = text => Math.max(46, Math.min(136, String(text || "").length * 5.8));
+            const hoverDateAxisRect = hoverPoint ? {
+              x1:hoverDateX - hoverDateTextWidth / 2 - 8,
+              x2:hoverDateX + hoverDateTextWidth / 2 + 8,
+              y1:chartH - 23,
+              y2:chartH - 1,
+            } : null;
+            const xAxisTickOverlapsHover = (tick, index) => {
+              if (!hoverDateAxisRect) return false;
+              const labelWidth = estimateReturnsAxisTextWidth(tick.label);
+              const isFirst = index === 0;
+              const isLast = index === xAxisTicks.length - 1;
+              const labelRight = chartW - pad.r;
+              const rect = isLast
+                ? {x1:labelRight - labelWidth - 2, x2:labelRight + 2, y1:chartH - 23, y2:chartH - 1}
+                : isFirst
+                  ? {x1:tick.point.x - 2, x2:tick.point.x + labelWidth + 2, y1:chartH - 23, y2:chartH - 1}
+                  : {x1:tick.point.x - labelWidth / 2 - 4, x2:tick.point.x + labelWidth / 2 + 4, y1:chartH - 23, y2:chartH - 1};
+              return hoverDateAxisRect.x1 < rect.x2 && hoverDateAxisRect.x2 > rect.x1 && hoverDateAxisRect.y1 < rect.y2 && hoverDateAxisRect.y2 > rect.y1;
+            };
+            const tooltipX = hoverPoint
+              ? clampLocal(
+                  hoverPoint.x + (hoverPoint.x < chartW - pad.r - tooltipW - 16 ? 12 : -tooltipW - 12),
+                  pad.l,
+                  chartW - pad.r - tooltipW
+                )
+              : 0;
+            const tooltipY = hoverPoint
+              ? clampLocal(
+                  hoverPoint.y - tooltipH - 12,
+                  pad.t + 6,
+                  chartH - pad.b - tooltipH - 12
+                )
+              : 0;
+            const chartX = (value) => `${(value / chartW) * 100}%`;
+            const chartY = (value) => `${(value / chartH) * 100}%`;
+            const chartTextStyle = {
+              position:"absolute",
+              zIndex:3,
+              pointerEvents:"none",
+              fontFamily:F,
+              fontSize:10.5,
+              fontWeight:950,
+              lineHeight:1,
+              letterSpacing:0,
+              whiteSpace:"nowrap",
+              WebkitFontSmoothing:"antialiased",
+              textRendering:"geometricPrecision",
+            };
+            const returnsTextRect = (x, y, width, height=12, anchor="start") => ({
+              x1:anchor === "end" ? x - width : anchor === "middle" ? x - width / 2 : x,
+              x2:anchor === "end" ? x : anchor === "middle" ? x + width / 2 : x + width,
+              y1:y - height + 1,
+              y2:y + 3,
+            });
+            const returnsRectsOverlap = (a, b, margin=0) => (
+              a.x1 < b.x2 + margin && a.x2 > b.x1 - margin &&
+              a.y1 < b.y2 + margin && a.y2 > b.y1 - margin
+            );
+            const returnsRectNearCurve = rect => {
+              if (!points.length) return false;
+              const expanded = {x1:rect.x1 - 6, x2:rect.x2 + 6, y1:rect.y1 - 6, y2:rect.y2 + 6};
+              for (let i = 1; i < points.length; i += 1) {
+                const prev = points[i - 1];
+                const point = points[i];
+                const minX = Math.min(prev.x, point.x);
+                const maxX = Math.max(prev.x, point.x);
+                if (maxX < expanded.x1 || minX > expanded.x2) continue;
+                for (let step = 0; step <= 4; step += 1) {
+                  const t = step / 4;
+                  const x = prev.x + (point.x - prev.x) * t;
+                  const y = prev.y + (point.y - prev.y) * t;
+                  if (x >= expanded.x1 && x <= expanded.x2 && y >= expanded.y1 && y <= expanded.y2) return true;
+                }
+              }
+              return false;
+            };
+            const getReturnsHighLowLabelLayout = (point, color, preferAbove=true) => {
+              if (!point) return null;
+              const valueText = displayValue(point.value, point.row);
+              const roomRight = chartW - pad.r - point.x;
+              const roomLeft = point.x - pad.l;
+              const toRight = roomRight >= roomLeft;
+              const estimatedWidth = Math.max(42, Math.min(90, String(valueText).length * 5.6));
+              const sideRoom = toRight ? roomRight : roomLeft;
+              const useConnector = sideRoom >= estimatedWidth + 28;
+              const directOffset = Math.max(20, Math.min(34, sideRoom - estimatedWidth - 10));
+              const labelMinX = pad.l + 8 + (toRight ? 0 : estimatedWidth);
+              const labelMaxX = chartW - pad.r - 8 - (toRight ? estimatedWidth : 0);
+              const clampSideLabelX = x => clampLocal(x, labelMinX, labelMaxX);
+              const lineRun = Math.max(14, Math.min(34, sideRoom - estimatedWidth - 10));
+              const labelBaselineOffset = 3.2;
+              const lineY = clampLocal(point.y, pad.t + 8, chartH - pad.b - 12);
+              const lineStartX = point.x + (toRight ? 6 : -6);
+              const lineEndX = point.x + (toRight ? lineRun : -lineRun);
+              const labelX = useConnector
+                ? clampSideLabelX(lineEndX + (toRight ? 4 : -4))
+                : clampSideLabelX(point.x + (toRight ? directOffset : -directOffset));
+              const textAnchor = toRight ? "start" : "end";
+              const labelY = clampLocal(lineY + labelBaselineOffset, pad.t + 11, chartH - pad.b - 9);
+              return {
+                point,
+                color,
+                preferAbove,
+                valueText,
+                lineY,
+                lineStartX,
+                lineEndX,
+                labelX,
+                labelY,
+                textAnchor,
+                useConnector,
+                rect:returnsTextRect(labelX, labelY, estimatedWidth, 12, textAnchor),
+              };
+            };
+            const renderReturnsHighLowLabel = layout => {
+              if (!layout) return null;
+              return (
+                <g key={`returns-${layout.preferAbove ? "high" : "low"}`} pointerEvents="none">
+                  <circle cx={layout.point.x} cy={layout.point.y} r="3.2" fill={layout.color} stroke={c.bg} strokeWidth="1.5"/>
+                  {layout.useConnector ? <line x1={layout.lineStartX} x2={layout.lineEndX} y1={layout.lineY} y2={layout.lineY} stroke={layout.color} strokeWidth=".48" strokeDasharray=".8 1.6" opacity=".78"/> : null}
+                  <text x={layout.labelX} y={layout.labelY} textAnchor={layout.textAnchor} fill={layout.color} fontFamily={F} fontSize="9.3" fontWeight="950" letterSpacing=".035em">
+                    {layout.valueText}
+                  </text>
+                </g>
+              );
+            };
+            const returnsEndpointReserved = [];
+            const highLabelLayout = highPoint && highPoint !== lowPoint ? getReturnsHighLowLabelLayout(highPoint, c.gn, true) : null;
+            if (highLabelLayout?.rect) returnsEndpointReserved.push(highLabelLayout.rect);
+            const lowLabelLayout = lowPoint ? getReturnsHighLowLabelLayout(lowPoint, c.rd, false) : null;
+            if (lowLabelLayout?.rect) returnsEndpointReserved.push(lowLabelLayout.rect);
+            const estimateReturnsRuleTextWidth = (text, fontSize = 8.8) => Math.max(36, Math.min(148, String(text || "").length * fontSize * 0.52));
+            const returnsRuleReservedRects = [...returnsEndpointReserved];
+            const makeReturnsRuleLabel = ({key, text, y, color}) => {
+              if (y === null || !Number.isFinite(y)) return null;
+              const width = estimateReturnsRuleTextWidth(text);
+              const bounds = {left:pad.l + 8, right:chartW - pad.r - 8, top:pad.t + 10, bottom:chartH - pad.b - 10};
+              const labelY = clampLocal(y, bounds.top, bounds.bottom);
+              const maxX = Math.max(bounds.left, bounds.right - width);
+              const step = Math.max(58, Math.ceil(width + 18));
+              const candidateXs = Array.from(new Set([
+                bounds.left,
+                bounds.left + step,
+                bounds.left + step * 2,
+                bounds.left + step * 3,
+                Math.max(bounds.left, maxX - step * 2),
+                Math.max(bounds.left, maxX - step),
+                maxX,
+              ].map(x => clampLocal(x, bounds.left, maxX))));
+              let best = null;
+              candidateXs.forEach((x, index) => {
+                const rect = returnsTextRect(x, labelY, width, 13, "start");
+                const labelOverlapPenalty = returnsRuleReservedRects.reduce((sum, reserved) => sum + (returnsRectsOverlap(rect, reserved, 5) ? 70 : 0), 0);
+                const curvePenalty = returnsRectNearCurve(rect) ? 22 : 0;
+                const edgePenalty = (x <= bounds.left + 1 || x >= maxX - 1) ? 3 : 0;
+                const score = labelOverlapPenalty + curvePenalty + edgePenalty + Math.abs(x - bounds.left) * 0.01 + index * 0.01;
+                if (!best || score < best.score) best = {key, text, x, y:labelY, color, width, rect, score};
+              });
+              if (best?.rect) returnsRuleReservedRects.push(best.rect);
+              return best;
+            };
+            const returnsPhaseTargetLabel = makeReturnsRuleLabel({key:"phase-target", text:"Phase target", y:returnsPhaseTargetY, color:c.gn});
+            const returnsDailyLimitLabel = makeReturnsRuleLabel({key:"daily-loss", text:"Daily loss limit", y:returnsDailyLimitY, color:c.gold});
+            const returnsMaxLossLabelLayout = makeReturnsRuleLabel({key:"max-loss", text:returnsMaxLossLabel, y:returnsMaxLossLabelY, color:c.rd});
+            const renderReturnsHorizontalRuleLine = ({key, y, color, strokeWidth = 1, dash = "5 5", opacity = 0.46, labelLayout}) => {
+              if (y === null || !Number.isFinite(y)) return null;
+              const x1 = pad.l;
+              const x2 = chartW - pad.r;
+              const labelGap = labelLayout ? 3 : 0;
+              const gapStart = labelLayout ? Math.max(x1, labelLayout.x - labelGap) : null;
+              const gapEnd = labelLayout ? Math.min(x2, labelLayout.x + labelLayout.width + labelGap) : null;
+              const segments = !labelLayout || gapEnd <= x1 || gapStart >= x2 || gapEnd <= gapStart
+                ? [[x1, x2]]
+                : [
+                  [x1, Math.max(x1, gapStart)],
+                  [Math.min(x2, gapEnd), x2],
+                ].filter(([start, end]) => end - start >= 4);
+              return segments.map(([start, end], index) => (
+                <line
+                  key={`returns-rule-line-${key}-${index}`}
+                  x1={start}
+                  x2={end}
+                  y1={y}
+                  y2={y}
+                  stroke={color}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={dash}
+                  opacity={opacity}
+                  vectorEffect="non-scaling-stroke"
+                  pointerEvents="none"
+                />
+              ));
+            };
+            const renderReturnsPathRuleLine = ({path, labelLayout, color}) => path ? (
+              <g pointerEvents="none">
+                <path d={path} fill="none" stroke={color} strokeWidth="1" strokeDasharray="5 5" opacity=".5" vectorEffect="non-scaling-stroke"/>
+                {labelLayout ? (
+                  <line
+                    x1={Math.max(pad.l, labelLayout.x - 7)}
+                    x2={Math.min(chartW - pad.r, labelLayout.x + labelLayout.width + 7)}
+                    y1={labelLayout.y}
+                    y2={labelLayout.y}
+                    stroke="rgba(9,11,20,0.96)"
+                    strokeWidth="4"
+                    strokeLinecap="square"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : null}
+              </g>
+            ) : null;
+            const renderReturnsRuleLabel = layout => layout ? (
+              <text
+                key={`returns-rule-${layout.key}`}
+                x={layout.x}
+                y={layout.y}
+                textAnchor="start"
+                dominantBaseline="middle"
+                fill={layout.color}
+                fontFamily={F}
+                fontSize="8.8"
+                fontWeight="900"
+                paintOrder="stroke"
+                stroke={c.bg}
+                strokeWidth="3"
+                strokeLinejoin="round"
+                pointerEvents="none"
+              >
+                {layout.text}
+              </text>
+            ) : null;
+            const returnsTooltipStyle = hoverPoint ? (() => {
+              const gap = 10;
+              const margin = 6;
+              const minLeft = pad.l + margin;
+              const maxLeft = Math.max(minLeft, chartW - pad.r - tooltipW - margin);
+              const minTop = pad.t + margin;
+              const maxTop = Math.max(minTop, chartH - pad.b - tooltipH - 12);
+              const clampRect = candidate => {
+                const left = clampLocal(candidate.left, minLeft, maxLeft);
+                const top = clampLocal(candidate.top, minTop, maxTop);
+                return {
+                  ...candidate,
+                  left,
+                  top,
+                  x1:left,
+                  x2:left + tooltipW,
+                  y1:top,
+                  y2:top + tooltipH,
+                  clampPenalty:Math.abs(left - candidate.left) + Math.abs(top - candidate.top),
+                };
+              };
+              const pointInsidePenalty = rect => (
+                hoverPoint.x >= rect.x1 - 8 && hoverPoint.x <= rect.x2 + 8 &&
+                hoverPoint.y >= rect.y1 - 8 && hoverPoint.y <= rect.y2 + 8
+              ) ? 160 : 0;
+              const labelOverlapPenalty = rect => returnsEndpointReserved.reduce((sum, reserved) => (
+                sum + (returnsRectsOverlap(rect, reserved, 8) ? 44 : 0)
+              ), 0);
+              const lineOverlapPenalty = rect => {
+                if (!points.length) return 0;
+                const expanded = {x1:rect.x1 - 8, x2:rect.x2 + 8, y1:rect.y1 - 8, y2:rect.y2 + 8};
+                let hits = 0;
+                for (let i = 1; i < points.length; i += 1) {
+                  const prev = points[i - 1];
+                  const point = points[i];
+                  const minX = Math.min(prev.x, point.x);
+                  const maxX = Math.max(prev.x, point.x);
+                  if (maxX < expanded.x1 || minX > expanded.x2) continue;
+                  for (let step = 0; step <= 4; step += 1) {
+                    const t = step / 4;
+                    const x = prev.x + (point.x - prev.x) * t;
+                    const y = prev.y + (point.y - prev.y) * t;
+                    if (x >= expanded.x1 && x <= expanded.x2 && y >= expanded.y1 && y <= expanded.y2) {
+                      hits += 1;
+                      break;
+                    }
+                  }
+                  if (hits > 4) break;
+                }
+                return hits * 13;
+              };
+              const edgePenalty = rect => (
+                (rect.left <= minLeft + 1 || rect.left >= maxLeft - 1 ? 4 : 0) +
+                (rect.top <= minTop + 1 || rect.top >= maxTop - 1 ? 4 : 0)
+              );
+              const candidates = [
+                {name:"right-top", left:hoverPoint.x + gap, top:hoverPoint.y - tooltipH - gap},
+                {name:"right-bottom", left:hoverPoint.x + gap, top:hoverPoint.y + gap},
+                {name:"left-top", left:hoverPoint.x - tooltipW - gap, top:hoverPoint.y - tooltipH - gap},
+                {name:"left-bottom", left:hoverPoint.x - tooltipW - gap, top:hoverPoint.y + gap},
+                {name:"top-center", left:hoverPoint.x - tooltipW / 2, top:hoverPoint.y - tooltipH - 15},
+                {name:"bottom-center", left:hoverPoint.x - tooltipW / 2, top:hoverPoint.y + 15},
+              ];
+              const best = candidates
+                .map(candidate => {
+                  const rect = clampRect(candidate);
+                  const centerX = rect.left + tooltipW / 2;
+                  const centerY = rect.top + tooltipH / 2;
+                  const distancePenalty = Math.hypot(centerX - hoverPoint.x, centerY - hoverPoint.y) * 0.14;
+                  const score = rect.clampPenalty * 2.6 +
+                    pointInsidePenalty(rect) +
+                    labelOverlapPenalty(rect) +
+                    lineOverlapPenalty(rect) +
+                    edgePenalty(rect) +
+                    distancePenalty;
+                  return {...rect, score};
+                })
+                .sort((a, b) => a.score - b.score)[0];
+              return {
+                left:chartX(best.left),
+                top:chartY(best.top),
+                width:tooltipW,
+                minHeight:tooltipH,
+              };
+            })() : null;
+            const returnsMaBadgeLayout = false && returnsMaActive ? (() => {
+              const badgeW = 218;
+              const badgeH = 58;
+              const margin = 10;
+              const minLeft = pad.l + margin;
+              const maxLeft = Math.max(minLeft, chartW - pad.r - badgeW - margin);
+              const minTop = pad.t + margin;
+              const maxTop = Math.max(minTop, chartH - pad.b - badgeH - margin);
+              const clampRect = candidate => {
+                const left = clampLocal(candidate.left, minLeft, maxLeft);
+                const top = clampLocal(candidate.top, minTop, maxTop);
+                return {
+                  ...candidate,
+                  left,
+                  top,
+                  x1:left,
+                  x2:left + badgeW,
+                  y1:top,
+                  y2:top + badgeH,
+                  clampPenalty:Math.abs(left - candidate.left) + Math.abs(top - candidate.top),
+                };
+              };
+              const curvePenalty = rect => {
+                if (!points.length) return 0;
+                const expanded = {x1:rect.x1 - 8, x2:rect.x2 + 8, y1:rect.y1 - 8, y2:rect.y2 + 8};
+                let hits = 0;
+                for (let i = 1; i < points.length; i += 1) {
+                  const prev = points[i - 1];
+                  const point = points[i];
+                  const minX = Math.min(prev.x, point.x);
+                  const maxX = Math.max(prev.x, point.x);
+                  if (maxX < expanded.x1 || minX > expanded.x2) continue;
+                  for (let step = 0; step <= 5; step += 1) {
+                    const t = step / 5;
+                    const x = prev.x + (point.x - prev.x) * t;
+                    const y = prev.y + (point.y - prev.y) * t;
+                    if (x >= expanded.x1 && x <= expanded.x2 && y >= expanded.y1 && y <= expanded.y2) {
+                      hits += 1;
+                      break;
+                    }
+                  }
+                }
+                return hits * 180;
+              };
+              const labelPenalty = rect => returnsEndpointReserved.reduce((sum, reserved) => (
+                sum + (returnsRectsOverlap(rect, reserved, 10) ? 140 : 0)
+              ), 0);
+              const candidates = [
+                {name:"top-left", left:minLeft, top:minTop},
+                {name:"top-right", left:maxLeft, top:minTop},
+                {name:"bottom-right", left:maxLeft, top:maxTop},
+                {name:"bottom-left", left:minLeft, top:maxTop},
+              ];
+              return candidates
+                .map(candidate => {
+                  const rect = clampRect(candidate);
+                  return {
+                    ...rect,
+                    score:curvePenalty(rect) + labelPenalty(rect) + rect.clampPenalty * 2,
+                  };
+                })
+                .sort((a, b) => a.score - b.score)[0];
+            })() : null;
+            return (
+              <div key="returns-growth" style={{display:"flex",flexDirection:"column",gap:18,animation:"tlrLoadFadeIn 0.12s ease"}}>
+                <div style={{display:"flex",flexDirection:"column",gap:14,fontFamily:F}}>
+                  <div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:16}}>
+                    <div style={{display:"inline-flex",alignItems:"center",gap:10,minWidth:0,flexWrap:"wrap"}}>
+                        <span aria-hidden="true" style={{width:24,height:24,display:"inline-flex",alignItems:"center",justifyContent:"center",flex:"0 0 24px",alignSelf:"center",overflow:"visible"}}>
+                          <DashboardPageIcon id="returns-growth" size={20} color={c.acL} style={{filter:`drop-shadow(0 0 5px ${c.acG})`}}/>
+                        </span>
+                        <div style={{display:"inline-flex",flexDirection:"column",alignItems:"flex-start",flexShrink:0}}>
+                          <h1 style={{margin:0,fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,lineHeight:1,letterSpacing:0}}>{dashTxt("Returns & Growth","العوائد والنمو")}</h1>
+                          <div aria-hidden="true" style={{height:2,width:"100%",marginTop:8,background:`linear-gradient(90deg,transparent,${c.acL} 46%,${c.acL} 54%,transparent)`,boxShadow:`0 0 9px ${c.acG}`}}/>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:800,color:c.ts,fontFamily:F,lineHeight:1.1,letterSpacing:"0.01em",whiteSpace:"nowrap",alignSelf:"center"}}>- {dashTxt("Equity growth, returns, costs, and targets.","نمو الحساب والعوائد والتكاليف والأهداف.")}</span>
+                    </div>
+                    <DashboardEvidenceStrip compact/>
+                  </div>
+                  <div aria-hidden="true" style={{height:1,width:"100%",background:c.br,opacity:.95}}/>
+                </div>
+              <SummaryCard title="Equity Curve" resourceId="equity-curve" minHeight={624} right={headerLine} titleFull style={{padding:16,gap:14}}>
+                  <div
+                    onPointerLeave={clearReturnsCurveHover}
+                    onPointerCancel={clearReturnsCurveHover}
+                    onMouseLeave={clearReturnsCurveHover}
+                    style={{position:"relative",height:488,background:returnsChartBg,border:`1px solid ${c.brH}`,boxSizing:"border-box",overflow:"hidden",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.035)"}}
+                  >
+                    <svg
+                      width="100%"
+                      height="100%"
+                      viewBox={`0 0 ${chartW} ${chartH}`}
+                      preserveAspectRatio="none"
+                      role="img"
+                      aria-label={`Equity curve in ${activeMode.label} mode`}
+                      onPointerMove={handleCurvePointerMove}
+                      onPointerLeave={clearReturnsCurveHover}
+                      onPointerCancel={clearReturnsCurveHover}
+                      style={{...returnsCrispSvgText,cursor:"default",touchAction:"none"}}
+                    >
+                      <rect x="0" y="0" width={chartW} height={chartH} fill="transparent"/>
+                      <defs>
+                        <linearGradient id="tlrReturnsEquityArea" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={c.gn} stopOpacity="0.25"/>
+                          <stop offset="72%" stopColor={c.gn} stopOpacity="0.08"/>
+                          <stop offset="100%" stopColor={c.gn} stopOpacity="0"/>
+                        </linearGradient>
+                        <linearGradient id="tlrReturnsDrawdownArea" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={c.rd} stopOpacity="0.18"/>
+                          <stop offset="100%" stopColor={c.rd} stopOpacity="0.03"/>
+                        </linearGradient>
+                      </defs>
+                      {yAxisTicks.map(tick => (
+                        <g key={`returns-y-axis-${tick.value}`} pointerEvents="none">
+                          <line x1={pad.l-4} x2={pad.l} y1={tick.y} y2={tick.y} stroke={c.brL} strokeWidth=".75" opacity=".62" vectorEffect="non-scaling-stroke"/>
+                        </g>
+                      ))}
+                      {xAxisTicks.map(tick => (
+                        <line
+                          key={`returns-x-axis-${tick.key}`}
+                          x1={tick.point.x}
+                          x2={tick.point.x}
+                          y1={chartH-pad.b}
+                          y2={chartH-pad.b+5}
+                          stroke={c.brL}
+                          strokeWidth=".75"
+                          opacity=".62"
+                          vectorEffect="non-scaling-stroke"
+                          pointerEvents="none"
+                        />
+                      ))}
+                      {areaPath && <path d={areaPath} fill="url(#tlrReturnsEquityArea)" opacity=".9"/>}
+                      {underlayPath && <path d={underlayPath} fill="url(#tlrReturnsDrawdownArea)" opacity=".9"/>}
+                      {returnsMaBelowSegments.map((segment, index) => (
+                        <rect
+                          key={`returns-ma-below-${index}`}
+                          x={segment.x.toFixed(2)}
+                          y={(baselineY - 7).toFixed(2)}
+                          width={segment.width.toFixed(2)}
+                          height="3"
+                          fill={c.gold}
+                          opacity=".46"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ))}
+                      {returnsPhaseTargetY !== null ? (
+                        <>
+                          {renderReturnsHorizontalRuleLine({key:"phase-target", y:returnsPhaseTargetY, color:c.gn, strokeWidth:1, dash:"5 5", opacity:.46, labelLayout:returnsPhaseTargetLabel})}
+                          {renderReturnsRuleLabel(returnsPhaseTargetLabel)}
+                        </>
+                      ) : null}
+                      {returnsMaxLossLinePath ? (
+                        <>
+                          {renderReturnsPathRuleLine({path:returnsMaxLossLinePath, labelLayout:returnsMaxLossLabelLayout, color:c.rd})}
+                          {renderReturnsRuleLabel(returnsMaxLossLabelLayout)}
+                        </>
+                      ) : null}
+                      {returnsDailyLimitY !== null ? (
+                        <>
+                          {renderReturnsHorizontalRuleLine({key:"daily-loss", y:returnsDailyLimitY, color:c.gold, strokeWidth:1.2, dash:"6 7", opacity:.48, labelLayout:returnsDailyLimitLabel})}
+                          {renderReturnsRuleLabel(returnsDailyLimitLabel)}
+                        </>
+                      ) : null}
+                      {points.slice(1).map((point, index) => {
+                        const prev = points[index];
+                        const up = point.value >= prev.value;
+                        return <path key={`${point.row.key}-${index}`} d={`M ${prev.x.toFixed(2)} ${prev.y.toFixed(2)} L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`} stroke={up?c.gn:c.rd} strokeWidth="1.05" fill="none" strokeLinecap="square" strokeLinejoin="miter" vectorEffect="non-scaling-stroke"/>;
+                      })}
+                      {returnsMaLineSegments.map((path, index) => (
+                        <path
+                          key={`returns-ma-line-${index}`}
+                          d={path}
+                          stroke={c.gold}
+                          strokeWidth=".82"
+                          strokeDasharray="4 5"
+                          fill="none"
+                          strokeLinecap="square"
+                          strokeLinejoin="miter"
+                          opacity=".88"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      ))}
+                      {points.length === 1 && <circle cx={points[0].x} cy={points[0].y} r="3" fill={activeMode.color}/>}
+                      {renderReturnsHighLowLabel(highLabelLayout)}
+                      {renderReturnsHighLowLabel(lowLabelLayout)}
+                      {hoverPoint && (
+                        <g pointerEvents="none">
+                          <line
+                            x1={hoverPoint.x}
+                            x2={hoverPoint.x}
+                            y1={hoverPoint.y}
+                            y2={chartH-pad.b}
+                            stroke={c.brL}
+                            strokeWidth=".75"
+                            opacity=".78"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <circle cx={hoverPoint.x} cy={hoverPoint.y} r="3.3" fill={hoverValueColor} stroke={c.bg} strokeWidth="1.4"/>
+                          <line
+                            x1={hoverPoint.x}
+                            x2={hoverPoint.x}
+                            y1={chartH-pad.b}
+                            y2={chartH-pad.b+6}
+                            stroke={c.acL}
+                            strokeWidth="1"
+                            opacity=".95"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        </g>
+                      )}
+                      <line x1={pad.l} x2={pad.l} y1={pad.t} y2={chartH-pad.b} stroke={c.brH} strokeWidth="1" opacity=".68"/>
+                      <line x1={pad.l} x2={chartW-pad.r} y1={chartH-pad.b} y2={chartH-pad.b} stroke={c.brH} strokeWidth="1" opacity=".7"/>
+                    </svg>
+                    {returnsMaActive && returnsMaBadgeLayout ? (
+                      <div
+                        style={{
+                          position:"absolute",
+                          left:chartX(returnsMaBadgeLayout.left),
+                          top:chartY(returnsMaBadgeLayout.top),
+                          zIndex:3,
+                          width:returnsMaBadgeLayout.x2 - returnsMaBadgeLayout.x1,
+                          minHeight:returnsMaBadgeLayout.y2 - returnsMaBadgeLayout.y1,
+                          display:"grid",
+                          gridTemplateColumns:"minmax(0,1fr) auto",
+                          alignItems:"center",
+                          gap:"5px 10px",
+                          padding:"8px 9px",
+                          background:"rgba(5,7,15,0.96)",
+                          border:`1px solid ${c.brH}`,
+                          boxShadow:"0 12px 26px rgba(0,0,0,0.54), inset 0 1px 0 rgba(255,255,255,0.04)",
+                          pointerEvents:"none",
+                          fontFamily:F,
+                          boxSizing:"border-box",
+                          overflow:"hidden",
+                        }}
+                      >
+                        <span style={{fontSize:7.4,fontWeight:950,color:c.gold,letterSpacing:"0.075em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          Equity Regime
+                        </span>
+                        <span style={{fontSize:9.8,fontWeight:950,color:returnsMaStateColor,fontVariantNumeric:"tabular-nums",textAlign:"right",whiteSpace:"nowrap"}}>
+                          {returnsMaRegime.latestState === "insufficient" ? "Waiting" : `${fmtPct(returnsMaRegime.percentBelow, 0)} below`}
+                        </span>
+                        <span style={{fontSize:8.2,fontWeight:900,color:c.tx,letterSpacing:"0.035em",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {returnsMaPeriodText} line
+                        </span>
+                        <span style={{fontSize:8.2,fontWeight:900,color:returnsMaStateColor,textAlign:"right",letterSpacing:"0.035em",textTransform:"uppercase",whiteSpace:"nowrap"}}>
+                          {returnsMaRegime.latestState === "below" ? "Below" : returnsMaRegime.latestState === "above" ? "Above" : "Pending"}
+                        </span>
+                        <span style={{gridColumn:"1 / -1",fontSize:8.1,fontWeight:850,color:c.ts,lineHeight:1.2,whiteSpace:"normal"}}>
+                          {returnsMaStateCopy}
+                        </span>
+                      </div>
+                    ) : null}
+                    {hoverPoint ? (
+                      <>
+                        <span
+                          style={{
+                            ...chartTextStyle,
+                            left:chartX(hoverDateX),
+                            bottom:8,
+                            color:c.acL,
+                            transform:"translateX(-50%)",
+                          }}
+                        >
+                          {hoverDateText}
+                        </span>
+                        <div
+                          style={{
+                            position:"absolute",
+                            zIndex:5,
+                            ...returnsTooltipStyle,
+                            background:"rgba(5,7,15,0.98)",
+                            border:"1px solid rgba(90,108,150,0.34)",
+                            boxShadow:"0 10px 22px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,255,255,0.04)",
+                            boxSizing:"border-box",
+                            pointerEvents:"none",
+                            fontFamily:F,
+                            WebkitFontSmoothing:"antialiased",
+                            padding:"5px 7px 5px 9px",
+                          }}
+                        >
+                          {returnsTradesMode ? (
+                            <>
+                              <span aria-hidden="true" style={{position:"absolute",left:0,top:5,bottom:5,width:1,background:`linear-gradient(180deg,transparent,${returnsHoverTradePnlColor},transparent)`,boxShadow:`0 0 6px ${returnsHoverTradePnlColor}`}}/>
+                              <div style={{display:"grid",gap:4,minWidth:0}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:5,minWidth:0}}>
+                                  <span style={{fontSize:7,fontWeight:950,color:c.tm,letterSpacing:"0.075em",textTransform:"uppercase",lineHeight:1}}>Trade</span>
+                                  <span title={returnsHoverTradeIdText} style={{minWidth:0,fontSize:8.2,fontWeight:950,color:c.tx,fontVariantNumeric:"tabular-nums",lineHeight:1.08,whiteSpace:"normal",overflow:"visible",overflowWrap:"anywhere",textAlign:"right"}}>{returnsHoverTradeIdText}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:5,minWidth:0}}>
+                                  <span style={{fontSize:7,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>P&L</span>
+                                  <span style={{fontSize:11.2,fontWeight:950,color:returnsHoverTradePnlColor,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{returnsHoverTradePnlText}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:5,minWidth:0}}>
+                                  <span style={{fontSize:7,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Value</span>
+                                  <span style={{fontSize:10.2,fontWeight:950,color:hoverValueColor,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{hoverValueText}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:5,minWidth:0}}>
+                                  <span style={{fontSize:7,fontWeight:900,color:c.tm,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Open</span>
+                                  <span style={{minWidth:0,fontSize:7.4,fontWeight:850,color:c.ts,fontVariantNumeric:"tabular-nums",lineHeight:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{returnsHoverOpenText}</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <span aria-hidden="true" style={{position:"absolute",left:0,top:5,bottom:5,width:1,background:`linear-gradient(180deg,transparent,${returnsHoverPeriodPnlColor},transparent)`,boxShadow:`0 0 6px ${returnsHoverPeriodPnlColor}`}}/>
+                              <div style={{display:"grid",gap:4,minWidth:0}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                  <span style={{color:c.tm,fontSize:7,fontWeight:950,letterSpacing:"0.075em",textTransform:"uppercase",lineHeight:1}}>{returnsHoverPeriodLabel}</span>
+                                  <span title={returnsHoverPeriodDateText} style={{color:c.tx,fontSize:8.2,fontWeight:950,lineHeight:1.08,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{returnsHoverPeriodDateText}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                  <span style={{color:c.tm,fontSize:7,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>P&L</span>
+                                  <span style={{color:returnsHoverPeriodPnlColor,fontSize:11.2,fontWeight:950,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{returnsHoverPeriodPnlText}</span>
+                                </div>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,minWidth:0}}>
+                                  <span style={{color:c.tm,fontSize:7,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",lineHeight:1}}>Value</span>
+                                  <span style={{color:hoverValueColor,fontSize:9.6,fontWeight:950,lineHeight:1,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontVariantNumeric:"tabular-nums"}}>{hoverValueText}</span>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    ) : null}
+                    {yAxisTicks.map(tick => (
+                      <span
+                        key={`returns-y-label-${tick.value}`}
+                        style={{
+                          ...chartTextStyle,
+                          left:chartX(returnsYAxisLabelLeft),
+                          width:chartX(returnsYAxisLabelWidth),
+                          top:chartY(tick.y),
+                          color:c.ts,
+                          fontSize:10.2,
+                          fontWeight:900,
+                          transform:"translateY(-50%)",
+                          textAlign:"right",
+                          whiteSpace:"nowrap",
+                          overflow:"visible",
+                          opacity:.92,
+                        }}
+                      >
+                        {displayValue(tick.value)}
+                      </span>
+                    ))}
+                    {xAxisTicks.map((tick, index) => {
+                      const isFirst = index === 0;
+                      const isLast = index === xAxisTicks.length - 1;
+                      const hideForSelectedDate = xAxisTickOverlapsHover(tick, index);
+                      return (
+                        <span
+                          key={`returns-x-label-${tick.key}`}
+                          style={{
+                            ...chartTextStyle,
+                            left:isLast ? "auto" : chartX(tick.point.x),
+                            right:isLast ? chartX(pad.r) : "auto",
+                            bottom:8,
+                            color:c.ts,
+                            fontSize:10.2,
+                            fontWeight:900,
+                            transform:isFirst ? "none" : isLast ? "none" : "translateX(-50%)",
+                            opacity:hideForSelectedDate ? 0 : 1,
+                            visibility:hideForSelectedDate ? "hidden" : "visible",
+                            textAlign:isLast ? "right" : isFirst ? "left" : "center",
+                          }}
+                        >
+                          {tick.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(8,minmax(0,1fr))",gap:7}}>
+                    {stripMetricCards.map(renderReturnsMetricCard)}
+                  </div>
+                </SummaryCard>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:18,alignItems:"start"}}>
+                  {renderPeriodicReturnsCard()}
+                  {renderRollingReturnCard()}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:18,alignItems:"start"}}>
+                  {renderReturnDistributionCard()}
+                  {renderCostFeeDragCard()}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:18,alignItems:"start"}}>
+                  {renderProfitConcentrationCard()}
+                  {renderBalanceWaterfallCard()}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:18,alignItems:"start"}}>
+                  {renderPeriodBreakdownCard()}
+                  {renderGoalsTargetsCard()}
+                </div>
+              </div>
+            );
+          };
+
           const renderFreshDashboardPage = () => {
             const stack = (title, question, children) => (
               <div key={activeFreshPageId} style={{display:"flex",flexDirection:"column",gap:18,animation:"tlrLoadFadeIn 0.1s ease"}}>
@@ -32970,6 +37075,7 @@ const TalariaV8b = () => {
             );
             const subPage = (id) => <div style={{display:"flex",flexDirection:"column",gap:18}}>{id === "win-loss-distribution" ? renderFreshWinLossDistribution() : id === "drawdown" ? renderFreshDrawdown() : id === "equity-returns" ? renderFreshEquityReturns() : renderFreshRemainingPage(id)}</div>;
             if (activeFreshPageId === "overview") return renderFreshPerformanceSummary();
+            if (activeFreshPageId === "returns-growth") return renderReturnsGrowthPage();
             if (activeFreshPageId === "performance") return stack(
               dashTxt("Performance","الأداء"),
               dashTxt("Is my account growing, and how risky is the ride?","هل الحساب ينمو وما حجم المخاطرة؟"),
@@ -35852,7 +39958,7 @@ const TalariaV8b = () => {
                     )}
                   </div>
                   <DashboardBalanceField/>
-                  <DashboardUnitToggle/>
+                  {isSnapshotDashboardContext ? DashboardUnitToggle() : null}
                   {dashboardCompareBarActive && (
                     <>
                       <div style={{height:38,minWidth:38,display:"flex",alignItems:"center",justifyContent:"center",color:c.tm,fontSize:12,fontWeight:950,letterSpacing:"0.12em",textTransform:"uppercase",fontFamily:F,flexShrink:0}}>
@@ -35900,7 +40006,7 @@ const TalariaV8b = () => {
                   )}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,padding:"0 20px 0 10px",marginLeft:"auto"}}>
-                  {sessView !== "trades" && activeFreshPageId === "overview" && <SnapshotTopModeButton/>}
+                  {isSnapshotDashboardContext ? <SnapshotTopModeButton/> : null}
                   {sessView !== "trades" && <DashboardPagesButton/>}
                   {sessView === "trades" && (
                     <>

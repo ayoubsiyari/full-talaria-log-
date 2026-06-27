@@ -351,6 +351,21 @@
         return !!(ch.isBacktestMode || ch.backtestingSession);
     }
 
+    function isPanelBootSettling(ch) {
+        try {
+            if (ch && typeof ch._isMultichartBootViewportLocked === 'function'
+                && ch._isMultichartBootViewportLocked()) {
+                return true;
+            }
+            if (typeof window !== 'undefined'
+                && Number.isFinite(window.__multichartBootRevealAfter)
+                && performance.now() < window.__multichartBootRevealAfter) {
+                return true;
+            }
+        } catch (_) {}
+        return false;
+    }
+
     /**
      * Apply one replay animation frame from parent tile A. Iframe panels stay
      * paused locally — parent is the single playhead driver.
@@ -358,6 +373,7 @@
     function applyReplayFrame(ch, args) {
         if (!ch || !args || typeof args !== 'object') return;
         if (ch._multichartPairLoadInFlight) return;
+        if (isPanelBootSettling(ch)) return;
         var rs = ch.replaySystem;
         if (!rs) return;
         var ts = Number(args.timestamp);
@@ -1757,9 +1773,12 @@
                     if (!rsP.userHasPanned) {
                         rsP.autoScrollEnabled = true;
                     }
+                    // Hold viewport through the first host replayFrame(s) so Play
+                    // does not triple-jump; boot settle is unaffected.
+                    try {
+                        ch._multichartPreserveViewportUntil = performance.now() + 900;
+                    } catch (_) {}
                     // Host tile A broadcasts replayFrame on the next frame after play().
-                    // That single mirror pass updates slice + viewport — no local
-                    // syncReplayViewportToPlayhead / applyMultichartMirrorFrame here.
                     drainPendingPlay(ch);
                     return;
                 }

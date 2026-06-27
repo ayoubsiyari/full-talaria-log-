@@ -2329,6 +2329,10 @@ class Chart {
      * @returns {boolean}
      */
     _multichartMirrorViewportFromHost() {
+        if (typeof this._isMultichartBootViewportLocked === 'function'
+            && this._isMultichartBootViewportLocked()) {
+            return true;
+        }
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
         let parent = null;
         try {

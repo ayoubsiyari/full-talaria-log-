@@ -5840,7 +5840,17 @@ class ReplaySystem {
         if (!chart) return;
         chart.isLoading = false;
 
-        if (Array.isArray(chart.data) && chart.data.length > 0) {
+        const bootLocked = typeof chart._isMultichartBootViewportLocked === 'function'
+            && chart._isMultichartBootViewportLocked();
+        const preserveUntil = chart._multichartPreserveViewportUntil;
+        const nowPv = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        const preserveViewport = Number.isFinite(preserveUntil) && nowPv < preserveUntil;
+        const savedOffsetX = chart.offsetX;
+        const savedCandleWidth = chart.candleWidth;
+
+        if (Array.isArray(chart.data) && chart.data.length > 0 && !bootLocked) {
             const m = chart.margin || { l: 60, r: 70 };
             const plotW = Math.max(1, (Number(chart.w) || 320) - m.l - m.r);
             const cs = chart.getCandleSpacing
@@ -5893,14 +5903,7 @@ class ReplaySystem {
                         render: false,
                     });
                 } else if (st && Number.isFinite(st.offsetX)) {
-                    const cs = chart.getCandleSpacing
-                        ? chart.getCandleSpacing()
-                        : (chart.candleWidth + (chart.candleGap || 2));
-                    const safeCs = Number.isFinite(cs) && cs > 0 ? cs : 8;
-                    const delta = Math.abs((chart.offsetX || 0) - st.offsetX);
-                    const skipMicroNudge = visibleBars > 0 && !needsRecovery
-                        && delta <= safeCs * 0.35;
-                    if (!skipMicroNudge) {
+                    if (!preserveViewport) {
                         chart.offsetX = st.offsetX;
                     }
                     chart._chartViewRestored = true;
@@ -5908,6 +5911,13 @@ class ReplaySystem {
                     chart._chartViewRestored = false;
                     chart.fitToView();
                 }
+            }
+        }
+
+        if ((bootLocked || preserveViewport) && Number.isFinite(savedOffsetX)) {
+            chart.offsetX = savedOffsetX;
+            if (Number.isFinite(savedCandleWidth) && savedCandleWidth > 0) {
+                chart.candleWidth = savedCandleWidth;
             }
         }
 

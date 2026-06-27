@@ -2219,6 +2219,10 @@ class Chart {
     _realignMultichartViewportAfterResize(oldW, oldH) {
         void oldH;
         void oldW;
+        if (typeof this._isMultichartBootViewportLocked === 'function'
+            && this._isMultichartBootViewportLocked()) {
+            return false;
+        }
         if (!this._multichartVisibleRangeSyncOn) return false;
         if (typeof this._multichartSamePairAsHost !== 'function'
             || !this._multichartSamePairAsHost(this.currentFileId)) {
@@ -2325,6 +2329,10 @@ class Chart {
      * @returns {boolean}
      */
     _multichartMirrorViewportFromHost() {
+        if (typeof this._isMultichartBootViewportLocked === 'function'
+            && this._isMultichartBootViewportLocked()) {
+            return true;
+        }
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
         let parent = null;
         try {
@@ -2425,6 +2433,10 @@ class Chart {
      */
     _syncMultichartViewportFromHost(opts = {}) {
         if (!this._multichartVisibleRangeSyncOn) return false;
+        if (typeof this._isMultichartBootViewportLocked === 'function'
+            && this._isMultichartBootViewportLocked()) {
+            return false;
+        }
         const shouldRender = opts.render !== false;
         if (typeof this._isMultichartHostPanel === 'function' && this._isMultichartHostPanel()) {
             if (shouldRender && typeof this.render === 'function') {
