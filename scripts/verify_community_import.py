@@ -30,6 +30,8 @@ NEW_DATA_DIR = ROOT / "mentor data" / "new data"
 SUMMARY_PATH = NEW_DATA_DIR / "community-batch-summary.json"
 ORIGIN_DEFAULT = "http://31.97.192.82:3000"
 
+DATA_DIR = NEW_DATA_DIR
+
 
 def _pct(n: int, total: int) -> str:
     if not total:
@@ -158,7 +160,7 @@ def sample_live(entries: list[dict[str, Any]], n: int) -> None:
 
 
 def load_local_expected(stem: str) -> int | None:
-    path = NEW_DATA_DIR / f"{stem}-talaria-adapted.json"
+    path = DATA_DIR / f"{stem}-talaria-adapted.json"
     if not path.is_file():
         return None
     try:
@@ -217,13 +219,22 @@ def main() -> int:
     parser.add_argument("--session-id", type=int, default=0)
     parser.add_argument("--live-account-id", type=int, default=0)
     parser.add_argument("--sample", type=int, default=1, help="Print N sample trades per source (0=off)")
+    parser.add_argument(
+        "--summary",
+        default="",
+        help="Path to batch summary JSON (default: mentor data/new data/community-batch-summary.json)",
+    )
     args = parser.parse_args()
 
-    if not SUMMARY_PATH.is_file():
-        print(f"Missing summary: {SUMMARY_PATH}", file=sys.stderr)
+    global DATA_DIR
+    summary_path = Path(args.summary) if args.summary else SUMMARY_PATH
+    DATA_DIR = summary_path.parent
+
+    if not summary_path.is_file():
+        print(f"Missing summary: {summary_path}", file=sys.stderr)
         return 1
 
-    summary = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
     client = Client(args.origin)
     client.login(args.email, args.password)
 
