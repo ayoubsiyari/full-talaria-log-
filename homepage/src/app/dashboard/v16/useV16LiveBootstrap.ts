@@ -289,7 +289,7 @@ export function useV16LiveBootstrap(): BootState {
     window.__TALARIA_V16_BOOT_ENRICHING__ = true;
     window.dispatchEvent(new CustomEvent("talaria-v16-boot-updated"));
 
-    if (!hadSessions || bootNonce > 0) {
+    if (!hadSessions) {
       setState({ status: "loading" });
     }
 
