@@ -56,7 +56,34 @@ SYM_ALIASES = {
     "XAU/USD": "XAUUSD",
     "GOLD": "XAUUSD",
     "GC": "XAUUSD",
+    "NDX": "NQ",
+    "NAS100": "NQ",
+    "US100": "NQ",
+    "USTEC": "NQ",
 }
+
+STRATEGY_BY_TICKER: dict[str, tuple[int, str]] = {
+    "EURUSD": (57, "1-Min Momentum Scalper"),
+    "GBPUSD": (58, "London Open Liquidity Scalp"),
+    "USDJPY": (57, "1-Min Momentum Scalper"),
+    "AUDUSD": (61, "4H Trend Pullback Swing"),
+    "NZDUSD": (61, "4H Trend Pullback Swing"),
+    "USDCAD": (61, "4H Trend Pullback Swing"),
+    "USDCHF": (61, "4H Trend Pullback Swing"),
+    "XAUUSD": (64, "Fibonacci Confluence Swing"),
+    "ES": (60, "Opening Range Breakout"),
+    "NQ": (59, "VWAP Reclaim Intraday"),
+    "MES": (60, "Opening Range Breakout"),
+    "MNQ": (59, "VWAP Reclaim Intraday"),
+    "BTC": (62, "Liquidity Sweep + FVG"),
+    "ETH": (62, "Liquidity Sweep + FVG"),
+}
+
+LIVE_DEMONS = ["revenge", "fomo", "overtrade", "early_exit", "late_entry", "size_up"]
+
+SOURCE_KINDS = frozenset(
+    {"backtest", "prop_backtest", "live_personal", "live_prop"}
+)
 
 # Strategy variable contract aligned to mentor "dol" field (maps to our pre-trade variables / tags).
 PRE_VAR_DEFS: list[dict[str, Any]] = [
@@ -320,17 +347,168 @@ def _empty_row() -> dict[str, Any]:
     return {c: "" for c in COLUMNS}
 
 
+def dominant_ticker_from_rows(rows: list[dict[str, Any]]) -> str:
+    from collections import Counter
+
+    counts: Counter[str] = Counter()
+    for row in rows:
+        entry = _to_float(row.get("entry_price"), 1.0) or 1.0
+        sym = _infer_symbol(row.get("symbol"), float(entry))
+        if sym:
+            counts[sym] += 1
+    if not counts:
+        return "EURUSD"
+    return counts.most_common(1)[0][0]
+
+
+def pick_strategy_for_ticker(ticker: str) -> tuple[int, str]:
+    key = _norm_sym(ticker)
+    if key in STRATEGY_BY_TICKER:
+        return STRATEGY_BY_TICKER[key]
+    inst = _instrument(key)
+    market = str(inst.get("market") or "Forex")
+    if market == "Futures":
+        return 59, "VWAP Reclaim Intraday"
+    if market == "Crypto":
+        return 62, "Liquidity Sweep + FVG"
+    if key == "XAUUSD":
+        return 64, "Fibonacci Confluence Swing"
+    return 57, "1-Min Momentum Scalper"
+
+
+def market_for_ticker(ticker: str) -> str:
+    inst = _instrument(_norm_sym(ticker))
+    market = str(inst.get("market") or "Forex")
+    if market == "Commodity":
+        return "Forex"
+    return market
+
+
+def _infer_plan_adherence(row: dict[str, Any]) -> str:
+    raw = row.get("variables_json")
+    if not raw:
+        return "according-to-plan"
+    try:
+        obj = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError):
+        return "according-to-plan"
+    if not isinstance(obj, dict):
+        return "according-to-plan"
+    for val in obj.values():
+        parts = val if isinstance(val, list) else [val]
+        text = " ".join(str(p) for p in parts).lower()
+        if "missed" in text:
+            return "missed-trade"
+        if "out of plan" in text or "out-of-plan" in text:
+            return "out-of-plan"
+    return "according-to-plan"
+
+
+def _variables_dict_from_row(row: dict[str, Any]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    raw = row.get("variables_json")
+    if raw:
+        try:
+            obj = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(obj, dict):
+                for name, val in obj.items():
+                    if isinstance(val, list):
+                        out[str(name)] = [str(v) for v in val if str(v).strip()]
+                    elif val is not None and str(val).strip():
+                        out[str(name)] = [str(val)]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    for i in range(1, 11):
+        val = row.get(f"var{i}")
+        if val is not None and str(val).strip():
+            out[f"var{i}"] = [str(val).strip()]
+    return out
+
+
+def _apply_source_metadata(
+    trade: dict[str, Any],
+    *,
+    source_kind: str,
+    source_id: int,
+    source_name: str,
+    profile_id: int | None,
+    mentor_filename: str,
+    plan_adherence: str,
+    rng_seed: int,
+) -> None:
+    import random
+
+    rng = random.Random(rng_seed)
+    is_live = source_kind in {"live_personal", "live_prop"}
+    is_prop = source_kind in {"live_prop", "prop_backtest"}
+
+    if is_live:
+        account_key = profile_id if profile_id is not None else source_id
+        trade["sourceSessionId"] = source_id
+        trade["trading_session_id"] = source_id
+        trade["sourceKey"] = f"journalAccount:{account_key}"
+        trade["sourceFilterKey"] = f"journalAccount:{account_key}"
+        trade["sourceLabel"] = source_name
+        trade["sourceType"] = "journal"
+        trade["sourceDashboardKind"] = "journal"
+        trade["journalAccountKey"] = account_key
+        trade["liveJournal"] = True
+        trade["session"] = "Journal"
+        trade["category_sheet"] = "Prop" if is_prop else "Journal"
+        trade["session_mode"] = "prop_live_journal" if is_prop else "live_journal"
+        trade["accountType"] = "prop" if is_prop else "private"
+        trade["originSource"] = "mentor_import_live"
+    else:
+        trade["sourceSessionId"] = source_id
+        trade["trading_session_id"] = source_id
+        trade["sourceKey"] = f"session:{source_id}"
+        trade["sourceFilterKey"] = f"session:{source_id}"
+        trade["sourceLabel"] = source_name
+        trade["sourceType"] = "backtest"
+        trade["session"] = source_name
+        trade["category_sheet"] = "Prop" if is_prop else "Standard Backtest"
+        trade["session_mode"] = "prop_backtest" if is_prop else "standard_backtest"
+        trade["accountType"] = "prop" if is_prop else "private"
+        trade["originSource"] = "mentor_import_prop" if is_prop else "mentor_import"
+
+    trade["planAdherence"] = plan_adherence
+    trade["rulesFollowed"] = plan_adherence == "according-to-plan"
+    source_type_num = {
+        "backtest": 1,
+        "prop_backtest": 2,
+        "live_personal": 3,
+        "live_prop": 4,
+    }.get(source_kind, 1)
+    trade["source_type"] = source_type_num
+    trade["demons"] = (
+        rng.sample(LIVE_DEMONS, k=rng.randint(1, 2))
+        if plan_adherence == "out-of-plan"
+        else []
+    )
+    trade["would_have_won"] = plan_adherence == "missed-trade" and float(trade.get("mfe_r") or 0) > 1.0
+    trade["preTradeNotes"] = {
+        "mentorSource": mentor_filename,
+        "planAdherence": plan_adherence,
+    }
+    if is_prop:
+        trade["propFirm"] = trade.get("propFirm") or "FTMO"
+
+
 def convert_mentor_row(
     row: dict[str, Any],
     *,
     index: int,
-    session_id: int,
-    session_name: str,
+    source_id: int,
+    source_name: str,
     strategy_label: str,
     strategy_id: int,
     balance_before: float,
     bar_ms: int,
     post_exit_candles: int,
+    mentor_stem: str,
+    mentor_filename: str,
+    source_kind: str = "backtest",
+    profile_id: int | None = None,
 ) -> tuple[dict[str, Any], float]:
     entry = _to_float(row.get("entry_price"))
     exit_px = _to_float(row.get("exit_price"))
@@ -382,6 +560,8 @@ def convert_mentor_row(
     hold_ms = exit_ms - entry_ms
     hold_minutes = max(1, int(round(hold_ms / 60000)))
 
+    plan_adherence = _infer_plan_adherence(row)
+
     pre_vars = _parse_mentor_variables(row)
     post_vars = _post_variables(pnl)
     pre_tags = _tags_from_strategy_variables(pre_vars)
@@ -405,8 +585,12 @@ def convert_mentor_row(
 
     qty = _to_float(row.get("quantity"), 1.0) or 1.0
     balance_after = round(balance_before + pnl, 2)
-    trade_id = f"mentor-alae2-{row.get('id') or index}"
-    numeric_id = int(row.get("id") or (session_id * 10000 + index))
+    mentor_id = row.get("id") or index
+    trade_id = f"mentor-{mentor_stem}-{mentor_id}"
+    try:
+        numeric_id = int(mentor_id)
+    except (TypeError, ValueError):
+        numeric_id = int(source_id) * 10000 + index
 
     entry_screenshot = str(row.get("entry_screenshot") or "").strip()
     exit_screenshot = str(row.get("exit_screenshot") or "").strip()
@@ -424,7 +608,7 @@ def convert_mentor_row(
         "tradeId": trade_id,
         "id": numeric_id,
         "n": index,
-        "sourceSessionName": session_name,
+        "sourceSessionName": source_name,
         "setup": strategy_label,
         "symbol": ticker,
         "ticker": ticker,
@@ -472,10 +656,12 @@ def convert_mentor_row(
         "postTradeNotes": {
             "mentorImport": True,
             "mentorTradeId": row.get("id"),
+            "mentorFile": mentor_filename,
             "entryScreenshotUrl": entry_screenshot or None,
             "exitScreenshotUrl": exit_screenshot or None,
             "notes": notes or None,
             "postStrategyVariables": post_vars,
+            "planAdherence": plan_adherence,
         },
         "preTags": pre_tags,
         "postTags": post_tags,
@@ -486,8 +672,8 @@ def convert_mentor_row(
         "entryScreenshot": entry_screenshot,
         "exitScreenshot": exit_screenshot,
         "railScreenshots": [],
-        "sourceSessionId": session_id,
-        "trading_session_id": session_id,
+        "sourceSessionId": source_id,
+        "trading_session_id": source_id,
         "savedAt": int(datetime.now(tz=timezone.utc).timestamp() * 1000),
         "active_sl_at_exit": stop,
         "active_tps_at_exit": [{"price": target, "percentage": 100, "hit": close_type == "TP"}],
@@ -540,14 +726,14 @@ def convert_mentor_row(
         "post_exit_bar_close_r": path["post_exit_bar_close_r"],
         "post_exit_bar_high_r": path["post_exit_bar_high_r"],
         "post_exit_bar_low_r": path["post_exit_bar_low_r"],
-        "preTradeNotes": {"mentorSource": "alae2.xlsx"},
-        "rulesFollowed": True,
-        "session": session_name,
+        "preTradeNotes": {"mentorSource": mentor_filename, "planAdherence": plan_adherence},
+        "rulesFollowed": plan_adherence == "according-to-plan",
+        "session": source_name,
         "sl_modifications": [],
         "sourceFileId": 0,
-        "sourceFilterKey": f"session:{session_id}",
-        "sourceKey": f"session:{session_id}",
-        "sourceLabel": session_name,
+        "sourceFilterKey": f"session:{source_id}",
+        "sourceKey": f"session:{source_id}",
+        "sourceLabel": source_name,
         "sourceType": "backtest",
         "splitGroupId": None,
         "splitIndex": None,
@@ -556,11 +742,11 @@ def convert_mentor_row(
         "total_bars_held": len(path["bar_close_r"]),
         "trail_sl_path": [],
         "v9PostTradeTags": post_tags,
-        "v9TradeNotes": notes or f"Imported from mentor backtest (id={row.get('id')})",
+        "v9TradeNotes": notes or f"Imported from mentor ({mentor_filename}, id={row.get('id')})",
         "would_have_won": False,
         "year": entry_dt.year,
         "accountType": "private",
-        "planAdherence": "according-to-plan",
+        "planAdherence": plan_adherence,
         "demons": [],
         "originSource": "mentor_import",
         "session_mode": "standard_backtest",
@@ -570,6 +756,16 @@ def convert_mentor_row(
         "targets": [{"price": target, "qty": qty, "quantity": qty}],
         "exits": [{"price": exit_px, "qty": qty, "quantity": qty}],
     })
+    _apply_source_metadata(
+        out,
+        source_kind=source_kind,
+        source_id=source_id,
+        source_name=source_name,
+        profile_id=profile_id,
+        mentor_filename=mentor_filename,
+        plan_adherence=plan_adherence,
+        rng_seed=numeric_id,
+    )
     return out, balance_after
 
 
@@ -602,13 +798,18 @@ def write_workbook(path: Path, trades: list[dict[str, Any]]) -> None:
 def convert_file(
     input_path: Path,
     *,
-    session_id: int,
-    session_name: str,
+    source_id: int,
+    source_name: str,
     strategy_label: str,
     strategy_id: int,
     start_balance: float = 10000.0,
+    source_kind: str = "backtest",
+    profile_id: int | None = None,
+    mentor_stem: str | None = None,
 ) -> list[dict[str, Any]]:
     mentor_rows = read_mentor_rows(input_path)
+    stem = mentor_stem or input_path.stem
+    filename = input_path.name
     bar_ms = DEFAULT_TIMEFRAME_MINUTES * 60 * 1000
     trades: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -618,13 +819,17 @@ def convert_file(
             trade, balance = convert_mentor_row(
                 row,
                 index=i,
-                session_id=session_id,
-                session_name=session_name,
+                source_id=source_id,
+                source_name=source_name,
                 strategy_label=strategy_label,
                 strategy_id=strategy_id,
                 balance_before=balance,
                 bar_ms=bar_ms,
                 post_exit_candles=POST_EXIT_CANDLES,
+                mentor_stem=stem,
+                mentor_filename=filename,
+                source_kind=source_kind,
+                profile_id=profile_id,
             )
             trades.append(trade)
         except Exception as exc:
@@ -692,11 +897,12 @@ def main() -> int:
 
     trades = convert_file(
         input_path,
-        session_id=session_id,
-        session_name=args.session_name,
+        source_id=session_id,
+        source_name=args.session_name,
         strategy_label=args.strategy_label,
         strategy_id=args.strategy_id,
         start_balance=args.start_balance,
+        source_kind="backtest",
     )
     if not trades:
         print("No trades converted.", file=sys.stderr)
