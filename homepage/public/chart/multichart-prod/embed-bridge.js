@@ -147,6 +147,17 @@
             function () {}
         );
 
+        pollFor(
+            function () {
+                return window.chart
+                    && typeof window.talariaApplyV9ThemeSettings === 'function';
+            },
+            50,
+            15000,
+            function () { syncEmbedThemeFromParent(); },
+            function () {}
+        );
+
         applyInitialContext();
     }
 
@@ -222,6 +233,77 @@
             window.DrawingSettingsPanel.prototype.__mcParentProxyInstalled = true;
         }
         return true;
+    }
+
+    function chartSettingsToV9Snapshot(cs) {
+        if (!cs) return null;
+        return {
+            background: cs.backgroundColor,
+            gridColor: cs.gridColor,
+            gridLinesOn: cs.showGrid !== false,
+            gridLineStyle: cs.gridPattern || 'solid',
+            gridLineThickness: cs.gridLineWidth || 1,
+            crosshairColor: cs.crosshairColor,
+            crosshairOn: cs.showCrosshair !== false,
+            crosshairStyle: cs.crosshairPattern || 'dashed',
+            crosshairLineThickness: cs.crosshairWidth || 2,
+            priceLine: cs.showPriceLine !== false,
+            priceLineColor: cs.priceLineColor,
+            priceLineStyle: cs.priceLinePattern || 'dashed',
+            priceLineThickness: cs.priceLineWidth || 1,
+            textColor: cs.scaleTextColor,
+            scaleLineColor: cs.scaleLinesColor,
+            bullBody: cs.bodyUpColor,
+            bullBorder: cs.borderUpColor,
+            bullWick: cs.wickUpColor,
+            bearBody: cs.bodyDownColor,
+            bearBorder: cs.borderDownColor,
+            bearWick: cs.wickDownColor,
+            unifiedBarColor: !!cs.unifiedBarColorEnabled,
+            unifiedBarColorVal: cs.unifiedBarColor,
+            timezone: cs.timezone,
+            timeFormat: cs.timeFormat,
+            precision: cs.precision,
+        };
+    }
+
+    /** Match host tile A canvas theme (background, grid, candles) on embed boot. */
+    function syncEmbedThemeFromParent() {
+        if (!window.chart || typeof window.talariaApplyV9ThemeSettings !== 'function') {
+            return false;
+        }
+        var snap = null;
+        try {
+            var parent = window.parent;
+            if (parent && parent !== window && parent.__talariaV9SettingsSnapshot) {
+                snap = parent.__talariaV9SettingsSnapshot;
+            }
+        } catch (_) {}
+        if (!snap) {
+            try {
+                var raw = null;
+                if (window.userStorage && typeof window.userStorage.getItem === 'function') {
+                    raw = window.userStorage.getItem('v9_ui_settings');
+                }
+                if (!raw) raw = localStorage.getItem('v9_ui_settings');
+                if (raw) snap = JSON.parse(raw);
+            } catch (_) {}
+        }
+        if (!snap) {
+            try {
+                var pc = window.parent && window.parent !== window ? window.parent.chart : null;
+                if (pc && pc.chartSettings) snap = chartSettingsToV9Snapshot(pc.chartSettings);
+            } catch (_) {}
+        }
+        if (!snap) return false;
+        try {
+            window.talariaApplyV9ThemeSettings(snap);
+            reportToShell('info', 'theme synced from parent shell');
+            return true;
+        } catch (e) {
+            reportToShell('warn', 'theme sync failed: ' + (e && e.message || e));
+            return false;
+        }
     }
 
     // Apply the file/tf the parent told us to boot with.
@@ -777,6 +859,7 @@
             var afterLoad = function (opts) {
                 opts = opts || {};
                 markViewportBootSettle(ch, 3200);
+                try { syncEmbedThemeFromParent(); } catch (_) {}
                 // Only switch tf when it actually differs — calling
                 // setTimeframe with the already-loaded tf would trigger a
                 // redundant re-fetch that, in replay, can re-anchor the
