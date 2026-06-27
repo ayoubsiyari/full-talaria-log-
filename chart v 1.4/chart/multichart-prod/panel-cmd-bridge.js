@@ -1749,61 +1749,18 @@
                         log('replayPlay stashed (not yet active)');
                         return;
                     }
-                    // Mirror host play(): re-enable follow mode so the replay head
-                    // scrolls with playback on every panel, same as tile A.
-                    rsP.autoScrollEnabled = true;
-                    rsP.userHasPanned = false;
-                    var parentMirror = readParentReplayMirrorPayload();
-                    var playheadTs = parentMirror && Number.isFinite(Number(parentMirror.timestamp))
-                        ? Number(parentMirror.timestamp)
-                        : readParentReplayTimestamp();
-                    if (!Number.isFinite(playheadTs) && Number.isFinite(rsP.replayTimestamp)) {
-                        playheadTs = Number(rsP.replayTimestamp);
+                    // Match host play(): only re-enable follow when the user has NOT
+                    // manually panned this tile. Never wipe userHasPanned here — that
+                    // was what made B/C/D snap to the playhead three times (sync +
+                    // local mirror + host replayFrame) instead of starting from where
+                    // they already were.
+                    if (!rsP.userHasPanned) {
+                        rsP.autoScrollEnabled = true;
                     }
-                    var primeAndFollow = function () {
-                        // The panel was paused sitting at the auto-scroll anchor
-                        // (the pause path now preserves the playhead near the right,
-                        // same as the host). Recentering to that same anchor on play
-                        // is therefore a no-op and never visibly moves — exactly like
-                        // the host's own play(). (Without the pause-side viewport
-                        // preservation this call was what snapped the panel back to
-                        // the right after it had drifted left while paused.)
-                        if (typeof rsP.syncReplayViewportToPlayhead === 'function') {
-                            try {
-                                rsP.syncReplayViewportToPlayhead(ch, {
-                                    resetPriceScale: false,
-                                    render: false,
-                                });
-                            } catch (_) {}
-                        }
-                        if (Number.isFinite(playheadTs)
-                            && typeof rsP.applyMultichartMirrorFrame === 'function') {
-                            try {
-                                var resumePayload = readParentReplayMirrorPayload();
-                                if (!resumePayload) {
-                                    resumePayload = {
-                                        timestamp: playheadTs,
-                                        isPlaying: true,
-                                        tickProgress: 0,
-                                        tickElapsedMs: 0,
-                                        hostFileId: readParentHostFileId(),
-                                    };
-                                } else {
-                                    resumePayload.isPlaying = true;
-                                }
-                                rsP.applyMultichartMirrorFrame(resumePayload);
-                            } catch (_) {}
-                        }
-                        drainPendingPlay(ch);
-                    };
-                    if (Number.isFinite(playheadTs)
-                        && typeof ch.ensureReplayDataCoversTimestamp === 'function') {
-                        ch.ensureReplayDataCoversTimestamp(playheadTs).then(primeAndFollow).catch(function () {
-                            primeAndFollow();
-                        });
-                    } else {
-                        primeAndFollow();
-                    }
+                    // Host tile A broadcasts replayFrame on the next frame after play().
+                    // That single mirror pass updates slice + viewport — no local
+                    // syncReplayViewportToPlayhead / applyMultichartMirrorFrame here.
+                    drainPendingPlay(ch);
                     return;
                 }
                 case 'replayPause': {

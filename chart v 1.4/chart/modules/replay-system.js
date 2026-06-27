@@ -5893,7 +5893,16 @@ class ReplaySystem {
                         render: false,
                     });
                 } else if (st && Number.isFinite(st.offsetX)) {
-                    chart.offsetX = st.offsetX;
+                    const cs = chart.getCandleSpacing
+                        ? chart.getCandleSpacing()
+                        : (chart.candleWidth + (chart.candleGap || 2));
+                    const safeCs = Number.isFinite(cs) && cs > 0 ? cs : 8;
+                    const delta = Math.abs((chart.offsetX || 0) - st.offsetX);
+                    const skipMicroNudge = visibleBars > 0 && !needsRecovery
+                        && delta <= safeCs * 0.35;
+                    if (!skipMicroNudge) {
+                        chart.offsetX = st.offsetX;
+                    }
                     chart._chartViewRestored = true;
                 } else if (needsScroll && typeof chart.fitToView === 'function') {
                     chart._chartViewRestored = false;
