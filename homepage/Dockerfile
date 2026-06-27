@@ -82,6 +82,7 @@ COPY --from=builder /app/homepage/out /usr/share/nginx/html
 
 # Copy nginx config (static /chart/ + tile cache — see nginx.local.conf)
 COPY homepage/nginx.local.conf /etc/nginx/conf.d/default.conf
+COPY securty/nginx-security-headers.conf /etc/nginx/conf.d/security-headers.conf
 
 EXPOSE 80
 

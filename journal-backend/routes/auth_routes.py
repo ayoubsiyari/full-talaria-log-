@@ -1,21 +1,31 @@
 # routes/auth_routes.py
 
 from flask import Blueprint, request, jsonify, current_app
-from werkzeug.security import check_password_hash, generate_password_hash
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt
 from email_service import send_verification_email, send_password_reset_email, send_welcome_email
-from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import os
 
+import security_bootstrap
+
+security_bootstrap.install_security_package()
+
+from talaria_security.constants import MAX_FAILED_LOGIN_ATTEMPTS, LOCKOUT_WINDOW_MINUTES
+from talaria_security.password import (
+    hash_password,
+    needs_rehash,
+    validate_password_strength,
+    verify_password,
+)
+
 from subscription_access import user_entitles_journal
 
-# Security settings
-MAX_FAILED_ATTEMPTS = 10  # Block after 10 failed attempts
-BLOCK_DURATION_HOURS = 24  # Block for 24 hours
-FAILED_ATTEMPT_WINDOW_HOURS = 1  # Count attempts within 1 hour
-ALERT_THRESHOLD = 5  # Send alert after 5 failed attempts (before block)
+# Security settings (aligned with enterprise_website_security_spec.md §4.2)
+MAX_FAILED_ATTEMPTS = MAX_FAILED_LOGIN_ATTEMPTS
+BLOCK_DURATION_HOURS = 24
+FAILED_ATTEMPT_WINDOW_HOURS = max(1, LOCKOUT_WINDOW_MINUTES // 60)
+ALERT_THRESHOLD = max(3, MAX_FAILED_ATTEMPTS - 2)
 ADMIN_EMAIL = os.environ.get('ADMIN_ALERT_EMAIL', 'contact@talaria.services')
 
 
@@ -159,26 +169,9 @@ def clear_failed_attempts(ip_address):
     except:
         db.session.rollback()
 
-# Support both werkzeug and passlib password hashing (for compatibility with trading-chart backend)
-_pwd_passlib = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-
+# Support legacy werkzeug/passlib hashes; new passwords use bcrypt via talaria_security
 def verify_password_compat(stored_hash, password):
-    """Verify password against both werkzeug and passlib hash formats."""
-    # Try werkzeug first
-    try:
-        if check_password_hash(stored_hash, password):
-            return True
-    except (ValueError, TypeError):
-        pass
-    
-    # Try passlib (used by trading-chart backend)
-    try:
-        if _pwd_passlib.verify(password, stored_hash):
-            return True
-    except (ValueError, TypeError):
-        pass
-    
-    return False
+    return verify_password(stored_hash, password)
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -222,6 +215,42 @@ def login_user():
         # Record failed attempt
         record_failed_login(client_ip, email)
         return jsonify({"error": "Incorrect password. Please try again or reset your password if you've forgotten it."}), 401
+
+    # MFA gate (spec §4.1) — admins must enroll; others when enabled
+    from routes.mfa_routes import verify_user_mfa
+    from models import UserMfaSettings
+
+    mfa_settings = UserMfaSettings.query.filter_by(user_id=user.id).first()
+    totp_code = (data.get('totp_code') or data.get('mfa_code') or '').strip()
+
+    if user.is_admin and (not mfa_settings or not mfa_settings.enabled):
+        return jsonify(
+            {
+                "error": "mfa_setup_required",
+                "message": "Admin accounts must enable MFA before signing in.",
+            }
+        ), 403
+
+    if mfa_settings and mfa_settings.enabled:
+        if not totp_code:
+            return jsonify(
+                {
+                    "error": "mfa_required",
+                    "message": "Enter the code from your authenticator app.",
+                    "email": user.email,
+                }
+            ), 403
+        if not verify_user_mfa(user.id, totp_code):
+            record_failed_login(client_ip, email)
+            return jsonify({"error": "Invalid MFA code"}), 401
+
+    # Upgrade legacy password hash to bcrypt on successful login
+    if needs_rehash(user.password):
+        try:
+            user.password = hash_password(password)
+            db.session.commit()
+        except ValueError:
+            pass
 
     # has_journal_access is the admin manual full-access flag; do not overwrite on login.
     from dashboard_access import effective_dashboard_modules, user_has_any_dashboard_access
@@ -279,9 +308,15 @@ def register_user():
     
     if not email:
         return jsonify({"error": "Email is required"}), 400
-    
-    if not password or len(password) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    ok, msg = validate_password_strength(password)
+    if not ok:
+        return jsonify({"error": msg}), 400
+
+    try:
+        password_hash = hash_password(password)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     # Check if email already exists
     existing_user = User.query.filter_by(email=email).first()
@@ -292,7 +327,7 @@ def register_user():
     new_user = User(
         name=name,
         email=email,
-        password=generate_password_hash(password),
+        password=password_hash,
         is_active=True,
         has_journal_access=False
     )
@@ -435,27 +470,30 @@ def reset_password():
     new_password = data.get('new_password', '')
 
     if not email or not code or not new_password:
-        return jsonify({"error": "البريد الإلكتروني والرمز وكلمة المرور الجديدة مطلوبة"}), 400
+        return jsonify({"error": "Email, verification code, and new password are required"}), 400
 
-    if len(new_password) < 6:
-        return jsonify({"error": "يجب أن تكون كلمة المرور 6 أحرف على الأقل"}), 400
+    ok, msg = validate_password_strength(new_password)
+    if not ok:
+        return jsonify({"error": msg}), 400
 
     user = User.query.filter_by(email=email).first()
     
     if not user:
-        return jsonify({"error": "رمز التحقق غير صحيح"}), 400
+        return jsonify({"error": "Invalid verification code"}), 400
 
     if not user.verify_reset_token(code):
-        return jsonify({"error": "رمز التحقق منتهي الصلاحية أو غير صحيح"}), 400
+        return jsonify({"error": "Verification code expired or invalid"}), 400
 
-    # Update password and clear token
-    user.password = generate_password_hash(new_password)
+    try:
+        user.password = hash_password(new_password)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     user.clear_reset_token()
     
     db.session.commit()
 
     return jsonify({
-        "message": "تم إعادة تعيين كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول."
+        "message": "Password reset successfully. You can now sign in."
     }), 200
 
 
@@ -468,7 +506,13 @@ def update_profile():
     user = User.query.get_or_404(user_id)
 
     if data.get('password'):
-        user.password = generate_password_hash(data['password'])
+        ok, msg = validate_password_strength(data['password'])
+        if not ok:
+            return jsonify({"error": msg}), 400
+        try:
+            user.password = hash_password(data['password'])
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
     db.session.commit()
     return jsonify({

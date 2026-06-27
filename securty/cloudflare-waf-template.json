@@ -1,0 +1,34 @@
+{
+  "_comment": "Cloudflare WAF template — deploy via Terraform or Cloudflare dashboard (spec §1.1)",
+  "rules": [
+    {
+      "description": "OWASP Core Rule Set — block SQLi, XSS, path traversal",
+      "action": "block",
+      "expression": "(cf.waf.score gt 40)"
+    },
+    {
+      "description": "Bot management — block credential stuffing",
+      "action": "block",
+      "expression": "(cf.bot_management.score lt 30 and http.request.uri.path contains \"/api/auth/\")"
+    },
+    {
+      "description": "Rate limit general pages — 100 req/min per IP (§1.2)",
+      "action": "block",
+      "ratelimit": { "requests_per_period": 100, "period": 60, "characteristics": ["ip.src"] }
+    },
+    {
+      "description": "Rate limit auth endpoints — 10 req/min per IP (§1.2)",
+      "action": "block",
+      "ratelimit": { "requests_per_period": 10, "period": 60, "match": "/api/auth/*" }
+    },
+    {
+      "description": "Geo-block admin panel (configure allowed countries)",
+      "action": "block",
+      "expression": "(http.request.uri.path contains \"/admin\" and not ip.geoip.country in {\"US\" \"CA\" \"GB\"})"
+    }
+  ],
+  "logging": {
+    "siem_destination": "Configure Logpush to Splunk/Elastic/Datadog",
+    "fields": ["client_ip", "country", "user_agent", "request_headers", "rule_id", "action"]
+  }
+}

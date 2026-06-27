@@ -23,6 +23,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, aliased
 from datetime import datetime, timedelta
+import sys
 import csv
 import gzip
 import os
@@ -110,6 +111,21 @@ def _load_dotenv_files_from_chart_dir() -> None:
 
 
 _load_dotenv_files_from_chart_dir()
+
+# Enterprise security package (securty/python/talaria_security)
+_SEC_LIB = _CHART_DIR.parent.parent / "securty" / "python"
+if _SEC_LIB.is_dir() and str(_SEC_LIB) not in sys.path:
+    sys.path.insert(0, str(_SEC_LIB))
+for _fallback in (Path("/opt/talaria_security_lib"),):
+    if _fallback.is_dir() and str(_fallback) not in sys.path:
+        sys.path.insert(0, str(_fallback))
+
+try:
+    from talaria_security.headers import apply_security_headers, generate_csp_nonce
+    from talaria_security.constants import AUTH_RATE_LIMIT_PER_MINUTE
+    _SECURITY_PKG_OK = True
+except ImportError:
+    _SECURITY_PKG_OK = False
 
 import _analytics_bootstrap
 
@@ -207,6 +223,22 @@ else:
 CSRF_ENABLED = os.getenv("CSRF_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 trusted_origins_env = os.getenv("TRUSTED_ORIGINS", "").strip()
 TRUSTED_ORIGINS = {o.strip() for o in trusted_origins_env.split(",") if o.strip()} if trusted_origins_env else set()
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    if not _SECURITY_PKG_OK:
+        return await call_next(request)
+    nonce = generate_csp_nonce()
+    response = await call_next(request)
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme or "http")
+    https = proto.lower() == "https"
+    api_mode = (request.url.path or "").startswith("/api/")
+    apply_security_headers(response.headers, nonce=nonce, https=https, api_mode=api_mode)
+    for header in ("server", "x-powered-by"):
+        if header in response.headers:
+            del response.headers[header]
+    return response
+
 
 @app.middleware("http")
 async def csrf_middleware(request: Request, call_next):
@@ -1751,7 +1783,7 @@ def _affiliate_click_rate_allow(ip: str) -> bool:
 
 
 # Brute-force / credential-stuffing mitigation. Tune via env.
-AUTH_LOGIN_MAX_PER_MINUTE = max(5, int(os.getenv("AUTH_LOGIN_MAX_PER_MINUTE", "30")))
+AUTH_LOGIN_MAX_PER_MINUTE = max(5, int(os.getenv("AUTH_LOGIN_MAX_PER_MINUTE", str(AUTH_RATE_LIMIT_PER_MINUTE if _SECURITY_PKG_OK else 10))))
 AUTH_SIGNUP_MAX_PER_MINUTE = max(3, int(os.getenv("AUTH_SIGNUP_MAX_PER_MINUTE", "12")))
 _auth_rate_lock = threading.Lock()
 _auth_login_ip_times: dict[str, deque] = {}

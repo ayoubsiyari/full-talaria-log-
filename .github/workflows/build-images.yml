@@ -49,7 +49,7 @@ jobs:
             dockerfile: homepage/Dockerfile
           - name: journal-backend
             image: talaria-journal-backend
-            context: ./journal-backend
+            context: .
             dockerfile: ./journal-backend/Dockerfile
     steps:
       - uses: actions/checkout@v4

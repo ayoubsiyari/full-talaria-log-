@@ -41,6 +41,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY ["chart v 1.4/chart/requirements.txt", "./requirements.txt"]
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY ["securty/python", "/opt/talaria_security_lib"]
+ENV PYTHONPATH=/opt/talaria_security_lib
+
 COPY ["chart v 1.4/chart/package.json", "chart v 1.4/chart/package-lock.json", "./"]
 RUN npm ci
 
@@ -75,7 +78,11 @@ RUN if [ "$BUILD_LEGACY_BUNDLE" = "1" ]; then \
 
 # Create runtime dirs. Do NOT `chmod -R /app`: recursing node_modules/site-packages
 # added ~50s, and the copied files are already readable (container runs as root).
-RUN mkdir -p uploads/bin uploads/tiles uploads/aggregates data db indicators
+RUN mkdir -p uploads/bin uploads/tiles uploads/aggregates data db indicators \
+    && addgroup --system app && adduser --system --ingroup app --home /app app \
+    && chown -R app:app /app
+
+USER app
 
 EXPOSE 8000
 

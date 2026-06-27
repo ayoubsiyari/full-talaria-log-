@@ -8129,17 +8129,32 @@ async function loadInsightsSecurity() {
   if (!host) return;
   try {
     var data = await journalApi('/journal/api/admin/monitoring/threats');
-    host.innerHTML = renderInsightsSecurityHtml(data);
+    var dash = null;
+    try {
+      dash = await journalApi('/journal/api/admin/monitoring/security-dashboard');
+    } catch (_e) { /* optional enhanced panel */ }
+    host.innerHTML = renderInsightsSecurityHtml(data, dash);
   } catch (e) {
     host.innerHTML = '<p style="color:var(--warn);font-size:12px">' + esc(e.message || String(e)) +
       '<br><span style="color:var(--text-muted)">Sign in as admin so a journal token is available, or check journal-backend logs.</span></p>';
   }
 }
 
-function renderInsightsSecurityHtml(data) {
+function renderInsightsSecurityHtml(data, dash) {
   if (!data || !data.success) return '<p style="color:var(--danger);font-size:12px">Threat data unavailable.</p>';
   var s = data.summary || {};
   var parts = [];
+  if (dash && dash.success) {
+    var tl = (dash.threat_level || 'green').toLowerCase();
+    var tlColor = tl === 'red' ? 'var(--danger)' : tl === 'orange' ? '#f97316' : tl === 'yellow' ? 'var(--warn)' : 'var(--success)';
+    parts.push('<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">' +
+      '<span style="font-size:12px;font-weight:600">Threat level</span>' +
+      '<span style="font-size:13px;font-weight:700;color:' + tlColor + ';text-transform:uppercase">' + esc(tl) + '</span>' +
+      (dash.authentication && dash.authentication.admins_without_mfa > 0
+        ? '<span style="font-size:11px;color:var(--warn);margin-left:auto">' + fmtN(dash.authentication.admins_without_mfa) + ' admin(s) without MFA</span>'
+        : '<span style="font-size:11px;color:var(--text-muted);margin-left:auto">MFA OK</span>') +
+      '</div>');
+  }
   parts.push('<div class="stat-cards" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr));margin-bottom:12px">' +
     '<div class="stat-card danger"><div class="label">Failed logins</div><div class="value">' + fmtN(s.failed_logins_24h || 0) + '</div><div class="sub">24h</div></div>' +
     '<div class="stat-card warn"><div class="label">Security events</div><div class="value">' + fmtN(s.security_events_24h || 0) + '</div><div class="sub">24h</div></div>' +
@@ -8181,6 +8196,16 @@ function renderInsightsSecurityHtml(data) {
         '</div>');
     });
     parts.push('</div>');
+  }
+  if (dash && dash.release_checklist) {
+    var cl = dash.release_checklist;
+    parts.push('<p style="font-size:12px;font-weight:600;margin:14px 0 6px;color:var(--text-secondary)">Release security checklist</p><ul style="margin:0;padding-left:18px;font-size:11px">');
+    Object.keys(cl).forEach(function (k) {
+      if (k === 'note') return;
+      var ok = !!cl[k];
+      parts.push('<li style="color:' + (ok ? 'var(--success)' : 'var(--warn)') + '">' + esc(k.replace(/_/g, ' ')) + ': ' + (ok ? '✓' : '✗') + '</li>');
+    });
+    parts.push('</ul>');
   }
   return parts.join('');
 }

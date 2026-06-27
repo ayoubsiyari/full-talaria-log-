@@ -2,6 +2,7 @@
 
 from routes.admin_routes import admin_bp
 from routes.auth_routes import auth_bp
+from routes.mfa_routes import mfa_bp
 from routes.chart_routes import chart_bp
 from routes.feature_flags_routes import feature_flags_bp
 from routes.feed_routes import feed_bp
@@ -46,6 +47,7 @@ def register_all_blueprints(app):
     )
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
+    app.register_blueprint(mfa_bp, url_prefix="/api/auth/mfa")
     app.register_blueprint(journal_bp, url_prefix="/api/journal")
     app.register_blueprint(profile_bp, url_prefix="/api/profile")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")

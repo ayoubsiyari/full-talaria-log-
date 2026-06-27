@@ -477,3 +477,45 @@ def ensure_users_schema(app) -> None:
                 app.logger.warning("public_id backfill skipped: %s", backfill_exc)
         except Exception as exc:
             app.logger.error("users schema patch failed: %s", exc)
+
+
+def ensure_security_schema(app) -> None:
+    """MFA and audit log chain tables (enterprise security spec)."""
+    with app.app_context():
+        try:
+            engine = db.engine
+            dialect = engine.dialect.name
+            with engine.begin() as conn:
+                if dialect == "postgresql":
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS user_mfa_settings ("
+                            "id SERIAL PRIMARY KEY, "
+                            "user_id INTEGER UNIQUE NOT NULL REFERENCES users(id), "
+                            "totp_secret VARCHAR(64), "
+                            "backup_codes_hash TEXT, "
+                            "enabled BOOLEAN NOT NULL DEFAULT FALSE, "
+                            "pending_secret VARCHAR(64), "
+                            "enabled_at TIMESTAMP, "
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS audit_log_chain ("
+                            "id SERIAL PRIMARY KEY, "
+                            "previous_hash VARCHAR(64) NOT NULL, "
+                            "entry_hash VARCHAR(64) UNIQUE NOT NULL, "
+                            "event_type VARCHAR(80) NOT NULL, "
+                            "payload TEXT NOT NULL, "
+                            "actor_user_id INTEGER REFERENCES users(id), "
+                            "ip_address VARCHAR(45), "
+                            "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+                        )
+                    )
+                else:
+                    db.create_all()
+            app.logger.info("security schema patch applied (user_mfa_settings, audit_log_chain)")
+        except Exception as exc:
+            app.logger.error("security schema patch failed: %s", exc)

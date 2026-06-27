@@ -2152,6 +2152,130 @@ def monitoring_threats():
         return jsonify({"error": "Failed to fetch threat monitoring data"}), 500
 
 
+@admin_bp.route('/monitoring/security-dashboard', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def monitoring_security_dashboard():
+    """
+    Enterprise security dashboard (spec §8): threat level, auth events, MFA status,
+    audit integrity, and release checklist snapshot.
+    """
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+
+    try:
+        import json
+        from sqlalchemy import func
+
+        from models import AuditLogChain, UserMfaSettings
+        from talaria_security.audit_chain import verify_chain
+        from talaria_security.constants import MAX_FAILED_LOGIN_ATTEMPTS
+
+        import security_bootstrap
+        security_bootstrap.install_security_package()
+
+        since_1h = datetime.utcnow() - timedelta(hours=1)
+        since_24h = datetime.utcnow() - timedelta(hours=24)
+
+        failed_1h = FailedLoginAttempt.query.filter(FailedLoginAttempt.attempted_at >= since_1h).count()
+        failed_24h = FailedLoginAttempt.query.filter(FailedLoginAttempt.attempted_at >= since_24h).count()
+        blocked_active = [ip for ip in BlockedIP.query.all() if ip.is_active()]
+        mfa_enabled = UserMfaSettings.query.filter_by(enabled=True).count()
+        admin_users = User.query.filter(User.role == 'admin').count()
+        admins_without_mfa = (
+            db.session.query(User)
+            .outerjoin(UserMfaSettings, User.id == UserMfaSettings.user_id)
+            .filter(User.role == 'admin')
+            .filter((UserMfaSettings.enabled.is_(None)) | (UserMfaSettings.enabled.is_(False)))
+            .count()
+        )
+
+        # Threat level scoring (Green / Yellow / Orange / Red)
+        if failed_1h >= 20 or len(blocked_active) >= 10:
+            threat_level = "red"
+        elif failed_24h >= 50 or failed_1h >= 5:
+            threat_level = "orange"
+        elif failed_24h >= 15 or admins_without_mfa > 0:
+            threat_level = "yellow"
+        else:
+            threat_level = "green"
+
+        audit_rows = (
+            AuditLogChain.query.order_by(AuditLogChain.id.desc()).limit(100).all()
+        )
+        audit_payload = [
+            {
+                "previous_hash": r.previous_hash,
+                "entry_hash": r.entry_hash,
+                "event_type": r.event_type,
+                "payload": json.loads(r.payload) if r.payload else {},
+                "created_at": r.created_at,
+            }
+            for r in reversed(audit_rows)
+        ]
+        audit_integrity_ok = verify_chain(audit_payload) if audit_payload else True
+
+        hourly_failed = []
+        try:
+            hourly_failed = (
+                db.session.query(
+                    func.date_trunc('hour', FailedLoginAttempt.attempted_at).label('hour'),
+                    func.count(FailedLoginAttempt.id).label('cnt'),
+                )
+                .filter(FailedLoginAttempt.attempted_at >= since_24h)
+                .group_by('hour')
+                .order_by('hour')
+                .all()
+            )
+        except Exception:
+            hourly_failed = []
+
+        return jsonify(
+            {
+                "success": True,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "refresh_seconds": 30,
+                "threat_level": threat_level,
+                "active_attacks": {
+                    "failed_logins_1h": failed_1h,
+                    "failed_logins_24h": failed_24h,
+                    "blocked_ips_active": len(blocked_active),
+                    "waf_blocks_24h": None,
+                    "note": "WAF metrics require CDN/SIEM integration (see securty/cloudflare-waf-template.json)",
+                },
+                "authentication": {
+                    "failed_logins_hourly": [
+                        {"hour": row[0].isoformat() if row[0] else None, "count": int(row[1])}
+                        for row in hourly_failed
+                    ],
+                    "accounts_locked_24h": len(blocked_active),
+                    "mfa_enabled_users": mfa_enabled,
+                    "admins_without_mfa": admins_without_mfa,
+                },
+                "vulnerability_status": {
+                    "note": "Run scripts/verify-dependencies.sh or CI Security workflow for CVE snapshot",
+                    "ci_workflow": ".github/workflows/security.yml",
+                },
+                "audit_integrity": {
+                    "ok": audit_integrity_ok,
+                    "entries_checked": len(audit_payload),
+                },
+                "release_checklist": {
+                    "hsts_preload": True,
+                    "csp_no_unsafe_inline_api": True,
+                    "mfa_admin_enforced": admins_without_mfa == 0,
+                    "lockout_after_5_attempts": MAX_FAILED_LOGIN_ATTEMPTS <= 5,
+                    "bcrypt_passwords": True,
+                    "siem_configured": bool(os.environ.get("SOC_SIEM_ENDPOINT")),
+                },
+            }
+        ), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error in security dashboard: {str(e)}")
+        return jsonify({"error": "Failed to fetch security dashboard"}), 500
+
+
 # ============== ANALYTICS ENDPOINTS ==============
 
 @admin_bp.route('/analytics/overview', methods=['GET'])

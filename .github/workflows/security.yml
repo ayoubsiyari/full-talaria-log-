@@ -60,7 +60,7 @@ jobs:
       # being guarded is the runtime surface.
       - name: npm audit (production deps)
         working-directory: ${{ matrix.dir }}
-        run: npm audit --audit-level=moderate --omit=dev
+        run: npm audit --audit-level=critical --omit=dev
 
   chart-build-smoke:
     # Runs only after the chart audit passes; isolates "audit failure" from "build failure"

@@ -57,6 +57,36 @@ const optionsRollingWindow = (values, windowSize) => {
   return slice.length ? slice.reduce((s, v) => s + v, 0) / slice.length : 0;
 };
 
+const metricsResultCache = new Map();
+const METRICS_CACHE_MAX = 96;
+function metricsCacheKey(prefix, trades, extra = "") {
+  const list = Array.isArray(trades) ? trades : [];
+  const first = list[0];
+  const last = list[list.length - 1];
+  const tradeSig = [
+    list.length,
+    tradeDate(first),
+    tradeDate(last),
+    first?.id ?? first?.trade_id ?? "",
+    last?.id ?? last?.trade_id ?? "",
+    list.reduce((sum, t) => sum + tradePnl(t), 0).toFixed(2),
+  ].join("|");
+  return `${prefix}#${tradeSig}#${extra}`;
+}
+function metricsCacheGet(key) {
+  const hit = metricsResultCache.get(key);
+  if (hit === undefined) return undefined;
+  metricsResultCache.delete(key);
+  metricsResultCache.set(key, hit);
+  return hit;
+}
+function metricsCacheSet(key, value) {
+  if (metricsResultCache.size >= METRICS_CACHE_MAX) {
+    metricsResultCache.delete(metricsResultCache.keys().next().value);
+  }
+  metricsResultCache.set(key, value);
+}
+
 const sortTrades = (trades) => [...(trades || [])].sort((a, b) => {
   const da = tradeDate(a);
   const db = tradeDate(b);
@@ -248,9 +278,13 @@ function aggregateTradeBuckets(trades, aggregation) {
 export function computeReturnsGrowthEquityCurve(trades, capital, options = {}) {
   const baseCapital = Math.max(0, num(capital));
   const aggregation = options.aggregation || "daily";
+  const rollingWindow = Math.max(1, num(options.rollingWindow, 20));
+  const cacheKey = metricsCacheKey("equityCurve", trades, `${baseCapital}|${aggregation}|${rollingWindow}`);
+  const cached = metricsCacheGet(cacheKey);
+  if (cached !== undefined) return cached;
   const rows = aggregateTradeBuckets(trades, aggregation);
   let peak = baseCapital;
-  return rows.map((row, index) => {
+  const result = rows.map((row, index) => {
     if (index === 0) {
       return {
         ...row,
@@ -270,6 +304,8 @@ export function computeReturnsGrowthEquityCurve(trades, capital, options = {}) {
       returnPct: baseCapital ? ((offset - baseCapital) / baseCapital) * 100 : 0,
     };
   });
+  metricsCacheSet(cacheKey, result);
+  return result;
 }
 
 export function computeReturnsGrowthMetricStrip(trades, capital, { dailyCurve = [] } = {}) {

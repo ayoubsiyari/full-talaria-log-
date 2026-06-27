@@ -18164,8 +18164,7 @@ const TalariaV8b = () => {
               streakWarning:streakPenalty > 0,
             };
           };
-          const skipHeavyScoreSuite = dashFreshPage === "returns-growth";
-          const dashboardExecutionScore = skipHeavyScoreSuite ? null : buildDashboardExecutionScore();
+          const dashboardExecutionScore = buildDashboardExecutionScore();
           const buildTalariaScoreContext = (rowsInput, mode, inheritedStratScore=null, prior=null) => {
             const rows = Array.isArray(rowsInput) ? rowsInput : [];
             const capital = Math.max(1, Number(ds.capital) || 10000);
@@ -18295,18 +18294,13 @@ const TalariaV8b = () => {
           };
           const scorePriorRows = metrics.trades.slice(0, Math.max(0, metrics.trades.length - Math.max(5, Math.ceil(metrics.trades.length * 0.25))));
           const scoreMode = dashboardIsLiveScoreMode ? "live" : "backtest";
-          let talariaUnifiedContext = null;
-          let talariaUnified = null;
-          let talariaUnifiedTrend = [];
-          if (!skipHeavyScoreSuite) {
-            const scoreBacktestReference = computeTalariaScore(buildTalariaScoreContext(metrics.trades, "backtest"));
-            const scorePriorContext = scorePriorRows.length >= SCORE_CONFIG.minSampleForScore
-              ? buildTalariaScoreContext(scorePriorRows, scoreMode, scoreBacktestReference.strat)
-              : null;
-            talariaUnifiedContext = buildTalariaScoreContext(metrics.trades, scoreMode, scoreBacktestReference.strat, scorePriorContext);
-            talariaUnified = computeTalariaScore(talariaUnifiedContext);
-            talariaUnifiedTrend = computeTrend(metrics.trades, talariaUnifiedContext, 30).filter(point=>point.score != null);
-          }
+          const scoreBacktestReference = computeTalariaScore(buildTalariaScoreContext(metrics.trades, "backtest"));
+          const scorePriorContext = scorePriorRows.length >= SCORE_CONFIG.minSampleForScore
+            ? buildTalariaScoreContext(scorePriorRows, scoreMode, scoreBacktestReference.strat)
+            : null;
+          const talariaUnifiedContext = buildTalariaScoreContext(metrics.trades, scoreMode, scoreBacktestReference.strat, scorePriorContext);
+          const talariaUnified = computeTalariaScore(talariaUnifiedContext);
+          const talariaUnifiedTrend = computeTrend(metrics.trades, talariaUnifiedContext, 30).filter(point=>point.score != null);
           const crossOptions = [
             ["hour","Hour of Day"],["weekday","Day of Week"],["symbol","Symbol"],["session","Session"],["tag","Tag"],["outcome","Trade Outcome"]
           ];

@@ -75,8 +75,12 @@ class Config:
     ENV = os.environ.get('FLASK_ENV', 'development')
     
     # Set JWT token expirations
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)  # 24 hours
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)  # 30 days
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(
+        minutes=int(os.environ.get('JWT_ACCESS_TOKEN_MINUTES', '30'))
+    )
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(
+        hours=int(os.environ.get('JWT_REFRESH_TOKEN_HOURS', '24'))
+    )
 
     # Auth hardening: accept the access JWT from EITHER the Authorization header
     # (legacy localStorage path) OR an httpOnly cookie set by the chart backend.
@@ -88,7 +92,7 @@ class Config:
     JWT_TOKEN_LOCATION = ['headers', 'cookies']
     JWT_ACCESS_COOKIE_NAME = os.environ.get('JOURNAL_COOKIE_NAME', 'journal_token')
     JWT_COOKIE_SECURE = os.environ.get('JWT_COOKIE_SECURE', 'False').lower() == 'true'
-    JWT_COOKIE_SAMESITE = os.environ.get('JWT_COOKIE_SAMESITE', 'Lax')
+    JWT_COOKIE_SAMESITE = os.environ.get('JWT_COOKIE_SAMESITE', 'Strict')
     # Double-submit CSRF for cookie-authenticated writes. flask-jwt-extended ONLY
     # enforces this for tokens read from cookies (state-changing methods) — tokens
     # presented via the Authorization header are exempt, so the legacy localStorage

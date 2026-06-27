@@ -543,6 +543,35 @@ class FailedLoginAttempt(db.Model):
     user_agent = db.Column(db.String(500), nullable=True)
 
 
+class UserMfaSettings(db.Model):
+    """TOTP MFA settings per user (spec §4.1)."""
+    __tablename__ = 'user_mfa_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    totp_secret = db.Column(db.String(64), nullable=True)
+    backup_codes_hash = db.Column(db.Text, nullable=True)
+    enabled = db.Column(db.Boolean, default=False, nullable=False)
+    pending_secret = db.Column(db.String(64), nullable=True)
+    enabled_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('mfa_settings', uselist=False))
+
+
+class AuditLogChain(db.Model):
+    """Hash-chained audit entries for tamper detection (spec §10.2)."""
+    __tablename__ = 'audit_log_chain'
+    id = db.Column(db.Integer, primary_key=True)
+    previous_hash = db.Column(db.String(64), nullable=False)
+    entry_hash = db.Column(db.String(64), nullable=False, unique=True)
+    event_type = db.Column(db.String(80), nullable=False)
+    payload = db.Column(db.Text, nullable=False)
+    actor_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class SystemSettings(db.Model):
     """Stores system-wide configuration settings."""
     __tablename__ = 'system_settings'

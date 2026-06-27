@@ -1,6 +1,12 @@
 # app.py
 
-from flask import Flask, jsonify, request, make_response
+import security_bootstrap
+
+security_bootstrap.install_security_package()
+
+from talaria_security.headers import apply_security_headers, generate_csp_nonce
+
+from flask import Flask, jsonify, request, make_response, g
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from models import db
@@ -9,7 +15,7 @@ from email_service import init_mail
 import os
 
 from routes.blueprint_setup import register_all_blueprints
-from db_schema import ensure_users_schema
+from db_schema import ensure_users_schema, ensure_security_schema
 
 import jwt as pyjwt
 
@@ -51,6 +57,7 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 ensure_users_schema(app)
+ensure_security_schema(app)
 
 # Email setup
 init_mail(app)
@@ -138,6 +145,11 @@ def debug_verify_token():
         })
 
 @app.before_request
+def assign_csp_nonce():
+    g.csp_nonce = generate_csp_nonce()
+
+
+@app.before_request
 def log_request_info():
     if app.config.get('DEBUG'):
         app.logger.debug('Headers: %s', request.headers)
@@ -146,14 +158,12 @@ def log_request_info():
 
 @app.after_request
 def add_security_headers(response):
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
-    response.headers['Content-Security-Policy'] = "default-src 'none'; frame-ancestors 'none'"
     proto = request.headers.get('X-Forwarded-Proto', '')
-    if request.is_secure or proto.lower() == 'https':
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    https = request.is_secure or proto.lower() == 'https'
+    nonce = getattr(g, 'csp_nonce', None) or generate_csp_nonce()
+    apply_security_headers(response.headers, nonce=nonce, https=https, api_mode=True)
+    for header in ('Server', 'X-Powered-By', 'X-AspNet-Version', 'X-AspNetMvc-Version'):
+        response.headers.pop(header, None)
     return response
 
 
