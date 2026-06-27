@@ -197,6 +197,104 @@ def _close_type(exit_px: float, stop: float, target: float, entry: float, pip: f
     return "Manual"
 
 
+def _row_price(row: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        val = _to_float(row.get(key))
+        if val is not None:
+            return val
+    return None
+
+
+def _derive_excursion_prices(
+    direction: str,
+    entry: float,
+    exit_px: float,
+    stop: float,
+    target: float,
+) -> tuple[float, float]:
+    """Bound high/low from prices we trust (entry, exit, stop, target). Does not change R math."""
+    if direction == "BUY":
+        return max(entry, exit_px, target), min(entry, exit_px, stop)
+    return max(entry, exit_px, stop), min(entry, exit_px, target)
+
+
+def _excursion_sanitize_reason(
+    direction: str,
+    entry: float,
+    exit_px: float,
+    stop: float,
+    target: float,
+    high: float | None,
+    low: float | None,
+) -> str | None:
+    if high is None or low is None:
+        return "missing_high_low"
+    pip = _pip_for(entry)
+    tol = max(pip, abs(entry) * 1e-6)
+    if round(high, 2) == 30000.0 and round(low, 2) == 10000.0:
+        return "placeholder_30k_10k"
+    if high + tol < low:
+        return "inverted_high_low"
+    risk = abs(entry - stop) if stop is not None else max(abs(entry) * 0.001, pip)
+    cap = max(risk * 50.0, abs(entry) * 0.08, risk + pip * 10.0)
+    if abs(high - entry) > cap or abs(entry - low) > cap:
+        return "absurd_deviation"
+    band_lo = min(entry, exit_px, stop, target) - cap
+    band_hi = max(entry, exit_px, stop, target) + cap
+    if high < band_lo or high > band_hi or low < band_lo or low > band_hi:
+        return "outside_trade_band"
+    return None
+
+
+def _sanitize_excursion_prices(
+    direction: str,
+    entry: float,
+    exit_px: float,
+    stop: float,
+    target: float,
+    high: float | None,
+    low: float | None,
+) -> tuple[float, float, bool, str | None]:
+    reason = _excursion_sanitize_reason(direction, entry, exit_px, stop, target, high, low)
+    if reason is None:
+        return float(high), float(low), False, None
+    derived_high, derived_low = _derive_excursion_prices(direction, entry, exit_px, stop, target)
+    return derived_high, derived_low, True, reason
+
+
+def audit_excursion_inputs(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Scan raw mentor rows for suspicious high/low inputs (and missing excursion prices)."""
+    counts: dict[str, int] = {}
+    samples: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        entry = _row_price(row, "entry_price", "entryPrice")
+        exit_px = _row_price(row, "exit_price", "exitPrice")
+        stop = _row_price(row, "stop_loss", "stopLoss")
+        target = _row_price(row, "take_profit", "takeProfit")
+        high = _row_price(row, "high_price", "highestPrice", "high")
+        low = _row_price(row, "low_price", "lowestPrice", "low")
+        if None in (entry, exit_px, stop, target):
+            continue
+        direction = _direction(row.get("direction"))
+        reason = _excursion_sanitize_reason(direction, float(entry), float(exit_px), float(stop), float(target), high, low)
+        if not reason:
+            continue
+        counts[reason] = counts.get(reason, 0) + 1
+        if reason not in samples:
+            samples[reason] = []
+        if len(samples[reason]) < 3:
+            samples[reason].append(
+                {
+                    "id": row.get("id"),
+                    "entry": entry,
+                    "high": high,
+                    "low": low,
+                    "exit": exit_px,
+                }
+            )
+    return {"rows": len(rows), "bad": sum(counts.values()), "reasons": counts, "samples": samples}
+
+
 def _excursions(
     direction: str,
     entry: float,
@@ -510,13 +608,13 @@ def convert_mentor_row(
     source_kind: str = "backtest",
     profile_id: int | None = None,
 ) -> tuple[dict[str, Any], float]:
-    entry = _to_float(row.get("entry_price"))
-    exit_px = _to_float(row.get("exit_price"))
-    stop = _to_float(row.get("stop_loss"))
-    target = _to_float(row.get("take_profit"))
-    high = _to_float(row.get("high_price"))
-    low = _to_float(row.get("low_price"))
-    if None in (entry, exit_px, stop, target, high, low):
+    entry = _row_price(row, "entry_price", "entryPrice")
+    exit_px = _row_price(row, "exit_price", "exitPrice")
+    stop = _row_price(row, "stop_loss", "stopLoss")
+    target = _row_price(row, "take_profit", "takeProfit")
+    high = _row_price(row, "high_price", "highestPrice", "high")
+    low = _row_price(row, "low_price", "lowestPrice", "low")
+    if None in (entry, exit_px, stop, target):
         raise ValueError("missing required prices")
 
     ticker = _infer_symbol(row.get("symbol"), float(entry))
@@ -527,10 +625,12 @@ def convert_mentor_row(
     exit_px = _price_fmt(float(exit_px), pip)
     stop = _price_fmt(float(stop), pip)
     target = _price_fmt(float(target), pip)
+    direction = _direction(row.get("direction"))
+    high, low, excursion_sanitized, excursion_sanitize_reason = _sanitize_excursion_prices(
+        direction, entry, exit_px, stop, target, high, low
+    )
     high = _price_fmt(float(high), pip)
     low = _price_fmt(float(low), pip)
-
-    direction = _direction(row.get("direction"))
     entry_dt = _parse_dt(row.get("entry_datetime") or row.get("trade_date"))
     exit_dt = _parse_dt(row.get("exit_datetime") or row.get("exit_datetime"))
     if not entry_dt:
@@ -662,6 +762,10 @@ def convert_mentor_row(
             "notes": notes or None,
             "postStrategyVariables": post_vars,
             "planAdherence": plan_adherence,
+            "excursionSanitized": excursion_sanitized,
+            "excursionSanitizeReason": excursion_sanitize_reason,
+            "sourceHighPrice": _row_price(row, "high_price", "highestPrice", "high"),
+            "sourceLowPrice": _row_price(row, "low_price", "lowestPrice", "low"),
         },
         "preTags": pre_tags,
         "postTags": post_tags,
