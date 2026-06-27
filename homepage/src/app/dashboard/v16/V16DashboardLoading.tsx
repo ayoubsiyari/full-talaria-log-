@@ -164,7 +164,7 @@ function SnapshotSkeletonBody({ gap = 12 }: { gap?: number }) {
             <SkeletonBlock height={12} width={108} radius={0} />
             <SkeletonBlock height={32} width={246} radius={0} />
           </div>
-          <SkeletonBlock height="100%" minHeight={320} radius={0} />
+          <SkeletonBlock height="100%" radius={0} style={{ minHeight: 320 }} />
         </div>
       </div>
 
