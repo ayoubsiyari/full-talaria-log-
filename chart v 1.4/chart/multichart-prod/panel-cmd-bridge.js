@@ -1291,7 +1291,7 @@
                     return;
                 }
                 case 'clearActiveDrawingTool': {
-                    dismissActiveDrawingTool(ch.drawingManager, !!(args && args.mirrored));
+                    dismissActiveDrawingTool(ch.drawingManager, !!(args && args.mirrored), args);
                     return;
                 }
                 case 'setChartCursorType': {
@@ -2490,8 +2490,9 @@
         } catch (_) {}
     }
 
-    function dismissActiveDrawingTool(dm, mirrored) {
+    function dismissActiveDrawingTool(dm, mirrored, opts) {
         if (!dm) return false;
+        var keepSelection = !!(opts && opts.keepSelection);
         if (dm.isRectSelecting) {
             if (typeof dm.cancelRectangularSelection === 'function') {
                 dm.cancelRectangularSelection();
@@ -2504,7 +2505,7 @@
         }
         var had = !!(dm.currentTool
             || (dm.selectedDrawings && dm.selectedDrawings.length));
-        if (typeof dm.deselectAll === 'function') dm.deselectAll();
+        if (!keepSelection && typeof dm.deselectAll === 'function') dm.deselectAll();
         if (typeof dm.clearTool === 'function') dm.clearTool(!!mirrored);
         else dm.currentTool = null;
         return had;

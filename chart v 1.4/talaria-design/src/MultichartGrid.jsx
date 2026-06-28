@@ -404,9 +404,10 @@ function isPlaceholderMultichartSymbol(s) {
     return t === "—" || t === "–" || t === "-" || t === "…";
 }
 
-/** Mirror drawing-tools-manager Escape: cancel in-progress, deselect, clear armed tool. */
-function dismissActiveDrawingTool(dm, mirrored = false) {
+/** Cancel in-progress draw / rect select, clear armed tool; deselect shapes only when keepSelection is false (Escape). */
+function dismissActiveDrawingTool(dm, mirrored = false, opts = null) {
     if (!dm) return false;
+    const keepSelection = !!(opts && opts.keepSelection);
     if (dm.isRectSelecting) {
         if (typeof dm.cancelRectangularSelection === "function") {
             dm.cancelRectangularSelection();
@@ -419,7 +420,7 @@ function dismissActiveDrawingTool(dm, mirrored = false) {
     }
     const had = !!(dm.currentTool
         || (dm.selectedDrawings && dm.selectedDrawings.length));
-    if (typeof dm.deselectAll === "function") dm.deselectAll();
+    if (!keepSelection && typeof dm.deselectAll === "function") dm.deselectAll();
     if (typeof dm.clearTool === "function") dm.clearTool(!!mirrored);
     else dm.currentTool = null;
     return had;
@@ -3690,7 +3691,7 @@ export default function MultichartGrid({
                     case "clearActiveDrawingTool": {
                         const dmc = ch.drawingManager;
                         if (!dmc) return Promise.resolve(null);
-                        dismissActiveDrawingTool(dmc, !!(args && args.mirrored));
+                        dismissActiveDrawingTool(dmc, !!(args && args.mirrored), args);
                         return Promise.resolve(null);
                     }
                     case "addIndicator": {
@@ -4581,15 +4582,16 @@ export default function MultichartGrid({
                 || lt.toLowerCase() === "cursor";
 
             function runClear(panelId) {
+                const clearArgs = { keepSelection: true };
                 if (panelId === HOST_PANEL_ID) {
-                    return applyHostCommand("clearActiveDrawingTool", null).catch(() => {});
+                    return applyHostCommand("clearActiveDrawingTool", clearArgs).catch(() => {});
                 }
                 if (!mgr) return Promise.resolve();
                 if (typeof mgr.sendCommandNoReply === "function") {
-                    mgr.sendCommandNoReply(panelId, "clearActiveDrawingTool", null);
+                    mgr.sendCommandNoReply(panelId, "clearActiveDrawingTool", clearArgs);
                     return Promise.resolve();
                 }
-                return mgr.sendCommand(panelId, "clearActiveDrawingTool", null).catch(() => {});
+                return mgr.sendCommand(panelId, "clearActiveDrawingTool", clearArgs).catch(() => {});
             }
 
             function runSet(panelId) {
