@@ -19181,56 +19181,14 @@ const TalariaV8b = () => {
             const renderRangeDateControl = (target) => {
               const isStartTarget = target === "start";
               const realSelectedDate = isStartTarget ? dashDateStartFilter : dashDateEndFilter;
-              const selectedDate = realSelectedDate || (isStartTarget ? dashDataDateRange.start : dashDataDateRange.end);
-              const inputValue = isStartTarget ? (dashDateStartInput || formatNumericDate(selectedDate)) : (dashDateEndInput || formatNumericDate(selectedDate));
-              const activeField = dashDatePickTarget === target;
+              const storedInput = isStartTarget ? dashDateStartInput : dashDateEndInput;
+              const fallbackDisplay = realSelectedDate
+                ? formatNumericDate(realSelectedDate)
+                : formatNumericDate(isStartTarget ? dashDataDateRange.start : dashDataDateRange.end);
+              const displayValue = storedInput !== "" ? storedInput : fallbackDisplay;
               const setInputValue = isStartTarget ? setDashDateStartInput : setDashDateEndInput;
               const setSelectedDate = isStartTarget ? setDashDateStartFilter : setDashDateEndFilter;
               const inputError = dashDateInputError?.[target] || "";
-              const segmentOrder = ["day","month","year"];
-              const blankParts = {day:"DD", month:"MM", year:"YYYY"};
-              const displayValue = inputValue || "DD - MM - YYYY";
-              const normalizeParts = value => {
-                const rawParts = String(value || "").split(/\s*-\s*/);
-                const digits = String(value || "").replace(/\D/g, "");
-                if (digits.length === 8) {
-                  return {day:digits.slice(0,2), month:digits.slice(2,4), year:digits.slice(4,8)};
-                }
-                return {
-                  day:rawParts[0] || blankParts.day,
-                  month:rawParts[1] || blankParts.month,
-                  year:rawParts[2] || blankParts.year,
-                };
-              };
-              const composeDateParts = parts => `${parts.day || blankParts.day} - ${parts.month || blankParts.month} - ${parts.year || blankParts.year}`;
-              const getSegmentRanges = value => {
-                const parts = normalizeParts(value);
-                const dayStart = 0;
-                const dayEnd = String(parts.day).length;
-                const monthStart = dayEnd + 3;
-                const monthEnd = monthStart + String(parts.month).length;
-                const yearStart = monthEnd + 3;
-                const yearEnd = yearStart + String(parts.year).length;
-                return {
-                  day:[dayStart, dayEnd],
-                  month:[monthStart, monthEnd],
-                  year:[yearStart, yearEnd],
-                };
-              };
-              const selectInputSegment = (el, segment, value = el?.value || displayValue) => {
-                if (!el) return;
-                const ranges = getSegmentRanges(value);
-                const [start, end] = ranges[segment] || ranges.day;
-                window.setTimeout(()=>{try{el.focus();el.setSelectionRange(start, end);}catch{}}, 0);
-              };
-              const segmentFromPosition = (pos, value) => {
-                const ranges = getSegmentRanges(value);
-                const midDayMonth = ranges.day[1] + 1.5;
-                const midMonthYear = ranges.month[1] + 1.5;
-                if (pos <= midDayMonth) return "day";
-                if (pos <= midMonthYear) return "month";
-                return "year";
-              };
               const isCompleteDateDisplay = value => {
                 const parts = String(value || "").trim().split(/\s*-\s*/);
                 if (parts.length < 3) return false;
@@ -19239,17 +19197,9 @@ const TalariaV8b = () => {
                 const year = String(parts[2] || "").replace(/\D/g, "");
                 return day.length >= 1 && day.length <= 2 && month.length >= 1 && month.length <= 2 && year.length === 4;
               };
-              const isCompleteDateDisplayLoose = isCompleteDateDisplay;
-              const padActiveSegmentInDisplay = (value) => {
-                if (dashDateSegmentFocus.target !== target) return value;
-                const { segment, buffer } = dashDateSegmentFocus;
-                if (!buffer || (segment !== "day" && segment !== "month") || buffer.length >= 2) return value;
-                const parts = normalizeParts(value);
-                return composeDateParts({ ...parts, [segment]: buffer.padStart(2, "0") });
-              };
               const setDateError = message => setDashDateInputError(prev => ({...prev, [target]:message}));
               const getDateValidationError = value => {
-                if (!isCompleteDateDisplayLoose(value)) return "";
+                if (!isCompleteDateDisplay(value)) return "";
                 const iso = parseNumericDateInput(finalizeDateDisplay(value) || value);
                 if (!iso) return dashTxt("Invalid date","تاريخ غير صالح");
                 if (iso < dashDataDateRange.start || iso > dashDataDateRange.end) return dashTxt("Outside data range","خارج نطاق البيانات");
@@ -19258,7 +19208,7 @@ const TalariaV8b = () => {
                 return "";
               };
               const validateDateDisplay = value => {
-                if (!isCompleteDateDisplayLoose(value)) return "";
+                if (!isCompleteDateDisplay(value)) return "";
                 const iso = parseNumericDateInput(finalizeDateDisplay(value) || value);
                 if (!iso || iso < dashDataDateRange.start || iso > dashDataDateRange.end) return "";
                 if (target === "start" && dashDateEndFilter && iso > dashDateEndFilter) return "";
@@ -19266,7 +19216,14 @@ const TalariaV8b = () => {
                 return iso;
               };
               const commitDisplayValue = value => {
-                const normalized = finalizeDateDisplay(value) || value;
+                const trimmed = String(value || "").trim();
+                if (!trimmed) {
+                  setInputValue("");
+                  setSelectedDate("");
+                  setDateError("");
+                  return false;
+                }
+                const normalized = finalizeDateDisplay(trimmed) || trimmed;
                 setInputValue(normalized);
                 const error = getDateValidationError(normalized);
                 setDateError(error);
@@ -19279,113 +19236,45 @@ const TalariaV8b = () => {
                 setMonthKey(target, Number(iso.slice(0,4)), Number(iso.slice(5,7)) - 1);
                 return true;
               };
-              const selectSegment = (segment, el) => {
+              const handleFocus = () => {
                 setDashTimeFilter("custom");
                 setDashDatePickTarget(target);
-                setDashDateSegmentFocus({target, segment, buffer:""});
-                selectInputSegment(el, segment);
+                if (storedInput === "") setInputValue(fallbackDisplay);
               };
-              const moveSegment = (delta, el) => {
-                const paddedValue = padActiveSegmentInDisplay(displayValue);
-                if (paddedValue !== displayValue) {
-                  setInputValue(paddedValue);
-                  if (isCompleteDateDisplayLoose(paddedValue)) commitDisplayValue(paddedValue);
-                }
-                const current = activeField && dashDateSegmentFocus.target === target ? dashDateSegmentFocus.segment : "day";
-                const idx = segmentOrder.indexOf(current);
-                const next = segmentOrder[Math.max(0, Math.min(segmentOrder.length - 1, idx + delta))] || "day";
-                setDashDateSegmentFocus({ target, segment: next, buffer: "" });
-                selectSegment(next, el);
-              };
-              const handleSegmentDigit = (digit, el) => {
-                const segment = activeField && dashDateSegmentFocus.target === target ? dashDateSegmentFocus.segment : "day";
-                const maxLen = segment === "year" ? 4 : 2;
-                const parts = normalizeParts(displayValue);
-                const visibleSegmentDigits = String(parts[segment] || "").replace(/\D/g, "");
-                const currentBuffer = dashDateSegmentFocus.target === target && dashDateSegmentFocus.segment === segment
-                  ? (dashDateSegmentFocus.buffer || (visibleSegmentDigits.length < maxLen ? visibleSegmentDigits : ""))
-                  : "";
-                const nextBuffer = currentBuffer.length >= maxLen ? digit : `${currentBuffer}${digit}`;
-                const nextParts = {...parts, [segment]:nextBuffer};
-                const nextDisplay = composeDateParts(nextParts);
-                if (segment === "day" && nextBuffer.length === maxLen) {
-                  const day = Number(nextBuffer);
-                  if (day < 1 || day > 31) { setDateError(dashTxt("Invalid date","تاريخ غير صالح")); return; }
-                }
-                if (segment === "month" && nextBuffer.length === maxLen) {
-                  const month = Number(nextBuffer);
-                  if (month < 1 || month > 12) { setDateError(dashTxt("Invalid date","تاريخ غير صالح")); return; }
-                }
-                if (segment === "year" && nextBuffer.length === maxLen) {
-                  const year = Number(nextBuffer);
-                  if (year < 1900 || year > 2100) { setDateError(dashTxt("Invalid date","تاريخ غير صالح")); return; }
-                }
+              const handleChange = (e) => {
                 setDashTimeFilter("custom");
                 setDashDatePickTarget(target);
-                if (nextBuffer.length < maxLen) {
-                  setInputValue(nextDisplay);
-                  setSelectedDate("");
-                  setDateError("");
-                  setDashDateSegmentFocus({target, segment, buffer:nextBuffer});
-                  selectInputSegment(el, segment, nextDisplay);
-                  return;
-                }
-                commitDisplayValue(nextDisplay);
-                const nextIdx = segmentOrder.indexOf(segment) + 1;
-                const nextSegment = segmentOrder[nextIdx] || segment;
-                setDashDateSegmentFocus({target, segment:nextSegment, buffer:""});
-                selectInputSegment(el, nextSegment, finalizeDateDisplay(nextDisplay) || nextDisplay);
-              };
-              const clearSegment = (el) => {
-                const segment = activeField && dashDateSegmentFocus.target === target ? dashDateSegmentFocus.segment : "day";
-                const parts = normalizeParts(displayValue);
-                const nextDisplay = composeDateParts({...parts, [segment]:blankParts[segment]});
-                setDashTimeFilter("custom");
-                setDashDatePickTarget(target);
-                setInputValue(nextDisplay);
+                setInputValue(e.target.value);
                 setSelectedDate("");
                 setDateError("");
-                setDashDateSegmentFocus({target, segment, buffer:""});
-                selectInputSegment(el, segment, nextDisplay);
               };
-              const handleKey = (e) => {
-                if (/^\d$/.test(e.key)) {
+              const handleKeyDown = (e) => {
+                if (e.key === "Enter") {
                   e.preventDefault();
-                  handleSegmentDigit(e.key, e.currentTarget);
+                  e.currentTarget.blur();
                   return;
                 }
-                if (e.key === "ArrowLeft") { e.preventDefault(); moveSegment(-1, e.currentTarget); return; }
-                if (e.key === "ArrowRight") { e.preventDefault(); moveSegment(1, e.currentTarget); return; }
-                if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); clearSegment(e.currentTarget); return; }
-                if (e.key === "Home") { e.preventDefault(); selectSegment("day", e.currentTarget); return; }
-                if (e.key === "End") { e.preventDefault(); selectSegment("year", e.currentTarget); return; }
                 if (e.key === "Escape") {
-                  setInputValue(formatNumericDate(selectedDate));
-                  setDashDateSegmentFocus({target, segment:"day", buffer:""});
-                  selectInputSegment(e.currentTarget, "day", formatNumericDate(selectedDate) || "DD - MM - YYYY");
+                  e.preventDefault();
+                  setInputValue(realSelectedDate ? formatNumericDate(realSelectedDate) : "");
+                  setDateError("");
+                  e.currentTarget.blur();
+                }
+              };
+              const handleBlur = (e) => {
+                const current = e.target.value;
+                const trimmed = String(current || "").trim();
+                if (!trimmed) {
+                  setInputValue("");
+                  setSelectedDate("");
+                  setDateError("");
                   return;
                 }
-                if (e.key.length === 1 && !/^\d$/.test(e.key)) {
-                  e.preventDefault();
+                const finalized = finalizeDateDisplay(trimmed);
+                if (finalized && commitDisplayValue(finalized)) return;
+                if (!validateDateDisplay(trimmed) && !inputError) {
+                  setInputValue(realSelectedDate ? formatNumericDate(realSelectedDate) : "");
                 }
-              };
-              const handlePaste = (e) => {
-                e.preventDefault();
-                const digits = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 8);
-                if (digits.length !== 8) return;
-                const nextDisplay = `${digits.slice(0,2)} - ${digits.slice(2,4)} - ${digits.slice(4,8)}`;
-                setDashTimeFilter("custom");
-                setDashDatePickTarget(target);
-                commitDisplayValue(nextDisplay);
-                setDashDateSegmentFocus({target, segment:"year", buffer:""});
-                selectInputSegment(e.currentTarget, "year", nextDisplay);
-              };
-              const handleSegmentClick = (el) => {
-                const segment = segmentFromPosition(el.selectionStart ?? 0, el.value || displayValue);
-                setDashTimeFilter("custom");
-                setDashDatePickTarget(target);
-                setDashDateSegmentFocus({target, segment, buffer:""});
-                selectInputSegment(el, segment, el.value || displayValue);
               };
               return (
                 <div key={`${target}-field`} style={{width:dashRangeCalendarWidth,minWidth:dashRangeCalendarWidth}}>
@@ -19398,22 +19287,11 @@ const TalariaV8b = () => {
                     inputMode="numeric"
                     aria-label={isStartTarget?dashTxt("Start Date","تاريخ البداية"):dashTxt("End Date","تاريخ النهاية")}
                     onPointerDown={e=>e.stopPropagation()}
-                    onFocus={e=>selectSegment(dashDateSegmentFocus.target===target ? dashDateSegmentFocus.segment : "day", e.currentTarget)}
-                    onMouseUp={e=>{e.preventDefault();handleSegmentClick(e.currentTarget);}}
-                    onClick={e=>handleSegmentClick(e.currentTarget)}
-                    onPaste={handlePaste}
-                    onChange={()=>{}}
-                    onBlur={()=>{
-                      const finalized = finalizeDateDisplay(displayValue);
-                      if (finalized && commitDisplayValue(finalized)) {
-                        setDashDateSegmentFocus({target, segment:"day", buffer:""});
-                        return;
-                      }
-                      if (!validateDateDisplay(displayValue) && !inputError) setInputValue(formatNumericDate(selectedDate));
-                      setDashDateSegmentFocus({target, segment:"day", buffer:""});
-                    }}
-                    onKeyDown={handleKey}
-                    style={{width:"100%",height:28,display:"block",background:c.well,border:`1px solid ${inputError?c.rd:c.brH}`,boxShadow:inputError?`0 0 10px rgba(255,80,104,0.22)`:"none",outline:"none",color:inputValue?c.tx:c.tm,fontSize:12,fontWeight:600,padding:"0 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",letterSpacing:"0.01em",boxSizing:"border-box",caretColor:"#fff"}}
+                    onFocus={handleFocus}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    onKeyDown={handleKeyDown}
+                    style={{width:"100%",height:28,display:"block",background:c.well,border:`1px solid ${inputError?c.rd:c.brH}`,boxShadow:inputError?`0 0 10px rgba(255,80,104,0.22)`:"none",outline:"none",color:displayValue && displayValue !== "DD - MM - YYYY" ? c.tx : c.tm,fontSize:12,fontWeight:600,padding:"0 7px",fontFamily:F,fontVariantNumeric:"tabular-nums",letterSpacing:"0.01em",boxSizing:"border-box",caretColor:"#fff"}}
                   />
                   <div style={{height:12,marginTop:3,fontSize:8,fontWeight:800,color:inputError?c.rd:"transparent",letterSpacing:"0.045em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                     {inputError || "."}

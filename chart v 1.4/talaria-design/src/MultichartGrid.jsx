@@ -2423,11 +2423,6 @@ export default function MultichartGrid({
                 }
             } catch (_) {}
             try {
-                if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
-                    if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
-                }
-            } catch (_) {}
-            try {
                 const ch = window.chart;
                 if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
             } catch (_) {}
