@@ -1989,7 +1989,6 @@ class ArrowTool extends BaseDrawing {
             angle += 180;
         }
 
-        const verticalOffset = 15;
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
         const sh_mP1IsLeft = origX1 <= origX2;
@@ -1998,11 +1997,11 @@ class ArrowTool extends BaseDrawing {
         switch (textHAlign) {
             case 'left':
                 t = sh_mP1IsLeft ? 0 : 1;
-                anchor = sh_mP1IsLeft ? 'start' : 'end';
+                anchor = resolveLineEndpointSvgAnchor('left', label);
                 break;
             case 'right':
                 t = sh_mP1IsLeft ? 1 : 0;
-                anchor = sh_mP1IsLeft ? 'end' : 'start';
+                anchor = resolveLineEndpointSvgAnchor('right', label);
                 break;
             default:
                 t = 0.5;
@@ -2016,24 +2015,24 @@ class ArrowTool extends BaseDrawing {
         const perpX_sh = -Math.sin(angleRad_sh);
         const perpY_sh = Math.cos(angleRad_sh);
         const signUp_sh = perpY_sh <= 0 ? 1 : -1;
-        if (textVAlign === 'top') {
-            baseX += perpX_sh * verticalOffset * signUp_sh;
-            baseY += perpY_sh * verticalOffset * signUp_sh;
-        } else if (textVAlign === 'bottom') {
-            baseX -= perpX_sh * verticalOffset * signUp_sh;
-            baseY -= perpY_sh * verticalOffset * signUp_sh;
-        }
+        const lineRefX = baseX;
+        const lineRefY = baseY;
+        const gapCfg = typeof lineLabelGapConfig === 'function'
+            ? lineLabelGapConfig(lineRefX, lineRefY, textVAlign, perpX_sh, perpY_sh, signUp_sh)
+            : {};
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
             y: baseY + offY,
             anchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || 14,
             fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
             fontWeight: this.style.fontWeight || 'normal',
             fontStyle: this.style.fontStyle || 'normal',
-            rotation: angle
+            rotation: angle,
+            ...gapCfg
         });
     }
 

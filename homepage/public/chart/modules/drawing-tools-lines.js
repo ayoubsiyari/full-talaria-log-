@@ -21,7 +21,10 @@ function appendTextLabel(group, text, config = {}) {
         fontStyle = 'normal',
         baseline = 'middle',
         yAnchor,
-        rotation = 0
+        rotation = 0,
+        lineSide = null,
+        lineRef = null,
+        linePerp = null
     } = config;
 
     const lines = text.split('\n');
@@ -74,6 +77,7 @@ function appendTextLabel(group, text, config = {}) {
     });
 
     let nudgeX = 0;
+    let nudgeY = 0;
     if (anchor === 'middle' && resolved.direction === 'rtl') {
         try {
             const bbox = textEl.node().getBBox();
@@ -83,7 +87,15 @@ function appendTextLabel(group, text, config = {}) {
         } catch (_) { /* ignore measure failures */ }
     }
 
-    const transform = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, 0);
+    if (lineSide && lineRef && linePerp) {
+        const interim = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, nudgeY);
+        if (interim) textEl.attr('transform', interim);
+        const gapNudge = nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize);
+        nudgeX += gapNudge.nudgeX;
+        nudgeY += gapNudge.nudgeY;
+    }
+
+    const transform = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, nudgeY);
     if (transform) {
         textEl.attr('transform', transform);
     }
@@ -93,6 +105,23 @@ function appendTextLabel(group, text, config = {}) {
 
 // Make appendTextLabel globally available for all drawing tools
 window.appendTextLabel = appendTextLabel;
+
+/** Gap + RTL extras for line-tool labels (top/bottom of stroke). */
+function lineLabelGapConfig(lineX, lineY, textVAlign, perpX, perpY, signUp) {
+    const lineSide = resolveLineLabelSide(textVAlign);
+    if (!lineSide) return {};
+    const linePerp = (perpX != null && perpY != null && signUp != null)
+        ? lineLabelPerpTowardText(textVAlign, perpX, perpY, signUp)
+        : horizontalLineLabelPerp(textVAlign);
+    if (!linePerp) return {};
+    return {
+        lineSide,
+        lineRef: { x: lineX, y: lineY },
+        linePerp
+    };
+}
+
+window.lineLabelGapConfig = lineLabelGapConfig;
 
 const DEFAULT_TEXT_STYLE = {
     fontFamily: 'Roboto, sans-serif',
@@ -1054,9 +1083,6 @@ class TrendlineTool extends BaseDrawing {
             const siPerpY = Math.cos(angle * Math.PI / 180);
             const siSignUp = siPerpY <= 0 ? 1 : -1;
             const siTextVAlign = this.style.textVAlign || this.style.textPosition || 'top';
-            const siPos = applyLineLabelPerpOffset(siTextX, siTextY, siPerpX, siPerpY, siSignUp, siTextVAlign, label, siFontSize);
-            siTextX = siPos.x;
-            siTextY = siPos.y;
 
             appendTextLabel(this.group, label, {
                 x: siTextX + offsetX,
@@ -1068,7 +1094,8 @@ class TrendlineTool extends BaseDrawing {
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
                 fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
                 fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-                rotation: angle
+                rotation: angle,
+                ...lineLabelGapConfig(siTextX, siTextY, siTextVAlign, siPerpX, siPerpY, siSignUp)
             });
             return;
         }
@@ -1162,9 +1189,6 @@ class TrendlineTool extends BaseDrawing {
         const perpY = Math.cos(angleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
-        const perpPos = applyLineLabelPerpOffset(baseX, baseY, perpX, perpY, signUp, textVAlign, label, fontSize);
-        baseX = perpPos.x;
-        baseY = perpPos.y;
 
         // Don't render if text position is outside the visible chart area
         // (prevents partial-clip "empty place" artifact in the price axis)
@@ -1189,7 +1213,8 @@ class TrendlineTool extends BaseDrawing {
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle
+            rotation: angle,
+            ...lineLabelGapConfig(baseX, baseY, textVAlign, perpX, perpY, signUp)
         });
     }
 
@@ -1600,17 +1625,17 @@ class HorizontalLineTool extends BaseDrawing {
         }
         
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const offsetY = horizontalLineLabelOffsetY(label, fontSize, textVAlign);
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
-            y: y + offsetY,
+            y: y,
             anchor: hlAnchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize, 
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle
+            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+            ...lineLabelGapConfig(baseX, y, textVAlign)
         });
     }
 
@@ -1915,15 +1940,6 @@ class VerticalLineTool extends BaseDrawing {
         const leftX = Math.min(xRange[0], xRange[1]);
         const rightX = Math.max(xRange[0], xRange[1]);
 
-        // Horizontal offset from line.
-        // When text is rotated 90° its rendered height (lineHeight) becomes its
-        // horizontal extent, so the offset must be at least lineHeight/2 + padding
-        // to keep the text clear of the vertical line for any font size.
-        const textLineHeight = fontSize * 1.2;
-        const horizontalOffset = rotation !== 0
-            ? Math.ceil(textLineHeight / 2) + 6
-            : 10;
-        
         // Get Y range bounds
         const topY = Math.min(yRange[0], yRange[1]);
         const bottomY = Math.max(yRange[0], yRange[1]);
@@ -1940,55 +1956,6 @@ class VerticalLineTool extends BaseDrawing {
             default: // middle
                 baseY = (topY + bottomY) / 2;
         }
-        
-        // textHAlign controls position relative to the line
-        // For middle vAlign: center = ON the line, left/right = beside the line
-        // For top/bottom vAlign: left = left side, center/right = right side
-        let baseX;
-        let anchor;
-
-        const clampPad = 10;
-
-        if (textVAlign === 'middle') {
-            if (textHAlign === 'left') {
-                baseX = x - horizontalOffset;
-                anchor = 'end';
-            } else if (textHAlign === 'right') {
-                baseX = x + horizontalOffset;
-                anchor = 'start';
-            } else {
-                baseX = x;
-                anchor = 'middle';
-            }
-        } else {
-             // top/bottom: center behaves like right
-            if (textHAlign === 'center') {
-                baseX = x;
-                anchor = 'middle';
-            } else if (textHAlign === 'left') {
-                baseX = x - horizontalOffset;
-                anchor = 'end';
-            } else {
-                baseX = x + horizontalOffset;
-                anchor = 'start';
-            }
-        }
-
-        if (rotation !== 0) {
-            anchor = 'middle';
-        }
-
-        const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
-            ? 0
-            : this.style.textOffsetX;
-        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
-            ? 0
-            : this.style.textOffsetY;
-        const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
-        const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
-
-        baseX = baseX + offsetX;
-        baseY = baseY + offsetY;
 
         const measureStyle = resolveDrawingTextStyle(label, fontStyle, fontFamily);
         const tempText = this.group.append('text')
@@ -2011,10 +1978,50 @@ class VerticalLineTool extends BaseDrawing {
         }
         tempText.remove();
 
+        const clampPad = 10;
         const halfY = rotation === 0 ? (totalHeight / 2) : (maxTextWidth / 2);
-        // Do not clamp X: label must follow the vertical line when panning/scrolling.
-        // Clamp only Y to avoid pushing the label out of the visible plot vertically.
         baseY = Math.max(topY + halfY + clampPad, Math.min(bottomY - halfY - clampPad, baseY));
+        
+        let baseX = x;
+        let anchor = 'middle';
+        let gapCfg = {};
+
+        if (textVAlign === 'middle') {
+            if (textHAlign === 'left') {
+                anchor = resolveVerticalLineSvgAnchor('left', label);
+                gapCfg = { lineSide: 'above', lineRef: { x, y: baseY }, linePerp: { x: -1, y: 0 } };
+            } else if (textHAlign === 'right') {
+                anchor = resolveVerticalLineSvgAnchor('right', label);
+                gapCfg = { lineSide: 'above', lineRef: { x, y: baseY }, linePerp: { x: 1, y: 0 } };
+            }
+        } else {
+            if (textHAlign === 'center') {
+                anchor = 'middle';
+            } else if (textHAlign === 'left') {
+                anchor = resolveVerticalLineSvgAnchor('left', label);
+                gapCfg = { lineSide: 'above', lineRef: { x, y: baseY }, linePerp: { x: -1, y: 0 } };
+            } else {
+                anchor = resolveVerticalLineSvgAnchor('right', label);
+                gapCfg = { lineSide: 'above', lineRef: { x, y: baseY }, linePerp: { x: 1, y: 0 } };
+            }
+        }
+
+        if (rotation !== 0) {
+            anchor = 'middle';
+            gapCfg = {};
+        }
+
+        const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
+            ? 0
+            : this.style.textOffsetX;
+        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+            ? 0
+            : this.style.textOffsetY;
+        const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
+        const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
+
+        baseX = baseX + offsetX;
+        baseY = baseY + offsetY;
 
         appendTextLabel(this.group, label, {
             x: baseX,
@@ -2026,7 +2033,8 @@ class VerticalLineTool extends BaseDrawing {
             fontFamily: fontFamily,
             fontWeight: fontWeight,
             fontStyle: fontStyle,
-            rotation: rotation
+            rotation: rotation,
+            ...gapCfg
         });
     }
 
@@ -2395,9 +2403,8 @@ class RayTool extends BaseDrawing {
         const perpY = Math.cos(originalAngleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
-        const perpPos = applyLineLabelPerpOffset(baseX, baseY, perpX, perpY, signUp, textVAlign, label, fontSize);
-        baseX = perpPos.x;
-        baseY = perpPos.y;
+        const lineRefX = baseX;
+        const lineRefY = baseY;
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
@@ -2405,7 +2412,7 @@ class RayTool extends BaseDrawing {
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Clamp label to stay within chart area (don't overlap time or price axes)
+        // Clamp anchor on line to stay within chart area (don't overlap time or price axes)
         const chartBottomY = coords.chartBottomY;
         const chartTopY = coords.chartTopY;
         if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
@@ -2421,7 +2428,8 @@ class RayTool extends BaseDrawing {
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle
+            rotation: angle,
+            ...lineLabelGapConfig(lineRefX, lineRefY, textVAlign, perpX, perpY, signUp)
         });
     }
 
@@ -2847,18 +2855,18 @@ class HorizontalRayTool extends BaseDrawing {
         }
         
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const offsetY = horizontalLineLabelOffsetY(label, fontSize, textVAlign);
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
-            y: y + offsetY,
+            y: y,
             anchor: hrAnchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle
+            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+            ...lineLabelGapConfig(baseX, y, textVAlign)
         });
     }
 
@@ -3249,9 +3257,8 @@ class ExtendedLineTool extends BaseDrawing {
         const perpY = Math.cos(originalAngleRad);
         
         const signUp = perpY <= 0 ? 1 : -1;
-        const perpPos = applyLineLabelPerpOffset(baseX, baseY, perpX, perpY, signUp, textVAlign, label, fontSize);
-        baseX = perpPos.x;
-        baseY = perpPos.y;
+        const lineRefX = baseX;
+        const lineRefY = baseY;
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
@@ -3259,7 +3266,7 @@ class ExtendedLineTool extends BaseDrawing {
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        // Clamp label to stay within chart area (don't overlap time or price axes)
+        // Clamp anchor on line to stay within chart area (don't overlap time or price axes)
         const chartBottomY = coords.chartBottomY;
         const chartTopY = coords.chartTopY;
         if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
@@ -3275,7 +3282,8 @@ class ExtendedLineTool extends BaseDrawing {
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle
+            rotation: angle,
+            ...lineLabelGapConfig(lineRefX, lineRefY, textVAlign, perpX, perpY, signUp)
         });
     }
 
@@ -3403,17 +3411,15 @@ class CrossLineTool extends BaseDrawing {
             const cl_textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             const cl_xRange = scales.xScale.range();
             const CLEDGE = 20;
-            const clFontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
             let cl_baseX, cl_anchor;
             switch (cl_textHAlign) {
                 case 'left':  cl_baseX = cl_xRange[0] + CLEDGE; cl_anchor = resolveLineEndpointSvgAnchor('left', this.text); break;
                 case 'right': cl_baseX = cl_xRange[1] - CLEDGE; cl_anchor = resolveLineEndpointSvgAnchor('right', this.text); break;
                 default:      cl_baseX = (cl_xRange[0] + cl_xRange[1]) / 2; cl_anchor = 'middle';
             }
-            const cl_offsetY = horizontalLineLabelOffsetY(this.text, clFontSize, cl_textVAlign);
             appendTextLabel(this.group, this.text, {
                 x: cl_baseX + (this.style.textOffsetX || 0),
-                y: yScreen + cl_offsetY,
+                y: yScreen,
                 anchor: cl_anchor,
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
@@ -3421,7 +3427,8 @@ class CrossLineTool extends BaseDrawing {
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
                 fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
                 fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-                rotation: 0
+                rotation: 0,
+                ...lineLabelGapConfig(cl_baseX, yScreen, cl_textVAlign)
             });
         }
 

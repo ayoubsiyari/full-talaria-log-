@@ -245,15 +245,73 @@ function lineLabelBlockHeight(text, fontSize) {
     return Math.max(lines.length, 1) * fs * 1.2;
 }
 
-/** Perpendicular distance from line to label anchor when using central baseline. */
-function lineLabelPerpDistance(text, fontSize) {
-    return lineLabelGapFromStroke(fontSize) + lineLabelBlockHeight(text, fontSize) / 2;
+function resolveLineLabelSide(textVAlign) {
+    if (textVAlign === 'top') return 'above';
+    if (textVAlign === 'bottom') return 'below';
+    return null;
 }
 
-function horizontalLineLabelOffsetY(text, fontSize, textVAlign) {
-    if (textVAlign !== 'top' && textVAlign !== 'bottom') return 0;
-    const dist = lineLabelPerpDistance(text, fontSize);
-    return textVAlign === 'top' ? -dist : dist;
+/** Unit vector from the stroke toward the label (top/bottom). */
+function lineLabelPerpTowardText(textVAlign, perpX, perpY, signUp) {
+    if (textVAlign !== 'top' && textVAlign !== 'bottom') return null;
+    const sign = textVAlign === 'top' ? 1 : -1;
+    let px = perpX * signUp * sign;
+    let py = perpY * signUp * sign;
+    const len = Math.hypot(px, py) || 1;
+    return { x: px / len, y: py / len };
+}
+
+/** Horizontal lines: unit vector from stroke toward label. */
+function horizontalLineLabelPerp(textVAlign) {
+    if (textVAlign === 'top') return { x: 0, y: -1 };
+    if (textVAlign === 'bottom') return { x: 0, y: 1 };
+    return null;
+}
+
+/**
+ * Nudge label so the bbox edge nearest the stroke sits exactly `gap` px away.
+ * Works for horizontal, diagonal, and rotated line labels.
+ */
+function nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize) {
+    const gap = lineLabelGapFromStroke(fontSize);
+    const node = textEl && typeof textEl.node === 'function' ? textEl.node() : null;
+    if (!node || !lineRef || !linePerp) return { nudgeX: 0, nudgeY: 0 };
+
+    let bb;
+    try { bb = node.getBBox(); } catch (_) { return { nudgeX: 0, nudgeY: 0 }; }
+    if (!Number.isFinite(bb.width) && !Number.isFinite(bb.height)) {
+        return { nudgeX: 0, nudgeY: 0 };
+    }
+
+    const lx = lineRef.x;
+    const ly = lineRef.y;
+    let px = linePerp.x;
+    let py = linePerp.y;
+    const plen = Math.hypot(px, py) || 1;
+    px /= plen;
+    py /= plen;
+
+    const corners = [
+        [bb.x, bb.y],
+        [bb.x + bb.width, bb.y],
+        [bb.x, bb.y + bb.height],
+        [bb.x + bb.width, bb.y + bb.height]
+    ];
+    let minAlong = Infinity;
+    for (const [cx, cy] of corners) {
+        const along = (cx - lx) * px + (cy - ly) * py;
+        if (along < minAlong) minAlong = along;
+    }
+    if (!Number.isFinite(minAlong)) return { nudgeX: 0, nudgeY: 0 };
+
+    const adjust = gap - minAlong;
+    if (Math.abs(adjust) < 0.01) return { nudgeX: 0, nudgeY: 0 };
+    return { nudgeX: px * adjust, nudgeY: py * adjust };
+}
+
+/** @deprecated Use lineRef + linePerp + nudgeLineLabelFromStroke in appendTextLabel. */
+function horizontalLineLabelOffsetY(_text, _fontSize, _textVAlign) {
+    return 0;
 }
 
 /** Flip start/end anchors for RTL so endpoint labels grow along the line. */
@@ -261,6 +319,13 @@ function resolveLineEndpointSvgAnchor(which, text) {
     const isRtl = drawingTextHasArabicScript(text);
     if (which === 'left') return isRtl ? 'end' : 'start';
     if (which === 'right') return isRtl ? 'start' : 'end';
+    return 'middle';
+}
+
+function resolveVerticalLineSvgAnchor(which, text) {
+    const isRtl = drawingTextHasArabicScript(text);
+    if (which === 'left') return isRtl ? 'start' : 'end';
+    if (which === 'right') return isRtl ? 'end' : 'start';
     return 'middle';
 }
 
@@ -274,16 +339,8 @@ function resolveRayEndpointSvgAnchor(which, text, lineGoesRight) {
     return anchor;
 }
 
-function applyLineLabelPerpOffset(baseX, baseY, perpX, perpY, signUp, textVAlign, text, fontSize) {
-    if (textVAlign !== 'top' && textVAlign !== 'bottom') {
-        return { x: baseX, y: baseY };
-    }
-    const dist = lineLabelPerpDistance(text, fontSize);
-    const sign = textVAlign === 'top' ? 1 : -1;
-    return {
-        x: baseX + perpX * dist * signUp * sign,
-        y: baseY + perpY * dist * signUp * sign
-    };
+function applyLineLabelPerpOffset(baseX, baseY, _perpX, _perpY, _signUp, _textVAlign, _text, _fontSize) {
+    return { x: baseX, y: baseY };
 }
 
 const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
