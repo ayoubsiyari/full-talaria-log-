@@ -579,17 +579,38 @@ class ReplaySystem {
      * select is not present in the DOM).
      */
     setStepTimeframe(timeframe) {
+        const prev = this.stepTimeframeOverride;
         if (timeframe == null) {
             this.stepTimeframeOverride = null;
-            return;
+        } else {
+            const raw = String(timeframe).trim();
+            if (!raw) {
+                this.stepTimeframeOverride = null;
+            } else {
+                const lower = raw.toLowerCase();
+                this.stepTimeframeOverride = lower === 'auto' ? 'sync' : lower;
+            }
         }
-        const raw = String(timeframe).trim();
-        if (!raw) {
-            this.stepTimeframeOverride = null;
-            return;
+        const norm = (v) => (v == null || v === '' ? null : String(v).toLowerCase());
+        if (norm(prev) !== norm(this.stepTimeframeOverride) && this.isPlaying) {
+            this._restartPlaybackAfterControlChange();
         }
-        const lower = raw.toLowerCase();
-        this.stepTimeframeOverride = lower === 'auto' ? 'sync' : lower;
+    }
+
+    /** Re-arm play loop after MODE / INTERVAL change while playback is active. */
+    _restartPlaybackAfterControlChange() {
+        if (!this.isActive || !this.isPlaying) return;
+        this.stopAllPlayback();
+        this.isPlaying = true;
+        const useTickAnimation = this.getPlaybackMode() === 'tick' && !this._hasExplicitReplayStepInterval();
+        if (useTickAnimation) {
+            this.startTickAnimation();
+        } else {
+            this.animatingCandle = null;
+            this.tickProgress = 0;
+            this.tickElapsedMs = 0;
+            this.startCandleByCandle(true);
+        }
     }
 
     /** True when V9 INTERVAL is a fixed TF (1m, 5m, …), not Auto/sync. */
@@ -3551,6 +3572,26 @@ class ReplaySystem {
         this.updateChartData(this.autoScrollEnabled);
     }
     
+    /** Milliseconds between consecutive rows in fullRawData (replay master). */
+    _getRawBarPeriodMs() {
+        if (Array.isArray(this.fullRawData) && this.fullRawData.length >= 2) {
+            const dt = Math.abs(Number(this.fullRawData[1].t) - Number(this.fullRawData[0].t));
+            if (Number.isFinite(dt) && dt > 0) return dt;
+        }
+        const tf = this.rawTimeframe || (this.chart && this.chart.currentTimeframe) || '1m';
+        return this.timeframeToMs(tf) || 60000;
+    }
+
+    /** Raw bar count for one replay INTERVAL step (legacy _replayIntervalRawCandles). */
+    _resolveReplayStepRawBars() {
+        const selectedTimeframe = this._resolveReplayStepTimeframe();
+        if (!selectedTimeframe) return 1;
+        const tfMs = this.timeframeToMs(selectedTimeframe);
+        const rawMs = this._getRawBarPeriodMs();
+        if (!tfMs || !rawMs) return 1;
+        return Math.max(1, Math.round(tfMs / rawMs));
+    }
+
     /**
      * Calculate the next index based on selected timeframe (used by both play and step)
      */
@@ -3558,29 +3599,25 @@ class ReplaySystem {
         if (this.currentIndex >= this.fullRawData.length - 1) {
             return this.fullRawData.length - 1;
         }
-        
-        const selectedTimeframe = this._resolveReplayStepTimeframe();
-        
-        if (!selectedTimeframe) {
-            // No timeframe selector - advance by one raw candle
-            return this.currentIndex + 1;
-        }
-        
-        // Convert timeframe to milliseconds
-        const tfMs = this.timeframeToMs(selectedTimeframe);
-        if (!tfMs) {
-            return this.currentIndex + 1;
-        }
-        
-        // Align to the same bucket boundaries resampleData uses (floor(t/tfMs)*tfMs).
-        // Adding tfMs to the raw bar timestamp (e.g. Mon 15:00 + 1d → Tue 15:00) skips
-        // partial buckets and on 1D + 1m master can advance several display candles at once.
-        const currentTimestamp = this.fullRawData[this.currentIndex].t;
-        const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
-        const targetTimestamp = currentBucket + tfMs;
 
-        const targetIndex = this._firstRawIndexAtOrAfter(targetTimestamp, this.currentIndex + 1);
-        return Math.min(Math.max(targetIndex, this.currentIndex + 1), this.fullRawData.length - 1);
+        const stepBars = this._resolveReplayStepRawBars();
+        if (stepBars <= 1) {
+            return Math.min(this.currentIndex + 1, this.fullRawData.length - 1);
+        }
+
+        // Time-anchored advance when the step spans multiple raw bars — keeps bucket
+        // alignment with resampleData (e.g. 1h step on 1m master lands on the hour).
+        const selectedTimeframe = this._resolveReplayStepTimeframe();
+        const tfMs = selectedTimeframe ? this.timeframeToMs(selectedTimeframe) : null;
+        if (tfMs && tfMs > this._getRawBarPeriodMs()) {
+            const currentTimestamp = this.fullRawData[this.currentIndex].t;
+            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
+            const targetTimestamp = currentBucket + tfMs;
+            const targetIndex = this._firstRawIndexAtOrAfter(targetTimestamp, this.currentIndex + 1);
+            return Math.min(Math.max(targetIndex, this.currentIndex + 1), this.fullRawData.length - 1);
+        }
+
+        return Math.min(this.currentIndex + stepBars, this.fullRawData.length - 1);
     }
 
     /** Bucket start for replay step/resample (matches chart resampleData). */
@@ -3635,40 +3672,21 @@ class ReplaySystem {
             return minIdx;
         }
 
-        let selectedTimeframe = this.stepTimeframeOverride || null;
-        if (selectedTimeframe) {
-            selectedTimeframe = String(selectedTimeframe).trim();
+        const stepBars = this._resolveReplayStepRawBars();
+        if (stepBars <= 1) {
+            return Math.max(minIdx, this.currentIndex - 1);
         }
 
-        const hiddenSelect = this.timeframeSelect || document.getElementById('replayTimeframe');
-        if (!selectedTimeframe && hiddenSelect && hiddenSelect.value) {
-            selectedTimeframe = hiddenSelect.value;
+        const selectedTimeframe = this._resolveReplayStepTimeframe();
+        const tfMs = selectedTimeframe ? this.timeframeToMs(selectedTimeframe) : null;
+        if (tfMs && tfMs > this._getRawBarPeriodMs()) {
+            const currentTimestamp = this.fullRawData[this.currentIndex].t;
+            const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
+            const targetIndex = this._lastRawIndexAtOrBeforeTs(currentBucket - 1);
+            return Math.max(minIdx, Math.min(targetIndex, this.currentIndex - 1));
         }
 
-        if (!selectedTimeframe) {
-            const selectedOption = document.querySelector('#timeframeMenu .timeframe-option.selected');
-            if (selectedOption) {
-                selectedTimeframe = selectedOption.getAttribute('data-value');
-            }
-        }
-
-        if (selectedTimeframe === 'sync') {
-            selectedTimeframe = this.chart.currentTimeframe;
-        }
-
-        if (!selectedTimeframe) {
-            return Math.max(this.currentIndex - 1, minIdx);
-        }
-
-        const tfMs = this.timeframeToMs(selectedTimeframe);
-        if (!tfMs) {
-            return Math.max(this.currentIndex - 1, minIdx);
-        }
-
-        const currentTimestamp = this.fullRawData[this.currentIndex].t;
-        const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
-        const targetIndex = this._lastRawIndexAtOrBeforeTs(currentBucket - 1);
-        return Math.max(minIdx, Math.min(targetIndex, this.currentIndex - 1));
+        return Math.max(minIdx, this.currentIndex - stepBars);
     }
 
     /**

@@ -11408,16 +11408,16 @@ const TalariaV8bLive = () => {
     const explicitInterval = interval && interval !== "Auto";
     const desiredMode = explicitInterval ? "candle" : (mode === "candle" ? "candle" : "tick");
     try {
-      if (typeof rs.setStepTimeframe === "function") {
-        rs.setStepTimeframe(desiredInterval);
-      }
       if (typeof rs.setPlaybackMode === "function") {
         const curMode = typeof rs.getPlaybackMode === "function"
           ? rs.getPlaybackMode()
           : rs.playbackMode;
         if (curMode !== desiredMode) {
-          rs.setPlaybackMode(desiredMode, { restartPlayback: false });
+          rs.setPlaybackMode(desiredMode, { restartPlayback: !!rs.isPlaying });
         }
+      }
+      if (typeof rs.setStepTimeframe === "function") {
+        rs.setStepTimeframe(desiredInterval);
       }
       const modeSelect = document.getElementById("replayPlaybackMode");
       if (modeSelect && modeSelect.value !== desiredMode) {
@@ -11573,7 +11573,9 @@ const TalariaV8bLive = () => {
       try {
         if (typeof rs.setPlaybackMode === "function") {
           const curMode = typeof rs.getPlaybackMode === "function" ? rs.getPlaybackMode() : rs.playbackMode;
-          if (curMode !== desiredMode) rs.setPlaybackMode(desiredMode, { restartPlayback: false });
+          if (curMode !== desiredMode) {
+            rs.setPlaybackMode(desiredMode, { restartPlayback: !!rs.isPlaying });
+          }
         }
         if (typeof rs.setStepTimeframe === "function") {
           rs.setStepTimeframe(desiredInterval);
