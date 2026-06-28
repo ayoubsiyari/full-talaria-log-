@@ -263,7 +263,7 @@ class DrawingToolsManager {
         this.tempGroup = null;
         
         // Tools that support angle snapping with Shift key
-        this.angleSnapTools = ['trendline', 'ray', 'arrow', 'ruler', 'fibonacci-retracement', 'fibonacci-extension', 'polyline'];
+        this.angleSnapTools = ['trendline', 'ray', 'arrow', 'extended-line', 'ruler', 'fibonacci-retracement', 'fibonacci-extension', 'polyline'];
         // Box shapes: Shift + corner resize keeps square/circle proportions (see drawing-tools-shapes.js)
         this.boxShiftSnapTools = ['rectangle', 'ellipse', 'gann-box'];
 
@@ -921,6 +921,39 @@ class DrawingToolsManager {
         if (drawing.group) drawing.group.attr('transform', null);
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
         this.scheduleRenderDrawing(drawing);
+    }
+
+    /** Canvas direct-move drag (line/shape body) with optional Shift angle lock. */
+    _applyDirectMoveFromPointerEvent(event) {
+        if (!this._directMoveMoveHandler || !this._directMoveStartScreen || !this._directMoveStartStates) return;
+        const startScreen = this._directMoveStartScreen;
+        const startStates = this._directMoveStartStates;
+        const [currentScreenX, currentScreenY] = this._eventCanvasLocalXY(event);
+        let pixelDx = currentScreenX - startScreen.x;
+        let pixelDy = currentScreenY - startScreen.y;
+        if (event?.shiftKey) {
+            const needsSnap = startStates.some((item) =>
+                item?.drawing && this.angleSnapTools.includes(item.drawing.type)
+            );
+            if (needsSnap) {
+                const snapped = this._constrainPixelDeltaToSnapAngles(pixelDx, pixelDy);
+                pixelDx = snapped.dx;
+                pixelDy = snapped.dy;
+            }
+        }
+        startStates.forEach((item) => {
+            if (!item.drawing || !Array.isArray(item.points)) return;
+            this._applyLiveDrawingMovePixels(item.drawing, item.points, pixelDx, pixelDy);
+            const previewPoints = this._translatePointsByPixels(
+                item.points,
+                pixelDx,
+                pixelDy,
+                item.drawing.type
+            );
+            if (previewPoints) {
+                this._scheduleAxisHighlightsDuringDrag(item.drawing, previewPoints);
+            }
+        });
     }
 
     _isRiskRewardPositionDrawing(drawing) {
@@ -4049,7 +4082,7 @@ class DrawingToolsManager {
             const dy = targetPoint.y - referencePoint.y;
             const angle = Math.atan2(dy, dx);
             const distance = Math.sqrt(dx * dx + dy * dy);
-            const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+            const snapAngle = this._resolveShiftSnapAngle(angle);
             return {
                 x: referencePoint.x + distance * Math.cos(snapAngle),
                 y: referencePoint.y + distance * Math.sin(snapAngle)
@@ -4099,7 +4132,7 @@ class DrawingToolsManager {
         }
 
         const angle = Math.atan2(dyPx, dxPx);
-        const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+        const snapAngle = this._resolveShiftSnapAngle(angle);
         const snappedPxX = refPxX + distancePx * Math.cos(snapAngle);
         const snappedPxY = refPxY + distancePx * Math.sin(snapAngle);
 
@@ -4248,14 +4281,35 @@ class DrawingToolsManager {
         } catch (_) { /* ignore */ }
     }
 
+    _clearShiftSnapAngleLock() {
+        this._shiftSnapAngleLock = null;
+    }
+
+    /** Hysteresis so Shift snap does not flip between adjacent 45° rays at boundaries. */
+    _resolveShiftSnapAngle(angleRad) {
+        const step = Math.PI / 4;
+        const angle = Number(angleRad) || 0;
+        const lock = this._shiftSnapAngleLock;
+        if (lock != null && Number.isFinite(lock)) {
+            let diff = angle - lock;
+            while (diff > Math.PI) diff -= 2 * Math.PI;
+            while (diff < -Math.PI) diff += 2 * Math.PI;
+            if (Math.abs(diff) < step / 2) {
+                return lock;
+            }
+        }
+        const snapped = Math.round(angle / step) * step;
+        this._shiftSnapAngleLock = snapped;
+        return snapped;
+    }
+
     /** Shift + move: lock translation to 0°/45°/90° (TradingView-style). */
     _constrainPixelDeltaToSnapAngles(pixelDx, pixelDy) {
         const dx = Number(pixelDx) || 0;
         const dy = Number(pixelDy) || 0;
         if (dx === 0 && dy === 0) return { dx: 0, dy: 0 };
         const dist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+        const snapAngle = this._resolveShiftSnapAngle(Math.atan2(dy, dx));
         return {
             dx: dist * Math.cos(snapAngle),
             dy: dist * Math.sin(snapAngle)
@@ -4393,10 +4447,15 @@ class DrawingToolsManager {
 
         const isDrawing = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing);
         const isEditing = !!(this.isResizing || this.isCustomHandleDragging || this.isCustomHandleDrag);
-        if (!isDrawing && !isEditing) return;
+        const isMoving = this._isDrawingGeometryMoveActive();
+        if (!isDrawing && !isEditing && !isMoving) return;
         if (!this._lastMouseEvent) return;
 
         const last = this._lastMouseEvent;
+        const shiftNext = keyState.shiftKey !== undefined ? !!keyState.shiftKey : !!last.shiftKey;
+        if (!shiftNext) {
+            this._clearShiftSnapAngleLock();
+        }
         // During handle edits, toggling Ctrl/Meta at a fixed cursor re-snaps to OHLC and
         // jumps the point (magnet still applies when the mouse moves with Ctrl held).
         if (isEditing) {
@@ -4421,6 +4480,15 @@ class DrawingToolsManager {
         };
         if (this.isResizing && this.resizingDrawing) {
             this._applyLiveResizeFromPointerEvent(fakeEvent);
+            return;
+        }
+        if (this._directMoveMoveHandler && this._directMoveStartScreen && this._directMoveStartStates) {
+            this._applyDirectMoveFromPointerEvent(fakeEvent);
+            this._refreshPointerChromeDuringGeometryDrag(fakeEvent);
+            return;
+        }
+        if (this.isDragging && this.dragStartScreen) {
+            this.handleMouseMove(fakeEvent);
             return;
         }
         if (this._runLiveHandleDragFromPointerEvent(fakeEvent, { force: true })) return;
@@ -5072,6 +5140,9 @@ class DrawingToolsManager {
         }
 
         if (event.key === 'Control' || event.key === 'Meta' || event.key === 'Shift') {
+            if (event.key === 'Shift' && !event.shiftKey) {
+                this._clearShiftSnapAngleLock();
+            }
             this._refreshPlacementPreviewFromLastPointer({
                 ctrlKey: event.ctrlKey,
                 metaKey: event.metaKey,
@@ -7994,16 +8065,19 @@ class DrawingToolsManager {
 
         const [startScreenX, startScreenY] = this._eventCanvasLocalXY(event);
         const startScreen = { x: startScreenX, y: startScreenY };
+        this._directMoveStartScreen = startScreen;
         const startStates = drawings.map(d => ({
             drawing: d,
             points: d.points.map(p => ({ ...p })),
             beforeState: this.history ? this.history.captureState(d) : null,
             startTransform: this._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
         }));
+        this._directMoveStartStates = startStates;
         startStates.forEach((item) => this._beginRRToolWholeDragSnapshot(item.drawing));
         this._directMoveDrawings = drawings;
         this._directMovePendingFrame = false;
         this._directMoveLastEvent = null;
+        this._clearShiftSnapAngleLock();
         this._beginDrawingLiveInteraction();
         let moved = false;
 
@@ -8012,24 +8086,12 @@ class DrawingToolsManager {
         if (this.svg) this.svg.style('cursor', 'move');
 
         const applyDirectMoveTransform = (ev) => {
+            this._applyDirectMoveFromPointerEvent(ev);
             if (!ev || !this._directMoveMoveHandler) return;
             const [currentScreenX, currentScreenY] = this._eventCanvasLocalXY(ev);
             const pixelDx = currentScreenX - startScreen.x;
             const pixelDy = currentScreenY - startScreen.y;
             if (pixelDx !== 0 || pixelDy !== 0) moved = true;
-            startStates.forEach(item => {
-                if (!item.drawing || !Array.isArray(item.points)) return;
-                this._applyLiveDrawingMovePixels(item.drawing, item.points, pixelDx, pixelDy);
-                const previewPoints = this._translatePointsByPixels(
-                    item.points,
-                    pixelDx,
-                    pixelDy,
-                    item.drawing.type
-                );
-                if (previewPoints) {
-                    this._scheduleAxisHighlightsDuringDrag(item.drawing, previewPoints);
-                }
-            });
         };
 
         this._directMoveMoveHandler = (e) => {
@@ -8290,26 +8352,6 @@ class DrawingToolsManager {
             return !!(t && t.closest && t.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
         };
         
-        const applyPointHandleDrag = (point, drawing, index, shiftKey) => {
-            if (typeof drawing.onPointHandleDrag === 'function') {
-                point = self._applyShiftAngleConstraintForResize(drawing, index, point, shiftKey);
-                const context = {
-                    point,
-                    scales: {
-                        xScale: self.chart.xScale,
-                        yScale: self.chart.yScale,
-                        chart: self.chart
-                    }
-                };
-                const handled = drawing.onPointHandleDrag(index, context);
-                if (handled) {
-                    self.scheduleRenderDrawing(drawing);
-                    return true;
-                }
-            }
-            return false;
-        };
-
         const handles = drawing.type === 'anchored-volume-profile'
             ? drawing.group.selectAll('.resize-handle-hit[data-point-index="0"], .resize-handle[data-point-index="0"]')
             : drawing.group.selectAll('.resize-handle-hit, .resize-handle');
@@ -8392,20 +8434,10 @@ class DrawingToolsManager {
                         self.handleCustomHandleDrag(event);
                         return;
                     }
-                    
-                    const index = self.resizingPointIndex;
-                    let point = self.getDataPoint(event.sourceEvent, drawing.type);
 
-                    if (!applyPointHandleDrag(point, drawing, index, event.sourceEvent.shiftKey)) {
-                        self._assignResizePoint(
-                            drawing,
-                            index,
-                            point,
-                            event.sourceEvent.shiftKey,
-                            event.sourceEvent
-                        );
-                        self.scheduleRenderDrawing(drawing);
-                        self._broadcastLiveEditUpdate(drawing);
+                    if (self.isResizing && self.resizingDrawing === drawing && event.sourceEvent) {
+                        self._applyLiveResizeFromPointerEvent(event.sourceEvent);
+                        return;
                     }
                 })
                 .on('end', function(event) {
@@ -8500,9 +8532,8 @@ class DrawingToolsManager {
             if (drawing.group && !drawing.group.empty()) {
                 drawing.group.selectAll('.resize-handle-hit, .resize-handle').on('.drag', null);
             }
-        } else {
-            this.setupHandleDrag(drawing);
         }
+        // d3 drag already bound on handles — do not rebind mid-drag (causes Shift+resize glitches).
 
         if (this.isVolumeProfileToolType(drawing.type)) {
             drawing._isActiveResizing = true;
@@ -8514,6 +8545,7 @@ class DrawingToolsManager {
         if (canvas) canvas.style.cursor = resizeCursor;
         this.svg.style('cursor', resizeCursor);
         this._captureShiftResizeAnchorPoints(drawing);
+        this._clearShiftSnapAngleLock();
         // Capture state for undo
         if (this.history) {
             this.resizeBeforeState = this.history.captureState(drawing);
@@ -8562,6 +8594,7 @@ class DrawingToolsManager {
         this.resizeBeforeState = null;
         this._resizePointerSource = null;
         this._clearShiftResizeAnchorPoints();
+        this._clearShiftSnapAngleLock();
         this._clearAxisHighlightDragState();
         this._endDrawingLiveInteraction();
 
@@ -8614,6 +8647,7 @@ class DrawingToolsManager {
         this.customHandlePointIndex = pointIndex; // Store point index for arc/curve
         this.customHandleStart = this.collectHandleContext(event);
         this._captureShiftResizeAnchorPoints(drawing);
+        this._clearShiftSnapAngleLock();
         // Capture state for undo
         if (this.history) {
             this.customHandleBeforeState = this.history.captureState(drawing);
@@ -8790,6 +8824,7 @@ class DrawingToolsManager {
             ? drawing.points.map(p => ({ ...p }))
             : null;
         this._beginRRToolWholeDragSnapshot(drawing);
+        this._clearShiftSnapAngleLock();
         
         // If dragging a drawing that's part of a multi-selection, drag all selected drawings
         if (this.selectedDrawings.length > 1 && this.selectedDrawings.includes(drawing)) {
@@ -8858,6 +8893,7 @@ class DrawingToolsManager {
         this.draggingMultiple = false;
         this.multiDragStartPositions = null;
         this.singleDragStartPoints = null;
+        this._clearShiftSnapAngleLock();
         this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
@@ -11951,6 +11987,9 @@ class DrawingToolsManager {
             this._directMoveUpHandler = null;
         }
         this._directMoveDrawings = null;
+        this._directMoveStartScreen = null;
+        this._directMoveStartStates = null;
+        this._clearShiftSnapAngleLock();
         if (!options.skipLiveInteractionEnd && hadDirectMove && (this._drawingLiveInteractionDepth || 0) > 0) {
             this._endDrawingLiveInteraction();
         }
