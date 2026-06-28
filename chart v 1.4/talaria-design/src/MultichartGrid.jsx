@@ -5415,6 +5415,20 @@ export default function MultichartGrid({
                 } catch (_) {}
                 return;
             }
+            if (msg.type === "multichart-drawing-selected") {
+                try {
+                    if (msg.drawingType) {
+                        window.dispatchEvent(new CustomEvent("talaria:v9-selected-drawing", {
+                            detail: {
+                                drawingType: msg.drawingType,
+                                drawingId: msg.drawingId != null ? msg.drawingId : null,
+                                panelId: msg.source != null ? String(msg.source) : null,
+                            },
+                        }));
+                    }
+                } catch (_) {}
+                return;
+            }
             if (msg.type === "multichart-open-drawing-settings") {
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;

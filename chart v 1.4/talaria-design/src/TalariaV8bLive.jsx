@@ -3289,6 +3289,17 @@ function v9GetLiveSelectedDrawingForQuickBar() {
   }
 }
 
+/** True while multichart focus/tool sync must not wipe a fresh shape selection. */
+function v9IsDrawingSelectionGuardActive() {
+  try {
+    return !!(typeof window !== "undefined"
+      && window.__v9DrawingSelectionGuardUntil
+      && performance.now() < window.__v9DrawingSelectionGuardUntil);
+  } catch (_) {
+    return false;
+  }
+}
+
 function resolveDrawingManagerForDrawing(drawing) {
   if (!drawing) return null;
   for (const dm of enumerateV9DrawingManagersActiveFirst()) {
@@ -17816,6 +17827,13 @@ const TalariaV8bLive = () => {
             if (fid != null && grid.hostPanelId != null && fid === grid.hostPanelId && !v9UserExplicitToolRef.current) {
               const hdm = window.chart && window.chart.drawingManager;
               const ct = hdm && hdm.currentTool;
+              const shapeSelected =
+                v9IsDrawingSelectionGuardActive() || !!v9GetLiveSelectedDrawingForQuickBar();
+              if (!ct && shapeSelected) {
+                v9UserExplicitToolRef.current = false;
+                applyHostDm();
+                return;
+              }
               if (!ct) {
                 try {
                   setTool("crosshair");
@@ -19382,6 +19400,11 @@ const TalariaV8bLive = () => {
               return origHide ? origHide() : undefined;
             }
           }
+          // Peer tiles deselect async when another panel selects — their toolbar.hide
+          // must not wipe the parent V9 quick bar / rail for the tile that still has selection.
+          if (v9IsDrawingSelectionGuardActive() || v9GetLiveSelectedDrawingForQuickBar()) {
+            return origHide ? origHide() : undefined;
+          }
           const br = v9ToolbarBridgeActRef.current;
           br.setTlBarSelected(false);
           br.setTlBarSelectedType(null);
@@ -19447,6 +19470,7 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (!tlBarSelected) return;
     const sync = () => {
+      if (v9IsDrawingSelectionGuardActive()) return;
       if (!v9GetLiveSelectedDrawingForQuickBar()) {
         setTlBarSelected(false);
         setTlBarSelectedType(null);

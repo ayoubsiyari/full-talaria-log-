@@ -90,6 +90,49 @@ function notifyMultichartParentSelectionCleared(chartInstance) {
     } catch (_) { /* ignore */ }
 }
 
+/** Parent V9 shell listens for this to sync quick bar + tool rail after selectDrawing. */
+function notifyV9SelectionSync(chartInstance, drawing) {
+    if (typeof window === 'undefined' || !drawing || !drawing.type) return;
+    let panelId = null;
+    try {
+        if (chartInstance && typeof chartInstance._getMultichartPanelId === 'function') {
+            panelId = chartInstance._getMultichartPanelId();
+        }
+    } catch (_) { /* ignore */ }
+    const detail = {
+        drawingType: drawing.type,
+        drawingId: drawing.id != null ? drawing.id : null,
+        panelId,
+    };
+    const fire = () => {
+        try {
+            if (window.__multichartGrid) {
+                window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', { detail }));
+                return;
+            }
+        } catch (_) { /* ignore */ }
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'multichart-drawing-selected',
+                    drawingType: detail.drawingType,
+                    drawingId: detail.drawingId,
+                    source: panelId,
+                }, '*');
+            }
+        } catch (_) { /* ignore */ }
+    };
+    try {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(fire);
+        } else {
+            setTimeout(fire, 0);
+        }
+    } catch (_) {
+        fire();
+    }
+}
+
 function requestMultichartParentDrawingSettings(drawing, x, y) {
     let panelId = 'embed';
     try {
@@ -8080,6 +8123,7 @@ class DrawingToolsManager {
             const y = svgRect.top + bbox.y;
             if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
             this.toolbar.show(drawing, x, y);
+            notifyV9SelectionSync(this.chart, drawing);
         }
     }
 
