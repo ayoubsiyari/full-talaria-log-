@@ -27764,6 +27764,7 @@ const TalariaV8b = () => {
               );
             };
             const isLiveKpiMode = !!dashboardIsLiveScoreMode;
+            const showPlanAdherenceKpi = !!isPropD;
             const payoffText = metrics.payoff == null ? "-" : `${fmtNum(metrics.payoff,1)}R`;
             const breakevenText = metrics.breakevenWR == null
               ? "breakeven -"
@@ -27953,7 +27954,7 @@ const TalariaV8b = () => {
               },
               {
                 id:"live-risk-consistency",
-                pages: isLiveKpiMode ? [
+                pages: showPlanAdherenceKpi ? [
                   {id:"metric-risk-consistency", label:"Planned vs Actual", value:planAdherence.available ? formatPlanAdherenceValue(planAdherence.ifFollowed) : "Needs data", sub:planAdherence.available ? `Actual ${formatPlanAdherenceValue(planAdherence.actual)} · cost ${formatPlanAdherenceValue({pnl:-Math.abs(Number(planAdherence.cost?.pnl)||0), r:-Math.abs(Number(planAdherence.cost?.r)||0)})}` : "Log missed trades and tag deviations", color:planAdherence.available ? planAdherenceCostColor : c.gold, visual:<PlanAdherenceMini/>, visualHeight:78, target:"live-discipline", resourceId:"metric-risk-consistency", dim:!planAdherence.available},
                 ] : [],
               },
@@ -28022,7 +28023,7 @@ const TalariaV8b = () => {
               "metric-trade-frequency": {id:"metric-trade-frequency", label:"Trade Frequency", value:`${fmtNum(metrics.tradeFrequency,1)}/wk`, sub:`Average per week · median ${fmtNum(metrics.typicalWeekTrades || 0,1)}/wk`, color:metrics.tradeFrequency>0?c.acL:c.tm, visual:<TradeFrequencyMini/>, target:"trade-journal"},
             };
             const overviewMetricPage = (id) => allKpiPages.find(page => page?.id === id) || overviewFallbackPages[id];
-            const liveDrawdownDisciplinePageIds = isLiveKpiMode
+            const liveDrawdownDisciplinePageIds = showPlanAdherenceKpi
               ? ["metric-risk-consistency"]
               : [];
             const liveExpectancyDisciplinePageIds = isLiveKpiMode
