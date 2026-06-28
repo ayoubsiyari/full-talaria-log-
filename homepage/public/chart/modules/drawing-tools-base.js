@@ -233,10 +233,11 @@ function buildDrawingTextTransform(x, y, rotation, italicSkew, nudgeX = 0, nudge
     return parts.length ? parts.join(' ') : null;
 }
 
-/** Gap from stroke to nearest text edge (matches line tools). */
+/** Gap from stroke to nearest text edge (line tools, rectangle external labels). */
 function lineLabelGapFromStroke(fontSize) {
     const fs = Number(fontSize) || 14;
-    return 14 + Math.max(0, fs / 2 - 6);
+    // ~6–8px at default size; scales gently for larger fonts (was 14+ and felt too loose).
+    return 6 + Math.max(0, fs / 2 - 6);
 }
 
 function lineLabelBlockHeight(text, fontSize) {

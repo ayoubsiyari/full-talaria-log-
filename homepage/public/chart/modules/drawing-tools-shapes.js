@@ -45,6 +45,21 @@ function shapeExternalLabelOffset(fontSize) {
     return LINE_LABEL_OFFSET + Math.max(0, fs / 2 - 6);
 }
 
+function resolveShapeTextSvgAnchor(align, text) {
+    const a = String(align || 'center').toLowerCase();
+    if (a === 'left' || a === 'start') {
+        return typeof resolveLineEndpointSvgAnchor === 'function'
+            ? resolveLineEndpointSvgAnchor('left', text)
+            : 'start';
+    }
+    if (a === 'right' || a === 'end') {
+        return typeof resolveLineEndpointSvgAnchor === 'function'
+            ? resolveLineEndpointSvgAnchor('right', text)
+            : 'end';
+    }
+    return 'middle';
+}
+
 /** Same default-zeroing as trendline / ray tools (`textOffsetY: -8` → no extra shift). */
 function shapeTextOffsetY(style) {
     const raw = style && style.textOffsetY;
@@ -482,7 +497,7 @@ class RectangleTool extends BaseDrawing {
         const rawPadding = Number.isFinite(this.style.textPadding) ? this.style.textPadding : RECTANGLE_TEXT_DEFAULTS.textPadding;
         const clampedPadding = Math.max(0, Math.min(rawPadding, Math.min(width, height) / 2));
         const align = (this.style.textHAlign || this.style.textAlign || 'center').toLowerCase();
-        const anchor = RECTANGLE_TEXT_ANCHOR_MAP[align] || 'middle';
+        const anchor = resolveShapeTextSvgAnchor(align, this.text);
         const position = this._normalizeRectTextVAlign(this.style);
 
         const baseFontSize = Number(this.style.fontSize) || RECTANGLE_TEXT_DEFAULTS.fontSize;
@@ -506,31 +521,33 @@ class RectangleTool extends BaseDrawing {
                 baseX = x + width / 2;
         }
 
-        let anchorY;
-        let useMiddleBaseline = false;
-        let useAppendTextLabel = false;
         const borderStyle = resolveShapeBorderDrawStyle(this.style, scaleFactor);
         const borderPad = borderStyle.width / 2;
-        const verticalOffset = shapeExternalLabelOffset(baseFontSize);
         const offsetX = Number.isFinite(this.style.textOffsetX) ? this.style.textOffsetX : 0;
         const offsetY = shapeTextOffsetY(this.style);
+        const textX = baseX + offsetX;
+
+        let textTop;
+        let gapCfg = {};
+        const strokeTopY = y - borderPad;
+        const strokeBottomY = y + height + borderPad;
+
         switch (position) {
             case 'top':
-                useAppendTextLabel = true;
-                useMiddleBaseline = true;
-                anchorY = y - borderPad - verticalOffset + offsetY;
+                textTop = strokeTopY + offsetY;
+                if (typeof lineLabelGapConfig === 'function') {
+                    gapCfg = lineLabelGapConfig(textX, strokeTopY, 'top');
+                }
                 break;
             case 'bottom':
-                useAppendTextLabel = true;
-                useMiddleBaseline = true;
-                anchorY = y + height + borderPad + verticalOffset + offsetY;
+                textTop = strokeBottomY + offsetY;
+                if (typeof lineLabelGapConfig === 'function') {
+                    gapCfg = lineLabelGapConfig(textX, strokeBottomY, 'bottom');
+                }
                 break;
             default:
-                useMiddleBaseline = true;
-                anchorY = y + height / 2 + offsetY;
+                textTop = y + height / 2 + offsetY;
         }
-        const textX = baseX + offsetX;
-        const textTop = anchorY;
 
         const fontFamily = this.style.fontFamily || RECTANGLE_TEXT_DEFAULTS.fontFamily;
         const fontWeight = this.style.fontWeight || RECTANGLE_TEXT_DEFAULTS.fontWeight;
@@ -538,13 +555,13 @@ class RectangleTool extends BaseDrawing {
         const resolved = resolveDrawingTextStyle(lines.join('\n'), fontStyle, fontFamily);
 
         let blockWidth = 0;
+        let measuredLeft = textX;
+        let measuredRight = textX;
         if (measureGroup && !measureGroup.empty()) {
             const temp = measureGroup.append('g').attr('visibility', 'hidden');
             lines.forEach((line, index) => {
                 const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
-                const lineY = useMiddleBaseline
-                    ? textTop + (index - (lines.length - 1) / 2) * lineHeight
-                    : textTop + index * lineHeight;
+                const lineY = textTop + (index - (lines.length - 1) / 2) * lineHeight;
                 const measureText = temp.append('text')
                     .attr('x', textX)
                     .attr('y', lineY)
@@ -553,15 +570,19 @@ class RectangleTool extends BaseDrawing {
                     .attr('font-weight', fontWeight)
                     .attr('font-style', resolved.fontStyle)
                     .attr('text-anchor', anchor)
-                    .attr('dominant-baseline', useMiddleBaseline ? 'middle' : 'hanging')
+                    .attr('dominant-baseline', 'central')
+                    .attr('xml:space', 'preserve')
                     .text(sanitized);
                 if (resolved.direction) {
                     measureText.style('direction', resolved.direction);
+                    measureText.attr('unicode-bidi', 'plaintext');
                 }
             });
             try {
                 const bbox = temp.node().getBBox();
                 blockWidth = Number.isFinite(bbox.width) ? bbox.width : 0;
+                measuredLeft = bbox.x;
+                measuredRight = bbox.x + bbox.width;
             } catch (_) {}
             temp.remove();
         }
@@ -571,17 +592,14 @@ class RectangleTool extends BaseDrawing {
         }
 
         const midY = y + height / 2;
-        const blockTop = useMiddleBaseline ? textTop - blockHeight / 2 : textTop;
-        const blockBottom = useMiddleBaseline ? textTop + blockHeight / 2 : textTop + blockHeight;
+        const blockTop = textTop - blockHeight / 2;
+        const blockBottom = textTop + blockHeight / 2;
         const intersectsMidline = midY >= blockTop - 1 && midY <= blockBottom + 1;
 
         const layout = {
             hasText: true,
             textX,
             textTop,
-            anchorY,
-            useAppendTextLabel,
-            useMiddleBaseline,
             align,
             anchor,
             lines,
@@ -593,29 +611,13 @@ class RectangleTool extends BaseDrawing {
             fontWeight,
             fontStyle: resolved.fontStyle,
             direction: resolved.direction,
-            italicSkew: resolved.italicSkew
+            italicSkew: resolved.italicSkew,
+            gapCfg
         };
 
-        if (intersectsMidline) {
-            let textLeft;
-            let textRight;
-            switch (align) {
-                case 'left':
-                case 'start':
-                    textLeft = textX;
-                    textRight = textX + blockWidth;
-                    break;
-                case 'right':
-                case 'end':
-                    textLeft = textX - blockWidth;
-                    textRight = textX;
-                    break;
-                default:
-                    textLeft = textX - blockWidth / 2;
-                    textRight = textX + blockWidth / 2;
-            }
+        if (intersectsMidline && blockWidth > 0) {
             const pad = Math.max(4, fontSize * 0.3);
-            layout.midlineGap = { left: textLeft - pad, right: textRight + pad };
+            layout.midlineGap = { left: measuredLeft - pad, right: measuredRight + pad };
         }
 
         return layout;
@@ -970,21 +972,15 @@ class RectangleTool extends BaseDrawing {
         const {
             textX,
             textTop,
-            useAppendTextLabel,
-            useMiddleBaseline,
             anchor,
-            lines,
-            fontSize,
             baseFontSize,
-            lineHeight,
-            fontFamily,
+            fontSize,
             fontWeight,
             fontStyle,
-            direction,
-            italicSkew
+            gapCfg
         } = layout;
 
-        if (useAppendTextLabel && typeof appendTextLabel === 'function') {
+        if (typeof appendTextLabel === 'function') {
             appendTextLabel(this.group, this.text, {
                 x: textX,
                 y: textTop,
@@ -995,49 +991,10 @@ class RectangleTool extends BaseDrawing {
                 fontFamily: this.style.fontFamily || RECTANGLE_TEXT_DEFAULTS.fontFamily,
                 fontWeight: fontWeight || RECTANGLE_TEXT_DEFAULTS.fontWeight,
                 fontStyle: fontStyle || RECTANGLE_TEXT_DEFAULTS.fontStyle,
-                rotation: 0
+                rotation: 0,
+                ...(gapCfg || {})
             });
-            return;
         }
-
-        const labelGroup = this.group.append('g')
-            .attr('class', 'rectangle-text-label')
-            .style('pointer-events', 'none')
-            .style('user-select', 'none');
-
-        const pivotY = useMiddleBaseline
-            ? textTop
-            : textTop + (lines.length * lineHeight) / 2;
-        const labelTransform = buildDrawingTextTransform(textX, pivotY, 0, italicSkew || 0);
-        if (labelTransform) {
-            labelGroup.attr('transform', labelTransform);
-        }
-
-        const textColor = this.style.textColor || RECTANGLE_TEXT_DEFAULTS.textColor;
-
-        lines.forEach((line, index) => {
-            const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
-            const lineY = useMiddleBaseline
-                ? textTop + (index - (lines.length - 1) / 2) * lineHeight
-                : textTop + index * lineHeight;
-            const lineText = labelGroup.append('text')
-                .attr('x', textX)
-                .attr('y', lineY)
-                .attr('fill', textColor)
-                .attr('font-size', `${fontSize}px`)
-                .attr('font-family', fontFamily)
-                .attr('font-weight', fontWeight)
-                .attr('font-style', fontStyle)
-                .attr('text-anchor', anchor)
-                .attr('dominant-baseline', useMiddleBaseline ? 'middle' : 'hanging')
-                .attr('xml:space', 'preserve')
-                .text(sanitized);
-            if (direction) {
-                lineText.style('direction', direction);
-            }
-        });
-
-        labelGroup.raise();
     }
 
     static fromJSON(data) {
