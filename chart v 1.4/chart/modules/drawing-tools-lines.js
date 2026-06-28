@@ -301,9 +301,7 @@ function patchTrendlineArrowHeads(group, origX1, origY1, origX2, origY2, stroke,
     const alen = Math.sqrt(adx * adx + ady * ady) || 1;
     const ux = adx / alen;
     const uy = ady / alen;
-    const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth || 2) * (scaleFactor || 1));
-    const aLen = Math.max(8, scaledStrokeWidth * 5);
-    const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
+    const { aLen, aHalf } = BaseDrawing.arrowEndpointMetrics(strokeWidth, scaleFactor);
     const fill = stroke || '#787b86';
 
     if (startStyle === 'arrow') {
@@ -335,12 +333,11 @@ function patchTrendlineArrowHeads(group, origX1, origY1, origX2, origY2, stroke,
 }
 
 function trendlineArrowHeadLength(strokeWidth, scaleFactor) {
-    const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth || 2) * (scaleFactor || 1));
-    return Math.max(8, scaledStrokeWidth * 5);
+    return BaseDrawing.arrowEndpointMetrics(strokeWidth, scaleFactor).aLen;
 }
 
 /** Stop the stroke at arrowhead bases so the line does not run through the triangle tip. */
-function trimLineEndpointsForTrendlineArrows(x1, y1, x2, y2, origX1, origY1, origX2, origY2, startStyle, endStyle, scaledStrokeWidth, scaleFactor) {
+function trimLineEndpointsForTrendlineArrows(x1, y1, x2, y2, origX1, origY1, origX2, origY2, startStyle, endStyle, strokeWidth, scaleFactor) {
     if (startStyle !== 'arrow' && endStyle !== 'arrow') {
         return { x1, y1, x2, y2 };
     }
@@ -352,7 +349,7 @@ function trimLineEndpointsForTrendlineArrows(x1, y1, x2, y2, origX1, origY1, ori
     }
     const ux = adx / segLen;
     const uy = ady / segLen;
-    const aLen = trendlineArrowHeadLength(scaledStrokeWidth, scaleFactor);
+    const aLen = BaseDrawing.arrowEndpointMetrics(strokeWidth, scaleFactor).aLen;
 
     let tx1 = x1;
     let ty1 = y1;
@@ -523,7 +520,7 @@ class TrendlineTool extends BaseDrawing {
         } = trimLineEndpointsForTrendlineArrows(
             x1, y1, x2, y2,
             origX1, origY1, origX2, origY2,
-            startStyle, endStyle, scaledStrokeWidth, scaleFactor
+            startStyle, endStyle, this.style.strokeWidth, scaleFactor
         ));
 
         // Check if we need to split the line for text
@@ -734,8 +731,7 @@ class TrendlineTool extends BaseDrawing {
             const alen = Math.sqrt(adx * adx + ady * ady) || 1;
             const ux = adx / alen;
             const uy = ady / alen;
-            const aLen = Math.max(8, scaledStrokeWidth * 5);
-            const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
+            const { aLen, aHalf } = BaseDrawing.arrowEndpointMetrics(this.style.strokeWidth, scaleFactor);
 
             if (startStyle === 'arrow') {
                 // Tip at p1, base points towards p2
@@ -801,11 +797,10 @@ class TrendlineTool extends BaseDrawing {
         const scaleFactor = typeof this.getZoomScaleFactor === 'function'
             ? this.getZoomScaleFactor(scales)
             : 1;
-        const scaledStrokeWidth = Math.max(0.5, (this.style.strokeWidth || 2) * scaleFactor);
         const trimmed = trimLineEndpointsForTrendlineArrows(
             x1, y1, x2, y2,
             x1, y1, x2, y2,
-            startStyle, endStyle, scaledStrokeWidth, scaleFactor
+            startStyle, endStyle, this.style.strokeWidth, scaleFactor
         );
         patchTwoPointLineElements(this.group, trimmed.x1, trimmed.y1, trimmed.x2, trimmed.y2);
 

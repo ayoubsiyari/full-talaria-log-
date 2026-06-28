@@ -538,24 +538,36 @@ class BaseDrawing {
         return out;
     }
 
+    /** Shared arrowhead sizing for trendlines and freehand strokes. */
+    static arrowEndpointMetrics(strokeWidth, scaleFactor = 1) {
+        const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth || 2) * (scaleFactor || 1));
+        const aLen = Math.max(8, scaledStrokeWidth * 5);
+        const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
+        return { scaledStrokeWidth, aLen, aHalf };
+    }
+
     /** Virtual lead/tail points stabilize Catmull-Rom tangents and prevent endpoint loops. */
-    static padPointsForCatmullRom(points) {
+    static padPointsForCatmullRom(points, pad = {}) {
         if (!Array.isArray(points) || points.length < 2) return points || [];
         if (points.length === 2) return points;
         const p0 = points[0];
         const p1 = points[1];
         const pn = points[points.length - 1];
         const pn1 = points[points.length - 2];
-        return [
-            { x: p0.x - (p1.x - p0.x) * 0.5, y: p0.y - (p1.y - p0.y) * 0.5 },
-            ...points,
-            { x: pn.x + (pn.x - pn1.x) * 0.5, y: pn.y + (pn.y - pn1.y) * 0.5 }
-        ];
+        const out = [];
+        if (pad.skipStartPad !== true) {
+            out.push({ x: p0.x - (p1.x - p0.x) * 0.5, y: p0.y - (p1.y - p0.y) * 0.5 });
+        }
+        out.push(...points);
+        if (pad.skipEndPad !== true) {
+            out.push({ x: pn.x + (pn.x - pn1.x) * 0.5, y: pn.y + (pn.y - pn1.y) * 0.5 });
+        }
+        return out;
     }
 
-    static buildFreehandPathData(points, scales) {
+    static buildFreehandPathData(points, scales, opts = {}) {
         const clean = BaseDrawing.sanitizeFreehandPoints(points);
-        const curvePts = BaseDrawing.padPointsForCatmullRom(clean);
+        const curvePts = BaseDrawing.padPointsForCatmullRom(clean, opts.pad || {});
         const lineGenerator = d3.line()
             .x((d) => (scales.chart && scales.chart.dataIndexToPixel
                 ? scales.chart.dataIndexToPixel(d.x)
@@ -640,9 +652,7 @@ class BaseDrawing {
 
         const stroke = this.style.stroke || this.style.color || '#787b86';
         const strokeWidth = this.style.strokeWidth != null ? this.style.strokeWidth : 2;
-        const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth) || 2);
-        const aLen = Math.max(8, scaledStrokeWidth * 5);
-        const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
+        const { aLen, aHalf, scaledStrokeWidth } = BaseDrawing.arrowEndpointMetrics(strokeWidth, 1);
 
         const drawArrow = (tipX, tipY, fromX, fromY, className) => {
             const adx = tipX - fromX;
@@ -709,6 +719,28 @@ class BaseDrawing {
                 }
             }
         }
+    }
+
+    /** Hide path stroke under polygon arrowheads (keeps hit path full length). */
+    _trimFreehandPathForArrows(visiblePath, startStyle, endStyle, aLen) {
+        if (!visiblePath || visiblePath.empty()) return;
+        const pathNode = visiblePath.node ? visiblePath.node() : null;
+        if (!pathNode || typeof pathNode.getTotalLength !== 'function') return;
+        const len = pathNode.getTotalLength();
+        if (!Number.isFinite(len) || len < 1) {
+            visiblePath.attr('stroke-dasharray', null).attr('stroke-dashoffset', null);
+            return;
+        }
+        const startTrim = startStyle === 'arrow' ? aLen : 0;
+        const endTrim = endStyle === 'arrow' ? aLen : 0;
+        const drawLen = Math.max(0, len - startTrim - endTrim);
+        if (startTrim <= 0 && endTrim <= 0) {
+            visiblePath.attr('stroke-dasharray', null).attr('stroke-dashoffset', null);
+            return;
+        }
+        visiblePath
+            .attr('stroke-dasharray', `${drawLen} ${startTrim + endTrim + len}`)
+            .attr('stroke-dashoffset', startTrim > 0 ? startTrim : null);
     }
 
     /**

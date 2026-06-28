@@ -6140,6 +6140,10 @@ class DrawingToolsManager {
         // Persist new drawings in timestamp space so timeframe switches keep them visible
         // (same behavior expected from original chart).
         const fromClonePayload = !!drawing._fromClonePayload;
+        if (fromClonePayload) {
+            drawing.timestampPoints = null;
+            drawing.coordinateSystem = 'index';
+        }
         if (
             drawing &&
             Array.isArray(drawing.points) &&
@@ -9497,12 +9501,9 @@ class DrawingToolsManager {
         if (out.points.length === 0) return null;
         if (this._isFreehandDrawingType(out.type)) {
             out.points = this._sanitizeFreehandClonePoints(out.points);
-        }
-        if (this._isFreehandDrawingType(out.type) && Array.isArray(out.timestampPoints) && out.timestampPoints.length > 0) {
-            out.timestampPoints = out.timestampPoints.map((p) => ({
-                timestamp: Number(p.timestamp),
-                price: Number(p.price !== undefined ? p.price : p.y)
-            })).filter((p) => Number.isFinite(p.timestamp) && Number.isFinite(p.price));
+            // Clone/paste always works in bar-index space; stale timestamps snap copies
+            // back onto the original stroke after zoom/redraw.
+            delete out.timestampPoints;
         }
         return out;
     }
@@ -9974,6 +9975,62 @@ class DrawingToolsManager {
         return points;
     }
 
+    _computeFreehandCloneOffset(pts) {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const p of pts) {
+            if (p && Number.isFinite(p.x)) {
+                minX = Math.min(minX, p.x);
+                maxX = Math.max(maxX, p.x);
+            }
+            if (p && Number.isFinite(p.y)) {
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+            }
+        }
+        const spanX = Number.isFinite(maxX - minX) ? maxX - minX : 0;
+        const spanY = Number.isFinite(maxY - minY) ? maxY - minY : 0;
+        const priceRange = this.chart && this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
+        const domainSpan = priceRange[1] - priceRange[0];
+        const domainOffsetBase = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan : 0;
+
+        let xOffset = Math.max(3, spanX * 0.1, 0.25);
+        let yOffset = Math.max(
+            domainOffsetBase * 0.025,
+            spanY * 0.1,
+            domainOffsetBase * 0.015
+        );
+
+        const chart = this.chart;
+        const MIN_PX = 32;
+        const refX = Number.isFinite(pts[0]?.x) ? pts[0].x : minX;
+        if (chart && typeof chart.dataIndexToPixel === 'function' && Number.isFinite(refX)) {
+            const pxAtRef = chart.dataIndexToPixel(refX);
+            const pxAtRefPlus3 = chart.dataIndexToPixel(refX + 3);
+            if (Number.isFinite(pxAtRef) && Number.isFinite(pxAtRefPlus3)) {
+                const threeBarPx = Math.abs(pxAtRefPlus3 - pxAtRef);
+                if (threeBarPx > 0.5 && threeBarPx < MIN_PX) {
+                    xOffset = Math.max(xOffset, 3 * (MIN_PX / threeBarPx));
+                }
+            }
+        }
+        if (chart && chart.yScale && Number.isFinite(minY)) {
+            const py0 = chart.yScale(minY);
+            const pyShift = chart.yScale(minY + yOffset);
+            if (Number.isFinite(py0) && Number.isFinite(pyShift)) {
+                const yPx = Math.abs(pyShift - py0);
+                const minYPx = MIN_PX * 0.45;
+                if (yPx > 0.5 && yPx < minYPx) {
+                    yOffset = Math.max(yOffset, yOffset * (minYPx / yPx));
+                }
+            }
+        }
+
+        return { xOffset, yOffset };
+    }
+
     _applyClonePointOffset(drawing) {
         if (!drawing || !Array.isArray(drawing.points) || drawing.points.length === 0) return;
         const pts = drawing.points;
@@ -9981,29 +10038,13 @@ class DrawingToolsManager {
         const domainSpan = priceRange[1] - priceRange[0];
         const domainOffsetBase = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan : 0;
 
+        if (this._isFreehandDrawingType(drawing.type)) {
+            drawing.timestampPoints = null;
+            drawing.coordinateSystem = 'index';
+        }
+
         if (this._isFreehandDrawingType(drawing.type) && pts.length >= 2) {
-            let minX = Infinity;
-            let maxX = -Infinity;
-            let minY = Infinity;
-            let maxY = -Infinity;
-            for (const p of pts) {
-                if (p && Number.isFinite(p.x)) {
-                    minX = Math.min(minX, p.x);
-                    maxX = Math.max(maxX, p.x);
-                }
-                if (p && Number.isFinite(p.y)) {
-                    minY = Math.min(minY, p.y);
-                    maxY = Math.max(maxY, p.y);
-                }
-            }
-            const spanX = Number.isFinite(maxX - minX) ? maxX - minX : 0;
-            const spanY = Number.isFinite(maxY - minY) ? maxY - minY : 0;
-            const xOffset = Math.max(3, spanX * 0.1, 0.25);
-            const yOffset = Math.max(
-                domainOffsetBase * 0.025,
-                spanY * 0.1,
-                domainOffsetBase * 0.015
-            );
+            const { xOffset, yOffset } = this._computeFreehandCloneOffset(pts);
             drawing.points = pts.map(p => ({
                 x: Number.isFinite(p.x) ? p.x + xOffset : p.x,
                 y: Number.isFinite(p.y) ? p.y - yOffset : p.y
@@ -10089,9 +10130,6 @@ class DrawingToolsManager {
             },
             text: typeof drawing.text === 'string' ? drawing.text : ''
         };
-        if (this._isFreehandDrawingType(drawing.type) && Array.isArray(drawing.timestampPoints) && drawing.timestampPoints.length > 0) {
-            payload.timestampPoints = JSON.parse(JSON.stringify(drawing.timestampPoints));
-        }
         if (drawing.visibility) {
             payload.visibility = JSON.parse(JSON.stringify(drawing.visibility));
         }
@@ -10118,14 +10156,8 @@ class DrawingToolsManager {
                     y: Number(p.price !== undefined ? p.price : p.y)
                 })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
             );
-            if (Array.isArray(data.timestampPoints) && data.timestampPoints.length > 0) {
-                newDrawing.timestampPoints = data.timestampPoints.map((p) => ({
-                    timestamp: Number(p.timestamp),
-                    price: Number(p.price !== undefined ? p.price : p.y)
-                })).filter((p) => Number.isFinite(p.timestamp) && Number.isFinite(p.price));
-            } else {
-                newDrawing.timestampPoints = null;
-            }
+            newDrawing.timestampPoints = null;
+            newDrawing.coordinateSystem = 'index';
         } else {
             newDrawing.timestampPoints = null;
         }

@@ -4417,13 +4417,53 @@ class BrushTool extends BaseDrawing {
         this._clearDrawingLabels(scales);
         this.ensureEndpointStyleDefaults();
 
-        const { pathData } = BaseDrawing.buildFreehandPathData(this.points, scales);
+        const startStyle = this.style.startStyle || 'normal';
+        const endStyle = this.style.endStyle || 'normal';
+        const { pathData } = BaseDrawing.buildFreehandPathData(this.points, scales, {
+            pad: {
+                skipStartPad: startStyle === 'arrow',
+                skipEndPad: endStyle === 'arrow',
+            },
+        });
         const visiblePath = this._appendStrokePathWithEndpoints(this.group, container, pathData, this.style.strokeWidth);
+        const { aLen } = BaseDrawing.arrowEndpointMetrics(this.style.strokeWidth, 1);
+        this._trimFreehandPathForArrows(visiblePath, startStyle, endStyle, aLen);
         this._drawFreehandEndpointArrows(this.group, scales, visiblePath);
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
+    }
+
+    patchPanZoomGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        if (!scales || !scales.yScale) return false;
+
+        const startStyle = this.style.startStyle || 'normal';
+        const endStyle = this.style.endStyle || 'normal';
+        const { pathData } = BaseDrawing.buildFreehandPathData(this.points, scales, {
+            pad: {
+                skipStartPad: startStyle === 'arrow',
+                skipEndPad: endStyle === 'arrow',
+            },
+        });
+        this.group.selectAll('path').attr('d', pathData);
+
+        let visiblePath = null;
+        this.group.selectAll('path').each(function eachBrushPath() {
+            if (visiblePath) return;
+            const sel = d3.select(this);
+            if (sel.attr('stroke') !== 'transparent') visiblePath = sel;
+        });
+
+        const { aLen } = BaseDrawing.arrowEndpointMetrics(this.style.strokeWidth, 1);
+        this._trimFreehandPathForArrows(visiblePath, startStyle, endStyle, aLen);
+        this._drawFreehandEndpointArrows(this.group, scales, visiblePath);
+
+        if (typeof this.updateHandlePositions === 'function') {
+            this.updateHandlePositions(scales);
+        }
+        return true;
     }
 
     createHandles(group, scales) {
