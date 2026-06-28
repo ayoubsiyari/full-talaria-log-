@@ -103,6 +103,27 @@ function bumpLegacyIndexHtml(filePath, buildId) {
   return 1;
 }
 
+/** multichart-prod/chart-embed.html default build id + font query (iframe panels). */
+function bumpChartEmbedHtml(buildId) {
+  const embedPaths = [
+    path.resolve(__dirname, "../../chart/multichart-prod/chart-embed.html"),
+    path.resolve(repoRoot, "homepage/public/chart/multichart-prod/chart-embed.html"),
+  ];
+  const DEFAULT_BUILD_RE = /window\.__TALARIA_CHART_BUILD_ID = p\.get\('v'\) \|\| '[^']+'/;
+  let touched = 0;
+  for (const embedPath of embedPaths) {
+    if (!fs.existsSync(embedPath) || !buildId) continue;
+    let before = fs.readFileSync(embedPath, "utf8");
+    let after = before.replace(DEFAULT_BUILD_RE, `window.__TALARIA_CHART_BUILD_ID = p.get('v') || '${buildId}'`);
+    after = after.replace(/(\/chart\/fonts\/talaria-fonts\.css)\?v=[^"']+/g, `$1?v=${buildId}`);
+    if (after === before) continue;
+    fs.writeFileSync(embedPath, after, "utf8");
+    console.log("[bump-dist-v9-cache] Set embed default ?v=" + buildId + " in", embedPath);
+    touched += 1;
+  }
+  return touched;
+}
+
 function bumpServiceWorkerVersion(buildId) {
   if (!buildId) return 0;
   let touched = 0;
@@ -179,6 +200,7 @@ if (mode === "dist" || mode === "both") {
       path.resolve(repoRoot, "homepage/public/chart/legacy-index.html"),
       distBuildId,
     );
+    touched += bumpChartEmbedHtml(distBuildId);
   }
 }
 

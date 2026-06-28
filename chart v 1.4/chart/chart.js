@@ -20520,15 +20520,35 @@ class Chart {
         return this.data[last].t + (i - last) * tfMs;
     }
 
+    /** Grid tick label for bar index — must match _buildTimeTicks round-tick formatting. */
     _formatTimeLabelForBarIndex(idx) {
         const ts = this._projectBarIndexTimestamp(idx);
         if (!Number.isFinite(ts)) return '';
         const tzDate = this.convertToTimezone(ts);
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const tf = String(this.currentTimeframe || '1m').toLowerCase();
-        const tfMs = this.parseTimeframe(tf);
-        const isDailyOrHigher = Number.isFinite(tfMs) && tfMs >= 86400000;
-        if (isDailyOrHigher || /w$/i.test(tf) || /mo$/i.test(tf)) {
+        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        let tfMs = this.parseTimeframe(tf);
+        if (!Number.isFinite(tfMs) || tfMs <= 0) {
+            if (this.data && this.data.length >= 2) {
+                const detectedMs = this.data[1].t - this.data[0].t;
+                tfMs = Number.isFinite(detectedMs) && detectedMs > 0 ? detectedMs : 60000;
+            } else {
+                tfMs = 60000;
+            }
+        }
+        const isCalendarTf = /w$/i.test(tf) || /mo$/i.test(tf);
+        const isDailyOrHigher = tfMs >= 86400000;
+        let intradayCalendarMode = false;
+        if (!isDailyOrHigher && !isCalendarTf && typeof this.getCandleSpacing === 'function') {
+            const margin = this.margin || { l: 60, r: 60 };
+            const spacing = Math.max(1e-6, this.getCandleSpacing());
+            const cw = Math.max(1, this.w - margin.l - margin.r);
+            const firstVisibleIdx = -this.offsetX / spacing;
+            const lastVisibleIdx = firstVisibleIdx + cw / spacing;
+            const visibleBarsCount = Math.max(1, Math.ceil(Math.max(0, lastVisibleIdx - firstVisibleIdx)));
+            intradayCalendarMode = (visibleBarsCount * tfMs) / 86400000 > 14;
+        }
+        if (isDailyOrHigher || isCalendarTf || intradayCalendarMode) {
             return `${monthNames[tzDate.getUTCMonth()]} ${tzDate.getUTCDate()}`;
         }
         if (typeof this._formatSessionClock === 'function') {
@@ -27487,6 +27507,11 @@ class Chart {
                         this._scheduleReplayPanLoadLeft();
                     }
                     this._finishPanDrawingRedraw();
+                    this.renderPending = false;
+                    this.render();
+                } else {
+                    // Mousedown starts pan/lite paint; without this, a click leaves mixed time-axis labels.
+                    this._cachedInteractionTimeTicks = null;
                     this.renderPending = false;
                     this.render();
                 }

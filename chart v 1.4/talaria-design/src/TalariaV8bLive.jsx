@@ -11419,6 +11419,11 @@ const TalariaV8bLive = () => {
           rs.setPlaybackMode(desiredMode, { restartPlayback: false });
         }
       }
+      const modeSelect = document.getElementById("replayPlaybackMode");
+      if (modeSelect && modeSelect.value !== desiredMode) {
+        modeSelect.value = desiredMode;
+        modeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
       const tfSelect = rs.timeframeSelect || document.getElementById("replayTimeframe");
       if (tfSelect && tfSelect.value !== desiredInterval) {
         tfSelect.value = desiredInterval;
@@ -11449,11 +11454,11 @@ const TalariaV8bLive = () => {
     const all = ["1m", "5m", "15m", "30m", "1h", "4h", "1D", "1W"];
     const curMin = timeframeToMinutes(tf);
     if (!curMin) return ["Auto", ...all];
-    const smaller = all.filter((x) => {
+    const smallerOrEqual = all.filter((x) => {
       const v = timeframeToMinutes(x);
-      return Number.isFinite(v) && v < curMin;
+      return Number.isFinite(v) && v <= curMin;
     });
-    return ["Auto", ...smaller];
+    return ["Auto", ...smallerOrEqual];
   }, [tf]);
 
   // Instant sync when replay play/pause changes (Space, legacy toolbar, V9 button).
@@ -33052,6 +33057,21 @@ const TalariaV8bLive = () => {
               <div id="replayToolbar" aria-hidden="true" style={{ position: "fixed", left: -9999, top: 0, width: 1, height: 1, overflow: "hidden", pointerEvents: "none", visibility: "hidden" }}>
                 <div id="replayToolbarHandle" />
                 <button type="button" id="replayModeBtn" tabIndex={-1} />
+                <select id="replayPlaybackMode" defaultValue="candle" tabIndex={-1} aria-hidden="true" style={{ display: "none" }}>
+                  <option value="tick">tick</option>
+                  <option value="candle">candle</option>
+                </select>
+                <select id="replayTimeframe" defaultValue="sync" tabIndex={-1} aria-hidden="true" style={{ display: "none" }}>
+                  <option value="sync">sync</option>
+                  <option value="1m">1m</option>
+                  <option value="5m">5m</option>
+                  <option value="15m">15m</option>
+                  <option value="30m">30m</option>
+                  <option value="1h">1h</option>
+                  <option value="4h">4h</option>
+                  <option value="1d">1d</option>
+                  <option value="1w">1w</option>
+                </select>
               </div>
               {/* ────────────────────────────────────────────────────────────────
                    #panels-container MUST come BEFORE #chartWrapper in DOM.
