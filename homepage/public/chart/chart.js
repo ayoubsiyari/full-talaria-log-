@@ -29597,7 +29597,7 @@ class Chart {
                     if (chart.shouldSuppressRightClickContextMenu(event)) {
                         return;
                     }
-                    chart.selectedDrawing = idx;
+                    chart.selectedDrawing = null;
                     chart.showContextMenu(event.clientX, event.clientY, {index: idx, drawing}, null);
                     chart.scheduleRender();
                 });
@@ -30631,6 +30631,22 @@ class Chart {
     showChartContextMenu(clientX, clientY, offsetX, offsetY, overrides) {
         if (this.shouldSuppressRightClickContextMenu()) {
             return;
+        }
+
+        // TradingView-style: right-click opens the chart menu with nothing selected.
+        const dm = this.drawingManager;
+        if (dm && typeof dm.deselectAll === 'function') {
+            const hasSelection = (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length > 0)
+                || dm.selectedDrawing;
+            if (hasSelection) {
+                dm.deselectAll({ fromCanvasBackground: true });
+            }
+        }
+        if (this.selectedDrawing != null) {
+            this.selectedDrawing = null;
+            if (typeof this.scheduleRender === 'function') {
+                this.scheduleRender();
+            }
         }
 
         installChartContextMenuStyles();

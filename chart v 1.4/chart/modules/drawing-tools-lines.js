@@ -339,6 +339,57 @@ function trendlineArrowHeadLength(strokeWidth, scaleFactor) {
     return Math.max(8, scaledStrokeWidth * 5);
 }
 
+/** Stop the stroke at arrowhead bases so the line does not run through the triangle tip. */
+function trimLineEndpointsForTrendlineArrows(x1, y1, x2, y2, origX1, origY1, origX2, origY2, startStyle, endStyle, scaledStrokeWidth, scaleFactor) {
+    if (startStyle !== 'arrow' && endStyle !== 'arrow') {
+        return { x1, y1, x2, y2 };
+    }
+    const adx = origX2 - origX1;
+    const ady = origY2 - origY1;
+    const segLen = Math.sqrt(adx * adx + ady * ady);
+    if (!Number.isFinite(segLen) || segLen < 0.5) {
+        return { x1, y1, x2, y2 };
+    }
+    const ux = adx / segLen;
+    const uy = ady / segLen;
+    const aLen = trendlineArrowHeadLength(scaledStrokeWidth, scaleFactor);
+
+    let tx1 = x1;
+    let ty1 = y1;
+    let tx2 = x2;
+    let ty2 = y2;
+
+    if (startStyle === 'arrow') {
+        const bx = origX1 + ux * aLen;
+        const by = origY1 + uy * aLen;
+        const d1 = (x1 - origX1) * ux + (y1 - origY1) * uy;
+        const d2 = (x2 - origX1) * ux + (y2 - origY1) * uy;
+        if (d1 >= -0.5 && d1 <= aLen + 0.5) {
+            tx1 = bx;
+            ty1 = by;
+        } else if (d2 >= -0.5 && d2 <= aLen + 0.5) {
+            tx2 = bx;
+            ty2 = by;
+        }
+    }
+
+    if (endStyle === 'arrow') {
+        const bx = origX2 - ux * aLen;
+        const by = origY2 - uy * aLen;
+        const d1 = (x1 - origX2) * ux + (y1 - origY2) * uy;
+        const d2 = (x2 - origX2) * ux + (y2 - origY2) * uy;
+        if (d1 <= 0.5 && d1 >= -aLen - 0.5) {
+            tx1 = bx;
+            ty1 = by;
+        } else if (d2 <= 0.5 && d2 >= -aLen - 0.5) {
+            tx2 = bx;
+            ty2 = by;
+        }
+    }
+
+    return { x1: tx1, y1: ty1, x2: tx2, y2: ty2 };
+}
+
 /** Pixel inset from anchor tip so on-line labels clear polygon arrowheads. */
 function trendlineEndpointArrowInset(style, scaleFactor, end) {
     if (!style) return 0;
@@ -466,6 +517,14 @@ class TrendlineTool extends BaseDrawing {
 
         const startStyle = this.style.startStyle || 'normal';
         const endStyle = this.style.endStyle || 'normal';
+
+        ({
+            x1, y1, x2, y2
+        } = trimLineEndpointsForTrendlineArrows(
+            x1, y1, x2, y2,
+            origX1, origY1, origX2, origY2,
+            startStyle, endStyle, scaledStrokeWidth, scaleFactor
+        ));
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
@@ -737,13 +796,19 @@ class TrendlineTool extends BaseDrawing {
             return liveRenderTwoPointDrawingGeometry(this, scales);
         }
 
-        patchTwoPointLineElements(this.group, x1, y1, x2, y2);
-
         const startStyle = this.style.startStyle || 'normal';
         const endStyle = this.style.endStyle || 'normal';
         const scaleFactor = typeof this.getZoomScaleFactor === 'function'
             ? this.getZoomScaleFactor(scales)
             : 1;
+        const scaledStrokeWidth = Math.max(0.5, (this.style.strokeWidth || 2) * scaleFactor);
+        const trimmed = trimLineEndpointsForTrendlineArrows(
+            x1, y1, x2, y2,
+            x1, y1, x2, y2,
+            startStyle, endStyle, scaledStrokeWidth, scaleFactor
+        );
+        patchTwoPointLineElements(this.group, trimmed.x1, trimmed.y1, trimmed.x2, trimmed.y2);
+
         patchTrendlineArrowHeads(
             this.group,
             x1, y1, x2, y2,

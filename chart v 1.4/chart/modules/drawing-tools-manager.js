@@ -4947,9 +4947,9 @@ class DrawingToolsManager {
             const drawing = this.drawings.find(d => d.id === drawingId);
             
             if (drawing) {
-                // Deselect drawing first (TradingView style), then show context menu
-                if (this.selectedDrawings.includes(drawing)) {
-                    this.deselectAll();
+                // Deselect first (TradingView style), then show drawing context menu.
+                if (this.selectedDrawings.length > 0) {
+                    this.deselectAll({ fromCanvasBackground: true });
                 }
                 this.showContextMenu(drawing, event.pageX, event.pageY);
             }
@@ -6852,11 +6852,9 @@ class DrawingToolsManager {
             event.stopPropagation();
             // Hide any existing chart context menus
             d3.selectAll('.chart-context-menu').style('visibility', 'hidden');
-            // Deselect drawing first (TradingView style), then show context menu
-            if (self.selectedDrawings.includes(drawing)) {
-                self.deselectAll();
-            } else if (!drawing.locked) {
-                self.selectDrawing(drawing);
+            // Deselect first (TradingView style), then show drawing context menu.
+            if (self.selectedDrawings.length > 0) {
+                self.deselectAll({ fromCanvasBackground: true });
             }
             self.showContextMenu(drawing, event.pageX, event.pageY);
         };

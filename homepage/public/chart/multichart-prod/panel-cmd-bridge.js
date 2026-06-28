@@ -2505,7 +2505,9 @@
         }
         var had = !!(dm.currentTool
             || (dm.selectedDrawings && dm.selectedDrawings.length));
-        if (!keepSelection && typeof dm.deselectAll === 'function') dm.deselectAll();
+        if (!keepSelection && typeof dm.deselectAll === 'function') {
+            dm.deselectAll({ fromCanvasBackground: true });
+        }
         if (typeof dm.clearTool === 'function') dm.clearTool(!!mirrored);
         else dm.currentTool = null;
         return had;
