@@ -10899,6 +10899,8 @@ const TalariaV8b = () => {
   const [dashRadarCompare, setDashRadarCompare] = useState("prior");
   const [dashScoreCompareWindow, setDashScoreCompareWindow] = useState("30d");
   const [dashScoreCompareOpen, setDashScoreCompareOpen] = useState(false);
+  const dashScoreCompareBtnRef = useRef(null);
+  const [dashScoreCompareMenuStyle, setDashScoreCompareMenuStyle] = useState(null);
   const [dashScoreBreakdownTab, setDashScoreBreakdownTab] = useState("linear");
   const [dashScoreModeTab, setDashScoreModeTab] = useState("strategy");
   const [dashScoreCardView, setDashScoreCardView] = useState("pie");
@@ -11627,6 +11629,43 @@ const TalariaV8b = () => {
     document.addEventListener("pointerdown", closeSnapshotTradePreview, true);
     return () => document.removeEventListener("pointerdown", closeSnapshotTradePreview, true);
   }, [dashSnapshotTradePreview]);
+  useLayoutEffect(() => {
+    if (!dashScoreCompareOpen || !dashScoreCompareBtnRef.current) {
+      setDashScoreCompareMenuStyle(null);
+      return;
+    }
+    const updateMenuPosition = () => {
+      const node = dashScoreCompareBtnRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const menuWidth = 248;
+      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+      setDashScoreCompareMenuStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left,
+        width: menuWidth,
+        zIndex: 12000,
+      });
+    };
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [dashScoreCompareOpen]);
+  useEffect(() => {
+    if (!dashScoreCompareOpen) return;
+    const closeScoreCompareMenu = (event) => {
+      if (dashScoreCompareBtnRef.current?.contains(event.target)) return;
+      if (event.target?.closest?.(".tlr-dashboard-score-compare-menu")) return;
+      setDashScoreCompareOpen(false);
+    };
+    document.addEventListener("pointerdown", closeScoreCompareMenu, true);
+    return () => document.removeEventListener("pointerdown", closeScoreCompareMenu, true);
+  }, [dashScoreCompareOpen]);
   useEffect(() => {
     setDashAccountPulseZoom({ start: 0, end: 1 });
   }, [dashFreshPage, dashSnapshotTopMode, dashAccountPulsePeriod]);
@@ -12824,6 +12863,7 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-snapshot-calendar-panel{animation:none!important;will-change:auto!important}.tlr-snapshot-calendar-cell{transition:background 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease!important}.tlr-snapshot-calendar-title-btn{transition:background-color 130ms ease,color 130ms ease,transform 90ms ease!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.11)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-snapshot-calendar-cell:active{filter:brightness(1.08)!important}.tlr-snapshot-calendar-cell-selected{transition:background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,color 150ms ease!important}@keyframes tlrSnapshotCalendarSwitch{0%{opacity:.88;transform:translateY(5px) scale(.993)}100%{opacity:1;transform:translateY(0) scale(1)}}.tlr-snapshot-calendar-panel-animate{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform!important;transform-origin:50% 42%}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel-animate{animation:none!important}.tlr-snapshot-calendar-cell,.tlr-snapshot-calendar-title-btn{transition:none!important}}`;
       style.textContent += `.tlr-snapshot-page,.tlr-snapshot-page *{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout paint;transform:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{transform:none!important;filter:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card span,.tlr-snapshot-page .tlr-dashboard-summary-card div{min-width:0}.tlr-snapshot-calendar-cell{transform:none!important;will-change:background,border-color,box-shadow}.tlr-snapshot-calendar-cell:hover{transform:none!important;filter:none!important}.tlr-snapshot-calendar-cell:active{transform:none!important;filter:brightness(1.04)!important}.tlr-snapshot-calendar-title-btn{border:0!important;box-shadow:none!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.10)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.17)!important;color:#fff!important}.tlr-snapshot-trade-preview-shell{pointer-events:none}.tlr-snapshot-trade-preview-card{background:rgb(7,10,20)!important;border:1px solid rgba(116,126,150,0.50)!important;box-shadow:0 18px 44px rgba(0,0,0,0.58),inset 0 1px 0 rgba(255,255,255,0.035)!important}.tlr-snapshot-trade-preview-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 8px ${c.acG};pointer-events:none}.tlr-snapshot-trade-id-button{display:inline-flex!important;align-items:center!important;gap:5px!important;line-height:1.05!important;vertical-align:middle!important}.tlr-snapshot-trade-id-button::after{left:0!important;right:13px!important;bottom:1px!important;height:1px!important;background:linear-gradient(90deg,transparent,${c.acL},transparent)!important;box-shadow:0 0 7px ${c.acG}!important}.tlr-snapshot-trade-id-button:hover,.tlr-snapshot-trade-id-button[aria-pressed="true"]{color:${c.acL}!important}.tlr-snapshot-trade-id-button:hover::after,.tlr-snapshot-trade-id-button[aria-pressed="true"]::after{opacity:1!important}.tlr-snapshot-trade-preview-close{border:0!important;background:transparent!important;box-shadow:none!important}.tlr-snapshot-trade-preview-close:hover{background:transparent!important;color:${c.rd}!important;filter:drop-shadow(0 0 5px rgba(255,80,104,.58))!important}.tlr-snapshot-trade-preview-close:active{background:transparent!important;color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-bestworst-grid{grid-template-columns:minmax(182px,1fr) minmax(42px,52px) minmax(62px,74px)!important;column-gap:8px!important}.tlr-snapshot-bestworst-id{font-size:7.85px!important;letter-spacing:-.01em!important;overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-bestworst-line{width:58px!important;max-width:58px!important}.tlr-snapshot-chip-row:hover{transform:none!important;filter:none!important}.tlr-snapshot-basic-card-title-line{height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG}}`;
       style.textContent += `.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{box-shadow:inherit}.tlr-snapshot-page .tlr-snapshot-bestworst-grid>*{min-width:0}.tlr-snapshot-page .tlr-snapshot-bestworst-id>span{overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-page .tlr-snapshot-trade-preview-card{backdrop-filter:none!important}.tlr-snapshot-page .tlr-snapshot-calendar-title-btn,.tlr-snapshot-page .tlr-snapshot-trade-id-button,.tlr-snapshot-page .tlr-dashboard-score-arrow{cursor:pointer!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:hover{color:${c.acL}!important;filter:drop-shadow(0 0 5px ${c.acG})!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:active{color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-page .tlr-snapshot-trade-id-button:hover span,.tlr-snapshot-page .tlr-snapshot-trade-id-button:active span{color:${c.acL}!important}`;
+      style.textContent += `.tlr-dashboard-score-compare-wrap-open{z-index:420!important;position:relative!important;isolation:isolate!important}.tlr-dashboard-score-compare-menu{background:rgb(7,10,20)!important;pointer-events:auto!important}.tlr-dashboard-score-compare-menu button:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-compare-menu button:active{background:rgba(74,106,255,0.14)!important}`;
       style.textContent += `.tlr-dashboard-compare-chip{position:relative}.tlr-dashboard-compare-chip:hover{background:rgba(255,255,255,0.055)!important;border-color:rgba(74,106,255,0.34)!important;color:#4A6AFF!important;box-shadow:0 0 12px -11px #4A6AFF!important}.tlr-dashboard-compare-chip:active{background:rgba(74,106,255,0.12)!important;color:#4A6AFF!important;transform:translateY(1px)!important}.tlr-dashboard-compare-chip-active{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:hover{background:rgba(255,255,255,0.055)!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:after{content:"";position:absolute;left:16px;right:16px;bottom:2px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 8px rgba(74,106,255,0.82);pointer-events:none}.tlr-dashboard-compare-chip:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-compare-exit:hover{background:rgba(255,80,104,0.055)!important;color:#FF5068!important}.tlr-dashboard-compare-exit:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}`;
       style.textContent += `.tlr-dashboard-compare-clear:hover{background:rgba(255,80,104,0.055)!important;border-color:rgba(255,80,104,0.22)!important;color:#FF5068!important}.tlr-dashboard-compare-clear:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-dashboard-compare-clear:focus-visible{outline:1px solid rgba(255,80,104,0.55);outline-offset:-1px}`;
@@ -28125,33 +28165,117 @@ const TalariaV8b = () => {
                 <span style={{height:20,padding:"0 7px",border:`1px solid ${c.rd}66`,background:"rgba(255,80,104,0.08)",color:c.rd,fontSize:8,fontWeight:900,letterSpacing:"0.07em",textTransform:"uppercase",display:"inline-flex",alignItems:"center",fontFamily:scoreFont}}>capped · net negative</span>
               </div>
             ) : null;
-            const ScoreCompareDropdown = () => (
-              <div style={{position:"relative",fontFamily:scoreFont}} onMouseLeave={()=>setDashScoreCompareOpen(false)}>
-                <button type="button" aria-label="Score comparison period" onClick={(e)=>{e.stopPropagation();setDashScoreCompareOpen(open=>!open);}} style={{height:28,minWidth:56,padding:"0 9px",display:"grid",gridTemplateColumns:"1fr 10px",alignItems:"center",gap:7,border:`1px solid ${dashScoreCompareOpen?c.acL:c.brH}`,background:dashScoreCompareOpen?"rgba(38,67,247,0.13)":c.sf,color:c.tx,fontFamily:scoreFont,cursor:"default",boxShadow:dashScoreCompareOpen?`inset 0 1px 0 rgba(255,255,255,0.04), 0 0 10px -7px ${c.acL}`:"inset 0 1px 0 rgba(255,255,255,0.035)",outline:"none"}}>
-                  <span style={{fontSize:10.4,fontWeight:900,color:c.tx,letterSpacing:"0.03em",textTransform:"uppercase",textAlign:"left",lineHeight:1}}>
-                    {selectedScoreCompare?.label || "30D"}
-                  </span>
-                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{display:"block",transform:dashScoreCompareOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 120ms ease"}}>
-                    <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter"/>
-                  </svg>
-                </button>
-                {dashScoreCompareOpen && (
-                  <div style={{position:"absolute",right:0,top:"calc(100% + 4px)",zIndex:20,width:136,border:`1px solid ${c.brH}`,borderTop:`2px solid ${c.acL}`,background:"rgba(8,11,22,0.98)",boxShadow:"0 14px 34px rgba(0,0,0,0.42)",padding:"4px 0"}}>
-                    {scoreCompareOptions.map(option=>{
-                      const active = option.key === selectedScoreCompare?.key;
-                      return (
-                        <button key={option.key} type="button" disabled={!option.available} onClick={(e)=>{e.stopPropagation(); if(option.available){setDashScoreCompareWindow(option.key); setDashScoreCompareOpen(false);}}} title={option.available ? option.title : option.reason}
-                          style={{height:28,width:"100%",padding:"0 10px",display:"grid",gridTemplateColumns:"38px 1fr",alignItems:"center",gap:7,border:"none",background:active?"rgba(38,67,247,0.14)":"transparent",color:option.available ? (active?c.acL:c.tx) : c.tm,fontFamily:scoreFont,cursor:option.available?"default":"not-allowed",opacity:option.available?1:.42,textAlign:"left",outline:"none",position:"relative"}}>
-                          {active && <span aria-hidden="true" style={{position:"absolute",left:0,top:5,bottom:5,width:1,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`}}/>}
-                          <span style={{fontSize:10,fontWeight:950,letterSpacing:"0.06em",textTransform:"uppercase"}}>{option.label}</span>
-                          <span style={{fontSize:8,fontWeight:800,color:option.available?c.ts:c.tm,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{option.available ? option.title : option.reason}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
+            const ScoreCompareDropdown = () => {
+              const scoreCompareMenu = dashScoreCompareOpen && dashScoreCompareMenuStyle ? (
+                <div
+                  className="tlr-dashboard-score-compare-menu"
+                  role="menu"
+                  style={{
+                    ...dashScoreCompareMenuStyle,
+                    border: `1px solid ${c.brH}`,
+                    borderTop: `2px solid ${c.acL}`,
+                    background: "rgb(7, 10, 20)",
+                    boxShadow: "0 18px 44px rgba(0,0,0,0.68), inset 0 1px 0 rgba(255,255,255,0.04)",
+                    padding: "4px 0",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {scoreCompareOptions.map(option => {
+                    const active = option.key === selectedScoreCompare?.key;
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        role="menuitem"
+                        disabled={!option.available}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (option.available) {
+                            setDashScoreCompareWindow(option.key);
+                            setDashScoreCompareOpen(false);
+                          }
+                        }}
+                        title={option.available ? option.title : option.reason}
+                        style={{
+                          minHeight: 34,
+                          width: "100%",
+                          padding: "6px 12px",
+                          display: "grid",
+                          gridTemplateColumns: "42px minmax(0,1fr)",
+                          alignItems: "center",
+                          gap: 8,
+                          border: "none",
+                          background: active ? "rgba(38,67,247,0.16)" : "rgb(7, 10, 20)",
+                          color: option.available ? (active ? c.acL : c.tx) : c.tm,
+                          fontFamily: scoreFont,
+                          cursor: option.available ? "default" : "not-allowed",
+                          opacity: option.available ? 1 : 0.72,
+                          textAlign: "left",
+                          outline: "none",
+                          position: "relative",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        {active && (
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: 6,
+                              bottom: 6,
+                              width: 1,
+                              background: `linear-gradient(180deg,transparent,${c.acL},transparent)`,
+                              boxShadow: `0 0 6px ${c.acL}`,
+                            }}
+                          />
+                        )}
+                        <span style={{ fontSize: 10, fontWeight: 950, letterSpacing: "0.06em", textTransform: "uppercase" }}>{option.label}</span>
+                        <span style={{ fontSize: 8.5, fontWeight: 800, color: option.available ? c.ts : c.tm, lineHeight: 1.25, whiteSpace: "normal", overflow: "visible" }}>
+                          {option.available ? option.title : option.reason}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null;
+              return (
+                <div className={`tlr-dashboard-score-compare-wrap${dashScoreCompareOpen ? " tlr-dashboard-score-compare-wrap-open" : ""}`} style={{ position: "relative", fontFamily: scoreFont }}>
+                  <button
+                    ref={dashScoreCompareBtnRef}
+                    type="button"
+                    aria-label="Score comparison period"
+                    aria-haspopup="menu"
+                    aria-expanded={dashScoreCompareOpen}
+                    onClick={(e) => { e.stopPropagation(); setDashScoreCompareOpen(open => !open); }}
+                    style={{
+                      height: 28,
+                      minWidth: 56,
+                      padding: "0 9px",
+                      display: "grid",
+                      gridTemplateColumns: "1fr 10px",
+                      alignItems: "center",
+                      gap: 7,
+                      border: `1px solid ${dashScoreCompareOpen ? c.acL : c.brH}`,
+                      background: dashScoreCompareOpen ? "rgba(38,67,247,0.13)" : c.sf,
+                      color: c.tx,
+                      fontFamily: scoreFont,
+                      cursor: "default",
+                      boxShadow: dashScoreCompareOpen ? `inset 0 1px 0 rgba(255,255,255,0.04), 0 0 10px -7px ${c.acL}` : "inset 0 1px 0 rgba(255,255,255,0.035)",
+                      outline: "none",
+                    }}
+                  >
+                    <span style={{ fontSize: 10.4, fontWeight: 900, color: c.tx, letterSpacing: "0.03em", textTransform: "uppercase", textAlign: "left", lineHeight: 1 }}>
+                      {selectedScoreCompare?.label || "30D"}
+                    </span>
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ display: "block", transform: dashScoreCompareOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 120ms ease" }}>
+                      <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" strokeLinejoin="miter"/>
+                    </svg>
+                  </button>
+                  {scoreCompareMenu && typeof document !== "undefined" ? createPortal(scoreCompareMenu, document.body) : null}
+                </div>
+              );
+            };
             const ScoreRadarHero = () => {
               const axes = scoreDimensionRows;
               const viewW = 308;
