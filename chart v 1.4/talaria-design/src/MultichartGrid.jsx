@@ -1499,8 +1499,8 @@ export default function MultichartGrid({
     /** Freeze host viewport re-anchor until every iframe has bars (no shake mid-boot). */
     const hostViewportFrozenRef = useRef(false);
     const OVERLAY_SETTLE_HOLD_CACHE_MS = 0;
-    const OVERLAY_SETTLE_HOLD_DEFAULT_MS = 300;
-    const OVERLAY_FALLBACK_MS = 4000;
+    const OVERLAY_SETTLE_HOLD_DEFAULT_MS = 0;
+    const OVERLAY_FALLBACK_MS = 0;
     useEffect(() => {
         return () => {
             const timers = overlayHoldTimersRef.current || {};
@@ -1828,17 +1828,24 @@ export default function MultichartGrid({
                         next.add(id);
                         return next;
                     });
-                    // Safety net: if chart-state never reports bars (mixed old/new deploy),
-                    // dismiss the loading overlay so panels are not stuck forever.
+                    // TradingView-style: no loading overlay — treat bridge-ready as visible.
                     if (id !== HOST_PANEL_ID) {
-                        setTimeout(function () {
-                            setOverlayFallbackPanels((prev) => {
-                                if (prev.has(id)) return prev;
-                                const next = new Set(prev);
-                                next.add(id);
-                                return next;
-                            });
-                        }, OVERLAY_FALLBACK_MS);
+                        setDataReadyPanels((prev) => {
+                            if (prev.has(id)) return prev;
+                            const next = new Set(prev);
+                            next.add(id);
+                            return next;
+                        });
+                        setOverlayFallbackPanels((prev) => {
+                            if (prev.has(id)) return prev;
+                            const next = new Set(prev);
+                            next.add(id);
+                            return next;
+                        });
+                        const mgr = managerRef.current;
+                        if (mgr && typeof mgr.showPanelFrame === "function") {
+                            try { mgr.showPanelFrame(id); } catch (_) {}
+                        }
                     }
                     // A panel that recovered after a prior boot failure clears
                     // its error overlay here.
@@ -2207,8 +2214,8 @@ export default function MultichartGrid({
         // the boot "shaking". silentPanelBoot keeps them at opacity:0 until
         // showPanelFrame. The safety timer guarantees they are never left hidden if
         // the align path bails for any reason.
-        const BOOT_ALIGN_DELAY_MS = 120;
-        const BOOT_REVEAL_AFTER_ALIGN_MS = 2000;
+        const BOOT_ALIGN_DELAY_MS = 80;
+        const BOOT_REVEAL_AFTER_ALIGN_MS = 350;
         let revealTimer = 0;
         const t = setTimeout(() => {
             if (isDraggingRef.current) { revealAll(); return; }
@@ -2243,7 +2250,7 @@ export default function MultichartGrid({
                 }
             } catch (_) {}
             revealAll();
-        }, 5200);
+        }, 1800);
         return () => {
             clearTimeout(t);
             clearTimeout(revealTimer);
@@ -5813,10 +5820,6 @@ export default function MultichartGrid({
                 const isReady   = isHost || dataReadyPanels.has(tile.id)
                     || overlayFallbackPanels.has(tile.id);
                 const failure   = isHost ? null : failedPanels.get(tile.id);
-                const hostNtOverlay = readHostChartFileAndTf();
-                const skipLoadingOverlay = !isHost
-                    && samePairCacheBootRef.current
-                    && hostHasCloneableBars(hostNtOverlay.fileId);
                 return (
                     <div
                         key={tile.id}
@@ -5842,7 +5845,7 @@ export default function MultichartGrid({
                             // wrapper paints cleanly over it (the wrapper
                             // is at z-index:13, this cell is z-index auto,
                             // so the wrapper covers the cell exactly).
-                            background: isHost ? "transparent" : "#0b0c14",
+                            background: isHost ? "transparent" : "#000000",
                             // Static border only — focused border is painted
                             // by the overlay <div> below because CSS outline
                             // is painted by the parent element and gets
@@ -5863,21 +5866,7 @@ export default function MultichartGrid({
                             pointerEvents: isHost ? "none" : "auto",
                         }}
                     >
-                        {/* Loading overlay (TradingView-style 3 dots + faint
-                             chart skeleton). Renders ABOVE the manager-spawned
-                             iframe (z-index:5 > iframe default) until the
-                             panel's bridge fires `bridge-ready`. Unmounted
-                             once chart-state reports candleCount > 0.
-                             Skipped for the host cell — parent chart is
-                             already loaded with full state. */}
-                        {!isReady && !failure && !skipLoadingOverlay && (
-                            <div className="multichart-loading-overlay" aria-hidden="true">
-                                <div className="multichart-loading-dots">
-                                    <span/><span/><span/>
-                                </div>
-                                <div className="multichart-loading-label">Loading {tile.id}</div>
-                            </div>
-                        )}
+                        {/* Boot failure only — no TradingView-style loading spinner. */}
                         {!isReady && failure && (
                             <div
                                 className="multichart-loading-overlay multichart-error-overlay"

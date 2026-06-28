@@ -118,7 +118,22 @@
         this._boundDedupedReplayToast = this._showGlobalReplayToastOnce.bind(this);
         global.__multichartDedupedReplayToast = this._boundDedupedReplayToast;
         global.__multichartManagerRef = this;
+        this._ensureFastPanelBootStyles();
     }
+
+    /** Hide React "LOADING B" overlays; keep error overlays visible. */
+    MultichartManager.prototype._ensureFastPanelBootStyles = function () {
+        if (typeof document === 'undefined') return;
+        if (document.getElementById('mc-fast-panel-boot-style')) return;
+        var s = document.createElement('style');
+        s.id = 'mc-fast-panel-boot-style';
+        s.textContent = [
+            '.multichart-loading-overlay:not(.multichart-error-overlay){',
+            'display:none!important;visibility:hidden!important;',
+            '}',
+        ].join('');
+        try { document.head.appendChild(s); } catch (_) {}
+    };
 
     MultichartManager.prototype.dispose = function () {
         global.removeEventListener('message', this._onWindowMessage);
@@ -329,8 +344,7 @@
         // No `sandbox` attribute — iframe is same-origin (file:// or local
         // dev server), and chart.js needs unrestricted scripts. The
         // postMessage allowlist is the security boundary here.
-        frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#0b0c14;'
-            + (this.silentPanelBoot ? 'opacity:0;transition:opacity 120ms ease;' : '');
+        frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#000000;';
         const self = this;
         // Panel iframes each boot the full dist-v9 stack (deferred scripts +
         // React + chart.js). With 3–4 panels, parallel CPU/network contention
@@ -422,7 +436,7 @@
     };
 
     MultichartManager.prototype._markBootRevealHold = function (holdMs) {
-        const ms = Number.isFinite(holdMs) ? holdMs : 3600;
+        const ms = Number.isFinite(holdMs) ? holdMs : 900;
         const until = (typeof performance !== 'undefined' && performance.now)
             ? performance.now() + ms
             : Date.now() + ms;
@@ -451,7 +465,7 @@
     };
 
     MultichartManager.prototype.flushPendingRangeSync = function () {
-        this._markBootRevealHold(3600);
+        this._markBootRevealHold(900);
         const self = this;
         const ids = Array.from(this._pendingRangeSyncIds);
         this._pendingRangeSyncIds.clear();
@@ -802,6 +816,7 @@
                     try { this.onChartReady(sourceId); } catch (e) {
                         this._log('warn', 'onChartReady threw: ' + (e && e.message || e));
                     }
+                    try { this.showPanelFrame(sourceId); } catch (_) {}
                     // Phase 7.2.5: bring the new iframe in line with the
                     // host's current visible range so the user's split
                     // shows the SAME data window across every panel
