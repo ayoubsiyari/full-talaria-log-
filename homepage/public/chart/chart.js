@@ -20371,8 +20371,15 @@ class Chart {
         return typeof this._wheelBurstUntil === 'number' && performance.now() < this._wheelBurstUntil;
     }
 
+    /** True while replay play loop is advancing — use lite paint so step rate matches speed slider. */
+    _isReplayPlaybackRendering() {
+        const rs = this.replaySystem;
+        return !!(rs && rs.isActive && rs.isPlaying);
+    }
+
     /** Pan, inertia, wheel burst, axis drag, or panel resize — lightweight paint until interaction settles. */
     _isInteractionFastRender() {
+        if (this._isReplayPlaybackRendering()) return true;
         if (this._chartPanRenderLoopActive) return true;
         if (this._isPanSyncFollowBurst()) return true;
         if (this._isChartViewPanning()) return true;

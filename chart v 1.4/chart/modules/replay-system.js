@@ -2864,6 +2864,34 @@ class ReplaySystem {
     }
 
     /**
+     * Paint after a replay data step. During play, one lite render (matches pan fast path);
+     * paused/scrub keeps legacy flush so crosshair and overlays settle crisply.
+     */
+    _renderReplayChartUpdate() {
+        const chart = this.chart;
+        if (!chart) return;
+        chart.renderPending = true;
+        if (typeof chart.render === 'function') {
+            chart.render();
+        }
+        if (this.isPlaying) return;
+        if (chart.canvas) {
+            void chart.canvas.offsetHeight;
+            if (chart.ctx) {
+                try {
+                    void chart.ctx.getImageData(0, 0, 1, 1);
+                } catch (_e) { /* ignore */ }
+            }
+        }
+        setTimeout(() => {
+            chart.renderPending = true;
+        }, 0);
+        requestAnimationFrame(() => {
+            chart.renderPending = true;
+        });
+    }
+
+    /**
      * Update chart data based on current replay position
      * @param {boolean} autoScroll - Whether to auto-scroll to latest candles (default: true)
      */
@@ -2970,7 +2998,7 @@ class ReplaySystem {
         }
         if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
             const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
-            if (!panning) {
+            if (!panning && !this.isPlaying) {
                 this.chart.drawingManager.redrawAll();
             }
         }
@@ -3003,33 +3031,11 @@ class ReplaySystem {
             this.chart.constrainOffset();
         }
         this._applyPlaybackViewportLock(this.chart);
-        
-        this.chart.renderPending = true;
-        this.chart.render();
+        this._renderReplayChartUpdate();
 
         if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
             this.chart._syncReplayPlayheadCrosshairValues();
         }
-        
-        // Force a reflow to commit the canvas changes
-        if (this.chart.canvas) {
-            void this.chart.canvas.offsetHeight;
-            
-            // Force canvas to flush by reading a pixel
-            if (this.chart.ctx) {
-                try {
-                    void this.chart.ctx.getImageData(0, 0, 1, 1);
-                } catch (e) {}
-            }
-        }
-
-        setTimeout(() => {
-            this.chart.renderPending = true;
-        }, 0);
-        
-        requestAnimationFrame(() => {
-            this.chart.renderPending = true;
-        });
         
         // Update order manager positions after each candle
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
@@ -4462,8 +4468,7 @@ class ReplaySystem {
             this.chart.constrainOffset();
         }
         this._applyPlaybackViewportLock(this.chart);
-        this.chart.renderPending = true;
-        this.chart.render();
+        this._renderReplayChartUpdate();
 
         if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
             this.chart._syncReplayPlayheadCrosshairValues();
@@ -5139,6 +5144,12 @@ class ReplaySystem {
         
         // Update button UI immediately
         this.syncPlayPauseButtonVisuals();
+
+        // Full-quality paint once play stops (play path uses lite render for speed).
+        if (this.chart && typeof this.chart.render === 'function') {
+            this.chart.renderPending = false;
+            try { this.chart.render(); } catch (_e) { /* ignore */ }
+        }
 
         this._flushReplayStateToSession();
     }
