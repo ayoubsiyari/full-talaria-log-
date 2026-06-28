@@ -591,6 +591,38 @@ class ReplaySystem {
         const lower = raw.toLowerCase();
         this.stepTimeframeOverride = lower === 'auto' ? 'sync' : lower;
     }
+
+    /** True when V9 INTERVAL is a fixed TF (1m, 5m, …), not Auto/sync. */
+    _hasExplicitReplayStepInterval() {
+        const o = this.stepTimeframeOverride;
+        return !!(o && String(o).trim() && String(o).toLowerCase() !== 'sync');
+    }
+
+    /** Play/step should advance by INTERVAL buckets (candle path), not raw tick bars. */
+    _shouldStepByReplayInterval() {
+        if (this.getPlaybackMode() === 'candle') return true;
+        return this._hasExplicitReplayStepInterval();
+    }
+
+    /** Advance playhead one replay step (respects INTERVAL + candle mode). */
+    _advanceReplayPlayheadOneStep() {
+        if (this._shouldStepByReplayInterval()) {
+            const targetIndex = this.calculateNextIndex();
+            if (targetIndex > this.currentIndex) {
+                this.currentIndex = targetIndex;
+            } else if (this.currentIndex < this.fullRawData.length - 1) {
+                this.currentIndex++;
+            }
+        } else if (this.currentIndex < this.fullRawData.length - 1) {
+            this.currentIndex++;
+        }
+        this.edgeProbeRetryCount = 0;
+        this._replayForwardEdgeWait = false;
+        if (this.fullRawData && this.fullRawData[this.currentIndex]) {
+            this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+            this.tickElapsedMs = 0;
+        }
+    }
     
     /**
      * Show/hide tick progress indicator
@@ -3259,7 +3291,7 @@ class ReplaySystem {
         }
 
         const playbackMode = this.getPlaybackMode();
-        const useTickAnimation = playbackMode === 'tick';
+        const useTickAnimation = playbackMode === 'tick' && !this._hasExplicitReplayStepInterval();
         
         // Restore partial tick state saved during pause so animation continues
         // from where it was instead of restarting the candle.
@@ -4240,15 +4272,7 @@ class ReplaySystem {
                 return;
             }
             
-            // Advance to next candle
-            this.currentIndex++;
-            this.edgeProbeRetryCount = 0;
-            this._replayForwardEdgeWait = false;
-            
-            // Update virtual time
-            if (this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-            }
+            this._advanceReplayPlayheadOneStep();
         }
         
         // Reset tick state
@@ -4905,17 +4929,7 @@ class ReplaySystem {
     completeTickAnimation() {
         this.stopTickAnimation();
         
-        // ALWAYS advance by 1 raw candle for smooth animation on all TFs
-        // The display timeframe only affects how data is shown, not playback
-        this.currentIndex = this.currentIndex + 1;
-        this.edgeProbeRetryCount = 0;
-        this._replayForwardEdgeWait = false;
-        
-        // === UPDATE VIRTUAL TIME: Set to the new candle's timestamp ===
-        if (this.fullRawData && this.fullRawData[this.currentIndex]) {
-            this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-            this.tickElapsedMs = 0; // Reset elapsed time for new candle
-        }
+        this._advanceReplayPlayheadOneStep();
         
         // Update slider and time display
         this.updateTimeDisplay();

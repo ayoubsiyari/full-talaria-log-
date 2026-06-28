@@ -10338,7 +10338,7 @@ const TalariaV8bLive = () => {
   const [slTslStep, setSlTslStep] = useState("0.25");
   const [logoMenu, setLogoMenu] = useState(false);
   const [replayOpts, setReplayOpts] = useState(false);
-  const [replayMode, setReplayMode] = useState("tick");
+  const [replayMode, setReplayMode] = useState("candle");
   const [replayInterval, setReplayInterval] = useState("Auto");
   const [rollback, setRollback] = useState(false);
   /** Replay active + session forbids rewind — disables Rollback on the bar (synced in nav-integrity effect). */
@@ -11399,6 +11399,34 @@ const TalariaV8bLive = () => {
   const replayIntervalToLegacyValue = (v) => {
     if (!v || v === "Auto") return "sync";
     return String(v).toLowerCase();
+  };
+
+  /** Push MODE + INTERVAL to replaySystem immediately (before play/step). */
+  const applyReplayControlsToEngine = (rs, mode, interval) => {
+    if (!rs) return;
+    const desiredInterval = replayIntervalToLegacyValue(interval);
+    const explicitInterval = interval && interval !== "Auto";
+    const desiredMode = explicitInterval ? "candle" : (mode === "candle" ? "candle" : "tick");
+    try {
+      if (typeof rs.setStepTimeframe === "function") {
+        rs.setStepTimeframe(desiredInterval);
+      }
+      if (typeof rs.setPlaybackMode === "function") {
+        const curMode = typeof rs.getPlaybackMode === "function"
+          ? rs.getPlaybackMode()
+          : rs.playbackMode;
+        if (curMode !== desiredMode) {
+          rs.setPlaybackMode(desiredMode, { restartPlayback: false });
+        }
+      }
+      const tfSelect = rs.timeframeSelect || document.getElementById("replayTimeframe");
+      if (tfSelect && tfSelect.value !== desiredInterval) {
+        tfSelect.value = desiredInterval;
+        tfSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    } catch (e) {
+      console.warn("[V9 Replay] applyReplayControlsToEngine failed", e);
+    }
   };
 
   const timeframeToMinutes = (v) => {
@@ -33256,7 +33284,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"6px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>MODE</div>
                   {[{id:"tick",l:"Tick by Tick"},{id:"candle",l:"Candle by Candle"}].map(({id,l})=>{const isA=replayMode===id;return(
-                    <button type="button" key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);closePopup(setReplayOpts,"replayOpts");}}
+                    <button type="button" key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);applyReplayControlsToEngine(getReplaySystem(), id, replayInterval);closePopup(setReplayOpts,"replayOpts");}}
                       onMouseEnter={()=>setHov(`rm-${id}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"5px 10px",background:isA?c.acD:hov===`rm-${id}`?c.hv2:"transparent",border:"none",cursor:"default",fontFamily:F,transition:"background 0.1s",position:"relative"}}>
                       {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -33268,7 +33296,7 @@ const TalariaV8bLive = () => {
                   <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
                   <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
                     {replayIntervalOptions.map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
-                      <div key={t} onClick={(e)=>{e.stopPropagation();setReplayInterval(t);closePopup(setReplayOpts,"replayOpts");}}
+                      <div key={t} onClick={(e)=>{e.stopPropagation();const nextMode=t!=="Auto"?"candle":replayMode;if(t!=="Auto")setReplayMode("candle");setReplayInterval(t);applyReplayControlsToEngine(getReplaySystem(), nextMode, t);closePopup(setReplayOpts,"replayOpts");}}
                         onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
                         {t}
@@ -33292,6 +33320,7 @@ const TalariaV8bLive = () => {
                   return;
                 }
                 if (!rs) { setPlaying(p=>!p); setReplayPlayStarting(false); return; }
+                applyReplayControlsToEngine(rs, replayMode, replayInterval);
                 const wasPlaying = !!rs.isPlaying;
                 if (typeof rs.togglePlay === 'function') {
                   rs.togglePlay();
@@ -33351,7 +33380,10 @@ const TalariaV8bLive = () => {
                   setRollback(true);
                   return;
                 }
-                if (rs && typeof rs.requestStepForward === 'function') rs.requestStepForward();
+                if (rs && typeof rs.requestStepForward === 'function') {
+                  applyReplayControlsToEngine(rs, replayMode, replayInterval);
+                  rs.requestStepForward();
+                }
               }}
               onPointerDown={()=>setHov("rp-next-dn")} onPointerUp={()=>setHov("rp-next")} onPointerLeave={()=>{setHov(null);hideTip();}}
               onMouseEnter={e=>{setHov(h=>h==="rp-next-dn"?h:"rp-next");showTip("Step Forward",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
