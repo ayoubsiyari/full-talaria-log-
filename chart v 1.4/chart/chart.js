@@ -3958,100 +3958,6 @@ class Chart {
     }
 
     /**
-     * Native bar TF for replay data fetch — uses explicit INTERVAL when finer than display
-     * (e.g. 1m steps on a 1H chart need 1m master, not 1H bars).
-     */
-    _getReplayNativeFetchTimeframe() {
-        const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
-        const rs = this.replaySystem;
-        if (rs?.isActive
-            && typeof rs._needsFinerReplayMasterForStepInterval === 'function'
-            && rs._needsFinerReplayMasterForStepInterval()
-            && typeof rs._resolveReplayStepTimeframe === 'function') {
-            const stepTf = rs._resolveReplayStepTimeframe();
-            if (stepTf) {
-                return this._normalizeBacktestTimeframe(stepTf) || '1m';
-            }
-        }
-        try {
-            if (typeof document !== 'undefined'
-                && document.documentElement.classList.contains('multichart-embed')) {
-                return '1m';
-            }
-        } catch (_e) { /* ignore */ }
-        return displayTf;
-    }
-
-    /**
-     * Swap replay master to finer bars (from cache) while keeping display timeframe (1H view + 1m steps).
-     * @returns {boolean}
-     */
-    _swapReplayMasterKeepingDisplayTf(replay, masterRaw, masterTf, playheadTs) {
-        if (!replay?.isActive || !Array.isArray(masterRaw) || masterRaw.length < 2) return false;
-        replay.animatingCandle = null;
-        replay.tickProgress = 0;
-        replay.tickElapsedMs = 0;
-        replay.fullRawData = masterRaw.slice();
-        replay.rawTimeframe = masterTf;
-        replay._fullRawDataMatchesTF = false;
-        replay.tickPathCache = {};
-        replay.tickPathCacheBuilt = false;
-
-        const ts = Number.isFinite(playheadTs) ? playheadTs : null;
-        if (ts != null && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-            replay.syncCurrentIndexFromReplayTimestamp(ts);
-        } else if (typeof replay.currentIndex === 'number') {
-            replay.currentIndex = Math.min(
-                Math.max(replay.currentIndex, replay.sessionStartIndex || 0),
-                replay.fullRawData.length - 1,
-            );
-            const bar = replay.fullRawData[replay.currentIndex];
-            if (bar && Number.isFinite(bar.t)) replay.replayTimestamp = bar.t;
-        }
-        if (typeof replay.updateChartData === 'function') {
-            replay.updateChartData(false);
-        }
-        return true;
-    }
-
-    /**
-     * When INTERVAL is finer than chart native master, load 1m (or step TF) bars for walk-forward H1 paint.
-     * @returns {Promise<boolean>}
-     */
-    async upgradeReplayMasterForStepInterval(replay) {
-        const rs = replay || this.replaySystem;
-        if (!rs?.isActive || typeof rs._needsFinerReplayMasterForStepInterval !== 'function') {
-            return true;
-        }
-        if (!rs._needsFinerReplayMasterForStepInterval()) return true;
-
-        const targetTf = typeof rs._resolveReplayStepTimeframe === 'function'
-            ? rs._resolveReplayStepTimeframe()
-            : '1m';
-        const normalized = this._normalizeBacktestTimeframe(targetTf) || '1m';
-        const playheadTs = this._resolveMultichartReplayPlayheadMs()
-            ?? this._captureReplayPlayheadMs(rs);
-
-        const fileId = this.currentFileId;
-        if (fileId && typeof this._getBtTfDataCache === 'function') {
-            const entry = this._getBtTfDataCache(fileId, normalized);
-            if (entry?.rawData?.length >= 2) {
-                const stepMs = this._measureRawDataStepMs(entry.rawData);
-                const wantMs = this.parseTimeframe(normalized);
-                if (Number.isFinite(stepMs) && Number.isFinite(wantMs) && stepMs <= wantMs * 1.15) {
-                    return this._swapReplayMasterKeepingDisplayTf(rs, entry.rawData, normalized, playheadTs);
-                }
-            }
-        }
-
-        if (!Number.isFinite(playheadTs)) return false;
-        const ok = await this.ensureReplayDataCoversTimestamp(playheadTs);
-        if (!ok) return false;
-        return !(typeof rs._needsFinerReplayMasterForStepInterval === 'function'
-            && rs._needsFinerReplayMasterForStepInterval());
-    }
-
-    /**
      * Multichart hard guard: refetch a playhead-centered window when the
      * currently loaded rawData does not contain targetTs. Without this,
      * goToReplayTimestamp clamps to the nearest loaded bar (often session
@@ -4076,21 +3982,13 @@ class Chart {
 
         const hasWallClockPrefix = (raw) => covers(raw) && this._replayRawHasWallClockPrefix(raw, ts);
 
-        if (hasWallClockPrefix(this.rawData)) {
-            const rsEarly = this.replaySystem;
-            const needsFiner = rsEarly?.isActive
-                && typeof rsEarly._needsFinerReplayMasterForStepInterval === 'function'
-                && rsEarly._needsFinerReplayMasterForStepInterval();
-            if (!needsFiner) return true;
-        }
+        if (hasWallClockPrefix(this.rawData)) return true;
         const replayForCover = this.replaySystem;
         if (replayForCover?.isActive
             && Array.isArray(replayForCover.fullRawData)
             && replayForCover.fullRawData.length
             && hasWallClockPrefix(replayForCover.fullRawData)) {
-            const needsFiner = typeof replayForCover._needsFinerReplayMasterForStepInterval === 'function'
-                && replayForCover._needsFinerReplayMasterForStepInterval();
-            if (!needsFiner) return true;
+            return true;
         }
         if (this._isIndependentMultichartPair()
             && Array.isArray(this._panelFullRawData)
@@ -4124,7 +4022,13 @@ class Chart {
 
         const captureGeneration = this._ensureReplayDataGeneration || 0;
         const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
-        const replayRawTf = this._getReplayNativeFetchTimeframe();
+        let replayRawTf = displayTf;
+        try {
+            if (typeof document !== 'undefined'
+                && document.documentElement.classList.contains('multichart-embed')) {
+                replayRawTf = '1m';
+            }
+        } catch (_e) { /* ignore */ }
         const replay = this.replaySystem;
         const wasActive = !!(replay && replay.isActive);
         const wasPlaying = !!(replay && replay.isPlaying);
@@ -4219,16 +4123,6 @@ class Chart {
                         replay._fullRawDataMatchesTF = false;
                         replay.tickPathCache = {};
                         replay.tickPathCacheBuilt = false;
-                        const sliceTs = Number.isFinite(this._ensureReplayDataTargetTs)
-                            ? this._ensureReplayDataTargetTs
-                            : ts;
-                        if (Number.isFinite(sliceTs)
-                            && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-                            replay.syncCurrentIndexFromReplayTimestamp(sliceTs);
-                        }
-                        if (typeof replay.updateChartData === 'function') {
-                            replay.updateChartData(false);
-                        }
                     }
                     let sessionStartMs = null;
                     try {

@@ -592,24 +592,15 @@ class ReplaySystem {
             }
         }
         const norm = (v) => (v == null || v === '' ? null : String(v).toLowerCase());
-        if (norm(prev) !== norm(this.stepTimeframeOverride)) {
-            const restartAfter = () => {
-                if (this.isPlaying) this._restartPlaybackAfterControlChange();
-            };
-            if (this._needsFinerReplayMasterForStepInterval()) {
-                this._ensureFinerReplayMasterForStepInterval().then((ok) => {
-                    if (ok) restartAfter();
-                }).catch(() => {});
-            } else {
-                restartAfter();
-            }
+        if (norm(prev) !== norm(this.stepTimeframeOverride) && this.isPlaying) {
+            this._restartPlaybackAfterControlChange(true);
         }
     }
 
-    /** Step INTERVAL is finer than replay master bars (e.g. 1m step on 1H native master). */
-    _needsFinerReplayMasterForStepInterval() {
+    /** INTERVAL finer than native master — advance replayTimestamp, keep coarse fullRawData (no refetch/swap). */
+    _isSubBarStepMode() {
         if (!this._hasExplicitReplayStepInterval()) return false;
-        const stepMs = this.timeframeToMs(this._resolveReplayStepTimeframe());
+        const stepMs = this._resolveReplayStepTimeframeMs();
         const rawMs = this._getRawBarPeriodMs();
         if (!Number.isFinite(stepMs) || !Number.isFinite(rawMs) || stepMs <= 0 || rawMs <= 0) {
             return false;
@@ -617,24 +608,8 @@ class ReplaySystem {
         return stepMs < rawMs * 0.92;
     }
 
-    /** Load/swap 1m (or step-TF) master so display TF can form candle-by-candle at INTERVAL. */
-    _ensureFinerReplayMasterForStepInterval() {
-        if (!this.isActive || !this.chart) return Promise.resolve(true);
-        if (!this._needsFinerReplayMasterForStepInterval()) return Promise.resolve(true);
-        if (this._finerMasterUpgradeInflight) return this._finerMasterUpgradeInflight;
-        const chart = this.chart;
-        if (typeof chart.upgradeReplayMasterForStepInterval !== 'function') {
-            return Promise.resolve(true);
-        }
-        this._finerMasterUpgradeInflight = chart.upgradeReplayMasterForStepInterval(this)
-            .finally(() => {
-                this._finerMasterUpgradeInflight = null;
-            });
-        return this._finerMasterUpgradeInflight;
-    }
-
     /** Re-arm play loop after MODE / INTERVAL change while playback is active. */
-    _restartPlaybackAfterControlChange() {
+    _restartPlaybackAfterControlChange(skipImmediateStep = false) {
         if (!this.isActive || !this.isPlaying) return;
         this.stopAllPlayback();
         this.isPlaying = true;
@@ -645,7 +620,7 @@ class ReplaySystem {
             this.animatingCandle = null;
             this.tickProgress = 0;
             this.tickElapsedMs = 0;
-            this.startCandleByCandle(true);
+            this.startCandleByCandle(!skipImmediateStep);
         }
     }
 
@@ -3409,45 +3384,36 @@ class ReplaySystem {
             this._playStartRaf1 = null;
             this._playStartRaf2 = requestAnimationFrame(() => {
                 this._playStartRaf2 = null;
-                (async () => {
-                    try {
-                        if (this._needsFinerReplayMasterForStepInterval()) {
-                            const ok = await this._ensureFinerReplayMasterForStepInterval();
-                            if (!ok) {
-                                this.isPlaying = false;
-                                return;
-                            }
-                        }
-                        this._preserveTickProgress = preserveTick;
-                        this.stopAllPlayback();
+                try {
+                    this._preserveTickProgress = preserveTick;
+                    this.stopAllPlayback();
 
-                        if (this.chart?.orderManager?._refreshAllGuardsToCurrentCandle) {
-                            this.chart.orderManager._refreshAllGuardsToCurrentCandle();
-                        }
-
-                        this.isPlaying = true;
-
-                        this.showTickProgress(false);
-
-                        if (useTickAnimation) {
-                            this.startTickAnimation();
-                        } else {
-                            this.animatingCandle = null;
-                            this.tickProgress = 0;
-                            this.tickElapsedMs = 0;
-                            this.startCandleByCandle(true);
-                        }
-
-                        requestAnimationFrame(() => {
-                            try {
-                                this.updateAutoScrollIndicator();
-                            } catch (_) {}
-                        });
-                    } finally {
-                        this.isPlayStarting = false;
-                        this.syncPlayPauseButtonVisuals();
+                    if (this.chart?.orderManager?._refreshAllGuardsToCurrentCandle) {
+                        this.chart.orderManager._refreshAllGuardsToCurrentCandle();
                     }
-                })();
+
+                    this.isPlaying = true;
+
+                    this.showTickProgress(false);
+
+                    if (useTickAnimation) {
+                        this.startTickAnimation();
+                    } else {
+                        this.animatingCandle = null;
+                        this.tickProgress = 0;
+                        this.tickElapsedMs = 0;
+                        this.startCandleByCandle(true);
+                    }
+
+                    requestAnimationFrame(() => {
+                        try {
+                            this.updateAutoScrollIndicator();
+                        } catch (_) {}
+                    });
+                } finally {
+                    this.isPlayStarting = false;
+                    this.syncPlayPauseButtonVisuals();
+                }
             });
         });
     }
@@ -3581,13 +3547,86 @@ class ReplaySystem {
     /**
      * Simple step forward - advances based on selected timeframe (respects sync dropdown)
      */
+    /** Advance playhead one INTERVAL step when step TF is finer than native master (1m on 1H). */
+    _advanceSubBarStepForward() {
+        const stepMs = this._resolveReplayStepTimeframeMs();
+        let ts = Number.isFinite(this.replayTimestamp)
+            ? this.replayTimestamp
+            : Number(this.fullRawData[this.currentIndex]?.t);
+        if (!Number.isFinite(ts) || !Number.isFinite(stepMs) || stepMs <= 0) return false;
+
+        const nextTs = ts + stepMs;
+        const lastBar = this.fullRawData[this.fullRawData.length - 1];
+        const rawMs = this._getRawBarPeriodMs();
+        const lastEnd = lastBar && Number.isFinite(lastBar.t) ? lastBar.t + rawMs : Infinity;
+        if (nextTs >= lastEnd && this.currentIndex >= this.fullRawData.length - 1) {
+            return false;
+        }
+
+        this.replayTimestamp = nextTs;
+        if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+            this.syncCurrentIndexFromReplayTimestamp(nextTs);
+        }
+        this._clampCurrentIndexToReplayTimestamp();
+        this.tickElapsedMs = 0;
+        return true;
+    }
+
+    /** Step backward one INTERVAL when step TF is finer than native master. */
+    _advanceSubBarStepBackward() {
+        const stepMs = this._resolveReplayStepTimeframeMs();
+        let ts = Number.isFinite(this.replayTimestamp)
+            ? this.replayTimestamp
+            : Number(this.fullRawData[this.currentIndex]?.t);
+        if (!Number.isFinite(ts) || !Number.isFinite(stepMs) || stepMs <= 0) return false;
+
+        const minIdx = this.sessionStartIndex || 0;
+        const floorTs = Number(this.fullRawData[minIdx]?.t);
+        const nextTs = ts - stepMs;
+        if (Number.isFinite(floorTs) && nextTs < floorTs) {
+            this.replayTimestamp = floorTs;
+            this.currentIndex = minIdx;
+            this.tickElapsedMs = 0;
+            return true;
+        }
+
+        this.replayTimestamp = nextTs;
+        if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+            this.syncCurrentIndexFromReplayTimestamp(nextTs);
+        }
+        this._clampCurrentIndexToReplayTimestamp();
+        this.tickElapsedMs = 0;
+        return true;
+    }
+
     simpleStepForward() {
         if (this._timeframeChanging) return;
-        if (this._needsFinerReplayMasterForStepInterval()) {
-            if (this._finerMasterUpgradeInflight) return;
-            this._ensureFinerReplayMasterForStepInterval().then((ok) => {
-                if (ok) this.simpleStepForward();
-            }).catch(() => {});
+        if (this._isSubBarStepMode()) {
+            if (this.currentIndex >= this.fullRawData.length - 1) {
+                const ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : NaN;
+                const rawMs = this._getRawBarPeriodMs();
+                const lastBar = this.fullRawData[this.fullRawData.length - 1];
+                const atEnd = lastBar && Number.isFinite(ts)
+                    && ts >= lastBar.t + rawMs * 0.99;
+                if (atEnd) {
+                    if (this._handleForwardEdgeWhilePlaying(() => {
+                        if (this.isPlaying) this.simpleStepForward();
+                    })) return;
+                    this._finishPlaybackAtSessionEnd();
+                    return;
+                }
+            }
+            const prevIdx = this.currentIndex;
+            if (!this._advanceSubBarStepForward()) {
+                if (this._handleForwardEdgeWhilePlaying(() => {
+                    if (this.isPlaying) this.simpleStepForward();
+                })) return;
+                this._finishPlaybackAtSessionEnd();
+                return;
+            }
+            this.edgeProbeRetryCount = 0;
+            this._replayForwardEdgeWait = false;
+            this.updateChartData(this.autoScrollEnabled && prevIdx !== this.currentIndex);
             return;
         }
         if (this.currentIndex >= this.fullRawData.length - 1) {
@@ -5149,11 +5188,14 @@ class ReplaySystem {
         if (this._timeframeChanging) {
             return;
         }
-        if (this._needsFinerReplayMasterForStepInterval()) {
-            if (this._finerMasterUpgradeInflight) return;
-            this._ensureFinerReplayMasterForStepInterval().then((ok) => {
-                if (ok) this.stepForward();
-            }).catch(() => {});
+        if (this._isSubBarStepMode()) {
+            const prevIdx = this.currentIndex;
+            if (!this._advanceSubBarStepForward()) {
+                if (this.tryRequestForwardDataProbe()) return;
+                return;
+            }
+            this.updateChartData(this.autoScrollEnabled && prevIdx !== this.currentIndex);
+            this._syncMultichartAfterManualStep();
             return;
         }
 
@@ -5191,6 +5233,21 @@ class ReplaySystem {
 
         if (!this.isBackNavigationAllowed()) {
             console.warn('🚫 Step backward blocked: back navigation disabled by session policy');
+            return;
+        }
+
+        if (this._isSubBarStepMode()) {
+            const minIdx = this.sessionStartIndex || 0;
+            const floorTs = Number(this.fullRawData[minIdx]?.t);
+            const curTs = Number.isFinite(this.replayTimestamp)
+                ? this.replayTimestamp
+                : Number(this.fullRawData[this.currentIndex]?.t);
+            if (Number.isFinite(floorTs) && Number.isFinite(curTs) && curTs <= floorTs) {
+                return;
+            }
+            if (!this._advanceSubBarStepBackward()) return;
+            this.updateChartData(this.autoScrollEnabled);
+            this._syncMultichartAfterManualStep();
             return;
         }
 
