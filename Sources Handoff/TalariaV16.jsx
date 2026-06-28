@@ -995,44 +995,6 @@ const openV16Profile = (tab) => {
   return true;
 };
 
-/** Dashboard layout canvas — fixed design width with clamped zoom so placement stays stable. */
-const DASH_LAYOUT_DESIGN_W = 1440;
-const DASH_LAYOUT_DESIGN_H = 1120;
-const DASH_LAYOUT_MIN_ZOOM = 0.72;
-const DASH_LAYOUT_MAX_ZOOM = 1;
-const computeDashLayoutFit = ({
-  viewportW = 1280,
-  viewportH = 800,
-  phone = false,
-  narrow = false,
-  navRail = 64,
-  chromeH = 64,
-  bottomNav = 0,
-  contentPad = 24,
-} = {}) => {
-  if (phone || narrow) {
-    return {
-      useCanvas: false,
-      canvasWidth: "100%",
-      zoom: 1,
-      hostAlign: "stretch",
-    };
-  }
-  const availW = Math.max(320, viewportW - navRail - contentPad * 2);
-  const availH = Math.max(420, viewportH - chromeH - bottomNav - contentPad * 2);
-  const zoomW = availW >= DASH_LAYOUT_DESIGN_W
-    ? 1
-    : Math.max(DASH_LAYOUT_MIN_ZOOM, availW / DASH_LAYOUT_DESIGN_W);
-  const zoomH = Math.max(DASH_LAYOUT_MIN_ZOOM, Math.min(1, availH / DASH_LAYOUT_DESIGN_H));
-  const zoom = Math.min(DASH_LAYOUT_MAX_ZOOM, Math.max(DASH_LAYOUT_MIN_ZOOM, Math.min(zoomW, zoomH)));
-  return {
-    useCanvas: true,
-    canvasWidth: DASH_LAYOUT_DESIGN_W,
-    zoom,
-    hostAlign: zoom < 0.98 ? "flex-start" : "center",
-  };
-};
-
 const sessNormSym = (t) => String(t || "").replace(/[\/\s_.-]/g, "").toUpperCase();
 const sessIsoDayFromEpochMs = (ms) => {
   if (ms == null || ms === "") return "";
@@ -10757,10 +10719,6 @@ const TalariaV8b = () => {
     if (typeof window === "undefined") return 1280;
     return window.visualViewport?.width ?? window.innerWidth;
   });
-  const [dashViewportH, setDashViewportH] = useState(() => {
-    if (typeof window === "undefined") return 800;
-    return window.visualViewport?.height ?? window.innerHeight;
-  });
   const [dashSubDragging, setDashSubDragging] = useState(null);
   const [dashSubResizing, setDashSubResizing] = useState(null);
   useEffect(() => {
@@ -10768,7 +10726,6 @@ const TalariaV8b = () => {
     const syncViewport = () => {
       const vv = window.visualViewport;
       setDashViewportW(vv?.width ?? window.innerWidth);
-      setDashViewportH(vv?.height ?? window.innerHeight);
     };
     syncViewport();
     window.addEventListener("resize", syncViewport, { passive: true });
@@ -12926,7 +12883,7 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-snapshot-calendar-panel{animation:none!important;will-change:auto!important}.tlr-snapshot-calendar-cell{transition:background 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease!important}.tlr-snapshot-calendar-title-btn{transition:background-color 130ms ease,color 130ms ease,transform 90ms ease!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.11)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-snapshot-calendar-cell:active{filter:brightness(1.08)!important}.tlr-snapshot-calendar-cell-selected{transition:background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,color 150ms ease!important}@keyframes tlrSnapshotCalendarSwitch{0%{opacity:.88;transform:translateY(5px) scale(.993)}100%{opacity:1;transform:translateY(0) scale(1)}}.tlr-snapshot-calendar-panel-animate{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform!important;transform-origin:50% 42%}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel-animate{animation:none!important}.tlr-snapshot-calendar-cell,.tlr-snapshot-calendar-title-btn{transition:none!important}}`;
       style.textContent += `.tlr-snapshot-page,.tlr-snapshot-page *{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout paint;transform:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{transform:none!important;filter:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card span,.tlr-snapshot-page .tlr-dashboard-summary-card div{min-width:0}.tlr-snapshot-calendar-cell{transform:none!important;will-change:background,border-color,box-shadow}.tlr-snapshot-calendar-cell:hover{transform:none!important;filter:none!important}.tlr-snapshot-calendar-cell:active{transform:none!important;filter:brightness(1.04)!important}.tlr-snapshot-calendar-title-btn{border:0!important;box-shadow:none!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.10)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.17)!important;color:#fff!important}.tlr-snapshot-trade-preview-shell{pointer-events:none}.tlr-snapshot-trade-preview-card{background:rgb(7,10,20)!important;border:1px solid rgba(116,126,150,0.50)!important;box-shadow:0 18px 44px rgba(0,0,0,0.58),inset 0 1px 0 rgba(255,255,255,0.035)!important}.tlr-snapshot-trade-preview-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 8px ${c.acG};pointer-events:none}.tlr-snapshot-trade-id-button{display:inline-flex!important;align-items:center!important;gap:5px!important;line-height:1.05!important;vertical-align:middle!important}.tlr-snapshot-trade-id-button::after{left:0!important;right:13px!important;bottom:1px!important;height:1px!important;background:linear-gradient(90deg,transparent,${c.acL},transparent)!important;box-shadow:0 0 7px ${c.acG}!important}.tlr-snapshot-trade-id-button:hover,.tlr-snapshot-trade-id-button[aria-pressed="true"]{color:${c.acL}!important}.tlr-snapshot-trade-id-button:hover::after,.tlr-snapshot-trade-id-button[aria-pressed="true"]::after{opacity:1!important}.tlr-snapshot-trade-preview-close{border:0!important;background:transparent!important;box-shadow:none!important}.tlr-snapshot-trade-preview-close:hover{background:transparent!important;color:${c.rd}!important;filter:drop-shadow(0 0 5px rgba(255,80,104,.58))!important}.tlr-snapshot-trade-preview-close:active{background:transparent!important;color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-bestworst-grid{grid-template-columns:minmax(182px,1fr) minmax(42px,52px) minmax(62px,74px)!important;column-gap:8px!important}.tlr-snapshot-bestworst-id{font-size:7.85px!important;letter-spacing:-.01em!important;overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-bestworst-line{width:58px!important;max-width:58px!important}.tlr-snapshot-chip-row:hover{transform:none!important;filter:none!important}.tlr-snapshot-basic-card-title-line{height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG}}`;
       style.textContent += `.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{box-shadow:inherit}.tlr-snapshot-page .tlr-snapshot-bestworst-grid>*{min-width:0}.tlr-snapshot-page .tlr-snapshot-bestworst-id>span{overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-page .tlr-snapshot-trade-preview-card{backdrop-filter:none!important}.tlr-snapshot-page .tlr-snapshot-calendar-title-btn,.tlr-snapshot-page .tlr-snapshot-trade-id-button,.tlr-snapshot-page .tlr-dashboard-score-arrow{cursor:pointer!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:hover{color:${c.acL}!important;filter:drop-shadow(0 0 5px ${c.acG})!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:active{color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-page .tlr-snapshot-trade-id-button:hover span,.tlr-snapshot-page .tlr-snapshot-trade-id-button:active span{color:${c.acL}!important}`;
-      style.textContent += `@media (max-width:899px){.tlr-dash-chrome-toolbar{flex-wrap:wrap!important;height:auto!important;min-height:64px;padding-top:8px;padding-bottom:8px;align-items:flex-start!important}.tlr-dash-chrome-brand{display:none!important}.tlr-dash-chrome-controls{flex:1 1 100%!important;max-width:none!important;margin-left:0!important;flex-wrap:wrap!important;row-gap:8px!important}.tlr-dash-chrome-actions{flex:1 1 100%!important;justify-content:flex-end!important;padding:0 12px 4px!important;margin-left:0!important}.tlr-dash-balance-field{width:auto!important;flex:1 1 180px!important;min-width:0!important}.tlr-dash-unit-toggle{width:auto!important;flex:0 1 118px!important;min-width:104px!important}.tlr-snapshot-page-header{flex-direction:column!important;align-items:flex-start!important}.tlr-snapshot-page-header-sub{white-space:normal!important}.tlr-dash-fit-canvas,.tlr-dash-fit-host{width:100%!important;zoom:1!important}}@media (max-width:639px){.tlr-session-nav-rail{width:100%!important;height:58px!important;flex-direction:row!important;align-self:auto!important;flex-shrink:0!important;padding:0 4px!important;box-shadow:0 -2px 18px rgba(0,0,0,0.45)!important;order:2}.tlr-session-nav-rail .tlr-session-nav-item{flex:1 1 0!important;height:52px!important;max-width:72px}.tlr-session-nav-rail .tlr-session-nav-spacer{display:none!important}.tlr-dash-body-stack{flex-direction:column!important}.tlr-dash-main-content{order:1!important;min-height:0!important}.tlr-dash-content-scroll{padding:12px!important}.tlr-snapshot-basic-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.tlr-snapshot-pair-grid{grid-template-columns:1fr!important}}@media (max-width:479px){.tlr-snapshot-basic-grid{grid-template-columns:1fr!important}.tlr-dash-chrome-actions{justify-content:stretch!important}.tlr-dash-chrome-actions .tlr-dashboard-add-trade{flex:1 1 auto!important;justify-content:center!important}}@media (min-width:900px){.tlr-dash-fit-host{width:100%!important;display:flex!important;justify-content:center!important}.tlr-dash-fit-canvas{max-width:100%!important;transform-origin:top center!important}.tlr-dash-content-inner{max-width:1440px!important;margin:0 auto!important}.tlr-snapshot-basic-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important}}`;
+      style.textContent += `@media (max-width:899px){.tlr-dash-chrome-toolbar{flex-wrap:wrap!important;height:auto!important;min-height:64px;padding-top:8px;padding-bottom:8px;align-items:flex-start!important}.tlr-dash-chrome-brand{display:none!important}.tlr-dash-chrome-controls{flex:1 1 100%!important;max-width:none!important;margin-left:0!important;flex-wrap:wrap!important;row-gap:8px!important}.tlr-dash-chrome-actions{flex:1 1 100%!important;justify-content:flex-end!important;padding:0 12px 4px!important;margin-left:0!important}.tlr-dash-balance-field{width:auto!important;flex:1 1 180px!important;min-width:0!important}.tlr-dash-unit-toggle{width:auto!important;flex:0 1 118px!important;min-width:104px!important}.tlr-snapshot-page-header{flex-direction:column!important;align-items:flex-start!important}.tlr-snapshot-page-header-sub{white-space:normal!important}}@media (max-width:639px){.tlr-session-nav-rail{width:100%!important;height:58px!important;flex-direction:row!important;align-self:auto!important;flex-shrink:0!important;padding:0 4px!important;box-shadow:0 -2px 18px rgba(0,0,0,0.45)!important;order:2}.tlr-session-nav-rail .tlr-session-nav-item{flex:1 1 0!important;height:52px!important;max-width:72px}.tlr-session-nav-rail .tlr-session-nav-spacer{display:none!important}.tlr-dash-body-stack{flex-direction:column!important}.tlr-dash-main-content{order:1!important;min-height:0!important}.tlr-dash-content-scroll{padding:12px!important}.tlr-snapshot-basic-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.tlr-snapshot-pair-grid{grid-template-columns:1fr!important}}@media (max-width:479px){.tlr-snapshot-basic-grid{grid-template-columns:1fr!important}.tlr-dash-chrome-actions{justify-content:stretch!important}.tlr-dash-chrome-actions .tlr-dashboard-add-trade{flex:1 1 auto!important;justify-content:center!important}}@media (min-width:900px){.tlr-snapshot-basic-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important}}`;
       style.textContent += `.tlr-dashboard-score-compare-wrap-open{z-index:420!important;position:relative!important;isolation:isolate!important}.tlr-dashboard-score-compare-menu{background:rgb(7,10,20)!important;pointer-events:auto!important}.tlr-dashboard-score-compare-menu button:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-compare-menu button:active{background:rgba(74,106,255,0.14)!important}`;
       style.textContent += `.tlr-dashboard-compare-chip{position:relative}.tlr-dashboard-compare-chip:hover{background:rgba(255,255,255,0.055)!important;border-color:rgba(74,106,255,0.34)!important;color:#4A6AFF!important;box-shadow:0 0 12px -11px #4A6AFF!important}.tlr-dashboard-compare-chip:active{background:rgba(74,106,255,0.12)!important;color:#4A6AFF!important;transform:translateY(1px)!important}.tlr-dashboard-compare-chip-active{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:hover{background:rgba(255,255,255,0.055)!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:after{content:"";position:absolute;left:16px;right:16px;bottom:2px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 8px rgba(74,106,255,0.82);pointer-events:none}.tlr-dashboard-compare-chip:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-compare-exit:hover{background:rgba(255,80,104,0.055)!important;color:#FF5068!important}.tlr-dashboard-compare-exit:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}`;
@@ -37324,26 +37281,17 @@ const TalariaV8b = () => {
           const dashboardCompareFiltersActive = dashFiltersOpen && dashFiltersScope === "compare";
           const dashboardSourceButtonWidth = dashIsPhone ? Math.min(156, Math.max(118, dashViewportW - 240)) : dashIsNarrow ? 164 : 198;
           const dashboardFilterButtonWidth = dashIsPhone ? 104 : dashIsNarrow ? 112 : 126;
-          const snapshotTwoColGrid = dashIsTablet ? "1fr" : "minmax(0,1.18fr) minmax(0,3fr)";
+          const snapshotTwoColGrid = dashIsTablet ? "1fr" : "minmax(456px,1.18fr) minmax(0,3fr)";
           const snapshotKpiCols = dashIsPhone ? "repeat(1,minmax(0,1fr))" : dashIsNarrow ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))";
           const snapshotKpiRows = dashIsPhone ? "auto" : dashIsNarrow ? "repeat(4,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))";
           const snapshotPairGrid = dashIsPhone ? "1fr" : "repeat(2,minmax(0,1fr))";
           const snapshotWideNarrowGrid = dashIsNarrow ? "1fr" : "minmax(0,1.55fr) minmax(280px,0.85fr)";
           const snapshotKpiStripHeight = dashIsTablet ? "auto" : 464;
           const snapshotContentPad = dashIsPhone ? 12 : dashIsNarrow ? 16 : 24;
-          const dashLayoutFit = computeDashLayoutFit({
-            viewportW: dashViewportW,
-            viewportH: dashViewportH,
-            phone: dashIsPhone,
-            narrow: dashIsNarrow,
-            navRail: dashIsPhone ? 0 : 64,
-            chromeH: 64,
-            bottomNav: dashIsPhone ? 58 : 0,
-            contentPad: snapshotContentPad,
-          });
+          const dashIsWide = dashViewportW >= 1280;
           const snapshotBasicColCount = dashIsPhone ? 1 : dashIsNarrow ? 2 : dashIsTablet ? 3 : 6;
           const snapshotBasicCols = `repeat(${snapshotBasicColCount}, minmax(0, 1fr))`;
-          const dashboardChromeControlsMaxWidth = dashIsNarrow ? "100%" : Math.min(DASH_LAYOUT_DESIGN_W, dashViewportW - 96);
+          const dashboardChromeControlsMaxWidth = dashIsNarrow ? "100%" : dashIsWide ? "none" : (dashboardCompareBarActive ? 1220 : 880);
           const exitDashCompareMode = () => {
             setDashCompareOpen(false);
             setDashCompareId(null);
@@ -40119,7 +40067,7 @@ const TalariaV8b = () => {
                   <div style={{fontSize:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:14}}>Talaria-Log</div>
                   <div style={{width:1.5,height:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:14,flexShrink:0}}/>
                 </div>
-                <div className="tlr-dash-chrome-controls" style={{display:"flex",alignItems:"center",gap:8,minWidth:0,maxWidth:dashboardChromeControlsMaxWidth,flex:dashIsNarrow?"1 1 100%":"1 1 auto",marginLeft:dashIsNarrow?0:14,flexWrap:dashIsNarrow?"wrap":"nowrap"}}>
+                <div className="tlr-dash-chrome-controls" style={{display:"flex",alignItems:"center",gap:8,minWidth:0,maxWidth:dashboardChromeControlsMaxWidth,flex:dashIsNarrow?"1 1 100%":(dashIsWide?"1 1 auto":"0 1 auto"),marginLeft:dashIsNarrow?0:14,flexWrap:dashIsWide?"nowrap":"wrap"}}>
                   <div className={`tlr-dashboard-source-switch tlr-dashboard-source-switch-redesign${dashLibraryOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-label={`${dashboardLibraryType.label}: ${dashboardLibraryLabel}`}
                     onPointerDown={e=>{e.preventDefault();toggleDashLibrary();}}
                     onClick={e=>e.preventDefault()}
@@ -40277,41 +40225,15 @@ const TalariaV8b = () => {
                   padding:sessView === "trades" ? `${snapshotContentPad}px ${snapshotContentPad}px ${snapshotContentPad}px` : `${snapshotContentPad}px`,
                   scrollbarGutter:"stable",
                 }} className="tlr-scroll tlr-dash-content-scroll">
-                  <div
-                    className="tlr-dash-fit-host"
-                    style={{
-                      width:"100%",
-                      minHeight:"100%",
-                      display:"flex",
-                      justifyContent:"center",
-                      alignItems:dashLayoutFit.hostAlign,
-                      boxSizing:"border-box",
-                      ...(sessView === "trades" ? {flex:1,minHeight:0} : {}),
-                    }}
-                  >
-                    <div
-                      className="tlr-dash-fit-canvas"
-                      style={{
-                        width:dashLayoutFit.useCanvas ? dashLayoutFit.canvasWidth : "100%",
-                        maxWidth:"100%",
-                        zoom:dashLayoutFit.zoom,
-                        margin:"0 auto",
-                        display:"flex",
-                        flexDirection:"column",
-                        boxSizing:"border-box",
-                        transformOrigin:"top center",
-                        ...(sessView === "trades" ? {flex:1,minHeight:0,width:"100%",zoom:1} : {}),
-                      }}
-                    >
-                      <div className="tlr-dash-content-inner" style={{
-                        width:"100%",
-                        maxWidth:dashLayoutFit.useCanvas ? DASH_LAYOUT_DESIGN_W : "100%",
-                        margin:"0 auto",
-                        display:"flex",
-                        flexDirection:"column",
-                        boxSizing:"border-box",
-                        ...(sessView === "trades" ? {flex:1,minHeight:0} : {}),
-                      }}>
+                  <div className="tlr-dash-content-inner" style={{
+                    width:"100%",
+                    maxWidth:"100%",
+                    margin:0,
+                    display:"flex",
+                    flexDirection:"column",
+                    boxSizing:"border-box",
+                    ...(sessView === "trades" ? {flex:1,minHeight:0} : {}),
+                  }}>
                     {sessView === "trades" ? renderDashboardTradesPage() : renderFreshDashboardPage()}
                     {false && (<>
                     <div onDoubleClick={()=>openDashSubWindow("talaria-score","Talaria Score")} style={{minHeight:104,borderTop:`1px solid ${c.brH}`,borderRight:`1px solid ${c.brH}`,borderBottom:`1px solid ${c.brH}`,borderLeft:`3px solid ${talaria.score>=71?c.gn:talaria.score>=41?c.gold:c.rd}`,background:c.el,display:"grid",gridTemplateColumns:"300px 1fr 240px",gap:18,alignItems:"center",padding:"14px 18px",cursor:"default"}}>
@@ -40647,8 +40569,6 @@ const TalariaV8b = () => {
                       </div>
                     )}
                     </>)}
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>

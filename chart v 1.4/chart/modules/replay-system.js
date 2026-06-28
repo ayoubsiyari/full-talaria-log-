@@ -592,9 +592,45 @@ class ReplaySystem {
             }
         }
         const norm = (v) => (v == null || v === '' ? null : String(v).toLowerCase());
-        if (norm(prev) !== norm(this.stepTimeframeOverride) && this.isPlaying) {
-            this._restartPlaybackAfterControlChange();
+        if (norm(prev) !== norm(this.stepTimeframeOverride)) {
+            const restartAfter = () => {
+                if (this.isPlaying) this._restartPlaybackAfterControlChange();
+            };
+            if (this._needsFinerReplayMasterForStepInterval()) {
+                this._ensureFinerReplayMasterForStepInterval().then((ok) => {
+                    if (ok) restartAfter();
+                }).catch(() => {});
+            } else {
+                restartAfter();
+            }
         }
+    }
+
+    /** Step INTERVAL is finer than replay master bars (e.g. 1m step on 1H native master). */
+    _needsFinerReplayMasterForStepInterval() {
+        if (!this._hasExplicitReplayStepInterval()) return false;
+        const stepMs = this.timeframeToMs(this._resolveReplayStepTimeframe());
+        const rawMs = this._getRawBarPeriodMs();
+        if (!Number.isFinite(stepMs) || !Number.isFinite(rawMs) || stepMs <= 0 || rawMs <= 0) {
+            return false;
+        }
+        return stepMs < rawMs * 0.92;
+    }
+
+    /** Load/swap 1m (or step-TF) master so display TF can form candle-by-candle at INTERVAL. */
+    _ensureFinerReplayMasterForStepInterval() {
+        if (!this.isActive || !this.chart) return Promise.resolve(true);
+        if (!this._needsFinerReplayMasterForStepInterval()) return Promise.resolve(true);
+        if (this._finerMasterUpgradeInflight) return this._finerMasterUpgradeInflight;
+        const chart = this.chart;
+        if (typeof chart.upgradeReplayMasterForStepInterval !== 'function') {
+            return Promise.resolve(true);
+        }
+        this._finerMasterUpgradeInflight = chart.upgradeReplayMasterForStepInterval(this)
+            .finally(() => {
+                this._finerMasterUpgradeInflight = null;
+            });
+        return this._finerMasterUpgradeInflight;
     }
 
     /** Re-arm play loop after MODE / INTERVAL change while playback is active. */
@@ -3373,36 +3409,45 @@ class ReplaySystem {
             this._playStartRaf1 = null;
             this._playStartRaf2 = requestAnimationFrame(() => {
                 this._playStartRaf2 = null;
-                try {
-                    this._preserveTickProgress = preserveTick;
-                    this.stopAllPlayback();
+                (async () => {
+                    try {
+                        if (this._needsFinerReplayMasterForStepInterval()) {
+                            const ok = await this._ensureFinerReplayMasterForStepInterval();
+                            if (!ok) {
+                                this.isPlaying = false;
+                                return;
+                            }
+                        }
+                        this._preserveTickProgress = preserveTick;
+                        this.stopAllPlayback();
 
-                    if (this.chart?.orderManager?._refreshAllGuardsToCurrentCandle) {
-                        this.chart.orderManager._refreshAllGuardsToCurrentCandle();
+                        if (this.chart?.orderManager?._refreshAllGuardsToCurrentCandle) {
+                            this.chart.orderManager._refreshAllGuardsToCurrentCandle();
+                        }
+
+                        this.isPlaying = true;
+
+                        this.showTickProgress(false);
+
+                        if (useTickAnimation) {
+                            this.startTickAnimation();
+                        } else {
+                            this.animatingCandle = null;
+                            this.tickProgress = 0;
+                            this.tickElapsedMs = 0;
+                            this.startCandleByCandle(true);
+                        }
+
+                        requestAnimationFrame(() => {
+                            try {
+                                this.updateAutoScrollIndicator();
+                            } catch (_) {}
+                        });
+                    } finally {
+                        this.isPlayStarting = false;
+                        this.syncPlayPauseButtonVisuals();
                     }
-
-                    this.isPlaying = true;
-
-                    this.showTickProgress(false);
-
-                    if (useTickAnimation) {
-                        this.startTickAnimation();
-                    } else {
-                        this.animatingCandle = null;
-                        this.tickProgress = 0;
-                        this.tickElapsedMs = 0;
-                        this.startCandleByCandle(true);
-                    }
-
-                    requestAnimationFrame(() => {
-                        try {
-                            this.updateAutoScrollIndicator();
-                        } catch (_) {}
-                    });
-                } finally {
-                    this.isPlayStarting = false;
-                    this.syncPlayPauseButtonVisuals();
-                }
+                })();
             });
         });
     }
@@ -3538,6 +3583,13 @@ class ReplaySystem {
      */
     simpleStepForward() {
         if (this._timeframeChanging) return;
+        if (this._needsFinerReplayMasterForStepInterval()) {
+            if (this._finerMasterUpgradeInflight) return;
+            this._ensureFinerReplayMasterForStepInterval().then((ok) => {
+                if (ok) this.simpleStepForward();
+            }).catch(() => {});
+            return;
+        }
         if (this.currentIndex >= this.fullRawData.length - 1) {
             if (this._handleForwardEdgeWhilePlaying(() => {
                 if (this.isPlaying) this.simpleStepForward();
@@ -5095,6 +5147,13 @@ class ReplaySystem {
             return;
         }
         if (this._timeframeChanging) {
+            return;
+        }
+        if (this._needsFinerReplayMasterForStepInterval()) {
+            if (this._finerMasterUpgradeInflight) return;
+            this._ensureFinerReplayMasterForStepInterval().then((ok) => {
+                if (ok) this.stepForward();
+            }).catch(() => {});
             return;
         }
 
