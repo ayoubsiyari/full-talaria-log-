@@ -26207,23 +26207,21 @@ class Chart {
     }
 
     /**
-     * Circular flag badge: flag image cover-clipped inside a circle (no border).
+     * Rectangular flag badge: flag image cover-clipped inside a rectangle (no border).
      */
-    _drawEconomicCalendarFlagBadge(ctx, xi, cy, diameter, img) {
-        const r = diameter / 2;
+    _drawEconomicCalendarFlagBadge(ctx, xi, cy, w, h, img) {
         const iw = img.naturalWidth || img.width;
         const ih = img.naturalHeight || img.height;
         if (!iw || !ih) {
             return false;
         }
-        const side = diameter;
-        const scale = Math.max(side / iw, side / ih);
+        const scale = Math.max(w / iw, h / ih);
         const dw = iw * scale;
         const dh = ih * scale;
 
         ctx.save();
         ctx.beginPath();
-        ctx.arc(xi, cy, r, 0, Math.PI * 2);
+        ctx.rect(xi - w / 2, cy - h / 2, w, h);
         ctx.clip();
         ctx.drawImage(img, xi - dw / 2, cy - dh / 2, dw, dh);
         ctx.restore();
@@ -26333,11 +26331,13 @@ class Chart {
         const m = this.margin;
         const cs = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
         const badgeD = Math.max(16, Math.min(24, cs * 1.12));
+        const badgeH = badgeD;
+        const badgeW = badgeD * 1.35;
         const indPanelH = this.separateIndicatorPanelHeight || 0;
         const axisLineY = this.h - m.b - indPanelH;
         const gapAboveLine = 8;
-        let cy = axisLineY - badgeD / 2 - gapAboveLine;
-        cy = Math.max(m.t + badgeD / 2 + 6, cy);
+        let cy = axisLineY - badgeH / 2 - gapAboveLine;
+        cy = Math.max(m.t + badgeH / 2 + 6, cy);
 
         const bg = (this.chartSettings && this.chartSettings.backgroundColor) ? String(this.chartSettings.backgroundColor) : '';
         const bodyLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
@@ -26355,7 +26355,8 @@ class Chart {
         // do not clamp x to the edges or stacks “stick” at the border instead of scrolling off-screen.
         const plotClipL = m.l;
         const plotClipR = this.w - m.r;
-        const halfBadgeR = badgeD / 2;
+        const halfBadgeW = badgeW / 2;
+        const halfBadgeH = badgeH / 2;
 
         /** @type {{ e: object, x: number }[]} */
         const placements = [];
@@ -26376,7 +26377,7 @@ class Chart {
         if (!panFast && typeof api.getFlagImageUrl === 'function') {
             for (let pi = 0; pi < placements.length; pi++) {
                 const px = placements[pi].x;
-                if (px + halfBadgeR < plotClipL - prefetchMargin || px - halfBadgeR > plotClipR + prefetchMargin) {
+                if (px + halfBadgeW < plotClipL - prefetchMargin || px - halfBadgeW > plotClipR + prefetchMargin) {
                     continue;
                 }
                 const u = api.getFlagImageUrl(placements[pi].e.country || placements[pi].e.currency || '');
@@ -26394,7 +26395,7 @@ class Chart {
 
         const _drawSingleFlag = (e, xi, flagCy) => {
             if (!Number.isFinite(xi)) return;
-            if (xi + halfBadgeR < plotClipL || xi - halfBadgeR > plotClipR) return;
+            if (xi + halfBadgeW < plotClipL || xi - halfBadgeW > plotClipR) return;
             const flagUrl = typeof api.getFlagImageUrl === 'function'
                 ? api.getFlagImageUrl(e.country || e.currency || '') : null;
             let drew = false;
@@ -26404,25 +26405,22 @@ class Chart {
                     : this._ensureEconomicCalendarFlagImage(flagUrl);
                 const { img } = entry || {};
                 if (img && entry && !entry.failed && img.complete && img.naturalWidth) {
-                    drew = this._drawEconomicCalendarFlagBadge(this.ctx, xi, flagCy, badgeD, img);
+                    drew = this._drawEconomicCalendarFlagBadge(this.ctx, xi, flagCy, badgeW, badgeH, img);
                 }
             }
             if (!drew) {
-                const innerR = badgeD / 2;
-                this.ctx.beginPath();
-                this.ctx.arc(xi, flagCy, innerR, 0, Math.PI * 2);
                 this.ctx.fillStyle = fillCol;
-                this.ctx.fill();
+                this.ctx.fillRect(xi - halfBadgeW, flagCy - halfBadgeH, badgeW, badgeH);
                 const iso = typeof api.getCalendarFlagCode === 'function' ? api.getCalendarFlagCode(e) : '';
                 if (iso && /^[A-Z]{2}$/i.test(iso)) {
                     const codeStr = String(iso).toUpperCase();
-                    const codeFont = Math.max(6, Math.min(10, badgeD * 0.38));
+                    const codeFont = Math.max(6, Math.min(10, badgeH * 0.38));
                     this.ctx.font = `700 ${codeFont}px system-ui,"Segoe UI",sans-serif`;
                     this.ctx.fillStyle = emojiFill;
                     this.ctx.fillText(codeStr, xi, flagCy);
                 } else {
                     const flagStr = getFlagEmojiFallback(e);
-                    const innerFont = Math.max(8, Math.min(11, badgeD * 0.48));
+                    const innerFont = Math.max(8, Math.min(11, badgeH * 0.48));
                     this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
                     this.ctx.fillStyle = emojiFill;
                     this.ctx.fillText(flagStr, xi, flagCy);
@@ -26455,10 +26453,10 @@ class Chart {
                 if (!panFast) {
                     for (let k = 0; k < n; k++) {
                         this._economicCalendarHitRegions.push({
-                            left: clusterCenterX - halfBadgeR - 4,
-                            right: clusterCenterX + halfBadgeR + 4,
-                            top: cy - badgeD - 4,
-                            bottom: cy + halfBadgeR + 2,
+                            left: clusterCenterX - halfBadgeW - 4,
+                            right: clusterCenterX + halfBadgeW + 4,
+                            top: cy - badgeH - 4,
+                            bottom: cy + halfBadgeH + 2,
                             event: cluster[k].e
                         });
                     }
@@ -26472,10 +26470,10 @@ class Chart {
                     _drawSingleFlag(e, xi, cy);
                     if (!panFast && Number.isFinite(xi)) {
                         this._economicCalendarHitRegions.push({
-                            left: xi - halfBadgeR - 2,
-                            right: xi + halfBadgeR + 2,
-                            top: cy - halfBadgeR - 2,
-                            bottom: cy + halfBadgeR + 2,
+                            left: xi - halfBadgeW - 2,
+                            right: xi + halfBadgeW + 2,
+                            top: cy - halfBadgeH - 2,
+                            bottom: cy + halfBadgeH + 2,
                             event: e
                         });
                     }

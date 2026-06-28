@@ -238,7 +238,6 @@ class DrawingToolsManager {
         this._handleClickTimes = {};
         this._handleMouseDownCaptureHandler = null;
         this._setupHandleMouseDownCapture();
-        this._setupMultichartHostPointerSelectCapture();
         this._setupCrossPanelDeselect();
         
         // Undo/Redo manager
@@ -2129,11 +2128,6 @@ class DrawingToolsManager {
                     return;
                 }
 
-                if (this._tryMultichartHostShapePointerSelect(event, { startDrag: true })) {
-                    suppressNextCanvasClick = true;
-                    return;
-                }
-
                 const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
                 if (!svgNode) return;
 
@@ -2151,7 +2145,9 @@ class DrawingToolsManager {
                 }
                 if (drawingsAtPoint && drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey
                     && typeof window !== 'undefined') {
-                    window.__v9DrawingSelectionGuardUntil = performance.now() + 200;
+                    const guardMs = (this.chart && typeof this.chart._isMultichartHostPanel === 'function'
+                        && this.chart._isMultichartHostPanel()) ? 400 : 200;
+                    window.__v9DrawingSelectionGuardUntil = performance.now() + guardMs;
                 }
                 if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && event.detail >= 2) {
                     const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
@@ -3138,10 +3134,10 @@ class DrawingToolsManager {
     }
 
     /**
-     * Multichart host (panel A): geometric select before armed-tool / focus-sync races.
-     * Works for svg and canvas targets — canvas-only handlers miss svg stroke clicks.
+     * Multichart host (panel A): select an existing shape when a draw tool is still armed.
+     * Does not start drag — the normal svg/canvas paths handle move after select.
      */
-    _tryMultichartHostShapePointerSelect(event, options = {}) {
+    _tryMultichartHostShapePointerSelect(event) {
         if (!event || event.button !== 0 || event.shiftKey || event.altKey) return false;
         const ch = this.chart;
         if (!ch || typeof ch._isMultichartHostPanel !== "function" || !ch._isMultichartHostPanel()) {
@@ -3191,30 +3187,11 @@ class DrawingToolsManager {
         }
         this.selectDrawing(best, false, { allowWhileArmed: true });
 
-        if (options.startDrag !== false && !this._isHorizontalAnchorToolType(best.type)) {
-            try {
-                this._startDirectMoveDrag(best, event);
-            } catch (_) {}
-        }
-
         try {
             event.preventDefault();
             event.stopPropagation();
-            if (typeof event.stopImmediatePropagation === "function") {
-                event.stopImmediatePropagation();
-            }
         } catch (_) {}
         return true;
-    }
-
-    _setupMultichartHostPointerSelectCapture() {
-        if (this._multichartHostPointerSelectHandler) return;
-        this._multichartHostPointerSelectHandler = (event) => {
-            try {
-                this._tryMultichartHostShapePointerSelect(event, { startDrag: true });
-            } catch (_) {}
-        };
-        document.addEventListener("pointerdown", this._multichartHostPointerSelectHandler, true);
     }
 
     /**
@@ -3226,12 +3203,23 @@ class DrawingToolsManager {
             return;
         }
 
-        if (this._tryMultichartHostShapePointerSelect(event, { startDrag: true })) {
+        if (this._tryStartCtrlSelectionMove(event)) {
             return;
         }
 
-        if (this._tryStartCtrlSelectionMove(event)) {
-            return;
+        // Panel A host: armed draw tools skip the !currentTool selection block below.
+        if (this.chart && typeof this.chart._isMultichartHostPanel === "function"
+            && this.chart._isMultichartHostPanel()
+            && event.button === 0 && !event.shiftKey && !event.altKey
+            && !(this.drawingState && this.drawingState.isDrawing)) {
+            const [guardMx, guardMy] = this._eventCanvasLocalXY(event);
+            const guardHits = this.findDrawingsAtPoint(guardMx, guardMy, { includeVolumeProfileBodyHit: true });
+            if (guardHits && guardHits.length && typeof window !== "undefined") {
+                window.__v9DrawingSelectionGuardUntil = performance.now() + 400;
+            }
+            if (this.currentTool && this._tryMultichartHostShapePointerSelect(event)) {
+                return;
+            }
         }
 
         if (this.currentTool && this.isRectSelecting) {
