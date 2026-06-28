@@ -18599,11 +18599,33 @@ body.light-mode .template-save-dialog .dialog-title {
 
             modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => m.style.display = 'none');
 
-            self._closeActiveInfoDropdown(true);
-
-            document.querySelector('.settings-template-dropdown')?.remove();
+            self._closeSettingsPanelDropdowns(true);
 
         }, true);
+
+        // Click empty space inside the settings panel to dismiss template / Show Info menus.
+        if (!modal._settingsDropdownDismissHandler) {
+            modal._settingsDropdownDismissHandler = (e) => {
+                const hasTemplate = !!document.querySelector('.settings-template-dropdown');
+                const hasInfo = !!(self._activeInfoDropdown || document.querySelector('.settings-info-dropdown'));
+                if (!hasTemplate && !hasInfo) return;
+
+                if (e.target.closest('.settings-template-dropdown')
+                    || e.target.closest('.settings-info-dropdown')
+                    || e.target.closest('.template-save-dialog')) {
+                    return;
+                }
+                if (e.target.closest('.tv-template-btn')
+                    || e.target.closest('.tv-btn-template')
+                    || e.target.closest('.tv-info-dropdown-btn')) {
+                    return;
+                }
+                if (!modal.contains(e.target)) return;
+
+                self._closeSettingsPanelDropdowns(true);
+            };
+            modal.addEventListener('mousedown', modal._settingsDropdownDismissHandler, true);
+        }
 
         
 
@@ -24431,7 +24453,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
     /**
-     * Close the floating Show Info dropdown and detach its document listener.
+     * Close floating Show Info dropdown and detach its document listener.
      */
     _closeActiveInfoDropdown(resetButtonState = true) {
         if (this._activeInfoDropdown) {
@@ -24454,6 +24476,16 @@ body.light-mode .template-save-dialog .dialog-title {
             }
             this._activeInfoDropdownBtn = null;
         }
+    }
+
+    /** Close settings-panel template + Show Info floating dropdowns. */
+    _closeSettingsPanelDropdowns(resetInfoBtn = true) {
+        if (this._templateDropdownCloseHandler) {
+            document.removeEventListener('click', this._templateDropdownCloseHandler, true);
+            this._templateDropdownCloseHandler = null;
+        }
+        document.querySelector('.settings-template-dropdown')?.remove();
+        this._closeActiveInfoDropdown(resetInfoBtn);
     }
 
     /**
@@ -24799,6 +24831,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
     showTemplateDropdown(btn, drawing, modal) {
 
+    const self = this;
+
     // Toggle off if already open
 
     const existingDropdown = document.querySelector('.settings-template-dropdown');
@@ -24806,6 +24840,11 @@ body.light-mode .template-save-dialog .dialog-title {
     if (existingDropdown) {
 
         existingDropdown.remove();
+
+        if (self._templateDropdownCloseHandler) {
+            document.removeEventListener('click', self._templateDropdownCloseHandler, true);
+            self._templateDropdownCloseHandler = null;
+        }
 
         return; // Toggle off if already open
 
@@ -25103,16 +25142,32 @@ body.light-mode .template-save-dialog .dialog-title {
 
     const closeDropdown = (e) => {
 
+        if (!dropdown.isConnected) {
+            document.removeEventListener('click', closeDropdown, true);
+            if (self._templateDropdownCloseHandler === closeDropdown) {
+                self._templateDropdownCloseHandler = null;
+            }
+            return;
+        }
+
         if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
 
             dropdown.remove();
 
             document.removeEventListener('click', closeDropdown, true);
 
+            if (self._templateDropdownCloseHandler === closeDropdown) {
+                self._templateDropdownCloseHandler = null;
+            }
+
         }
 
     };
 
+    if (self._templateDropdownCloseHandler) {
+        document.removeEventListener('click', self._templateDropdownCloseHandler, true);
+    }
+    self._templateDropdownCloseHandler = closeDropdown;
     requestAnimationFrame(() => document.addEventListener('click', closeDropdown, true));
 
 }
