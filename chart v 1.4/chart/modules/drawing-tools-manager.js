@@ -3174,6 +3174,20 @@ class DrawingToolsManager {
         const allowActiveToolHandleBypass = this.currentTool === 'polyline' || this.currentTool === 'path'
             || this.currentTool === 'brush' || this.currentTool === 'highlighter';
         if (handleNode && !isVolumeProfileBoundaryHandle && (!this.currentTool || allowActiveToolHandleBypass)) {
+            // Hover shows handles before select; a plain click on a handle must select
+            // (d3 drag only starts after movement).
+            if (!this.currentTool && handleNode.closest) {
+                const handleDrawingGroup = handleNode.closest('.drawing');
+                if (handleDrawingGroup) {
+                    const handleDrawingId = d3.select(handleDrawingGroup).attr('data-id');
+                    const handleDrawing = this.drawings.find((d) => d && d.id === handleDrawingId);
+                    if (handleDrawing && !handleDrawing.locked) {
+                        this.selectDrawing(handleDrawing, false);
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                }
+            }
             return;
         }
         
@@ -8758,6 +8772,10 @@ class DrawingToolsManager {
         const suppressToolbar = options.suppressToolbar === true;
         if (!allowWhileArmed && this._isPlacementModeActive()) {
             return;
+        }
+        // Brief guard: multichart focus/tool sync must not run in the same frame as select.
+        if (typeof window !== 'undefined') {
+            window.__v9DrawingSelectionGuardUntil = performance.now() + 150;
         }
         if (addToSelection && this._isDrawingGeometryMoveActive()) {
             return;

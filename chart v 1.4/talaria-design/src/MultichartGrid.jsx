@@ -3421,7 +3421,24 @@ export default function MultichartGrid({
         };
     }
 
-    function dispatchFocusChanged(panelId) {
+    /** Dedupe mirror broadcasts — replay chart-state ticks must not re-fire tool sync every bar. */
+    const lastFocusMirrorKeyRef = useRef("");
+
+    function focusMirrorKey(panelId) {
+        const state = readPanelState(panelId);
+        return [
+            String(panelId || ""),
+            String(state && state.symbol != null ? state.symbol : ""),
+            String(state && state.timeframe != null ? state.timeframe : ""),
+            String(state && state.fileId != null ? state.fileId : ""),
+        ].join("|");
+    }
+
+    function dispatchFocusChanged(panelId, opts) {
+        const force = !!(opts && opts.force);
+        const key = focusMirrorKey(panelId);
+        if (!force && lastFocusMirrorKeyRef.current === key) return;
+        lastFocusMirrorKeyRef.current = key;
         const state = readPanelState(panelId);
         try {
             window.dispatchEvent(new CustomEvent("multichartFocusChanged", {
@@ -3444,7 +3461,9 @@ export default function MultichartGrid({
         // a moment later. Microtask defer means we publish AFTER state
         // has settled if both arrive in the same frame.
         const t = setTimeout(() => {
-            dispatchFocusChanged(focusedPanelId);
+            // Panel id changed — always publish even when symbol/tf/file match a prior visit.
+            lastFocusMirrorKeyRef.current = "";
+            dispatchFocusChanged(focusedPanelId, { force: true });
             const grid = window.__multichartGrid;
             if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
                 grid.clearDrawingUiOnOtherPanels(focusedPanelId);

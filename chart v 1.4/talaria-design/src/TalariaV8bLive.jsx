@@ -17876,6 +17876,11 @@ const TalariaV8bLive = () => {
       apply();
     };
     const onMultichartFocusChanged = () => {
+      try {
+        if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
+          if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
+        }
+      } catch (_) {}
       n = 0;
       try {
         if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = true;
