@@ -2416,7 +2416,17 @@ export default function MultichartGrid({
         // instead — clicking anywhere on the parent chart means the
         // user is interacting with tile A.
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
-        const onHostPointerDown = () => {
+        const onHostPointerDown = (ev) => {
+            try {
+                if (ev && ev.target && typeof ev.target.closest === "function") {
+                    if (ev.target.closest("#multichart-global-settings-root")) return;
+                }
+            } catch (_) {}
+            try {
+                if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
+                    if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
+                }
+            } catch (_) {}
             try {
                 const ch = window.chart;
                 if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
@@ -2427,6 +2437,11 @@ export default function MultichartGrid({
             if (!grid) return;
             // Defer peer cleanup so this same click can finish shape select on panel A first.
             setTimeout(() => {
+                try {
+                    if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
+                        if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
+                    }
+                } catch (_) {}
                 if (prev !== HOST_PANEL_ID) {
                     if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
                         grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
@@ -4843,6 +4858,77 @@ export default function MultichartGrid({
             };
         }
 
+        /** Union of every multichart tile plot — quick bar can be dragged across all panels. */
+        function getMultichartGridPlotBounds(zz, barW, barH, rightPanelW = 0) {
+            const Z = zz || 1;
+            const pad = 8;
+            const bw = barW || 0;
+            const bh = barH || 0;
+            let union = null;
+            const addPlot = (rect, marginR, marginB) => {
+                if (!rect) return;
+                const minX = rect.left / Z + pad;
+                const minY = rect.top / Z + pad;
+                const maxX = (rect.right - (marginR || 60)) / Z - bw - pad;
+                const maxY = (rect.bottom - (marginB || 30)) / Z - bh - pad;
+                if (!union) {
+                    union = { minX, minY, maxX, maxY };
+                    return;
+                }
+                union.minX = Math.min(union.minX, minX);
+                union.minY = Math.min(union.minY, minY);
+                union.maxX = Math.max(union.maxX, maxX);
+                union.maxY = Math.max(union.maxY, maxY);
+            };
+            try {
+                const hostWrap = document.getElementById(HOST_WRAPPER_ID);
+                const hostCh = window.chart;
+                const hostMr = hostCh && hostCh.margin && hostCh.margin.r > 0 ? hostCh.margin.r : 60;
+                const hostMb = hostCh && hostCh.margin && hostCh.margin.b > 0 ? hostCh.margin.b : 30;
+                if (hostWrap) addPlot(hostWrap.getBoundingClientRect(), hostMr, hostMb);
+            } catch (_) {}
+            const mgr = managerRef.current;
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const entry of mgr.charts.values()) {
+                    if (!entry || entry.host || !entry.frame) continue;
+                    try {
+                        const cw = entry.frame.contentWindow;
+                        const ch = cw && cw.chart;
+                        const mr = ch && ch.margin && ch.margin.r > 0 ? ch.margin.r : 60;
+                        const mb = ch && ch.margin && ch.margin.b > 0 ? ch.margin.b : 30;
+                        addPlot(entry.frame.getBoundingClientRect(), mr, mb);
+                    } catch (_) {}
+                }
+            }
+            if (!union) return null;
+            if (rightPanelW > 0) {
+                try {
+                    union.maxX = Math.min(union.maxX, window.innerWidth / Z - bw - rightPanelW - pad);
+                } catch (_) {}
+            }
+            return union;
+        }
+
+        function getPanelIdForDrawingManager(dm) {
+            if (!dm) return null;
+            try {
+                const hostDm = window.chart && window.chart.drawingManager;
+                if (dm === hostDm) return HOST_PANEL_ID;
+            } catch (_) {}
+            const mgr = managerRef.current;
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const entry of mgr.charts.values()) {
+                    if (!entry || entry.host) continue;
+                    try {
+                        const cw = entry.frame && entry.frame.contentWindow;
+                        const ch = cw && cw.chart;
+                        if (ch && ch.drawingManager === dm) return entry.id || null;
+                    } catch (_) {}
+                }
+            }
+            return null;
+        }
+
         const prevGetActiveChart = typeof window.getActiveChart === "function"
             ? window.getActiveChart
             : null;
@@ -4889,6 +4975,9 @@ export default function MultichartGrid({
             enumerateCharts: enumerateMultichartCharts,
             mapToolbarClientToParent,
             getPanelPlotBoundsForDrawingManager,
+            getMultichartGridPlotBounds,
+            getPanelIdForDrawingManager,
+            focusPanelById,
             enumerateDrawingManagers: enumerateMultichartDrawingManagers,
             hostPanelId: HOST_PANEL_ID,
             broadcastClearDraftPreview,
@@ -5866,12 +5955,21 @@ export default function MultichartGrid({
                         }}
                         data-panel-id={tile.id}
                         data-multichart-host-cell={isHost ? "1" : undefined}
-                        onMouseDownCapture={() => {
+                        onMouseDownCapture={(ev) => {
+                            if (ev && ev.target && typeof ev.target.closest === "function") {
+                                if (ev.target.closest("#multichart-global-settings-root")) return;
+                            }
                             focusPanelById(tile.id);
                             const grid = window.__multichartGrid;
-                            if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                            if (!grid || typeof grid.clearDrawingUiOnOtherPanels !== "function") return;
+                            setTimeout(() => {
+                                try {
+                                    if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
+                                        if (performance.now() < window.__v9DrawingSelectionGuardUntil) return;
+                                    }
+                                } catch (_) {}
                                 grid.clearDrawingUiOnOtherPanels(tile.id);
-                            }
+                            }, 0);
                         }}
                         style={{
                             gridColumn: tile.gridColumn || "auto",
