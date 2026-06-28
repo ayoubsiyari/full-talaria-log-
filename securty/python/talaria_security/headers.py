@@ -40,7 +40,6 @@ def build_csp(nonce: str, *, api_mode: bool = False) -> str:
         f"font-src 'self'; "
         f"connect-src 'self'; "
         f"frame-ancestors 'none'; "
-        f"upgrade-insecure-requests; "
         f"base-uri 'self'"
     )
 
@@ -59,9 +58,13 @@ def apply_security_headers(
     headers["X-Frame-Options"] = "DENY"
     headers["Referrer-Policy"] = REFERRER_POLICY
     headers["Permissions-Policy"] = PERMISSIONS_POLICY
-    headers["Cross-Origin-Opener-Policy"] = COOP
-    headers["Cross-Origin-Embedder-Policy"] = COEP
-    headers["Cross-Origin-Resource-Policy"] = CORP
+    if api_mode:
+        # JSON APIs — skip COEP/COOP/CORP (not meaningful on application/json).
+        pass
+    else:
+        headers["Cross-Origin-Opener-Policy"] = COOP
+        headers["Cross-Origin-Embedder-Policy"] = COEP
+        headers["Cross-Origin-Resource-Policy"] = CORP
     if https:
         headers["Strict-Transport-Security"] = HSTS_VALUE
 

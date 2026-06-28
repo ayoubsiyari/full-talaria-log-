@@ -226,14 +226,24 @@ TRUSTED_ORIGINS = {o.strip() for o in trusted_origins_env.split(",") if o.strip(
 
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
-    if not _SECURITY_PKG_OK:
-        return await call_next(request)
-    nonce = generate_csp_nonce()
     response = await call_next(request)
+    path = request.url.path or ""
     proto = request.headers.get("x-forwarded-proto", request.url.scheme or "http")
     https = proto.lower() == "https"
-    api_mode = (request.url.path or "").startswith("/api/")
-    apply_security_headers(response.headers, nonce=nonce, https=https, api_mode=api_mode)
+
+    # JSON APIs only — never put CSP upgrade-insecure-requests or COEP on HTML/JS/CSS.
+    # Those break HTTP-only deploys (ERR_SSL_PROTOCOL_ERROR) and Next/chart static assets.
+    if path.startswith("/api/") and _SECURITY_PKG_OK:
+        nonce = generate_csp_nonce()
+        apply_security_headers(response.headers, nonce=nonce, https=https, api_mode=True)
+    else:
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        if https:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains; preload"
+            )
+
     for header in ("server", "x-powered-by"):
         if header in response.headers:
             del response.headers[header]
