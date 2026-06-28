@@ -2416,26 +2416,72 @@ export default function MultichartGrid({
         // instead — clicking anywhere on the parent chart means the
         // user is interacting with tile A.
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
+        /** Panel A host: select on capture — armed tools + focus sync were blocking normal hit path. */
+        const tryHostPanelShapeSelect = (ev) => {
+            if (!ev || ev.button !== 0 || ev.shiftKey || ev.altKey) return false;
+            const ch = window.chart;
+            const dm = ch && ch.drawingManager;
+            if (!dm || typeof ch._eventCanvasLocalXY !== "function"
+                || typeof dm.findDrawingsAtPoint !== "function"
+                || typeof dm.selectDrawing !== "function") {
+                return false;
+            }
+            if (dm.drawingState && dm.drawingState.isDrawing) return false;
+            let mx;
+            let my;
+            try {
+                [mx, my] = ch._eventCanvasLocalXY(ev);
+            } catch (_) {
+                return false;
+            }
+            const hits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
+            if (!hits || !hits.length) return false;
+            const best = hits[0];
+            if (!best || best.locked) return false;
+            try {
+                if (typeof window !== "undefined") {
+                    window.__v9DrawingSelectionGuardUntil = performance.now() + 400;
+                }
+            } catch (_) {}
+            try {
+                if (dm.currentTool) {
+                    if (typeof dm.clearTool === "function") dm.clearTool();
+                    else dm.currentTool = null;
+                }
+            } catch (_) {}
+            try {
+                dm.selectDrawing(best, false);
+            } catch (_) {
+                return false;
+            }
+            try {
+                if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+                else if (typeof ev.stopPropagation === "function") ev.stopPropagation();
+            } catch (_) {}
+            return true;
+        };
         const onHostPointerDown = (ev) => {
             try {
                 if (ev && ev.target && typeof ev.target.closest === "function") {
                     if (ev.target.closest("#multichart-global-settings-root")) return;
                 }
             } catch (_) {}
-            // Same geometric hit-test as drawing-tools-manager — arm the selection guard
-            // before focus/tool sync so panel A can finish selectDrawing on this click.
-            try {
-                const ch = window.chart;
-                const dm = ch && ch.drawingManager;
-                if (dm && ev && typeof ch._eventCanvasLocalXY === "function"
-                    && typeof dm.findDrawingsAtPoint === "function") {
-                    const [mx, my] = ch._eventCanvasLocalXY(ev);
-                    const hits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
-                    if (hits && hits.length && typeof window !== "undefined") {
-                        window.__v9DrawingSelectionGuardUntil = performance.now() + 200;
+            const selectedOnHost = tryHostPanelShapeSelect(ev);
+            if (!selectedOnHost) {
+                // Hover hit-test only — arm guard so focus/tool sync does not race selection.
+                try {
+                    const ch = window.chart;
+                    const dm = ch && ch.drawingManager;
+                    if (dm && ev && typeof ch._eventCanvasLocalXY === "function"
+                        && typeof dm.findDrawingsAtPoint === "function") {
+                        const [mx, my] = ch._eventCanvasLocalXY(ev);
+                        const hits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
+                        if (hits && hits.length && typeof window !== "undefined") {
+                            window.__v9DrawingSelectionGuardUntil = performance.now() + 200;
+                        }
                     }
-                }
-            } catch (_) {}
+                } catch (_) {}
+            }
             try {
                 const ch = window.chart;
                 if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
@@ -2461,7 +2507,6 @@ export default function MultichartGrid({
             }, 0);
         };
         if (wrapper) {
-            wrapper.addEventListener("mousedown", onHostPointerDown, { capture: true });
             wrapper.addEventListener("pointerdown", onHostPointerDown, { capture: true });
         }
 
@@ -2472,7 +2517,6 @@ export default function MultichartGrid({
             window.removeEventListener("resize", onWin);
             window.removeEventListener("scroll", onWin, { capture: true });
             if (wrapper) {
-                wrapper.removeEventListener("mousedown", onHostPointerDown, { capture: true });
                 wrapper.removeEventListener("pointerdown", onHostPointerDown, { capture: true });
             }
             clearHostSlot();
@@ -3486,19 +3530,18 @@ export default function MultichartGrid({
         // chart event handler, which may then post a fresh chart-state
         // a moment later. Microtask defer means we publish AFTER state
         // has settled if both arrive in the same frame.
-        const t = setTimeout(() => {
+        const t = setTimeout(function runFocusPanelSideEffects() {
+            try {
+                if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil
+                    && performance.now() < window.__v9DrawingSelectionGuardUntil) {
+                    setTimeout(runFocusPanelSideEffects, 40);
+                    return;
+                }
+            } catch (_) {}
             // Panel id changed — always publish even when symbol/tf/file match a prior visit.
             lastFocusMirrorKeyRef.current = "";
             dispatchFocusChanged(focusedPanelId, { force: true });
             const grid = window.__multichartGrid;
-            try {
-                if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
-                    if (performance.now() < window.__v9DrawingSelectionGuardUntil) {
-                        // Shape select on the newly focused tile is still in flight.
-                        return;
-                    }
-                }
-            } catch (_) {}
             if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
                 grid.clearDrawingUiOnOtherPanels(focusedPanelId);
             } else if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {

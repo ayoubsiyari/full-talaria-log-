@@ -3144,6 +3144,21 @@ class DrawingToolsManager {
             return;
         }
 
+        if (this.currentTool && !this.drawingState?.isDrawing && !this.isRectSelecting
+            && !event.shiftKey && !event.altKey
+            && this.chart && typeof this.chart._isMultichartHostPanel === "function"
+            && this.chart._isMultichartHostPanel()) {
+            const [hostMx, hostMy] = this._eventCanvasLocalXY(event);
+            const hostHits = this.findDrawingsAtPoint(hostMx, hostMy, { includeVolumeProfileBodyHit: true });
+            if (hostHits && hostHits.length > 0) {
+                const hostBest = hostHits[0];
+                if (hostBest && !hostBest.locked) {
+                    if (typeof this.clearTool === "function") this.clearTool();
+                    else this.currentTool = null;
+                }
+            }
+        }
+
         if (this.currentTool && this.isRectSelecting) {
             this.cancelRectangularSelection();
         }
