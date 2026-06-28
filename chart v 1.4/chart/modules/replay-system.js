@@ -278,9 +278,15 @@ class ReplaySystem {
             this.pauseTextEl = this.playPauseBtn.querySelector('.pause-text');
         }
 
-        if (!this.toolbar || !this.handle || !this.replayBtn) {
+        if (!this.toolbar || !this.replayBtn) {
+            if (typeof window !== 'undefined' && window.__TALARIA_EMBED_LITE) {
+                return;
+            }
             console.error('❌ Replay toolbar elements missing');
             return;
+        }
+        if (!this.handle) {
+            this.handle = this.toolbar;
         }
 
         this.attachPlaybackModeOptionEvents(this.toolbar);

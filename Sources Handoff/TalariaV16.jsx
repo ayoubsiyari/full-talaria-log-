@@ -10715,8 +10715,15 @@ const TalariaV8b = () => {
   const [dashSubWindow, setDashSubWindow] = useState(null);
   const [dashSubPinned, setDashSubPinned] = useState(() => new Set());
   const [dashSubGeom, setDashSubGeom] = useState({left:260,top:120,width:720,height:560});
+  const [dashViewportW, setDashViewportW] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1280));
   const [dashSubDragging, setDashSubDragging] = useState(null);
   const [dashSubResizing, setDashSubResizing] = useState(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onResize = () => setDashViewportW(window.innerWidth);
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [dashAddTradePickerOpen, setDashAddTradePickerOpen] = useState(false);
   const [dashPendingAddTradeSource, setDashPendingAddTradeSource] = useState(null);
   const [dashAddTradeWarningOpen, setDashAddTradeWarningOpen] = useState(false);
@@ -12863,6 +12870,7 @@ const TalariaV8b = () => {
       style.textContent += `.tlr-snapshot-calendar-panel{animation:none!important;will-change:auto!important}.tlr-snapshot-calendar-cell{transition:background 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease!important}.tlr-snapshot-calendar-title-btn{transition:background-color 130ms ease,color 130ms ease,transform 90ms ease!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.11)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.18)!important;color:#fff!important;transform:translateY(1px)!important}.tlr-snapshot-calendar-cell:active{filter:brightness(1.08)!important}.tlr-snapshot-calendar-cell-selected{transition:background 150ms ease,border-color 150ms ease,box-shadow 150ms ease,color 150ms ease!important}@keyframes tlrSnapshotCalendarSwitch{0%{opacity:.88;transform:translateY(5px) scale(.993)}100%{opacity:1;transform:translateY(0) scale(1)}}.tlr-snapshot-calendar-panel-animate{animation:tlrSnapshotCalendarSwitch 190ms cubic-bezier(.2,.72,.18,1) both!important;will-change:opacity,transform!important;transform-origin:50% 42%}@media (prefers-reduced-motion:reduce){.tlr-snapshot-calendar-panel-animate{animation:none!important}.tlr-snapshot-calendar-cell,.tlr-snapshot-calendar-title-btn{transition:none!important}}`;
       style.textContent += `.tlr-snapshot-page,.tlr-snapshot-page *{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-synthesis:none}.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout paint;transform:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{transform:none!important;filter:none!important}.tlr-snapshot-page .tlr-dashboard-summary-card span,.tlr-snapshot-page .tlr-dashboard-summary-card div{min-width:0}.tlr-snapshot-calendar-cell{transform:none!important;will-change:background,border-color,box-shadow}.tlr-snapshot-calendar-cell:hover{transform:none!important;filter:none!important}.tlr-snapshot-calendar-cell:active{transform:none!important;filter:brightness(1.04)!important}.tlr-snapshot-calendar-title-btn{border:0!important;box-shadow:none!important}.tlr-snapshot-calendar-title-btn:hover{background:rgba(74,106,255,0.10)!important;color:${c.acL}!important}.tlr-snapshot-calendar-title-btn:active{background:rgba(74,106,255,0.17)!important;color:#fff!important}.tlr-snapshot-trade-preview-shell{pointer-events:none}.tlr-snapshot-trade-preview-card{background:rgb(7,10,20)!important;border:1px solid rgba(116,126,150,0.50)!important;box-shadow:0 18px 44px rgba(0,0,0,0.58),inset 0 1px 0 rgba(255,255,255,0.035)!important}.tlr-snapshot-trade-preview-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 8px ${c.acG};pointer-events:none}.tlr-snapshot-trade-id-button{display:inline-flex!important;align-items:center!important;gap:5px!important;line-height:1.05!important;vertical-align:middle!important}.tlr-snapshot-trade-id-button::after{left:0!important;right:13px!important;bottom:1px!important;height:1px!important;background:linear-gradient(90deg,transparent,${c.acL},transparent)!important;box-shadow:0 0 7px ${c.acG}!important}.tlr-snapshot-trade-id-button:hover,.tlr-snapshot-trade-id-button[aria-pressed="true"]{color:${c.acL}!important}.tlr-snapshot-trade-id-button:hover::after,.tlr-snapshot-trade-id-button[aria-pressed="true"]::after{opacity:1!important}.tlr-snapshot-trade-preview-close{border:0!important;background:transparent!important;box-shadow:none!important}.tlr-snapshot-trade-preview-close:hover{background:transparent!important;color:${c.rd}!important;filter:drop-shadow(0 0 5px rgba(255,80,104,.58))!important}.tlr-snapshot-trade-preview-close:active{background:transparent!important;color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-bestworst-grid{grid-template-columns:minmax(182px,1fr) minmax(42px,52px) minmax(62px,74px)!important;column-gap:8px!important}.tlr-snapshot-bestworst-id{font-size:7.85px!important;letter-spacing:-.01em!important;overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-bestworst-line{width:58px!important;max-width:58px!important}.tlr-snapshot-chip-row:hover{transform:none!important;filter:none!important}.tlr-snapshot-basic-card-title-line{height:1px;background:linear-gradient(90deg,transparent,${c.acL},transparent);box-shadow:0 0 7px ${c.acG}}`;
       style.textContent += `.tlr-snapshot-page .tlr-dashboard-summary-card{contain:layout!important}.tlr-snapshot-page .tlr-dashboard-summary-card:hover{box-shadow:inherit}.tlr-snapshot-page .tlr-snapshot-bestworst-grid>*{min-width:0}.tlr-snapshot-page .tlr-snapshot-bestworst-id>span{overflow:visible!important;text-overflow:clip!important}.tlr-snapshot-page .tlr-snapshot-trade-preview-card{backdrop-filter:none!important}.tlr-snapshot-page .tlr-snapshot-calendar-title-btn,.tlr-snapshot-page .tlr-snapshot-trade-id-button,.tlr-snapshot-page .tlr-dashboard-score-arrow{cursor:pointer!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:hover{color:${c.acL}!important;filter:drop-shadow(0 0 5px ${c.acG})!important}.tlr-snapshot-page .tlr-dashboard-score-arrow:active{color:#fff!important;transform:translateY(1px) scale(.94)!important}.tlr-snapshot-page .tlr-snapshot-trade-id-button:hover span,.tlr-snapshot-page .tlr-snapshot-trade-id-button:active span{color:${c.acL}!important}`;
+      style.textContent += `@media (max-width:899px){.tlr-dash-chrome-toolbar{flex-wrap:wrap!important;height:auto!important;min-height:64px;padding-top:8px;padding-bottom:8px;align-items:flex-start!important}.tlr-dash-chrome-brand{display:none!important}.tlr-dash-chrome-controls{flex:1 1 100%!important;max-width:none!important;margin-left:0!important;flex-wrap:wrap!important;row-gap:8px!important}.tlr-dash-chrome-actions{flex:1 1 100%!important;justify-content:flex-end!important;padding:0 12px 4px!important;margin-left:0!important}.tlr-dash-balance-field{width:auto!important;flex:1 1 180px!important;min-width:0!important}.tlr-dash-unit-toggle{width:auto!important;flex:0 1 118px!important;min-width:104px!important}.tlr-snapshot-page-header{flex-direction:column!important;align-items:flex-start!important}.tlr-snapshot-page-header-sub{white-space:normal!important}}@media (max-width:639px){.tlr-session-nav-rail{width:100%!important;height:58px!important;flex-direction:row!important;align-self:auto!important;flex-shrink:0!important;padding:0 4px!important;box-shadow:0 -2px 18px rgba(0,0,0,0.45)!important;order:2}.tlr-session-nav-rail .tlr-session-nav-item{flex:1 1 0!important;height:52px!important;max-width:72px}.tlr-session-nav-rail .tlr-session-nav-spacer{display:none!important}.tlr-dash-body-stack{flex-direction:column!important}.tlr-dash-main-content{order:1!important;min-height:0!important}.tlr-dash-content-scroll{padding:12px!important}.tlr-snapshot-basic-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.tlr-snapshot-pair-grid{grid-template-columns:1fr!important}}@media (max-width:479px){.tlr-snapshot-basic-grid{grid-template-columns:1fr!important}.tlr-dash-chrome-actions{justify-content:stretch!important}.tlr-dash-chrome-actions .tlr-dashboard-add-trade{flex:1 1 auto!important;justify-content:center!important}}`;
       style.textContent += `.tlr-dashboard-score-compare-wrap-open{z-index:420!important;position:relative!important;isolation:isolate!important}.tlr-dashboard-score-compare-menu{background:rgb(7,10,20)!important;pointer-events:auto!important}.tlr-dashboard-score-compare-menu button:hover{background:rgba(255,255,255,0.045)!important}.tlr-dashboard-score-compare-menu button:active{background:rgba(74,106,255,0.14)!important}`;
       style.textContent += `.tlr-dashboard-compare-chip{position:relative}.tlr-dashboard-compare-chip:hover{background:rgba(255,255,255,0.055)!important;border-color:rgba(74,106,255,0.34)!important;color:#4A6AFF!important;box-shadow:0 0 12px -11px #4A6AFF!important}.tlr-dashboard-compare-chip:active{background:rgba(74,106,255,0.12)!important;color:#4A6AFF!important;transform:translateY(1px)!important}.tlr-dashboard-compare-chip-active{background:transparent!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:hover{background:rgba(255,255,255,0.055)!important;color:#4A6AFF!important}.tlr-dashboard-compare-chip-active:after{content:"";position:absolute;left:16px;right:16px;bottom:2px;height:1px;background:linear-gradient(90deg,transparent,#4A6AFF,transparent);box-shadow:0 0 8px rgba(74,106,255,0.82);pointer-events:none}.tlr-dashboard-compare-chip:focus-visible{outline:1px solid rgba(140,160,255,0.72);outline-offset:-1px}`;
       style.textContent += `.tlr-dashboard-compare-exit:hover{background:rgba(255,80,104,0.055)!important;color:#FF5068!important}.tlr-dashboard-compare-exit:active{background:rgba(255,80,104,0.12)!important;color:#fff!important;transform:translateY(1px)!important}`;
@@ -14544,8 +14552,11 @@ const TalariaV8b = () => {
           <div onClick={()=>setter(v=>!v)} style={{width:11,height:11,transform:"rotate(45deg)",border:`1px solid ${val?c.acL:c.br}`,background:val?c.acL:"transparent",cursor:"default",flexShrink:0,transition:"all 0.12s"}}/>
         );
         /* ── Shared left nav panel ── */
+        const dashIsPhone = dashViewportW < 640;
+        const dashIsNarrow = dashViewportW < 900;
+        const dashIsTablet = dashViewportW < 1100;
         const navPanel = (
-          <div style={{width:64,flexShrink:0,alignSelf:"stretch",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",padding:"0 0 6px",background:c.el,gap:1,boxShadow:"4px 0 20px rgba(0,0,0,0.45)",zIndex:1}}>
+          <div className={`tlr-session-nav-rail${dashIsPhone ? " tlr-session-nav-rail--bottom" : ""}`} style={{width:dashIsPhone?undefined:64,flexShrink:0,alignSelf:dashIsPhone?"auto":"stretch",height:dashIsPhone?"auto":"100%",overflow:"hidden",display:"flex",flexDirection:dashIsPhone?"row":"column",alignItems:"center",padding:dashIsPhone?"0 4px":"0 0 6px",background:c.el,gap:1,boxShadow:dashIsPhone?"0 -2px 20px rgba(0,0,0,0.45)":"4px 0 20px rgba(0,0,0,0.45)",zIndex:dashIsPhone?12:1}}>
             {[
               {id:"dashboard", label:"Dashboard",  icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="3" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/><rect x="13" y="13" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5"/></svg>},
               {id:"trades",    label:"Trades",     icon:<svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M6.2 4v16M11.8 4v16M17.4 4v16" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square" opacity=".72"/><rect x="4.4" y="7.1" width="3.6" height="5.4" stroke="currentColor" strokeWidth="1.45"/><rect x="10" y="11.2" width="3.6" height="5.6" stroke="currentColor" strokeWidth="1.45"/><rect x="15.6" y="6.4" width="3.6" height="4.8" stroke="currentColor" strokeWidth="1.45"/><path d="M5 18.5h7.4" stroke="currentColor" strokeWidth="1.45" strokeLinecap="square"/><path d="M13.5 18.5h5.2M16.7 15.7l2.8 2.8-2.8 2.8" stroke="currentColor" strokeWidth="1.45" strokeLinecap="square" strokeLinejoin="miter"/></svg>},
@@ -14564,14 +14575,14 @@ const TalariaV8b = () => {
                   onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goNavView();}}
                   onClick={e=>e.preventDefault()}
                   onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goNavView();}}}
-                  style={{width:"100%",height:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isA?c.acD:"transparent",color:isA?c.acL:c.ts}}>
-                  {isA&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                  style={{width:dashIsPhone?"100%":"100%",height:dashIsPhone?52:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isA?c.acD:"transparent",color:isA?c.acL:c.ts}}>
+                  {isA&&<div style={{position:"absolute",left:dashIsPhone?"20%":"0",right:dashIsPhone?"20%":"auto",top:dashIsPhone?"auto":0,bottom:dashIsPhone?0:"20%",width:dashIsPhone?"auto":2,height:dashIsPhone?2:"auto",background:`linear-gradient(${dashIsPhone?"90deg":"180deg"},transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                   {icon}
-                  <span style={{fontSize:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>{label}</span>
+                  <span style={{fontSize:dashIsPhone?7:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:dashIsPhone?56:undefined}}>{label}</span>
                 </div>
               );
             })}
-            <div style={{flex:1}}/>
+            <div className="tlr-session-nav-spacer" style={{flex:1}}/>
             {(()=>{
               const isSupportA = supportNavOpen;
               const goSupportNav = () => {
@@ -14588,8 +14599,8 @@ const TalariaV8b = () => {
                 onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goSupportNav();}}
                 onClick={e=>e.preventDefault()}
                 onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goSupportNav();}}}
-                style={{width:"100%",height:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isSupportA?c.acD:"transparent",color:isSupportA?c.acL:c.ts}}>
-                {isSupportA&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                style={{width:dashIsPhone?"100%":"100%",height:dashIsPhone?52:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isSupportA?c.acD:"transparent",color:isSupportA?c.acL:c.ts}}>
+                {isSupportA&&<div style={{position:"absolute",left:dashIsPhone?"20%":"0",right:dashIsPhone?"20%":"auto",top:dashIsPhone?"auto":0,bottom:dashIsPhone?0:"20%",width:dashIsPhone?"auto":2,height:dashIsPhone?2:"auto",background:`linear-gradient(${dashIsPhone?"90deg":"180deg"},transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><path d="M4 4h16v12H9l-5 4V4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><line x1="8" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="8" y1="12.5" x2="13" y2="12.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
                 <span style={{fontSize:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>Support</span>
               </div>
@@ -14607,8 +14618,8 @@ const TalariaV8b = () => {
                 onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();goProfileNav();}}
                 onClick={e=>e.preventDefault()}
                 onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goProfileNav();}}}
-                style={{width:"100%",height:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isProfileA?c.acD:"transparent",color:isProfileA?c.acL:c.ts}}>
-                {isProfileA&&<div style={{position:"absolute",left:0,top:"20%",bottom:"20%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                style={{width:dashIsPhone?"100%":"100%",height:dashIsPhone?52:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"default",position:"relative",background:isProfileA?c.acD:"transparent",color:isProfileA?c.acL:c.ts}}>
+                {isProfileA&&<div style={{position:"absolute",left:dashIsPhone?"20%":"0",right:dashIsPhone?"20%":"auto",top:dashIsPhone?"auto":0,bottom:dashIsPhone?0:"20%",width:dashIsPhone?"auto":2,height:dashIsPhone?2:"auto",background:`linear-gradient(${dashIsPhone?"90deg":"180deg"},transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 <svg width={21} height={21} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 <span style={{fontSize:8,fontWeight:800,letterSpacing:"0.07em",textTransform:"uppercase",fontFamily:F}}>Profile</span>
               </div>
@@ -14646,10 +14657,10 @@ const TalariaV8b = () => {
             </div>
 
             {/* ── Body: left nav + right content ── */}
-            <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+            <div className={`tlr-dash-body-stack${dashIsPhone ? " tlr-dash-body-stack--phone" : ""}`} style={{flex:1,display:"flex",overflow:"hidden",flexDirection:dashIsPhone?"column":"row"}}>
             {navPanel}
             {/* Right content */}
-            <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div className="tlr-dash-main-content" style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0,order:dashIsPhone?1:undefined}}>
 
             {/* Session list — filter row and column headers sticky inside */}
             <div style={{flex:1,overflow:"auto",scrollbarGutter:"stable"}} className="tlr-scroll">
@@ -27706,7 +27717,8 @@ const TalariaV8b = () => {
               const safeIndex = Math.min(Math.max(0, dashKpiPageIndex[slot.id] || 0), Math.max(0, pages.length - 1));
               const page = pages[safeIndex] || pages[0];
               if (!page) return null;
-              const kpiCardHeight = dashboardKpiCardHeight;
+              const kpiCardHeight = dashIsTablet ? "auto" : dashboardKpiCardHeight;
+              const kpiCardMinHeight = dashboardKpiCardHeight;
               const titleLength = String(page.label || "").length;
               const titleFit = titleLength >= 20
                 ? {fontSize:8.8, letterSpacing:0, lineMin:62}
@@ -27749,8 +27761,8 @@ const TalariaV8b = () => {
                 });
               };
               return (
-                <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{minWidth:0,height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight}}>
-                  <SummaryCard title={page.label} titleDot={false} titleFull titleFontSize={titleFit.fontSize} titleLetterSpacing={titleFit.letterSpacing} titleLineMinWidth={titleFit.lineMin} minHeight={0} resourceId={page.resourceId || dashboardResourceIdFor(page.label)} right={<KpiPager slotId={slot.id} pages={pages} activeIndex={safeIndex}/>} onClick={()=>openDashSubWindow(page.target || "trade-journal", page.label)} style={{height:kpiCardHeight,minHeight:kpiCardHeight,maxHeight:kpiCardHeight,padding:14,gap:8,opacity:page.dim ? .72 : 1}}>
+                <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{minWidth:0,height:kpiCardHeight,minHeight:kpiCardMinHeight,maxHeight:dashIsTablet?undefined:kpiCardMinHeight}}>
+                  <SummaryCard title={page.label} titleDot={false} titleFull titleFontSize={titleFit.fontSize} titleLetterSpacing={titleFit.letterSpacing} titleLineMinWidth={titleFit.lineMin} minHeight={0} resourceId={page.resourceId || dashboardResourceIdFor(page.label)} right={<KpiPager slotId={slot.id} pages={pages} activeIndex={safeIndex}/>} onClick={()=>openDashSubWindow(page.target || "trade-journal", page.label)} style={{height:kpiCardHeight,minHeight:kpiCardMinHeight,maxHeight:dashIsTablet?undefined:kpiCardMinHeight,padding:14,gap:8,opacity:page.dim ? .72 : 1}}>
                     <div key={`${slot.id}-${page.id || safeIndex}`} className={slideClass} onAnimationEnd={slideClass ? clearSlideClass : undefined} style={{display:"flex",flexDirection:"column",gap:8,flex:1,minHeight:0}}>
                       <div {...dashInfoHandlers({title:page.label, body:page.info || dashboardMetricInfo[page.label] || "Headline value calculated from the current source and filters.", footer:"Click for detail ->"})} tabIndex={0} className="tlr-dashboard-info-target" style={{fontSize:valueFontSize,fontWeight:800,color:page.color || c.acL,fontFamily:F,fontVariantNumeric:"tabular-nums",lineHeight:1.08,whiteSpace:"normal",overflow:"visible",minHeight:25,display:"flex",alignItems:"baseline",gap:8,outline:"none",flexWrap:"wrap"}}>
                         <span style={{minWidth:0,overflow:"visible"}}>{page.value}</span>
@@ -28411,7 +28423,7 @@ const TalariaV8b = () => {
               </div>
             );
             const CompactScoreCard = () => (
-              <SummaryCard title={dashTxt("Talaria Score","درجة تالاريا")} minHeight={dashboardScoreCardHeight} titleDot={false} titleExtra={<ScoreProvisionalHeaderTag/>} right={<ScoreCompareDropdown/>} onMouseLeave={hideDashboardInfo} style={{height:dashboardScoreCardHeight,minHeight:dashboardScoreCardHeight,maxHeight:dashboardScoreCardHeight,padding:16,gap:10}}>
+              <SummaryCard title={dashTxt("Talaria Score","درجة تالاريا")} minHeight={dashIsTablet?0:dashboardScoreCardHeight} titleDot={false} titleExtra={<ScoreProvisionalHeaderTag/>} right={<ScoreCompareDropdown/>} onMouseLeave={hideDashboardInfo} style={{height:dashIsTablet?"auto":dashboardScoreCardHeight,minHeight:dashIsTablet?320:dashboardScoreCardHeight,maxHeight:dashIsTablet?undefined:dashboardScoreCardHeight,padding:16,gap:10}}>
                 <div style={{flex:1,minHeight:0,overflow:"visible",fontFamily:scoreFont}}>
                   <ScoreRingSlide/>
                 </div>
@@ -28649,7 +28661,7 @@ const TalariaV8b = () => {
               {signedR:false, moneySign:false}
             );
             const renderSnapshotBasicTopStrip = () => (
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(174px,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+              <div className="tlr-snapshot-basic-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(174px,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                 <BasicMetricCard
                   title={dashTxt("Talaria Score","درجة تالاريا")}
                   value={<>{basicScoreValue}<span style={{fontSize:12,color:c.ts,marginLeft:4}}>/100</span></>}
@@ -28668,9 +28680,9 @@ const TalariaV8b = () => {
               </div>
             );
             const renderSnapshotAdvancedTopStrip = () => (
-              <div style={{display:"grid",gridTemplateColumns:"minmax(456px,1.18fr) minmax(0,3fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+              <div style={{display:"grid",gridTemplateColumns:snapshotTwoColGrid,gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                 <CompactScoreCard/>
-                <div style={{height:dashboardScoreCardHeight,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gridTemplateRows:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                <div style={{height:snapshotKpiStripHeight,minHeight:dashIsTablet?0:dashboardScoreCardHeight,display:"grid",gridTemplateColumns:snapshotKpiCols,gridTemplateRows:snapshotKpiRows,gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                   {overviewCarouselSlots.map(slot => <PagedMetricCard key={slot.id} slot={slot}/>)}
                 </div>
               </div>
@@ -31064,14 +31076,14 @@ const TalariaV8b = () => {
             return (
               <div data-tlr-snapshot-root="true" className="tlr-snapshot-page" style={{position:"relative",display:"flex",flexDirection:"column",gap:22}}>
                 <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                  <div style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:16}}>
+                  <div className="tlr-snapshot-page-header" style={{display:"flex",alignItems:"end",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
                     <div style={{display:"inline-flex",alignItems:"center",gap:10,minWidth:0,flexWrap:"wrap"}}>
                         <DashboardPageIcon id="overview" size={18} color={c.acL} style={{flexShrink:0,alignSelf:"center"}}/>
                         <div style={{display:"inline-flex",flexDirection:"column",alignItems:"flex-start",flexShrink:0}}>
                           <h1 style={{margin:0,fontSize:24,fontWeight:900,color:c.tx,fontFamily:F,letterSpacing:0,lineHeight:1}}>{dashTxt("Snapshot","لمحة")}</h1>
                           <div aria-hidden="true" style={{height:2,width:"100%",marginTop:8,background:`linear-gradient(90deg,transparent,${c.acL} 46%,${c.acL} 54%,transparent)`,boxShadow:`0 0 9px ${c.acG}`}}/>
                         </div>
-                        <span style={{fontSize:11,fontWeight:800,color:c.ts,fontFamily:F,letterSpacing:"0.01em",lineHeight:1.1,whiteSpace:"nowrap",alignSelf:"center"}}>- {dashTxt("Account health at a glance.","لمحة سريعة عن صحة الحساب.")}</span>
+                        <span className="tlr-snapshot-page-header-sub" style={{fontSize:11,fontWeight:800,color:c.ts,fontFamily:F,letterSpacing:"0.01em",lineHeight:1.1,whiteSpace:"nowrap",alignSelf:"center"}}>- {dashTxt("Account health at a glance.","لمحة سريعة عن صحة الحساب.")}</span>
                     </div>
                     <DashboardEvidenceStrip/>
                   </div>
@@ -31090,17 +31102,17 @@ const TalariaV8b = () => {
 
                   <PropChallengeProgressSection/>
 
-                  <div style={{display:"grid",gridTemplateColumns:"minmax(456px,1.18fr) minmax(0,3fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                  <div style={{display:"grid",gridTemplateColumns:snapshotTwoColGrid,gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                     {renderSnapshotPnlCalendarSection()}
                     {renderAccountPulseSection()}
                   </div>
 
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                  <div className="tlr-snapshot-pair-grid" style={{display:"grid",gridTemplateColumns:snapshotPairGrid,gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                     {snapshotAutoInsightChips.length ? renderAutoInsightChipsSection() : <div aria-hidden="true" style={{minHeight:1}}/>}
                     {renderBestWorstTradesSection()}
                   </div>
 
-                  <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.55fr) minmax(320px,0.85fr)",gap:dashboardKpiCardGap,alignItems:"stretch"}}>
+                  <div style={{display:"grid",gridTemplateColumns:snapshotWideNarrowGrid,gap:dashboardKpiCardGap,alignItems:"stretch"}}>
                     {renderStrengthsWeaknessesSection() || <div aria-hidden="true" style={{minHeight:1}}/>}
                     {renderNextBestActionSection()}
                   </div>
@@ -37254,8 +37266,15 @@ const TalariaV8b = () => {
           const dashboardCompareSourceMark = compareSession ? librarySourceStatusMark("backtest", compareSession, 16) : null;
           const dashboardMainFiltersActive = dashFiltersOpen && dashFiltersScope === "main";
           const dashboardCompareFiltersActive = dashFiltersOpen && dashFiltersScope === "compare";
-          const dashboardSourceButtonWidth = 198;
-          const dashboardFilterButtonWidth = 126;
+          const dashboardSourceButtonWidth = dashIsPhone ? Math.min(156, Math.max(118, dashViewportW - 240)) : dashIsNarrow ? 164 : 198;
+          const dashboardFilterButtonWidth = dashIsPhone ? 104 : dashIsNarrow ? 112 : 126;
+          const snapshotTwoColGrid = dashIsTablet ? "1fr" : "minmax(0,1.18fr) minmax(0,3fr)";
+          const snapshotKpiCols = dashIsPhone ? "repeat(1,minmax(0,1fr))" : dashIsNarrow ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))";
+          const snapshotKpiRows = dashIsPhone ? "auto" : dashIsNarrow ? "repeat(4,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))";
+          const snapshotPairGrid = dashIsPhone ? "1fr" : "repeat(2,minmax(0,1fr))";
+          const snapshotWideNarrowGrid = dashIsNarrow ? "1fr" : "minmax(0,1.55fr) minmax(280px,0.85fr)";
+          const snapshotKpiStripHeight = dashIsTablet ? "auto" : 464;
+          const snapshotContentPad = dashIsPhone ? 12 : dashIsNarrow ? 16 : 24;
           const exitDashCompareMode = () => {
             setDashCompareOpen(false);
             setDashCompareId(null);
@@ -39970,7 +39989,7 @@ const TalariaV8b = () => {
               </button>
             );
             return (
-              <div ref={dashUnitMenuRef} className="tlr-dashboard-value-menu-wrap" aria-label={dashTxt("Dashboard display mode","وضع عرض لوحة التحكم")} style={{position:"relative",width:126,height:38,fontFamily:F,flex:"0 0 126px",zIndex:dashUnitMenuOpen?400:2}}>
+              <div ref={dashUnitMenuRef} className="tlr-dashboard-value-menu-wrap tlr-dash-unit-toggle" aria-label={dashTxt("Dashboard display mode","وضع عرض لوحة التحكم")} style={{position:"relative",width:126,height:38,fontFamily:F,flex:dashIsPhone?"0 1 118px":"0 0 126px",minWidth:dashIsPhone?104:126,zIndex:dashUnitMenuOpen?400:2}}>
                 <button type="button" className={`tlr-dashboard-source-switch-redesign tlr-dashboard-value-select${dashUnitMenuOpen?" tlr-dashboard-source-switch-open":""}`} onPointerDown={e=>{if(typeof e.button==="number"&&e.button!==0)return;e.preventDefault();setDashUnitMenuOpen(prev=>!prev);setDashFreshNavOpen(false);setDashFiltersOpen(false);setDashLibraryOpen(false);setDashCompareOpen(false);}} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setDashUnitMenuOpen(prev=>!prev);} if(e.key==="Escape") setDashUnitMenuOpen(false);}} aria-haspopup="listbox" aria-expanded={dashUnitMenuOpen} style={{"--tlr-source-accent":displayedColor,width:"100%",height:38,border:`1px solid ${dashUnitMenuOpen?`${displayedColor}66`:"rgba(140,160,255,0.14)"}`,background:dashUnitMenuOpen?`${displayedColor}16`:"rgba(15,19,34,0.92)",color:displayedColor,display:"grid",gridTemplateColumns:"16px minmax(0,1fr) 14px",alignItems:"center",columnGap:8,padding:"0 8px 0 10px",boxSizing:"border-box",fontFamily:F,cursor:"default",outline:"none",boxShadow:dashUnitMenuOpen?`inset 0 1px 0 rgba(255,255,255,0.05),0 0 13px -10px ${displayedColor}`:"inset 0 1px 0 rgba(255,255,255,0.04)",transition:"none",overflow:"hidden"}}>
                   <span data-tlr-upper-icon="true" style={{fontSize:12,fontWeight:950,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",color:displayedColor}}>{selectedUnit.label}</span>
                   <span style={{minWidth:0,display:"flex",flexDirection:"column",gap:3,lineHeight:1,textAlign:"left"}}>
@@ -39991,7 +40010,7 @@ const TalariaV8b = () => {
             );
           };
           const DashboardBalanceField = () => (
-            <div className="tlr-dashboard-value-menu-wrap" style={{position:"relative",height:38,width:292,flex:"0 0 292px",zIndex:1}}>
+            <div className="tlr-dashboard-value-menu-wrap tlr-dash-balance-field" style={{position:"relative",height:38,width:dashIsPhone?undefined:292,flex:dashIsPhone?"1 1 180px":"0 0 292px",minWidth:dashIsPhone?0:292,zIndex:1}}>
               <div className="tlr-dashboard-balance-field"
                 style={{height:38,position:"relative",display:"grid",gridTemplateColumns:"minmax(82px,1fr) minmax(82px,1fr)",padding:"0 12px",alignItems:"center",columnGap:18,background:"linear-gradient(180deg,rgba(17,21,37,0.98),rgba(9,12,24,0.96))",border:"1px solid rgba(140,160,255,0.20)",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.05)",boxSizing:"border-box",fontFamily:F,overflow:"visible",cursor:"default",outline:"none"}}>
                 <div style={{minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",gap:4,overflow:"visible"}}>
@@ -40023,15 +40042,15 @@ const TalariaV8b = () => {
                 </div>
               )}
               {/* Header */}
-              <div style={{height:64,flexShrink:0,display:"flex",alignItems:"center",gap:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:120}}>
-                <div style={{width:64,flexShrink:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <div className="tlr-dash-chrome-toolbar" style={{height:dashIsNarrow?"auto":"64",minHeight:64,flexShrink:0,display:"flex",alignItems:dashIsNarrow?"flex-start":"center",gap:0,flexWrap:dashIsNarrow?"wrap":"nowrap",rowGap:dashIsNarrow?8:0,background:c.el,boxShadow:"0 2px 18px rgba(0,0,0,0.5)",zIndex:120}}>
+                <div style={{width:64,flexShrink:0,height:64,display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <img src="/LOGO-07.png" style={{width:52,height:52,objectFit:"contain"}} alt=""/>
                 </div>
-                <div style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 12px 0 0"}}>
+                <div className="tlr-dash-chrome-brand" style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 12px 0 0"}}>
                   <div style={{fontSize:17,fontWeight:700,color:c.tx,letterSpacing:"0.04em",fontFamily:F,marginRight:14}}>Talaria-Log</div>
                   <div style={{width:1.5,height:36,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acL}`,marginRight:14,flexShrink:0}}/>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,maxWidth:dashboardCompareBarActive?1220:880,flex:"0 1 auto",marginLeft:14}}>
+                <div className="tlr-dash-chrome-controls" style={{display:"flex",alignItems:"center",gap:8,minWidth:0,maxWidth:dashboardCompareBarActive?(dashIsNarrow?"100%":1220):(dashIsNarrow?"100%":880),flex:dashIsNarrow?"1 1 100%":"0 1 auto",marginLeft:dashIsNarrow?0:14,flexWrap:"wrap"}}>
                   <div className={`tlr-dashboard-source-switch tlr-dashboard-source-switch-redesign${dashLibraryOpen?" tlr-dashboard-source-switch-open":""}`} role="button" tabIndex={0} aria-label={`${dashboardLibraryType.label}: ${dashboardLibraryLabel}`}
                     onPointerDown={e=>{e.preventDefault();toggleDashLibrary();}}
                     onClick={e=>e.preventDefault()}
@@ -40120,7 +40139,7 @@ const TalariaV8b = () => {
                     </>
                   )}
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,padding:"0 20px 0 10px",marginLeft:"auto"}}>
+                <div className="tlr-dash-chrome-actions" style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,flexWrap:"wrap",padding:dashIsNarrow?"0 12px 8px":"0 20px 0 10px",marginLeft:dashIsNarrow?0:"auto",justifyContent:dashIsNarrow?"flex-end":"flex-start",width:dashIsNarrow?"100%":"auto",boxSizing:"border-box"}}>
                   {isSnapshotDashboardContext ? <SnapshotTopModeButton/> : null}
                   {sessView !== "trades" && <DashboardPagesButton/>}
                   {sessView === "trades" && (
@@ -40175,10 +40194,10 @@ const TalariaV8b = () => {
               </div>
 
               {/* Body */}
-              <div style={{flex:1,display:"flex",overflow:"hidden",flexDirection:isDashRTL?"row-reverse":"row"}}>
+              <div className={`tlr-dash-body-stack${dashIsPhone ? " tlr-dash-body-stack--phone" : ""}`} style={{flex:1,display:"flex",overflow:"hidden",flexDirection:dashIsPhone?"column":"row",...(isDashRTL && !dashIsPhone ? {flexDirection:"row-reverse"} : {})}}>
               {navPanel}
               {/* Content */}
-              <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+              <div className="tlr-dash-main-content" style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0,minHeight:0,order:dashIsPhone?1:undefined}}>
                 {renderDashboardFiltersWindow()}
                 <div style={{
                   flex:1,
@@ -40186,9 +40205,9 @@ const TalariaV8b = () => {
                   display:sessView === "trades" ? "flex" : "block",
                   flexDirection:sessView === "trades" ? "column" : undefined,
                   minHeight:sessView === "trades" ? 0 : undefined,
-                  padding:sessView === "trades" ? "0 24px 24px" : "24px",
+                  padding:sessView === "trades" ? `${snapshotContentPad}px ${snapshotContentPad}px ${snapshotContentPad}px` : `${snapshotContentPad}px`,
                   scrollbarGutter:"stable",
-                }} className="tlr-scroll">
+                }} className="tlr-scroll tlr-dash-content-scroll">
                   <div style={{
                     maxWidth:1460,
                     margin:"0 auto",

@@ -8885,6 +8885,11 @@ class Chart {
                 }
             } else {
                 console.error('❌ ReplaySystem constructor not found (global scope)');
+                if (typeof document !== 'undefined' && document.readyState !== 'complete') {
+                    document.addEventListener('DOMContentLoaded', () => {
+                        if (!this.replaySystem) this.initReplaySystem();
+                    }, { once: true });
+                }
             }
         } catch (error) {
             console.error('❌ Failed to initialize Replay System:', error);
@@ -33207,12 +33212,11 @@ if (typeof window !== 'undefined') {
     window.initializeChart = _talariaInitializeChart;
 }
 
-// Auto-init: wait for DOM if still loading, otherwise run immediately.
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _talariaInitializeChart);
-} else {
-    // DOM already parsed (e.g. when chart.js is loaded dynamically by React);
-    // call init now. It will bail safely if #chartCanvas isn't mounted yet,
-    // and the caller can retry after mount.
+// Auto-init: defer until DOMContentLoaded so sibling defer scripts (e.g.
+// replay-system.js listed after chart.js) execute first. Only run immediately
+// when the document is fully loaded (dynamic injection after page complete).
+if (document.readyState === 'complete') {
     _talariaInitializeChart();
+} else {
+    document.addEventListener('DOMContentLoaded', _talariaInitializeChart, { once: true });
 }
