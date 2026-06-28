@@ -117,6 +117,7 @@
         this._lastGlobalReplayToastMsg = '';
         this._boundDedupedReplayToast = this._showGlobalReplayToastOnce.bind(this);
         global.__multichartDedupedReplayToast = this._boundDedupedReplayToast;
+        global.__multichartManagerRef = this;
     }
 
     MultichartManager.prototype.dispose = function () {
@@ -124,6 +125,11 @@
         if (global.__multichartDedupedReplayToast === this._boundDedupedReplayToast) {
             try { delete global.__multichartDedupedReplayToast; } catch (_) {
                 global.__multichartDedupedReplayToast = undefined;
+            }
+        }
+        if (global.__multichartManagerRef === this) {
+            try { delete global.__multichartManagerRef; } catch (_) {
+                global.__multichartManagerRef = undefined;
             }
         }
         for (const id of Array.from(this.charts.keys())) this.removeChart(id);
@@ -684,16 +690,19 @@
     MultichartManager.prototype.sendCommandNoReply = function (panelId, cmd, args) {
         const c = this.charts.get(panelId);
         if (!c || c.host || !c.frame || !c.frame.contentWindow) return;
+        const msg = {
+            type:   'panel-cmd',
+            target: panelId,
+            cmd:    cmd,
+            args:   args || {},
+        };
         try {
-            c.frame.contentWindow.postMessage({
-                type:   'panel-cmd',
-                target: panelId,
-                cmd:    cmd,
-                args:   args || {},
-                // Intentionally no requestId — iframe will still
-                // reply but the parent's onMessage just no-ops on
-                // unknown requestIds.
-            }, '*');
+            const win = c.frame.contentWindow;
+            if (win && typeof win.__panelCmdApply === 'function') {
+                win.__panelCmdApply(msg);
+                return;
+            }
+            win.postMessage(msg, '*');
         } catch (e) {
             this._log('warn', 'sendCommandNoReply fail ' + panelId + ': ' + e.message);
         }
@@ -1073,4 +1082,28 @@
     };
 
     global.MultichartManager = MultichartManager;
+
+    /** One rAF-coalesced replay fan-out — avoids MultichartGrid double-throttle lag. */
+    var _mcReplayCoalescedDetail = null;
+    var _mcReplayCoalescedScheduled = false;
+    global.__multichartManagerBroadcastReplay = function (detail) {
+        if (!detail || !Number.isFinite(Number(detail.timestamp))) return false;
+        _mcReplayCoalescedDetail = detail;
+        if (_mcReplayCoalescedScheduled) return true;
+        _mcReplayCoalescedScheduled = true;
+        var raf = global.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+        raf(function () {
+            _mcReplayCoalescedScheduled = false;
+            var payload = _mcReplayCoalescedDetail;
+            _mcReplayCoalescedDetail = null;
+            if (!payload) return;
+            var mgr = global.__multichartManagerRef;
+            if (!mgr || !mgr.charts) return;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host || !c.frame) continue;
+                try { mgr.sendCommandNoReply(c.id, 'replayFrame', payload); } catch (_) {}
+            }
+        });
+        return true;
+    };
 })(typeof window !== 'undefined' ? window : globalThis);

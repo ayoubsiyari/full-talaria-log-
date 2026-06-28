@@ -143,6 +143,22 @@
     // playback state. This is the key fix that makes "join mid-play"
     // and "deferred play during data load" actually work.
     var pendingPlayDesired = null;
+    var pendingPlaySpeed = null;
+    var pendingPlayMode = null;
+
+    /** Cached chart + rAF-coalesced replayFrame hot path (matches host paint rate). */
+    var chartInstance = null;
+    var coalescedReplayFrameArgs = null;
+    var coalescedReplayFrameRaf = null;
+
+    function getChartInstance() {
+        if (chartInstance) return chartInstance;
+        if (global.chart) {
+            chartInstance = global.chart;
+            return chartInstance;
+        }
+        return null;
+    }
 
     var rollbackPickActive = false;
     var rollbackPickCleanup = null;
@@ -389,10 +405,18 @@
         }
 
         if (rs.isPlaying) {
-            try {
-                if (typeof rs.stopTickAnimation === 'function') rs.stopTickAnimation();
-                if (typeof rs.pause === 'function') rs.pause();
-            } catch (_) {}
+            if (!ch._multichartPassivePlayActive) {
+                try {
+                    if (typeof rs.stopTickAnimation === 'function') rs.stopTickAnimation();
+                    if (typeof rs.pause === 'function') rs.pause();
+                } catch (_) {}
+            } else if (!ch._mcPassivePlayPausedOnce) {
+                try {
+                    if (typeof rs.stopTickAnimation === 'function') rs.stopTickAnimation();
+                    if (typeof rs.pause === 'function') rs.pause();
+                } catch (_) {}
+                ch._mcPassivePlayPausedOnce = true;
+            }
         }
 
         // Only mark "parent is playing" during active playback — paused step/scrub
@@ -423,6 +447,34 @@
         renderFurthestLoadedMirrorFrame(ch, rs, args);
 
         scheduleMirrorCatchUp(ch, ts, args);
+    }
+
+    function flushCoalescedReplayFrameApply() {
+        coalescedReplayFrameRaf = null;
+        var args = coalescedReplayFrameArgs;
+        coalescedReplayFrameArgs = null;
+        if (!args) return;
+        var ch = getChartInstance();
+        if (!ch) return;
+        applyReplayFrame(ch, args);
+    }
+
+    function scheduleCoalescedReplayFrameApply(args) {
+        coalescedReplayFrameArgs = args;
+        if (coalescedReplayFrameRaf != null) return;
+        var raf = global.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+        coalescedReplayFrameRaf = raf(flushCoalescedReplayFrameApply);
+    }
+
+    function applyReplayFrameHot(args, directApply) {
+        var ch = getChartInstance();
+        if (!ch) return false;
+        if (directApply) {
+            applyReplayFrame(ch, args);
+        } else {
+            scheduleCoalescedReplayFrameApply(args);
+        }
+        return true;
     }
 
     /**
@@ -1100,6 +1152,7 @@
     // or rejects on failure (we surface either via reportResult).
     function applyCommand(cmd, args) {
         return waitForChart(5000).then(function (ch) {
+            chartInstance = ch;
             // Lazy install of the order eventBus forwarder. Done here
             // (rather than at module load) because chart.orderManager.
             // orderService isn't constructed until chart.js finishes
@@ -1713,10 +1766,8 @@
                     // we got around to applying it.
                     pendingReplayTs = null;
                     pendingReplayDesired = false;
-                    // Clear deferred play intent — exit is the parent
-                    // saying "stop everything", so a stale "play"
-                    // shouldn't auto-resume on next enter.
                     pendingPlayDesired = null;
+                    if (ch) ch._mcPassivePlayPausedOnce = false;
                     // Make sure chartDataLoaded re-applies the exit if
                     // a later autoLoad / tf-change re-enters replay
                     // automatically. Without this listener, the iframe
@@ -1826,6 +1877,7 @@
                 case 'replayPause': {
                     pendingPlayDesired = false;
                     ch._multichartPassivePlayActive = false;
+                    ch._mcPassivePlayPausedOnce = false;
                     var rsPa = ch.replaySystem;
                     if (!rsPa || !rsPa.isActive) return;
                     // Freeze at host's partial tick (same frozen candle as tile A).
@@ -2239,6 +2291,13 @@
         // own; broadcast '*' is delivered to all).
         if (msg.target && msg.target !== panelId && msg.target !== '*') return;
 
+        if (msg.cmd === 'replayFrame') {
+            if (applyReplayFrameHot(msg.args || {})) {
+                reportResult(msg.requestId, true, null);
+                return;
+            }
+        }
+
         log('apply', msg.cmd, msg.args);
         applyCommand(msg.cmd, msg.args).then(
             function (data) { reportResult(msg.requestId, true,  null, data); },
@@ -2248,6 +2307,16 @@
             }
         );
     }
+
+    global.__panelCmdApply = function (msg) {
+        if (!msg || typeof msg !== 'object' || msg.type !== 'panel-cmd') return;
+        if (msg.target && msg.target !== panelId && msg.target !== '*') return;
+        if (msg.cmd === 'replayFrame') {
+            applyReplayFrameHot(msg.args || {}, true);
+            return;
+        }
+        onMessage({ data: msg });
+    };
 
     global.addEventListener('message', onMessage);
 

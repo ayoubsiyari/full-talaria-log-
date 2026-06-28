@@ -2781,19 +2781,15 @@ export default function MultichartGrid({
                 coalescedFrameDetail = null;
                 return;
             }
-            const hostRs = window.chart && window.chart.replaySystem;
-            const hostPlaying = !!(hostRs && hostRs.isActive && hostRs.isPlaying);
-            const minMs = hostPlaying
-                ? REPLAY_BROADCAST_MIN_MS_PLAY
-                : REPLAY_BROADCAST_MIN_MS_PAUSED;
-            const now = performance.now();
-            if (now - lastReplayFrameBroadcastAt < minMs) {
-                coalescedFrameScheduled = true;
-                window.requestAnimationFrame(flushCoalescedReplayFrame);
+            // Prefer manager fast path when chart bundle is updated; skip duplicate
+            // React-grid broadcast to avoid double postMessage per frame.
+            if (typeof window.__multichartManagerBroadcastReplay === "function") {
+                coalescedFrameDetail = null;
+                window.__multichartManagerBroadcastReplay(detail);
                 return;
             }
             coalescedFrameDetail = null;
-            lastReplayFrameBroadcastAt = now;
+            lastReplayFrameBroadcastAt = performance.now();
             broadcastReplayFrameToIframes(detail);
         };
 

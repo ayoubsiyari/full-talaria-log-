@@ -4748,7 +4748,11 @@ class ReplaySystem {
 
         if (typeof window !== 'undefined' && window.__multichartGrid) {
             try {
-                window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
+                if (typeof window.__multichartManagerBroadcastReplay === 'function') {
+                    window.__multichartManagerBroadcastReplay(detail);
+                } else {
+                    window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
+                }
             } catch (_) {}
         } else if (detail.animatedCandle && Array.isArray(this.chart.rawData)) {
             this.syncPanelChartsWithAnimatedCandle(this.chart.rawData, detail.animatedCandle);
@@ -5842,10 +5846,12 @@ class ReplaySystem {
         };
     }
 
-    _finishMultichartMirrorRender(chart) {
+    _finishMultichartMirrorRender(chart, opts) {
         if (!chart) return;
         chart.isLoading = false;
 
+        const options = opts && typeof opts === 'object' ? opts : {};
+        const lightPass = options.lightPass === true;
         const passivePlay = chart._multichartPassivePlayActive === true;
         const preserveUntil = chart._multichartPreserveViewportUntil;
         const nowPv = (typeof performance !== 'undefined' && performance.now)
@@ -5858,7 +5864,7 @@ class ReplaySystem {
             && typeof chart._isMultichartBootViewportLocked === 'function'
             && chart._isMultichartBootViewportLocked();
 
-        if (Array.isArray(chart.data) && chart.data.length > 0 && !bootLocked) {
+        if (!lightPass && Array.isArray(chart.data) && chart.data.length > 0 && !bootLocked) {
             const m = chart.margin || { l: 60, r: 70 };
             const plotW = Math.max(1, (Number(chart.w) || 320) - m.l - m.r);
             const cs = chart.getCandleSpacing
@@ -5918,12 +5924,20 @@ class ReplaySystem {
 
         if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
         if (typeof chart.render === 'function') {
-            chart.renderPending = true;
-            chart.render();
+            if (passivePlay || lightPass) {
+                chart.renderPending = false;
+                chart.render();
+            } else {
+                chart.renderPending = true;
+                chart.render();
+            }
         }
-        if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function') {
+        const tp = this.tickProgress || 0;
+        if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function'
+                && (!lightPass || tp % 6 === 0)) {
             try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
         }
+        chart._mirrorLastFrameUsedParentRef = lightPass;
     }
 
     /**
@@ -5993,6 +6007,21 @@ class ReplaySystem {
             chart.rawData = pRaw;
             chart.data = pData;
 
+            const preserveUntil = chart._multichartPreserveViewportUntil;
+            const nowPv = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            const preserveViewport = Number.isFinite(preserveUntil) && nowPv < preserveUntil;
+            const passiveFollow = this.autoScrollEnabled && !this.userHasPanned && !preserveViewport;
+            if (passiveFollow) {
+                if (Number.isFinite(detail && detail.hostOffsetX)) {
+                    chart.offsetX = Number(detail.hostOffsetX);
+                } else if (Number.isFinite(parent.offsetX)) {
+                    chart.offsetX = parent.offsetX;
+                }
+                chart._chartViewRestored = true;
+            }
+
             const pIdx = Number(detail && detail.currentIndex);
             if (Number.isFinite(pIdx)) {
                 this.currentIndex = Math.max(this.sessionStartIndex || 0, pIdx);
@@ -6017,7 +6046,7 @@ class ReplaySystem {
             }
 
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
-            this._finishMultichartMirrorRender(chart);
+            this._finishMultichartMirrorRender(chart, { lightPass: true });
             return true;
         } catch (_) {
             return false;
@@ -6209,6 +6238,10 @@ class ReplaySystem {
                 : null,
             ticksPerCandle: this.currentTicksPerCandle || this.ticksPerCandle || 72,
         };
+        if (this.chart && this.autoScrollEnabled && !this.userHasPanned
+                && Number.isFinite(this.chart.offsetX)) {
+            detail.hostOffsetX = this.chart.offsetX;
+        }
         if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
             const ac = this.animatingCandle;
             detail.animatedCandle = {
@@ -6239,7 +6272,11 @@ class ReplaySystem {
             if (hasAnim && typeof this.applyMultichartMirrorFrame === 'function') {
                 this.applyMultichartMirrorFrame(detail);
             }
-            window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
+            if (typeof window.__multichartManagerBroadcastReplay === 'function') {
+                window.__multichartManagerBroadcastReplay(detail);
+            } else {
+                window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
+            }
         } catch (_e) { /* ignore */ }
     }
 
