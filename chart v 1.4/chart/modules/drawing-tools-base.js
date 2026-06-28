@@ -214,10 +214,15 @@ function resolveDrawingTextStyle(text, fontStyle, fontFamily) {
     };
 }
 
-function buildDrawingTextTransform(x, y, rotation, italicSkew) {
+function buildDrawingTextTransform(x, y, rotation, italicSkew, nudgeX = 0, nudgeY = 0) {
     const rot = Number(rotation) || 0;
     const skew = Number(italicSkew) || 0;
+    const nx = Number(nudgeX) || 0;
+    const ny = Number(nudgeY) || 0;
     const parts = [];
+    if (nx !== 0 || ny !== 0) {
+        parts.push(`translate(${nx}, ${ny})`);
+    }
     // Skew in local space first, then rotate around anchor — avoids Arabic spike artifacts on line labels.
     if (skew !== 0) {
         parts.push(`translate(${x}, ${y}) skewX(${skew}) translate(${-x}, ${-y})`);
@@ -226,6 +231,59 @@ function buildDrawingTextTransform(x, y, rotation, italicSkew) {
         parts.push(`rotate(${rot}, ${x}, ${y})`);
     }
     return parts.length ? parts.join(' ') : null;
+}
+
+/** Gap from stroke to nearest text edge (matches line tools). */
+function lineLabelGapFromStroke(fontSize) {
+    const fs = Number(fontSize) || 14;
+    return 14 + Math.max(0, fs / 2 - 6);
+}
+
+function lineLabelBlockHeight(text, fontSize) {
+    const fs = Number(fontSize) || 14;
+    const lines = String(text || '').split('\n');
+    return Math.max(lines.length, 1) * fs * 1.2;
+}
+
+/** Perpendicular distance from line to label anchor when using central baseline. */
+function lineLabelPerpDistance(text, fontSize) {
+    return lineLabelGapFromStroke(fontSize) + lineLabelBlockHeight(text, fontSize) / 2;
+}
+
+function horizontalLineLabelOffsetY(text, fontSize, textVAlign) {
+    if (textVAlign !== 'top' && textVAlign !== 'bottom') return 0;
+    const dist = lineLabelPerpDistance(text, fontSize);
+    return textVAlign === 'top' ? -dist : dist;
+}
+
+/** Flip start/end anchors for RTL so endpoint labels grow along the line. */
+function resolveLineEndpointSvgAnchor(which, text) {
+    const isRtl = drawingTextHasArabicScript(text);
+    if (which === 'left') return isRtl ? 'end' : 'start';
+    if (which === 'right') return isRtl ? 'start' : 'end';
+    return 'middle';
+}
+
+function resolveRayEndpointSvgAnchor(which, text, lineGoesRight) {
+    let anchor = which === 'left'
+        ? (lineGoesRight ? 'start' : 'end')
+        : (lineGoesRight ? 'end' : 'start');
+    if (drawingTextHasArabicScript(text)) {
+        anchor = anchor === 'start' ? 'end' : 'start';
+    }
+    return anchor;
+}
+
+function applyLineLabelPerpOffset(baseX, baseY, perpX, perpY, signUp, textVAlign, text, fontSize) {
+    if (textVAlign !== 'top' && textVAlign !== 'bottom') {
+        return { x: baseX, y: baseY };
+    }
+    const dist = lineLabelPerpDistance(text, fontSize);
+    const sign = textVAlign === 'top' ? 1 : -1;
+    return {
+        x: baseX + perpX * dist * signUp * sign,
+        y: baseY + perpY * dist * signUp * sign
+    };
 }
 
 const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([

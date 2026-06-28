@@ -7054,7 +7054,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 </div>
 
-                <div class="tv-prop-controls">
+                <div class="tv-prop-controls" style="opacity: ${infoSettings.showInfo ? '1' : '0.55'}; pointer-events: ${infoSettings.showInfo ? 'auto' : 'none'};">
 
                     <button class="tv-info-dropdown-btn" style="padding: 6px 12px; border: none; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--sp-text,#d1d4dc); cursor: default; font-size: 11px; display: flex; align-items: center; gap: 6px;">
 
@@ -18599,7 +18599,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => m.style.display = 'none');
 
-            document.querySelector('.settings-info-dropdown')?.remove();
+            self._closeActiveInfoDropdown(true);
 
             document.querySelector('.settings-template-dropdown')?.remove();
 
@@ -19145,13 +19145,25 @@ body.light-mode .template-save-dialog .dialog-title {
 
             queryAll('.tv-checkbox-label').forEach(lbl => {
 
-                lbl.addEventListener('click', () => {
+                lbl.addEventListener('click', (e) => {
+
+                    e.stopPropagation();
 
                     const cb = lbl.previousElementSibling?.classList?.contains('tv-checkbox')
 
                         ? lbl.previousElementSibling
 
                         : lbl.parentElement?.querySelector('.tv-checkbox');
+
+                    if (cb && cb.dataset.prop === 'showInfo') {
+
+                        self._closeActiveInfoDropdown(true);
+
+                        self._suppressInfoDropdownOpen = true;
+
+                        queueMicrotask(() => { self._suppressInfoDropdownOpen = false; });
+
+                    }
 
                     if (cb) cb.click();
 
@@ -19171,7 +19183,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 
 
-                cb.addEventListener(eventType, () => {
+                cb.addEventListener(eventType, (e) => {
 
                     const prop = cb.dataset.prop;
 
@@ -19797,6 +19809,18 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (prop === 'showInfo') {
 
+                    if (e && typeof e.stopPropagation === 'function') {
+
+                        e.stopPropagation();
+
+                    }
+
+                    self._closeActiveInfoDropdown(true);
+
+                    self._suppressInfoDropdownOpen = true;
+
+                    queueMicrotask(() => { self._suppressInfoDropdownOpen = false; });
+
                     if (!drawing.style.infoSettings || Object.keys(drawing.style.infoSettings).length === 0) {
 
                         let defaultInfoSettings;
@@ -19851,13 +19875,23 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     this.pendingChanges.showInfo = isChecked;
 
-                    // Apply like clicking OK button
 
-                    this.applyChanges(drawing);
+
+                    const infoControls = modal.querySelector('.tv-info-section .tv-prop-controls');
+
+                    if (infoControls) {
+
+                        infoControls.style.opacity = isChecked ? '1' : '0.55';
+
+                        infoControls.style.pointerEvents = isChecked ? 'auto' : 'none';
+
+                    }
+
+
+
+                    self.renderPreview(drawing);
 
                     if (window.drawingManager) {
-
-                        window.drawingManager.renderDrawing(drawing);
 
                         window.drawingManager.saveDrawings();
 
@@ -24397,45 +24431,63 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
     /**
-
-     * Show info dropdown (floating like template)
-
+     * Close the floating Show Info dropdown and detach its document listener.
      */
-
-    showInfoDropdown(btn, drawing, modal) {
-
-        const setButtonOpenState = (isOpen) => {
-
-            const icon = btn.querySelector('svg');
-
-            if (icon) {
-
-                icon.style.transition = 'transform 0.15s ease';
-
-                icon.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
-
-            }
-
-        };
-
-
-
-        const existingDropdown = document.querySelector('.settings-info-dropdown');
-
-        if (existingDropdown) {
-
-            existingDropdown.remove();
-
-            setButtonOpenState(false);
-
-            return;
-
+    _closeActiveInfoDropdown(resetButtonState = true) {
+        if (this._activeInfoDropdown) {
+            try { this._activeInfoDropdown.remove(); } catch (_) { /* ignore */ }
+            this._activeInfoDropdown = null;
+        } else {
+            document.querySelector('.settings-info-dropdown')?.remove();
         }
 
+        if (this._infoDropdownCloseHandler) {
+            document.removeEventListener('click', this._infoDropdownCloseHandler, true);
+            this._infoDropdownCloseHandler = null;
+        }
+
+        if (resetButtonState && this._activeInfoDropdownBtn) {
+            const icon = this._activeInfoDropdownBtn.querySelector('svg');
+            if (icon) {
+                icon.style.transition = 'transform 0.15s ease';
+                icon.style.transform = 'rotate(0deg)';
+            }
+            this._activeInfoDropdownBtn = null;
+        }
+    }
+
+    /**
+     * Show info dropdown (floating like template)
+     */
+    showInfoDropdown(btn, drawing, modal) {
+        if (this._suppressInfoDropdownOpen) {
+            return;
+        }
+
+        const showInfoEnabled = drawing?.style?.infoSettings?.showInfo !== false;
+        if (!showInfoEnabled) {
+            this._closeActiveInfoDropdown(true);
+            return;
+        }
+
+        const setButtonOpenState = (isOpen) => {
+            const icon = btn.querySelector('svg');
+            if (icon) {
+                icon.style.transition = 'transform 0.15s ease';
+                icon.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
+        };
+
+        // Toggle off when the same trigger is clicked again.
+        if (this._activeInfoDropdown && this._activeInfoDropdownBtn === btn) {
+            this._closeActiveInfoDropdown(true);
+            return;
+        }
+
+        this._closeActiveInfoDropdown(false);
+
         // Close other open dropdowns
-
         document.querySelectorAll('.tv-ending-dropdown-menu').forEach(m => m.style.display = 'none');
-
         document.querySelector('.settings-template-dropdown')?.remove();
 
 
@@ -24557,6 +24609,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
         document.body.appendChild(dropdown);
+        this._activeInfoDropdown = dropdown;
+        this._activeInfoDropdownBtn = btn;
 
         setButtonOpenState(true);
 
@@ -24664,22 +24718,29 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        const closeHandler = (e) => {
+        if (this._infoDropdownCloseHandler) {
+            document.removeEventListener('click', this._infoDropdownCloseHandler, true);
+            this._infoDropdownCloseHandler = null;
+        }
 
-            if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
-
-                dropdown.remove();
-
-                setButtonOpenState(false);
-
-                document.removeEventListener('click', closeHandler);
-
+        this._infoDropdownCloseHandler = (e) => {
+            if (dropdown.contains(e.target) || btn.contains(e.target)) return;
+            const infoSection = btn.closest('.tv-info-section');
+            if (infoSection && infoSection.contains(e.target)) {
+                const showInfoCheckbox = infoSection.querySelector('.tv-checkbox[data-prop="showInfo"]');
+                if (showInfoCheckbox && (showInfoCheckbox === e.target || showInfoCheckbox.contains(e.target))) {
+                    self._closeActiveInfoDropdown(true);
+                    return;
+                }
             }
-
+            self._closeActiveInfoDropdown(true);
         };
 
-        setTimeout(() => document.addEventListener('click', closeHandler), 0);
-
+        requestAnimationFrame(() => {
+            if (self._infoDropdownCloseHandler) {
+                document.addEventListener('click', self._infoDropdownCloseHandler, true);
+            }
+        });
     }
 
 
@@ -24754,7 +24815,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
     document.querySelectorAll('.tv-ending-dropdown-menu').forEach(m => m.style.display = 'none');
 
-    document.querySelector('.settings-info-dropdown')?.remove();
+    this._closeActiveInfoDropdown(true);
 
     
 
@@ -26163,6 +26224,8 @@ applyTemplate(drawing, templateId, modal) {
             this._dropdownCloseHandler = null;
 
         }
+
+        this._closeActiveInfoDropdown(true);
 
 
 

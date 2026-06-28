@@ -45,7 +45,6 @@ function appendTextLabel(group, text, config = {}) {
     const yPos = useCenteredY ? y : (y + legacyOffset);
 
     const resolved = resolveDrawingTextStyle(text, fontStyle, fontFamily);
-    const transform = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew);
 
     const textEl = group.append('text')
         .attr('x', x)
@@ -61,12 +60,9 @@ function appendTextLabel(group, text, config = {}) {
         .style('pointer-events', 'none')
         .style('user-select', 'none');
 
-    if (transform) {
-        textEl.attr('transform', transform);
-    }
     if (resolved.direction) {
         textEl.style('direction', resolved.direction);
-        textEl.attr('unicode-bidi', 'embed');
+        textEl.attr('unicode-bidi', 'plaintext');
     }
 
     lines.forEach((line, index) => {
@@ -76,6 +72,21 @@ function appendTextLabel(group, text, config = {}) {
             .attr('dy', index === 0 ? (useCenteredY ? verticalOffset : 0) : lineHeight)
             .text(sanitized);
     });
+
+    let nudgeX = 0;
+    if (anchor === 'middle' && resolved.direction === 'rtl') {
+        try {
+            const bbox = textEl.node().getBBox();
+            if (Number.isFinite(bbox.width) && bbox.width > 0) {
+                nudgeX = x - (bbox.x + bbox.width / 2);
+            }
+        } catch (_) { /* ignore measure failures */ }
+    }
+
+    const transform = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, 0);
+    if (transform) {
+        textEl.attr('transform', transform);
+    }
 
     return textEl;
 }
@@ -1033,10 +1044,19 @@ class TrendlineTool extends BaseDrawing {
             const SI_EDGE = 5;
             let siTextX, siTextY, siAnchor;
             switch (siTextHAlign) {
-                case 'left':  siTextX = sRawLX + sUx * (SI_EDGE + startArrowInset); siTextY = sRawLY + sUy * (SI_EDGE + startArrowInset); siAnchor = 'start'; break;
-                case 'right': siTextX = sRawRX - sUx * (SI_EDGE + endArrowInset); siTextY = sRawRY - sUy * (SI_EDGE + endArrowInset); siAnchor = 'end';   break;
+                case 'left':  siTextX = sRawLX + sUx * (SI_EDGE + startArrowInset); siTextY = sRawLY + sUy * (SI_EDGE + startArrowInset); siAnchor = resolveLineEndpointSvgAnchor('left', label); break;
+                case 'right': siTextX = sRawRX - sUx * (SI_EDGE + endArrowInset); siTextY = sRawRY - sUy * (SI_EDGE + endArrowInset); siAnchor = resolveLineEndpointSvgAnchor('right', label); break;
                 default:      siTextX = (sRawLX + sRawRX) / 2;  siTextY = (sRawLY + sRawRY) / 2;  siAnchor = 'middle';
             }
+
+            const siFontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
+            const siPerpX = -Math.sin(angle * Math.PI / 180);
+            const siPerpY = Math.cos(angle * Math.PI / 180);
+            const siSignUp = siPerpY <= 0 ? 1 : -1;
+            const siTextVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+            const siPos = applyLineLabelPerpOffset(siTextX, siTextY, siPerpX, siPerpY, siSignUp, siTextVAlign, label, siFontSize);
+            siTextX = siPos.x;
+            siTextY = siPos.y;
 
             appendTextLabel(this.group, label, {
                 x: siTextX + offsetX,
@@ -1073,8 +1093,6 @@ class TrendlineTool extends BaseDrawing {
         }
 
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
-        const edgePadding = TEXT_EDGE_PADDING;
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
 
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
@@ -1126,12 +1144,12 @@ class TrendlineTool extends BaseDrawing {
             case 'left':
                 baseX = rawLX + line_ux * (EDGE + startArrowInset);
                 baseY = rawLY + line_uy * (EDGE + startArrowInset);
-                labelAnchor = 'start';
+                labelAnchor = resolveLineEndpointSvgAnchor('left', label);
                 break;
             case 'right':
                 baseX = rawRX - line_ux * (EDGE + endArrowInset);
                 baseY = rawRY - line_uy * (EDGE + endArrowInset);
-                labelAnchor = 'end';
+                labelAnchor = resolveLineEndpointSvgAnchor('right', label);
                 break;
             default:
                 baseX = (rawLX + rawRX) / 2;
@@ -1144,13 +1162,9 @@ class TrendlineTool extends BaseDrawing {
         const perpY = Math.cos(angleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
-        if (textVAlign === 'top') {
-            baseX += perpX * verticalOffset * signUp;
-            baseY += perpY * verticalOffset * signUp;
-        } else if (textVAlign === 'bottom') {
-            baseX -= perpX * verticalOffset * signUp;
-            baseY -= perpY * verticalOffset * signUp;
-        }
+        const perpPos = applyLineLabelPerpOffset(baseX, baseY, perpX, perpY, signUp, textVAlign, label, fontSize);
+        baseX = perpPos.x;
+        baseY = perpPos.y;
 
         // Don't render if text position is outside the visible chart area
         // (prevents partial-clip "empty place" artifact in the price axis)
@@ -1574,11 +1588,11 @@ class HorizontalLineTool extends BaseDrawing {
         switch (textHAlign) {
             case 'left':
                 baseX = chartLeftX + TEXT_EDGE_PADDING;
-                hlAnchor = 'start';
+                hlAnchor = resolveLineEndpointSvgAnchor('left', label);
                 break;
             case 'right':
                 baseX = chartRightX - TEXT_EDGE_PADDING;
-                hlAnchor = 'end';
+                hlAnchor = resolveLineEndpointSvgAnchor('right', label);
                 break;
             default:
                 baseX = (chartLeftX + chartRightX) / 2;
@@ -1586,13 +1600,7 @@ class HorizontalLineTool extends BaseDrawing {
         }
         
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const HL_LABEL_OFFSET = 10 + Math.max(0, fontSize / 2 - 6);
-        let offsetY = 0;
-        if (textVAlign === 'top') {
-            offsetY = -HL_LABEL_OFFSET;
-        } else if (textVAlign === 'bottom') {
-            offsetY = HL_LABEL_OFFSET;
-        }
+        const offsetY = horizontalLineLabelOffsetY(label, fontSize, textVAlign);
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
             y: y + offsetY,
@@ -2360,7 +2368,6 @@ class RayTool extends BaseDrawing {
 
         // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
 
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
@@ -2371,12 +2378,12 @@ class RayTool extends BaseDrawing {
             case 'left':
                 baseX = p1x + rux * TEXT_EDGE_PADDING;
                 baseY = p1y + ruy * TEXT_EDGE_PADDING;
-                elAnchor = rdx >= 0 ? 'start' : 'end';
+                elAnchor = resolveRayEndpointSvgAnchor('left', label, rdx >= 0);
                 break;
             case 'right':
                 baseX = p2x - rux * TEXT_EDGE_PADDING;
                 baseY = p2y - ruy * TEXT_EDGE_PADDING;
-                elAnchor = rdx >= 0 ? 'end' : 'start';
+                elAnchor = resolveRayEndpointSvgAnchor('right', label, rdx >= 0);
                 break;
             default:
                 baseX = (p1x + p2x) / 2;
@@ -2388,13 +2395,9 @@ class RayTool extends BaseDrawing {
         const perpY = Math.cos(originalAngleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
-        if (textVAlign === 'top') {
-            baseX += perpX * verticalOffset * signUp;
-            baseY += perpY * verticalOffset * signUp;
-        } else if (textVAlign === 'bottom') {
-            baseX -= perpX * verticalOffset * signUp;
-            baseY -= perpY * verticalOffset * signUp;
-        }
+        const perpPos = applyLineLabelPerpOffset(baseX, baseY, perpX, perpY, signUp, textVAlign, label, fontSize);
+        baseX = perpPos.x;
+        baseY = perpPos.y;
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
@@ -2832,11 +2835,11 @@ class HorizontalRayTool extends BaseDrawing {
         switch (textHAlign) {
             case 'left':
                 baseX = visibleStartX + TEXT_EDGE_PADDING;
-                hrAnchor = 'start';
+                hrAnchor = resolveLineEndpointSvgAnchor('left', label);
                 break;
             case 'right':
                 baseX = chartRightX - TEXT_EDGE_PADDING;
-                hrAnchor = 'end';
+                hrAnchor = resolveLineEndpointSvgAnchor('right', label);
                 break;
             default:
                 baseX = (visibleStartX + chartRightX) / 2;
@@ -2844,13 +2847,7 @@ class HorizontalRayTool extends BaseDrawing {
         }
         
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const HL_LABEL_OFFSET = 10 + Math.max(0, fontSize / 2 - 6);
-        let offsetY = 0;
-        if (textVAlign === 'top') {
-            offsetY = -HL_LABEL_OFFSET;
-        } else if (textVAlign === 'bottom') {
-            offsetY = HL_LABEL_OFFSET;
-        }
+        const offsetY = horizontalLineLabelOffsetY(label, fontSize, textVAlign);
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
@@ -3222,7 +3219,6 @@ class ExtendedLineTool extends BaseDrawing {
         
         // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
         
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
@@ -3236,12 +3232,12 @@ class ExtendedLineTool extends BaseDrawing {
             case 'left':
                 baseX = lx + ux * TEXT_EDGE_PADDING;
                 baseY = ly + uy * TEXT_EDGE_PADDING;
-                elAnchor = 'start';
+                elAnchor = resolveLineEndpointSvgAnchor('left', label);
                 break;
             case 'right':
                 baseX = rx - ux * TEXT_EDGE_PADDING;
                 baseY = ry - uy * TEXT_EDGE_PADDING;
-                elAnchor = 'end';
+                elAnchor = resolveLineEndpointSvgAnchor('right', label);
                 break;
             default:
                 baseX = (lx + rx) / 2;
@@ -3253,13 +3249,9 @@ class ExtendedLineTool extends BaseDrawing {
         const perpY = Math.cos(originalAngleRad);
         
         const signUp = perpY <= 0 ? 1 : -1;
-        if (textVAlign === 'top') {
-            baseX += perpX * verticalOffset * signUp;
-            baseY += perpY * verticalOffset * signUp;
-        } else if (textVAlign === 'bottom') {
-            baseX -= perpX * verticalOffset * signUp;
-            baseY -= perpY * verticalOffset * signUp;
-        }
+        const perpPos = applyLineLabelPerpOffset(baseX, baseY, perpX, perpY, signUp, textVAlign, label, fontSize);
+        baseX = perpPos.x;
+        baseY = perpPos.y;
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
@@ -3411,16 +3403,14 @@ class CrossLineTool extends BaseDrawing {
             const cl_textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             const cl_xRange = scales.xScale.range();
             const CLEDGE = 20;
+            const clFontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
             let cl_baseX, cl_anchor;
             switch (cl_textHAlign) {
-                case 'left':  cl_baseX = cl_xRange[0] + CLEDGE; cl_anchor = 'start'; break;
-                case 'right': cl_baseX = cl_xRange[1] - CLEDGE; cl_anchor = 'end';   break;
+                case 'left':  cl_baseX = cl_xRange[0] + CLEDGE; cl_anchor = resolveLineEndpointSvgAnchor('left', this.text); break;
+                case 'right': cl_baseX = cl_xRange[1] - CLEDGE; cl_anchor = resolveLineEndpointSvgAnchor('right', this.text); break;
                 default:      cl_baseX = (cl_xRange[0] + cl_xRange[1]) / 2; cl_anchor = 'middle';
             }
-            const CL_HL_OFFSET = 10;
-            let cl_offsetY = 0;
-            if (cl_textVAlign === 'top')    cl_offsetY = -CL_HL_OFFSET;
-            else if (cl_textVAlign === 'bottom') cl_offsetY =  CL_HL_OFFSET;
+            const cl_offsetY = horizontalLineLabelOffsetY(this.text, clFontSize, cl_textVAlign);
             appendTextLabel(this.group, this.text, {
                 x: cl_baseX + (this.style.textOffsetX || 0),
                 y: yScreen + cl_offsetY,
