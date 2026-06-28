@@ -177,7 +177,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 30s
+      start_period: 60s
 
   # Context = repo root: Dockerfile runs `npm run build:live:chart` in talaria-design (V9 bundle + ?v= bump).
   # IMPORTANT: the V9/Terser builds inside this image take ~15–20 min of CPU. Build them in
@@ -389,6 +389,7 @@ services:
       - "3000:80"
     volumes:
       - ./homepage/nginx.local.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./securty/nginx-security-headers.conf:/etc/nginx/conf.d/security-headers.conf:ro
     depends_on:
       journal-backend:
         condition: service_started

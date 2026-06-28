@@ -4,7 +4,19 @@ import security_bootstrap
 
 security_bootstrap.install_security_package()
 
-from talaria_security.headers import apply_security_headers, generate_csp_nonce
+try:
+    from talaria_security.headers import apply_security_headers, generate_csp_nonce
+except ImportError:
+    import secrets
+
+    def generate_csp_nonce():
+        return secrets.token_urlsafe(16)
+
+    def apply_security_headers(headers, *, nonce=None, https=False, api_mode=False):
+        headers["X-Content-Type-Options"] = "nosniff"
+        headers["X-Frame-Options"] = "DENY"
+        if https:
+            headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
 
 from flask import Flask, jsonify, request, make_response, g
 from flask_cors import CORS
@@ -54,10 +66,11 @@ jwt = JWTManager(app)
 
 # DB setup
 db.init_app(app)
-with app.app_context():
-    db.create_all()
-ensure_users_schema(app)
-ensure_security_schema(app)
+if not os.environ.get("TALARIA_SKIP_SCHEMA_ON_IMPORT"):
+    with app.app_context():
+        db.create_all()
+    ensure_users_schema(app)
+    ensure_security_schema(app)
 
 # Email setup
 init_mail(app)

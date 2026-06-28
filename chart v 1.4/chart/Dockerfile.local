@@ -76,13 +76,9 @@ RUN if [ "$BUILD_LEGACY_BUNDLE" = "1" ]; then \
         echo "Skipping build:chart-client — dist-v9 is the canonical served app"; \
     fi
 
-# Create runtime dirs. Do NOT `chmod -R /app`: recursing node_modules/site-packages
-# added ~50s, and the copied files are already readable (container runs as root).
-RUN mkdir -p uploads/bin uploads/tiles uploads/aggregates data db indicators \
-    && addgroup --system app && adduser --system --ingroup app --home /app app \
-    && chown -R app:app /app
-
-USER app
+# Create runtime dirs. Chart writes heavily to uploads/data volumes — keep root at runtime
+# so existing Docker volumes (root-owned from prior deploys) stay writable.
+RUN mkdir -p uploads/bin uploads/tiles uploads/aggregates data db indicators
 
 EXPOSE 8000
 

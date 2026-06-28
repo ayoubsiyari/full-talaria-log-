@@ -18,7 +18,7 @@ ENV PYTHONPATH=/opt/talaria_security_lib
 COPY . /app/
 
 RUN addgroup --system app && adduser --system --ingroup app --home /app app \
-    && chown -R app:app /app
+    && chown -R app:app /app /opt/talaria_security_lib
 
 RUN FLASK_ENV=development FLASK_DEBUG=True \
     DATABASE_URL=sqlite:////tmp/journal-build-check.db \
@@ -30,4 +30,4 @@ USER app
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
