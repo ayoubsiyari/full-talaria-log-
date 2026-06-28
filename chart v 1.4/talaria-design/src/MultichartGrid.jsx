@@ -2416,72 +2416,14 @@ export default function MultichartGrid({
         // instead — clicking anywhere on the parent chart means the
         // user is interacting with tile A.
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
-        /** Panel A host: select on capture — armed tools + focus sync were blocking normal hit path. */
-        const tryHostPanelShapeSelect = (ev) => {
-            if (!ev || ev.button !== 0 || ev.shiftKey || ev.altKey) return false;
-            const ch = window.chart;
-            const dm = ch && ch.drawingManager;
-            if (!dm || typeof ch._eventCanvasLocalXY !== "function"
-                || typeof dm.findDrawingsAtPoint !== "function"
-                || typeof dm.selectDrawing !== "function") {
-                return false;
-            }
-            if (dm.drawingState && dm.drawingState.isDrawing) return false;
-            let mx;
-            let my;
-            try {
-                [mx, my] = ch._eventCanvasLocalXY(ev);
-            } catch (_) {
-                return false;
-            }
-            const hits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
-            if (!hits || !hits.length) return false;
-            const best = hits[0];
-            if (!best || best.locked) return false;
-            try {
-                if (typeof window !== "undefined") {
-                    window.__v9DrawingSelectionGuardUntil = performance.now() + 400;
-                }
-            } catch (_) {}
-            try {
-                if (dm.currentTool) {
-                    if (typeof dm.clearTool === "function") dm.clearTool();
-                    else dm.currentTool = null;
-                }
-            } catch (_) {}
-            try {
-                dm.selectDrawing(best, false);
-            } catch (_) {
-                return false;
-            }
-            try {
-                if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
-                else if (typeof ev.stopPropagation === "function") ev.stopPropagation();
-            } catch (_) {}
-            return true;
-        };
         const onHostPointerDown = (ev) => {
             try {
                 if (ev && ev.target && typeof ev.target.closest === "function") {
                     if (ev.target.closest("#multichart-global-settings-root")) return;
                 }
             } catch (_) {}
-            const selectedOnHost = tryHostPanelShapeSelect(ev);
-            if (!selectedOnHost) {
-                // Hover hit-test only — arm guard so focus/tool sync does not race selection.
-                try {
-                    const ch = window.chart;
-                    const dm = ch && ch.drawingManager;
-                    if (dm && ev && typeof ch._eventCanvasLocalXY === "function"
-                        && typeof dm.findDrawingsAtPoint === "function") {
-                        const [mx, my] = ch._eventCanvasLocalXY(ev);
-                        const hits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
-                        if (hits && hits.length && typeof window !== "undefined") {
-                            window.__v9DrawingSelectionGuardUntil = performance.now() + 200;
-                        }
-                    }
-                } catch (_) {}
-            }
+            // Shape select runs in drawing-tools-manager document capture (svg + canvas).
+            // Here we only focus panel A and defer peer UI cleanup.
             try {
                 const ch = window.chart;
                 if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
@@ -2490,9 +2432,6 @@ export default function MultichartGrid({
             focusPanelById(HOST_PANEL_ID);
             const grid = window.__multichartGrid;
             if (!grid) return;
-            // Defer peer cleanup so this same click can finish shape select on panel A first.
-            // Only run when focus actually moved onto A — repeat clicks on A already clear
-            // peers inside selectDrawing via _requestMultichartClearDrawingUiOnOtherPanels.
             setTimeout(() => {
                 try {
                     if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {

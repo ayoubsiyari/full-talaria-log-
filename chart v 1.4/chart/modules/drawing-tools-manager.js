@@ -238,6 +238,7 @@ class DrawingToolsManager {
         this._handleClickTimes = {};
         this._handleMouseDownCaptureHandler = null;
         this._setupHandleMouseDownCapture();
+        this._setupMultichartHostPointerSelectCapture();
         this._setupCrossPanelDeselect();
         
         // Undo/Redo manager
@@ -2128,6 +2129,11 @@ class DrawingToolsManager {
                     return;
                 }
 
+                if (this._tryMultichartHostShapePointerSelect(event, { startDrag: true })) {
+                    suppressNextCanvasClick = true;
+                    return;
+                }
+
                 const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
                 if (!svgNode) return;
 
@@ -3132,6 +3138,86 @@ class DrawingToolsManager {
     }
 
     /**
+     * Multichart host (panel A): geometric select before armed-tool / focus-sync races.
+     * Works for svg and canvas targets — canvas-only handlers miss svg stroke clicks.
+     */
+    _tryMultichartHostShapePointerSelect(event, options = {}) {
+        if (!event || event.button !== 0 || event.shiftKey || event.altKey) return false;
+        const ch = this.chart;
+        if (!ch || typeof ch._isMultichartHostPanel !== "function" || !ch._isMultichartHostPanel()) {
+            return false;
+        }
+        if (this.drawingState && this.drawingState.isDrawing) return false;
+        if (this._tryStartCtrlSelectionMove(event)) return false;
+
+        try {
+            const wrap = typeof document !== "undefined" ? document.getElementById("chartWrapper") : null;
+            if (!wrap || !event.target || !wrap.contains(event.target)) return false;
+            if (event.target.closest && event.target.closest("#multichart-global-settings-root")) return false;
+            const handleNode = event.target.closest
+                ? event.target.closest(".resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle")
+                : null;
+            if (handleNode && handleNode.classList && !handleNode.classList.contains("volume-profile-boundary-hit")) {
+                return false;
+            }
+        } catch (_) {
+            return false;
+        }
+
+        const [mx, my] = this._eventCanvasLocalXY(event);
+        let hits = this.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true }) || [];
+        const topLabel = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mx, my, { includeLocked: true });
+        if (topLabel && !hits.includes(topLabel)) {
+            hits = [topLabel, ...hits];
+        }
+        if (!hits.length) return false;
+
+        const best = hits[0];
+        if (!best || best.locked) return false;
+
+        const hasInteractiveHit = hits.some((d) => {
+            if (!d) return false;
+            if (!this.isVolumeProfileToolType(d.type)) return true;
+            return this.isVolumeProfileInteractiveHit(d, mx, my);
+        });
+        if (!hasInteractiveHit) return false;
+
+        if (this.currentTool) {
+            if (typeof this.clearTool === "function") this.clearTool();
+            else this.currentTool = null;
+        }
+        if (typeof window !== "undefined") {
+            window.__v9DrawingSelectionGuardUntil = performance.now() + 400;
+        }
+        this.selectDrawing(best, false, { allowWhileArmed: true });
+
+        if (options.startDrag !== false && !this._isHorizontalAnchorToolType(best.type)) {
+            try {
+                this._startDirectMoveDrag(best, event);
+            } catch (_) {}
+        }
+
+        try {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === "function") {
+                event.stopImmediatePropagation();
+            }
+        } catch (_) {}
+        return true;
+    }
+
+    _setupMultichartHostPointerSelectCapture() {
+        if (this._multichartHostPointerSelectHandler) return;
+        this._multichartHostPointerSelectHandler = (event) => {
+            try {
+                this._tryMultichartHostShapePointerSelect(event, { startDrag: true });
+            } catch (_) {}
+        };
+        document.addEventListener("pointerdown", this._multichartHostPointerSelectHandler, true);
+    }
+
+    /**
      * Handle mouse down event
      */
     handleMouseDown(event) {
@@ -3140,23 +3226,12 @@ class DrawingToolsManager {
             return;
         }
 
-        if (this._tryStartCtrlSelectionMove(event)) {
+        if (this._tryMultichartHostShapePointerSelect(event, { startDrag: true })) {
             return;
         }
 
-        if (this.currentTool && !this.drawingState?.isDrawing && !this.isRectSelecting
-            && !event.shiftKey && !event.altKey
-            && this.chart && typeof this.chart._isMultichartHostPanel === "function"
-            && this.chart._isMultichartHostPanel()) {
-            const [hostMx, hostMy] = this._eventCanvasLocalXY(event);
-            const hostHits = this.findDrawingsAtPoint(hostMx, hostMy, { includeVolumeProfileBodyHit: true });
-            if (hostHits && hostHits.length > 0) {
-                const hostBest = hostHits[0];
-                if (hostBest && !hostBest.locked) {
-                    if (typeof this.clearTool === "function") this.clearTool();
-                    else this.currentTool = null;
-                }
-            }
+        if (this._tryStartCtrlSelectionMove(event)) {
+            return;
         }
 
         if (this.currentTool && this.isRectSelecting) {

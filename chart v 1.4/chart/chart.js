@@ -20527,6 +20527,23 @@ class Chart {
         return this.data[last].t + (i - last) * tfMs;
     }
 
+    /** TradingView-style zoomed-out intraday label: day number, or month name at month start. */
+    _formatCalendarAxisLabel(idx, tzDate, labelInterval) {
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const month = tzDate.getUTCMonth();
+        const day = tzDate.getUTCDate();
+        if (day === 1) return monthNames[month];
+        const step = Math.max(1, Math.floor(Number(labelInterval) || 1));
+        const prevTs = this._projectBarIndexTimestamp(idx - step);
+        if (Number.isFinite(prevTs)) {
+            const prev = this.convertToTimezone(prevTs);
+            if (prev.getUTCMonth() !== month || prev.getUTCFullYear() !== tzDate.getUTCFullYear()) {
+                return monthNames[month];
+            }
+        }
+        return String(day);
+    }
+
     /** Grid tick label for bar index — must match _buildTimeTicks round-tick formatting. */
     _formatTimeLabelForBarIndex(idx) {
         const ts = this._projectBarIndexTimestamp(idx);
@@ -20555,7 +20572,13 @@ class Chart {
             const visibleBarsCount = Math.max(1, Math.ceil(Math.max(0, lastVisibleIdx - firstVisibleIdx)));
             intradayCalendarMode = (visibleBarsCount * tfMs) / 86400000 > 14;
         }
-        if (isDailyOrHigher || isCalendarTf || intradayCalendarMode) {
+        if (intradayCalendarMode) {
+            const step = typeof this._getFastTimeLabelIntervalBars === 'function'
+                ? this._getFastTimeLabelIntervalBars()
+                : 1;
+            return this._formatCalendarAxisLabel(idx, tzDate, step);
+        }
+        if (isDailyOrHigher || isCalendarTf) {
             return `${monthNames[tzDate.getUTCMonth()]} ${tzDate.getUTCDate()}`;
         }
         if (typeof this._formatSessionClock === 'function') {
@@ -21741,6 +21764,7 @@ class Chart {
                 this.renderSeparatePanelIndicators();
             }
             this.drawAxes();
+            this.drawEconomicCalendarAxisMarkers({ panFast: true });
 
             this.drawCurrentPriceLabel([latestCandle]);
             
@@ -21781,9 +21805,7 @@ class Chart {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
-            if (!interactionLite && chartViewPanning) {
-                this.drawEconomicCalendarAxisMarkers({ panFast: true });
-            }
+            this.drawEconomicCalendarAxisMarkers({ panFast: true });
             // Compare overlay line/candles must stay painted during lite pan (canvas clears every frame).
             if (this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
@@ -22216,7 +22238,25 @@ class Chart {
         }
         const minSpacingPx = 72;
         const minBarsPerTick = Math.max(1, Math.ceil(minSpacingPx / Math.max(1e-6, spacing)));
-        return Math.max(1, labelInterval, minBarsPerTick);
+        labelInterval = Math.max(1, labelInterval, minBarsPerTick);
+        let tfMs = this.parseTimeframe(timeframe);
+        if (!Number.isFinite(tfMs) || tfMs <= 0) {
+            if (this.data && this.data.length >= 2) {
+                const detectedMs = this.data[1].t - this.data[0].t;
+                tfMs = Number.isFinite(detectedMs) && detectedMs > 0 ? detectedMs : 60000;
+            } else {
+                tfMs = 60000;
+            }
+        }
+        const isCalendarTf = /w$/i.test(timeframe) || /mo$/i.test(timeframe);
+        const visibleDays = (visibleBarsCount * tfMs) / 86400000;
+        const intradayCalendarMode = tfMs < 86400000 && !isCalendarTf && visibleDays > 14;
+        if (intradayCalendarMode) {
+            const barsPerDay = Math.max(1, Math.round(86400000 / tfMs));
+            const dayStep = Math.max(1, Math.ceil(minBarsPerTick / barsPerDay));
+            labelInterval = dayStep * barsPerDay;
+        }
+        return labelInterval;
     }
 
     /** First tick index on the global bar/time grid at or after viewport left edge. */
@@ -22422,10 +22462,10 @@ class Chart {
         // switch from time labels to calendar day/month labels (TradingView-style).
         const visibleDays = (visibleBarsCount * timeframeMs) / 86400000;
         const intradayCalendarMode = !isDailyOrHigher && !isCalendarTf && visibleDays > 14;
-        const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher && !intradayCalendarMode;
+        const useUniformIntradayTicks = !isCalendarTf && !isDailyOrHigher;
         const isReplayActive = !!(this.replaySystem && this.replaySystem.isActive);
         const useReplayIndexCadence = useUniformIntradayTicks && isReplayActive;
-        const suppressIntradayBoundaryLabels = useReplayIndexCadence;
+        const suppressIntradayBoundaryLabels = useUniformIntradayTicks;
         const allowStandaloneBoundaries = !useUniformIntradayTicks;
         // When zoomed out on daily+ or intraday-calendar-mode with many days, show only month/year
         const suppressDayBoundaries = (isDailyOrHigher && visibleBarsCount > 90)
@@ -22437,7 +22477,13 @@ class Chart {
         // This avoids left-edge dependent thinning that can make spacing look uneven.
         if (useUniformIntradayTicks) {
             const minBarsPerTick = Math.max(1, Math.ceil(minSpacing / Math.max(0.0001, candleSpacing)));
-            labelInterval = Math.max(labelInterval, minBarsPerTick);
+            if (intradayCalendarMode) {
+                const barsPerDay = Math.max(1, Math.round(86400000 / timeframeMs));
+                const dayStep = Math.max(1, Math.ceil(minBarsPerTick / barsPerDay));
+                labelInterval = dayStep * barsPerDay;
+            } else {
+                labelInterval = Math.max(labelInterval, minBarsPerTick);
+            }
         }
 
         const labelIntervalMs   = labelInterval * timeframeMs;
@@ -22535,7 +22581,9 @@ class Chart {
             let label;
             if (useBoundaryLabel) {
                 label = boundaryLabel;
-            } else if (isDailyOrHigher || intradayCalendarMode) {
+            } else if (intradayCalendarMode) {
+                label = this._formatCalendarAxisLabel(idx, tzDate, labelInterval);
+            } else if (isDailyOrHigher) {
                 label = monthNames[month] + ' ' + day;
             } else {
                 label = this._formatSessionClock(tzDate, false);
@@ -22591,9 +22639,11 @@ class Chart {
                     : (!suppressIntradayBoundaryLabels && hasPBoundary && (allowStandaloneBoundaries || pIsRound));
                 const plbl = usePBoundaryLabel
                     ? pBoundaryLabel
-                    : ((isDailyOrHigher || intradayCalendarMode)
-                        ? monthNames[pMonth] + ' ' + pDay
-                        : this._formatSessionClock(tzp, false));
+                    : (intradayCalendarMode
+                        ? this._formatCalendarAxisLabel(pi, tzp, labelInterval)
+                        : (isDailyOrHigher
+                            ? monthNames[pMonth] + ' ' + pDay
+                            : this._formatSessionClock(tzp, false)));
                 candidates.push({ idx: pi, isBoundary: !!usePBoundaryLabel, label: plbl });
             }
         }
@@ -22655,9 +22705,11 @@ class Chart {
                     : (hasFBoundary && (allowStandaloneBoundaries || isRoundFuture));
                 const lbl = useFBoundaryLabel
                     ? fBoundaryLabel
-                    : ((isDailyOrHigher || intradayCalendarMode)
-                        ? monthNames[fMonth] + ' ' + tz2.getUTCDate()
-                        : this._formatSessionClock(tz2, false));
+                    : (intradayCalendarMode
+                        ? this._formatCalendarAxisLabel(fi, tz2, labelInterval)
+                        : (isDailyOrHigher
+                            ? monthNames[fMonth] + ' ' + tz2.getUTCDate()
+                            : this._formatSessionClock(tz2, false)));
                 candidates.push({ idx: fi, isBoundary: !!useFBoundaryLabel, label: lbl });
             }
         }

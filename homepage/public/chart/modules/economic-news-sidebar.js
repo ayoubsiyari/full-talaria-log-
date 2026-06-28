@@ -114,18 +114,18 @@
         pruneChartMarkerCache();
     }
 
-    /** Drop events outside viewport ± pad; hard-cap total cached rows. */
+    /** Drop events outside fetched union ± pad; hard-cap total cached rows. */
     function pruneChartMarkerCache() {
-        var vr = getChartViewportTimeMsRange();
-        var padMs = CACHE_KEEP_PAD_DAYS * 86400000;
         var minT = NaN;
         var maxT = NaN;
-        if (vr) {
+        var padMs = CACHE_KEEP_PAD_DAYS * 86400000;
+        var vr = getChartViewportTimeMsRange();
+        if (fetchedUnion.fromStr && fetchedUnion.toStr) {
+            minT = dateStrToMsStart(fetchedUnion.fromStr) - padMs;
+            maxT = dateStrToMsEnd(fetchedUnion.toStr) + padMs;
+        } else if (vr) {
             minT = vr.minT - padMs;
             maxT = vr.maxT + padMs;
-        } else if (fetchedUnion.fromStr && fetchedUnion.toStr) {
-            minT = dateStrToMsStart(fetchedUnion.fromStr);
-            maxT = dateStrToMsEnd(fetchedUnion.toStr);
         }
         if (Number.isFinite(minT) && Number.isFinite(maxT)) {
             for (var key in chartMarkerEventByKey) {
@@ -892,10 +892,8 @@
         if (!Number.isFinite(now)) {
             now = Date.now();
         }
-        var vr = getChartViewportTimeMsRange();
         var source = collectMarkerSourceEvents();
         var list = source.filter(function (e) {
-            if (vr && Number.isFinite(e.t) && (e.t < vr.minT || e.t > vr.maxT)) return false;
             if (!passesUserFilters(e)) return false;
             var upcoming = e.t >= now;
             if (state.tab === 'upcoming' && !upcoming) return false;
@@ -1090,14 +1088,15 @@
         }
 
         var rngPreflight = getCalendarFetchRange();
-        if (!force && viewportCoveredByFetchedUnion(rngPreflight)) {
+        var needsGapFetch = !viewportCoveredByFetchedUnion(rngPreflight);
+        if (!force && !needsGapFetch && viewportCoveredByFetchedUnion(rngPreflight)) {
             state.loaded = true;
             scheduleSidebarRenderIfNeeded();
             return;
         }
 
         if (state.loading && !force) return;
-        if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
+        if (!force && !needsGapFetch && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
 
         var myId = ++calendarLoadId;
         var hasCache = cachedEventCount() > 0;
@@ -1521,6 +1520,8 @@
             scheduleSidebarRenderIfNeeded();
             return;
         }
+        invalidateAxisEventsCache();
+        requestChartMarkerRedraw();
 
         if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
         var debounceMs = isMultichartHostTile() ? 2200 : 500;
@@ -1532,6 +1533,7 @@
                 if (viewportCoveredByFetchedUnion(rng)) {
                     invalidateAxisEventsCache();
                     scheduleSidebarRenderIfNeeded();
+                    requestChartMarkerRedraw();
                     return;
                 }
                 if (state.loading || state.backgroundLoading) return;
