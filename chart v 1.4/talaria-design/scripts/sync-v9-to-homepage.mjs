@@ -30,6 +30,29 @@ if (fs.existsSync(dest)) {
 fs.cpSync(src, dest, { recursive: true });
 console.log("[sync-v9-to-homepage] Copied", src, "→", dest);
 
+const vendorSrc = path.resolve(__dirname, "../../chart/vendor");
+const vendorDest = path.resolve(__dirname, "../../../homepage/public/chart/vendor");
+if (fs.existsSync(vendorSrc)) {
+  if (fs.existsSync(vendorDest)) {
+    fs.rmSync(vendorDest, { recursive: true, force: true });
+  }
+  fs.cpSync(vendorSrc, vendorDest, { recursive: true });
+  console.log("[sync-v9-to-homepage] Copied chart/vendor", vendorSrc, "→", vendorDest);
+}
+
+// Mirror self-hosted fonts (woff2 + talaria-fonts.css) for /chart/fonts/* on homepage.
+const fontsSrc = path.resolve(__dirname, "../../chart/fonts");
+const fontsDest = path.resolve(__dirname, "../../../homepage/public/chart/fonts");
+if (fs.existsSync(fontsSrc)) {
+  if (fs.existsSync(fontsDest)) {
+    fs.rmSync(fontsDest, { recursive: true, force: true });
+  }
+  fs.cpSync(fontsSrc, fontsDest, { recursive: true });
+  console.log("[sync-v9-to-homepage] Copied chart/fonts", fontsSrc, "→", fontsDest);
+} else {
+  console.warn("[sync-v9-to-homepage] chart/fonts not found — run: node chart/scripts/bundle-self-hosted-fonts.mjs");
+}
+
 // Vite only bundles React; `/chart/chart.js` is loaded at runtime. Copy the engine
 // from source so `homepage/public` self-hosts the same file the chart server would
 // serve (avoids "nothing changed" when only dist-v9/ was updated).

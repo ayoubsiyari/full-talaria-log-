@@ -132,11 +132,8 @@
     })();
     </script>
 
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Exo+2:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Zain:wght@200;300;400;700;800;900&display=swap"
-          rel="stylesheet" />
+    <!-- Self-hosted fonts (no Google CDN — avoids CSP / offline failures) -->
+    <link rel="stylesheet" href="/chart/fonts/talaria-fonts.css?v=20260624b151" />
 
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1502,14 +1499,10 @@
             window.__rejectD3  = reject;
         });
     </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"
-            crossorigin="anonymous"
-            referrerpolicy="no-referrer"
+    <script src="/chart/vendor/d3.min.js?v=20260624b151"
             onload="window.__resolveD3 && window.__resolveD3();"
-            onerror="window.__rejectD3 && window.__rejectD3(new Error('d3 cdn failed'));"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"
-            crossorigin="anonymous"
-            referrerpolicy="no-referrer"></script>
+            onerror="window.__rejectD3 && window.__rejectD3(new Error('d3 load failed'));"></script>
+    <script defer src="/chart/vendor/lz-string.min.js?v=20260624b151"></script>
 
     <!-- ──────────────────────────────────────────────────────────────────
          All chart scripts are loaded with `defer` so they execute in

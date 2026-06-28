@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "sync-env": "node scripts/sync-chart-env.mjs",
-    "build:chart-client": "node scripts/build-chart-client-bundle.mjs"
+    "build:chart-client": "node scripts/build-chart-client-bundle.mjs",
+    "bundle-fonts": "node scripts/bundle-self-hosted-fonts.mjs"
   },
   "dependencies": {
     "dukascopy-node": "1.46.3"

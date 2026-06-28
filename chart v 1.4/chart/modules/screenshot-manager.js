@@ -338,7 +338,7 @@ class ScreenshotManager {
                 /* fall through */
             }
             try {
-                const url = this.resolveAssetUrl('../../homepage/font/Zain/Zain-Black.ttf');
+                const url = '/chart/fonts/woff2/sykz-y9lm7soOFbqhS23-w.woff2';
                 const face = new FontFace('Zain', `url("${url}")`, { style: 'normal', weight: '900' });
                 await face.load();
                 document.fonts.add(face);

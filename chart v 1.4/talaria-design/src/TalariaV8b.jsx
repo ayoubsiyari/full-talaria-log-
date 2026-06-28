@@ -1136,10 +1136,10 @@ const TalariaV8b = () => {
   }, []);
 
   useEffect(() => {
-    if (!document.querySelector('link[href*="Exo+2"]')) {
+    if (!document.querySelector('link[href*="talaria-fonts.css"]')) {
       const link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800;900&display=swap';
+      link.href = '/chart/fonts/talaria-fonts.css';
       document.head.appendChild(link);
     }
     {
