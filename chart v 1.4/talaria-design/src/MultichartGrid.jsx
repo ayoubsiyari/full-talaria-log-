@@ -2422,6 +2422,20 @@ export default function MultichartGrid({
                     if (ev.target.closest("#multichart-global-settings-root")) return;
                 }
             } catch (_) {}
+            // Same geometric hit-test as drawing-tools-manager — arm the selection guard
+            // before focus/tool sync so panel A can finish selectDrawing on this click.
+            try {
+                const ch = window.chart;
+                const dm = ch && ch.drawingManager;
+                if (dm && ev && typeof ch._eventCanvasLocalXY === "function"
+                    && typeof dm.findDrawingsAtPoint === "function") {
+                    const [mx, my] = ch._eventCanvasLocalXY(ev);
+                    const hits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
+                    if (hits && hits.length && typeof window !== "undefined") {
+                        window.__v9DrawingSelectionGuardUntil = performance.now() + 200;
+                    }
+                }
+            } catch (_) {}
             try {
                 const ch = window.chart;
                 if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
@@ -2431,6 +2445,8 @@ export default function MultichartGrid({
             const grid = window.__multichartGrid;
             if (!grid) return;
             // Defer peer cleanup so this same click can finish shape select on panel A first.
+            // Only run when focus actually moved onto A — repeat clicks on A already clear
+            // peers inside selectDrawing via _requestMultichartClearDrawingUiOnOtherPanels.
             setTimeout(() => {
                 try {
                     if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
@@ -2441,8 +2457,6 @@ export default function MultichartGrid({
                     if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
                         grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
                     }
-                } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
-                    grid.deselectDrawingsOnNonFocusedPanels(HOST_PANEL_ID);
                 }
             }, 0);
         };
@@ -3477,6 +3491,14 @@ export default function MultichartGrid({
             lastFocusMirrorKeyRef.current = "";
             dispatchFocusChanged(focusedPanelId, { force: true });
             const grid = window.__multichartGrid;
+            try {
+                if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil) {
+                    if (performance.now() < window.__v9DrawingSelectionGuardUntil) {
+                        // Shape select on the newly focused tile is still in flight.
+                        return;
+                    }
+                }
+            } catch (_) {}
             if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
                 grid.clearDrawingUiOnOtherPanels(focusedPanelId);
             } else if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {

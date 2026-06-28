@@ -2143,6 +2143,10 @@ class DrawingToolsManager {
                 if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                     drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
                 }
+                if (drawingsAtPoint && drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey
+                    && typeof window !== 'undefined') {
+                    window.__v9DrawingSelectionGuardUntil = performance.now() + 200;
+                }
                 if ((!drawingsAtPoint || drawingsAtPoint.length === 0) && event.detail >= 2) {
                     const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
                     if (openedFromDoubleClick) {
@@ -3330,6 +3334,10 @@ class DrawingToolsManager {
             const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
             if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
                 drawingsAtPoint = [topVolumeProfileValueLabelDrawing, ...drawingsAtPoint];
+            }
+
+            if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey && typeof window !== 'undefined') {
+                window.__v9DrawingSelectionGuardUntil = performance.now() + 200;
             }
 
             if (!isVolumeProfileLevelLineTarget && drawingsAtPoint.length > 0) {
@@ -8849,7 +8857,7 @@ class DrawingToolsManager {
         }
         // Brief guard: multichart focus/tool sync must not run in the same frame as select.
         if (typeof window !== 'undefined') {
-            window.__v9DrawingSelectionGuardUntil = performance.now() + 150;
+            window.__v9DrawingSelectionGuardUntil = performance.now() + 200;
         }
         if (addToSelection && this._isDrawingGeometryMoveActive()) {
             return;

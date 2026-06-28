@@ -26998,7 +26998,16 @@ class Chart {
 
         this.canvas.addEventListener('mousedown', e => {
             if (e.button === 0 && this._isMultichartHostPanel()) {
-                this._requestMultichartClearDrawingUiOnOtherPanels();
+                // Defer so drawing-tools selectDrawing can run first and arm the guard.
+                setTimeout(() => {
+                    try {
+                        if (typeof window !== 'undefined' && window.__v9DrawingSelectionGuardUntil
+                            && performance.now() < window.__v9DrawingSelectionGuardUntil) {
+                            return;
+                        }
+                    } catch (_guard) { /* ignore */ }
+                    this._requestMultichartClearDrawingUiOnOtherPanels();
+                }, 0);
             }
             if (tryStartCtrlMarqueeSelect.call(this, e)) {
                 return;
@@ -28277,7 +28286,15 @@ class Chart {
         // Handle SVG mousedown for drawing and selection
         this.svg.on('mousedown', (event) => {
             if (event && event.button === 0 && this._isMultichartHostPanel()) {
-                this._requestMultichartClearDrawingUiOnOtherPanels();
+                setTimeout(() => {
+                    try {
+                        if (typeof window !== 'undefined' && window.__v9DrawingSelectionGuardUntil
+                            && performance.now() < window.__v9DrawingSelectionGuardUntil) {
+                            return;
+                        }
+                    } catch (_guard) { /* ignore */ }
+                    this._requestMultichartClearDrawingUiOnOtherPanels();
+                }, 0);
             }
 
             // SKIP if in eraser mode - let eraser handler handle it

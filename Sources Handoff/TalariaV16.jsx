@@ -44899,10 +44899,10 @@ const TalariaV8b = () => {
           });
 
           /* ─── Strategy card (shared) ─── */
-          const STRAT_ROW_COLS = "44px 210px 320px 275px 135px 110px 150px 44px";
+          const STRAT_ROW_COLS = "44px 210px 320px 275px 135px 110px 194px";
           const StratRowsHeader = () => (
             <div style={{display:"grid",gridTemplateColumns:STRAT_ROW_COLS,alignItems:"center",height:26,flexShrink:0,borderBottom:`1px solid ${c.brH}`,background:c.bg}}>
-              {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results",""].map((label,colIdx)=>(
+              {["","Strategy","Description","Strategy Tags","Markets","Time Frames","Backtesting Results"].map((label,colIdx)=>(
                 <div key={`${label || "icon"}-${colIdx}`} style={{fontSize:8,fontWeight:850,color:c.tm,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap",fontFamily:F,textAlign:label?"left":"center",padding:"0 10px"}}>
                   {label}
                 </div>
@@ -44964,8 +44964,10 @@ const TalariaV8b = () => {
                   <div style={{padding:"0 10px",display:"flex",alignItems:"center"}}><div style={{width:"76%",height:10,background:"rgba(255,255,255,0.05)"}}/></div>
                   <div style={{padding:"0 10px",display:"flex",alignItems:"center"}}><div style={{width:"54%",height:10,background:"rgba(255,255,255,0.05)"}}/></div>
                   <div style={{padding:"0 10px",display:"flex",alignItems:"center"}}><div style={{width:"48%",height:10,background:"rgba(255,255,255,0.05)"}}/></div>
-                  <div style={{padding:"0 10px",display:"flex",alignItems:"center"}}><StratMetricsSkeleton compact/></div>
-                  <div/>
+                  <div style={{padding:"0 10px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                    <StratMetricsSkeleton compact/>
+                    <div style={{width:32,height:26,background:"rgba(255,255,255,0.06)",flexShrink:0}}/>
+                  </div>
                 </div>
               ))}
               </div>
@@ -45270,14 +45272,12 @@ const TalariaV8b = () => {
                     <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"8px 10px"}}>
                       <RowItems items={tfs}/>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",minWidth:0,padding:"8px 10px"}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,minWidth:0,padding:"8px 18px 8px 10px"}}>
                       <RowBacktestResults sessions={backtests} loading={metricsLoading}/>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>
                       <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
                         title="Actions" onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:(r.left+r.right)/2/uiZ,y:r.bottom/uiZ,anchorTop:r.top/uiZ,anchorBottom:r.bottom/uiZ});}}
                         onDoubleClick={e=>e.stopPropagation()}
-                        style={{width:32,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:stratActMenu?.id===strat.id?c.acL:c.ts,background:"transparent",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
+                        style={{width:32,height:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:stratActMenu?.id===strat.id?c.acL:c.ts,background:"transparent",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
                         onMouseEnter={e=>{e.currentTarget.style.color=stratActMenu?.id===strat.id?c.acL:c.tx;e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
                         onMouseLeave={e=>{e.currentTarget.style.color=stratActMenu?.id===strat.id?c.acL:c.ts;e.currentTarget.style.background="transparent";e.currentTarget.style.transform="scale(1)";}}
                         onMouseDown={e=>e.currentTarget.style.transform="scale(0.94)"}
