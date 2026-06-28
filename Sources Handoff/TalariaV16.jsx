@@ -14640,6 +14640,28 @@ const TalariaV8b = () => {
             })()}
           </div>
         );
+        const sessionHeaderActionBtnStyle = {
+          display:"flex",
+          alignItems:"center",
+          justifyContent:"center",
+          gap:7,
+          height:36,
+          width:160,
+          padding:"0 20px",
+          background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",
+          cursor:"default",
+          fontSize:13,
+          fontWeight:800,
+          color:"rgba(255,255,255,0.96)",
+          letterSpacing:"0.08em",
+          boxShadow:"0 2px 10px rgba(38,67,247,0.35)",
+          flexShrink:0,
+          transition:"filter 0.12s",
+          fontFamily:F,
+          marginRight:20,
+          boxSizing:"border-box",
+          whiteSpace:"nowrap",
+        };
 
         /* ── VIEW: SAVED SESSIONS ── */
         if (sessView === "sessions") {
@@ -14661,7 +14683,7 @@ const TalariaV8b = () => {
               </div>
               <div style={{flex:1}}/>
               {/* New Session */}
-              <div onClick={openNewSessionKindPicker} style={{display:"flex",alignItems:"center",gap:7,height:36,padding:"0 20px",background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:13,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 2px 10px rgba(38,67,247,0.35)",flexShrink:0,transition:"filter 0.12s",fontFamily:F,marginRight:20}}
+              <div onClick={openNewSessionKindPicker} style={sessionHeaderActionBtnStyle}
                 onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
                 onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                 <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
@@ -44781,6 +44803,7 @@ const TalariaV8b = () => {
 
         /* ── VIEW: STRATEGY BANK ── */
         if (sessView === "stratbank") {
+          const uiZ = v16EmbeddedRoot ? 1 : Z;
           const STYLES = ["All","Trend Following","Mean Reversion","Scalping","Breakout","Price Action","Swing","Algorithmic","News Trading","Other"];
           const TFS = ["1m","2m","3m","5m","10m","15m","30m","1H","2H","4H","1D","1W"];
           const complexityColor={Easy:c.gn,Medium:c.gold,Hard:c.rd};
@@ -45000,7 +45023,7 @@ const TalariaV8b = () => {
                       <div title={strat.name} style={{fontSize:14,fontWeight:850,color:c.tx,lineHeight:1.2,fontFamily:F,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",wordBreak:"break-word"}}>{strat.name}</div>
                     </div>
                     <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
-                      onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,anchorTop:r.top/Z,anchorBottom:r.bottom/Z,anchorLeft:r.left/Z,anchorRight:r.right/Z});}}
+                      onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:(r.left+r.right)/2/uiZ,y:r.bottom/uiZ,anchorTop:r.top/uiZ,anchorBottom:r.bottom/uiZ});}}
                       onDoubleClick={e=>e.stopPropagation()}
                       style={{width:32,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:stratActMenu?.id===strat.id?c.acL:c.ts,background:"transparent",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
                       onMouseEnter={e=>{e.currentTarget.style.color=stratActMenu?.id===strat.id?c.acL:c.tx;e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
@@ -45252,7 +45275,7 @@ const TalariaV8b = () => {
                     </div>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>
                       <div role="button" tabIndex={0} aria-label={`Open actions for ${strat.name}`}
-                        title="Actions" onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,anchorTop:r.top/Z,anchorBottom:r.bottom/Z,anchorLeft:r.left/Z,anchorRight:r.right/Z});}}
+                        title="Actions" onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setStratActMenu(stratActMenu?.id===strat.id?null:{id:strat.id,strat,isMine,inSavedTab,x:(r.left+r.right)/2/uiZ,y:r.bottom/uiZ,anchorTop:r.top/uiZ,anchorBottom:r.bottom/uiZ});}}
                         onDoubleClick={e=>e.stopPropagation()}
                         style={{width:32,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",color:stratActMenu?.id===strat.id?c.acL:c.ts,background:"transparent",transition:"background 0.12s, color 0.12s, transform 0.08s"}}
                         onMouseEnter={e=>{e.currentTarget.style.color=stratActMenu?.id===strat.id?c.acL:c.tx;e.currentTarget.style.background="rgba(255,255,255,0.08)";}}
@@ -45633,12 +45656,9 @@ const TalariaV8b = () => {
                 </div>
                 <div style={{flex:1}}/>
                 {/* Build Strategy button */}
-                <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()}
-                  style={{width:160,height:36,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"linear-gradient(135deg,#1e38e8,#4A6AFF)",cursor:"default",fontSize:12.5,fontWeight:800,color:"rgba(255,255,255,0.96)",letterSpacing:"0.08em",boxShadow:"0 2px 10px rgba(38,67,247,0.35)",marginRight:20,fontFamily:F,transition:"filter 0.12s, transform 0.08s",flexShrink:0,boxSizing:"border-box",whiteSpace:"nowrap"}}
+                <div role="button" tabIndex={0} aria-label="Build strategy" onClick={()=>openBuilder()} style={sessionHeaderActionBtnStyle}
                   onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.12)"}
-                  onMouseLeave={e=>{e.currentTarget.style.filter="brightness(1)";e.currentTarget.style.transform="scale(1)";}}
-                  onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
-                  onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
+                  onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
                   <svg width={15} height={15} viewBox="0 0 24 24" fill="none"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
                   Build Strategy
                 </div>
@@ -45926,14 +45946,21 @@ const TalariaV8b = () => {
                 ];
                 const menuW=160;
                 const menuH=estimateActionMenuHeight(actions);
+                const menuGap=6;
+                const vpW=window.innerWidth/uiZ;
+                const vpH=window.innerHeight/uiZ;
                 const anchorTop=stratActMenu.anchorTop??stratActMenu.y??0;
                 const anchorBottom=stratActMenu.anchorBottom??stratActMenu.y??anchorTop;
-                const anchorLeft=stratActMenu.anchorLeft??((stratActMenu.x??0)-32);
-                const anchorRight=stratActMenu.anchorRight??stratActMenu.x??anchorLeft+32;
-                const menuPos=computeAnchoredDropdownPos({anchorTop,anchorBottom,anchorLeft,anchorRight,menuW,menuH,zoom:Z,rightAlign:true});
+                const anchorCenterX=stratActMenu.x??0;
+                let left=anchorCenterX-menuW/2;
+                left=Math.max(8,Math.min(left,vpW-menuW-8));
+                const belowTop=anchorBottom+menuGap;
+                const aboveTop=anchorTop-menuGap-menuH;
+                const flipAbove=belowTop+menuH>vpH-8&&aboveTop>=8;
+                const top=flipAbove?Math.max(8,aboveTop):Math.max(8,Math.min(belowTop,vpH-menuH-8));
                 return(<>
                   <div style={{position:"fixed",inset:0,zIndex:100000}} onClick={e=>{e.stopPropagation();closeMenu();}}/>
-                  <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:menuPos.top,left:menuPos.left,zIndex:100001,width:menuW,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
+                  <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top,left,zIndex:100001,width:menuW,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
                     <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                     {actions.map(({label,handler,col,danger,icon})=>{
                       if(label==="divider")return <div key="div" style={{height:1,background:c.br,margin:"2px 0"}}/>;

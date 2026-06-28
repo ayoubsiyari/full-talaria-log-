@@ -3286,11 +3286,28 @@ function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
   return getSelectedDrawingAcrossCharts(null);
 }
 
-/** Last shape that opened the V9 quick bar — survives host/iframe focus races. */
+/** Last shape that opened the V9 quick bar — multichart only (panel A focus races). */
 const v9QuickBarSelectionAnchorRef = { current: null };
 
+function v9DrawingIsPrimarySelection(dm, drawing) {
+  if (!dm || !drawing) return false;
+  if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+    for (const d of dm.selectedDrawings) {
+      if (!d) continue;
+      if (d === drawing) return true;
+      if (drawing.id != null && d.id === drawing.id) return true;
+    }
+    return false;
+  }
+  if (dm.selectedDrawing) {
+    if (dm.selectedDrawing === drawing) return true;
+    if (drawing.id != null && dm.selectedDrawing.id === drawing.id) return true;
+  }
+  return false;
+}
+
 function v9RememberQuickBarSelection(dm, drawing) {
-  if (!drawing || !drawing.type) return;
+  if (!v9MultichartGridApi() || !drawing || !drawing.type) return;
   v9QuickBarSelectionAnchorRef.current = {
     drawingId: drawing.id != null ? drawing.id : null,
     type: drawing.type,
@@ -3303,6 +3320,7 @@ function v9ClearQuickBarSelectionAnchor() {
 }
 
 function v9ResolveLiveDrawingFromQuickBarAnchor() {
+  if (!v9MultichartGridApi()) return null;
   try {
     const anchor = v9QuickBarSelectionAnchorRef.current;
     if (!anchor) return null;
@@ -3311,23 +3329,31 @@ function v9ResolveLiveDrawingFromQuickBarAnchor() {
         anchor.drawingId != null
           ? resolveLiveDrawingInDmById(anchor.dm, anchor.drawingId)
           : null;
-      if (onOwner) return onOwner;
+      if (onOwner && v9DrawingIsPrimarySelection(anchor.dm, onOwner)) return onOwner;
     }
     if (anchor.drawingId != null) {
       for (const dm of enumerateV9DrawingManagersFromWindow()) {
         const live = resolveLiveDrawingInDmById(dm, anchor.drawingId);
-        if (live) return live;
+        if (live && v9DrawingIsPrimarySelection(dm, live)) return live;
       }
     }
   } catch (_) {}
   return null;
 }
+
 /** Quick bar must not paint unless the chart still has a selected drawing. */
 function v9GetLiveSelectedDrawingForQuickBar() {
   try {
-    const anchored = v9ResolveLiveDrawingFromQuickBarAnchor();
-    if (anchored) return anchored;
-    return getPrimarySelectedDrawingForActiveChart(null) || getSelectedDrawingAcrossCharts(null);
+    const live = getPrimarySelectedDrawingForActiveChart(null) || getSelectedDrawingAcrossCharts(null);
+    if (live) {
+      const dm = resolveDrawingManagerForDrawing(live);
+      if (dm && v9DrawingIsPrimarySelection(dm, live)) return live;
+      if (!v9MultichartGridApi()) return null;
+    }
+    if (v9MultichartGridApi()) {
+      return v9ResolveLiveDrawingFromQuickBarAnchor();
+    }
+    return null;
   } catch (_) {
     return null;
   }
@@ -19262,7 +19288,7 @@ const TalariaV8bLive = () => {
       tb.__v9OrigHide = origHide;
       tb.show = function (drawing, x, y) {
         try {
-          if (drawing && drawing.type) {
+          if (drawing && drawing.type && v9MultichartGridApi()) {
             v9RememberQuickBarSelection(dm, drawing);
           }
           const br = v9ToolbarBridgeActRef.current;
@@ -19500,13 +19526,19 @@ const TalariaV8bLive = () => {
               return origHide ? origHide() : undefined;
             }
           }
-          // Peer tiles deselect async when another panel selects — their toolbar.hide
-          // must not wipe the parent V9 quick bar / rail for the tile that still has selection.
-          if (v9IsDrawingSelectionGuardActive() || v9GetLiveSelectedDrawingForQuickBar()) {
-            return origHide ? origHide() : undefined;
-          }
-          v9ClearQuickBarSelectionAnchor();
           const br = v9ToolbarBridgeActRef.current;
+          // Multichart only: peer tile deselect must not wipe the bar while another tile
+          // still has a real selection. Single-chart keeps original always-hide behaviour.
+          if (v9MultichartGridApi()) {
+            if (v9IsDrawingSelectionGuardActive()) {
+              return origHide ? origHide() : undefined;
+            }
+            const live = v9GetLiveSelectedDrawingForQuickBar();
+            if (live) {
+              return origHide ? origHide() : undefined;
+            }
+            v9ClearQuickBarSelectionAnchor();
+          }
           br.setTlBarSelected(false);
           br.setTlBarSelectedType(null);
           v9SyncQuickBarLockFromDrawing(null, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked, br.setVwapLocked);
@@ -19594,6 +19626,7 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     const onV9Sel = (ev) => {
       try {
+        if (!v9MultichartGridApi()) return;
         const detail = ev && ev.detail;
         const t = detail && detail.drawingType;
         if (!t) return;
@@ -19604,7 +19637,7 @@ const TalariaV8bLive = () => {
           if (wantId != null) {
             for (const dm of enumerateV9DrawingManagersFromWindow()) {
               const hit = resolveLiveDrawingInDmById(dm, wantId);
-              if (hit && hit.type === t) {
+              if (hit && hit.type === t && v9DrawingIsPrimarySelection(dm, hit)) {
                 live = hit;
                 v9RememberQuickBarSelection(dm, hit);
                 break;
@@ -19613,19 +19646,20 @@ const TalariaV8bLive = () => {
           }
           if (!live) {
             const p = getPrimarySelectedDrawingForActiveChart(null);
-            if (p && p.type === t) live = p;
+            if (p && p.type === t) {
+              const dm = resolveDrawingManagerForDrawing(p);
+              if (dm && v9DrawingIsPrimarySelection(dm, p)) live = p;
+            }
           }
           if (!live) {
             const d = getSelectedDrawingAcrossCharts(null);
-            if (d && d.type === t) live = d;
+            if (d && d.type === t) {
+              const dm = resolveDrawingManagerForDrawing(d);
+              if (dm && v9DrawingIsPrimarySelection(dm, d)) live = d;
+            }
           }
         } catch (_) {}
-        if (!live) {
-          v9RememberQuickBarSelection(null, { id: detail.drawingId, type: t });
-          br.setTlBarSelected(true);
-          br.setTlBarSelectedType(t);
-          return;
-        }
+        if (!live) return;
         v9RememberQuickBarSelection(resolveDrawingManagerForDrawing(live), live);
         try {
           const pid = detail.panelId;
