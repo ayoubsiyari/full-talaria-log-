@@ -21921,9 +21921,19 @@ class Chart {
             this.drawCtrlMarqueeSelect();
         }
 
-        // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
+        // Economic calendar: fetch only when the visible date window changes (not every redraw frame).
         if (!this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
-            window.__economicCalendarNotifyChartRender(this);
+            let calFp = '';
+            if (typeof this._getVisibleFetchWindowFromPixels === 'function') {
+                const calWin = this._getVisibleFetchWindowFromPixels();
+                if (calWin && Number.isFinite(calWin.fromMs) && Number.isFinite(calWin.toMs)) {
+                    calFp = Math.floor(calWin.fromMs / 86400000) + '|' + Math.floor(calWin.toMs / 86400000);
+                }
+            }
+            if (!calFp || calFp !== this._economicCalendarNotifyFp) {
+                this._economicCalendarNotifyFp = calFp;
+                window.__economicCalendarNotifyChartRender(this);
+            }
         }
 
         if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
@@ -26243,10 +26253,21 @@ class Chart {
         }
         if (!events || events.length === 0 || !this.ctx) return;
 
-        const d0 = this.data[0].t;
-        const d1 = this.data[this.data.length - 1].t;
-        const barMinT = Math.min(d0, d1) - 2 * 86400000;
-        const barMaxT = Math.max(d0, d1) + 2 * 86400000;
+        let barMinT;
+        let barMaxT;
+        if (typeof this._getVisibleFetchWindowFromPixels === 'function') {
+            const win = this._getVisibleFetchWindowFromPixels();
+            if (win && Number.isFinite(win.fromMs) && Number.isFinite(win.toMs)) {
+                barMinT = Math.min(win.fromMs, win.toMs) - 2 * 86400000;
+                barMaxT = Math.max(win.fromMs, win.toMs) + 2 * 86400000;
+            }
+        }
+        if (!Number.isFinite(barMinT) || !Number.isFinite(barMaxT)) {
+            const d0 = this.data[0].t;
+            const d1 = this.data[this.data.length - 1].t;
+            barMinT = Math.min(d0, d1) - 2 * 86400000;
+            barMaxT = Math.max(d0, d1) + 2 * 86400000;
+        }
         const eventsInRange = [];
         for (let ei = 0; ei < events.length; ei++) {
             const ev = events[ei];

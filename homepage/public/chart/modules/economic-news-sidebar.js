@@ -23,6 +23,7 @@
         loaded: false,
         loadedRangeKey: null,
         loading: false,
+        backgroundLoading: false,
         error: null,
         countdownTimer: null,
         replayDayReloadTimer: null,
@@ -40,6 +41,14 @@
     /** Bumps when a new calendar fetch starts so stale async completions do not overwrite state. */
     var calendarLoadId = 0;
     var calendarPanDebounceTimer = null;
+    var sidebarRenderDebounceTimer = null;
+    var _lastSidebarViewportKey = '';
+    var _lastNotifyRangeKey = '';
+
+    /** Memory + CPU bounds — keeps calendar smooth on long histories. */
+    var MAX_CACHED_CALENDAR_EVENTS = 500;
+    var CACHE_KEEP_PAD_DAYS = 35;
+    var MAX_FETCHED_UNION_DAYS = 120;
 
     /**
      * Accumulated events for time-axis markers only. `state.events` is replaced each fetch for the
@@ -62,27 +71,164 @@
             var k = stableEventKey(e);
             if (k) chartMarkerEventByKey[k] = e;
         }
+        pruneChartMarkerCache();
     }
 
-    /** Drop cached markers far outside loaded bars so memory stays bounded. */
-    function pruneChartMarkerCache() {
-        var ch = mainChart();
-        if (!ch || !ch.data || ch.data.length === 0) return;
-        var t0 = ch.data[0].t;
-        var t1 = ch.data[ch.data.length - 1].t;
-        var minT = Math.min(t0, t1) - 21 * 86400000;
-        var maxT = Math.max(t0, t1) + 21 * 86400000;
+    function shrinkFetchedUnionToCache() {
+        var minStr = '';
+        var maxStr = '';
         for (var key in chartMarkerEventByKey) {
             if (!Object.prototype.hasOwnProperty.call(chartMarkerEventByKey, key)) continue;
-            var e = chartMarkerEventByKey[key];
-            if (!e || !Number.isFinite(e.t) || e.t < minT || e.t > maxT) {
-                delete chartMarkerEventByKey[key];
+            var ev = chartMarkerEventByKey[key];
+            if (!ev || !Number.isFinite(ev.t)) continue;
+            var ds = isoDateLocal(ev.t);
+            if (!minStr || ds < minStr) minStr = ds;
+            if (!maxStr || ds > maxStr) maxStr = ds;
+        }
+        if (minStr && maxStr) {
+            fetchedUnion.fromStr = minStr;
+            fetchedUnion.toStr = maxStr;
+            state.loadedRangeKey = minStr + '|' + maxStr;
+        } else {
+            fetchedUnion.fromStr = '';
+            fetchedUnion.toStr = '';
+            state.loadedRangeKey = null;
+        }
+    }
+
+    function clampFetchedUnionSpan() {
+        if (!fetchedUnion.fromStr || !fetchedUnion.toStr) return;
+        var fromMs = dateStrToMsStart(fetchedUnion.fromStr);
+        var toMs = dateStrToMsEnd(fetchedUnion.toStr);
+        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return;
+        var spanDays = (toMs - fromMs) / 86400000;
+        if (spanDays <= MAX_FETCHED_UNION_DAYS) return;
+        var rng = getCalendarFetchRange();
+        var c0 = dateStrToMsStart(rng.fromStr);
+        var c1 = dateStrToMsEnd(rng.toStr);
+        var center = Number.isFinite(c0) && Number.isFinite(c1) ? (c0 + c1) / 2 : (fromMs + toMs) / 2;
+        var halfMs = Math.floor(MAX_FETCHED_UNION_DAYS / 2) * 86400000;
+        fetchedUnion.fromStr = isoDateLocal(center - halfMs);
+        fetchedUnion.toStr = isoDateLocal(center + halfMs);
+        state.loadedRangeKey = fetchedUnion.fromStr + '|' + fetchedUnion.toStr;
+        pruneChartMarkerCache();
+    }
+
+    /** Drop events outside viewport ± pad; hard-cap total cached rows. */
+    function pruneChartMarkerCache() {
+        var vr = getChartViewportTimeMsRange();
+        var padMs = CACHE_KEEP_PAD_DAYS * 86400000;
+        var minT = NaN;
+        var maxT = NaN;
+        if (vr) {
+            minT = vr.minT - padMs;
+            maxT = vr.maxT + padMs;
+        } else if (fetchedUnion.fromStr && fetchedUnion.toStr) {
+            minT = dateStrToMsStart(fetchedUnion.fromStr);
+            maxT = dateStrToMsEnd(fetchedUnion.toStr);
+        }
+        if (Number.isFinite(minT) && Number.isFinite(maxT)) {
+            for (var key in chartMarkerEventByKey) {
+                if (!Object.prototype.hasOwnProperty.call(chartMarkerEventByKey, key)) continue;
+                var e = chartMarkerEventByKey[key];
+                if (!e || !Number.isFinite(e.t) || e.t < minT || e.t > maxT) {
+                    delete chartMarkerEventByKey[key];
+                }
             }
         }
+        var count = cachedEventCount();
+        if (count > MAX_CACHED_CALENDAR_EVENTS) {
+            var center = vr ? (vr.minT + vr.maxT) / 2 : Date.now();
+            var ranked = [];
+            for (var k2 in chartMarkerEventByKey) {
+                if (!Object.prototype.hasOwnProperty.call(chartMarkerEventByKey, k2)) continue;
+                var ev2 = chartMarkerEventByKey[k2];
+                if (!ev2 || !Number.isFinite(ev2.t)) continue;
+                ranked.push({ key: k2, dist: Math.abs(ev2.t - center) });
+            }
+            ranked.sort(function (a, b) { return b.dist - a.dist; });
+            var drop = count - MAX_CACHED_CALENDAR_EVENTS;
+            for (var ri = 0; ri < drop && ri < ranked.length; ri++) {
+                delete chartMarkerEventByKey[ranked[ri].key];
+            }
+        }
+        shrinkFetchedUnionToCache();
+    }
+
+    /** Widest calendar span successfully fetched this session (union of all loads). */
+    var fetchedUnion = { fromStr: '', toStr: '' };
+    var lastCalendarSymbol = '';
+
+    function expandFetchedUnion(fromStr, toStr) {
+        if (!fromStr || !toStr) return;
+        if (!fetchedUnion.fromStr || fromStr < fetchedUnion.fromStr) fetchedUnion.fromStr = fromStr;
+        if (!fetchedUnion.toStr || toStr > fetchedUnion.toStr) fetchedUnion.toStr = toStr;
+        state.loadedRangeKey = fetchedUnion.fromStr + '|' + fetchedUnion.toStr;
+    }
+
+    function viewportCoveredByFetchedUnion(rng) {
+        if (!rng || !fetchedUnion.fromStr || !fetchedUnion.toStr) return false;
+        return rng.fromStr >= fetchedUnion.fromStr && rng.toStr <= fetchedUnion.toStr;
+    }
+
+    function cachedEventCount() {
+        var n = 0;
+        for (var k in chartMarkerEventByKey) {
+            if (Object.prototype.hasOwnProperty.call(chartMarkerEventByKey, k)) n++;
+        }
+        return n;
+    }
+
+    function syncStateEventsFromCache() {
+        state.events = collectMarkerSourceEvents();
+    }
+
+    function scheduleSidebarRenderIfNeeded() {
+        if (!newsPanelIsActive()) return;
+        var rng = getCalendarFetchRange();
+        if (!rng || rng.rangeKey === _lastSidebarViewportKey) return;
+        if (sidebarRenderDebounceTimer) clearTimeout(sidebarRenderDebounceTimer);
+        sidebarRenderDebounceTimer = setTimeout(function () {
+            sidebarRenderDebounceTimer = null;
+            var rng2 = getCalendarFetchRange();
+            _lastSidebarViewportKey = rng2.rangeKey;
+            render();
+            startCountdownLoop();
+        }, 450);
+    }
+
+    /** Visible chart time span (ms) for sidebar + marker clipping — matches what is on screen. */
+    function getChartViewportTimeMsRange() {
+        var ch = mainChart();
+        if (!ch || !ch.data || !ch.data.length) return null;
+        var m = ch.margin || { l: 0, r: 0 };
+        var plotRight = ch.w - m.r;
+        var tMin = NaN;
+        var tMax = NaN;
+        if (typeof ch.pixelToDataIndex === 'function' && typeof ch.estimateTimestampForDataIndex === 'function'
+            && Number.isFinite(ch.w) && ch.w > 0) {
+            var i0 = Math.max(0, Math.floor(ch.pixelToDataIndex(m.l)) - 4);
+            var i1 = Math.min(ch.data.length - 1, Math.ceil(ch.pixelToDataIndex(plotRight)) + 4);
+            tMin = ch.estimateTimestampForDataIndex(i0);
+            tMax = ch.estimateTimestampForDataIndex(i1);
+        }
+        if (!Number.isFinite(tMin) || !Number.isFinite(tMax)) {
+            tMin = ch.data[0].t;
+            tMax = ch.data[ch.data.length - 1].t;
+        }
+        if (tMin > tMax) {
+            var tmp = tMin;
+            tMin = tMax;
+            tMax = tmp;
+        }
+        return { minT: tMin - 86400000, maxT: tMax + 86400000 };
     }
 
     function clearChartMarkerCache() {
         chartMarkerEventByKey = {};
+        fetchedUnion = { fromStr: '', toStr: '' };
+        _lastNotifyRangeKey = '';
+        _lastSidebarViewportKey = '';
         _axisEventsCacheFp = '';
         _axisEventsCacheArr = null;
     }
@@ -101,7 +247,12 @@
         for (var k in chartMarkerEventByKey) {
             if (Object.prototype.hasOwnProperty.call(chartMarkerEventByKey, k)) nk++;
         }
-        return nk + '|' + (state.loadedRangeKey || '') + '|' + (state.events ? state.events.length : 0) + '|' + sym + '|' + JSON.stringify(state.filters);
+        return nk + '|' + viewportRangeKey() + '|' + sym + '|' + JSON.stringify(state.filters);
+    }
+
+    function viewportRangeKey() {
+        var rng = getCalendarFetchRange();
+        return rng && rng.rangeKey ? rng.rangeKey : '';
     }
 
     function mainChart() {
@@ -729,7 +880,10 @@
         if (!Number.isFinite(now)) {
             now = Date.now();
         }
-        var list = state.events.filter(function (e) {
+        var vr = getChartViewportTimeMsRange();
+        var source = collectMarkerSourceEvents();
+        var list = source.filter(function (e) {
+            if (vr && Number.isFinite(e.t) && (e.t < vr.minT || e.t > vr.maxT)) return false;
             if (!passesUserFilters(e)) return false;
             var upcoming = e.t >= now;
             if (state.tab === 'upcoming' && !upcoming) return false;
@@ -821,7 +975,7 @@
             return;
         }
 
-        if (state.loading) {
+        if (state.loading && cachedEventCount() === 0) {
             var rng = getCalendarFetchRange();
             var loadLabel = rng.fromStr === rng.toStr
                 ? escapeHtml(rng.fromStr)
@@ -845,8 +999,10 @@
         var list = filterEvents();
         if (!list.length) {
             var hint;
-            if (!state.events || state.events.length === 0) {
+            if (cachedEventCount() === 0) {
                 hint = 'No economic events returned for this date range. Check FINNHUB_API_KEY on the chart API server, or try a more recent chart window.';
+            } else if (state.backgroundLoading) {
+                hint = 'Loading more calendar events for this view…';
             } else {
                 hint = 'No events match your filters or search. Try turning off “Current pair only”, other impact levels, or clear the search.';
             }
@@ -910,6 +1066,7 @@
         }
         if (isEconomicCalendarApiDisabled()) {
             state.loading = false;
+            state.backgroundLoading = false;
             state.error = null;
             state.loaded = true;
             state.loadedRangeKey = 'disabled';
@@ -919,15 +1076,31 @@
             render();
             return;
         }
+
+        var rngPreflight = getCalendarFetchRange();
+        if (!force && viewportCoveredByFetchedUnion(rngPreflight)) {
+            state.loaded = true;
+            scheduleSidebarRenderIfNeeded();
+            return;
+        }
+
         if (state.loading && !force) return;
         if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
+
         var myId = ++calendarLoadId;
-        state.loading = true;
+        var hasCache = cachedEventCount() > 0;
+        if (hasCache) {
+            state.backgroundLoading = true;
+            state.loading = false;
+        } else {
+            state.loading = true;
+            state.backgroundLoading = false;
+        }
         state.error = null;
         render();
 
         try {
-            var rng = getCalendarFetchRange();
+            var rng = rngPreflight;
             var fromStr = rng.fromStr;
             var toStr = rng.toStr;
             var url = '/api/finnhub/calendar/economic?from=' + encodeURIComponent(fromStr) + '&to=' + encodeURIComponent(toStr);
@@ -944,18 +1117,17 @@
                 var n = normalizeRaw(rawList[i]);
                 if (n) out.push(n);
             }
-            out.sort(function (a, b) { return a.t - b.t; });
             if (myId !== calendarLoadId) return;
-            state.events = out;
             mergeIntoChartMarkerCache(out);
-            pruneChartMarkerCache();
+            expandFetchedUnion(fromStr, toStr);
+            clampFetchedUnionSpan();
+            syncStateEventsFromCache();
+            invalidateAxisEventsCache();
             state.loaded = true;
-            state.loadedRangeKey = rng.rangeKey;
         } catch (err) {
             if (myId !== calendarLoadId) return;
             state.error = (err && err.message) ? String(err.message) : 'Failed to load calendar';
-            // Keep existing events visible on error — don't clear flags from chart
-            if (!state.events || state.events.length === 0) {
+            if (cachedEventCount() === 0) {
                 state.loaded = false;
                 state.loadedRangeKey = null;
             }
@@ -963,6 +1135,7 @@
             if (myId !== calendarLoadId) return;
             lastFetchFinishedAt = Date.now();
             state.loading = false;
+            state.backgroundLoading = false;
             render();
             startCountdownLoop();
             requestChartMarkerRedraw();
@@ -1219,7 +1392,7 @@
             return;
         }
         var rng = getCalendarFetchRange();
-        if (!state.loaded || state.loadedRangeKey !== rng.rangeKey) {
+        if (!state.loaded || !viewportCoveredByFetchedUnion(rng)) {
             loadCalendar();
         } else {
             render();
@@ -1251,15 +1424,11 @@
             requestChartMarkerRedraw();
             if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) return;
             var rng = getCalendarFetchRange();
-            if (state.loaded && state.loadedRangeKey === rng.rangeKey) {
-                if (newsPanelIsActive()) {
-                    render();
-                    startCountdownLoop();
-                }
+            if (viewportCoveredByFetchedUnion(rng)) {
+                invalidateAxisEventsCache();
+                scheduleSidebarRenderIfNeeded();
                 return;
             }
-            state.loaded = false;
-            state.loadedRangeKey = null;
             loadCalendar(true);
         }, 400);
     });
@@ -1270,16 +1439,36 @@
             if (shouldSkipLocalNewsFetch()) waitForParentCalendarAndRedraw(0);
             return;
         }
+        var sym = getCurrentChartSymbol();
+        if (sym && lastCalendarSymbol && sym !== lastCalendarSymbol) {
+            clearChartMarkerCache();
+            state.loaded = false;
+            state.loadedRangeKey = null;
+            state.events = [];
+        }
+        if (sym) lastCalendarSymbol = sym;
+
         var rng = getCalendarFetchRange();
+        if (viewportCoveredByFetchedUnion(rng)) {
+            syncStateEventsFromCache();
+            state.loaded = true;
+            scheduleSidebarRenderIfNeeded();
+            requestChartMarkerRedraw();
+            return;
+        }
         // Load calendar for the chart bar range even when News is closed so time-axis markers work immediately.
-        if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
+        if (!state.loading && !state.backgroundLoading && !viewportCoveredByFetchedUnion(rng)) {
             if (isMultichartHostTile()) {
                 if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
                 calendarPanDebounceTimer = setTimeout(function () {
                     calendarPanDebounceTimer = null;
-                    if (state.loading) return;
+                    if (state.loading || state.backgroundLoading) return;
                     var rng2 = getCalendarFetchRange();
-                    if (state.loaded && state.loadedRangeKey === rng2.rangeKey) return;
+                    if (viewportCoveredByFetchedUnion(rng2)) {
+                        invalidateAxisEventsCache();
+                        scheduleSidebarRenderIfNeeded();
+                        return;
+                    }
                     loadCalendar();
                 }, 1600);
                 return;
@@ -1308,27 +1497,35 @@
         }, 0);
     }
 
-    /** Called from chart.js render after pan/zoom — reload Finnhub range when visible dates change (long histories). */
+    /** Called from chart.js when the visible date window changes — fetch gaps only, no extra redraw loops. */
     window.__economicCalendarNotifyChartRender = function (chart) {
         if (isEconomicCalendarApiDisabled()) return;
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
         if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) return;
+
+        var rngNow = getCalendarFetchRange();
+        if (rngNow.rangeKey === _lastNotifyRangeKey) {
+            scheduleSidebarRenderIfNeeded();
+            return;
+        }
+
         if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
-        var debounceMs = isMultichartHostTile() ? 2200 : 350;
+        var debounceMs = isMultichartHostTile() ? 2200 : 500;
         calendarPanDebounceTimer = setTimeout(function () {
             calendarPanDebounceTimer = null;
             try {
                 var rng = getCalendarFetchRange();
-                if (state.loading) return;
-                if (state.loaded && state.loadedRangeKey === rng.rangeKey) return;
-                // Skip reload if new range is within the already-loaded range
-                if (state.loaded && state.loadedRangeKey) {
-                    var parts = state.loadedRangeKey.split('|');
-                    if (parts.length === 2 && rng.fromStr >= parts[0] && rng.toStr <= parts[1]) return;
+                _lastNotifyRangeKey = rng.rangeKey;
+                if (viewportCoveredByFetchedUnion(rng)) {
+                    invalidateAxisEventsCache();
+                    scheduleSidebarRenderIfNeeded();
+                    return;
                 }
+                if (state.loading || state.backgroundLoading) return;
                 if (isMultichartHostTile() && state.loaded && lastFetchFinishedAt
                     && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) {
+                    scheduleSidebarRenderIfNeeded();
                     return;
                 }
                 loadCalendar();
@@ -1346,7 +1543,8 @@
         },
         getStatus: function () {
             return {
-                loading: state.loading,
+                loading: state.loading || state.backgroundLoading,
+                backgroundLoading: state.backgroundLoading,
                 error: state.error,
                 tab: state.tab,
                 query: state.query,

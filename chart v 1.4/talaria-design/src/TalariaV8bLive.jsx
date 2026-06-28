@@ -3303,6 +3303,58 @@ function v9DrawingIsPrimarySelection(dm, drawing) {
     if (dm.selectedDrawing === drawing) return true;
     if (drawing.id != null && dm.selectedDrawing.id === drawing.id) return true;
   }
+  // Synced copies share ids across tiles — only the focused chart's visual select counts.
+  try {
+    if (drawing.selected && resolveLiveDrawingInDm(dm, drawing)) {
+      const grid = v9MultichartGridApi();
+      if (grid && typeof grid.getFocusedPanelId === "function" && typeof grid.getChartForPanel === "function") {
+        const fid = grid.getFocusedPanelId();
+        const ch = fid ? grid.getChartForPanel(fid) : null;
+        if (ch && ch.drawingManager === dm) return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
+/** Primary selection on the focused multichart tile (panel A host or iframe). */
+function v9GetPrimarySelectedDrawingOnFocusedPanel() {
+  const grid = v9MultichartGridApi();
+  if (!grid || typeof grid.getFocusedPanelId !== "function" || typeof grid.getChartForPanel !== "function") {
+    return null;
+  }
+  const fid = grid.getFocusedPanelId();
+  if (!fid) return null;
+  const ch = grid.getChartForPanel(fid);
+  const dm = ch && ch.drawingManager;
+  if (!dm) return null;
+  if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+    const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
+    if (live && v9DrawingIsPrimarySelection(dm, live)) return live;
+  }
+  if (dm.selectedDrawing) {
+    const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
+    if (live && v9DrawingIsPrimarySelection(dm, live)) return live;
+  }
+  return null;
+}
+
+function v9ResolveSelectionOwnerDrawing(drawing) {
+  if (!drawing) return null;
+  for (const dm of enumerateV9DrawingManagersActiveFirst()) {
+    const live = resolveLiveDrawingInDm(dm, drawing);
+    if (live && v9DrawingIsPrimarySelection(dm, live)) return live;
+  }
+  return null;
+}
+
+function v9AnyPanelHasPrimarySelection() {
+  try {
+    for (const dm of enumerateV9DrawingManagersActiveFirst()) {
+      if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) return true;
+      if (dm.selectedDrawing) return true;
+    }
+  } catch (_) {}
   return false;
 }
 
@@ -3344,12 +3396,13 @@ function v9ResolveLiveDrawingFromQuickBarAnchor() {
 /** Quick bar must not paint unless the chart still has a selected drawing. */
 function v9GetLiveSelectedDrawingForQuickBar() {
   try {
-    const live = getPrimarySelectedDrawingForActiveChart(null) || getSelectedDrawingAcrossCharts(null);
-    if (live) {
-      const dm = resolveDrawingManagerForDrawing(live);
-      if (dm && v9DrawingIsPrimarySelection(dm, live)) return live;
-      if (!v9MultichartGridApi()) return null;
+    if (v9MultichartGridApi()) {
+      const onFocus = v9GetPrimarySelectedDrawingOnFocusedPanel();
+      if (onFocus) return onFocus;
     }
+    const scanned = getPrimarySelectedDrawingForActiveChart(null) || getSelectedDrawingAcrossCharts(null);
+    const owned = v9ResolveSelectionOwnerDrawing(scanned);
+    if (owned) return owned;
     if (v9MultichartGridApi()) {
       return v9ResolveLiveDrawingFromQuickBarAnchor();
     }
@@ -14887,10 +14940,11 @@ const TalariaV8bLive = () => {
   // Prefer live selection from getSelectedDrawingAcrossCharts (active chart first). If that drawing
   // is any text/annotation type, it wins — fixes wrong Trend Line bar when the toolbar hook type or
   // tlBarSelectedType is stale. Else fall back to hook type when it is text; else scanned || hook.
+  const tlBarLiveSelection = tlBarSelected ? v9GetLiveSelectedDrawingForQuickBar() : null;
   let chartPrimarySelectedDrawingType = tlBarSelectedType;
   if (tlBarSelected && typeof window !== "undefined") {
     try {
-      const live = getPrimarySelectedDrawingForActiveChart(null);
+      const live = tlBarLiveSelection || getPrimarySelectedDrawingForActiveChart(null);
       const liveT = live && live.type;
       const liveG = liveT ? drawingTypeToPanelGroupRef.current(liveT) : null;
       if (liveG === "text") {
@@ -14916,7 +14970,6 @@ const TalariaV8bLive = () => {
     tlBarDrawingGroupRaw === "brush"
       ? (v9SubToolIconFromDrawingType(chartPrimarySelectedDrawingType, "brush") || (groupSelected.brush?.icon ?? "vwap"))
       : null;
-  const tlBarLiveSelection = tlBarSelected ? v9GetLiveSelectedDrawingForQuickBar() : null;
   const tlBarShowQuickBar = tlBarSelected && !!tlBarLiveSelection;
   // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
   const settingsEditGroup =
@@ -19606,6 +19659,7 @@ const TalariaV8bLive = () => {
     const sync = () => {
       if (v9IsDrawingSelectionGuardActive()) return;
       if (!v9GetLiveSelectedDrawingForQuickBar()) {
+        if (v9MultichartGridApi() && v9AnyPanelHasPrimarySelection()) return;
         v9ClearQuickBarSelectionAnchor();
         setTlBarSelected(false);
         setTlBarSelectedType(null);
@@ -19634,7 +19688,19 @@ const TalariaV8bLive = () => {
         let live = null;
         try {
           const wantId = detail.drawingId != null ? detail.drawingId : null;
-          if (wantId != null) {
+          const grid = v9MultichartGridApi();
+          const srcPanel = detail.panelId != null ? String(detail.panelId) : null;
+          if (grid && srcPanel && wantId != null && typeof grid.getChartForPanel === "function") {
+            const ch = grid.getChartForPanel(srcPanel);
+            const pdm = ch && ch.drawingManager;
+            const onPanel = pdm && resolveLiveDrawingInDmById(pdm, wantId);
+            if (onPanel && onPanel.type === t
+              && (v9DrawingIsPrimarySelection(pdm, onPanel) || onPanel.selected)) {
+              live = onPanel;
+              v9RememberQuickBarSelection(pdm, onPanel);
+            }
+          }
+          if (!live && wantId != null) {
             for (const dm of enumerateV9DrawingManagersFromWindow()) {
               const hit = resolveLiveDrawingInDmById(dm, wantId);
               if (hit && hit.type === t && v9DrawingIsPrimarySelection(dm, hit)) {
