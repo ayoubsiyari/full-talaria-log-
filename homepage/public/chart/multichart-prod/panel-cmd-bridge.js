@@ -373,7 +373,8 @@
     function applyReplayFrame(ch, args) {
         if (!ch || !args || typeof args !== 'object') return;
         if (ch._multichartPairLoadInFlight) return;
-        if (isPanelBootSettling(ch)) return;
+        // Never block replay frames during boot settle — only viewport mirrors
+        // are held then. Dropping frames here freezes B/C/D on Play.
         var rs = ch.replaySystem;
         if (!rs) return;
         var ts = Number(args.timestamp);
@@ -1773,12 +1774,52 @@
                     if (!rsP.userHasPanned) {
                         rsP.autoScrollEnabled = true;
                     }
-                    // Hold viewport through the first host replayFrame(s) so Play
-                    // does not triple-jump; boot settle is unaffected.
+                    // Playback must not stay blocked by boot viewport hold.
                     try {
-                        ch._multichartPreserveViewportUntil = performance.now() + 900;
+                        if (typeof window !== 'undefined') {
+                            window.__multichartBootRevealAfter = 0;
+                        }
+                        ch._multichartViewportSettleUntil = 0;
+                        ch._multichartPreserveViewportUntil = rsP.userHasPanned
+                            ? (performance.now() + 900)
+                            : 0;
                     } catch (_) {}
-                    // Host tile A broadcasts replayFrame on the next frame after play().
+                    // Prime one mirror frame so B/C/D start with host immediately.
+                    try {
+                        var playPayload = readParentReplayMirrorPayload();
+                        if (!playPayload) {
+                            var playTs = readParentReplayTimestamp();
+                            if (Number.isFinite(playTs)) {
+                                playPayload = {
+                                    timestamp: playTs,
+                                    isPlaying: true,
+                                    tickProgress: 0,
+                                    tickElapsedMs: 0,
+                                    hostFileId: readParentHostFileId(),
+                                };
+                            }
+                        } else {
+                            playPayload.isPlaying = true;
+                        }
+                        if (playPayload && typeof rsP.applyMultichartMirrorFrame === 'function') {
+                            var prevOx = ch.offsetX;
+                            var prevCw = ch.candleWidth;
+                            var hadPan = !!rsP.userHasPanned;
+                            var prevAuto = rsP.autoScrollEnabled;
+                            if (hadPan) rsP.autoScrollEnabled = false;
+                            if (rsP.applyMultichartMirrorFrame(playPayload)) {
+                                if (hadPan) {
+                                    if (Number.isFinite(prevOx)) ch.offsetX = prevOx;
+                                    if (Number.isFinite(prevCw) && prevCw > 0) ch.candleWidth = prevCw;
+                                }
+                                rsP.autoScrollEnabled = prevAuto;
+                                if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+                                if (typeof ch.render === 'function') ch.render();
+                            } else {
+                                rsP.autoScrollEnabled = prevAuto;
+                            }
+                        }
+                    } catch (_primePlay) { /* ignore */ }
                     drainPendingPlay(ch);
                     return;
                 }

@@ -5846,8 +5846,7 @@ class ReplaySystem {
         if (!chart) return;
         chart.isLoading = false;
 
-        const bootLocked = typeof chart._isMultichartBootViewportLocked === 'function'
-            && chart._isMultichartBootViewportLocked();
+        const passivePlay = chart._multichartPassivePlayActive === true;
         const preserveUntil = chart._multichartPreserveViewportUntil;
         const nowPv = (typeof performance !== 'undefined' && performance.now)
             ? performance.now()
@@ -5855,6 +5854,9 @@ class ReplaySystem {
         const preserveViewport = Number.isFinite(preserveUntil) && nowPv < preserveUntil;
         const savedOffsetX = chart.offsetX;
         const savedCandleWidth = chart.candleWidth;
+        const bootLocked = !passivePlay
+            && typeof chart._isMultichartBootViewportLocked === 'function'
+            && chart._isMultichartBootViewportLocked();
 
         if (Array.isArray(chart.data) && chart.data.length > 0 && !bootLocked) {
             const m = chart.margin || { l: 60, r: 70 };
@@ -5871,22 +5873,9 @@ class ReplaySystem {
             const visibleBars = Math.max(0, i1 - i0);
             const needsRecovery = typeof chart._multichartViewportNeedsRecovery === 'function'
                 && chart._multichartViewportNeedsRecovery();
-            const passivePlay = chart._multichartPassivePlayActive === true;
             const needsScroll = needsRecovery
                 || visibleBars === 0
                 || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
-            // Match main chart: once the user manually pans (userHasPanned →
-            // autoScrollEnabled=false), never re-scroll/recenter the viewport.
-            // Only force a recovery when the panel is genuinely empty (0 bars),
-            // which is a broken render, not a deliberate pan.
-            //
-            // An EXPLICIT pan (onUserPan set these flags from real mouse/wheel
-            // input) is honored even during passive play, so the user can freely
-            // move a panel while it plays — exactly like the main chart. The
-            // offset-distance heuristic inside _replayUserOwnsViewport is NOT
-            // trusted during passive play, because each appended candle shifts the
-            // auto-scroll anchor by one spacing and would otherwise look like a pan
-            // and stop the panel from following the playhead.
             const explicitUserPan = this.userHasPanned || !this.autoScrollEnabled;
             const userOwnsViewport = visibleBars > 0 && (
                 explicitUserPan
@@ -5920,7 +5909,7 @@ class ReplaySystem {
             }
         }
 
-        if ((bootLocked || preserveViewport) && Number.isFinite(savedOffsetX)) {
+        if (preserveViewport && Number.isFinite(savedOffsetX)) {
             chart.offsetX = savedOffsetX;
             if (Number.isFinite(savedCandleWidth) && savedCandleWidth > 0) {
                 chart.candleWidth = savedCandleWidth;
