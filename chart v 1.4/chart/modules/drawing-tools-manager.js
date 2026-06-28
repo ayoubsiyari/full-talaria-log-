@@ -8044,6 +8044,13 @@ class DrawingToolsManager {
             } else if (typeof drawing.createHandles === 'function') {
                 drawing.createHandles(drawing.group, scales);
             }
+        } else if (typeof drawing._syncBoxHandlePositions === 'function') {
+            const boxOpts = (drawing.type === 'rectangle' || drawing.type === 'rotated-rectangle')
+                ? { useExtendedHorizontal: false }
+                : {};
+            try { drawing._syncBoxHandlePositions(drawing.group, scales, boxOpts); } catch (_) { /* ignore */ }
+        } else if (typeof drawing._syncEllipseHandlePositions === 'function') {
+            try { drawing._syncEllipseHandlePositions(drawing.group, scales); } catch (_) { /* ignore */ }
         } else if (typeof drawing.updateHandlePositions === 'function') {
             try { drawing.updateHandlePositions(scales); } catch (_) { /* ignore */ }
         }
@@ -8051,6 +8058,29 @@ class DrawingToolsManager {
             drawing.select({ skipAxisHighlights: true });
         }
         this._raiseResizeHandles(drawing);
+    }
+
+    /** Render + show handles after select (geometry first, then chrome). */
+    _commitSelectedDrawingVisual(drawing, suppressToolbar = false) {
+        if (!drawing) return;
+        if (drawing.group && !this._isDrawingGeometryMoveActive()) {
+            if (drawing.group.attr('transform')) {
+                this._commitStaleDrawingGroupTransform(drawing);
+            }
+            drawing.group.attr('transform', null);
+            this._clearDrawingDragTransform(drawing);
+        }
+        this.renderDrawing(drawing);
+        drawing.select();
+        this._syncResizeHandleChrome(drawing);
+        if (!suppressToolbar && drawing.group) {
+            const bbox = drawing.group.node().getBBox();
+            const svgRect = this.svg.node().getBoundingClientRect();
+            const x = svgRect.left + bbox.x + (bbox.width / 2);
+            const y = svgRect.top + bbox.y;
+            if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
+            this.toolbar.show(drawing, x, y);
+        }
     }
 
     /** Keep resize targets above rebuilt shape borders during live edits / hover. */
@@ -8808,8 +8838,7 @@ class DrawingToolsManager {
             } else {
                 // Add to selection
                 this.selectedDrawings.push(drawing);
-                drawing.select();
-                this.renderDrawing(drawing);
+                this._commitSelectedDrawingVisual(drawing, true);
             }
             
             // Update primary selection
@@ -8819,7 +8848,6 @@ class DrawingToolsManager {
             if (this.selectedDrawings.length > 1) {
                 this.toolbar.hide();
             } else if (this.selectedDrawings.length === 1) {
-                // Show toolbar for single selection
                 const lastDrawing = this.selectedDrawings[0];
                 if (!suppressToolbar && lastDrawing.group) {
                     const bbox = lastDrawing.group.node().getBBox();
@@ -8827,26 +8855,16 @@ class DrawingToolsManager {
                     const x = svgRect.left + bbox.x + (bbox.width / 2);
                     const y = svgRect.top + bbox.y;
                     if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(lastDrawing);
-                this.toolbar.show(lastDrawing, x, y);
+                    this.toolbar.show(lastDrawing, x, y);
                 }
             }
         } else {
             // If this drawing is already the only selected drawing, don't deselectAll().
             // deselectAll() contains cleanup logic that can auto-remove empty ImageTool drawings.
             if (this.selectedDrawings.length === 1 && this.selectedDrawings[0] === drawing) {
-                drawing.select();
                 this.selectedDrawing = drawing;
                 this.selectedDrawings = [drawing];
-                this.renderDrawing(drawing);
-
-                if (!suppressToolbar && drawing.group) {
-                    const bbox = drawing.group.node().getBBox();
-                    const svgRect = this.svg.node().getBoundingClientRect();
-                    const x = svgRect.left + bbox.x + (bbox.width / 2);
-                    const y = svgRect.top + bbox.y;
-                    if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
-                    this.toolbar.show(drawing, x, y);
-                }
+                this._commitSelectedDrawingVisual(drawing, suppressToolbar);
                 return;
             }
             // Single selection - deselect all others
@@ -8854,22 +8872,9 @@ class DrawingToolsManager {
                 this.chart._requestMultichartClearDrawingUiOnOtherPanels();
             }
             this.deselectAll({ forSelectionChange: true });
-            drawing.select();
             this.selectedDrawing = drawing;
             this.selectedDrawings = [drawing];
-            this.renderDrawing(drawing); // Re-render to show handles
-            
-            // Show floating toolbar
-            if (!suppressToolbar && drawing.group) {
-                const bbox = drawing.group.node().getBBox();
-                const svgRect = this.svg.node().getBoundingClientRect();
-                
-                // Position toolbar above the drawing
-                const x = svgRect.left + bbox.x + (bbox.width / 2);
-                const y = svgRect.top + bbox.y;
-                if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
-                this.toolbar.show(drawing, x, y);
-            }
+            this._commitSelectedDrawingVisual(drawing, suppressToolbar);
         }
         
         // Refresh object tree if available

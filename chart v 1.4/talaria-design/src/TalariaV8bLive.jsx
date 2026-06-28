@@ -17842,17 +17842,29 @@ const TalariaV8bLive = () => {
       } else if (grid && typeof grid.runCommandIframes === "function") {
         try {
           let p;
+          const selectionGuardActive = (() => {
+            try {
+              return !!(typeof window !== "undefined"
+                && window.__v9DrawingSelectionGuardUntil
+                && performance.now() < window.__v9DrawingSelectionGuardUntil);
+            } catch (_) {
+              return false;
+            }
+          })();
+          const clearToolArgs = (v9SelectionToolbarSyncRef.current || selectionGuardActive)
+            ? { keepSelection: true }
+            : null;
           if (editingDrawingRef.current) {
-            p = grid.runCommandIframes("clearActiveDrawingTool", null);
+            p = grid.runCommandIframes("clearActiveDrawingTool", clearToolArgs);
           } else if (v9SelectionToolbarSyncRef.current) {
             const legacy = resolveLegacyTool();
             p = !legacy
-              ? grid.runCommandIframes("clearActiveDrawingTool", null)
+              ? grid.runCommandIframes("clearActiveDrawingTool", clearToolArgs)
               : grid.runCommandIframes("setActiveDrawingTool", { tool: legacy });
           } else {
             const legacy = resolveLegacyTool();
             p = !legacy
-              ? grid.runCommandIframes("clearActiveDrawingTool", null)
+              ? grid.runCommandIframes("clearActiveDrawingTool", clearToolArgs)
               : grid.runCommandIframes("setActiveDrawingTool", { tool: legacy });
           }
           void p

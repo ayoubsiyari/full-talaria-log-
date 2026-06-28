@@ -1882,17 +1882,16 @@ export default function MultichartGrid({
                     focusPanelByIdRef.current(id);
                     const grid = window.__multichartGrid;
                     if (!grid) return;
-                    // Focus changed → full peer cleanup (deselect other tiles, close settings).
-                    // Same-panel click → only clear peer selections; do not close settings on
-                    // every chart mousedown (that armed suppressNextCanvasBackgroundClick and
-                    // blocked empty-area deselect on the focused tile).
-                    if (prev !== id) {
-                        if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                            grid.clearDrawingUiOnOtherPanels(id);
+                    // Defer peer cleanup so iframe mousedown can finish shape select first.
+                    setTimeout(() => {
+                        if (prev !== id) {
+                            if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                                grid.clearDrawingUiOnOtherPanels(id);
+                            }
+                        } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                            grid.deselectDrawingsOnNonFocusedPanels(id);
                         }
-                    } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
-                        grid.deselectDrawingsOnNonFocusedPanels(id);
-                    }
+                    }, 0);
                 },
                 onContextMenu: function (panelId, msg) {
                     const ch = window.chart;
@@ -2426,13 +2425,16 @@ export default function MultichartGrid({
             focusPanelById(HOST_PANEL_ID);
             const grid = window.__multichartGrid;
             if (!grid) return;
-            if (prev !== HOST_PANEL_ID) {
-                if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                    grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
+            // Defer peer cleanup so this same click can finish shape select on panel A first.
+            setTimeout(() => {
+                if (prev !== HOST_PANEL_ID) {
+                    if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                        grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
+                    }
+                } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                    grid.deselectDrawingsOnNonFocusedPanels(HOST_PANEL_ID);
                 }
-            } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
-                grid.deselectDrawingsOnNonFocusedPanels(HOST_PANEL_ID);
-            }
+            }, 0);
         };
         if (wrapper) {
             wrapper.addEventListener("mousedown", onHostPointerDown, { capture: true });
