@@ -18603,29 +18603,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
         }, true);
 
-        // Click empty space inside the settings panel to dismiss template / Show Info menus.
-        if (!modal._settingsDropdownDismissHandler) {
-            modal._settingsDropdownDismissHandler = (e) => {
-                const hasTemplate = !!document.querySelector('.settings-template-dropdown');
-                const hasInfo = !!(self._activeInfoDropdown || document.querySelector('.settings-info-dropdown'));
-                if (!hasTemplate && !hasInfo) return;
-
-                if (e.target.closest('.settings-template-dropdown')
-                    || e.target.closest('.settings-info-dropdown')
-                    || e.target.closest('.template-save-dialog')) {
-                    return;
-                }
-                if (e.target.closest('.tv-template-btn')
-                    || e.target.closest('.tv-btn-template')
-                    || e.target.closest('.tv-info-dropdown-btn')) {
-                    return;
-                }
-                if (!modal.contains(e.target)) return;
-
-                self._closeSettingsPanelDropdowns(true);
-            };
-            modal.addEventListener('mousedown', modal._settingsDropdownDismissHandler, true);
-        }
+        // Click empty space (anywhere except menus/triggers) to dismiss template / Show Info menus.
+        self._installSettingsPanelDropdownDismiss();
 
         
 
@@ -18775,7 +18754,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             }
 
-
+            self._teardownSettingsPanelDropdownDismiss();
 
             this.hide();
 
@@ -24478,13 +24457,64 @@ body.light-mode .template-save-dialog .dialog-title {
         }
     }
 
-    /** Close settings-panel template + Show Info floating dropdowns. */
-    _closeSettingsPanelDropdowns(resetInfoBtn = true) {
+    /** Close floating template dropdown and detach its document listener. */
+    _closeActiveTemplateDropdown() {
+        if (this._activeTemplateDropdown) {
+            try { this._activeTemplateDropdown.remove(); } catch (_) { /* ignore */ }
+            this._activeTemplateDropdown = null;
+        } else {
+            document.querySelector('.settings-template-dropdown')?.remove();
+        }
+
         if (this._templateDropdownCloseHandler) {
+            document.removeEventListener('mousedown', this._templateDropdownCloseHandler, true);
             document.removeEventListener('click', this._templateDropdownCloseHandler, true);
             this._templateDropdownCloseHandler = null;
         }
-        document.querySelector('.settings-template-dropdown')?.remove();
+
+        this._activeTemplateDropdownBtn = null;
+    }
+
+    /** Document-level dismiss for template + Show Info (inside or outside the modal). */
+    _installSettingsPanelDropdownDismiss() {
+        const self = this;
+
+        const dismiss = (e) => {
+            const hasTemplate = !!(self._activeTemplateDropdown || document.querySelector('.settings-template-dropdown'));
+            const hasInfo = !!(self._activeInfoDropdown || document.querySelector('.settings-info-dropdown'));
+            if (!hasTemplate && !hasInfo) return;
+
+            if (e.target.closest('.settings-template-dropdown')
+                || e.target.closest('.settings-info-dropdown')
+                || e.target.closest('.template-save-dialog')) {
+                return;
+            }
+            if (e.target.closest('.tv-template-btn')
+                || e.target.closest('.tv-btn-template')
+                || e.target.closest('.tv-info-dropdown-btn')) {
+                return;
+            }
+
+            self._closeSettingsPanelDropdowns(true);
+        };
+
+        if (self._settingsDropdownDismissHandler) {
+            document.removeEventListener('mousedown', self._settingsDropdownDismissHandler, true);
+        }
+        self._settingsDropdownDismissHandler = dismiss;
+        document.addEventListener('mousedown', dismiss, true);
+    }
+
+    _teardownSettingsPanelDropdownDismiss() {
+        if (this._settingsDropdownDismissHandler) {
+            document.removeEventListener('mousedown', this._settingsDropdownDismissHandler, true);
+            this._settingsDropdownDismissHandler = null;
+        }
+    }
+
+    /** Close settings-panel template + Show Info floating dropdowns. */
+    _closeSettingsPanelDropdowns(resetInfoBtn = true) {
+        this._closeActiveTemplateDropdown();
         this._closeActiveInfoDropdown(resetInfoBtn);
     }
 
@@ -24520,7 +24550,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         // Close other open dropdowns
         document.querySelectorAll('.tv-ending-dropdown-menu').forEach(m => m.style.display = 'none');
-        document.querySelector('.settings-template-dropdown')?.remove();
+        this._closeActiveTemplateDropdown();
 
 
 
@@ -24835,18 +24865,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
     // Toggle off if already open
 
-    const existingDropdown = document.querySelector('.settings-template-dropdown');
+    if (this._activeTemplateDropdown || document.querySelector('.settings-template-dropdown')) {
 
-    if (existingDropdown) {
+        this._closeActiveTemplateDropdown();
 
-        existingDropdown.remove();
-
-        if (self._templateDropdownCloseHandler) {
-            document.removeEventListener('click', self._templateDropdownCloseHandler, true);
-            self._templateDropdownCloseHandler = null;
-        }
-
-        return; // Toggle off if already open
+        return;
 
     }
 
@@ -25035,8 +25058,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
     document.body.appendChild(dropdown);
-
-
+    this._activeTemplateDropdown = dropdown;
+    this._activeTemplateDropdownBtn = btn;
 
     const rect = btn.getBoundingClientRect();
 
@@ -25092,7 +25115,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             this.deleteTemplate(drawing.type, templateId);
 
-            dropdown.remove();
+            this._closeActiveTemplateDropdown();
 
             return;
 
@@ -25108,7 +25131,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             this.applyTemplate(drawing, templateId, modal);
 
-            dropdown.remove();
+            this._closeActiveTemplateDropdown();
 
             return;
 
@@ -25130,7 +25153,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 this.applyDefaultTemplate(drawing, modal);
 
-                dropdown.remove();
+                this._closeActiveTemplateDropdown();
 
             }
 
@@ -25139,36 +25162,6 @@ body.light-mode .template-save-dialog .dialog-title {
     });
 
 
-
-    const closeDropdown = (e) => {
-
-        if (!dropdown.isConnected) {
-            document.removeEventListener('click', closeDropdown, true);
-            if (self._templateDropdownCloseHandler === closeDropdown) {
-                self._templateDropdownCloseHandler = null;
-            }
-            return;
-        }
-
-        if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
-
-            dropdown.remove();
-
-            document.removeEventListener('click', closeDropdown, true);
-
-            if (self._templateDropdownCloseHandler === closeDropdown) {
-                self._templateDropdownCloseHandler = null;
-            }
-
-        }
-
-    };
-
-    if (self._templateDropdownCloseHandler) {
-        document.removeEventListener('click', self._templateDropdownCloseHandler, true);
-    }
-    self._templateDropdownCloseHandler = closeDropdown;
-    requestAnimationFrame(() => document.addEventListener('click', closeDropdown, true));
 
 }
 
@@ -25340,7 +25333,7 @@ showSaveTemplateDialog(drawing, dropdown) {
 
         backdrop.remove();
 
-        if (dropdown) dropdown.remove();
+        if (dropdown) this._closeActiveTemplateDropdown();
 
     };
 
@@ -25580,9 +25573,7 @@ applyTemplate(drawing, templateId, modal) {
 
                 modal.querySelectorAll('.tv-ending-dropdown-menu, .tv-linetype-dropdown-menu, .tv-linewidth-dropdown-menu, .tv-fontsize-dropdown-menu').forEach(m => m.style.display = 'none');
 
-                document.querySelector('.settings-info-dropdown')?.remove();
-
-                document.querySelector('.settings-template-dropdown')?.remove();
+                self._closeSettingsPanelDropdowns(true);
 
                 
 
@@ -26282,9 +26273,8 @@ applyTemplate(drawing, templateId, modal) {
 
         this._closeActiveInfoDropdown(true);
 
-
-
-        // Remove existing panel/modal and external dropdowns
+        this._closeSettingsPanelDropdowns(true);
+        this._teardownSettingsPanelDropdownDismiss();
 
         if (this.panel) {
 
@@ -32845,6 +32835,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
             this.clickOutsideHandler = null;
 
         }
+
+        this._closeSettingsPanelDropdowns(true);
+        this._teardownSettingsPanelDropdownDismiss();
 
         // Remove dropdown-close handler
 

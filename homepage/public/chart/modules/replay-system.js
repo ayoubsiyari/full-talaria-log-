@@ -2584,7 +2584,9 @@ class ReplaySystem {
                 this.chart.bumpDataVersion();
             }
             
-            if (typeof this.chart.recalculateIndicators === 'function') {
+            if (typeof this.chart.scheduleIndicatorRecalc === 'function') {
+                this.chart.scheduleIndicatorRecalc('replay-restore', { force: true, immediate: true });
+            } else if (typeof this.chart.recalculateIndicators === 'function') {
                 this.chart.recalculateIndicators();
             }
             if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
@@ -2959,7 +2961,8 @@ class ReplaySystem {
         // Recalculate indicators — on 1m near session end, rawData can be 50k–100k bars;
         // full recalc every frame freezes when pressing Play. Stride while playing; skip
         // when paused on the last bar with a huge slice (Play at end is usually a no-op).
-        if (typeof this.chart.recalculateIndicators === 'function') {
+        if (typeof this.chart.scheduleIndicatorRecalc === 'function'
+            || typeof this.chart.recalculateIndicators === 'function') {
             try {
                 const sliceLen = this.chart.rawData.length;
                 const maxFullRecalc = 12000;
@@ -2990,7 +2993,16 @@ class ReplaySystem {
                     runRecalc = false;
                 }
                 if (runRecalc) {
-                    this.chart.recalculateIndicators();
+                    if (typeof this.chart.scheduleIndicatorRecalc === 'function') {
+                        this.chart.scheduleIndicatorRecalc('live-tick', {
+                            force: sliceLen <= maxFullRecalc,
+                            immediate: sliceLen <= maxFullRecalc
+                        });
+                    } else if (typeof this.chart.recalculateIndicatorsAsync === 'function') {
+                        this.chart.recalculateIndicatorsAsync();
+                    } else {
+                        this.chart.recalculateIndicators();
+                    }
                 }
             } catch (error) {
                 console.warn('⚠️ Error recalculating indicators:', error);
@@ -4436,7 +4448,9 @@ class ReplaySystem {
         this._syncCompareOverlaysForReplay();
         
         // Recalculate indicators
-        if (typeof this.chart.recalculateIndicators === 'function') {
+        if (typeof this.chart.scheduleIndicatorRecalc === 'function') {
+            try { this.chart.scheduleIndicatorRecalc('replay-step', { force: false }); } catch (error) { /* silent */ }
+        } else if (typeof this.chart.recalculateIndicators === 'function') {
             try {
                 this.chart.recalculateIndicators();
             } catch (error) {
@@ -4949,7 +4963,11 @@ class ReplaySystem {
         this._syncCompareOverlaysForReplay();
         
         // Recalculate indicators
-        if (typeof this.chart.recalculateIndicators === 'function') {
+        if (typeof this.chart.scheduleIndicatorRecalc === 'function') {
+            try { this.chart.scheduleIndicatorRecalc('replay-step', { force: false }); } catch (error) {
+                console.warn('⚠️ Error recalculating indicators:', error);
+            }
+        } else if (typeof this.chart.recalculateIndicators === 'function') {
             try {
                 this.chart.recalculateIndicators();
             } catch (error) {
@@ -5017,8 +5035,12 @@ class ReplaySystem {
                     return;
                 }
 
-                if (this.tickProgress % 18 === 0 && typeof pc.recalculateIndicators === 'function') {
-                    try { pc.recalculateIndicators(); } catch (e) {}
+                if (this.tickProgress % 18 === 0) {
+                    if (typeof pc.scheduleIndicatorRecalc === 'function') {
+                        try { pc.scheduleIndicatorRecalc('live-tick'); } catch (e) {}
+                    } else if (typeof pc.recalculateIndicators === 'function') {
+                        try { pc.recalculateIndicators(); } catch (e) {}
+                    }
                 }
 
                 if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
@@ -6993,7 +7015,9 @@ class ReplaySystem {
             console.warn('replay: main chart resample in syncPanelCharts failed', e);
             return;
         }
-        if (typeof mainChart.recalculateIndicators === 'function') {
+        if (typeof mainChart.scheduleIndicatorRecalc === 'function') {
+            try { mainChart.scheduleIndicatorRecalc('multichart-replay', { force: true }); } catch (_e) { /* ignore */ }
+        } else if (typeof mainChart.recalculateIndicators === 'function') {
             try { mainChart.recalculateIndicators(); } catch (_e) { /* ignore */ }
         }
         if (mainChart.drawingManager && typeof mainChart.drawingManager.redrawAll === 'function') {
@@ -7108,7 +7132,9 @@ class ReplaySystem {
 
                 if (typeof pc.bumpDataVersion === 'function') pc.bumpDataVersion();
                 
-                if (typeof pc.recalculateIndicators === 'function') {
+                if (typeof pc.scheduleIndicatorRecalc === 'function') {
+                    try { pc.scheduleIndicatorRecalc('live-tick'); } catch (e) {}
+                } else if (typeof pc.recalculateIndicators === 'function') {
                     try { pc.recalculateIndicators(); } catch (e) {}
                 }
                 

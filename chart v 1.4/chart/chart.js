@@ -959,7 +959,11 @@ class Chart {
         // Listen for timezone changes (main + panel charts so axes/crosshairs stay in sync)
         if (window.timezoneManager) {
             window.timezoneManager.addListener(() => {
-                if (typeof this.recalculateIndicators === 'function') {
+                if (typeof this.scheduleIndicatorRecalc === 'function') {
+                    this.scheduleIndicatorRecalc('timezone', { force: true });
+                } else if (typeof this.recalculateIndicatorsAsync === 'function') {
+                    try { this.recalculateIndicatorsAsync(); } catch (_tzInd) { /* ignore */ }
+                } else if (typeof this.recalculateIndicators === 'function') {
                     try { this.recalculateIndicators(); } catch (_tzInd) { /* ignore */ }
                 }
                 this.scheduleRender();
@@ -2136,13 +2140,21 @@ class Chart {
                 self._mcIndicatorRecalcAt = (typeof performance !== 'undefined' && performance.now)
                     ? performance.now()
                     : Date.now();
-                try { self.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+                if (typeof self.scheduleIndicatorRecalc === 'function') {
+                    self.scheduleIndicatorRecalc('multichart-share', { force: false });
+                } else {
+                    try { self.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+                }
                 if (typeof self.scheduleRender === 'function') self.scheduleRender();
             }, Math.max(0, wait));
             return;
         }
         this._mcIndicatorRecalcAt = now;
-        try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+        if (typeof this.scheduleIndicatorRecalc === 'function') {
+            this.scheduleIndicatorRecalc('multichart-share', { force: false });
+        } else {
+            try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+        }
     }
 
     _isMultichartLocalPanLeader() {
@@ -4840,20 +4852,28 @@ class Chart {
         const waitMs = Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : 100;
         this._deferredIndicatorTimer = setTimeout(() => {
             this._deferredIndicatorTimer = null;
-            if (typeof this.recalculateIndicators === 'function') {
+            if (typeof this.scheduleIndicatorRecalc === 'function') {
+                this.scheduleIndicatorRecalc('zoom-fill', { force: true });
+            } else if (typeof this.recalculateIndicatorsAsync === 'function') {
+                this.recalculateIndicatorsAsync();
+            } else if (typeof this.recalculateIndicators === 'function') {
                 this.recalculateIndicators();
             }
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
         }, waitMs);
     }
 
-    /** Defer indicator work while panning/zooming; sync only when interaction settled. */
+    /** Defer indicator work while panning/zooming; async recalc when interaction settled. */
     _scheduleIndicatorRecalcAfterInteraction() {
         if (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender()) {
             this._deferIndicatorRecalcAfterZoomFill(100);
             return;
         }
-        if (typeof this.recalculateIndicators === 'function') {
+        if (typeof this.scheduleIndicatorRecalc === 'function') {
+            this.scheduleIndicatorRecalc('interaction-end', { force: false });
+        } else if (typeof this.recalculateIndicatorsAsync === 'function') {
+            this.recalculateIndicatorsAsync();
+        } else if (typeof this.recalculateIndicators === 'function') {
             this.recalculateIndicators();
         }
     }
@@ -5157,6 +5177,10 @@ class Chart {
     }
 
     _deferRecalculateIndicators() {
+        if (typeof this.scheduleIndicatorRecalc === 'function') {
+            this.scheduleIndicatorRecalc('data-defer', { force: true });
+            return;
+        }
         if (typeof this.recalculateIndicators !== 'function') return;
         const ric = typeof requestIdleCallback === 'function'
             ? requestIdleCallback
@@ -5164,7 +5188,6 @@ class Chart {
         ric(() => {
             try {
                 if (Array.isArray(this.data) && this.data.length) {
-                    // Prefer async (Web Worker) path; fallback to sync handled inside
                     if (typeof this.recalculateIndicatorsAsync === 'function') {
                         this.recalculateIndicatorsAsync();
                     } else {
@@ -5217,8 +5240,9 @@ class Chart {
 
                 this._tfIndicatorRefreshScheduled = false;
                 try {
-                    if (typeof this.recalculateIndicatorsAsync === 'function') {
-                        // async version calls scheduleRender on completion
+                    if (typeof this.scheduleIndicatorRecalc === 'function') {
+                        this.scheduleIndicatorRecalc('timeframe-switch', { force: true, immediate: true });
+                    } else if (typeof this.recalculateIndicatorsAsync === 'function') {
                         this.recalculateIndicatorsAsync();
                     } else {
                         this.recalculateIndicators();
@@ -6164,7 +6188,9 @@ class Chart {
                 }
             }
 
-            if (typeof this.recalculateIndicators === 'function') {
+            if (typeof this.scheduleIndicatorRecalc === 'function') {
+                this.scheduleIndicatorRecalc('backtest-tf', { force: true });
+            } else if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
             }
 
@@ -21154,6 +21180,12 @@ class Chart {
             if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
                 this.dataPipeline.invalidatePanDisplayCache();
             }
+            if (typeof this._commitPendingIndicatorResults === 'function') {
+                this._commitPendingIndicatorResults();
+            }
+            if (typeof this._flushQueuedIndicatorRecalc === 'function') {
+                this._flushQueuedIndicatorRecalc();
+            }
             requestAnimationFrame(() => {
                 if (this._isChartPanDragging()) return;
                 this._panScalesCalculated = false;
@@ -21499,6 +21531,9 @@ class Chart {
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
         this._markScalesDirty();
+        if (typeof this._invalidateIndicatorLayerCache === 'function') {
+            this._invalidateIndicatorLayerCache();
+        }
         if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
             this.dataPipeline.bumpDisplayVersion();
         }
@@ -21757,7 +21792,9 @@ class Chart {
             this.drawGrid();
             const latestCandle = this.data[this.data.length - 1];
             this.drawPriceLine([latestCandle]);
-            if (typeof this.drawIndicators === 'function') {
+            if (typeof this.drawIndicatorsOptimized === 'function') {
+                this.drawIndicatorsOptimized();
+            } else if (typeof this.drawIndicators === 'function') {
                 this.drawIndicators();
             }
             if (typeof this.renderSeparatePanelIndicators === 'function') {
@@ -21797,7 +21834,9 @@ class Chart {
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (typeof this.drawIndicators === 'function') {
+            if (typeof this.drawIndicatorsOptimized === 'function') {
+                this.drawIndicatorsOptimized();
+            } else if (typeof this.drawIndicators === 'function') {
                 this.drawIndicators();
             }
             // Separate panels + legend must stay painted during lite pan — canvas is cleared each frame.
@@ -21877,7 +21916,9 @@ class Chart {
         this.updateLogoForTheme();
 
         // Draw indicators (Overlay indicators like SMA, EMA, BB)
-        if (typeof this.drawIndicators === 'function') {
+        if (typeof this.drawIndicatorsOptimized === 'function') {
+            this.drawIndicatorsOptimized();
+        } else if (typeof this.drawIndicators === 'function') {
             this.drawIndicators();
         }
         

@@ -1285,31 +1285,42 @@
         return calculateSmoothedOverlayMaData(data, params, calculateEMA);
     }
 
-    /** Rolling SMA; null until full window of finite values */
+    /** Rolling SMA; null until full window of finite values (O(n) sliding window). */
     function rollingSmaNullable(arr, period) {
-        const out = arr.map(function() { return null; });
-        for (let i = 0; i < arr.length; i++) {
-            let sum = 0;
-            let ok = true;
-            for (let j = 0; j < period; j++) {
-                const idx = i - j;
-                if (idx < 0) { ok = false; break; }
-                const v = arr[idx];
-                if (v === null || v === undefined || isNaN(v)) { ok = false; break; }
-                sum += v;
-            }
-            if (ok) out[i] = sum / period;
+        if (global.IndicatorPerf && typeof global.IndicatorPerf.rollingSmaFast === 'function') {
+            return global.IndicatorPerf.rollingSmaFast(arr, period);
+        }
+        const p = Math.max(1, period | 0);
+        const n = arr.length;
+        const out = new Array(n);
+        for (let i = 0; i < n; i++) out[i] = null;
+        if (n < p) return out;
+        let sum = 0;
+        let validCount = 0;
+        for (let i = 0; i < p; i++) {
+            const v = arr[i];
+            if (v != null && !isNaN(v)) { sum += v; validCount++; }
+        }
+        if (validCount === p) out[p - 1] = sum / p;
+        for (let i = p; i < n; i++) {
+            const leaving = arr[i - p];
+            const entering = arr[i];
+            if (leaving != null && !isNaN(leaving)) { sum -= leaving; validCount--; }
+            if (entering != null && !isNaN(entering)) { sum += entering; validCount++; }
+            out[i] = validCount === p ? sum / p : null;
         }
         return out;
     }
 
     /** Weighted MA on a nullable numeric series (null until full window). */
     function rollingWmaNullable(arr, period) {
+        if (global.IndicatorPerf && typeof global.IndicatorPerf.rollingWmaFast === 'function') {
+            return global.IndicatorPerf.rollingWmaFast(arr, period);
+        }
         const p = Math.max(2, period | 0);
         const denom = (p * (p + 1)) / 2;
         const out = arr.map(function() { return null; });
-        for (let i = 0; i < arr.length; i++) {
-            if (i < p - 1) continue;
+        for (let i = p - 1; i < arr.length; i++) {
             let sum = 0;
             let ok = true;
             for (let j = 0; j < p; j++) {
@@ -7131,6 +7142,9 @@
         
         this.updateOHLCIndicators();
         this.persistIndicators();
+        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+            this.bumpIndicatorRenderVersion();
+        }
         
         return indicator;
     };
@@ -7306,38 +7320,315 @@
         }
 
         var id = _workerNextId++;
+        var perf = global.IndicatorPerf;
+        var packed = perf && typeof perf.packBarsCompact === 'function'
+            ? perf.packBarsCompact(chart.data)
+            : null;
         new Promise(function(resolve, reject) {
             _workerPending.set(id, { resolve: resolve, reject: reject });
             worker.postMessage({
                 type: 'CALCULATE_ALL',
                 id: id,
-                payload: { bars: chart.data, indicators: indicators }
-            });
-        }).then(function(results) {
-            if (chart._indicatorWorkerSeq !== mySeq) return; // superseded
-            if (!chart.indicators) chart.indicators = {};
-            if (!chart.indicators.data) chart.indicators.data = {};
-            Object.assign(chart.indicators.data, results);
-            chart.indicators.active.forEach(function(ind) {
-                const t = String(ind.type || '').toLowerCase();
-                if (t === 'supertrend') {
-                    try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
-                } else if (t === 'adr') {
-                    try { recalcAdrIndicator(chart, ind); } catch (_) {}
-                } else if (t === 'dema' || t === 'tema' || t === 'hma') {
-                    try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
-                } else if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) {
-                    const base = chart.indicators.data[ind.id];
-                    if (base) {
-                        chart.indicators.data[ind.id] = enrichRsiPackWithDivergences(chart.data, base, ind.params);
-                    }
+                payload: {
+                    bars: packed ? null : chart.data,
+                    barsPacked: packed,
+                    indicators: indicators
                 }
-            });
-            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            }, packed ? [packed.buffer] : []);
+        }).then(function(results) {
+            if (typeof chart._applyIndicatorWorkerResults === 'function') {
+                chart._applyIndicatorWorkerResults(results, mySeq);
+            } else {
+                if (chart._indicatorWorkerSeq !== mySeq) return;
+                if (!chart.indicators.data) chart.indicators.data = {};
+                Object.assign(chart.indicators.data, results);
+                if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            }
         }).catch(function(err) {
             if (chart._indicatorWorkerSeq !== mySeq) return;
             console.warn('[indicator-worker] async calc failed, falling back to sync:', err);
             try { chart.recalculateIndicators(); } catch (_) {}
+        });
+    };
+
+    Chart.prototype._getIndicatorDrawBuffer = function() {
+        const base = 24;
+        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
+        const interaction = typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender();
+        if (!interaction) return base;
+        const zoomFactor = spacing > 0 ? Math.min(12, Math.max(1, 8 / spacing)) : 1;
+        return Math.min(512, Math.ceil(base * zoomFactor + 48));
+    };
+
+    Chart.prototype._indicatorParamsHash = function() {
+        const perf = global.IndicatorPerf;
+        if (perf && typeof perf.hashIndicatorParams === 'function') {
+            return perf.hashIndicatorParams(this.indicators && this.indicators.active);
+        }
+        return '';
+    };
+
+    Chart.prototype.bumpIndicatorRenderVersion = function() {
+        this._indicatorRenderVersion = (this._indicatorRenderVersion || 0) + 1;
+        if (typeof this._invalidateIndicatorLayerCache === 'function') {
+            this._invalidateIndicatorLayerCache();
+        }
+    };
+
+    Chart.prototype._invalidateIndicatorLayerCache = function() {
+        this._indLayerCacheKey = null;
+    };
+
+    Chart.prototype._ensureIndicatorLayerCache = function() {
+        if (!this._indLayerCanvas) {
+            this._indLayerCanvas = document.createElement('canvas');
+            this._indLayerCtx = this._indLayerCanvas.getContext('2d', { alpha: true, desynchronized: true });
+        }
+    };
+
+    Chart.prototype.scheduleIndicatorRecalc = function(reason, opts) {
+        opts = opts || {};
+        if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
+        if (!Array.isArray(this.data) || !this.data.length) return;
+
+        const barCount = this.data.length;
+        const dataVersion = this.dataVersion != null ? this.dataVersion : 0;
+        const paramsHash = this._indicatorParamsHash();
+        const snap = this._indCalcSnapshot;
+
+        if (!opts.force && snap
+            && snap.barCount === barCount
+            && snap.dataVersion === dataVersion
+            && snap.paramsHash === paramsHash) {
+            return;
+        }
+
+        if (this._indRecalcTimer) {
+            clearTimeout(this._indRecalcTimer);
+            this._indRecalcTimer = null;
+        }
+
+        const delay = opts.immediate ? 0 : (reason === 'live-tick' ? 48 : 12);
+        const chart = this;
+        const run = function() {
+            chart._indRecalcTimer = null;
+            if (!opts.force
+                && typeof chart._isInteractionFastRender === 'function'
+                && chart._isInteractionFastRender()) {
+                chart._indRecalcQueued = { reason: reason, opts: opts };
+                return;
+            }
+            chart._runIndicatorRecalc(opts);
+        };
+        if (delay <= 0) run();
+        else chart._indRecalcTimer = setTimeout(run, delay);
+    };
+
+    Chart.prototype._flushQueuedIndicatorRecalc = function() {
+        if (!this._indRecalcQueued) return;
+        const queued = this._indRecalcQueued;
+        this._indRecalcQueued = null;
+        this._runIndicatorRecalc(queued.opts || { force: false });
+    };
+
+    Chart.prototype._runIndicatorRecalc = function(opts) {
+        opts = opts || {};
+        const barCount = this.data.length;
+        const prev = this._indCalcSnapshot;
+        const appendOnly = !opts.force && prev && barCount > prev.barCount && (barCount - prev.barCount) <= 8;
+
+        if (appendOnly && typeof this.recalculateIndicatorsIncremental === 'function') {
+            this.recalculateIndicatorsIncremental(prev.barCount);
+        } else if (typeof this.recalculateIndicatorsAsync === 'function') {
+            this.recalculateIndicatorsAsync();
+        } else if (typeof this.recalculateIndicators === 'function') {
+            this.recalculateIndicators();
+        }
+
+        this._indCalcSnapshot = {
+            barCount: barCount,
+            dataVersion: this.dataVersion != null ? this.dataVersion : 0,
+            paramsHash: this._indicatorParamsHash()
+        };
+    };
+
+    Chart.prototype._applyIndicatorWorkerResults = function(results, mySeq) {
+        const chart = this;
+        if (chart._indicatorWorkerSeq !== mySeq) return;
+        if (!chart.indicators) chart.indicators = {};
+        if (!chart.indicators.data) chart.indicators.data = {};
+
+        if (typeof chart._isInteractionFastRender === 'function' && chart._isInteractionFastRender()) {
+            chart._indicatorPendingResults = { results: results, seq: mySeq };
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            return;
+        }
+
+        Object.assign(chart.indicators.data, results);
+        chart.indicators.active.forEach(function(ind) {
+            const t = String(ind.type || '').toLowerCase();
+            if (t === 'supertrend') {
+                try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
+            } else if (t === 'adr') {
+                try { recalcAdrIndicator(chart, ind); } catch (_) {}
+            } else if (t === 'dema' || t === 'tema' || t === 'hma') {
+                try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+            } else if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) {
+                const base = chart.indicators.data[ind.id];
+                if (base) {
+                    chart.indicators.data[ind.id] = enrichRsiPackWithDivergences(chart.data, base, ind.params);
+                }
+            }
+        });
+        chart.bumpIndicatorRenderVersion();
+        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+    };
+
+    Chart.prototype._commitPendingIndicatorResults = function() {
+        const pending = this._indicatorPendingResults;
+        if (!pending || !pending.results) return;
+        this._indicatorPendingResults = null;
+        if (this._indicatorWorkerSeq !== pending.seq) return;
+        if (!this.indicators.data) this.indicators.data = {};
+        const chart = this;
+        Object.assign(chart.indicators.data, pending.results);
+        chart.indicators.active.forEach(function(ind) {
+            const t = String(ind.type || '').toLowerCase();
+            if (t === 'supertrend') {
+                try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
+            } else if (t === 'adr') {
+                try { recalcAdrIndicator(chart, ind); } catch (_) {}
+            } else if (t === 'dema' || t === 'tema' || t === 'hma') {
+                try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+            } else if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) {
+                const base = chart.indicators.data[ind.id];
+                if (base) {
+                    chart.indicators.data[ind.id] = enrichRsiPackWithDivergences(chart.data, base, ind.params);
+                }
+            }
+        });
+        chart.bumpIndicatorRenderVersion();
+    };
+
+    Chart.prototype.drawIndicatorsOptimized = function() {
+        const interaction = typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender();
+        if (interaction || typeof this.drawIndicators !== 'function') {
+            if (typeof this.drawIndicators === 'function') this.drawIndicators();
+            return;
+        }
+
+        const y0 = this.yDomain && this.yDomain[0];
+        const y1 = this.yDomain && this.yDomain[1];
+        const key = [
+            this.dataVersion != null ? this.dataVersion : 0,
+            this._indicatorRenderVersion || 0,
+            this.w, this.h,
+            this.candleWidth, this.offsetX, this.priceZoom, this.priceOffset,
+            this.visibleStartIndex, this.visibleEndIndex,
+            y0, y1
+        ].join('|');
+
+        if (this._indLayerCacheKey === key && this._indLayerCanvas) {
+            this.ctx.drawImage(this._indLayerCanvas, 0, 0);
+            return;
+        }
+
+        this._ensureIndicatorLayerCache();
+        if (this._indLayerCanvas.width !== this.w || this._indLayerCanvas.height !== this.h) {
+            this._indLayerCanvas.width = this.w;
+            this._indLayerCanvas.height = this.h;
+        }
+        const layerCtx = this._indLayerCtx;
+        layerCtx.clearRect(0, 0, this.w, this.h);
+        const prevCtx = this.ctx;
+        this.ctx = layerCtx;
+        try {
+            this.drawIndicators();
+        } finally {
+            this.ctx = prevCtx;
+        }
+        prevCtx.drawImage(this._indLayerCanvas, 0, 0);
+        this._indLayerCacheKey = key;
+    };
+
+    Chart.prototype.recalculateIndicatorsIncremental = function(fromBarCount) {
+        if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
+        if (!Array.isArray(this.data) || !this.data.length) return;
+
+        const chart = this;
+        const perf = global.IndicatorPerf;
+        const lookback = perf && typeof perf.estimateTailLookback === 'function'
+            ? perf.estimateTailLookback(this.indicators.active)
+            : 256;
+        const fromIndex = Math.max(0, (fromBarCount | 0) - lookback);
+        const worker = _getIndicatorWorker();
+
+        if (!worker) {
+            try { chart.recalculateIndicators(); } catch (_) {}
+            return;
+        }
+
+        if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
+        const mySeq = ++chart._indicatorWorkerSeq;
+
+        const indicators = {};
+        chart.indicators.active.forEach(function(ind) {
+            const workerSkip = [
+                'dema', 'tema', 'hma', 'supertrend', 'adr',
+                'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
+                'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd', 'volume', 'custom'
+            ];
+            const indType = String(ind.type || '').toLowerCase();
+            if (workerSkip.indexOf(indType) >= 0) return;
+            indicators[ind.id] = { type: indType, params: ind.params || {} };
+        });
+
+        if (Object.keys(indicators).length === 0) {
+            try { chart.recalculateIndicators(); } catch (_) {}
+            return;
+        }
+
+        const packed = perf && typeof perf.packBarsCompact === 'function'
+            ? perf.packBarsCompact(chart.data)
+            : null;
+        const id = _workerNextId++;
+
+        new Promise(function(resolve, reject) {
+            _workerPending.set(id, { resolve: resolve, reject: reject });
+            worker.postMessage({
+                type: 'CALCULATE_TAIL',
+                id: id,
+                payload: {
+                    barsPacked: packed,
+                    bars: packed ? null : chart.data,
+                    fromIndex: fromIndex,
+                    lookback: lookback,
+                    indicators: indicators
+                }
+            }, packed ? [packed.buffer] : []);
+        }).then(function(results) {
+            if (chart._indicatorWorkerSeq !== mySeq) return;
+            const merge = perf && typeof perf.mergeIndicatorTail === 'function'
+                ? perf.mergeIndicatorTail
+                : null;
+            if (merge) {
+                Object.keys(results).forEach(function(indId) {
+                    chart.indicators.data[indId] = merge(
+                        chart.indicators.data[indId],
+                        results[indId],
+                        fromIndex
+                    );
+                });
+            } else {
+                Object.assign(chart.indicators.data, results);
+            }
+            chart.bumpIndicatorRenderVersion();
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        }).catch(function() {
+            if (chart._indicatorWorkerSeq !== mySeq) return;
+            try { chart.recalculateIndicatorsAsync(); } catch (_) {
+                try { chart.recalculateIndicators(); } catch (_2) {}
+            }
         });
     };
 
@@ -7980,7 +8271,9 @@
 
         const visibleStart = Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0;
         const visibleEnd = Number.isFinite(this.visibleEndIndex) ? this.visibleEndIndex : (this.data ? this.data.length : 0);
-        const buffer = 20; // small buffer so lines extend smoothly past viewport edges
+        const buffer = typeof this._getIndicatorDrawBuffer === 'function'
+            ? this._getIndicatorDrawBuffer()
+            : 24;
         const startIndex = Math.max(0, visibleStart - buffer);
         const endIndex = Math.min(this.data ? this.data.length : 0, visibleEnd + buffer);
 

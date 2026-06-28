@@ -567,6 +567,15 @@ class DrawingToolsManager {
             || type === 'rotated-rectangle';
     }
 
+    /** Filled tools where interior passes events to chart pan; move/select from stroke/border only. */
+    _isFillInteriorPassthroughType(type) {
+        return this._isBoxShapeType(type)
+            || type === 'date-price-range'
+            || type === 'gann-box' || type === 'gann-square-fixed' || type === 'gann-fan'
+            || type === 'fib-wedge'
+            || type === 'arrow' || type === 'arrow-marker' || type === 'arrow-mark-up' || type === 'arrow-mark-down';
+    }
+
     /** True when pointer is inside a box shape fill (for locked-shape selection). */
     _isPointInBoxShapeBody(drawing, mouseX, mouseY) {
         if (!drawing || !this._isBoxShapeType(drawing.type) || !drawing.group) return false;
@@ -2470,17 +2479,6 @@ class DrawingToolsManager {
                     return;
                 }
 
-                if (best && best.locked && this._isBoxShapeType(best.type) && !this.currentTool) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
-                    }
-                    this.selectDrawing(best, false);
-                    suppressNextCanvasClick = true;
-                    return;
-                }
-
                 if (best && !best.locked && !this._isHorizontalAnchorToolType(best.type)) {
                     event.preventDefault();
                     event.stopPropagation();
@@ -3511,7 +3509,8 @@ class DrawingToolsManager {
                     'rectangle',
                     'triangle',
                     'circle',
-                    'ellipse'
+                    'ellipse',
+                    'rotated-rectangle'
                 ]);
 
                 const best = drawingsAtPoint[0];
@@ -3559,14 +3558,6 @@ class DrawingToolsManager {
                     event.stopPropagation();
                     this.selectDrawing(best, false);
                     this._startDirectMoveDrag(best, event);
-                    return;
-                }
-
-                // Locked box shapes: select on first click (fill or border), no drag.
-                if (best && best.locked && this._isBoxShapeType(best.type)) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    this.selectDrawing(best, false);
                     return;
                 }
             }
@@ -6598,9 +6589,9 @@ class DrawingToolsManager {
         drawing.group.selectAll('.text-body-hit, .pin-body-hit, .flag-body-hit, .note-body-hit')
             .style('pointer-events', 'all');
 
-        // Arrow tools: allow fill hit areas to be interactive
+        // Arrow tools: fill hit areas disabled for stroke-only passthrough tools
         drawing.group.selectAll('.arrow-fill-hit')
-            .style('pointer-events', 'all');
+            .style('pointer-events', this._isFillInteriorPassthroughType(drawing.type) ? 'none' : 'all');
         
         // Paths that are NOT fills should be clickable on stroke
         drawing.group.selectAll('path:not(.shape-fill):not(.shape-border):not(.arrow-fill-hit):not(.pin-body-hit):not(.line-visible-path), polygon:not(.shape-fill):not(.upper-fill):not(.lower-fill)')
@@ -6705,8 +6696,13 @@ class DrawingToolsManager {
             drawing.group.style('pointer-events', 'none');
             interactiveElements.style('pointer-events', 'stroke');
             drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox, .gann-fan-hitbox, .fib-wedge-hitbox')
-                .style('pointer-events', 'all')
-                .style('cursor', 'move');
+                .style('pointer-events', 'none')
+                .style('cursor', 'default');
+        }
+
+        if (drawing.type === 'date-price-range') {
+            drawing.group.selectAll('.range-fill-hit, .range-info-box')
+                .style('pointer-events', 'none');
         }
 
         const isEmptyImageUploadTarget = (eventTarget) => {
@@ -6765,22 +6761,16 @@ class DrawingToolsManager {
             
             // [debug removed]
             
-            // STROKE-ONLY CHECK: Verify click is actually on a stroke, not fill area
+            // STROKE-ONLY CHECK: Verify click is on stroke/border, not fill interior (fill tools pan the chart).
             const [mouseX, mouseY] = self._eventCanvasLocalXY(event);
-            
-            // For shapes (rectangle, triangle, ellipse, circle), verify click is on stroke
-            const shapeTypes = ['rectangle', 'triangle', 'ellipse', 'circle', 'rotated-rectangle'];
-            if (shapeTypes.includes(drawing.type)) {
-                const clickedOnBody = drawing.locked && self._isPointInBoxShapeBody(drawing, mouseX, mouseY);
-                if (!clickedOnBody) {
-                    const isShapeBorderHit = targetSel.classed('shape-border-hit');
-                    // Use the same geometric hit-test as hover/direct-drag so the hover zone matches selection.
-                    const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
-                    const clickedOnStroke = isShapeBorderHit || drawingsAtPoint.some(d => d && d.id === drawing.id);
 
-                    if (!clickedOnStroke) {
-                        return; // Don't select - click was on fill area (unlocked shapes are border-only)
-                    }
+            if (self._isFillInteriorPassthroughType(drawing.type)) {
+                const isShapeBorderHit = targetSel.classed('shape-border-hit');
+                const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
+                const clickedOnStroke = isShapeBorderHit || drawingsAtPoint.some(d => d && d.id === drawing.id);
+
+                if (!clickedOnStroke) {
+                    return;
                 }
             }
 
@@ -6800,17 +6790,8 @@ class DrawingToolsManager {
                     || targetSel.classed('fib-wedge-trend')
                     || targetSel.classed('fib-wedge-trend-hit')
                     || targetSel.classed('fib-fan-anchor');
-                const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan')
-                    && (targetSel.classed('gann-box-hitbox') || targetSel.classed('gann-square-fixed-hitbox')
-                        || targetSel.classed('gann-fan-hitbox')
-                        || self._isPointOnGannToolBody(drawing, mouseX, mouseY))
-                    && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
-                const onFibWedgeBody = drawing.type === 'fib-wedge'
-                    && (targetSel.classed('fib-wedge-hitbox') || self._isPointInFibWedgeBody(drawing, mouseX, mouseY));
                 const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
                 const clickedOnFibLine = onFibStroke
-                    || onGannBody
-                    || onFibWedgeBody
                     || self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)
                     || drawingsAtPoint.some(d => d && d.id === drawing.id);
                 if (!clickedOnFibLine) {
@@ -7043,16 +7024,6 @@ class DrawingToolsManager {
             .on('contextmenu', handleContextMenu)
             .on('mouseenter', handleMouseEnter)
             .on('mouseleave', handleMouseLeave);
-
-        // Gann / fib wedge body hitboxes use shape-border-hit and are excluded from interactiveElements.
-        if (this._isFibLikeDrawingType(drawing.type)) {
-            drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox, .gann-fan-hitbox, .fib-wedge-hitbox')
-                .on('click', handleClick)
-                .on('dblclick', handleDblClick)
-                .on('contextmenu', handleContextMenu)
-                .on('mouseenter', handleMouseEnter)
-                .on('mouseleave', handleMouseLeave);
-        }
         
         // Setup drag to move entire drawing (not when locked)
         if (!drawing.locked) {
@@ -7274,15 +7245,9 @@ class DrawingToolsManager {
                         const srcEvent = event.sourceEvent || event;
                         if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
                             const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
-                            const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan')
-                                && self._isPointOnGannToolBody(drawing, mouseX, mouseY)
-                                && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
                             const onPitchforkLevel = drawing.type === 'pitchfork'
                                 && self._isPointOnPitchforkLevelAdjustHit(drawing, mouseX, mouseY);
-                            const onFibWedgeBody = drawing.type === 'fib-wedge'
-                                && self._isPointInFibWedgeBody(drawing, mouseX, mouseY);
-                            if (!onGannBody && !onFibWedgeBody && !onPitchforkLevel
-                                && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
+                            if (!onPitchforkLevel && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                                 return false;
                             }
                         }
@@ -7320,6 +7285,19 @@ class DrawingToolsManager {
                         return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle;
                     }
 
+                    // Fill-interior passthrough tools: drag only from visible strokes/borders.
+                    if (!self.currentTool && self._isFillInteriorPassthroughType(drawing.type)
+                        && !isPositionZone && !isTextElement && !isEmojiElement) {
+                        const srcEvent = event.sourceEvent || event;
+                        if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
+                            const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
+                            const hits = self.findDrawingsAtPoint(mouseX, mouseY);
+                            if (!hits.some((d) => d && d.id === drawing.id)) {
+                                return false;
+                            }
+                        }
+                    }
+
                     // Channel tools with fill: only drag from lines, not filled interior.
                     if (!self.currentTool && self._isWedgeChannelStrokeOnlyType(drawing.type)
                         && !isPositionZone && !isTextElement && !isEmojiElement) {
@@ -7334,8 +7312,7 @@ class DrawingToolsManager {
                     }
 
                     // For circle/ellipse, enforce border-only drag by checking distance to border.
-                    // This matches the rectangle behavior (only draggable from edges) even when an
-                    // invisible hit ring exists.
+                    // (Other box shapes are covered by _isFillInteriorPassthroughType above.)
                     if (!self.currentTool && (drawing.type === 'circle' || drawing.type === 'ellipse') && !isPositionZone && !isTextElement && !isEmojiElement) {
                         const srcEvent = event.sourceEvent || event;
                         const svgNode = self.svg && self.svg.node ? self.svg.node() : null;
@@ -7391,8 +7368,8 @@ class DrawingToolsManager {
                     // Allow drag from: position zones, range tool hit areas, lines/paths,
                     // shape borders, stroked elements, or emoji/text
                     // Block drag from: filled areas and resize handles
-                    const canDrag = isPositionZone || isRrBodyDrag || isRangeFillHit || isRangeInfoBox
-                        || isFibLevelHit || isGannLevelHit || isGannBodyHit || isFibTrendHit || isLineElement || isShapeBorder
+                    const canDrag = isPositionZone || isRrBodyDrag
+                        || isFibLevelHit || isGannLevelHit || isFibTrendHit || isLineElement || isShapeBorder
                         || isTextElement || isEmojiElement || isImageElement || isTextBodyHit || hasStroke;
                     
                     return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
@@ -12431,32 +12408,12 @@ class DrawingToolsManager {
                 continue;
             }
 
-            // Arrow tools: allow fill-based hit testing
+            // Arrow tools: stroke-only hit (fill interior pans the chart).
             if (!hitsById.has(drawing.id) && (drawing.type === 'arrow' || drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down')) {
-                try {
-                    const fillHits = drawing.group.selectAll('.arrow-fill-hit').nodes();
-                    for (const el of fillHits) {
-                        if (!el) continue;
-
-                        if (typeof el.isPointInFill === 'function') {
-                            if (el.isPointInFill(point)) {
-                                hitsById.set(drawing.id, { drawing, distance: 0, z });
-                                break;
-                            }
-                        } else if (typeof el.getBBox === 'function') {
-                            const bb = el.getBBox();
-                            const inside = mouseX >= bb.x && mouseX <= (bb.x + bb.width)
-                                && mouseY >= bb.y && mouseY <= (bb.y + bb.height);
-                            if (inside) {
-                                hitsById.set(drawing.id, { drawing, distance: 0, z });
-                                break;
-                            }
-                        }
-                    }
-                    if (hitsById.has(drawing.id)) continue;
-                } catch (error) {
-                    console.warn('Error in arrow fill hit test for drawing:', drawing.id, error);
+                if (this._isPointOnDrawingVisibleStroke(drawing, mouseX, mouseY)) {
+                    hitsById.set(drawing.id, { drawing, distance: 0, z });
                 }
+                continue;
             }
 
             const isFibLikeType = this._isFibLikeDrawingType(drawing.type);
@@ -12466,14 +12423,14 @@ class DrawingToolsManager {
                 continue;
             }
             if ((drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan') && !hitsById.has(drawing.id)) {
-                if (this._isPointOnGannToolBody(drawing, mouseX, mouseY)
+                if (this._isPointOnFibLikeStroke(drawing, mouseX, mouseY)
                     && !this._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY)) {
                     hitsById.set(drawing.id, { drawing, distance: 0, z });
                     continue;
                 }
             }
             if (drawing.type === 'fib-wedge' && !hitsById.has(drawing.id)) {
-                if (this._isPointInFibWedgeBody(drawing, mouseX, mouseY)) {
+                if (this._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                     hitsById.set(drawing.id, { drawing, distance: 0, z });
                     continue;
                 }
@@ -12720,14 +12677,6 @@ class DrawingToolsManager {
             if (!hitsById.has(drawing.id) && this._isPointInTextAnnotationBody(drawing, mouseX, mouseY)) {
                 hitsById.set(drawing.id, { drawing, distance: 0, z });
                 continue;
-            }
-
-            // Locked box shapes: select from filled interior, not only thin border strokes.
-            if (!hitsById.has(drawing.id) && drawing.locked && this._isBoxShapeType(drawing.type)) {
-                if (this._isPointInBoxShapeBody(drawing, mouseX, mouseY)) {
-                    hitsById.set(drawing.id, { drawing, distance: 0, z });
-                    continue;
-                }
             }
 
             // Special handling for tools that use isPointInside() (images, emojis, etc.)
