@@ -906,6 +906,17 @@ class RectangleTool extends BaseDrawing {
         group.selectAll('.resize-handle-group').raise();
     }
 
+    /** BaseDrawing.updateHandlePositions only moves anchor points — wrong for 8 box handles. */
+    updateHandlePositions(scales) {
+        if (this.group && !this.group.empty()) {
+            this._syncBoxHandlePositions(this.group, scales, { useExtendedHorizontal: false });
+        }
+    }
+
+    createHandles(group, scales) {
+        this.createBoxHandles(group || this.group, scales, { useExtendedHorizontal: false });
+    }
+
     beginHandleDrag(handleRole, context = {}) {
         if (!this.points || this.points.length < 2) return;
         this._resizeRole = handleRole;
@@ -1252,6 +1263,17 @@ class EllipseTool extends BaseDrawing {
         });
 
         group.selectAll('.resize-handle-group').raise();
+    }
+
+    /** BaseDrawing.updateHandlePositions only moves anchor points — wrong for 4 side handles. */
+    updateHandlePositions(scales) {
+        if (this.group && !this.group.empty()) {
+            this._syncBoxHandlePositions(this.group, scales);
+        }
+    }
+
+    createHandles(group, scales) {
+        this.createBoxHandles(group || this.group, scales);
     }
 
     beginHandleDrag(handleRole, context = {}) {
