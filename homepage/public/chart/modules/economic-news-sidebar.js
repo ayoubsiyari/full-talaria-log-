@@ -323,6 +323,18 @@
         return y + '-' + mo + '-' + day;
     }
 
+    function dateStrToMsStart(dateStr) {
+        var p = String(dateStr || '').split('-');
+        if (p.length < 3) return NaN;
+        return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 0, 0, 0, 0).getTime();
+    }
+
+    function dateStrToMsEnd(dateStr) {
+        var p = String(dateStr || '').split('-');
+        if (p.length < 3) return NaN;
+        return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 23, 59, 59, 999).getTime();
+    }
+
     /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
     var MAX_CALENDAR_FETCH_DAYS = 120;
     var lastFetchFinishedAt = 0;
