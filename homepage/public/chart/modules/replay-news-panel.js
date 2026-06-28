@@ -1,7 +1,6 @@
-/**
+﻿/**
  * Replay / backtest forex news (TradingView-style): headlines for the current virtual period.
- * Recent headlines: /api/finnhub/news (FINNHUB_API_KEY).
- * Historical (backtest dates): /api/news/historical via Marketaux (MARKETAUX_API_TOKEN).
+ * Data is loaded via /api/finnhub/news (Finnhub token stays on the chart API server: FINNHUB_API_KEY).
  */
 (function () {
     'use strict';
@@ -10,8 +9,6 @@
     var DEBOUNCE_MS = 450;
     var WINDOW_HALF_MS = 36 * 60 * 60 * 1000;
     var MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
-    /** Prefer Marketaux when the replay window ends more than this far in the past. */
-    var HISTORICAL_CUTOFF_MS = 3 * 24 * 60 * 60 * 1000;
 
     var state = {
         root: null,
@@ -152,37 +149,6 @@
         });
     }
 
-    function fetchHistoricalNewsWindow(startSec, endSec, symbol) {
-        var url = '/api/news/historical?from=' + encodeURIComponent(String(startSec))
-            + '&to=' + encodeURIComponent(String(endSec))
-            + '&limit=50';
-        var sym = normalizeSymbol(symbol);
-        if (sym) url += '&symbol=' + encodeURIComponent(sym);
-        return fetch(url, { method: 'GET', mode: 'cors', credentials: 'include' })
-            .then(function (r) {
-                return r.json().then(function (data) {
-                    if (!r.ok) {
-                        var d = data && data.detail;
-                        throw new Error(typeof d === 'string' ? d : ((data && data.error) || ('HTTP ' + r.status)));
-                    }
-                    return data;
-                });
-            })
-            .then(function (data) {
-                var raw = (data && data.items) || [];
-                var out = [];
-                for (var i = 0; i < raw.length; i++) {
-                    var norm = normalizeItem(raw[i], false);
-                    if (itemMatchesSymbol(norm, symbol)) out.push(norm);
-                }
-                if (!out.length && raw.length && sym) {
-                    for (var j = 0; j < raw.length; j++) out.push(normalizeItem(raw[j], false));
-                }
-                out.sort(function (a, b) { return (b.datetime || 0) - (a.datetime || 0); });
-                return out.slice(0, 100);
-            });
-    }
-
     function buildDemoNews(startMs, endMs, symbol) {
         var pair = normalizeSymbol(symbol) || 'EURUSD';
         if (pair.length < 6) pair = (pair + 'USDXXX').slice(0, 6);
@@ -210,7 +176,7 @@
                 id: 'demo-' + dayKey + '-' + i,
                 datetime: ts,
                 headline: templates[i].replace(/\{p\}/g, p),
-                summary: 'Demo headline — set FINNHUB_API_KEY and/or MARKETAUX_API_TOKEN on the chart API server.',
+                summary: 'Demo headline — set FINNHUB_API_KEY on the chart API server.',
                 source: 'Talaria (demo)',
                 url: '',
                 related: pair.slice(0, 3) + ',' + pair.slice(3, 6)
@@ -235,65 +201,6 @@
 
         var source = 'none';
         var items = [];
-        var preferHistorical = endMs < (Date.now() - HISTORICAL_CUTOFF_MS);
-
-        function finishWithDemo() {
-            if (!items || !items.length) {
-                items = buildDemoNews(startMs, endMs, symbol);
-                if (source === 'none') {
-                    source = 'demo';
-                    msgParts.push(
-                        'Set FINNHUB_API_KEY and/or MARKETAUX_API_TOKEN on the chart API server (or sign in if the API returns 401).'
-                    );
-                } else {
-                    source = 'demo_fallback';
-                }
-            }
-            return {
-                success: true,
-                items: items,
-                source: source,
-                message: msgParts.length ? msgParts.join(' ') : null
-            };
-        }
-
-        if (preferHistorical) {
-            return fetchHistoricalNewsWindow(startSec, endSec, symbol)
-                .then(function (hist) {
-                    items = hist || [];
-                    if (items.length) {
-                        source = 'marketaux';
-                        return finishWithDemo();
-                    }
-                    msgParts.push('No Marketaux headlines in this time range. Trying Finnhub…');
-                    return fetchFinnhubForexWindow(startSec, endSec, symbol, false);
-                })
-                .then(function (finnhubOrPayload) {
-                    if (finnhubOrPayload && finnhubOrPayload.success) return finnhubOrPayload;
-                    if (Array.isArray(finnhubOrPayload) && finnhubOrPayload.length) {
-                        items = finnhubOrPayload;
-                        source = 'finnhub';
-                        return finishWithDemo();
-                    }
-                    if (!items.length && normalizeSymbol(symbol)) {
-                        return fetchFinnhubForexWindow(startSec, endSec, '', true);
-                    }
-                    return null;
-                })
-                .then(function (second) {
-                    if (second && second.success) return second;
-                    if (Array.isArray(second) && second.length && !items.length) {
-                        items = second;
-                        source = 'finnhub';
-                    }
-                    if (!items.length) {
-                        msgParts.push(
-                            'No headlines in this time range. Showing demo lines.'
-                        );
-                    }
-                    return finishWithDemo();
-                });
-        }
 
         return fetchFinnhubForexWindow(startSec, endSec, symbol, false)
             .then(function (first) {
@@ -307,23 +214,26 @@
                 if (second && second.length) items = second;
                 if (items && items.length) {
                     source = 'finnhub';
-                    return finishWithDemo();
-                }
-                msgParts.push('No Finnhub forex headlines in this window. Trying Marketaux…');
-                return fetchHistoricalNewsWindow(startSec, endSec, symbol);
-            })
-            .then(function (histOrPayload) {
-                if (histOrPayload && histOrPayload.success) return histOrPayload;
-                if (Array.isArray(histOrPayload) && histOrPayload.length) {
-                    items = histOrPayload;
-                    source = 'marketaux';
-                }
-                if (!items.length) {
+                } else {
                     msgParts.push(
-                        'No headlines in this time range (Finnhub is often recent-only). Showing demo lines.'
+                        'No Finnhub forex headlines in this time range (coverage is often recent-only). Showing demo lines.'
                     );
                 }
-                return finishWithDemo();
+                if (!items || !items.length) {
+                    items = buildDemoNews(startMs, endMs, symbol);
+                    if (source === 'none') {
+                        source = 'demo';
+                        msgParts.push('Set FINNHUB_API_KEY on the chart API server (or sign in if the API returns 401).');
+                    } else {
+                        source = 'demo_fallback';
+                    }
+                }
+                return {
+                    success: true,
+                    items: items,
+                    source: source,
+                    message: msgParts.length ? msgParts.join(' ') : null
+                };
             });
     }
 
@@ -409,7 +319,6 @@
         var src = data.source || '';
         if (state.badgeEl) {
             state.badgeEl.textContent = src === 'finnhub' ? 'Live (Finnhub)' :
-                src === 'marketaux' ? 'Historical (Marketaux)' :
                 (src === 'demo' || src === 'demo_fallback') ?
                     (src === 'demo_fallback' ? 'Demo (no headlines in range)' : 'Demo') : src;
         }
@@ -469,7 +378,7 @@
                 var hint = state.root && state.root.querySelector('.replay-news-hint');
                 var msg = String(err && err.message ? err.message : err);
                 if (msg.indexOf('Failed to fetch') !== -1 || msg.indexOf('NetworkError') !== -1) {
-                    msg += ' — Is the chart API running at the same origin? Set FINNHUB_API_KEY / MARKETAUX_API_TOKEN on the server.';
+                    msg += ' — Is the chart API running at the same origin? Set FINNHUB_API_KEY on the server.';
                 }
                 if (hint) hint.textContent = msg;
                 var demo = {

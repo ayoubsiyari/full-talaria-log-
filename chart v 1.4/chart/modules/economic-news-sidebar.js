@@ -1,8 +1,18 @@
-/**
- * News sidebar + chart time-axis markers — historical headlines via Marketaux (/api/news/historical).
+﻿/**
+ * Economic calendar (News sidebar) — Finnhub via chart API.
+ * Loads calendar events for the chart’s bar date range (or visible window when history is long) so axis markers stay correct when panning.
  */
 (function () {
     'use strict';
+
+    function isEconomicCalendarApiDisabled() {
+        try {
+            var env = typeof window !== 'undefined' && window.__CHART_ENV;
+            return !!(env && env.DISABLE_ECONOMIC_CALENDAR_API);
+        } catch (_e) {
+            return false;
+        }
+    }
 
     var FILTER_STORAGE_KEY = 'economicCalendarFilters';
 
@@ -21,7 +31,7 @@
             impactHigh: true,
             impactMedium: true,
             impactLow: false,
-            pairOnly: true,
+            pairOnly: false,
             /** Empty = all countries; otherwise list of 2-letter (or EU) codes from country multiselect. */
             countryCodes: []
         }
@@ -162,29 +172,10 @@
         return y + '-' + mo + '-' + day;
     }
 
-    function dateStrToMsStart(dateStr) {
-        var p = String(dateStr || '').split('-');
-        if (p.length < 3) return NaN;
-        return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 0, 0, 0, 0).getTime();
-    }
-
-    function dateStrToMsEnd(dateStr) {
-        var p = String(dateStr || '').split('-');
-        if (p.length < 3) return NaN;
-        return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 23, 59, 59, 999).getTime();
-    }
-
-    /** Marketaux API caps each request window (server-side); chunk long chart ranges. */
-    var HISTORICAL_NEWS_CHUNK_MS = 31 * 86400000;
-    var _historicalNewsApiUnavailable = false;
-    var _historicalNews503Logged = false;
-
     /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
     var MAX_CALENDAR_FETCH_DAYS = 120;
     var lastFetchFinishedAt = 0;
     var FETCH_COOLDOWN_MS = 60000;
-    /** In-memory chunk cache — avoids repeat Marketaux calls when panning the same range. */
-    var newsChunkCache = {};
 
     /** Always fetch through at least this many days after reference "now" so the Upcoming tab can show a full week. */
     var UPCOMING_NEWS_DAYS_AHEAD = 7;
@@ -395,9 +386,6 @@
 
     function eventMatchesChartPair(e, pair) {
         if (!pair) return true;
-        if (e && e.kind === 'headline') {
-            return headlineMatchesChartPair(e, pair);
-        }
         var ok = (
             currencyLegMatchesEvent(pair.base, e.country, e.currency) ||
             currencyLegMatchesEvent(pair.quote, e.country, e.currency)
@@ -405,27 +393,6 @@
         if (!ok) return false;
         if (isCommodityEnergyInventoryEvent(e)) return false;
         return true;
-    }
-
-    function headlineMatchesChartPair(e, pair) {
-        var blob = (
-            (e.event || '') + ' ' +
-            (e.forecast || '') + ' ' +
-            (e.related || '') + ' ' +
-            (e.source || '')
-        ).toUpperCase();
-        var compact = pair.base + pair.quote;
-        var slash = pair.base + '/' + pair.quote;
-        if (blob.indexOf(compact) !== -1 || blob.indexOf(slash) !== -1) return true;
-        if (blob.indexOf(pair.base) !== -1 && blob.indexOf(pair.quote) !== -1) return true;
-        var ck = e.countryKey || countryCode(e.country || '');
-        if (ck) {
-            return (
-                currencyLegMatchesEvent(pair.base, ck, '') ||
-                currencyLegMatchesEvent(pair.quote, ck, '')
-            );
-        }
-        return false;
     }
 
     function loadFiltersFromStorage() {
@@ -464,15 +431,6 @@
     function passesCountryUserFilter(e) {
         var codes = state.filters.countryCodes;
         if (!codes || codes.length === 0) return true;
-        if (codes.length === 1 && codes[0] === '__') return false;
-        if (e && e.kind === 'headline') {
-            var keys = e.countryKeys || (e.countryKey ? [e.countryKey] : []);
-            if (!keys.length) return true;
-            for (var hi = 0; hi < keys.length; hi++) {
-                if (codes.indexOf(keys[hi]) !== -1) return true;
-            }
-            return false;
-        }
         var k = e.countryKey || countryCode(e.country || '');
         if (!k) return false;
         return codes.indexOf(k) !== -1;
@@ -483,9 +441,9 @@
         if (!passesImpactFilter(e)) return false;
         if (!passesCountryUserFilter(e)) return false;
         if (!state.filters.pairOnly) return true;
-        if (e && e.kind === 'headline') return true;
         var pair = parseForexPair(getCurrentChartSymbol());
-        if (!pair) return false;
+        // Symbol not resolved yet (V9/chart still loading) — show all until pair is known.
+        if (!pair) return true;
         return eventMatchesChartPair(e, pair);
     }
 
@@ -498,7 +456,7 @@
         }
     }
 
-    /** Multichart B/C/D tiles never call Marketaux — host tile A is the sole fetcher. */
+    /** Multichart B/C/D tiles never call Finnhub — host tile A is the sole fetcher. */
     function shouldSkipLocalNewsFetch() {
         return isMultichartEmbedIframe();
     }
@@ -736,76 +694,7 @@
             forecast: fmtVal(est, unit),
             previous: fmtVal(prev, unit),
             prevRaw: prev,
-            unit: unit,
-            kind: 'calendar'
-        };
-    }
-
-    function deriveCountryKeyFromNews(raw) {
-        var related = String(raw.related || '').toUpperCase();
-        var headline = String(raw.headline || raw.title || '').toUpperCase();
-        var blob = related + ' ' + headline;
-        var ccyOrder = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'NZD', 'CNY'];
-        for (var i = 0; i < ccyOrder.length; i++) {
-            var c = ccyOrder[i];
-            if (blob.indexOf(c) !== -1) {
-                var regs = CCY_TO_REGION_CODES[c];
-                if (regs && regs.length) return regs[0];
-            }
-        }
-        return '';
-    }
-
-    function headlineCountryKeys(raw, chartSymbol) {
-        var keys = [];
-        var seen = {};
-        function add(code) {
-            var c = String(code || '').trim().toUpperCase();
-            if (!c || seen[c]) return;
-            seen[c] = true;
-            keys.push(c);
-        }
-        add(deriveCountryKeyFromNews(raw));
-        var pair = parseForexPair(chartSymbol);
-        if (pair) {
-            [pair.base, pair.quote].forEach(function (ccy) {
-                var regs = CCY_TO_REGION_CODES[ccy];
-                if (regs && regs.length) {
-                    add(regs[0]);
-                }
-            });
-        }
-        return keys;
-    }
-
-    function normalizeNewsArticle(raw, chartSymbol) {
-        var tsSec = parseInt(raw.datetime, 10);
-        if (!Number.isFinite(tsSec) || tsSec <= 0) return null;
-        var headline = String(raw.headline || raw.title || 'News').slice(0, 500);
-        var summary = String(raw.summary || raw.snippet || raw.description || '').slice(0, 240);
-        var source = String(raw.source || '');
-        var related = String(raw.related || '');
-        var countryKeys = headlineCountryKeys(raw, chartSymbol);
-        var countryKey = countryKeys.length ? countryKeys[0] : '';
-        return {
-            t: tsSec * 1000,
-            event: headline,
-            country: countryKey,
-            currency: '',
-            countryKey: countryKey,
-            countryKeys: countryKeys,
-            flagEmoji: flagEmoji(countryKey || 'US'),
-            impact: 'medium',
-            actual: source,
-            forecast: summary,
-            previous: '',
-            prevRaw: '',
-            unit: '',
-            kind: 'headline',
-            url: String(raw.url || ''),
-            source: source,
-            related: related,
-            symbolScoped: !!chartSymbol
+            unit: unit
         };
     }
 
@@ -846,7 +735,7 @@
             if (state.tab === 'upcoming' && !upcoming) return false;
             if (state.tab === 'previous' && upcoming) return false;
             if (!q) return true;
-            var hay = (e.event + ' ' + e.country + ' ' + e.currency + ' ' + (e.forecast || '') + ' ' + (e.source || '')).toLowerCase();
+            var hay = (e.event + ' ' + e.country + ' ' + e.currency).toLowerCase();
             return hay.indexOf(q) !== -1;
         });
         if (state.tab === 'previous') {
@@ -864,30 +753,6 @@
         var upcoming = e.t >= now;
         var cd = upcoming ? formatCountdown(e.t - now) : '—';
         var flag = flagEmoji(e.country || e.currency);
-
-        if (e.kind === 'headline') {
-            var titleInner = escapeHtml(e.event);
-            if (e.url) {
-                titleInner = '<a class="news-headline-link" href="' + escapeHtml(e.url) +
-                    '" target="_blank" rel="noopener noreferrer">' + titleInner + '</a>';
-            }
-            return (
-                '<div class="news-item news-item--headline" data-event-ms="' + e.t + '">' +
-                '<div class="news-item-header">' +
-                '<span class="news-time">' + escapeHtml(tp.clock) + '</span>' +
-                '<span class="news-countdown">' + escapeHtml(cd) + '</span>' +
-                '</div>' +
-                '<div class="news-item-title">' +
-                '<span class="news-flag">' + flag + '</span>' +
-                '<span class="news-event-name">' + titleInner + '</span>' +
-                '</div>' +
-                '<div class="news-event-date">' + escapeHtml(tp.dateStr) + '</div>' +
-                (e.forecast ? '<div class="news-snippet">' + escapeHtml(e.forecast) + '</div>' : '') +
-                (e.source ? '<div class="news-source-line">' + escapeHtml(e.source) + '</div>' : '') +
-                '</div>'
-            );
-        }
-
         var prevCls = prevValueClass(e.previous);
 
         var impactBars = '';
@@ -944,6 +809,18 @@
     function render() {
         var hasRoots = allNewsItemRoots().length > 0;
 
+        if (isEconomicCalendarApiDisabled()) {
+            if (hasRoots) {
+                setNewsItemsHtml(
+                    '<div style="padding:20px;color:#6a6a7a;font-size:13px;text-align:center;">' +
+                    'Economic calendar is temporarily off (Finnhub access pending).' +
+                    '</div>'
+                );
+            }
+            dispatchCalendarUpdated();
+            return;
+        }
+
         if (state.loading) {
             var rng = getCalendarFetchRange();
             var loadLabel = rng.fromStr === rng.toStr
@@ -951,7 +828,7 @@
                 : escapeHtml(rng.fromStr) + ' – ' + escapeHtml(rng.toStr);
             if (hasRoots) {
                 setNewsItemsHtml(
-                    '<div class="news-loading" style="padding:24px;text-align:center;color:#6a6a7a;">Loading news for ' +
+                    '<div class="news-loading" style="padding:24px;text-align:center;color:#6a6a7a;">Loading calendar for ' +
                     loadLabel + '…</div>'
                 );
             }
@@ -967,9 +844,12 @@
         }
         var list = filterEvents();
         if (!list.length) {
-            var hint = state.events && state.events.length
-                ? 'No news matches your filters or search. Try turning off "Chart symbol only", clearing search, or selecting more countries.'
-                : 'No headlines found for this chart date range. Pan the chart or widen the visible window.';
+            var hint;
+            if (!state.events || state.events.length === 0) {
+                hint = 'No economic events returned for this date range. Check FINNHUB_API_KEY on the chart API server, or try a more recent chart window.';
+            } else {
+                hint = 'No events match your filters or search. Try turning off “Current pair only”, other impact levels, or clear the search.';
+            }
             if (hasRoots) {
                 setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">' + escapeHtml(hint) + '</div>');
             }
@@ -1023,70 +903,20 @@
         return 'HTTP ' + status;
     }
 
-    async function fetchHistoricalNewsChunks(fromStr, toStr, symbol) {
-        if (_historicalNewsApiUnavailable) return [];
-        var startMs = dateStrToMsStart(fromStr);
-        var endMs = dateStrToMsEnd(toStr);
-        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
-            return [];
-        }
-        var sym = symbol ? String(symbol).replace(/[^a-zA-Z]/g, '').toUpperCase() : '';
-        var all = [];
-        var seen = {};
-        var cursor = startMs;
-        while (cursor <= endMs) {
-            var chunkEnd = Math.min(cursor + HISTORICAL_NEWS_CHUNK_MS - 1, endMs);
-            var fromSec = Math.floor(cursor / 1000);
-            var toSec = Math.floor(chunkEnd / 1000);
-            var cacheKey = fromSec + '|' + toSec + '|' + sym;
-            if (newsChunkCache[cacheKey]) {
-                var cachedChunk = newsChunkCache[cacheKey];
-                for (var ci = 0; ci < cachedChunk.length; ci++) {
-                    var cit = cachedChunk[ci];
-                    var csk = String(cit.id || cit.url || cit.headline || ci);
-                    if (!seen[csk]) {
-                        seen[csk] = true;
-                        all.push(cit);
-                    }
-                }
-                cursor = chunkEnd + 1;
-                continue;
-            }
-            var url = '/api/news/historical?from=' + encodeURIComponent(String(fromSec)) +
-                '&to=' + encodeURIComponent(String(toSec)) + '&limit=50';
-            if (sym) url += '&symbol=' + encodeURIComponent(sym);
-            var r = await fetch(url, { method: 'GET', credentials: 'include' });
-            var j = await r.json().catch(function () { return {}; });
-            if (!r.ok) {
-                if (r.status === 503 || r.status >= 500) {
-                    _historicalNewsApiUnavailable = true;
-                    if (!_historicalNews503Logged) {
-                        _historicalNews503Logged = true;
-                        console.warn('[economic-news] historical news unavailable (HTTP ' + r.status + ') — skipping further fetches this session');
-                    }
-                    newsChunkCache[cacheKey] = [];
-                    return all;
-                }
-                throw new Error(detailFromJson(j, r.status));
-            }
-            var items = (j && j.items) || [];
-            newsChunkCache[cacheKey] = items.slice();
-            for (var i = 0; i < items.length; i++) {
-                var it = items[i];
-                if (!it || typeof it !== 'object') continue;
-                var sk = String(it.id || it.url || it.headline || i);
-                if (seen[sk]) continue;
-                seen[sk] = true;
-                all.push(it);
-            }
-            cursor = chunkEnd + 1;
-        }
-        return all;
-    }
-
     async function loadCalendar(force) {
         if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) {
             requestChartMarkerRedraw();
+            return;
+        }
+        if (isEconomicCalendarApiDisabled()) {
+            state.loading = false;
+            state.error = null;
+            state.loaded = true;
+            state.loadedRangeKey = 'disabled';
+            state.events = [];
+            clearChartMarkerCache();
+            stopCountdownLoop();
+            render();
             return;
         }
         if (state.loading && !force) return;
@@ -1100,32 +930,31 @@
             var rng = getCalendarFetchRange();
             var fromStr = rng.fromStr;
             var toStr = rng.toStr;
-            var symbol = getCurrentChartSymbol();
-            var articles = await fetchHistoricalNewsChunks(fromStr, toStr, symbol);
+            var url = '/api/finnhub/calendar/economic?from=' + encodeURIComponent(fromStr) + '&to=' + encodeURIComponent(toStr);
+            var r = await fetch(url, { method: 'GET', credentials: 'include' });
+            var j = await r.json().catch(function () { return {}; });
+            if (!r.ok) {
+                throw new Error(detailFromJson(j, r.status));
+            }
+            if (j.error) throw new Error(j.error);
+            var rawList = j.economicCalendar || j.data || [];
+            if (!Array.isArray(rawList)) rawList = [];
             var out = [];
-            for (var i = 0; i < articles.length; i++) {
-                var n = normalizeNewsArticle(articles[i], symbol);
+            for (var i = 0; i < rawList.length; i++) {
+                var n = normalizeRaw(rawList[i]);
                 if (n) out.push(n);
             }
             out.sort(function (a, b) { return a.t - b.t; });
             if (myId !== calendarLoadId) return;
             state.events = out;
-            state.dataSource = 'marketaux';
             mergeIntoChartMarkerCache(out);
             pruneChartMarkerCache();
             state.loaded = true;
             state.loadedRangeKey = rng.rangeKey;
         } catch (err) {
             if (myId !== calendarLoadId) return;
-            var msg = (err && err.message) ? String(err.message) : 'Failed to load news';
-            var low = msg.toLowerCase();
-            if (low.indexOf('marketaux') === -1 &&
-                low.indexOf('usage_limit') === -1 &&
-                low.indexOf('daily api limit') === -1 &&
-                low.indexOf('daily limit') === -1) {
-                msg += ' Add MARKETAUX_API_TOKEN to chart/.env (free key at marketaux.com) and restart the chart API.';
-            }
-            state.error = msg;
+            state.error = (err && err.message) ? String(err.message) : 'Failed to load calendar';
+            // Keep existing events visible on error — don't clear flags from chart
             if (!state.events || state.events.length === 0) {
                 state.loaded = false;
                 state.loadedRangeKey = null;
@@ -1481,6 +1310,7 @@
 
     /** Called from chart.js render after pan/zoom — reload Finnhub range when visible dates change (long histories). */
     window.__economicCalendarNotifyChartRender = function (chart) {
+        if (isEconomicCalendarApiDisabled()) return;
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
         if (shouldSkipLocalNewsFetch() || canUseParentCalendarSource()) return;
@@ -1522,7 +1352,7 @@
                 query: state.query,
                 loaded: state.loaded,
                 eventCount: state.events ? state.events.length : 0,
-                dataSource: state.dataSource || '',
+                dataSource: state.loaded ? 'finnhub' : '',
                 filters: {
                     impactHigh: state.filters.impactHigh,
                     impactMedium: state.filters.impactMedium,
