@@ -5996,6 +5996,25 @@ function v9PfToPitchforkLevels(pfLevels, fallbackWidth = "2") {
   });
 }
 
+function v9DefaultPfLevelRowTl(overrides = {}) {
+  return { type: "dashed", width: "2", ...overrides };
+}
+
+function v9NormalizePfLevelRowTl(row, fallbackWidth = "2") {
+  if (!row || typeof row !== "object") return v9DefaultPfLevelRowTl();
+  const w = parseInt(String(row.width), 10);
+  return {
+    ...row,
+    type: row.type || "dashed",
+    width: Number.isFinite(w) && w > 0 ? String(w) : String(fallbackWidth),
+  };
+}
+
+function v9NormalizePfLevelsTl(rows, fallbackWidth = "2") {
+  if (!Array.isArray(rows)) return v9DefaultPfLevelsTl();
+  return v9SortPfLevelsTl(rows.map((row) => v9NormalizePfLevelRowTl(row, fallbackWidth)));
+}
+
 function v9SortPfLevelsTl(rows) {
   if (!Array.isArray(rows)) return [];
   return rows
@@ -6516,14 +6535,14 @@ function v9FibWedgeDefaultLevelsTl() {
 
 function v9DefaultPfLevelsTl() {
   return v9SortPfLevelsTl([
-    { on: false, value: "0.25", color: "#FF4081" },
-    { on: false, value: "0.382", color: "#FF6D00" },
-    { on: true, value: "0.5", color: "#2962FF" },
-    { on: false, value: "0.618", color: "#00BFA5" },
-    { on: true, value: "0.75", color: "#00BFA5" },
-    { on: true, value: "1", color: "#2962FF" },
-    { on: false, value: "1.5", color: "#AA00FF" },
-    { on: false, value: "1.75", color: "#FF4081" },
+    v9DefaultPfLevelRowTl({ on: false, value: "0.25", color: "#FF4081" }),
+    v9DefaultPfLevelRowTl({ on: false, value: "0.382", color: "#FF6D00" }),
+    v9DefaultPfLevelRowTl({ on: true, value: "0.5", color: "#2962FF" }),
+    v9DefaultPfLevelRowTl({ on: false, value: "0.618", color: "#00BFA5" }),
+    v9DefaultPfLevelRowTl({ on: true, value: "0.75", color: "#00BFA5" }),
+    v9DefaultPfLevelRowTl({ on: true, value: "1", color: "#2962FF" }),
+    v9DefaultPfLevelRowTl({ on: false, value: "1.5", color: "#AA00FF" }),
+    v9DefaultPfLevelRowTl({ on: false, value: "1.75", color: "#FF4081" }),
   ]);
 }
 
