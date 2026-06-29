@@ -6143,8 +6143,8 @@
                     error: check.error || 'Invalid script',
                     overlay: indicator.overlay !== false
                 };
-                if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
-                if (typeof self.scheduleRender === 'function') self.scheduleRender();
+                indicator._calculating = false;
+                if (typeof self._commitIndicatorVisualChange === 'function') self._commitIndicatorVisualChange();
                 else if (typeof self.render === 'function') self.render();
                 return;
             }
@@ -6200,10 +6200,10 @@
                 error: err && err.message ? err.message : String(err),
                 overlay: indicator.overlay !== false
             };
-            if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
-            if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
-            if (typeof self.scheduleRender === 'function') self.scheduleRender();
+            indicator._calculating = false;
+            if (typeof self._commitIndicatorVisualChange === 'function') self._commitIndicatorVisualChange();
             else if (typeof self.render === 'function') self.render();
+            if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
             if (typeof self.showNotification === 'function') {
                 self.showNotification('Custom indicator: ' + (err && err.message ? err.message : 'error'));
             }
@@ -6231,10 +6231,10 @@
                 _cotCodeUsed: rm.code || ''
             };
             if (typeof self._updateIndicatorPanelHeight === 'function') self._updateIndicatorPanelHeight();
-            if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
-            if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
-            if (typeof self.scheduleRender === 'function') self.scheduleRender();
+            indicator._calculating = false;
+            if (typeof self._commitIndicatorVisualChange === 'function') self._commitIndicatorVisualChange();
             else if (typeof self.render === 'function') self.render();
+            if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
             if (typeof self.persistIndicators === 'function') self.persistIndicators();
         }
 
@@ -6243,10 +6243,10 @@
             const still = self.indicators.active.some(function(i) { return i.id === indicator.id; });
             if (!still) return;
             self.indicators.data[indicator.id] = { loading: false, error: msg, bull: null, bear: null };
-            if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
-            if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
-            if (typeof self.scheduleRender === 'function') self.scheduleRender();
+            indicator._calculating = false;
+            if (typeof self._commitIndicatorVisualChange === 'function') self._commitIndicatorVisualChange();
             else if (typeof self.render === 'function') self.render();
+            if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
         }
 
         if (!this.data || this.data.length === 0) {
