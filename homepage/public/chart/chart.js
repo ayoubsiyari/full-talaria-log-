@@ -20844,6 +20844,76 @@ class Chart {
         this._separatePanelResizeFinalizePass = false;
     }
 
+    /** Start panel-height drag from any DOM layer (capture phase — above V9 axis zones). */
+    _tryStartSeparatePanelResizeFromEvent(e) {
+        if (!this.canvas || this.isPanel || !e || e.button !== 0) return false;
+        if (this.drag && this.drag.active) return false;
+        const rect = this._pointerLayoutRect();
+        if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+            return false;
+        }
+        if (typeof this.getSeparatePanelResizeHandleAt !== 'function') return false;
+        const [mx, my] = this._eventCanvasLocalXY(e);
+        const handle = this.getSeparatePanelResizeHandleAt(mx, my, 20);
+        if (!handle || typeof this.startSeparatePanelResize !== 'function') return false;
+        if (!this.startSeparatePanelResize(handle, my)) return false;
+        if (!this.drag) this.drag = {};
+        this.drag.active = true;
+        this.drag.type = 'separatePanelResize';
+        this.drag.startX = e.clientX;
+        this.drag.startY = e.clientY;
+        this.drag.lastX = e.clientX;
+        this.drag.lastY = e.clientY;
+        this._lockDragCursor('ns-resize');
+        return true;
+    }
+
+    /** Cursor + hover highlight when pointer is over indicator panels (works off-canvas DOM layers). */
+    _updateSeparatePanelPointerCursorFromEvent(e) {
+        if (!this.canvas || this.isPanel || !e || (this.drag && this.drag.active)) return;
+        const rect = this._pointerLayoutRect();
+        if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+            return;
+        }
+        const [mx, my] = this._eventCanvasLocalXY(e);
+        if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
+            const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 20);
+            if (resizeHandle) {
+                const prevY = this._separatePanelHoverHandle && this._separatePanelHoverHandle.y;
+                if (prevY !== resizeHandle.y) {
+                    this._separatePanelHoverHandle = resizeHandle;
+                    this.scheduleRender();
+                }
+                this._applyChartCursorStyle('ns-resize');
+                return;
+            }
+            if (this._separatePanelHoverHandle) {
+                this._separatePanelHoverHandle = null;
+                this.scheduleRender();
+            }
+        }
+        const mode = this._detectCursorModeAt(mx, my);
+        this.cursor.mode = mode;
+        if (mode === 'separatePanelResize' || mode === 'priceAxis' || mode === 'separatePanelAxis') {
+            this._applyChartCursorStyle('ns-resize');
+        } else if (mode === 'timeAxis') {
+            this._applyChartCursorStyle('ew-resize');
+        } else if (mode === 'separatePanelPlot') {
+            let cursorStyle = typeof this._separatePanelPlotCursorAt === 'function'
+                ? this._separatePanelPlotCursorAt(mx, my)
+                : this.getCurrentCursorStyle();
+            this._applyChartCursorStyle(cursorStyle);
+        }
+    }
+
+    _applyChartCursorStyle(cursorStyle) {
+        if (!cursorStyle) return;
+        if (this.canvas) this.canvas.style.cursor = cursorStyle;
+        if (this.svg && this.svg.node()) this.svg.node().style.cursor = cursorStyle;
+        const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
+        if (chartWrapper) chartWrapper.style.cursor = cursorStyle;
+    }
+
     /** Lower draw budget while the chart view is moving (pan / inertia). */
     _getPanLodCap() {
         const m = this.margin || { l: 0, r: 60 };
@@ -27154,7 +27224,11 @@ class Chart {
 
         document.addEventListener('mousedown', (e) => {
             if (tryStartCtrlMarqueeSelect.call(this, e)) return;
-            tryStartBoxZoom.call(this, e);
+            if (tryStartBoxZoom.call(this, e)) return;
+            if (typeof this._tryStartSeparatePanelResizeFromEvent === 'function'
+                && this._tryStartSeparatePanelResizeFromEvent(e)) {
+                e.preventDefault();
+            }
         }, true);
 
         this.canvas.addEventListener('mousedown', e => {
@@ -28018,6 +28092,10 @@ class Chart {
                 this._scheduleCrosshairTooltipFromEvent(e);
             } else if (typeof this.updateCrosshair === 'function') {
                 this.updateCrosshair(e);
+            }
+
+            if (!this.drag?.active && typeof this._updateSeparatePanelPointerCursorFromEvent === 'function') {
+                this._updateSeparatePanelPointerCursorFromEvent(e);
             }
 
             if (this.canvas && !this.isPanel) {

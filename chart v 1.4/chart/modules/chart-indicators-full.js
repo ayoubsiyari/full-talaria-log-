@@ -9354,8 +9354,9 @@ Chart.prototype._syncSeparatePanelResizeGrips = function(overlay, m) {
         overlay.querySelectorAll('[data-talaria-sp-resize-grip]').forEach(function(n) { n.remove(); });
         return;
     }
+    overlay.style.zIndex = '35';
     const self = this;
-    const gripH = 12;
+    const gripH = 16;
     const plotLeft = m.l;
     const plotWidth = Math.max(1, this.w - m.l);
     handles.forEach(function(handle, idx) {
@@ -9381,10 +9382,10 @@ Chart.prototype._syncSeparatePanelResizeGrips = function(overlay, m) {
             'top:' + (handle.y - gripH / 2) + 'px',
             'width:' + plotWidth + 'px',
             'height:' + gripH + 'px',
-            'z-index:24',
+            'z-index:50',
             'pointer-events:auto',
             'cursor:ns-resize',
-            'background:' + (hover ? 'rgba(106,138,255,0.18)' : 'transparent'),
+            'background:' + (hover ? 'rgba(106,138,255,0.22)' : 'rgba(106,138,255,0.06)'),
             'touch-action:none'
         ].join(';');
         grip.title = 'Drag to resize panel';
@@ -14930,6 +14931,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     /** Reposition legend rows without rebuilding DOM (pan + resize). */
     Chart.prototype._syncSeparatePanelOverlayPositions = function(overlay, panelSlots) {
         if (!overlay || !Array.isArray(panelSlots) || panelSlots.length === 0) return;
+        overlay.style.zIndex = '35';
         const bars = overlay.querySelectorAll('.talaria-ind-legend-row');
         panelSlots.forEach(function(slot, idx) {
             const bar = bars[idx];
@@ -15007,8 +15009,37 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     if (self.tool) return;
                     if (skipLegendHit(ev)) return;
                     ev.preventDefault();
-                    if (typeof self._forwardPointerEventToCanvas === 'function') {
-                        self._forwardPointerEventToCanvas(ev);
+                    ev.stopPropagation();
+                    const xy = typeof self._eventCanvasLocalXY === 'function'
+                        ? self._eventCanvasLocalXY(ev)
+                        : [0, 0];
+                    const plotSlot = typeof self._findSeparatePanelPlotSlot === 'function'
+                        ? self._findSeparatePanelPlotSlot(xy[0], xy[1], { skipResizeHandles: true })
+                        : null;
+                    if (!self.drag) self.drag = {};
+                    self.drag.active = true;
+                    self.drag.type = 'pan';
+                    self.drag.separatePanelSlot = plotSlot;
+                    self.drag.startX = ev.clientX;
+                    self.drag.startY = ev.clientY;
+                    self.drag.lastX = ev.clientX;
+                    self.drag.lastY = ev.clientY;
+                    self.mouseX = xy[0];
+                    self.mouseY = xy[1];
+                    if (typeof self._tryCapturePanPointer === 'function') self._tryCapturePanPointer(ev);
+                    if (typeof self._snapshotPanDrawingsLayer === 'function') self._snapshotPanDrawingsLayer();
+                    if (typeof self._lockDragCursor === 'function') {
+                        self._lockDragCursor(typeof self._panDragCursorStyle === 'function'
+                            ? self._panDragCursorStyle()
+                            : 'move');
+                    }
+                    if (typeof self._scheduleChartPanRender === 'function') {
+                        self._scheduleChartPanRender();
+                        self.renderPending = false;
+                        if (typeof self.render === 'function') self.render();
+                    }
+                    if (self.replaySystem && self.replaySystem.isActive && typeof self.replaySystem.onUserPan === 'function') {
+                        self.replaySystem.onUserPan();
                     }
                 };
                 const onDblClick = function(ev) {
@@ -15022,9 +15053,18 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 const onZoneMove = function(ev) {
                     if (skipLegendHit(ev)) return;
                     let cur = 'crosshair';
-                    if (typeof self._eventCanvasLocalXY === 'function' && typeof self._separatePanelPlotCursorAt === 'function') {
+                    if (typeof self._eventCanvasLocalXY === 'function') {
                         const xy = self._eventCanvasLocalXY(ev);
-                        cur = self._separatePanelPlotCursorAt(xy[0], xy[1]);
+                        if (typeof self.getSeparatePanelResizeHandleAt === 'function') {
+                            const rh = self.getSeparatePanelResizeHandleAt(xy[0], xy[1], 20);
+                            if (rh) {
+                                zone.style.cursor = 'ns-resize';
+                                return;
+                            }
+                        }
+                        if (typeof self._separatePanelPlotCursorAt === 'function') {
+                            cur = self._separatePanelPlotCursorAt(xy[0], xy[1]);
+                        }
                     } else if (typeof self.getCurrentCursorStyle === 'function') {
                         cur = self.getCurrentCursorStyle();
                     }
@@ -15062,16 +15102,16 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     /** Move existing separate-panel legend rows during height resize (no DOM rebuild). */
-    Chart.prototype._repositionSeparatePanelOverlay = function(panelSlots, m) {
+    Chart.prototype._repositionSeparatePanelOverlay = function(panelSlots, marginArg) {
         const canvas = this.ctx && this.ctx.canvas;
         const wrapper = canvas ? canvas.parentElement : null;
         if (!wrapper || !Array.isArray(panelSlots) || panelSlots.length === 0) return;
         const overlay = wrapper.querySelector('#separatePanelsOverlay');
         if (!overlay) return;
         this._syncSeparatePanelOverlayPositions(overlay, panelSlots);
-        const m = this.margin || { l: 60, r: 60 };
+        const mSync = marginArg || this.margin || { l: 60, r: 60 };
         if (typeof this._syncSeparatePanelResizeGrips === 'function') {
-            this._syncSeparatePanelResizeGrips(overlay, m);
+            this._syncSeparatePanelResizeGrips(overlay, mSync);
         }
         overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
         overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
@@ -15261,7 +15301,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.id = 'separatePanelsOverlay';
-            overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;';
+            overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:35;';
             wrapper.appendChild(overlay);
         }
         overlay.innerHTML = '';
