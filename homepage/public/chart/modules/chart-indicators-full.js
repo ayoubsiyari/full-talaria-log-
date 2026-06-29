@@ -15303,6 +15303,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             : null;
         const maxY = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
         const labels = [];
+        let labelOrder = 0;
 
         this.indicators.active.forEach(function(indicator) {
             if (indicator.overlay === false || indicator.visible === false) return;
@@ -15328,7 +15329,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 labels.push({
                     y: y,
                     val: val,
-                    color: dirUp ? (indicator.style.upColor || '#26a69a') : (indicator.style.downColor || '#ef5350')
+                    color: dirUp ? (indicator.style.upColor || '#26a69a') : (indicator.style.downColor || '#ef5350'),
+                    order: labelOrder++,
+                    key: String(indicator.id)
                 });
                 return;
             }
@@ -15341,9 +15344,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     ? this._getCrosshairBarIndex()
                     : (this.data ? this.data.length - 1 : 0);
                 const bandDefs = [
-                    { arr: bandData.upper, show: st.showUpper !== false, color: st.upperColor || '#2962ff' },
-                    { arr: bandData.middle, show: st.showMiddle !== false, color: st.middleColor || '#787b86' },
-                    { arr: bandData.lower, show: st.showLower !== false, color: st.lowerColor || '#2962ff' }
+                    { k: 'upper', arr: bandData.upper, show: st.showUpper !== false, color: st.upperColor || '#2962ff' },
+                    { k: 'middle', arr: bandData.middle, show: st.showMiddle !== false, color: st.middleColor || '#787b86' },
+                    { k: 'lower', arr: bandData.lower, show: st.showLower !== false, color: st.lowerColor || '#2962ff' }
                 ];
                 bandDefs.forEach(function(b) {
                     if (!b.show || !b.arr) return;
@@ -15351,7 +15354,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     if (!Number.isFinite(val)) return;
                     const y = this.yScale(val);
                     if (!Number.isFinite(y) || y < m.t || y > maxY) return;
-                    labels.push({ y: y, val: val, color: b.color || '#2962ff' });
+                    labels.push({
+                        y: y,
+                        val: val,
+                        color: b.color || '#2962ff',
+                        order: labelOrder++,
+                        key: String(indicator.id) + ':' + b.k
+                    });
                 }, this);
                 return;
             }
@@ -15375,18 +15384,45 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             labels.push({
                 y: y,
                 val: val,
-                color: indicator.style.color || '#2962ff'
+                color: indicator.style.color || '#2962ff',
+                order: labelOrder++,
+                key: String(indicator.id)
             });
         }, this);
 
         if (!labels.length) return;
 
-        labels.sort(function(a, b) { return a.y - b.y; });
+        // Stable stack order (indicator list order) — sorting by Y each frame makes nearby
+        // labels swap slots and jump when values cross during replay.
+        labels.sort(function(a, b) { return a.order - b.order; });
         const minGap = 22;
-        for (let i = 1; i < labels.length; i++) {
-            if (labels[i].y - labels[i - 1].y < minGap) {
-                labels[i].y = labels[i - 1].y + minGap;
+        const topBound = m.t + 10;
+        const bottomBound = maxY - 10;
+        let prevStackY = -Infinity;
+        for (let i = 0; i < labels.length; i++) {
+            let targetY = labels[i].y;
+            if (prevStackY !== -Infinity && targetY - prevStackY < minGap) {
+                targetY = prevStackY + minGap;
             }
+            targetY = Math.max(topBound, Math.min(bottomBound, targetY));
+            labels[i].y = targetY;
+            prevStackY = targetY;
+        }
+
+        const replayPlaying = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
+        if (!this._overlayLabelSmoothY) this._overlayLabelSmoothY = Object.create(null);
+        if (!replayPlaying) this._overlayLabelSmoothY = Object.create(null);
+        if (replayPlaying) {
+            const smoothMap = this._overlayLabelSmoothY;
+            const chart = this;
+            labels.forEach(function(lbl) {
+                if (!lbl.key) return;
+                const prev = smoothMap[lbl.key];
+                if (Number.isFinite(prev)) {
+                    lbl.y = prev + (lbl.y - prev) * 0.42;
+                }
+                smoothMap[lbl.key] = lbl.y;
+            });
         }
 
         const ctx = this.ctx;

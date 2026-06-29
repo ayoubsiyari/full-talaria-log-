@@ -514,7 +514,7 @@ class FibSpeedFanTool extends BaseDrawing {
         this.requiredPoints = 2;
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
-        if (this.style.backgroundEnabled === undefined) this.style.backgroundEnabled = false;
+        if (this.style.backgroundEnabled === undefined) this.style.backgroundEnabled = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
         if (this.style.gridEnabled === undefined) this.style.gridEnabled = true;
         if (this.style.gridColor === undefined) this.style.gridColor = '#787b86';
@@ -522,11 +522,7 @@ class FibSpeedFanTool extends BaseDrawing {
         if (this.style.gridLineWidth === undefined) this.style.gridLineWidth = 1;
         if (this.style.gridLineDasharray === undefined) this.style.gridLineDasharray = '';
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
-        if (this.style.showPrices === undefined) this.style.showPrices = false;
-        if (this.style.showLeftLabels === undefined) this.style.showLeftLabels = true;
-        if (this.style.showRightLabels === undefined) this.style.showRightLabels = true;
-        if (this.style.showTopLabels === undefined) this.style.showTopLabels = true;
-        if (this.style.showBottomLabels === undefined) this.style.showBottomLabels = true;
+        if (this.style.showPrices === undefined) this.style.showPrices = true;
         if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 1, enabled: true, color: '#2962ff' },
@@ -565,16 +561,11 @@ class FibSpeedFanTool extends BaseDrawing {
         const y1 = getY(p1);
         const x2 = getX(p2);
         const y2 = getY(p2);
+        const chartWidth = scales.chart?.w || 2000;
 
         const showLevelValues = this.style.levelsEnabled !== false;
-        const formatRatioLabel = (v) => BaseDrawing.formatFibLevelLabel(this.style, v);
-        const fanLabelFontSize = fibVerticalSpanLabelFontSize(scaleFactor);
-        const labelPad = Math.max(4, Math.round(fanLabelFontSize * 0.45));
-        const showLeftLabels = this.style.showLeftLabels !== false;
-        const showRightLabels = this.style.showRightLabels !== false;
-        const showTopLabels = this.style.showTopLabels !== false;
-        const showBottomLabels = this.style.showBottomLabels !== false;
-
+        const priceDecimals = (typeof this.getPriceDecimals === 'function') ? this.getPriceDecimals(p1?.y) : 2;
+        const formatRatioLabel = (v, price) => BaseDrawing.formatFibLevelLabel(this.style, v, { price, priceDecimals });
         const fanTrendEnabled = this.style.trendLineEnabled !== false;
         const fanTrendColor = this.style.trendLineColor || this.style.stroke || '#787b86';
         const fanTrendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '6,6';
@@ -602,45 +593,34 @@ class FibSpeedFanTool extends BaseDrawing {
             return this.group;
         }
 
-        const xLeft = Math.min(x1, x2);
-        const xRight = Math.max(x1, x2);
-        const yTop = Math.min(y1, y2);
-        const yBottom = Math.max(y1, y2);
-        const priceY = (r) => y1 + dy * (1 - r);
-        const timeX = (t) => x1 + dx * (1 - t);
-
-        const parseFanLevels = (rows) => (rows || [])
-            .filter((l) => {
-                if (!l) return false;
-                if (typeof l === 'object') return l.enabled !== false && l.on !== false && l.visible !== false;
-                return true;
-            })
-            .map((l) => ({
-                value: parseFloat(typeof l === 'object' ? l.value : l),
-                color: typeof l === 'object' ? (l.color || this.style.stroke) : this.style.stroke,
-            }))
-            .filter((l) => isFinite(l.value) && l.value >= 0 && l.value <= 1);
-
-        const priceLevels = parseFanLevels(this.levels).sort((a, b) => b.value - a.value);
-        const timeRaw = Array.isArray(this.style.v9FanTimeLevels) && this.style.v9FanTimeLevels.length
-            ? this.style.v9FanTimeLevels
-            : this.levels;
-        const timeLevels = parseFanLevels(timeRaw).sort((a, b) => b.value - a.value);
+        const extendX = dx >= 0 ? chartWidth : 0;
 
         const bgEnabled = this.style.backgroundEnabled !== false;
         const bgOpacity = (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity)))
             ? parseFloat(this.style.backgroundOpacity)
             : 0.12;
 
-        if (bgEnabled && priceLevels.length > 1) {
-            for (let i = 0; i < priceLevels.length - 1; i++) {
-                const rHigh = priceLevels[i].value;
-                const rLow = priceLevels[i + 1].value;
-                const yHigh = priceY(rHigh);
-                const yLow = priceY(rLow);
+        if (bgEnabled) {
+            const enabledLevels = (this.levels || [])
+                .filter(l => l && l.enabled !== false)
+                .map(l => ({
+                    value: parseFloat(l.value),
+                    color: l.color || this.style.stroke
+                }))
+                .filter(l => isFinite(l.value))
+                .sort((a, b) => b.value - a.value);
+
+            for (let i = 0; i < enabledLevels.length - 1; i++) {
+                const rHigh = enabledLevels[i].value;
+                const rLow = enabledLevels[i + 1].value;
+                const yAtX2_1 = y1 + (dy * (1 - rHigh));
+                const yAtX2_2 = y1 + (dy * (1 - rLow));
+                const extendY1 = y1 + ((yAtX2_1 - y1) / dx) * (extendX - x1);
+                const extendY2 = y1 + ((yAtX2_2 - y1) / dx) * (extendX - x1);
+
                 this.group.insert('path', ':first-child')
-                    .attr('d', `M ${x1},${y1} L ${x2},${yHigh} L ${x2},${yLow} Z`)
-                    .attr('fill', priceLevels[i].color)
+                    .attr('d', `M ${x1},${y1} L ${extendX},${extendY1} L ${extendX},${extendY2} Z`)
+                    .attr('fill', enabledLevels[i].color)
                     .attr('opacity', bgOpacity)
                     .style('pointer-events', 'none');
             }
@@ -658,81 +638,97 @@ class FibSpeedFanTool extends BaseDrawing {
             const gridDash = (this.style.gridLineDasharray != null && `${this.style.gridLineDasharray}` !== '' && `${this.style.gridLineDasharray}` !== 'none')
                 ? `${this.style.gridLineDasharray}`
                 : null;
-            const gridAttrs = {
-                stroke: gridColor,
-                'stroke-width': gridWidth,
-                'stroke-dasharray': gridDash || 'none',
-                opacity: gridOpacity,
-            };
 
-            priceLevels.forEach((l) => {
-                const y = priceY(l.value);
-                const line = this.group.append('line')
+            const timeRaw = Array.isArray(this.style.v9FanTimeLevels) && this.style.v9FanTimeLevels.length
+                ? this.style.v9FanTimeLevels
+                : null;
+            const gridSource = timeRaw || (this.levels || []);
+            const gridLevels = gridSource
+                .filter(l => {
+                    if (!l) return false;
+                    const on = typeof l === 'object' ? (l.on !== false && l.enabled !== false) : true;
+                    return on;
+                })
+                .map(l => {
+                    const value = typeof l === 'object' ? parseFloat(l.value) : parseFloat(l);
+                    const color = typeof l === 'object' ? (l.color || this.style.stroke) : this.style.stroke;
+                    return { value, color };
+                })
+                .filter(l => isFinite(l.value) && l.value >= 0 && l.value <= 1)
+                .sort((a, b) => b.value - a.value);
+
+            const yTop = y1;
+            const yBottom = y2;
+
+            gridLevels.forEach(l => {
+                const y = y1 + (dy * (1 - l.value));
+                this.group.append('line')
                     .attr('x1', x1).attr('y1', y)
-                    .attr('x2', x2).attr('y2', y);
-                Object.keys(gridAttrs).forEach((k) => line.attr(k, gridAttrs[k]));
-                line.style('pointer-events', 'none');
+                    .attr('x2', extendX).attr('y2', y)
+                    .attr('stroke', gridColor)
+                    .attr('stroke-width', gridWidth)
+                    .attr('stroke-dasharray', gridDash || 'none')
+                    .attr('opacity', gridOpacity)
+                    .style('pointer-events', 'none');
 
-                if (!showLevelValues) return;
-                const text = formatRatioLabel(l.value);
-                if (showLeftLabels) {
-                    const el = this.group.append('text')
-                        .attr('x', xLeft - labelPad)
-                        .attr('y', y)
-                        .attr('text-anchor', 'end')
-                        .attr('dominant-baseline', 'middle')
-                        .text(text);
-                    applyFibSpanLabelTextStyle(el, l.color, fanLabelFontSize);
-                }
-                if (showRightLabels) {
-                    const el = this.group.append('text')
-                        .attr('x', xRight + labelPad)
-                        .attr('y', y)
-                        .attr('text-anchor', 'start')
-                        .attr('dominant-baseline', 'middle')
-                        .text(text);
-                    applyFibSpanLabelTextStyle(el, l.color, fanLabelFontSize);
+                if (showLevelValues) {
+                    const lp = fibHorizontalSpanLabelPlacement(this.style, x1, extendX);
+                    this.group.append('text')
+                        .attr('x', lp.x)
+                        .attr('y', y + 3)
+                        .attr('fill', l.color)
+                        .attr('font-size', '10px')
+                        .attr('text-anchor', lp.anchor)
+                        .style('pointer-events', 'none')
+                        .text(formatRatioLabel(l.value, scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(y) : null));
                 }
             });
 
-            timeLevels.forEach((l) => {
-                const x = timeX(l.value);
-                const line = this.group.append('line')
+            gridLevels.forEach(l => {
+                const x = x1 + (dx * (1 - l.value));
+                this.group.append('line')
                     .attr('x1', x).attr('y1', yTop)
-                    .attr('x2', x).attr('y2', yBottom);
-                Object.keys(gridAttrs).forEach((k) => line.attr(k, gridAttrs[k]));
-                line.style('pointer-events', 'none');
-
-                if (!showLevelValues) return;
-                const text = formatRatioLabel(l.value);
-                if (showTopLabels) {
-                    const el = this.group.append('text')
-                        .attr('x', x)
-                        .attr('y', yTop - labelPad)
-                        .attr('text-anchor', 'middle')
-                        .attr('dominant-baseline', 'auto')
-                        .text(text);
-                    applyFibSpanLabelTextStyle(el, l.color, fanLabelFontSize);
-                }
-                if (showBottomLabels) {
-                    const el = this.group.append('text')
-                        .attr('x', x)
-                        .attr('y', yBottom + labelPad)
-                        .attr('text-anchor', 'middle')
-                        .attr('dominant-baseline', 'hanging')
-                        .text(text);
-                    applyFibSpanLabelTextStyle(el, l.color, fanLabelFontSize);
-                }
+                    .attr('x2', x).attr('y2', yBottom)
+                    .attr('stroke', gridColor)
+                    .attr('stroke-width', gridWidth)
+                    .attr('stroke-dasharray', gridDash || 'none')
+                    .attr('opacity', gridOpacity)
+                    .style('pointer-events', 'none');
             });
 
-            const spine = this.group.append('line')
+            this.group.append('line')
                 .attr('x1', x1).attr('y1', yTop)
-                .attr('x2', x1).attr('y2', yBottom);
-            Object.keys(gridAttrs).forEach((k) => spine.attr(k, gridAttrs[k]));
-            spine.style('pointer-events', 'none');
+                .attr('x2', x1).attr('y2', yBottom)
+                .attr('stroke', gridColor)
+                .attr('stroke-width', gridWidth)
+                .attr('stroke-dasharray', gridDash || 'none')
+                .attr('opacity', gridOpacity)
+                .style('pointer-events', 'none');
         }
 
-        this.levels.forEach((levelObj) => {
+        const topLabelY = (y1 > 14) ? (y1 - 6) : (y1 + 14);
+        const enabledForLabels = (this.levels || [])
+            .filter(l => l && l.enabled !== false)
+            .map(l => ({ value: parseFloat(l.value), color: l.color || this.style.stroke }))
+            .filter(l => isFinite(l.value) && l.value >= 0 && l.value <= 1)
+            .sort((a, b) => b.value - a.value);
+        enabledForLabels.forEach(l => {
+            const xLabel = x1 + (dx * (1 - l.value));
+            if (xLabel > 0 && xLabel < chartWidth) {
+                if (showLevelValues) {
+                    this.group.append('text')
+                        .attr('x', xLabel)
+                        .attr('y', topLabelY)
+                        .attr('fill', l.color)
+                        .attr('font-size', '10px')
+                        .attr('text-anchor', fibPointTextAnchor(this.style))
+                        .style('pointer-events', 'none')
+                        .text(formatRatioLabel(l.value, scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(topLabelY) : null));
+                }
+            }
+        });
+
+        this.levels.forEach(levelObj => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
             const enabled = typeof levelObj === 'object'
                 ? (levelObj.enabled !== false && levelObj.visible !== false)
@@ -748,14 +744,17 @@ class FibSpeedFanTool extends BaseDrawing {
             const ratio = parseFloat(level);
             if (!isFinite(ratio)) return;
 
-            const targetY = priceY(ratio);
+            const targetY = y1 + (dy * (1 - ratio));
+            const rayDy = targetY - y1;
+            const extendY = y1 + (rayDy / dx) * (extendX - x1);
+
             const scaledLevelWidth = Math.max(0.5, parseFloat(lineWidth) * scaleFactor);
             const hitWidth = Math.max(10, scaledLevelWidth * 6);
 
             this.group.append('line')
                 .attr('class', 'fib-level-hit')
                 .attr('x1', x1).attr('y1', y1)
-                .attr('x2', x2).attr('y2', targetY)
+                .attr('x2', extendX).attr('y2', extendY)
                 .attr('stroke', 'rgba(255,255,255,0.001)')
                 .attr('stroke-width', hitWidth)
                 .attr('stroke-dasharray', '')
@@ -765,13 +764,28 @@ class FibSpeedFanTool extends BaseDrawing {
 
             this.group.append('line')
                 .attr('x1', x1).attr('y1', y1)
-                .attr('x2', x2).attr('y2', targetY)
+                .attr('x2', extendX).attr('y2', extendY)
                 .attr('stroke', color)
                 .attr('stroke-width', scaledLevelWidth)
                 .attr('stroke-dasharray', lineType || 'none')
                 .attr('opacity', 0.8)
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
+
+            if (showLevelValues) {
+                const labelText = formatRatioLabel(ratio, scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(targetY) : null);
+                const rayEndX = (ratio === 0) ? x2 : extendX;
+                const rayEndY = (ratio === 0) ? y2 : (y1 + ((targetY - y1) / dx) * (extendX - x1));
+                const lp = fibSegmentParamPlacement(this.style, x1, y1, rayEndX, rayEndY);
+                this.group.append('text')
+                    .attr('x', lp.x)
+                    .attr('y', lp.y - 4)
+                    .attr('fill', color)
+                    .attr('font-size', '10px')
+                    .attr('text-anchor', fibPointTextAnchor(this.style))
+                    .style('pointer-events', 'none')
+                    .text(labelText);
+            }
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
