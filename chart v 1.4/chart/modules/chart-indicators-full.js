@@ -7570,6 +7570,54 @@
         this._runIndicatorRecalc(queued.opts || { force: false });
     };
 
+    /**
+     * Replay playback: one synchronous full recalc per animation frame (same path as DEMA/TEMA/HMA).
+     * Worker/incremental paths lag behind at 60x — sync-on-rAF keeps every overlay aligned with candles.
+     */
+    Chart.prototype.scheduleReplayIndicatorRecalc = function(isPlaying) {
+        if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
+        if (!Array.isArray(this.data) || !this.data.length) return;
+
+        const replay = this.replaySystem;
+        const playing = isPlaying != null ? !!isPlaying : !!(replay && replay.isActive && replay.isPlaying);
+
+        if (!playing) {
+            if (this._replayIndRecalcRaf != null) {
+                cancelAnimationFrame(this._replayIndRecalcRaf);
+                this._replayIndRecalcRaf = null;
+            }
+            if (this._indicatorWorkerSeq == null) this._indicatorWorkerSeq = 0;
+            this._indicatorWorkerSeq++;
+            this._indicatorWorkerCoalesce = false;
+            if (typeof this.recalculateIndicators === 'function') {
+                try { this.recalculateIndicators(); } catch (_) {}
+            }
+            if (typeof this.updateOHLCIndicators === 'function') this.updateOHLCIndicators();
+            if (typeof this.bumpIndicatorRenderVersion === 'function') this.bumpIndicatorRenderVersion();
+            return;
+        }
+
+        if (this._replayIndRecalcRaf != null) return;
+        const chart = this;
+        this._replayIndRecalcRaf = requestAnimationFrame(function() {
+            chart._replayIndRecalcRaf = null;
+            if (!chart.replaySystem || !chart.replaySystem.isActive || !chart.replaySystem.isPlaying) return;
+            if (!chart.indicators || !chart.indicators.active || !chart.indicators.active.length) return;
+            if (!Array.isArray(chart.data) || !chart.data.length) return;
+            if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
+            chart._indicatorWorkerSeq++;
+            chart._indicatorWorkerCoalesce = false;
+            try {
+                if (typeof chart.recalculateIndicators === 'function') {
+                    chart.recalculateIndicators();
+                }
+            } catch (_) {}
+            if (typeof chart.updateOHLCIndicators === 'function') chart.updateOHLCIndicators();
+            if (typeof chart.bumpIndicatorRenderVersion === 'function') chart.bumpIndicatorRenderVersion();
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        });
+    };
+
     Chart.prototype._runIndicatorRecalc = function(opts) {
         opts = opts || {};
         const barCount = this.data.length;
@@ -7580,20 +7628,10 @@
         const replaySyncMax = 12000;
         const appendOnly = !opts.force && !replayActive && prev
             && barCount > prev.barCount && (barCount - prev.barCount) <= 8;
-        const replayTail = replayPlaying && prev && barCount >= prev.barCount
-            && (barCount - prev.barCount) <= 4;
 
-        if (replayTail && typeof this.recalculateIndicatorsIncremental === 'function') {
-            this.recalculateIndicatorsIncremental(prev.barCount);
-            return;
-        }
-        if (appendOnly && typeof this.recalculateIndicatorsIncremental === 'function') {
-            this.recalculateIndicatorsIncremental(prev.barCount);
-            return;
-        }
         if (replayPlaying) {
-            if (typeof this.recalculateIndicatorsAsync === 'function') {
-                this.recalculateIndicatorsAsync();
+            if (typeof this.scheduleReplayIndicatorRecalc === 'function') {
+                this.scheduleReplayIndicatorRecalc(true);
             } else if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (_) {}
             }
@@ -7602,6 +7640,10 @@
         if (replayActive && !replayPlaying && barCount <= replaySyncMax
             && typeof this.recalculateIndicators === 'function') {
             try { this.recalculateIndicators(); } catch (_) {}
+            return;
+        }
+        if (appendOnly && typeof this.recalculateIndicatorsIncremental === 'function') {
+            this.recalculateIndicatorsIncremental(prev.barCount);
             return;
         }
         if (typeof this.recalculateIndicatorsAsync === 'function') {
@@ -7858,7 +7900,8 @@
             this.indicators.data = {};
         }
 
-        if (typeof this._setAllIndicatorsCalculating === 'function') {
+        const replayPlaying = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
+        if (!replayPlaying && typeof this._setAllIndicatorsCalculating === 'function') {
             this._setAllIndicatorsCalculating(true);
         }
 

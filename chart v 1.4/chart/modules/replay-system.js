@@ -2903,8 +2903,8 @@ class ReplaySystem {
 
     /**
      * Schedule indicator recalc for the current replay slice.
-     * During play: off-thread worker (coalesced) so the tick loop is not blocked.
-     * When paused: sync pass for an exact scrub position.
+     * During play: sync recalc once per animation frame (same path as DEMA).
+     * When paused: immediate sync pass for scrub position.
      */
     _scheduleReplayIndicatorRecalc() {
         const chart = this.chart;
@@ -2921,11 +2921,14 @@ class ReplaySystem {
             return;
         }
 
+        if (typeof chart.scheduleReplayIndicatorRecalc === 'function') {
+            chart.scheduleReplayIndicatorRecalc(this.isPlaying);
+            return;
+        }
+
         const reason = this.isPlaying ? 'replay-tick' : 'replay-step';
         if (typeof chart.scheduleIndicatorRecalc === 'function') {
             chart.scheduleIndicatorRecalc(reason, { force: true, immediate: true });
-        } else if (this.isPlaying && typeof chart.recalculateIndicatorsAsync === 'function') {
-            chart.recalculateIndicatorsAsync();
         } else if (typeof chart.recalculateIndicators === 'function') {
             chart.recalculateIndicators();
         }
@@ -2940,10 +2943,16 @@ class ReplaySystem {
         if (typeof chart._flushQueuedIndicatorRecalc === 'function') {
             chart._flushQueuedIndicatorRecalc();
         }
+        if (chart._replayIndRecalcRaf != null) {
+            cancelAnimationFrame(chart._replayIndRecalcRaf);
+            chart._replayIndRecalcRaf = null;
+        }
         if (chart._indicatorWorkerBusy) {
             chart._indicatorWorkerCoalesce = true;
         }
-        if (typeof chart.scheduleIndicatorRecalc === 'function') {
+        if (typeof chart.scheduleReplayIndicatorRecalc === 'function') {
+            chart.scheduleReplayIndicatorRecalc(false);
+        } else if (typeof chart.scheduleIndicatorRecalc === 'function') {
             chart.scheduleIndicatorRecalc('replay-pause', { force: true, immediate: true });
         } else if (typeof chart.recalculateIndicators === 'function') {
             try { chart.recalculateIndicators(); } catch (_) {}

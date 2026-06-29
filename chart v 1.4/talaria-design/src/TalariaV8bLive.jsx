@@ -6527,6 +6527,12 @@ function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
   v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
+  const priceLbl = tlStyle.priceLabels !== false;
+  const timeLbl = tlStyle.timeLabels !== false;
+  st.showLeftLabels = tlStyle.fibFanLeftLabels != null ? !!tlStyle.fibFanLeftLabels : priceLbl;
+  st.showRightLabels = tlStyle.fibFanRightLabels != null ? !!tlStyle.fibFanRightLabels : priceLbl;
+  st.showTopLabels = tlStyle.fibFanTopLabels != null ? !!tlStyle.fibFanTopLabels : timeLbl;
+  st.showBottomLabels = tlStyle.fibFanBottomLabels != null ? !!tlStyle.fibFanBottomLabels : timeLbl;
 }
 
 function v9TrendFibTimeDefaultLevelsTl() {
@@ -7426,6 +7432,10 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("fibLineWidth");
     line("fibLineType");
     line("fibLevelPosition");
+    line("fibFanLeftLabels");
+    line("fibFanRightLabels");
+    line("fibFanTopLabels");
+    line("fibFanBottomLabels");
     line("lineColor");
     line("lineWidth");
     line("lineType");
@@ -7737,7 +7747,16 @@ function v9FibDefaultTlStyleFields(legacyType) {
     return { ...common, fibTrendLine: true, fibBackground: false, fibBgOpacity: 0.12, fibLevelPosition: "Middle" };
   }
   if (v9IsFibSpeedFanType(legacyType)) {
-    return { ...common, fibTrendLine: true, fibGrid: false };
+    return {
+      ...common,
+      fibTrendLine: true,
+      fibGrid: false,
+      fibBackground: false,
+      fibFanLeftLabels: true,
+      fibFanRightLabels: true,
+      fibFanTopLabels: true,
+      fibFanBottomLabels: true,
+    };
   }
   if (v9IsTrendFibTimeType(legacyType)) {
     return {
@@ -8372,6 +8391,10 @@ function v9TlStylePatchFromDrawing(d) {
                 fibPrices: v9FibShowPricesFromLevelsMode(fibLevelsMode),
               };
             })(),
+            fibFanLeftLabels: s.showLeftLabels !== false,
+            fibFanRightLabels: s.showRightLabels !== false,
+            fibFanTopLabels: s.showTopLabels !== false,
+            fibFanBottomLabels: s.showBottomLabels !== false,
           };
         })()
       : {}),
@@ -12834,6 +12857,7 @@ const TalariaV8bLive = () => {
       { on: true, value: "1", color: "#4CAF50" },
     ],
     fibLevelsOn: true, fibLevelsMode: "Value", fibLevelPosition: "Right", fibGrid: false,
+    fibFanLeftLabels: true, fibFanRightLabels: true, fibFanTopLabels: true, fibFanBottomLabels: true,
     fibGridColor: "#787B86", fibGridType: "solid", fibGridWidth: "1",
     fibLineType: "solid", fibLineWidth: "2",
     fibLevels: v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-retracement"),
@@ -21049,6 +21073,10 @@ const TalariaV8bLive = () => {
     tlStyle.extendLeft,
     tlStyle.extendRight,
     tlStyle.fibFanTimeLevels,
+    tlStyle.fibFanLeftLabels,
+    tlStyle.fibFanRightLabels,
+    tlStyle.fibFanTopLabels,
+    tlStyle.fibFanBottomLabels,
     tlStyle.fibTzLevels,
     v9FibTzLevelsBridgeSig(tlStyle.fibTzLevels),
     tlStyle.fibGrid,
@@ -24976,7 +25004,21 @@ const TalariaV8bLive = () => {
                 </>;
                 return <>
                   {mkLevelsSection("PRICE LEVELS", "fibLevels", "fibLevel", "fib", "fibFanPAdd", "fibFanPReset", v9FibSpeedFanDefaultPriceLevelsTl())}
+                  <div style={{ display:"flex", alignItems:"center", padding:"4px 0 10px" }}>
+                    <span style={{ fontSize:12, color:c.ts }}>Price labels</span>
+                    <div style={{ display:"flex", alignItems:"center", marginLeft:"auto" }}>
+                      <div style={{ width:66 }}>{TlChk(tlStyle.fibFanLeftLabels !== false,"tlchk-fibFanLeft","Left",()=>setTlStyle(s=>({...s,fibFanLeftLabels:!(s.fibFanLeftLabels !== false)})))}</div>
+                      <div style={{ width:66 }}>{TlChk(tlStyle.fibFanRightLabels !== false,"tlchk-fibFanRight","Right",()=>setTlStyle(s=>({...s,fibFanRightLabels:!(s.fibFanRightLabels !== false)})))}</div>
+                    </div>
+                  </div>
                   {mkLevelsSection("TIME LEVELS", "fibFanTimeLevels", "fibFanTimeLevel", "fibFanTime", "fibFanTAdd", "fibFanTReset", v9FibSpeedFanDefaultTimeLevelsTl())}
+                  <div style={{ display:"flex", alignItems:"center", padding:"4px 0 10px" }}>
+                    <span style={{ fontSize:12, color:c.ts }}>Time labels</span>
+                    <div style={{ display:"flex", alignItems:"center", marginLeft:"auto" }}>
+                      <div style={{ width:66 }}>{TlChk(tlStyle.fibFanTopLabels !== false,"tlchk-fibFanTop","Top",()=>setTlStyle(s=>({...s,fibFanTopLabels:!(s.fibFanTopLabels !== false)})))}</div>
+                      <div style={{ width:66 }}>{TlChk(tlStyle.fibFanBottomLabels !== false,"tlchk-fibFanBottom","Bottom",()=>setTlStyle(s=>({...s,fibFanBottomLabels:!(s.fibFanBottomLabels !== false)})))}</div>
+                    </div>
+                  </div>
                 </>;
               }
               return <>
