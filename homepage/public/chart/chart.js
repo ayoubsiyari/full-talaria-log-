@@ -14682,7 +14682,7 @@ class Chart {
         }
         if (mx > m.l && mx < this.w - m.r && my > m.t && my < this.h - m.b) {
             if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 16);
+                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 18);
                 if (resizeHandle) {
                     this.cursor.separatePanelSlot = null;
                     this._separatePanelHoverHandle = resizeHandle;
@@ -27185,7 +27185,7 @@ class Chart {
             // Start separate indicator panel resize when dragging a panel separator.
             // Must run before tool / drawing guards — separator sits in the chart body.
             if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 16);
+                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 18);
                 if (resizeHandle && typeof this.startSeparatePanelResize === 'function' && this.startSeparatePanelResize(resizeHandle, my)) {
                     this.drag.active = true;
                     this.drag.type = 'separatePanelResize';
@@ -27489,7 +27489,7 @@ class Chart {
                     return;
                 }
                 if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                    const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 16);
+                    const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 18);
                     if (resizeHandle) {
                         const prevY = this._separatePanelHoverHandle && this._separatePanelHoverHandle.y;
                         if (prevY !== resizeHandle.y) {
