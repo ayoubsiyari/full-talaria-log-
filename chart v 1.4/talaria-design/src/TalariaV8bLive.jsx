@@ -6306,7 +6306,7 @@ function v9FibSettingsShowLevelPosition(subToolIcon, drawingType) {
 }
 
 function v9FibToolIconHasExtend(icon) {
-  return icon !== "fibFan" && icon !== "fibTime" && icon !== "fibTimeZone" && icon !== "fibArcs" && icon !== "fibWedge";
+  return icon !== "fibFan" && icon !== "fibTime" && icon !== "fibTimeZone" && icon !== "fibArcs" && icon !== "fibWedge" && icon !== "fibCircles" && icon !== "fibSpiral";
 }
 
 function v9SyncFibLevelsLabelModeToStyle(st, tlStyle) {

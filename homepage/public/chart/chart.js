@@ -7824,9 +7824,6 @@ class Chart {
             }
             const indicatorSnap = this._snapshotIndicatorsForSessionBackup();
             payload.indicators = Array.isArray(indicatorSnap) ? indicatorSnap : [];
-            if (payload.indicators.length === 0 && this._indicatorsClearedAt) {
-                payload.indicatorsClearedAt = this._indicatorsClearedAt;
-            }
             // Drawings are persisted per-symbol via chart_drawings API + chart_drawings_* cache keys.
             // Omit from session backup blob to avoid localStorage quota exhaustion.
             userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
@@ -7969,8 +7966,6 @@ class Chart {
             if (backup.indicators.length > 0) {
                 this._queuePersistedIndicatorsRestore(backup.indicators);
             }
-        } else if (backup.indicatorsClearedAt) {
-            this._indicatorsClearedAt = backup.indicatorsClearedAt;
         }
 
         if (typeof this.showNotification === 'function') {

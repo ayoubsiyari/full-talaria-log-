@@ -469,9 +469,11 @@ function measurePlainTextLineWidth(line, drawing, scales, sampleText) {
     }
 }
 
-/** Per-line X positions: wrap box stays at points[0]; alignment only shifts lines inside the box. */
-function layoutPlainTextLinePositions(drawing, scales, lines, display) {
+/** Per-line anchor + X inside a box whose left edge is points[0]. */
+function layoutPlainTextLines(drawing, scales, lines, display) {
     const leftPx = plainTextPointToPixelX(drawing, scales);
+    const rtl = typeof drawingTextHasArabicScript === 'function'
+        && drawingTextHasArabicScript(display.text);
     const sf = (typeof drawing.getZoomScaleFactor === 'function')
         ? drawing.getZoomScaleFactor(scales)
         : 1;
@@ -479,15 +481,63 @@ function layoutPlainTextLinePositions(drawing, scales, lines, display) {
     const mw = Math.max(40, (Number(style.maxWidth) || 200) * sf);
     const wrap = !!style.wrapText;
     const align = plainTextEffectiveHorizAlign(drawing);
-    return lines.map((line) => {
-        let lineX = leftPx;
-        if (wrap && (align === 'center' || align === 'right')) {
-            const lw = measurePlainTextLineWidth(line, drawing, scales, display.text);
-            if (align === 'center') lineX = leftPx + Math.max(0, (mw - lw) / 2);
-            else lineX = leftPx + Math.max(0, mw - lw);
+    const lineWidths = lines.map((line) =>
+        measurePlainTextLineWidth(line, drawing, scales, display.text));
+    const contentWidth = Math.max(0, ...lineWidths);
+    const blockWidth = wrap ? mw : contentWidth;
+
+    const rows = lines.map((line, i) => {
+        let x = leftPx;
+        let textAnchor = 'start';
+        if (!wrap) {
+            if (rtl) {
+                x = leftPx + blockWidth;
+                textAnchor = 'start';
+            } else {
+                x = leftPx;
+                textAnchor = 'start';
+            }
+        } else if (rtl) {
+            if (align === 'center') {
+                x = leftPx + mw / 2;
+                textAnchor = 'middle';
+            } else if (align === 'right') {
+                x = leftPx + mw;
+                textAnchor = 'start';
+            } else {
+                x = leftPx;
+                textAnchor = 'end';
+            }
+        } else if (align === 'center') {
+            x = leftPx + mw / 2;
+            textAnchor = 'middle';
+        } else if (align === 'right') {
+            x = leftPx + mw;
+            textAnchor = 'end';
+        } else {
+            x = leftPx;
+            textAnchor = 'start';
         }
-        return lineX;
+        return { x, textAnchor, line, lineWidth: lineWidths[i] };
     });
+
+    return { leftPx, blockWidth, rows };
+}
+
+/** @deprecated use layoutPlainTextLines */
+function layoutPlainTextLinePositions(drawing, scales, lines, display) {
+    return layoutPlainTextLines(drawing, scales, lines, display).rows.map((row) => row.x);
+}
+
+/** Content bbox from layout (stable for RTL; getBBox alone can disagree with anchor). */
+function measurePlainTextLayoutBBox(drawing, scales, lines, display, baselineY, lineHeight) {
+    const layout = layoutPlainTextLines(drawing, scales, lines, display);
+    return {
+        x: layout.leftPx,
+        y: baselineY - lineHeight / 1.2,
+        width: Math.max(layout.blockWidth, 1),
+        height: Math.max(lineHeight, lines.length * lineHeight),
+    };
 }
 
 /** Measure rendered plain-text block width (px) at current style/zoom. */
@@ -996,7 +1046,6 @@ class TextTool extends BaseDrawing {
 
         ensurePlainTextLeftEdgePoint(this, scales);
         const leftPx = plainTextPointToPixelX(this, scales);
-        const textAnchor = 'start';
 
         if (this.style.anchored) {
             const anchorLen = (this.style.anchorLength || 24) * scaleFactor;
@@ -1024,32 +1073,6 @@ class TextTool extends BaseDrawing {
 
         const lineHeight = scaledFontSize * 1.2;
         const maxWrapWidth = Math.max(40, (this.style.maxWidth || 200) * scaleFactor);
-
-        // Draw the text with scaled font size (no transform locking)
-        const textElement = this.group.append('text')
-            .attr('class', 'inline-editable-text')
-            .attr('x', leftPx)
-            .attr('y', y)
-            .attr('fill', this.style.textColor)
-            .attr('font-size', `${scaledFontSize}px`)
-            .attr('text-anchor', textAnchor)
-            .attr('xml:space', 'preserve')
-            .style('pointer-events', 'all')
-            .style('cursor', textAnnotationHoverCursor(this))
-            .style('user-select', 'none');
-        applyDrawingTextElementPresentation(textElement, {
-            text: display.text,
-            fontStyle: this.style.fontStyle,
-            fontFamily: this.style.fontFamily,
-            fontWeight: this.style.fontWeight,
-            x: leftPx,
-            y,
-        });
-
-        if (display.isPlaceholder) {
-            const phBg = this.style.fill && this.style.fill !== 'none' ? this.style.fill : null;
-            textElement.attr('fill', resolveAnnotationTextFill(this.style.textColor, phBg, true));
-        }
         const lines = this.style.wrapText
             ? TextTool.wrapTextLines(
                 display.text,
@@ -1060,11 +1083,39 @@ class TextTool extends BaseDrawing {
                 this.style.fontStyle
             )
             : display.text.split('\n');
-        const lineXs = layoutPlainTextLinePositions(this, scales, lines, display);
-        lines.forEach((line, index) => {
-            const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
+        const layout = layoutPlainTextLines(this, scales, lines, display);
+        const primaryRow = layout.rows[0] || { x: leftPx, textAnchor: 'start' };
+
+        // Draw the text with scaled font size (no transform locking)
+        const textElement = this.group.append('text')
+            .attr('class', 'inline-editable-text')
+            .attr('x', primaryRow.x)
+            .attr('y', y)
+            .attr('fill', this.style.textColor)
+            .attr('font-size', `${scaledFontSize}px`)
+            .attr('text-anchor', primaryRow.textAnchor)
+            .attr('xml:space', 'preserve')
+            .style('pointer-events', 'all')
+            .style('cursor', textAnnotationHoverCursor(this))
+            .style('user-select', 'none');
+        applyDrawingTextElementPresentation(textElement, {
+            text: display.text,
+            fontStyle: this.style.fontStyle,
+            fontFamily: this.style.fontFamily,
+            fontWeight: this.style.fontWeight,
+            x: primaryRow.x,
+            y,
+        });
+
+        if (display.isPlaceholder) {
+            const phBg = this.style.fill && this.style.fill !== 'none' ? this.style.fill : null;
+            textElement.attr('fill', resolveAnnotationTextFill(this.style.textColor, phBg, true));
+        }
+        layout.rows.forEach((row, index) => {
+            const sanitizedLine = row.line.length ? row.line.replace(/ /g, '\u00A0') : '\u00A0';
             textElement.append('tspan')
-                .attr('x', lineXs[index])
+                .attr('x', row.x)
+                .attr('text-anchor', row.textAnchor)
                 .attr('dy', index === 0 ? 0 : lineHeight)
                 .text(sanitizedLine);
         });
@@ -1075,22 +1126,20 @@ class TextTool extends BaseDrawing {
         }
 
         // Get text bounding box for handles
+        let bbox = measurePlainTextLayoutBBox(this, scales, lines, display, y, lineHeight);
         const textNode = textElement.node();
-        let bbox;
         try {
-            bbox = textNode.getBBox();
+            const glyphBbox = textNode.getBBox();
+            if (glyphBbox.width > 0 && glyphBbox.height > 0) {
+                bbox = {
+                    x: Math.min(bbox.x, glyphBbox.x),
+                    y: Math.min(bbox.y, glyphBbox.y),
+                    width: Math.max(bbox.x + bbox.width, glyphBbox.x + glyphBbox.width) - Math.min(bbox.x, glyphBbox.x),
+                    height: Math.max(bbox.y + bbox.height, glyphBbox.y + glyphBbox.height) - Math.min(bbox.y, glyphBbox.y),
+                };
+            }
         } catch (e) {
-            bbox = { x: leftPx, y: y - scaledFontSize, width: 50, height: scaledFontSize * 1.2 };
-        }
-
-        if (this.style.wrapText) {
-            const blockH = Math.max(lineHeight, lines.length * lineHeight);
-            bbox = {
-                x: leftPx,
-                y: y - scaledFontSize,
-                width: maxWrapWidth,
-                height: blockH,
-            };
+            /* use layout bbox */
         }
         
         // Add background rectangle if enabled
@@ -1165,7 +1214,8 @@ class TextTool extends BaseDrawing {
                     self.style.fontStyle
                 )
                 : display.text.split('\n');
-            const lineXs = layoutPlainTextLinePositions(self, liveScales, lineList, display);
+            const layout = layoutPlainTextLines(self, liveScales, lineList, display);
+            const primaryRow = layout.rows[0] || { x: leftPx, textAnchor: 'start' };
 
             const textEl = self.group.select('text.inline-editable-text');
             if (textEl.empty()) return;
@@ -1176,34 +1226,39 @@ class TextTool extends BaseDrawing {
                     ? resolveAnnotationTextFill(self.style.textColor, phBg, true)
                     : self.style.textColor)
                 .attr('font-size', `${fs}px`)
-                .attr('x', leftPx)
-                .attr('text-anchor', 'start');
+                .attr('x', primaryRow.x)
+                .attr('text-anchor', primaryRow.textAnchor);
             applyDrawingTextElementPresentation(textEl, {
                 text: display.text,
                 fontStyle: self.style.fontStyle,
                 fontFamily: self.style.fontFamily,
                 fontWeight: self.style.fontWeight,
-                x: leftPx,
+                x: primaryRow.x,
                 y: py,
             });
             textEl.selectAll('tspan').remove();
-            lineList.forEach((line, index) => {
-                const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
+            layout.rows.forEach((row, index) => {
+                const sanitizedLine = row.line.length ? row.line.replace(/ /g, '\u00A0') : '\u00A0';
                 textEl.append('tspan')
-                    .attr('x', lineXs[index])
+                    .attr('x', row.x)
+                    .attr('text-anchor', row.textAnchor)
                     .attr('dy', index === 0 ? 0 : lh)
                     .text(sanitizedLine);
             });
 
-            let rawBbox;
+            let rawBbox = measurePlainTextLayoutBBox(self, liveScales, lineList, display, py, lh);
             try {
-                rawBbox = textEl.node().getBBox();
+                const glyphBbox = textEl.node().getBBox();
+                if (glyphBbox.width > 0 && glyphBbox.height > 0) {
+                    rawBbox = {
+                        x: Math.min(rawBbox.x, glyphBbox.x),
+                        y: Math.min(rawBbox.y, glyphBbox.y),
+                        width: Math.max(rawBbox.x + rawBbox.width, glyphBbox.x + glyphBbox.width) - Math.min(rawBbox.x, glyphBbox.x),
+                        height: Math.max(rawBbox.y + rawBbox.height, glyphBbox.y + glyphBbox.height) - Math.min(rawBbox.y, glyphBbox.y),
+                    };
+                }
             } catch (e) {
-                rawBbox = { x: leftPx, y: py - fs, width: 50, height: fs * 1.2 };
-            }
-            if (self.style.wrapText) {
-                const blockH = Math.max(lh, lineList.length * lh);
-                rawBbox = { x: leftPx, y: py - fs, width: mw, height: blockH };
+                /* use layout bbox */
             }
 
             const pad = 6;
@@ -5427,7 +5482,9 @@ if (typeof window !== 'undefined') {
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
         plainTextEffectiveHorizAlign,
+        layoutPlainTextLines,
         layoutPlainTextLinePositions,
+        measurePlainTextLayoutBBox,
         ensurePlainTextLeftEdgePoint,
         migratePlainTextHorizAlign,
         syncTextHandlePositions,
