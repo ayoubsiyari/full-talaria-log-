@@ -9323,81 +9323,138 @@ Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 18) 
     return null;
 };
 
-/** Pointer down on a DOM resize grip — starts panel height drag (works above pan hit-zones). */
-Chart.prototype._onSeparatePanelResizeGripPointer = function(ev, handle) {
-    if (ev.button !== 0 && ev.buttons !== 1) return;
-    if (this.drag && this.drag.active) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    if (!handle || typeof this.startSeparatePanelResize !== 'function') return;
+/**
+ * TradingView-style panel separator drag — same document mousemove/mouseup pattern as compare-overlay.
+ * Self-contained so it does not depend on chart.js drag routing or overlay z-index stacking.
+ */
+Chart.prototype._beginSeparatePanelResizeDrag = function(startEvent, handle) {
+    if (!startEvent || !handle) return false;
+    if (typeof startEvent.button === 'number' && startEvent.button !== 0) return false;
+    if (this._separatePanelResizeDragActive) return false;
+    if (typeof this.startSeparatePanelResize !== 'function') return false;
     const xy = typeof this._eventCanvasLocalXY === 'function'
-        ? this._eventCanvasLocalXY(ev)
-        : [0, ev.clientY];
-    if (!this.startSeparatePanelResize(handle, xy[1])) return;
+        ? this._eventCanvasLocalXY(startEvent)
+        : [0, startEvent.clientY];
+    if (!this.startSeparatePanelResize(handle, xy[1])) return false;
+
     if (!this.drag) this.drag = {};
     this.drag.active = true;
     this.drag.type = 'separatePanelResize';
-    this.drag.startX = ev.clientX;
-    this.drag.startY = ev.clientY;
-    this.drag.lastX = ev.clientX;
-    this.drag.lastY = ev.clientY;
-    if (typeof this._lockDragCursor === 'function') this._lockDragCursor('ns-resize');
-    if (typeof this._armSeparatePanelResizePointerTracking === 'function') {
-        this._armSeparatePanelResizePointerTracking(ev);
-    }
+    this.drag.startX = startEvent.clientX;
+    this.drag.startY = startEvent.clientY;
+    this.drag.lastX = startEvent.clientX;
+    this.drag.lastY = startEvent.clientY;
+    if (typeof this._lockDragCursor === 'function') this._lockDragCursor('row-resize');
+
+    const self = this;
+    self._separatePanelResizeDragActive = true;
+
+    const onMove = function(ev) {
+        if (!self._separatePanelResizeDragActive) return;
+        const [, my] = typeof self._eventCanvasLocalXY === 'function'
+            ? self._eventCanvasLocalXY(ev)
+            : [0, ev.clientY];
+        if (typeof self.updateSeparatePanelResize === 'function') {
+            self.updateSeparatePanelResize(my);
+        }
+        self.renderPending = false;
+        if (typeof self.render === 'function') self.render();
+        if (typeof ev.preventDefault === 'function') ev.preventDefault();
+    };
+    const onUp = function() {
+        if (!self._separatePanelResizeDragActive) return;
+        self._separatePanelResizeDragActive = false;
+        document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('mouseup', onUp, true);
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', onUp, true);
+        document.removeEventListener('pointercancel', onUp, true);
+        if (self._separatePanelResizeHandleEl) {
+            self._separatePanelResizeHandleEl.classList.remove('dragging');
+            self._separatePanelResizeHandleEl = null;
+        }
+        if (typeof self.finishSeparatePanelResize === 'function') {
+            self.finishSeparatePanelResize();
+        }
+        if (typeof self._finishSeparatePanelResizeInteraction === 'function') {
+            self._finishSeparatePanelResizeInteraction();
+        }
+        if (self.drag) {
+            self.drag.active = false;
+            self.drag.type = null;
+        }
+        self._separatePanelHoverHandle = null;
+        if (typeof self._releaseDragCursor === 'function') self._releaseDragCursor();
+    };
+
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('mouseup', onUp, true);
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerup', onUp, true);
+    document.addEventListener('pointercancel', onUp, true);
+
+    if (typeof startEvent.preventDefault === 'function') startEvent.preventDefault();
+    if (typeof startEvent.stopPropagation === 'function') startEvent.stopPropagation();
+    if (typeof startEvent.stopImmediatePropagation === 'function') startEvent.stopImmediatePropagation();
+    return true;
 };
 
-/** Full-width transparent grips on panel separator lines (above pan drag-zones). */
-Chart.prototype._syncSeparatePanelResizeGrips = function(overlay, m) {
-    if (!overlay) return;
+/** Visible separator handles on #chartWrapper (z-index 210 — same as compare-overlay panes). */
+Chart.prototype._syncSeparatePanelSeparatorHandles = function(m) {
+    const canvas = this.ctx && this.ctx.canvas;
+    const wrapper = canvas ? canvas.parentElement : null;
+    if (!wrapper) return;
     const handles = this.separatePanelInfo && this.separatePanelInfo.resizeHandles;
     if (!handles || !handles.length) {
-        overlay.querySelectorAll('[data-talaria-sp-resize-grip]').forEach(function(n) { n.remove(); });
+        wrapper.querySelectorAll('.talaria-separate-panel-separator').forEach(function(n) { n.remove(); });
         return;
     }
-    overlay.style.zIndex = '35';
-    if (Number.isFinite(this.w) && Number.isFinite(this.h)) {
-        overlay.style.width = this.w + 'px';
-        overlay.style.height = this.h + 'px';
-    }
     const self = this;
-    const gripH = 16;
+    const hitH = 14;
     const plotLeft = m.l;
     const plotWidth = Math.max(1, this.w - m.l);
     handles.forEach(function(handle, idx) {
         if (!handle || !Number.isFinite(handle.y)) return;
-        let grip = overlay.querySelector('[data-talaria-sp-resize-grip="' + idx + '"]');
-        if (!grip) {
-            grip = document.createElement('div');
-            grip.setAttribute('data-talaria-sp-resize-grip', String(idx));
-            const boundHandle = handle;
+        let bar = wrapper.querySelector('.talaria-separate-panel-separator[data-sp-sep="' + idx + '"]');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'panel-resize-handle horizontal talaria-separate-panel-separator';
+            bar.setAttribute('data-sp-sep', String(idx));
+            bar.title = 'Drag to resize panel';
             const onDown = function(ev) {
-                const h = grip._talariaResizeHandle || boundHandle;
-                self._onSeparatePanelResizeGripPointer(ev, h);
+                if (typeof ev.button === 'number' && ev.button !== 0) return;
+                const h = bar._talariaResizeHandle;
+                if (!h || typeof self._beginSeparatePanelResizeDrag !== 'function') return;
+                self._separatePanelResizeHandleEl = bar;
+                bar.classList.add('dragging');
+                self._beginSeparatePanelResizeDrag(ev, h);
             };
-            grip.addEventListener('pointerdown', onDown);
-            overlay.appendChild(grip);
+            bar.addEventListener('mousedown', onDown);
+            wrapper.appendChild(bar);
         }
-        grip._talariaResizeHandle = handle;
-        const hover = !!(self._separatePanelHoverHandle && Math.abs(self._separatePanelHoverHandle.y - handle.y) <= 2);
-        grip.style.cssText = [
+        bar._talariaResizeHandle = handle;
+        bar.style.cssText = [
             'position:absolute',
             'left:' + plotLeft + 'px',
-            'top:' + (handle.y - gripH / 2) + 'px',
+            'top:' + (handle.y - hitH / 2) + 'px',
             'width:' + plotWidth + 'px',
-            'height:' + gripH + 'px',
-            'z-index:50',
+            'height:' + hitH + 'px',
+            'z-index:210',
             'pointer-events:auto',
-            'cursor:ns-resize',
-            'background:' + (hover ? 'rgba(106,138,255,0.22)' : 'rgba(106,138,255,0.06)'),
+            'cursor:row-resize',
+            'transform:none',
             'touch-action:none'
         ].join(';');
-        grip.title = 'Drag to resize panel';
     });
-    overlay.querySelectorAll('[data-talaria-sp-resize-grip]').forEach(function(g) {
-        const idx = Number(g.getAttribute('data-talaria-sp-resize-grip'));
-        if (!Number.isFinite(idx) || idx >= handles.length) g.remove();
+    wrapper.querySelectorAll('.talaria-separate-panel-separator').forEach(function(bar) {
+        const idx = Number(bar.getAttribute('data-sp-sep'));
+        if (!Number.isFinite(idx) || idx >= handles.length) bar.remove();
     });
+};
+
+/** @deprecated — use _syncSeparatePanelSeparatorHandles */
+Chart.prototype._syncSeparatePanelResizeGrips = function(_overlay, m) {
+    this._syncSeparatePanelSeparatorHandles(m);
 };
 
 Chart.prototype._clampVolumePanelHeight = function(heightPx) {
@@ -9533,6 +9590,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
                 _ol.innerHTML = '';
                 _ol._structureKey = null;
             }
+            _wp.querySelectorAll('.talaria-separate-panel-separator').forEach(function(n) { n.remove(); });
         }
         this.separatePanelInfo = null;
         this._separatePanelResize = null;
@@ -14950,7 +15008,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (typeof this._syncSeparatePanelDragZones === 'function') {
             this._syncSeparatePanelDragZones(overlay, panelSlots, m);
         }
-        if (typeof this._syncSeparatePanelResizeGrips === 'function') {
+        if (typeof this._syncSeparatePanelSeparatorHandles === 'function') {
+            this._syncSeparatePanelSeparatorHandles(m);
+        } else if (typeof this._syncSeparatePanelResizeGrips === 'function') {
             this._syncSeparatePanelResizeGrips(overlay, m);
         }
     };
@@ -15012,9 +15072,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     return typeof self._separatePanelLegendHit === 'function' && self._separatePanelLegendHit(ev.target);
                 };
                 const onPanStart = function(ev) {
-                    if (ev.button !== 0 && ev.buttons !== 1) return;
+                    if (typeof ev.button === 'number' && ev.button !== 0) return;
                     if (self.drag && self.drag.active) return;
-                    if (ev.target && ev.target.closest && ev.target.closest('[data-talaria-sp-resize-grip]')) return;
+                    if (self._separatePanelResizeDragActive) return;
+                    if (ev.target && ev.target.closest && (
+                        ev.target.closest('[data-talaria-sp-resize-grip]') ||
+                        ev.target.closest('.talaria-separate-panel-separator') ||
+                        ev.target.closest('.panel-resize-handle')
+                    )) return;
                     if (typeof self._eventCanvasLocalXY === 'function' && typeof self.getSeparatePanelResizeHandleAt === 'function') {
                         const xy = self._eventCanvasLocalXY(ev);
                         if (self.getSeparatePanelResizeHandleAt(xy[0], xy[1], 24)) return;
@@ -15123,7 +15188,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!overlay) return;
         this._syncSeparatePanelOverlayPositions(overlay, panelSlots);
         const mSync = marginArg || this.margin || { l: 60, r: 60 };
-        if (typeof this._syncSeparatePanelResizeGrips === 'function') {
+        if (typeof this._syncSeparatePanelSeparatorHandles === 'function') {
+            this._syncSeparatePanelSeparatorHandles(mSync);
+        } else if (typeof this._syncSeparatePanelResizeGrips === 'function') {
             this._syncSeparatePanelResizeGrips(overlay, mSync);
         }
         overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
@@ -15456,7 +15523,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         });
         this._syncSeparatePanelDragZones(overlay, panelSlots, m);
-        if (typeof this._syncSeparatePanelResizeGrips === 'function') {
+        if (typeof this._syncSeparatePanelSeparatorHandles === 'function') {
+            this._syncSeparatePanelSeparatorHandles(m);
+        } else if (typeof this._syncSeparatePanelResizeGrips === 'function') {
             this._syncSeparatePanelResizeGrips(overlay, m);
         }
         this._syncSeparatePanelAxisTags(overlay, indicators, panelSlots);
