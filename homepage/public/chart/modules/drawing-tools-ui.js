@@ -2918,6 +2918,20 @@ class DrawingSettingsPanel {
 
 
 
+.tv-timeframe-slider.tv-timeframe-slider-collapsed input[type="range"]:last-of-type {
+    pointer-events: none;
+}
+
+.tv-timeframe-slider.tv-timeframe-slider-collapsed input[type="range"]:last-of-type::-webkit-slider-thumb {
+    opacity: 0;
+}
+
+.tv-timeframe-slider.tv-timeframe-slider-collapsed input[type="range"]:last-of-type::-moz-range-thumb {
+    opacity: 0;
+}
+
+
+
 .tv-timeframe-slider input[type="range"] {
 
     position: absolute;
@@ -18296,6 +18310,8 @@ body.light-mode .template-save-dialog .dialog-title {
                 minInput.value = String(cur.min);
 
                 maxInput.value = String(cur.max);
+
+                slider.classList.toggle('tv-timeframe-slider-collapsed', cur.min === cur.max);
 
                 updateSliderFill(slider, cur.min, cur.max, u.min, u.max);
 
