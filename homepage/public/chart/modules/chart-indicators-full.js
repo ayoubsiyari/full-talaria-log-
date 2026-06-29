@@ -6054,9 +6054,19 @@
             this.scheduleSessionStateSave({ indicators: snapshot });
         }
         if (options.force) {
+            if (snapshot.length === 0) {
+                this._indicatorsClearedAt = Date.now();
+            } else {
+                this._indicatorsClearedAt = null;
+            }
             if (typeof this.queueCriticalSessionStateSave === 'function') {
                 this.queueCriticalSessionStateSave({ indicators: snapshot });
             }
+            if (typeof this._writeTradingSessionLocalBackupThrottled === 'function') {
+                this._writeTradingSessionLocalBackupThrottled({ force: true });
+            }
+        } else if (snapshot.length > 0) {
+            this._indicatorsClearedAt = null;
             if (typeof this._writeTradingSessionLocalBackupThrottled === 'function') {
                 this._writeTradingSessionLocalBackupThrottled({ force: true });
             }
@@ -7157,7 +7167,7 @@
         }
         
         this.updateOHLCIndicators();
-        this.persistIndicators();
+        this.persistIndicators({ force: true });
         if (typeof this.bumpIndicatorRenderVersion === 'function') {
             this.bumpIndicatorRenderVersion();
         }

@@ -1742,6 +1742,9 @@ class FibArcsTool extends BaseDrawing {
             });
         }
 
+        const arcsLabelFontSize = fibVerticalSpanLabelFontSize(scaleFactor);
+        const arcLabelSlots = [];
+
         this.levels.forEach(levelObj => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
             const enabled = typeof levelObj === 'object'
@@ -1785,20 +1788,36 @@ class FibArcsTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             if (showLevelValues) {
-                const lp = fibHorizontalSpanLabelPlacement(this.style, x1 - r, x1 + r);
-                this.group.append('text')
-                    .attr('x', lp.x)
-                    .attr('y', y1)
-                    .attr('text-anchor', lp.anchor)
-                    .attr('fill', color)
-                    .attr('font-size', '10px')
-                    .style('pointer-events', 'none')
-                    .text(BaseDrawing.formatFibLevelLabel(this.style, level, {
-                        price: scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(y1) : null,
-                        priceDecimals,
-                    }));
+                const lp = fibArcsLevelLabelPlacement(this.style, x1, y1, r, isDown, fullCirc);
+                const labelText = BaseDrawing.formatFibLevelLabel(this.style, level, {
+                    price: scales.yScale && typeof scales.yScale.invert === 'function' ? scales.yScale.invert(y1) : null,
+                    priceDecimals,
+                });
+                arcLabelSlots.push({
+                    level,
+                    color,
+                    text: labelText,
+                    x: lp.x,
+                    y: lp.y,
+                    anchor: lp.anchor || 'middle',
+                    dominantBaseline: lp.dominantBaseline || null,
+                });
             }
         });
+
+        if (showLevelValues && arcLabelSlots.length) {
+            resolveFibArcLabelCollisions(arcLabelSlots, this.group, arcsLabelFontSize, '700').forEach((slot) => {
+                const textEl = this.group.append('text')
+                    .attr('class', 'fib-arcs-label')
+                    .attr('data-fib-arcs-level', slot.level)
+                    .attr('x', slot.x)
+                    .attr('y', slot.y)
+                    .attr('text-anchor', slot.anchor)
+                    .text(slot.text);
+                if (slot.dominantBaseline) textEl.attr('dominant-baseline', slot.dominantBaseline);
+                applyFibSpanLabelTextStyle(textEl, slot.color, arcsLabelFontSize);
+            });
+        }
 
         if (this.style.trendLineEnabled !== false) {
             const tCol = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;

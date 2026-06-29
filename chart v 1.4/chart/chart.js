@@ -7685,19 +7685,24 @@ class Chart {
         const server = state && Array.isArray(state.indicators) ? state.indicators : [];
         const backupHasKey = backupSnap && Object.prototype.hasOwnProperty.call(backupSnap, 'indicators');
         const backup = backupSnap && Array.isArray(backupSnap.indicators) ? backupSnap.indicators : [];
+        const backupClearedAt = Number(backupSnap && backupSnap.indicatorsClearedAt) || 0;
 
-        // User deleted all indicators — explicit empty list must win over stale copies.
-        if (backupHasKey && backup.length === 0) return [];
-        if (serverHasKey && server.length === 0) return [];
+        // User deleted all indicators — local backup records the clear even if server PATCH lagged.
+        if (backupHasKey && backup.length === 0 && backupClearedAt > 0) return [];
+        if (backupHasKey && backup.length === 0 && serverHasKey && server.length === 0) return [];
 
-        // Legacy snapshots without an indicators key — fall back to whichever side has data.
-        if (!backupHasKey && backup.length === 0) return server;
-        if (!serverHasKey && server.length === 0) return backup;
+        // Non-empty list wins — restores added indicators (including after a prior clear).
+        if (backup.length > 0) {
+            if (server.length > 0) {
+                if (this._shouldPreferLocalBackupRuntime(sessionId, backupSnap)) return backup;
+                return server;
+            }
+            return backup;
+        }
+        if (server.length > 0) return server;
 
-        if (backup.length === 0) return server;
-        if (server.length === 0) return backup;
-        if (this._shouldPreferLocalBackupRuntime(sessionId, backupSnap)) return backup;
-        return server;
+        if (backupHasKey || serverHasKey) return [];
+        return [];
     }
 
     _queuePersistedIndicatorsRestore(list) {
@@ -7824,6 +7829,9 @@ class Chart {
             }
             const indicatorSnap = this._snapshotIndicatorsForSessionBackup();
             payload.indicators = Array.isArray(indicatorSnap) ? indicatorSnap : [];
+            if (payload.indicators.length === 0 && this._indicatorsClearedAt) {
+                payload.indicatorsClearedAt = this._indicatorsClearedAt;
+            }
             // Drawings are persisted per-symbol via chart_drawings API + chart_drawings_* cache keys.
             // Omit from session backup blob to avoid localStorage quota exhaustion.
             userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));

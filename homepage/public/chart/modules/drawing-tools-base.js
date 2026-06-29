@@ -63,6 +63,57 @@ function fibHorizontalSpanLabelPlacement(style, spanMinX, spanMaxX, pad = 5) {
     return { x: maxX + pad, anchor: 'start' };
 }
 
+/** Fib Arcs: place each label on the arc bulge (semi) or a cardinal point (full circle). */
+function fibArcsLevelLabelPlacement(style, cx, cy, r, isDown, fullCircle) {
+    const pad = 5;
+    if (!fullCircle) {
+        return {
+            x: cx,
+            y: isDown ? cy - r - pad : cy + r + pad,
+            anchor: 'middle',
+            dominantBaseline: isDown ? 'auto' : 'hanging',
+        };
+    }
+    const pos = normalizeFibLevelsLabelPosition(style);
+    if (pos === 'left') {
+        return { x: cx - r - pad, y: cy, anchor: 'end', dominantBaseline: 'middle' };
+    }
+    if (pos === 'center') {
+        return { x: cx, y: cy - r - pad, anchor: 'middle', dominantBaseline: 'auto' };
+    }
+    return { x: cx + r + pad, y: cy, anchor: 'start', dominantBaseline: 'middle' };
+}
+
+/** Nudge Fib Arcs labels apart when radii are close (common with Value and Percent text). */
+function resolveFibArcLabelCollisions(slots, group, fontSize, fontWeight = '700') {
+    if (!Array.isArray(slots) || !slots.length) return [];
+    const gap = Math.max(2, fontSize * 0.25);
+    const measured = slots.map((slot) => ({
+        ...slot,
+        block: measureFibLabelTextBlock(group, slot.text, fontSize, fontWeight),
+    }));
+    const sameRow = measured.length > 1
+        && measured.every((s) => Math.abs(s.y - measured[0].y) < fontSize * 0.75);
+    if (sameRow) {
+        measured.sort((a, b) => a.x - b.x);
+        for (let i = 1; i < measured.length; i++) {
+            const prev = measured[i - 1];
+            const cur = measured[i];
+            const minGap = (prev.block.width + cur.block.width) / 2 + gap;
+            if (cur.x - prev.x < minGap) cur.x = prev.x + minGap;
+        }
+        return measured;
+    }
+    measured.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < measured.length; i++) {
+        const prev = measured[i - 1];
+        const cur = measured[i];
+        const minGap = (prev.block.height + cur.block.height) / 2 + gap;
+        if (cur.y - prev.y < minGap) cur.y = prev.y + minGap;
+    }
+    return measured;
+}
+
 function measureFibLabelTextWidth(group, text, fontSize = 11, fontWeight = '600') {
     if (!group || text == null || `${text}` === '') return 0;
     const temp = group.append('text')
