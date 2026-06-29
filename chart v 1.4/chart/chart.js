@@ -5226,6 +5226,14 @@ class Chart {
         if (this._tfIndicatorRefreshScheduled) return;
         this._tfIndicatorRefreshScheduled = true;
 
+        this._indCalcSnapshot = null;
+        if (typeof this._invalidateIndicatorLayerCache === 'function') {
+            this._invalidateIndicatorLayerCache();
+        }
+        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+            this.bumpIndicatorRenderVersion();
+        }
+
         const attempt = (retriesLeft) => {
             requestAnimationFrame(() => {
                 const dataReady = Array.isArray(this.data) && this.data.length > 0;
@@ -5240,19 +5248,14 @@ class Chart {
 
                 this._tfIndicatorRefreshScheduled = false;
                 try {
-                    if (typeof this.scheduleIndicatorRecalc === 'function') {
-                        this.scheduleIndicatorRecalc('timeframe-switch', { force: true, immediate: true });
-                    } else if (typeof this.recalculateIndicatorsAsync === 'function') {
-                        this.recalculateIndicatorsAsync();
-                    } else {
-                        this.recalculateIndicators();
-                        if (typeof this.render === 'function') this.render();
-                    }
+                    // TF switch: one synchronous pass — covers worker + ICT/session types reliably.
+                    this.recalculateIndicators();
+                    if (typeof this.render === 'function') this.render();
                 } catch (_) { /* ignore */ }
             });
         };
 
-        attempt(3);
+        attempt(48);
     }
 
     _getTimeframesToPrefetch(currentTf) {
@@ -5369,7 +5372,6 @@ class Chart {
         // Keep the previous visible window on the new TF (falls back to latest
         // when the captured center isn't in the cached data).
         this._restoreOrJumpAfterTfSwitch();
-        this._deferRecalculateIndicators();
         this._endTimeframeSwitching();
         this._fireChartDataLoaded();
         return true;
@@ -5404,7 +5406,6 @@ class Chart {
             });
             return true;
         } else {
-            this._deferRecalculateIndicators();
             this.resize();
             this._restoreOrJumpAfterTfSwitch();
             this._fireChartDataLoaded();
@@ -18101,7 +18102,6 @@ class Chart {
         this._logTfSwitch('local-resample', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
-        this._deferRecalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
@@ -18126,6 +18126,18 @@ class Chart {
     _commitTimeframeChange(newTimeframe) {
         if (!newTimeframe) return;
         this.currentTimeframe = newTimeframe;
+        if (typeof this.bumpDataVersion === 'function') {
+            this.bumpDataVersion();
+        } else {
+            this.dataVersion = (this.dataVersion ?? 0) + 1;
+        }
+        this._indCalcSnapshot = null;
+        if (typeof this._invalidateIndicatorLayerCache === 'function') {
+            this._invalidateIndicatorLayerCache();
+        }
+        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+            this.bumpIndicatorRenderVersion();
+        }
         if (this.isBacktestMode) {
             this._persistBacktestTimeframeChoice(newTimeframe);
         }
@@ -18501,7 +18513,6 @@ class Chart {
                     if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                     this.resize();
                     this._restoreOrJumpAfterTfSwitch();
-                    this._deferRecalculateIndicators();
                     this._endTimeframeSwitching();
                     this.render();
                     if (typeof this.dispatchScrollSync === 'function') {
@@ -18549,7 +18560,6 @@ class Chart {
             this._commitTimeframeChange(timeframe);
             this._nativeRawFetchTf = timeframe;
             this._ingestSmartWindowResult(result, { skipFitToView: true, skipIndicators: true });
-            this._deferRecalculateIndicators();
 
             // Immediately put the chart into a renderable state.
             // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`

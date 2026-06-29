@@ -7330,14 +7330,16 @@
 
         // Run sync fallback for skipped indicators immediately
         var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'];
-        chart.indicators.active.forEach(function(ind) {
-            if (syncOnlyTypes.indexOf(ind.type) < 0) return;
-            try {
-                if (!chart.indicators.data) chart.indicators.data = {};
-                var tempRecalc = chart._syncRecalcSingle(ind);
-                if (tempRecalc !== undefined) chart.indicators.data[ind.id] = tempRecalc;
-            } catch (_) {}
+        var needsSyncOnly = chart.indicators.active.some(function(ind) {
+            return syncOnlyTypes.indexOf(String(ind.type || '').toLowerCase()) >= 0;
         });
+        if (needsSyncOnly) {
+            try {
+                chart._recalcOnlyTypes = syncOnlyTypes;
+                chart.recalculateIndicators();
+            } catch (_) {}
+            chart._recalcOnlyTypes = null;
+        }
 
         if (Object.keys(indicators).length === 0) {
             // All indicators were sync-only
@@ -7360,7 +7362,7 @@
                     barsPacked: packed,
                     indicators: indicators
                 }
-            }, packed ? [packed.buffer] : []);
+            });
         }).then(function(results) {
             if (typeof chart._applyIndicatorWorkerResults === 'function') {
                 chart._applyIndicatorWorkerResults(results, mySeq);
@@ -7412,6 +7414,16 @@
         }
     };
 
+    Chart.prototype._markIndicatorRecalcComplete = function() {
+        if (!Array.isArray(this.data)) return;
+        this._indCalcSnapshot = {
+            barCount: this.data.length,
+            dataVersion: this.dataVersion != null ? this.dataVersion : 0,
+            paramsHash: this._indicatorParamsHash(),
+            timeframe: String(this.currentTimeframe || '')
+        };
+    };
+
     Chart.prototype.scheduleIndicatorRecalc = function(reason, opts) {
         opts = opts || {};
         if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
@@ -7420,12 +7432,14 @@
         const barCount = this.data.length;
         const dataVersion = this.dataVersion != null ? this.dataVersion : 0;
         const paramsHash = this._indicatorParamsHash();
+        const timeframe = String(this.currentTimeframe || '');
         const snap = this._indCalcSnapshot;
 
         if (!opts.force && snap
             && snap.barCount === barCount
             && snap.dataVersion === dataVersion
-            && snap.paramsHash === paramsHash) {
+            && snap.paramsHash === paramsHash
+            && snap.timeframe === timeframe) {
             return;
         }
 
@@ -7470,12 +7484,6 @@
         } else if (typeof this.recalculateIndicators === 'function') {
             this.recalculateIndicators();
         }
-
-        this._indCalcSnapshot = {
-            barCount: barCount,
-            dataVersion: this.dataVersion != null ? this.dataVersion : 0,
-            paramsHash: this._indicatorParamsHash()
-        };
     };
 
     Chart.prototype._applyIndicatorWorkerResults = function(results, mySeq) {
@@ -7483,12 +7491,6 @@
         if (chart._indicatorWorkerSeq !== mySeq) return;
         if (!chart.indicators) chart.indicators = {};
         if (!chart.indicators.data) chart.indicators.data = {};
-
-        if (typeof chart._isInteractionFastRender === 'function' && chart._isInteractionFastRender()) {
-            chart._indicatorPendingResults = { results: results, seq: mySeq };
-            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
-            return;
-        }
 
         Object.assign(chart.indicators.data, results);
         chart.indicators.active.forEach(function(ind) {
@@ -7506,6 +7508,9 @@
                 }
             }
         });
+        if (typeof chart._markIndicatorRecalcComplete === 'function') {
+            chart._markIndicatorRecalcComplete();
+        }
         chart.bumpIndicatorRenderVersion();
         if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
     };
@@ -7548,6 +7553,7 @@
         const key = [
             this.dataVersion != null ? this.dataVersion : 0,
             this._indicatorRenderVersion || 0,
+            String(this.currentTimeframe || ''),
             this.w, this.h,
             this.candleWidth, this.offsetX, this.priceZoom, this.priceOffset,
             this.visibleStartIndex, this.visibleEndIndex,
@@ -7680,9 +7686,12 @@
         if (!this.indicators.data || typeof this.indicators.data !== 'object') {
             this.indicators.data = {};
         }
+
+        var onlyTypes = this._recalcOnlyTypes;
         
         this.indicators.active.forEach(function(indicator) {
             indicator.type = String(indicator.type || '').toLowerCase();
+            if (onlyTypes && onlyTypes.indexOf(indicator.type) < 0) return;
             switch (indicator.type) {
                 case 'sma':
                     this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
@@ -7973,6 +7982,13 @@
                     break;
             }
         }, this);
+        this._recalcOnlyTypes = null;
+        if (typeof this._markIndicatorRecalcComplete === 'function') {
+            this._markIndicatorRecalcComplete();
+        }
+        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+            this.bumpIndicatorRenderVersion();
+        }
     };
     
     Chart.prototype.setupVolumeIndicatorLine = function(indicator) {
