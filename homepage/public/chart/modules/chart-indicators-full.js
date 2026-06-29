@@ -6007,7 +6007,8 @@
         return indicator;
     };
 
-    Chart.prototype.persistIndicators = function() {
+    Chart.prototype.persistIndicators = function(options) {
+        options = options || {};
         if (!this.indicators || !Array.isArray(this.indicators.active)) return;
         const TC = global.TalariaCustomIndicators;
         const maxScript = TC && TC.MAX_SCRIPT_CHARS ? TC.MAX_SCRIPT_CHARS : 48000;
@@ -6036,15 +6037,30 @@
             }
             return base;
         });
-        if (snapshot.length === 0
-            && this._sessionIndicatorsRestoreGuardUntil
-            && Date.now() < this._sessionIndicatorsRestoreGuardUntil) {
-            return;
+        // During session restore, an empty in-memory list must not wipe saved indicators
+        // before _applyPersistedIndicators runs — unless the user explicitly cleared them.
+        if (!options.force && snapshot.length === 0) {
+            if (this._pendingIndicatorsState
+                && Array.isArray(this._pendingIndicatorsState)
+                && this._pendingIndicatorsState.length > 0) {
+                return;
+            }
+            if (this._sessionIndicatorsRestoreGuardUntil
+                && Date.now() < this._sessionIndicatorsRestoreGuardUntil) {
+                return;
+            }
         }
         if (typeof this.scheduleSessionStateSave === 'function') {
             this.scheduleSessionStateSave({ indicators: snapshot });
         }
-        if (typeof this._writeTradingSessionLocalBackupThrottled === 'function') {
+        if (options.force) {
+            if (typeof this.queueCriticalSessionStateSave === 'function') {
+                this.queueCriticalSessionStateSave({ indicators: snapshot });
+            }
+            if (typeof this._writeTradingSessionLocalBackupThrottled === 'function') {
+                this._writeTradingSessionLocalBackupThrottled({ force: true });
+            }
+        } else if (typeof this._writeTradingSessionLocalBackupThrottled === 'function') {
             this._writeTradingSessionLocalBackupThrottled();
         }
     };
@@ -8108,10 +8124,6 @@
     };
     
     Chart.prototype.removeIndicator = function(id) {
-        if (this._sessionIndicatorsRestoreGuardUntil
-            && Date.now() < this._sessionIndicatorsRestoreGuardUntil) {
-            return;
-        }
         const index = this.indicators.active.findIndex(function(ind) {
             return ind.id === id;
         });
@@ -8137,7 +8149,10 @@
             }
             
             this.updateOHLCIndicators();
-            this.persistIndicators();
+            this.persistIndicators({ force: true });
+            if (typeof this.bumpIndicatorRenderVersion === 'function') {
+                this.bumpIndicatorRenderVersion();
+            }
             emitIndicatorsChanged(this, 'remove', indicator);
         }
     };
@@ -8177,7 +8192,10 @@
             this.updateOHLCIndicators();
         }
 
-        this.persistIndicators();
+        this.persistIndicators({ force: true });
+        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+            this.bumpIndicatorRenderVersion();
+        }
         emitIndicatorsChanged(this, 'clear', null);
         return true;
     };
@@ -10275,12 +10293,6 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
                 if (typeof this.showNotification === "function") {
                     this.showNotification("Indicator removed ✓");
                 }
-                try {
-                    this.v9DeleteIndicatorsMode = false;
-                    if (typeof window !== "undefined") {
-                        window.dispatchEvent(new CustomEvent("v9DeleteToolDismissed"));
-                    }
-                } catch (_) {}
                 return true;
             }
             if (typeof window.createIndicatorSettingsPanel === "function") {

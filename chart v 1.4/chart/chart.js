@@ -7645,8 +7645,11 @@ class Chart {
 
     /** Compact indicator list for session backup + server PATCH (mirrors persistIndicators). */
     _snapshotIndicatorsForSessionBackup() {
-        if (!this.indicators || !Array.isArray(this.indicators.active) || !this.indicators.active.length) {
-            return null;
+        if (!this.indicators || !Array.isArray(this.indicators.active)) {
+            return [];
+        }
+        if (!this.indicators.active.length) {
+            return [];
         }
         const TC = typeof window !== 'undefined' && window.TalariaCustomIndicators;
         const maxScript = TC && TC.MAX_SCRIPT_CHARS ? TC.MAX_SCRIPT_CHARS : 48000;
@@ -7679,7 +7682,10 @@ class Chart {
 
     _resolveIndicatorsForSessionRestore(sessionId, state, backupSnap) {
         const server = state && Array.isArray(state.indicators) ? state.indicators : [];
+        const backupHasKey = backupSnap && Object.prototype.hasOwnProperty.call(backupSnap, 'indicators');
         const backup = backupSnap && Array.isArray(backupSnap.indicators) ? backupSnap.indicators : [];
+        // Explicit empty array in local backup = user cleared indicators; do not resurrect from server.
+        if (backupHasKey && backup.length === 0) return [];
         if (backup.length === 0) return server;
         if (server.length === 0) return backup;
         if (this._shouldPreferLocalBackupRuntime(sessionId, backupSnap)) return backup;
@@ -7809,9 +7815,7 @@ class Chart {
                 };
             }
             const indicatorSnap = this._snapshotIndicatorsForSessionBackup();
-            if (indicatorSnap && indicatorSnap.length > 0) {
-                payload.indicators = indicatorSnap;
-            }
+            payload.indicators = Array.isArray(indicatorSnap) ? indicatorSnap : [];
             // Drawings are persisted per-symbol via chart_drawings API + chart_drawings_* cache keys.
             // Omit from session backup blob to avoid localStorage quota exhaustion.
             userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
@@ -7950,8 +7954,10 @@ class Chart {
 
         // Drawings: chart_drawings API + dm.loadDrawings() — not session backup blob.
 
-        if (Array.isArray(backup.indicators) && backup.indicators.length > 0) {
-            this._queuePersistedIndicatorsRestore(backup.indicators);
+        if (Array.isArray(backup.indicators)) {
+            if (backup.indicators.length > 0) {
+                this._queuePersistedIndicatorsRestore(backup.indicators);
+            }
         }
 
         if (typeof this.showNotification === 'function') {

@@ -5702,10 +5702,14 @@ class DrawingToolsManager {
                 this.currentTool === 'fib-arcs'
                 || this.currentTool === 'fib-wedge'
             );
+            const v9ArmedMatchesTool = typeof window !== 'undefined'
+                && window.__v9ArmedDrawStyle
+                && window.__v9ArmedDrawStyle.tool === this.currentTool;
             const useFibDefaultPreview = this._isFibLikeDrawingType(this.currentTool)
                 && !gannUsesArmedPreview
                 && !fibArcsWedgeUsesArmedPreview
-                && this.currentTool !== 'pitchfork';
+                && this.currentTool !== 'pitchfork'
+                && !v9ArmedMatchesTool;
             let styleOverrides;
             if (useFibDefaultPreview) {
                 styleOverrides = { opacity: 0.85 };
@@ -5731,7 +5735,7 @@ class DrawingToolsManager {
             if (!useFibDefaultPreview) {
                 this.applySavedStyle(tempDrawing);
             }
-            if (gannUsesArmedPreview || fibArcsWedgeUsesArmedPreview) {
+            if (gannUsesArmedPreview || fibArcsWedgeUsesArmedPreview || v9ArmedMatchesTool) {
                 this._applyArmedStyleExtras(tempDrawing);
             }
             
@@ -11533,18 +11537,22 @@ class DrawingToolsManager {
      */
     _finishEraserOneShotDelete() {
         if (!this.eraserMode) return;
-        this.setEraserMode(false);
-        try {
-            const chart = this.chart;
-            if (chart && typeof chart.setCursorType === 'function') {
-                chart.setCursorType('cross', true);
-            }
-        } catch (_) {}
-        try {
-            if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('v9DeleteToolDismissed'));
-            }
-        } catch (_) {}
+        const dm = this;
+        requestAnimationFrame(() => {
+            if (!dm.eraserMode) return;
+            dm.setEraserMode(false);
+            try {
+                const chart = dm.chart;
+                if (chart && typeof chart.setCursorType === 'function') {
+                    chart.setCursorType('cross', true);
+                }
+            } catch (_) {}
+            try {
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('v9DeleteToolDismissed'));
+                }
+            } catch (_) {}
+        });
     }
 
     /**

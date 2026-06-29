@@ -2766,24 +2766,41 @@ function v9BuildTxtStyleLegacyPatch(txt, legacyTool) {
 }
 
 /** Keeps drawing-tools-manager preview/finalize in sync with the armed V9 toolbar. */
-/** Repaint in-progress brush/highlighter stroke when armed color/width changes mid-drag. */
-function v9RefreshInProgressFreehandPreview() {
+/** Repaint in-progress placement preview when armed color/style changes mid-draw. */
+function v9IsDrawingManagerPlacing(dm) {
+  return !!(
+    dm &&
+    dm.drawingState &&
+    dm.drawingState.isDrawing &&
+    dm.currentTool
+  );
+}
+
+function v9AnyDrawingManagerPlacing() {
+  try {
+    return enumerateV9DrawingManagersFromWindow().some(v9IsDrawingManagerPlacing);
+  } catch (_) {
+    return false;
+  }
+}
+
+function v9RefreshInProgressPlacementPreview() {
   try {
     enumerateV9DrawingManagersActiveFirst().forEach((dm) => {
-      if (
-        dm.isDrawingPath &&
-        dm.drawingState &&
-        dm.drawingState.isDrawing &&
-        (dm.currentTool === "brush" || dm.currentTool === "highlighter") &&
-        typeof dm.updateTempDrawing === "function"
-      ) {
+      if (!v9IsDrawingManagerPlacing(dm)) return;
+      if (typeof dm.updateTempDrawing === "function") {
         dm.updateTempDrawing();
-        if (dm.chart && typeof dm.chart.scheduleRender === "function") {
-          dm.chart.scheduleRender();
-        }
+      }
+      if (dm.chart && typeof dm.chart.scheduleRender === "function") {
+        dm.chart.scheduleRender();
       }
     });
   } catch (_) {}
+}
+
+/** Repaint in-progress brush/highlighter stroke when armed color/width changes mid-drag. */
+function v9RefreshInProgressFreehandPreview() {
+  v9RefreshInProgressPlacementPreview();
 }
 
 function v9PushArmedDrawStyle(legacyTool, tlStyle, txtStyleArg) {
@@ -2812,9 +2829,7 @@ function v9PushArmedDrawStyle(legacyTool, tlStyle, txtStyleArg) {
     tlStyle,
     updatedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
   };
-  if (legacyTool === "brush" || legacyTool === "highlighter") {
-    v9RefreshInProgressFreehandPreview();
-  }
+  v9RefreshInProgressPlacementPreview();
 }
 
 /** Returns the number of decimal places used by the chart's price axis. */
@@ -5287,6 +5302,10 @@ function v9FlushTlStyleToChartTargets(tlStyle, opts = {}) {
   const editingRefDrawing = opts.editingRefDrawing ?? null;
   const resolveLegacyTool = opts.resolveLegacyTool;
   const colorOnly = !!opts.colorOnly;
+  // Mid-placement color picks must update the temp preview only — not mutate finished drawings.
+  if (colorOnly && !editingRefDrawing && v9AnyDrawingManagerPlacing()) {
+    return;
+  }
   const editSess = editingRefDrawing ? { drawing: editingRefDrawing } : null;
   const legacyTool = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
   const chartsToRender = new Set();
@@ -17365,10 +17384,13 @@ const TalariaV8bLive = () => {
     const next =
       typeof updater === "function" ? updater(tlStyleLiveRef.current) : updater;
     tlStyleLiveRef.current = next;
-    const syncFreehandArmedAndPreview = () => {
+    const syncArmedStyleAndPlacementPreview = () => {
       const legacy =
         (flushOpts.resolveLegacyTool || cpFlushTlOpts().resolveLegacyTool)?.() ?? null;
-      if (v9IsFreehandLegacyTool(legacy)) {
+      if (!legacy) return;
+      if (v9IsTextLegacyDrawingType(legacy)) {
+        v9PushArmedDrawStyle(legacy, null, txtStyleLiveRef.current);
+      } else {
         v9PushArmedDrawStyle(legacy, tlStyleLiveRef.current, null);
       }
     };
@@ -17376,13 +17398,13 @@ const TalariaV8bLive = () => {
       suppressForwardBridge.current = true;
       setTlStyle(next);
       const runFlush = () => {
+        syncArmedStyleAndPlacementPreview();
         v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
           ...cpFlushTlOpts({ colorOnly: true, pickerKey }),
           ...flushOpts,
           colorOnly: true,
           pickerKey,
         });
-        syncFreehandArmedAndPreview();
       };
       if (dragging) {
         v9ScheduleCpChartFlush(runFlush);
@@ -17397,7 +17419,7 @@ const TalariaV8bLive = () => {
     });
     tlStyleLiveRef.current = next;
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts(flushOpts));
-    syncFreehandArmedAndPreview();
+    syncArmedStyleAndPlacementPreview();
   };
   const cpApplyVwapStyle = (updater) => {
     const dragging = !!cpPickerDraggingRef.current;
@@ -18106,13 +18128,12 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (editingDrawingRef.current) return;
     if (tool === "trash") return;
-    if (groupSelected.trash) {
-      setGroupSelected((p) => {
-        const next = { ...p };
-        delete next.trash;
-        return v9SanitizeGroupSelected(next);
-      });
-    }
+    if (!groupSelected.trash) return;
+    setGroupSelected((p) => {
+      const next = { ...p };
+      delete next.trash;
+      return v9SanitizeGroupSelected(next);
+    });
     applyV9DeleteMode(null);
   }, [tool, groupSelected?.trash?.icon, groupSelected?.trash?.label, applyV9DeleteMode]);
 
@@ -20869,7 +20890,15 @@ const TalariaV8bLive = () => {
       return;
     }
     // Skip the pass triggered by reading a selected drawing's style into tlStyle.
-    if (suppressForwardBridge.current) { suppressForwardBridge.current = false; return; }
+    if (suppressForwardBridge.current) {
+      suppressForwardBridge.current = false;
+      v9PushArmedDrawStyle(
+        legacyTool,
+        armedTxt ? null : (legacyTool ? tlStyle : null),
+        armedTxt ? txtStyle : null,
+      );
+      return;
+    }
     // We continue even when legacyTool is null so that edits made while a
     // drawing is selected (with the cursor / crosshair active in the left
     // rail) still propagate to the selected drawing.
@@ -30432,35 +30461,10 @@ const TalariaV8bLive = () => {
                         return;
                       }
                       const action =
-                        item.icon === "trash" ? "both" : null;
-                      if (item.icon === "trashDraw") {
-                        setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, trash: item }));
-                        v9UserExplicitToolRef.current = true;
-                        setTool("trash");
-                        const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
-                        if (grid && typeof grid.runCommandIframes === "function") {
-                          void grid.runCommandIframes("setChartCursorType", { cursorType: "eraser", skipSync: false }).catch(() => {});
-                        }
-                        v9ForEachChartInstance((ch) => {
-                          if (ch && typeof ch.setCursorType === "function") ch.setCursorType("eraser");
-                        });
-                        setTlBarSelected(false);
-                        setTlBarSelectedType(null);
-                        closeDropdown();
-                        return;
-                      }
-                      if (item.icon === "trashInd") {
-                        setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, trash: item }));
-                        v9UserExplicitToolRef.current = true;
-                        setTool("trash");
-                        v9ForEachChartInstance((ch) => {
-                          if (ch) ch.v9DeleteIndicatorsMode = true;
-                        });
-                        setTlBarSelected(false);
-                        setTlBarSelectedType(null);
-                        closeDropdown();
-                        return;
-                      }
+                        item.icon === "trashDraw" ? "drawings"
+                        : item.icon === "trashInd" ? "indicators"
+                        : item.icon === "trash" ? "both"
+                        : null;
                       if (action) v9ExecuteBulkDelete(action);
                       setGroupSelected((p) => {
                         const next = { ...p };
