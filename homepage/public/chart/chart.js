@@ -20846,7 +20846,8 @@ class Chart {
 
     /** Start panel-height drag from any DOM layer (capture phase — above V9 axis zones). */
     _tryStartSeparatePanelResizeFromEvent(e) {
-        if (!this.canvas || this.isPanel || !e || e.button !== 0) return false;
+        if (!this.canvas || this.isPanel || !e) return false;
+        if (e.button !== 0 && e.buttons !== 1) return false;
         if (this.drag && this.drag.active) return false;
         const rect = this._pointerLayoutRect();
         if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
@@ -20854,7 +20855,7 @@ class Chart {
         }
         if (typeof this.getSeparatePanelResizeHandleAt !== 'function') return false;
         const [mx, my] = this._eventCanvasLocalXY(e);
-        const handle = this.getSeparatePanelResizeHandleAt(mx, my, 20);
+        const handle = this.getSeparatePanelResizeHandleAt(mx, my, 24);
         if (!handle || typeof this.startSeparatePanelResize !== 'function') return false;
         if (!this.startSeparatePanelResize(handle, my)) return false;
         if (!this.drag) this.drag = {};
@@ -20865,7 +20866,53 @@ class Chart {
         this.drag.lastX = e.clientX;
         this.drag.lastY = e.clientY;
         this._lockDragCursor('ns-resize');
+        this._armSeparatePanelResizePointerTracking(e);
         return true;
+    }
+
+    /** Window-level pointer tracking so resize survives DOM layer changes mid-drag. */
+    _armSeparatePanelResizePointerTracking(startEvent) {
+        if (this._separatePanelResizePointerCleanup) {
+            this._separatePanelResizePointerCleanup();
+        }
+        const self = this;
+        const pointerId = startEvent && startEvent.pointerId;
+        const onMove = function(ev) {
+            if (!self._isSeparatePanelResizing()) return;
+            if (pointerId != null && ev.pointerId != null && ev.pointerId !== pointerId) return;
+            const [, resizeMy] = self._eventCanvasLocalXY(ev);
+            if (typeof self.updateSeparatePanelResize === 'function') {
+                self.updateSeparatePanelResize(resizeMy);
+            }
+            self._scheduleSeparatePanelResizeRender();
+            self.drag.lastX = ev.clientX;
+            self.drag.lastY = ev.clientY;
+            if (typeof ev.preventDefault === 'function') ev.preventDefault();
+        };
+        const onEnd = function(ev) {
+            if (pointerId != null && ev.pointerId != null && ev.pointerId !== pointerId) return;
+            if (self._separatePanelResizePointerCleanup) self._separatePanelResizePointerCleanup();
+            if (!self.drag || !self.drag.active || self.drag.type !== 'separatePanelResize') return;
+            if (typeof self.finishSeparatePanelResize === 'function') {
+                self.finishSeparatePanelResize();
+            }
+            self._finishSeparatePanelResizeInteraction();
+            self.drag.active = false;
+            self.drag.type = null;
+            self._releaseDragCursor();
+        };
+        window.addEventListener('pointermove', onMove, true);
+        window.addEventListener('pointerup', onEnd, true);
+        window.addEventListener('pointercancel', onEnd, true);
+        this._separatePanelResizePointerCleanup = function() {
+            window.removeEventListener('pointermove', onMove, true);
+            window.removeEventListener('pointerup', onEnd, true);
+            window.removeEventListener('pointercancel', onEnd, true);
+            self._separatePanelResizePointerCleanup = null;
+        };
+        if (pointerId != null && typeof startEvent.target?.setPointerCapture === 'function') {
+            try { startEvent.target.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
+        }
     }
 
     /** Cursor + hover highlight when pointer is over indicator panels (works off-canvas DOM layers). */
@@ -27228,6 +27275,17 @@ class Chart {
             if (typeof this._tryStartSeparatePanelResizeFromEvent === 'function'
                 && this._tryStartSeparatePanelResizeFromEvent(e)) {
                 e.preventDefault();
+                e.stopPropagation();
+            }
+        }, true);
+
+        document.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 && e.buttons !== 1) return;
+            if (tryStartCtrlMarqueeSelect.call(this, e)) return;
+            if (typeof this._tryStartSeparatePanelResizeFromEvent === 'function'
+                && this._tryStartSeparatePanelResizeFromEvent(e)) {
+                e.preventDefault();
+                e.stopPropagation();
             }
         }, true);
 
@@ -27259,7 +27317,7 @@ class Chart {
             // Start separate indicator panel resize when dragging a panel separator.
             // Must run before tool / drawing guards — separator sits in the chart body.
             if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 18);
+                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 24);
                 if (resizeHandle && typeof this.startSeparatePanelResize === 'function' && this.startSeparatePanelResize(resizeHandle, my)) {
                     this.drag.active = true;
                     this.drag.type = 'separatePanelResize';
@@ -27268,7 +27326,11 @@ class Chart {
                     this.drag.lastX = e.clientX;
                     this.drag.lastY = e.clientY;
                     this._lockDragCursor('ns-resize');
+                    if (typeof this._armSeparatePanelResizePointerTracking === 'function') {
+                        this._armSeparatePanelResizePointerTracking(e);
+                    }
                     e.preventDefault();
+                    e.stopPropagation();
                     return;
                 }
             }
@@ -27844,6 +27906,9 @@ class Chart {
             }
             // Persist separate panel sizes once drag ends
             else if (dragType === 'separatePanelResize' && wasDragging) {
+                if (this._separatePanelResizePointerCleanup) {
+                    this._separatePanelResizePointerCleanup();
+                }
                 if (typeof this.finishSeparatePanelResize === 'function') {
                     this.finishSeparatePanelResize();
                 }

@@ -9325,7 +9325,8 @@ Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 18) 
 
 /** Pointer down on a DOM resize grip — starts panel height drag (works above pan hit-zones). */
 Chart.prototype._onSeparatePanelResizeGripPointer = function(ev, handle) {
-    if (ev.button !== 0) return;
+    if (ev.button !== 0 && ev.buttons !== 1) return;
+    if (this.drag && this.drag.active) return;
     ev.preventDefault();
     ev.stopPropagation();
     if (!handle || typeof this.startSeparatePanelResize !== 'function') return;
@@ -9341,8 +9342,8 @@ Chart.prototype._onSeparatePanelResizeGripPointer = function(ev, handle) {
     this.drag.lastX = ev.clientX;
     this.drag.lastY = ev.clientY;
     if (typeof this._lockDragCursor === 'function') this._lockDragCursor('ns-resize');
-    if (ev.target && typeof ev.target.setPointerCapture === 'function' && ev.pointerId != null) {
-        try { ev.target.setPointerCapture(ev.pointerId); } catch (_) {}
+    if (typeof this._armSeparatePanelResizePointerTracking === 'function') {
+        this._armSeparatePanelResizePointerTracking(ev);
     }
 };
 
@@ -9355,6 +9356,10 @@ Chart.prototype._syncSeparatePanelResizeGrips = function(overlay, m) {
         return;
     }
     overlay.style.zIndex = '35';
+    if (Number.isFinite(this.w) && Number.isFinite(this.h)) {
+        overlay.style.width = this.w + 'px';
+        overlay.style.height = this.h + 'px';
+    }
     const self = this;
     const gripH = 16;
     const plotLeft = m.l;
@@ -9370,7 +9375,6 @@ Chart.prototype._syncSeparatePanelResizeGrips = function(overlay, m) {
                 const h = grip._talariaResizeHandle || boundHandle;
                 self._onSeparatePanelResizeGripPointer(ev, h);
             };
-            grip.addEventListener('mousedown', onDown);
             grip.addEventListener('pointerdown', onDown);
             overlay.appendChild(grip);
         }
@@ -14932,6 +14936,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     Chart.prototype._syncSeparatePanelOverlayPositions = function(overlay, panelSlots) {
         if (!overlay || !Array.isArray(panelSlots) || panelSlots.length === 0) return;
         overlay.style.zIndex = '35';
+        if (Number.isFinite(this.w) && Number.isFinite(this.h)) {
+            overlay.style.width = this.w + 'px';
+            overlay.style.height = this.h + 'px';
+        }
         const bars = overlay.querySelectorAll('.talaria-ind-legend-row');
         panelSlots.forEach(function(slot, idx) {
             const bar = bars[idx];
@@ -15004,8 +15012,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     return typeof self._separatePanelLegendHit === 'function' && self._separatePanelLegendHit(ev.target);
                 };
                 const onPanStart = function(ev) {
-                    if (ev.button !== 0) return;
+                    if (ev.button !== 0 && ev.buttons !== 1) return;
+                    if (self.drag && self.drag.active) return;
                     if (ev.target && ev.target.closest && ev.target.closest('[data-talaria-sp-resize-grip]')) return;
+                    if (typeof self._eventCanvasLocalXY === 'function' && typeof self.getSeparatePanelResizeHandleAt === 'function') {
+                        const xy = self._eventCanvasLocalXY(ev);
+                        if (self.getSeparatePanelResizeHandleAt(xy[0], xy[1], 24)) return;
+                    }
                     if (self.tool) return;
                     if (skipLegendHit(ev)) return;
                     ev.preventDefault();
@@ -15301,7 +15314,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.id = 'separatePanelsOverlay';
-            overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:35;';
+            overlay.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:35;';
+            if (Number.isFinite(self.w) && Number.isFinite(self.h)) {
+                overlay.style.width = self.w + 'px';
+                overlay.style.height = self.h + 'px';
+            }
             wrapper.appendChild(overlay);
         }
         overlay.innerHTML = '';
