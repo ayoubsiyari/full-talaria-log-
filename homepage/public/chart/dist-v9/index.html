@@ -1549,6 +1549,9 @@
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
     <script defer src="/chart/modules/drawing-tools-manager.js?v=20260627b75"></script>
+    <!-- Regression smoke gate — ?regression=1 or await ChartRegressionSmoke.run() in console -->
+    <script defer src="/chart/modules/chart-regression-cases.js?v=20260627b75"></script>
+    <script defer src="/chart/modules/chart-regression-smoke.js?v=20260627b75"></script>
     <script defer src="/chart/modules/favorites-manager.js?v=20260627b75"></script>
     <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260627b75"></script>
 
