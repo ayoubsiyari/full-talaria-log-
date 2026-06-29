@@ -15410,38 +15410,73 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         if (!labels.length) return;
 
-        // Stable stack order (indicator list order) — sorting by Y each frame makes nearby
-        // labels swap slots and jump when values cross during replay.
-        labels.sort(function(a, b) { return a.order - b.order; });
-        const minGap = 22;
+        if (!this._overlayLabelAnchorY) this._overlayLabelAnchorY = Object.create(null);
+        if (!this._overlayLabelDisplayY) this._overlayLabelDisplayY = Object.create(null);
+        const anchorMap = this._overlayLabelAnchorY;
+        const displayMap = this._overlayLabelDisplayY;
+        const activeKeys = Object.create(null);
+        const anchorLerp = 0.34;
+        const displayLerp = 0.38;
+        const minGap = 21;
         const topBound = m.t + 10;
         const bottomBound = maxY - 10;
-        let prevStackY = -Infinity;
-        for (let i = 0; i < labels.length; i++) {
-            let targetY = labels[i].y;
-            if (prevStackY !== -Infinity && targetY - prevStackY < minGap) {
-                targetY = prevStackY + minGap;
+
+        // Stable stack order (indicator list order) — never sort by Y (causes slot swaps).
+        labels.sort(function(a, b) { return a.order - b.order; });
+
+        labels.forEach(function(lbl) {
+            if (!lbl.key) return;
+            activeKeys[lbl.key] = true;
+            const rawY = lbl.y;
+            const prevAnchor = anchorMap[lbl.key];
+            lbl.anchorY = Number.isFinite(prevAnchor)
+                ? prevAnchor + (rawY - prevAnchor) * anchorLerp
+                : rawY;
+            anchorMap[lbl.key] = lbl.anchorY;
+        });
+
+        // Push apart in stable order, then shift the whole stack if clamping would collapse labels.
+        const stackYs = labels.map(function(lbl) { return lbl.anchorY; });
+        for (let i = 1; i < stackYs.length; i++) {
+            if (stackYs[i] - stackYs[i - 1] < minGap) {
+                stackYs[i] = stackYs[i - 1] + minGap;
             }
-            targetY = Math.max(topBound, Math.min(bottomBound, targetY));
-            labels[i].y = targetY;
-            prevStackY = targetY;
+        }
+        if (stackYs.length) {
+            if (stackYs[stackYs.length - 1] > bottomBound) {
+                const shiftUp = stackYs[stackYs.length - 1] - bottomBound;
+                for (let i = 0; i < stackYs.length; i++) stackYs[i] -= shiftUp;
+            }
+            if (stackYs[0] < topBound) {
+                const shiftDown = topBound - stackYs[0];
+                for (let i = 0; i < stackYs.length; i++) stackYs[i] += shiftDown;
+            }
+            for (let i = 1; i < stackYs.length; i++) {
+                if (stackYs[i] - stackYs[i - 1] < minGap) {
+                    stackYs[i] = stackYs[i - 1] + minGap;
+                }
+            }
+            for (let i = 0; i < stackYs.length; i++) {
+                stackYs[i] = Math.max(topBound, Math.min(bottomBound, stackYs[i]));
+            }
         }
 
-        const replayPlaying = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
-        if (!this._overlayLabelSmoothY) this._overlayLabelSmoothY = Object.create(null);
-        if (!replayPlaying) this._overlayLabelSmoothY = Object.create(null);
-        if (replayPlaying) {
-            const smoothMap = this._overlayLabelSmoothY;
-            const chart = this;
-            labels.forEach(function(lbl) {
-                if (!lbl.key) return;
-                const prev = smoothMap[lbl.key];
-                if (Number.isFinite(prev)) {
-                    lbl.y = prev + (lbl.y - prev) * 0.42;
-                }
-                smoothMap[lbl.key] = lbl.y;
-            });
-        }
+        labels.forEach(function(lbl, idx) {
+            if (!lbl.key) return;
+            const targetY = stackYs[idx];
+            const prevDisplay = displayMap[lbl.key];
+            lbl.y = Number.isFinite(prevDisplay)
+                ? prevDisplay + (targetY - prevDisplay) * displayLerp
+                : targetY;
+            displayMap[lbl.key] = lbl.y;
+        });
+
+        Object.keys(anchorMap).forEach(function(k) {
+            if (!activeKeys[k]) delete anchorMap[k];
+        });
+        Object.keys(displayMap).forEach(function(k) {
+            if (!activeKeys[k]) delete displayMap[k];
+        });
 
         const ctx = this.ctx;
         const axisLeft = !!this.priceAxisLeft;

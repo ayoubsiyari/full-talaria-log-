@@ -7702,13 +7702,18 @@ const V9_GANN_FAN_VALUE_TO_LABEL = {
   8: "8/1",
 };
 
-function v9GannFanLabelForValue(value) {
+function v9FormatGannFanMultiplierLabel(value) {
   const v = parseFloat(value);
   if (!Number.isFinite(v)) return "";
   for (const [k, lbl] of Object.entries(V9_GANN_FAN_VALUE_TO_LABEL)) {
     if (Math.abs(v - parseFloat(k)) < 0.02) return lbl;
   }
-  return "";
+  const rounded = Math.round(v * 1000) / 1000;
+  return String(rounded).replace(/\.?0+$/, "") || "0";
+}
+
+function v9GannFanLabelForValue(value) {
+  return v9FormatGannFanMultiplierLabel(value);
 }
 
 const V9_GANN_DEFAULT_BG_OPACITY = 0.12;
@@ -7935,17 +7940,14 @@ function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
   }
 }
 
-function v9GannFanTlLevelsToChartLevels(tlArr, strokeFallback = "#4caf50", prevLevels = []) {
+function v9GannFanTlLevelsToChartLevels(tlArr, strokeFallback = "#4caf50") {
   if (!Array.isArray(tlArr)) return [];
-  return tlArr.map((l, i) => {
-    const value = parseFloat(String(l && l.value != null ? l.value : "0")) || 0;
-    const p = prevLevels[i];
-    const label =
-      (p && p.label != null && `${p.label}` !== "")
-        ? `${p.label}`
-        : v9GannFanLabelForValue(value);
+  return tlArr.map((l) => {
+    const value = parseFloat(String(l && l.value != null ? l.value : "0"));
+    const numValue = Number.isFinite(value) ? value : 0;
+    const label = v9GannFanLabelForValue(numValue);
     return {
-      value,
+      value: numValue,
       enabled: l && l.on !== false,
       color: (l && l.color) ? l.color : strokeFallback,
       ...(label ? { label } : {}),
@@ -7956,13 +7958,11 @@ function v9GannFanTlLevelsToChartLevels(tlArr, strokeFallback = "#4caf50", prevL
 function v9ApplyGannFanFromTlStyle(d, tlStyle) {
   if (!d || d.type !== "gann-fan" || !d.style) return;
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  const prev = Array.isArray(d.style.fanLevels) ? d.style.fanLevels : [];
   const tl = tlStyle.gannFanLevels;
   if (!Array.isArray(tl)) return;
   d.style.fanLevels = v9GannFanTlLevelsToChartLevels(
     tl,
     d.style.stroke || "#4caf50",
-    prev,
   );
 }
 
@@ -21067,7 +21067,7 @@ const TalariaV8bLive = () => {
     tlStyle.gannPriceLevels,
     tlStyle.gannTimeLevels,
     tlStyle.gannGridLevels,
-    tlStyle.gannFanLevels,
+    v9FibTlLevelsBridgeSig(tlStyle.gannFanLevels),
     tlStyle.gannArcLevels,
     tlStyle.gannLineType,
     tlStyle.gannLineWidth,

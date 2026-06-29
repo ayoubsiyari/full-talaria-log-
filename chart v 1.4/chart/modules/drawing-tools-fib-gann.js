@@ -570,10 +570,6 @@ class FibSpeedFanTool extends BaseDrawing {
         const formatRatioLabel = (v) => BaseDrawing.formatFibLevelLabel(this.style, v);
         const fanLabelFontSize = fibVerticalSpanLabelFontSize(scaleFactor);
         const labelPad = Math.max(6, Math.round(fanLabelFontSize * 0.5));
-        const showLeftLabels = this.style.showLeftLabels !== false;
-        const showRightLabels = this.style.showRightLabels !== false;
-        const showTopLabels = this.style.showTopLabels !== false;
-        const showBottomLabels = this.style.showBottomLabels !== false;
 
         const fanTrendEnabled = this.style.trendLineEnabled !== false;
         const fanTrendColor = this.style.trendLineColor || this.style.stroke || '#787b86';
@@ -695,24 +691,16 @@ class FibSpeedFanTool extends BaseDrawing {
             priceLevels.forEach((l) => {
                 const y = priceY(l.value);
                 const text = formatRatioLabel(l.value);
-                if (showLeftLabels) {
-                    priceLabelSlots.push({ x: xLeft - labelPad, y, anchor: 'end', dominantBaseline: 'middle', text, color: l.color });
-                }
-                if (showRightLabels) {
-                    priceLabelSlots.push({ x: xRight + labelPad, y, anchor: 'start', dominantBaseline: 'middle', text, color: l.color });
-                }
+                priceLabelSlots.push({ x: xLeft - labelPad, y, anchor: 'end', dominantBaseline: 'middle', text, color: l.color });
+                priceLabelSlots.push({ x: xRight + labelPad, y, anchor: 'start', dominantBaseline: 'middle', text, color: l.color });
             });
 
             const timeLabelSlots = [];
             timeLevels.forEach((l) => {
                 const x = timeX(l.value);
                 const text = formatRatioLabel(l.value);
-                if (showTopLabels) {
-                    timeLabelSlots.push({ x, y: yTop - labelPad, anchor: 'middle', dominantBaseline: 'auto', text, color: l.color });
-                }
-                if (showBottomLabels) {
-                    timeLabelSlots.push({ x, y: yBottom + labelPad, anchor: 'middle', dominantBaseline: 'hanging', text, color: l.color });
-                }
+                timeLabelSlots.push({ x, y: yTop - labelPad, anchor: 'middle', dominantBaseline: 'auto', text, color: l.color });
+                timeLabelSlots.push({ x, y: yBottom + labelPad, anchor: 'middle', dominantBaseline: 'hanging', text, color: l.color });
             });
 
             const placeEdgeLabels = (slots, resolveCollisions) => {
@@ -769,6 +757,30 @@ class FibSpeedFanTool extends BaseDrawing {
             placeEdgeLabels(timeLabelSlots, resolveHorizontalEdgeCollisions);
         }
 
+        const drawFanRay = (endX, endY, color, lineWidth, lineType) => {
+            const scaledLevelWidth = Math.max(0.5, parseFloat(lineWidth) * scaleFactor);
+            const hitWidth = Math.max(10, scaledLevelWidth * 6);
+            this.group.append('line')
+                .attr('class', 'fib-level-hit')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', endX).attr('y2', endY)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', hitWidth)
+                .attr('stroke-dasharray', '')
+                .attr('opacity', 1)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+            this.group.append('line')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', endX).attr('y2', endY)
+                .attr('stroke', color)
+                .attr('stroke-width', scaledLevelWidth)
+                .attr('stroke-dasharray', lineType || 'none')
+                .attr('opacity', 0.8)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        };
+
         this.levels.forEach((levelObj) => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
             const enabled = typeof levelObj === 'object'
@@ -785,30 +797,24 @@ class FibSpeedFanTool extends BaseDrawing {
             const ratio = parseFloat(level);
             if (!isFinite(ratio)) return;
 
-            const targetY = priceY(ratio);
-            const scaledLevelWidth = Math.max(0.5, parseFloat(lineWidth) * scaleFactor);
-            const hitWidth = Math.max(10, scaledLevelWidth * 6);
+            drawFanRay(x2, priceY(ratio), color, lineWidth, lineType);
+        });
 
-            this.group.append('line')
-                .attr('class', 'fib-level-hit')
-                .attr('x1', x1).attr('y1', y1)
-                .attr('x2', x2).attr('y2', targetY)
-                .attr('stroke', 'rgba(255,255,255,0.001)')
-                .attr('stroke-width', hitWidth)
-                .attr('stroke-dasharray', '')
-                .attr('opacity', 1)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+        timeLevels.forEach((levelObj) => {
+            const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
+            const enabled = typeof levelObj === 'object'
+                ? (levelObj.enabled !== false && levelObj.on !== false && levelObj.visible !== false)
+                : true;
+            const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
+            const lineWidth = globalLevelsWidth !== null ? globalLevelsWidth : this.style.strokeWidth;
+            const lineType = globalLevelsDash !== null ? globalLevelsDash : '';
 
-            this.group.append('line')
-                .attr('x1', x1).attr('y1', y1)
-                .attr('x2', x2).attr('y2', targetY)
-                .attr('stroke', color)
-                .attr('stroke-width', scaledLevelWidth)
-                .attr('stroke-dasharray', lineType || 'none')
-                .attr('opacity', 0.8)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+            if (!enabled) return;
+
+            const ratio = parseFloat(level);
+            if (!isFinite(ratio)) return;
+
+            drawFanRay(timeX(ratio), y2, color, lineWidth, lineType);
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -4086,7 +4092,8 @@ class GannFanTool extends BaseDrawing {
         for (const [k, lbl] of Object.entries(map)) {
             if (Math.abs(v - parseFloat(k)) < 0.02) return lbl;
         }
-        return '';
+        const rounded = Math.round(v * 1000) / 1000;
+        return String(rounded).replace(/\.?0+$/, '') || '0';
     }
 
     static _pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
@@ -4158,14 +4165,11 @@ class GannFanTool extends BaseDrawing {
         const levelsAll = fanLevelsSource
             .map((l) => {
                 const v = l && l.value != null ? parseFloat(l.value) : NaN;
-                const lbl = (l && l.label != null && `${l.label}` !== '')
-                    ? `${l.label}`
-                    : GannFanTool.labelForValue(v);
                 return {
                     value: isFinite(v) ? v : NaN,
                     enabled: l && l.enabled !== false,
                     color: (l && l.color) ? l.color : (style?.stroke || '#4caf50'),
-                    label: lbl,
+                    label: isFinite(v) ? GannFanTool.labelForValue(v) : '',
                     lineWidth: l?.lineWidth,
                     lineType: l?.lineType,
                 };
