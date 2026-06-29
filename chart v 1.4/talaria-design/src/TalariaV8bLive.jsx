@@ -4464,6 +4464,14 @@ function v9ApplyTxtStyleToDrawing(d, txt, opts = {}) {
     return;
   }
   if (t === "text") {
+    if (txt.horizAlign != null && txt.horizAlign !== (s.textAlign || "left")) {
+      try {
+        const helpers = typeof window !== "undefined" ? window.DrawingTextHelpers : null;
+        if (helpers && typeof helpers.migratePlainTextHorizAlign === "function") {
+          helpers.migratePlainTextHorizAlign(d, s.textAlign || "left", txt.horizAlign);
+        }
+      } catch (_) {}
+    }
     applyCommon();
     applyTextBlock();
     s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "none";
@@ -21338,6 +21346,11 @@ const TalariaV8bLive = () => {
     }
   }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
 
+  /** Text horizontal alignment — same-frame chart sync; anchor stays fixed on chart. */
+  const applyTxtHorizAlign = useCallback((horizAlign) => {
+    applyTxtStylePatch((s) => ({ ...s, horizAlign }));
+  }, [applyTxtStylePatch]);
+
   /** Settings-panel text field — one drawing only; never broadcast via the style bridge. */
   const applyTxtContent = useCallback((content) => {
     const next = typeof content === "string" ? content : "";
@@ -26541,7 +26554,7 @@ const TalariaV8bLive = () => {
                       ].map(([v,ico,hk])=>{
                         const isAct=txtStyle.horizAlign===v; const isH=hov===hk;
                         return (
-                          <div key={v} onClick={()=>setTxtStyle(s=>({...s,horizAlign:v}))}
+                          <div key={v} onClick={()=>applyTxtHorizAlign(v)}
                             onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                     background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
