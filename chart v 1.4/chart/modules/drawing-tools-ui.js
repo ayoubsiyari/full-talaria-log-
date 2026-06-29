@@ -34238,7 +34238,13 @@ class InlineTextEditor {
 
                 .style('cursor', 'text');
 
-
+            if (typeof opts.editorFieldDirection === 'string' && opts.editorFieldDirection) {
+                contentEl.style('direction', opts.editorFieldDirection);
+                contentEl.style('unicode-bidi', 'embed');
+            }
+            if (typeof opts.editorFieldTransform === 'string' && opts.editorFieldTransform) {
+                contentEl.style('transform', opts.editorFieldTransform);
+            }
 
             if (placeholderMode) {
                 contentEl.attr('data-placeholder', placeholder);

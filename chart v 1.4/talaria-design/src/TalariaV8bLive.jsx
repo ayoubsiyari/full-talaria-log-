@@ -5402,6 +5402,19 @@ function v9FlushTxtStyleToChartTargets(txtStyle, opts = {}) {
         if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
       } catch (_) {}
       v9ApplyTxtStyleToDrawing(d, txtStyle, { applyContent: opts.applyContent === true });
+      const isInlineEditing = dm._textInlineEditDrawing === d || d._inlineTextEditing || d._pendingAutoInlineEdit;
+      if (isInlineEditing) {
+        const helpers = typeof window !== "undefined" ? window.DrawingTextHelpers : null;
+        if (helpers && typeof helpers.scheduleTextAnnotationLiveRender === "function") {
+          helpers.scheduleTextAnnotationLiveRender(d);
+        } else if (typeof dm.scheduleRenderDrawing === "function") {
+          dm.scheduleRenderDrawing(d);
+        } else {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+        return;
+      }
       if (tb && typeof tb.onUpdate === "function") {
         try {
           tb.onUpdate(d);
@@ -21209,6 +21222,48 @@ const TalariaV8bLive = () => {
     }
   }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
 
+  /** Text bold — same-frame chart + inline-editor sync. */
+  const applyTxtBold = useCallback(() => {
+    const nextBold = !txtStyleLiveRef.current.bold;
+    flushSync(() => setTxtStyle((s) => ({ ...s, bold: nextBold })));
+    const live = { ...txtStyleLiveRef.current, bold: nextBold };
+    txtStyleLiveRef.current = live;
+    v9FlushTxtStyleToChartTargets(live, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      armedLegacyTool: txtArmedLegacyRef.current,
+      txtStyleOwnerType: v9TxtStyleOwnerTypeRef.current,
+    });
+    const textUiActive =
+      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+    if (textUiActive && !editingDrawingRef.current) {
+      const legacy = resolveArmedTextLegacyTool();
+      if (legacy && v9IsTextLegacyDrawingType(legacy)) {
+        v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(live, legacy));
+      }
+    }
+  }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
+
+  /** Text italic — same-frame chart + inline-editor sync. */
+  const applyTxtItalic = useCallback(() => {
+    const nextItalic = !txtStyleLiveRef.current.italic;
+    flushSync(() => setTxtStyle((s) => ({ ...s, italic: nextItalic })));
+    const live = { ...txtStyleLiveRef.current, italic: nextItalic };
+    txtStyleLiveRef.current = live;
+    v9FlushTxtStyleToChartTargets(live, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      armedLegacyTool: txtArmedLegacyRef.current,
+      txtStyleOwnerType: v9TxtStyleOwnerTypeRef.current,
+    });
+    const textUiActive =
+      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+    if (textUiActive && !editingDrawingRef.current) {
+      const legacy = resolveArmedTextLegacyTool();
+      if (legacy && v9IsTextLegacyDrawingType(legacy)) {
+        v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(live, legacy));
+      }
+    }
+  }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
+
   /** Settings-panel text field — one drawing only; never broadcast via the style bridge. */
   const applyTxtContent = useCallback((content) => {
     const next = typeof content === "string" ? content : "";
@@ -26371,8 +26426,8 @@ const TalariaV8bLive = () => {
                     </div>
                     {/* Bold / Italic — hidden for priceLabel */}
                     {!isPriceLabel && <div style={{display:"flex",gap:4}}>
-                      {[["txt-bold",txtStyle.bold,()=>setTxtStyle(s=>({...s,bold:!s.bold})),{fontWeight:800,fontSize:14},"B"],
-                        ["txt-italic",txtStyle.italic,()=>setTxtStyle(s=>({...s,italic:!s.italic})),{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
+                      {[["txt-bold",txtStyle.bold,applyTxtBold,{fontWeight:800,fontSize:14},"B"],
+                        ["txt-italic",txtStyle.italic,applyTxtItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
                       ].map(([hk,isAct,toggle,extra,label])=>{
                         const isH=hov===hk;
                         return (
@@ -26521,8 +26576,8 @@ const TalariaV8bLive = () => {
                       )}
                     </div>
                     <div style={{display:"flex",gap:4}}>
-                      {[["txt-pn-bold",txtStyle.bold,()=>setTxtStyle(s=>({...s,bold:!s.bold})),{fontWeight:800,fontSize:14},"B"],
-                        ["txt-pn-italic",txtStyle.italic,()=>setTxtStyle(s=>({...s,italic:!s.italic})),{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
+                      {[["txt-pn-bold",txtStyle.bold,applyTxtBold,{fontWeight:800,fontSize:14},"B"],
+                        ["txt-pn-italic",txtStyle.italic,applyTxtItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
                       ].map(([hk,isAct,toggle,extra,label])=>{
                         const isH=hov===hk;
                         return (
@@ -26585,8 +26640,8 @@ const TalariaV8bLive = () => {
                         )}
                       </div>
                       <div style={{display:"flex",gap:4}}>
-                        {[["txt-pin-bold",txtStyle.bold,()=>setTxtStyle(s=>({...s,bold:!s.bold})),{fontWeight:800,fontSize:14},"B"],
-                          ["txt-pin-italic",txtStyle.italic,()=>setTxtStyle(s=>({...s,italic:!s.italic})),{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
+                        {[["txt-pin-bold",txtStyle.bold,applyTxtBold,{fontWeight:800,fontSize:14},"B"],
+                          ["txt-pin-italic",txtStyle.italic,applyTxtItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
                         ].map(([hk,isAct,toggle,extra,label])=>{
                           const isH=hov===hk;
                           return (

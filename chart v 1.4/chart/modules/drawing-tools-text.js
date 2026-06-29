@@ -274,33 +274,90 @@ function syncInlineEditorToEditBoxRect(editBoxNode) {
     edDiv.style.boxSizing = 'border-box';
 }
 
+/** Resolved typography for the HTML inline editor (English + Arabic italic skew). */
+function resolveInlineEditorTypographyFromDrawing(drawing, textOverride = null) {
+    const style = drawing?.style || {};
+    const display = resolveTextToolDisplay(drawing?.text);
+    const sampleText = textOverride != null ? String(textOverride) : display.text;
+    const chart = drawing?.chart;
+    const scales = chart ? { chart, xScale: chart.xScale, yScale: chart.yScale } : {};
+    const scaleFactor = (typeof drawing?.getZoomScaleFactor === 'function')
+        ? drawing.getZoomScaleFactor(scales)
+        : 1;
+    const scaledFontSize = Math.max(8, (Number(style.fontSize) || 12) * scaleFactor);
+    const resolved = typeof resolveDrawingTextStyle === 'function'
+        ? resolveDrawingTextStyle(sampleText, style.fontStyle, style.fontFamily)
+        : {
+            fontStyle: style.fontStyle || 'normal',
+            fontFamily: style.fontFamily || 'Roboto, sans-serif',
+            direction: null,
+            italicSkew: 0,
+        };
+    const fontWeight = normalizeDrawingTextFontWeight(style.fontWeight);
+    const color = (style.textColor && style.textColor !== 'none') ? style.textColor : '#FFFFFF';
+    return {
+        fontSize: `${scaledFontSize}px`,
+        fontFamily: resolved.fontFamily,
+        fontWeight,
+        fontStyle: resolved.fontStyle,
+        color,
+        direction: resolved.direction,
+        italicSkew: Number(resolved.italicSkew) || 0,
+        textAlign: resolved.direction ? (style.textAlign || 'right') : (style.textAlign || 'left'),
+    };
+}
+
+/** Push drawing.style font weight/style onto the open contenteditable field. */
+function syncInlineEditorTypographyFromDrawing(drawing) {
+    if (!drawing) return;
+    const edDiv = document.querySelector('.inline-text-editor--inline');
+    if (!edDiv) return;
+    const fieldNode = edDiv.querySelector('.inline-text-editor-field');
+    if (!fieldNode) return;
+    const fieldText = (fieldNode.innerText || '').replace(/\n$/, '');
+    const typo = resolveInlineEditorTypographyFromDrawing(drawing, fieldText || undefined);
+    fieldNode.style.fontSize = typo.fontSize;
+    fieldNode.style.fontFamily = typo.fontFamily;
+    fieldNode.style.fontWeight = typo.fontWeight;
+    fieldNode.style.fontStyle = typo.fontStyle;
+    fieldNode.style.color = typo.color;
+    fieldNode.style.caretColor = typo.color;
+    fieldNode.style.textAlign = typo.textAlign;
+    if (typo.direction) {
+        fieldNode.style.direction = typo.direction;
+        fieldNode.style.unicodeBidi = 'embed';
+    } else {
+        fieldNode.style.direction = '';
+        fieldNode.style.unicodeBidi = '';
+    }
+    fieldNode.style.transform = typo.italicSkew ? `skewX(${typo.italicSkew}deg)` : '';
+}
+
 /** Reposition the open HTML inline editor to match the drawing's current on-chart edit box. */
 function syncInlineEditorForDrawing(drawing) {
     if (!drawing) return;
     const measured = measureTextAnnotationEditRect(drawing);
     if (!measured || !measured.posNode) return;
     syncInlineEditorToEditBoxRect(measured.posNode);
+    syncInlineEditorTypographyFromDrawing(drawing);
 }
 
 /** Standard inline editor options for any wrap-capable text annotation. */
 function buildStandardInlineEditorOptions(drawing, bbox, config = {}) {
     const style = drawing.style || {};
     const padding = Number(config.padding) || 6;
-    const chart = drawing.chart;
-    const scales = chart ? { chart, xScale: chart.xScale, yScale: chart.yScale } : {};
-    const scaleFactor = (typeof drawing.getZoomScaleFactor === 'function')
-        ? drawing.getZoomScaleFactor(scales)
-        : 1;
-    const scaledFontSize = Math.max(8, (Number(style.fontSize) || 12) * scaleFactor);
-    const fontSize = config.fontSize || `${scaledFontSize}px`;
+    const typo = resolveInlineEditorTypographyFromDrawing(drawing);
+    const fontSize = config.fontSize || typo.fontSize;
     return {
         inline: true,
         fontSize,
-        fontFamily: style.fontFamily || 'Roboto, sans-serif',
-        fontWeight: style.fontWeight || 'normal',
-        fontStyle: style.fontStyle || 'normal',
-        color: config.color || style.textColor || '#FFFFFF',
-        textAlign: config.textAlign || style.textAlign || 'left',
+        fontFamily: typo.fontFamily,
+        fontWeight: typo.fontWeight,
+        fontStyle: typo.fontStyle,
+        color: config.color || typo.color,
+        textAlign: config.textAlign || typo.textAlign,
+        editorFieldTransform: typo.italicSkew ? `skewX(${typo.italicSkew}deg)` : '',
+        editorFieldDirection: typo.direction || '',
         hideSelector: config.hideSelector || buildTextAnnotationInlineHideSelector(drawing),
         editorBackground: config.editorBackground,
         editorPadding: config.editorPadding,
@@ -318,12 +375,7 @@ function buildStandardInlineEditorOptions(drawing, bbox, config = {}) {
 /** Inline editor options aligned with the on-chart note box. */
 function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
     const style = drawing.style || {};
-    const chart = drawing.chart;
-    const scales = chart ? { chart, xScale: chart.xScale, yScale: chart.yScale } : {};
-    const scaleFactor = (typeof drawing.getZoomScaleFactor === 'function')
-        ? drawing.getZoomScaleFactor(scales)
-        : 1;
-    const scaledFontSize = Math.max(8, (style.fontSize || 12) * scaleFactor);
+    const typo = resolveInlineEditorTypographyFromDrawing(drawing);
     const noteDisplay = resolveTextToolDisplay(drawing.text);
     const initialText = extra.initialText != null ? extra.initialText : '';
     const { boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(style);
@@ -333,13 +385,15 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
     const opts = {
         inline: true,
         placeholderMode: !String(initialText).trim(),
-        fontSize: `${scaledFontSize}px`,
-        fontFamily: style.fontFamily || 'Roboto, sans-serif',
-        fontWeight: style.fontWeight || 'normal',
-        fontStyle: style.fontStyle || 'normal',
+        fontSize: typo.fontSize,
+        fontFamily: typo.fontFamily,
+        fontWeight: typo.fontWeight,
+        fontStyle: typo.fontStyle,
         color: typedColor,
         placeholderColor: TEXT_TOOL_PLACEHOLDER_COLOR,
-        textAlign: 'left',
+        textAlign: typo.textAlign,
+        editorFieldTransform: typo.italicSkew ? `skewX(${typo.italicSkew}deg)` : '',
+        editorFieldDirection: typo.direction || '',
         hideSelector,
         editorBackground: boxFill,
         editorPadding: '6px 8px',
