@@ -273,6 +273,10 @@ class FibTimeZoneTool extends BaseDrawing {
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
         if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
+        if (this.style.showZones === undefined) this.style.showZones = false;
+        if (this.style.backgroundOpacity === undefined || this.style.backgroundOpacity === null || isNaN(parseFloat(this.style.backgroundOpacity))) {
+            this.style.backgroundOpacity = 0.12;
+        }
         const defaultLevels = [
             { value: 0, enabled: true, color: '#787b86' },
             { value: 1, enabled: true, color: '#f23645' },
@@ -372,6 +376,37 @@ class FibTimeZoneTool extends BaseDrawing {
                 .attr('opacity', 0.7)
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
+        }
+
+        const showZones = this.style.showZones !== false;
+        const bgOpacity = (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity)))
+            ? Math.max(0, Math.min(1, parseFloat(this.style.backgroundOpacity)))
+            : 0.12;
+        const enabledLevels = (this.levels || [])
+            .filter(l => l && (typeof l === 'object' ? l.enabled !== false : true))
+            .map(l => ({
+                value: typeof l === 'object' ? parseFloat(l.value) : parseFloat(l),
+                color: typeof l === 'object' ? (l.color || this.style.stroke) : this.style.stroke,
+            }))
+            .filter(l => Number.isFinite(l.value))
+            .sort((a, b) => a.value - b.value);
+
+        if (showZones && enabledLevels.length >= 2) {
+            for (let i = 0; i < enabledLevels.length - 1; i++) {
+                const xa = getXFromIndex(xIndex1 + (baseDx * enabledLevels[i].value));
+                const xb = getXFromIndex(xIndex1 + (baseDx * enabledLevels[i + 1].value));
+                const xLeft = Math.min(xa, xb);
+                const width = Math.abs(xb - xa);
+                if (!Number.isFinite(xLeft) || !Number.isFinite(width) || width <= 0) continue;
+                this.group.insert('rect', ':first-child')
+                    .attr('x', xLeft)
+                    .attr('y', plotTop)
+                    .attr('width', width)
+                    .attr('height', Math.max(1, plotBottom - plotTop))
+                    .attr('fill', enabledLevels[i].color)
+                    .attr('opacity', bgOpacity)
+                    .style('pointer-events', 'none');
+            }
         }
 
         // Draw vertical lines at Fibonacci intervals

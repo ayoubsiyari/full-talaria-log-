@@ -2526,6 +2526,11 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.trendLineWidth = trendW;
     patch.trendLineDasharray = trendDashStr;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
+    patch.showZones = tlStyle.fibBackground !== false;
+    patch.backgroundOpacity =
+      tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+        ? +tlStyle.fibBgOpacity
+        : 0.12;
     patch.levelsLabelPosition = v9FibLevelPositionUiToChart(tlStyle.fibLevelPosition);
     v9SyncFibLevelsLabelModeToStyle(patch, tlStyle);
   }
@@ -4463,8 +4468,8 @@ function v9ApplyTxtStyleToDrawing(d, txt, opts = {}) {
     }
     return;
   }
-  if (t === "text") {
-    if (txt.horizAlign != null && txt.horizAlign !== (s.textAlign || "left")) {
+    if (t === "text") {
+    if (txt.horizAlign != null && txt.horizAlign !== (s.textAlign || "left") && (txt.wrapText || s.wrapText)) {
       try {
         const helpers = typeof window !== "undefined" ? window.DrawingTextHelpers : null;
         if (helpers && typeof helpers.migratePlainTextHorizAlign === "function") {
@@ -7174,6 +7179,11 @@ function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  st.showZones = tlStyle.fibBackground !== false;
+  st.backgroundOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? Math.max(0, Math.min(1, +tlStyle.fibBgOpacity))
+      : 0.12;
   v9SyncFibLevelsLabelModeToStyle(st, tlStyle);
   v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
@@ -7400,6 +7410,8 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
   if (v9IsFibTimeZoneType(drawingType)) {
     line("fibTzLevels");
     line("fibTrendLine");
+    line("fibBackground");
+    line("fibBgOpacity");
     line("fibLineWidth");
     line("fibLineType");
     line("fibLevelPosition");
@@ -7730,7 +7742,7 @@ function v9FibDefaultTlStyleFields(legacyType) {
     };
   }
   if (v9IsFibTimeZoneType(legacyType)) {
-    return { ...common, fibTrendLine: true };
+    return { ...common, fibTrendLine: true, fibBackground: false, fibBgOpacity: 0.12 };
   }
   if (v9IsFibSpeedFanType(legacyType)) {
     return { ...common, fibTrendLine: true, fibGrid: false };
@@ -8573,6 +8585,11 @@ function v9TlStylePatchFromDrawing(d) {
               parseInt(s.trendLineWidth, 10) || parseInt(s.strokeWidth, 10) || 1,
             ),
             fibLevelsOn: s.levelsEnabled !== false,
+            fibBackground: s.showZones !== false,
+            fibBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+                : 0.12,
             fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition, { vertical: true }),
             ...(() => {
               const fibLevelsMode = v9FibLevelsModeChartToUi(s.levelsLabelMode, s.showPrices);
@@ -21346,8 +21363,9 @@ const TalariaV8bLive = () => {
     }
   }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
 
-  /** Text horizontal alignment — same-frame chart sync; anchor stays fixed on chart. */
+  /** Text horizontal alignment — wrap-text only; same-frame chart sync. */
   const applyTxtHorizAlign = useCallback((horizAlign) => {
+    if (!txtStyleLiveRef.current.wrapText) return;
     applyTxtStylePatch((s) => ({ ...s, horizAlign }));
   }, [applyTxtStylePatch]);
 
@@ -24240,8 +24258,8 @@ const TalariaV8bLive = () => {
                       </div>}
                       {/* FIBONACCI STYLE */}
                       <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"14px 0 8px" }}>FIBONACCI STYLE</div>
-                      {/* Background + opacity slider (not used by fib time zone verticals) */}
-                      {tlSubTool.icon !== "fibTimeZone" && <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
+                      {/* Background + opacity slider */}
+                      <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
                         <div style={{ width:130 }}>{TlChk(tlStyle.fibBackground,"tlchk-fibBg","Background",()=>setTlStyle(s=>({...s,fibBackground:!s.fibBackground})))}</div>
                         {(()=>{const pct=tlStyle.fibBgOpacity*100;return(
                         <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.fibBackground?1:0.38, pointerEvents:tlStyle.fibBackground?"auto":"none", transition:"opacity 0.15s" }}>
@@ -24257,7 +24275,7 @@ const TalariaV8bLive = () => {
                               style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
                           </div>
                         </div>);})()}
-                      </div>}
+                      </div>
                       {/* Reverse */}
                       {tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
                         {TlChk(tlStyle.fibReverse,"tlchk-fibRev","Reverse",()=>setTlStyle(s=>({...s,fibReverse:!s.fibReverse})))}
@@ -26541,8 +26559,12 @@ const TalariaV8bLive = () => {
                     style={v9DrawingSettingsTextareaStyle(txtStyle.content, { c, F })}/>
                 </div>}
               </div>}
-              {/* Horizontal alignment */}
-              {!isNote && !isPriceNote && !isCallout && !isComment && !isPin && !isSignpost && !isPriceLabel && !isFlag && !isImage && <>
+              {/* Wrap Text — basic text tools only (pin/signpost use Text tab) */}
+              {!isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && !isPin && !isSignpost && <div style={{padding:"8px 0"}}>
+                {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>applyTxtStylePatch(s=>({...s,wrapText:!s.wrapText})))}
+              </div>}
+              {/* Horizontal alignment — only when wrap text is enabled */}
+              {!isNote && !isPriceNote && !isCallout && !isComment && !isPin && !isSignpost && !isPriceLabel && !isFlag && !isImage && txtStyle.wrapText && <>
                 <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>ALIGNMENT</div>
                 <div style={{marginBottom:16}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
