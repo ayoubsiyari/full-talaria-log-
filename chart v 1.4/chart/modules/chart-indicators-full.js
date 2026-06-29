@@ -9323,138 +9323,40 @@ Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 18) 
     return null;
 };
 
-/**
- * TradingView-style panel separator drag — same document mousemove/mouseup pattern as compare-overlay.
- * Self-contained so it does not depend on chart.js drag routing or overlay z-index stacking.
- */
-Chart.prototype._beginSeparatePanelResizeDrag = function(startEvent, handle) {
-    if (!startEvent || !handle) return false;
-    if (typeof startEvent.button === 'number' && startEvent.button !== 0) return false;
-    if (this._separatePanelResizeDragActive) return false;
-    if (typeof this.startSeparatePanelResize !== 'function') return false;
-    const xy = typeof this._eventCanvasLocalXY === 'function'
-        ? this._eventCanvasLocalXY(startEvent)
-        : [0, startEvent.clientY];
-    if (!this.startSeparatePanelResize(handle, xy[1])) return false;
-
-    if (!this.drag) this.drag = {};
-    this.drag.active = true;
-    this.drag.type = 'separatePanelResize';
-    this.drag.startX = startEvent.clientX;
-    this.drag.startY = startEvent.clientY;
-    this.drag.lastX = startEvent.clientX;
-    this.drag.lastY = startEvent.clientY;
-    if (typeof this._lockDragCursor === 'function') this._lockDragCursor('row-resize');
-
-    const self = this;
-    self._separatePanelResizeDragActive = true;
-
-    const onMove = function(ev) {
-        if (!self._separatePanelResizeDragActive) return;
-        const [, my] = typeof self._eventCanvasLocalXY === 'function'
-            ? self._eventCanvasLocalXY(ev)
-            : [0, ev.clientY];
-        if (typeof self.updateSeparatePanelResize === 'function') {
-            self.updateSeparatePanelResize(my);
-        }
-        self.renderPending = false;
-        if (typeof self.render === 'function') self.render();
-        if (typeof ev.preventDefault === 'function') ev.preventDefault();
-    };
-    const onUp = function() {
-        if (!self._separatePanelResizeDragActive) return;
-        self._separatePanelResizeDragActive = false;
-        document.removeEventListener('mousemove', onMove, true);
-        document.removeEventListener('mouseup', onUp, true);
-        document.removeEventListener('pointermove', onMove, true);
-        document.removeEventListener('pointerup', onUp, true);
-        document.removeEventListener('pointercancel', onUp, true);
-        if (self._separatePanelResizeHandleEl) {
-            self._separatePanelResizeHandleEl.classList.remove('dragging');
-            self._separatePanelResizeHandleEl = null;
-        }
-        if (typeof self.finishSeparatePanelResize === 'function') {
-            self.finishSeparatePanelResize();
-        }
-        if (typeof self._finishSeparatePanelResizeInteraction === 'function') {
-            self._finishSeparatePanelResizeInteraction();
-        }
-        if (self.drag) {
-            self.drag.active = false;
-            self.drag.type = null;
-        }
-        self._separatePanelHoverHandle = null;
-        if (typeof self._releaseDragCursor === 'function') self._releaseDragCursor();
-    };
-
-    document.addEventListener('mousemove', onMove, true);
-    document.addEventListener('mouseup', onUp, true);
-    document.addEventListener('pointermove', onMove, true);
-    document.addEventListener('pointerup', onUp, true);
-    document.addEventListener('pointercancel', onUp, true);
-
-    if (typeof startEvent.preventDefault === 'function') startEvent.preventDefault();
-    if (typeof startEvent.stopPropagation === 'function') startEvent.stopPropagation();
-    if (typeof startEvent.stopImmediatePropagation === 'function') startEvent.stopImmediatePropagation();
-    return true;
+/** Drag inside indicator plot — move the indicator line up/down (Y offset, not panel resize). */
+Chart.prototype.separatePanelLineDragStep = function(slot, dy) {
+    if (!slot || !slot.indicator || !Number.isFinite(dy) || dy === 0) return;
+    const ind = slot.indicator;
+    const b0 = ind._panelBaseMin;
+    const b1 = ind._panelBaseMax;
+    if (b0 == null || b1 == null || !Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) return;
+    this._ensureIndicatorPanelAxis(ind);
+    const pa = ind._panelAxis;
+    const baseSpan = b1 - b0;
+    const z = Math.max(0.02, Math.min(200, pa.zoom || 1));
+    const displaySpan = baseSpan / z;
+    const h = Math.max(1, slot.bottom - slot.top);
+    const valuePerPixel = displaySpan / h;
+    pa.offset = (pa.offset || 0) + dy * valuePerPixel;
 };
 
-/** Visible separator handles on #chartWrapper (z-index 210 — same as compare-overlay panes). */
-Chart.prototype._syncSeparatePanelSeparatorHandles = function(m) {
+/** @deprecated Panel-height resize handles removed — indicator line moves via separatePanelLineDragStep. */
+Chart.prototype._syncSeparatePanelSeparatorHandles = function(_m) {
     const canvas = this.ctx && this.ctx.canvas;
     const wrapper = canvas ? canvas.parentElement : null;
-    if (!wrapper) return;
-    const handles = this.separatePanelInfo && this.separatePanelInfo.resizeHandles;
-    if (!handles || !handles.length) {
+    if (wrapper) {
         wrapper.querySelectorAll('.talaria-separate-panel-separator').forEach(function(n) { n.remove(); });
-        return;
     }
-    const self = this;
-    const hitH = 14;
-    const plotLeft = m.l;
-    const plotWidth = Math.max(1, this.w - m.l);
-    handles.forEach(function(handle, idx) {
-        if (!handle || !Number.isFinite(handle.y)) return;
-        let bar = wrapper.querySelector('.talaria-separate-panel-separator[data-sp-sep="' + idx + '"]');
-        if (!bar) {
-            bar = document.createElement('div');
-            bar.className = 'panel-resize-handle horizontal talaria-separate-panel-separator';
-            bar.setAttribute('data-sp-sep', String(idx));
-            bar.title = 'Drag to resize panel';
-            const onDown = function(ev) {
-                if (typeof ev.button === 'number' && ev.button !== 0) return;
-                const h = bar._talariaResizeHandle;
-                if (!h || typeof self._beginSeparatePanelResizeDrag !== 'function') return;
-                self._separatePanelResizeHandleEl = bar;
-                bar.classList.add('dragging');
-                self._beginSeparatePanelResizeDrag(ev, h);
-            };
-            bar.addEventListener('mousedown', onDown);
-            wrapper.appendChild(bar);
-        }
-        bar._talariaResizeHandle = handle;
-        bar.style.cssText = [
-            'position:absolute',
-            'left:' + plotLeft + 'px',
-            'top:' + (handle.y - hitH / 2) + 'px',
-            'width:' + plotWidth + 'px',
-            'height:' + hitH + 'px',
-            'z-index:210',
-            'pointer-events:auto',
-            'cursor:row-resize',
-            'transform:none',
-            'touch-action:none'
-        ].join(';');
-    });
-    wrapper.querySelectorAll('.talaria-separate-panel-separator').forEach(function(bar) {
-        const idx = Number(bar.getAttribute('data-sp-sep'));
-        if (!Number.isFinite(idx) || idx >= handles.length) bar.remove();
-    });
 };
 
-/** @deprecated — use _syncSeparatePanelSeparatorHandles */
+/** @deprecated */
+Chart.prototype._beginSeparatePanelResizeDrag = function() { return false; };
+
+/** @deprecated */
 Chart.prototype._syncSeparatePanelResizeGrips = function(_overlay, m) {
-    this._syncSeparatePanelSeparatorHandles(m);
+    if (typeof this._syncSeparatePanelSeparatorHandles === 'function') {
+        this._syncSeparatePanelSeparatorHandles(m);
+    }
 };
 
 Chart.prototype._clampVolumePanelHeight = function(heightPx) {
@@ -10601,30 +10503,24 @@ Chart.prototype._drawSeparatePanelResizeSeparator = function(ctx, m, y, panelFul
     const _hoverGlow = isLightBg ? 'rgba(41,98,255,0.22)' : 'rgba(106,138,255,0.30)';
 
     ctx.strokeStyle = isHover ? _hoverColor : (strongTop ? _sepColorStrong : _sepColor);
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 1;
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(m.l, y);
     ctx.lineTo(panelFullRight, y);
     ctx.stroke();
 
-    const handleMidX = this.w - m.r - 18;
-    ctx.strokeStyle = isHover ? _hoverColor : _gripColor;
-    ctx.lineWidth = isHover ? 3 : 2;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(handleMidX - 8, y);
-    ctx.lineTo(handleMidX + 8, y);
-    ctx.stroke();
     if (isHover) {
-        ctx.strokeStyle = _hoverGlow;
-        ctx.lineWidth = 5;
+        const handleMidX = this.w - m.r - 18;
+        ctx.strokeStyle = _hoverColor;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(handleMidX - 10, y);
-        ctx.lineTo(handleMidX + 10, y);
+        ctx.moveTo(handleMidX - 8, y);
+        ctx.lineTo(handleMidX + 8, y);
         ctx.stroke();
+        ctx.lineCap = 'butt';
     }
-    ctx.lineCap = 'butt';
 };
 
 /** Plot-area hit inside a stacked indicator pane (excludes right price strip + resize grips). */
@@ -15047,14 +14943,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     Chart.prototype._separatePanelPlotCursorAt = function(mx, my) {
-        let cursorStyle = typeof this.getCurrentCursorStyle === 'function'
+        if (typeof this.findSeparatePanelIndicatorAtPoint === 'function'
+            && this.findSeparatePanelIndicatorAtPoint(mx, my)) {
+            return 'ns-resize';
+        }
+        return typeof this.getCurrentCursorStyle === 'function'
             ? this.getCurrentCursorStyle()
             : 'crosshair';
-        if (typeof this.findSeparatePanelIndicatorAtPoint === 'function') {
-            const indHit = this.findSeparatePanelIndicatorAtPoint(mx, my);
-            if (indHit) cursorStyle = 'pointer';
-        }
-        return cursorStyle;
     };
 
     /** Transparent hit layers over each indicator plot band — legend sits above; drags reach the chart. */
@@ -15074,16 +14969,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 const onPanStart = function(ev) {
                     if (typeof ev.button === 'number' && ev.button !== 0) return;
                     if (self.drag && self.drag.active) return;
-                    if (self._separatePanelResizeDragActive) return;
-                    if (ev.target && ev.target.closest && (
-                        ev.target.closest('[data-talaria-sp-resize-grip]') ||
-                        ev.target.closest('.talaria-separate-panel-separator') ||
-                        ev.target.closest('.panel-resize-handle')
-                    )) return;
-                    if (typeof self._eventCanvasLocalXY === 'function' && typeof self.getSeparatePanelResizeHandleAt === 'function') {
-                        const xy = self._eventCanvasLocalXY(ev);
-                        if (self.getSeparatePanelResizeHandleAt(xy[0], xy[1], 24)) return;
-                    }
                     if (self.tool) return;
                     if (skipLegendHit(ev)) return;
                     ev.preventDefault();
@@ -15107,9 +14992,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     if (typeof self._tryCapturePanPointer === 'function') self._tryCapturePanPointer(ev);
                     if (typeof self._snapshotPanDrawingsLayer === 'function') self._snapshotPanDrawingsLayer();
                     if (typeof self._lockDragCursor === 'function') {
-                        self._lockDragCursor(typeof self._panDragCursorStyle === 'function'
-                            ? self._panDragCursorStyle()
-                            : 'move');
+                        self._lockDragCursor('ns-resize');
                     }
                     if (typeof self._scheduleChartPanRender === 'function') {
                         self._scheduleChartPanRender();

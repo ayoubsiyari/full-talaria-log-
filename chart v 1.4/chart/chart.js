@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260628b173';
+const CHART_ENGINE_BUILD = '20260628b174';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -21442,9 +21442,8 @@ class Chart {
 
         this.offsetX += effectiveDx;
         const panelSlot = this.drag && this.drag.separatePanelSlot;
-        if (panelSlot && typeof this.separatePanelAxisDragStep === 'function' && effectiveDy !== 0) {
-            const pointerY = Number.isFinite(this.mouseY) ? this.mouseY : clientY;
-            this.separatePanelAxisDragStep(panelSlot, effectiveDy, pointerY);
+        if (panelSlot && typeof this.separatePanelLineDragStep === 'function' && effectiveDy !== 0) {
+            this.separatePanelLineDragStep(panelSlot, effectiveDy);
         } else if (this.yScale && !this.priceScale.locked && effectiveDy !== 0) {
             this.autoScale = false;
             this.priceScale.autoScale = false;
@@ -27216,21 +27215,7 @@ class Chart {
 
         document.addEventListener('mousedown', (e) => {
             if (tryStartCtrlMarqueeSelect.call(this, e)) return;
-            if (tryStartBoxZoom.call(this, e)) return;
-            if (typeof this._tryStartSeparatePanelResizeFromEvent === 'function'
-                && this._tryStartSeparatePanelResizeFromEvent(e)) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        }, true);
-
-        document.addEventListener('pointerdown', (e) => {
-            if (typeof e.button === 'number' && e.button !== 0) return;
-            if (tryStartCtrlMarqueeSelect.call(this, e)) return;
-            if (typeof this._tryStartSeparatePanelResizeFromEvent === 'function'
-                && this._tryStartSeparatePanelResizeFromEvent(e)) {
-                return;
-            }
+            tryStartBoxZoom.call(this, e);
         }, true);
 
         this.canvas.addEventListener('mousedown', e => {
@@ -27257,16 +27242,6 @@ class Chart {
             }
 
             const [mx, my] = this._eventCanvasLocalXY(e);
-
-            // Start separate indicator panel resize when dragging a panel separator.
-            // Must run before tool / drawing guards — separator sits in the chart body.
-            if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 24);
-                if (resizeHandle && typeof this._beginSeparatePanelResizeDrag === 'function'
-                    && this._beginSeparatePanelResizeDrag(e, resizeHandle)) {
-                    return;
-                }
-            }
 
             if (this.tool) return;
 
@@ -27392,9 +27367,7 @@ class Chart {
                 this.drag.separatePanelSlot = mode === 'separatePanelPlot' ? this.cursor.separatePanelSlot : null;
                 this._tryCapturePanPointer(e);
                 this._snapshotPanDrawingsLayer();
-                // DON'T change autoScale here - preserve lock state from double-click
-                // Update cursor to move during pan (unless in dot mode)
-                this._lockDragCursor(this._panDragCursorStyle());
+                this._lockDragCursor(mode === 'separatePanelPlot' ? 'ns-resize' : this._panDragCursorStyle());
                 
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
@@ -27447,10 +27420,7 @@ class Chart {
                 } else if (this.drag.type === 'timeAxis') {
                     dragCursor = 'ew-resize';
                 } else if (this.drag.type === 'pan') {
-                    dragCursor = this._panDragCursorStyle();
-                    if (this.drag.separatePanelSlot) {
-                        dragCursor = 'move';
-                    }
+                    dragCursor = this.drag.separatePanelSlot ? 'ns-resize' : this._panDragCursorStyle();
                 } else if (this.drag.type === 'separatePanelResize') {
                     dragCursor = 'ns-resize';
                 }
@@ -28061,8 +28031,8 @@ class Chart {
                             const effectiveDy = dy;
                             this.offsetX += effectiveDx;
                             const panelSlot = this.drag.separatePanelSlot;
-                            if (panelSlot && typeof this.separatePanelAxisDragStep === 'function' && effectiveDy !== 0) {
-                                this.separatePanelAxisDragStep(panelSlot, effectiveDy, my);
+                            if (panelSlot && typeof this.separatePanelLineDragStep === 'function' && effectiveDy !== 0) {
+                                this.separatePanelLineDragStep(panelSlot, effectiveDy);
                             } else if (this.yScale && !this.priceScale.locked && effectiveDy !== 0) {
                                 this.autoScale = false;
                                 this.priceScale.autoScale = false;
