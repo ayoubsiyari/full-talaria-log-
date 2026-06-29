@@ -2349,6 +2349,10 @@ function v9TlStyleWithEnsuredLevels(tlStyle, legacyType) {
     if (out.extendRight == null) out.extendRight = true;
     // Global tlStyle defaults use extendRight:false; treat that bleed as unset for pitchfork.
     if (out.extendRight === false && !out.extendLeft) out.extendRight = true;
+    if (Array.isArray(out.pfLevels) && out.pfLevels.length) {
+      const fw = String(parseInt(out.pfLevelsWidth ?? out.lineWidth ?? tlStyle.pfLevelsWidth, 10) || 2);
+      out.pfLevels = v9NormalizePfLevelsTl(out.pfLevels, fw);
+    }
   }
   if (legacyType === "regression-trend") {
     out.regLines = v9NormalizeRegLines(out.regLines);
@@ -6151,6 +6155,10 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
     if (out.extendRight == null) out.extendRight = true;
     // Global tlStyle defaults use extendRight:false; treat that bleed as unset for pitchfork.
     if (out.extendRight === false && !out.extendLeft) out.extendRight = true;
+    if (Array.isArray(out.pfLevels) && out.pfLevels.length) {
+      const fw = String(parseInt(out.pfLevelsWidth ?? out.lineWidth ?? fall?.pfLevelsWidth, 10) || 2);
+      out.pfLevels = v9NormalizePfLevelsTl(out.pfLevels, fw);
+    }
   }
   if (legacyType === "regression-trend") {
     out.regLines = v9NormalizeRegLines(out.regLines);
