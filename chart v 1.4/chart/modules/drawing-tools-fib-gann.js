@@ -15,7 +15,7 @@ class FibChannelTool extends BaseDrawing {
         if (this.style.reverse === undefined) this.style.reverse = false;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
-        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         if (this.style.backgroundOpacity === undefined || this.style.backgroundOpacity === null || isNaN(parseFloat(this.style.backgroundOpacity))) this.style.backgroundOpacity = 0.08;
         // Core 7 Fibonacci levels (0 and 1 fixed at top)
         const defaultLevels = [
@@ -272,7 +272,7 @@ class FibTimeZoneTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
-        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         const defaultLevels = [
             { value: 0, enabled: true, color: '#787b86' },
             { value: 1, enabled: true, color: '#f23645' },
@@ -490,7 +490,7 @@ class FibSpeedFanTool extends BaseDrawing {
         if (this.style.gridLineDasharray === undefined) this.style.gridLineDasharray = '';
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
-        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 1, enabled: true, color: '#2962ff' },
             { value: 0.75, enabled: true, color: '#00bcd4' },
@@ -798,7 +798,7 @@ class TrendFibTimeTool extends BaseDrawing {
         if (this.style.trendLineWidth === undefined) this.style.trendLineWidth = this.style.strokeWidth || 1;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
-        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 0, enabled: true, color: '#787b86' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -1043,7 +1043,7 @@ class FibCirclesTool extends BaseDrawing {
         }
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
-        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -1581,7 +1581,7 @@ class FibArcsTool extends BaseDrawing {
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
-        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
@@ -1844,7 +1844,7 @@ class FibWedgeTool extends BaseDrawing {
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
-        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
+        if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values' && this.style.levelsLabelMode !== 'both') this.style.levelsLabelMode = 'values';
         this.levels = style.levels || [
             { value: 0, enabled: false, color: '#787b86' },
             { value: 0.236, enabled: true, color: '#f23645' },

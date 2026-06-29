@@ -6232,11 +6232,12 @@ function v9ClassicFibDefaultLevelsTlForLegacy(legacyType) {
 function v9FibLevelsModeUiToChart(mode) {
   const m = String(mode || "Value");
   if (m === "Percent") return "percent";
+  if (m === "Value and Percent") return "both";
   return "values";
 }
 
 function v9FibShowPricesFromLevelsMode(mode) {
-  return String(mode || "Value") === "Value and Percent";
+  return false;
 }
 
 function v9SyncFibExtendToStyle(st, tlStyle) {
@@ -6283,13 +6284,13 @@ function v9FibToolIconHasExtend(icon) {
 
 function v9SyncFibLevelsLabelModeToStyle(st, tlStyle) {
   if (!st || !tlStyle) return;
-  st.showPrices = v9FibShowPricesFromLevelsMode(tlStyle.fibLevelsMode);
+  st.showPrices = false;
   st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
 }
 
 function v9FibLevelsModeChartToUi(ch, showPrices) {
   if (ch === "percent") return "Percent";
-  if (showPrices !== false) return "Value and Percent";
+  if (ch === "both") return "Value and Percent";
   return "Value";
 }
 
@@ -12740,7 +12741,7 @@ const TalariaV8bLive = () => {
     fibTrendLine: true, fibTimeTrendType: "solid", fibTimeTrendWidth: "1", fibPriceLabels: false, fibTimeLabels: false,
     fibArcsTrendLine: true, fibArcsTrendType: "solid", fibArcsTrendWidth: "1", fibArcsFullCircle: false,
     fibWedgeTrendLine: true, fibWedgeTrendType: "solid", fibWedgeTrendWidth: "1",
-    fibBackground: false, fibBgOpacity: 0.5, fibReverse: false, fibPrices: true, fibSpiralCCW: false,
+    fibBackground: false, fibBgOpacity: 0.5, fibReverse: false, fibPrices: false, fibSpiralCCW: false,
     fibFanTimeLevels: [
       { on: true, value: "0", color: "#787B86" },
       { on: true, value: "0.25", color: "#F44336" },

@@ -1192,7 +1192,7 @@ class BaseDrawing {
         return true;
     }
 
-    /** Value / Percent / Value+price label text for fib family tools. */
+    /** Value / Percent / Value+Percent label text for fib family tools (never price unless `showPrices === true`). */
     static formatFibLevelLabel(style, value, options = {}) {
         const {
             price,
@@ -1200,27 +1200,39 @@ class BaseDrawing {
             label,
             valueFormatter,
         } = options;
-        const levelsLabelMode = (style.levelsLabelMode === 'percent' || style.levelsLabelMode === 'values')
-            ? style.levelsLabelMode
+        const rawMode = style.levelsLabelMode;
+        const levelsLabelMode = (rawMode === 'percent' || rawMode === 'values' || rawMode === 'both')
+            ? rawMode
             : 'values';
-        const showPrices = style.showPrices !== false;
-        if (levelsLabelMode === 'percent') {
+        const showPrices = style.showPrices === true;
+
+        const formatValueText = () => {
+            if (typeof valueFormatter === 'function') return valueFormatter(value);
+            if (label != null && label !== '') return String(label);
+            const n = parseFloat(value);
+            if (!Number.isFinite(n)) return String(value);
+            return (Math.round(n * 1000) / 1000).toString();
+        };
+
+        const formatPercentText = () => {
             const n = parseFloat(value);
             if (!Number.isFinite(n)) return '';
             const pct = n * 100;
             const pctText = (Math.round(pct * 100) / 100).toString();
             return `${pctText}%`;
+        };
+
+        if (levelsLabelMode === 'percent') {
+            return formatPercentText();
         }
-        let base;
-        if (typeof valueFormatter === 'function') {
-            base = valueFormatter(value);
-        } else if (label != null && label !== '') {
-            base = String(label);
-        } else {
-            const n = parseFloat(value);
-            if (!Number.isFinite(n)) base = String(value);
-            else base = (Math.round(n * 1000) / 1000).toString();
+
+        let base = formatValueText();
+
+        if (levelsLabelMode === 'both') {
+            const pct = formatPercentText();
+            if (pct) base = `${base} (${pct})`;
         }
+
         if (showPrices && price != null && Number.isFinite(Number(price))) {
             const dec = Number.isFinite(priceDecimals) ? priceDecimals : 2;
             return `${base} (${Number(price).toFixed(dec)})`;

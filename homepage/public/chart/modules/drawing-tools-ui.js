@@ -10374,7 +10374,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             if (drawing.style.levelsEnabled === undefined) drawing.style.levelsEnabled = true;
 
-            if (drawing.style.levelsLabelMode !== 'percent' && drawing.style.levelsLabelMode !== 'values') {
+            if (drawing.style.levelsLabelMode !== 'percent' && drawing.style.levelsLabelMode !== 'values' && drawing.style.levelsLabelMode !== 'both') {
 
                 drawing.style.levelsLabelMode = 'values';
 
@@ -16219,7 +16219,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (drawing.style.levelsEnabled === undefined) drawing.style.levelsEnabled = true;
 
-        if (drawing.style.levelsLabelMode !== 'percent' && drawing.style.levelsLabelMode !== 'values') {
+        if (drawing.style.levelsLabelMode !== 'percent' && drawing.style.levelsLabelMode !== 'values' && drawing.style.levelsLabelMode !== 'both') {
 
             drawing.style.levelsLabelMode = 'values';
 
