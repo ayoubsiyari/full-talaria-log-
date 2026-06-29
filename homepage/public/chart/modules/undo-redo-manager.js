@@ -63,6 +63,14 @@ class UndoRedoManager {
             index: index
         });
     }
+
+    /**
+     * Record clearing all drawings as one undoable action (Delete Drawings / Delete All Objects).
+     */
+    recordBulkDelete(entries) {
+        if (!Array.isArray(entries) || entries.length === 0) return;
+        this.recordAction('bulk-delete', { entries });
+    }
     
     /**
      * Record modifying a drawing (move, resize, style change)
@@ -101,6 +109,9 @@ class UndoRedoManager {
                     break;
                 case 'delete':
                     this.undoDelete(action.data);
+                    break;
+                case 'bulk-delete':
+                    this.undoBulkDelete(action.data);
                     break;
                 case 'modify':
                     this.undoModify(action.data);
@@ -146,6 +157,9 @@ class UndoRedoManager {
                 case 'delete':
                     this.redoDelete(action.data);
                     break;
+                case 'bulk-delete':
+                    this.redoBulkDelete(action.data);
+                    break;
                 case 'modify':
                     this.redoModify(action.data);
                     break;
@@ -181,6 +195,17 @@ class UndoRedoManager {
     undoDelete(data) {
         this.restoreDrawing(data.drawingJSON, data.index);
     }
+
+    undoBulkDelete(data) {
+        const entries = Array.isArray(data.entries) ? data.entries : [];
+        const sorted = [...entries].sort((a, b) => b.index - a.index);
+        for (const entry of sorted) {
+            this.restoreDrawing(entry.drawingJSON, entry.index);
+        }
+        if (this.drawingManager.objectTreeManager) {
+            this.drawingManager.objectTreeManager.refresh();
+        }
+    }
     
     undoModify(data) {
         const drawing = this.findDrawingById(data.drawingId);
@@ -199,6 +224,19 @@ class UndoRedoManager {
         const drawing = this.findDrawingById(data.drawingId);
         if (drawing) {
             this.removeDrawingWithoutHistory(drawing);
+        }
+    }
+
+    redoBulkDelete(data) {
+        const entries = Array.isArray(data.entries) ? data.entries : [];
+        for (const entry of entries) {
+            const drawing = this.findDrawingById(entry.drawingId);
+            if (drawing) {
+                this.removeDrawingWithoutHistory(drawing);
+            }
+        }
+        if (this.drawingManager.objectTreeManager) {
+            this.drawingManager.objectTreeManager.refresh();
         }
     }
     
@@ -220,6 +258,12 @@ class UndoRedoManager {
             } else if (action.type === 'delete') {
                 const restored = this.findDrawingById(data.drawingJSON.id || data.drawingId);
                 if (restored) chart.broadcastDrawingChange('add', restored);
+            } else if (action.type === 'bulk-delete') {
+                const entries = Array.isArray(data.entries) ? data.entries : [];
+                for (const entry of entries) {
+                    const restored = this.findDrawingById(entry.drawingJSON?.id || entry.drawingId);
+                    if (restored) chart.broadcastDrawingChange('add', restored);
+                }
             } else if (action.type === 'modify') {
                 const drawing = this.findDrawingById(data.drawingId);
                 if (drawing) chart.broadcastDrawingChange('update', drawing);
@@ -230,6 +274,8 @@ class UndoRedoManager {
                 if (restored) chart.broadcastDrawingChange('add', restored);
             } else if (action.type === 'delete') {
                 chart.broadcastDrawingChange('remove', { id: data.drawingId });
+            } else if (action.type === 'bulk-delete') {
+                chart.broadcastDrawingChange('clear');
             } else if (action.type === 'modify') {
                 const drawing = this.findDrawingById(data.drawingId);
                 if (drawing) chart.broadcastDrawingChange('update', drawing);

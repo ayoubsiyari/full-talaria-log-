@@ -10392,6 +10392,20 @@ class DrawingToolsManager {
             }
         }
 
+        if (this.history && !this.history.isPerformingUndoRedo) {
+            const entries = this.drawings.map((drawing, index) => {
+                this._ensureDrawingId(drawing);
+                return {
+                    drawingId: drawing.id,
+                    drawingJSON: drawing.toJSON(),
+                    index
+                };
+            });
+            if (entries.length > 0) {
+                this.history.recordBulkDelete(entries);
+            }
+        }
+
         this.drawings.forEach(drawing => drawing.destroy());
         this.drawings = [];
         this.selectedDrawing = null;

@@ -3064,9 +3064,294 @@ function v9NormalizeTlVisRow(key, row) {
   let max = Number(row.max);
   if (!Number.isFinite(min)) min = 1;
   if (!Number.isFinite(max)) max = hm;
-  min = Math.max(1, Math.min(min, hm - 1));
-  max = Math.max(min + 1, Math.min(max, hm));
+  min = Math.max(1, Math.min(min, hm));
+  max = Math.max(min, Math.min(max, hm));
   return { checked: row.checked !== false, min, max };
+}
+
+function v9VisDragNextRange(nv, curMin, curMax, hm, mode, anchor) {
+  const n = Math.max(1, Math.min(Math.round(nv), hm));
+  if (mode === "merged") {
+    const a = anchor != null ? anchor : curMin;
+    if (n === a) return { min: n, max: n };
+    if (n < a) return { min: n, max: a };
+    return { min: a, max: n };
+  }
+  if (mode === "min") {
+    if (n >= curMax) return { min: n, max: n };
+    return { min: n, max: curMax };
+  }
+  if (mode === "max") {
+    if (n <= curMin) return { min: n, max: n };
+    return { min: curMin, max: n };
+  }
+  return { min: n, max: n };
+}
+
+function V9VisTriangleHandle({ leftPct, hot, c }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `calc(${leftPct}% - 6px)`,
+        top: "calc(50% + 2px)",
+        width: 12,
+        height: 9,
+        clipPath: "polygon(50% 0%,0% 100%,100% 100%)",
+        background: `linear-gradient(180deg,${c.acL},${c.ac})`,
+        filter: hot ? `drop-shadow(0 0 8px ${c.acG}) brightness(1.35)` : `drop-shadow(0 0 4px ${c.acG})`,
+        transform: hot ? "scale(1.18)" : "scale(1)",
+        transition: "transform 0.08s ease,filter 0.08s ease",
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
+function V9VisTimeframeRangeRow({
+  rowKey,
+  label,
+  hm,
+  v,
+  onPatchRange,
+  handlePrefix,
+  chkId,
+  gc,
+  c,
+  F,
+  hov,
+  setHov,
+  renderCheckbox,
+  inputMode = "number",
+}) {
+  const collapsed = v.min === v.max;
+  const pctMin = (v.min - 1) / Math.max(1, hm - 1) * 100;
+  const pctMax = (v.max - 1) / Math.max(1, hm - 1) * 100;
+  const hkMin = `${handlePrefix}-min-${rowKey}`;
+  const hkMax = `${handlePrefix}-max-${rowKey}`;
+  const hkMerged = `${handlePrefix}-merged-${rowKey}`;
+
+  const mkDrag = (e, mode, trackEl) => {
+    e.stopPropagation();
+    const rect = trackEl.getBoundingClientRect();
+    const getVal = (cx) => Math.round(1 + Math.max(0, Math.min(1, (cx - rect.left) / rect.width)) * (hm - 1));
+    const anchor = v.min;
+    if (mode === "merged") setHov(hkMerged);
+    else setHov(mode === "min" ? hkMin : hkMax);
+    const onMove = (ev) => {
+      const nv = getVal(ev.clientX);
+      const next = v9VisDragNextRange(nv, v.min, v.max, hm, mode, anchor);
+      onPatchRange(next.min, next.max);
+    };
+    const onUp = () => {
+      setHov(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    onMove(e);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const inputStyle = inputMode === "ind-text"
+    ? v9IndNumericInputStyle({
+        width: 38,
+        height: 22,
+        background: "rgba(140,160,255,0.06)",
+        border: `1px solid ${c.brL}`,
+        color: c.tx,
+        fontSize: 11,
+        fontFamily: F,
+        outline: "none",
+      })
+    : {
+        width: 38,
+        height: 22,
+        textAlign: "center",
+        background: "rgba(140,160,255,0.06)",
+        border: `1px solid ${c.brL}`,
+        color: c.tx,
+        fontSize: 11,
+        fontFamily: F,
+        outline: "none",
+      };
+
+  const parseMinInput = (raw) => {
+    const n = inputMode === "ind-text" ? v9ParseVisInt(raw, v.min) : (parseInt(raw, 10) || v.min);
+    const clamped = Math.max(1, Math.min(n, v.max));
+    onPatchRange(clamped, v.max);
+  };
+  const parseMaxInput = (raw) => {
+    const n = inputMode === "ind-text" ? v9ParseVisInt(raw, v.max) : (parseInt(raw, 10) || v.max);
+    const clamped = Math.max(v.min, Math.min(n, hm));
+    onPatchRange(v.min, clamped);
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: gc, gap: "0 8px", alignItems: "center", padding: "6px 12px" }}>
+      {renderCheckbox(v.checked, chkId)}
+      <span style={{ fontSize: 12, color: v.checked ? c.ts : c.tm }}>{label}</span>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        {inputMode === "ind-text" ? (
+          <input
+            type="text"
+            inputMode="numeric"
+            value={v9IndNumericDisplayValue(v.min)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => parseMinInput(e.target.value)}
+            className="tlr-nospinner"
+            style={inputStyle}
+          />
+        ) : (
+          <input
+            type="number"
+            min={1}
+            max={v.max}
+            value={v.min}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => parseMinInput(e.target.value)}
+            className="tlr-nospinner"
+            style={inputStyle}
+          />
+        )}
+      </div>
+      <div onClick={(e) => e.stopPropagation()} style={{ position: "relative", height: 28, display: "flex", alignItems: "center", cursor: "default" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, height: 3, top: "50%", transform: "translateY(-50%)", borderRadius: 99, background: c.trk }}>
+          <div
+            style={{
+              position: "absolute",
+              left: `${pctMin}%`,
+              width: collapsed ? "2px" : `${Math.max(0, pctMax - pctMin)}%`,
+              height: "100%",
+              borderRadius: 99,
+              background: `linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,
+              boxShadow: `0 0 5px ${c.acG}`,
+            }}
+          />
+        </div>
+        <V9VisTriangleHandle leftPct={pctMin} hot={hov === hkMin || hov === hkMerged} c={c} />
+        {!collapsed && <V9VisTriangleHandle leftPct={pctMax} hot={hov === hkMax} c={c} />}
+        {collapsed ? (
+          <div
+            onPointerDown={(e) => mkDrag(e, "merged", e.currentTarget.parentElement)}
+            onMouseEnter={() => setHov(hkMerged)}
+            onMouseLeave={() => setHov(null)}
+            style={{ position: "absolute", left: `calc(${pctMin}% - 14px)`, top: "calc(50% - 14px)", width: 28, height: 28, cursor: "default", zIndex: 3 }}
+          />
+        ) : (
+          <>
+            <div
+              onPointerDown={(e) => {
+                const t = e.currentTarget.parentElement;
+                const r = t.getBoundingClientRect();
+                const cv = Math.round(1 + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (hm - 1));
+                mkDrag(e, Math.abs(cv - v.min) <= Math.abs(cv - v.max) ? "min" : "max", t);
+              }}
+              style={{ position: "absolute", inset: 0, cursor: "default" }}
+            />
+            <div
+              onPointerDown={(e) => mkDrag(e, "min", e.currentTarget.parentElement)}
+              onMouseEnter={() => setHov(hkMin)}
+              onMouseLeave={() => setHov(null)}
+              style={{ position: "absolute", left: `calc(${pctMin}% - 14px)`, top: "calc(50% - 14px)", width: 28, height: 28, cursor: "default", zIndex: 2 }}
+            />
+            <div
+              onPointerDown={(e) => mkDrag(e, "max", e.currentTarget.parentElement)}
+              onMouseEnter={() => setHov(hkMax)}
+              onMouseLeave={() => setHov(null)}
+              style={{ position: "absolute", left: `calc(${pctMax}% - 14px)`, top: "calc(50% - 14px)", width: 28, height: 28, cursor: "default", zIndex: 2 }}
+            />
+          </>
+        )}
+      </div>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        {inputMode === "ind-text" ? (
+          <input
+            type="text"
+            inputMode="numeric"
+            value={v9IndNumericDisplayValue(v.max)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => parseMaxInput(e.target.value)}
+            className="tlr-nospinner"
+            style={inputStyle}
+          />
+        ) : (
+          <input
+            type="number"
+            min={v.min}
+            max={hm}
+            value={v.max}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => parseMaxInput(e.target.value)}
+            className="tlr-nospinner"
+            style={inputStyle}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+const V9_VIS_TIMEFRAME_LABELS = [
+  ["visMinutes", "Minutes"],
+  ["visHours", "Hours"],
+  ["visDays", "Days"],
+  ["visWeeks", "Weeks"],
+  ["visMonths", "Months"],
+];
+const V9_VIS_TIMEFRAME_HARD_MAX = { visMinutes: 60, visHours: 24, visDays: 366, visWeeks: 260, visMonths: 120 };
+const V9_VIS_TIMEFRAME_GRID = "24px 72px 44px 1fr 44px";
+
+function V9VisTimeframesPanel({
+  getRow,
+  onPatchRange,
+  onToggleChecked,
+  handlePrefix,
+  chkPrefix,
+  c,
+  F,
+  hov,
+  setHov,
+  renderCheckbox,
+  inputMode = "number",
+}) {
+  const gc = V9_VIS_TIMEFRAME_GRID;
+  return (
+    <>
+      <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginBottom: 10 }}>TIMEFRAMES</div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: gc, gap: "0 8px", padding: "4px 12px 5px" }}>
+          <div /><div />
+          <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.06em" }}>MIN</div>
+          <div />
+          <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.06em" }}>MAX</div>
+        </div>
+        {V9_VIS_TIMEFRAME_LABELS.map(([k, lbl]) => (
+          <V9VisTimeframeRangeRow
+            key={k}
+            rowKey={k}
+            label={lbl}
+            hm={V9_VIS_TIMEFRAME_HARD_MAX[k]}
+            v={getRow(k)}
+            onPatchRange={(min, max) => onPatchRange(k, min, max)}
+            handlePrefix={handlePrefix}
+            chkId={`${chkPrefix}-${k}`}
+            gc={gc}
+            c={c}
+            F={F}
+            hov={hov}
+            setHov={setHov}
+            renderCheckbox={(checked, chkId) => renderCheckbox(checked, chkId, () => onToggleChecked(k))}
+            inputMode={inputMode}
+          />
+        ))}
+      </div>
+    </>
+  );
 }
 
 function v9EnsureTlStyleVisibilityRows(out, fall = {}) {
@@ -3083,8 +3368,8 @@ function v9EnsureTlStyleVisibilityRows(out, fall = {}) {
     let max = Number(cur.max);
     if (!Number.isFinite(min)) min = Number(prev && prev.min) || 1;
     if (!Number.isFinite(max)) max = Number(prev && prev.max) || hardMax;
-    min = Math.max(1, Math.min(min, hardMax - 1));
-    max = Math.max(min + 1, Math.min(max, hardMax));
+    min = Math.max(1, Math.min(min, hardMax));
+    max = Math.max(min, Math.min(max, hardMax));
     out[key] = { checked: cur.checked !== false, min, max };
   });
   return out;
@@ -3102,8 +3387,8 @@ function v9IndicatorVisibilityDraftFromIndicator(existingIndicator) {
     let max = Number(row.max);
     if (!Number.isFinite(min)) min = 1;
     if (!Number.isFinite(max)) max = hardMax;
-    min = Math.max(1, Math.min(min, hardMax - 1));
-    max = Math.max(min + 1, Math.min(max, hardMax));
+    min = Math.max(1, Math.min(min, hardMax));
+    max = Math.max(min, Math.min(max, hardMax));
     patch[draftKey] = {
       checked: row.enabled !== false,
       min,
@@ -3122,8 +3407,8 @@ function v9IndicatorVisibilityFromDraft(draft) {
     let max = Number(v.max);
     if (!Number.isFinite(min)) min = 1;
     if (!Number.isFinite(max)) max = hardMax;
-    min = Math.max(1, Math.min(min, hardMax - 1));
-    max = Math.max(min + 1, Math.min(max, hardMax));
+    min = Math.max(1, Math.min(min, hardMax));
+    max = Math.max(min, Math.min(max, hardMax));
     _ranges[unit] = {
       enabled: v.checked !== false,
       min,
@@ -4432,9 +4717,63 @@ function v9ShouldSkipLegacyDrawingToolbarShow() {
   return false;
 }
 
+const V9_TL_BAR_POS_KEY = "v9TlBarPosition";
+const V9_TL_BAR_POS_LEGACY_KEY = "drawingToolbarPosition";
+/** True once the user drags tlBar/txtBar or a saved position is loaded from storage. */
+let v9TlBarPosUserPinned = false;
+
+function v9NormalizeTlBarPos(p) {
+  if (!p || typeof p !== "object") return null;
+  const x = typeof p.x === "number" ? p.x : (typeof p.left === "number" ? p.left : NaN);
+  const y = typeof p.y === "number" ? p.y : (typeof p.top === "number" ? p.top : NaN);
+  if (Number.isNaN(x) || Number.isNaN(y)) return null;
+  return { x, y };
+}
+
+function v9ReadTlBarPosFromStorage() {
+  try {
+    const us = typeof window !== "undefined" ? window.userStorage : null;
+    for (const key of [V9_TL_BAR_POS_KEY, V9_TL_BAR_POS_LEGACY_KEY]) {
+      const raw = us?.getItem?.(key)
+        ?? (typeof localStorage !== "undefined" ? localStorage.getItem(key) : null);
+      if (!raw) continue;
+      const pos = v9NormalizeTlBarPos(JSON.parse(raw));
+      if (pos) return pos;
+    }
+  } catch (_) {}
+  return null;
+}
+
+function v9LoadSavedTlBarPos(fallback) {
+  const saved = v9ReadTlBarPosFromStorage();
+  if (saved) {
+    v9TlBarPosUserPinned = true;
+    return saved;
+  }
+  return fallback;
+}
+
+function v9SaveTlBarPos(pos) {
+  const norm = v9NormalizeTlBarPos(pos);
+  if (!norm) return;
+  v9TlBarPosUserPinned = true;
+  try {
+    const raw = JSON.stringify(norm);
+    window.userStorage?.setItem?.(V9_TL_BAR_POS_KEY, raw);
+    try { localStorage.setItem(V9_TL_BAR_POS_KEY, raw); } catch (_) {}
+  } catch (_) {}
+}
+
+function v9CommitTlBarDragPos(setTlBarPos, x, y) {
+  const pos = { x, y };
+  setTlBarPos(pos);
+  v9SaveTlBarPos(pos);
+}
+
 /** Move V9 tlBar/txtBar near the shape when drawing-tools-manager calls toolbar.show(x, y). */
 function v9SyncQuickBarPosFromToolbarShow(br, x, y, drawingType, dm) {
   if (!br || typeof br.setTlBarPos !== "function") return;
+  if (v9TlBarPosUserPinned) return;
   if (typeof x !== "number" || typeof y !== "number" || Number.isNaN(x) || Number.isNaN(y)) return;
   const dt = drawingType || "";
   if (
@@ -12184,7 +12523,7 @@ const TalariaV8bLive = () => {
   const [pinnedBarOpen, setPinnedBarOpen] = useState(false);
   const [pinnedBarPos, setPinnedBarPos] = useState({ x: 50, y: 80 });
   const [groupSelected, setGroupSelected] = useState({});
-  const [tlBarPos, setTlBarPos] = useState({ x: 130, y: 200 });
+  const [tlBarPos, setTlBarPos] = useState(() => v9LoadSavedTlBarPos({ x: 130, y: 200 }));
   // True only when a drawing is currently selected (set by hooking the
   // legacy drawing-toolbar's show/hide via drawingManager.toolbar in the
   // useEffect below). Drives the visibility of the V9 floating toolbar so
@@ -25176,96 +25515,20 @@ const TalariaV8bLive = () => {
             })()}
 
             {/* ── VISIBILITY TAB ── */}
-            {tlSettTab==="visibility" && (()=>{
-              const hardMax={visMinutes:60,visHours:24,visDays:366,visWeeks:260,visMonths:120};
-              const gc="24px 72px 44px 1fr 44px";
-              return <>
-                <div style={{ fontSize:10, fontWeight:800, color:c.tm, letterSpacing:"0.08em", marginBottom:10 }}>TIMEFRAMES</div>
-                <div style={{ marginBottom:16 }}>
-                  {/* column headers — same grid as data rows */}
-                  <div style={{ display:"grid", gridTemplateColumns:gc, gap:"0 8px", padding:"4px 12px 5px" }}>
-                    <div/><div/>
-                    <div style={{ textAlign:"center", fontSize:9, fontWeight:700, color:c.tm, letterSpacing:"0.06em" }}>MIN</div>
-                    <div/>
-                    <div style={{ textAlign:"center", fontSize:9, fontWeight:700, color:c.tm, letterSpacing:"0.06em" }}>MAX</div>
-                  </div>
-                  {[["visMinutes","Minutes"],["visHours","Hours"],["visDays","Days"],["visWeeks","Weeks"],["visMonths","Months"]].map(([k,lbl],idx,arr)=>{
-                    const v=v9NormalizeTlVisRow(k, tlStyle[k]); const hm=hardMax[k];
-                    const pctMin=(v.min-1)/Math.max(1,hm-1)*100;
-                    const pctMax=(v.max-1)/Math.max(1,hm-1)*100;
-                    const hkMin=`tl-vis-min-${k}`, hkMax=`tl-vis-max-${k}`;
-                    const mkDrag=(e,isMin,trackEl)=>{
-                      e.stopPropagation();
-                      const rect=trackEl.getBoundingClientRect();
-                      const getVal=cx=>Math.round(1+Math.max(0,Math.min(1,(cx-rect.left)/rect.width))*(hm-1));
-                      setHov(isMin?hkMin:hkMax);
-                      const onMove=ev=>{const nv=getVal(ev.clientX);
-                        if(isMin)setTlStyle(s=>({...s,[k]:{...s[k],min:Math.max(1,Math.min(nv,s[k].max-1))}}));
-                        else setTlStyle(s=>({...s,[k]:{...s[k],max:Math.max(s[k].min+1,Math.min(nv,hm))}}));
-                      };
-                      const onUp=()=>{setHov(null);window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
-                      onMove(e); window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
-                    };
-                    return (
-                      <div key={k} style={{ display:"grid", gridTemplateColumns:gc, gap:"0 8px", alignItems:"center",
-                                            padding:"6px 12px" }}>
-                        {TlChk(v.checked,`tlchk-${k}`,null,()=>setTlStyle(s=>({...s,[k]:{...s[k],checked:!s[k].checked}})))}
-                        <span style={{ fontSize:12, color:v.checked?c.ts:c.tm }}>{lbl}</span>
-                        <div style={{ display:"flex", justifyContent:"center" }}>
-                          <input type="number" min={1} max={v.max-1} value={v.min} onClick={e=>e.stopPropagation()}
-                            onChange={e=>setTlStyle(s=>({...s,[k]:{...s[k],min:Math.max(1,Math.min(parseInt(e.target.value)||1,s[k].max-1))}}))}
-                            className="tlr-nospinner"
-                            style={{ width:38, height:22, textAlign:"center", background:"rgba(140,160,255,0.06)",
-                                     border:`1px solid ${c.brL}`, color:c.tx, fontSize:11, fontFamily:F, outline:"none" }}/>
-                        </div>
-                        {/* slider: full-track fallback + per-handle grab zones */}
-                        <div onClick={e=>e.stopPropagation()}
-                          style={{ position:"relative", height:28, display:"flex", alignItems:"center", cursor:"default" }}>
-                          {/* track */}
-                          <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
-                            <div style={{ position:"absolute", left:`${pctMin}%`, width:`${Math.max(0,pctMax-pctMin)}%`, height:"100%", borderRadius:99,
-                              background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
-                          </div>
-                          {/* visual triangles — no pointer events */}
-                          <div style={{ position:"absolute", left:`calc(${pctMin}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9,
-                            clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
-                            background:`linear-gradient(180deg,${c.acL},${c.ac})`,
-                            filter:hov===hkMin?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`,
-                            transform:hov===hkMin?"scale(1.18)":"scale(1)", transition:"transform 0.08s ease,filter 0.08s ease",
-                            pointerEvents:"none" }}/>
-                          <div style={{ position:"absolute", left:`calc(${pctMax}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9,
-                            clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
-                            background:`linear-gradient(180deg,${c.acL},${c.ac})`,
-                            filter:hov===hkMax?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`,
-                            transform:hov===hkMax?"scale(1.18)":"scale(1)", transition:"transform 0.08s ease,filter 0.08s ease",
-                            pointerEvents:"none" }}/>
-                          {/* full-track click area — determines handle by proximity */}
-                          <div onPointerDown={e=>{const t=e.currentTarget.parentElement;const r=t.getBoundingClientRect();const cv=Math.round(1+Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*(hm-1));mkDrag(e,Math.abs(cv-v.min)<=Math.abs(cv-v.max),t);}}
-                            style={{ position:"absolute", inset:0, cursor:"default" }}/>
-                          {/* min handle — large invisible grab zone on top */}
-                          <div onPointerDown={e=>mkDrag(e,true,e.currentTarget.parentElement)}
-                            onMouseEnter={()=>setHov(hkMin)} onMouseLeave={()=>setHov(null)}
-                            style={{ position:"absolute", left:`calc(${pctMin}% - 14px)`, top:"calc(50% - 14px)",
-                                     width:28, height:28, cursor:"default", zIndex:2 }}/>
-                          {/* max handle — large invisible grab zone on top */}
-                          <div onPointerDown={e=>mkDrag(e,false,e.currentTarget.parentElement)}
-                            onMouseEnter={()=>setHov(hkMax)} onMouseLeave={()=>setHov(null)}
-                            style={{ position:"absolute", left:`calc(${pctMax}% - 14px)`, top:"calc(50% - 14px)",
-                                     width:28, height:28, cursor:"default", zIndex:2 }}/>
-                        </div>
-                        <div style={{ display:"flex", justifyContent:"center" }}>
-                          <input type="number" min={v.min+1} max={hm} value={v.max} onClick={e=>e.stopPropagation()}
-                            onChange={e=>setTlStyle(s=>({...s,[k]:{...s[k],max:Math.max(s[k].min+1,Math.min(parseInt(e.target.value)||1,hm))}}))}
-                            className="tlr-nospinner"
-                            style={{ width:38, height:22, textAlign:"center", background:"rgba(140,160,255,0.06)",
-                                     border:`1px solid ${c.brL}`, color:c.tx, fontSize:11, fontFamily:F, outline:"none" }}/>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>;
-            })()}
+            {tlSettTab==="visibility" && (
+              <V9VisTimeframesPanel
+                getRow={(k) => v9NormalizeTlVisRow(k, tlStyle[k])}
+                onPatchRange={(k, min, max) => setTlStyle((s) => ({ ...s, [k]: { ...s[k], min, max } }))}
+                onToggleChecked={(k) => setTlStyle((s) => ({ ...s, [k]: { ...s[k], checked: !s[k].checked } }))}
+                handlePrefix="tl-vis"
+                chkPrefix="tlchk"
+                c={c}
+                F={F}
+                hov={hov}
+                setHov={setHov}
+                renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle)}
+              />
+            )}
           </div>
           {/* footer */}
           <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
@@ -25321,7 +25584,7 @@ const TalariaV8bLive = () => {
             const { minX, minY, maxX, maxY } = v9FloatingUiDragBounds(Z, barW, barH, 0);
             let nx=px,ny=py;
             const onMove=ev=>{nx=Math.max(minX,Math.min(px+(ev.clientX-sx)/Z,maxX));ny=Math.max(minY,Math.min(py+(ev.clientY-sy)/Z,maxY));el.style.left=nx+'px';el.style.top=ny+'px';};
-            const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);setTlBarPos({x:nx,y:ny});};
+            const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);v9CommitTlBarDragPos(setTlBarPos,nx,ny);};
             window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
           }} className="tl-drag" style={{width:40,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"move",flexShrink:0}}>
             <I n="grip" s={16} cl={c.tm}/>
@@ -26097,95 +26360,20 @@ const TalariaV8bLive = () => {
               );
             })()}
             {/* ── VISIBILITY TAB ── */}
-            {txtSettTab==="visibility" && (()=>{
-              const hardMax={visMinutes:60,visHours:24,visDays:366,visWeeks:260,visMonths:120};
-              const gc="24px 72px 44px 1fr 44px";
-              return <>
-                <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>TIMEFRAMES</div>
-                <div style={{marginBottom:16}}>
-                  {/* column headers — same grid as data rows */}
-                  <div style={{display:"grid",gridTemplateColumns:gc,gap:"0 8px",padding:"4px 12px 5px"}}>
-                    <div/><div/>
-                    <div style={{textAlign:"center",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MIN</div>
-                    <div/>
-                    <div style={{textAlign:"center",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MAX</div>
-                  </div>
-                  {[["visMinutes","Minutes"],["visHours","Hours"],["visDays","Days"],["visWeeks","Weeks"],["visMonths","Months"]].map(([k,lbl],idx,arr)=>{
-                    const v=v9NormalizeTlVisRow(k, txtStyle[k]); const hm=hardMax[k];
-                    const pctMin=(v.min-1)/Math.max(1,hm-1)*100;
-                    const pctMax=(v.max-1)/Math.max(1,hm-1)*100;
-                    const hkMin=`txt-vis-min-${k}`, hkMax=`txt-vis-max-${k}`;
-                    const mkDrag=(e,isMin,trackEl)=>{
-                      e.stopPropagation();
-                      const rect=trackEl.getBoundingClientRect();
-                      const getVal=cx=>Math.round(1+Math.max(0,Math.min(1,(cx-rect.left)/rect.width))*(hm-1));
-                      setHov(isMin?hkMin:hkMax);
-                      const onMove=ev=>{const nv=getVal(ev.clientX);
-                        if(isMin)setTxtStyle(s=>({...s,[k]:{...s[k],min:Math.max(1,Math.min(nv,s[k].max-1))}}));
-                        else setTxtStyle(s=>({...s,[k]:{...s[k],max:Math.max(s[k].min+1,Math.min(nv,hm))}}));
-                      };
-                      const onUp=()=>{setHov(null);window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
-                      onMove(e); window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
-                    };
-                    return (
-                      <div key={k} style={{display:"grid",gridTemplateColumns:gc,gap:"0 8px",alignItems:"center",
-                                           padding:"6px 12px"}}>
-                        {TlChk(v.checked,`txtchk-${k}`,null,()=>setTxtStyle(s=>({...s,[k]:{...s[k],checked:!s[k].checked}})))}
-                        <span style={{fontSize:12,color:v.checked?c.ts:c.tm}}>{lbl}</span>
-                        <div style={{display:"flex",justifyContent:"center"}}>
-                          <input type="number" min={1} max={v.max-1} value={v.min} onClick={e=>e.stopPropagation()}
-                            onChange={e=>setTxtStyle(s=>({...s,[k]:{...s[k],min:Math.max(1,Math.min(parseInt(e.target.value)||1,s[k].max-1))}}))}
-                            className="tlr-nospinner"
-                            style={{width:38,height:22,textAlign:"center",background:"rgba(140,160,255,0.06)",
-                                    border:`1px solid ${c.brL}`,color:c.tx,fontSize:11,fontFamily:F,outline:"none"}}/>
-                        </div>
-                        {/* slider — triangle handles, matching TL settings */}
-                        <div onClick={e=>e.stopPropagation()}
-                          style={{position:"relative",height:28,display:"flex",alignItems:"center",cursor:"default"}}>
-                          {/* track */}
-                          <div style={{position:"absolute",left:0,right:0,height:3,top:"50%",transform:"translateY(-50%)",borderRadius:99,background:c.trk}}>
-                            <div style={{position:"absolute",left:`${pctMin}%`,width:`${Math.max(0,pctMax-pctMin)}%`,height:"100%",borderRadius:99,
-                              background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`,boxShadow:`0 0 5px ${c.acG}`}}/>
-                          </div>
-                          {/* min triangle handle */}
-                          <div style={{position:"absolute",left:`calc(${pctMin}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
-                            clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
-                            background:`linear-gradient(180deg,${c.acL},${c.ac})`,
-                            filter:hov===hkMin?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`,
-                            transform:hov===hkMin?"scale(1.18)":"scale(1)",transition:"transform 0.08s ease,filter 0.08s ease",
-                            pointerEvents:"none"}}/>
-                          {/* max triangle handle */}
-                          <div style={{position:"absolute",left:`calc(${pctMax}% - 6px)`,top:"calc(50% + 2px)",width:12,height:9,
-                            clipPath:"polygon(50% 0%,0% 100%,100% 100%)",
-                            background:`linear-gradient(180deg,${c.acL},${c.ac})`,
-                            filter:hov===hkMax?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`,
-                            transform:hov===hkMax?"scale(1.18)":"scale(1)",transition:"transform 0.08s ease,filter 0.08s ease",
-                            pointerEvents:"none"}}/>
-                          {/* full-track click — picks nearest handle */}
-                          <div onPointerDown={e=>{const t=e.currentTarget.parentElement;const r=t.getBoundingClientRect();const cv=Math.round(1+Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*(hm-1));mkDrag(e,Math.abs(cv-v.min)<=Math.abs(cv-v.max),t);}}
-                            style={{position:"absolute",inset:0,cursor:"default"}}/>
-                          {/* min grab zone */}
-                          <div onPointerDown={e=>mkDrag(e,true,e.currentTarget.parentElement)}
-                            onMouseEnter={()=>setHov(hkMin)} onMouseLeave={()=>setHov(null)}
-                            style={{position:"absolute",left:`calc(${pctMin}% - 14px)`,top:"calc(50% - 14px)",width:28,height:28,cursor:"default",zIndex:2}}/>
-                          {/* max grab zone */}
-                          <div onPointerDown={e=>mkDrag(e,false,e.currentTarget.parentElement)}
-                            onMouseEnter={()=>setHov(hkMax)} onMouseLeave={()=>setHov(null)}
-                            style={{position:"absolute",left:`calc(${pctMax}% - 14px)`,top:"calc(50% - 14px)",width:28,height:28,cursor:"default",zIndex:2}}/>
-                        </div>
-                        <div style={{display:"flex",justifyContent:"center"}}>
-                          <input type="number" min={v.min+1} max={hm} value={v.max} onClick={e=>e.stopPropagation()}
-                            onChange={e=>setTxtStyle(s=>({...s,[k]:{...s[k],max:Math.max(s[k].min+1,Math.min(parseInt(e.target.value)||1,hm))}}))}
-                            className="tlr-nospinner"
-                            style={{width:38,height:22,textAlign:"center",background:"rgba(140,160,255,0.06)",
-                                    border:`1px solid ${c.brL}`,color:c.tx,fontSize:11,fontFamily:F,outline:"none"}}/>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>;
-            })()}
+            {txtSettTab==="visibility" && (
+              <V9VisTimeframesPanel
+                getRow={(k) => v9NormalizeTlVisRow(k, txtStyle[k])}
+                onPatchRange={(k, min, max) => setTxtStyle((s) => ({ ...s, [k]: { ...s[k], min, max } }))}
+                onToggleChecked={(k) => setTxtStyle((s) => ({ ...s, [k]: { ...s[k], checked: !s[k].checked } }))}
+                handlePrefix="txt-vis"
+                chkPrefix="txtchk"
+                c={c}
+                F={F}
+                hov={hov}
+                setHov={setHov}
+                renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle)}
+              />
+            )}
           </div>
           {/* footer */}
           <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
@@ -29666,7 +29854,7 @@ const TalariaV8bLive = () => {
               el.style.left=nx+'px'; el.style.top=ny+'px';
               if(dropEl){const dx=nx-px,dy=ny-py;dropEl.style.left=(dropStartLeft+dx)+'px';dropEl.style.top=(dropStartTop+dy)+'px';}
             };
-            const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);setTlBarPos({x:nx,y:ny});};
+            const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);v9CommitTlBarDragPos(setTlBarPos,nx,ny);};
             window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
           }} className="tl-drag" style={{width:40,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"move",flexShrink:0}}>
             <I n="grip" s={16} cl={c.tm}/>
