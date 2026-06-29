@@ -5447,7 +5447,7 @@ function v9ParallelChannelLevelSortKey(ln) {
   return Number.isFinite(v) ? v : 0;
 }
 
-/** Sort level rows by numeric value (stable) for consistent Input/Style ordering. */
+/** Sort level rows by numeric value (stable) — internal storage order. */
 function v9SortParallelChannelChLines(chLines) {
   if (!Array.isArray(chLines) || chLines.length < 2) {
     return Array.isArray(chLines) ? chLines.map((row) => ({ ...row })) : [];
@@ -5459,6 +5459,35 @@ function v9SortParallelChannelChLines(chLines) {
       return d !== 0 ? d : a.i - b.i;
     })
     .map(({ row }) => row);
+}
+
+function v9ParallelChannelRowIsUpper(row) {
+  const v = parseFloat(String(row?.value ?? "").replace(/,/g, ""));
+  return Number.isFinite(v) && Math.abs(v - 1) < 1e-6;
+}
+
+function v9ParallelChannelRowIsLower(row) {
+  const v = parseFloat(String(row?.value ?? "").replace(/,/g, ""));
+  return Number.isFinite(v) && Math.abs(v) < 1e-6;
+}
+
+/** UI row order: Upper → Middle → aux levels → Lower. */
+function v9ParallelChannelUiRowOrder(chLines, { includeMiddle = true } = {}) {
+  if (!Array.isArray(chLines) || !chLines.length) return [];
+  const midIdx = v9ParallelChannelMidLineRowIndex(chLines);
+  const entries = chLines.map((row, i) => ({ row, i }));
+  const upper = entries.find((e) => v9ParallelChannelRowIsUpper(e.row));
+  const lower = entries.find((e) => v9ParallelChannelRowIsLower(e.row));
+  const middle = midIdx >= 0 ? entries[midIdx] : null;
+  const aux = entries
+    .filter((e) => e.i !== midIdx && e.i !== upper?.i && e.i !== lower?.i)
+    .sort((a, b) => v9ParallelChannelLevelSortKey(a.row) - v9ParallelChannelLevelSortKey(b.row));
+  const ordered = [];
+  if (upper) ordered.push(upper);
+  if (includeMiddle && middle) ordered.push(middle);
+  ordered.push(...aux);
+  if (lower) ordered.push(lower);
+  return ordered;
 }
 
 /** Panel-safe `chLines` — never empty for parallel-channel UI. */
@@ -5478,10 +5507,29 @@ function v9ResolveParallelChannelChLines(tlStyle, drawing) {
   return v9SortParallelChannelChLines(rows);
 }
 
+/** Pick the adjustable middle row (not 0/1 boundary or 0.25/0.75 aux rails). */
+function v9ParallelChannelMiddleLevelIndexFromRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return -1;
+  const flagged = rows.findIndex((ln) => ln && ln.middle === true);
+  if (flagged >= 0) return flagged;
+  for (let i = 0; i < rows.length; i++) {
+    const v = parseFloat(String(rows[i]?.value ?? "").replace(/,/g, ""));
+    if (!Number.isFinite(v) || v <= 0.001 || v >= 0.999) continue;
+    if (Math.abs(v - 0.25) < 1e-6 || Math.abs(v - 0.75) < 1e-6) continue;
+    return i;
+  }
+  const halfIdx = rows.findIndex((ln) => {
+    const v = parseFloat(String(ln?.value ?? "").replace(/,/g, ""));
+    return Number.isFinite(v) && Math.abs(v - 0.5) < 1e-6;
+  });
+  if (halfIdx >= 0) return halfIdx;
+  return v9ParallelChannelMidLineRowIndex(rows);
+}
+
 /** `drawing.levels` (parallel-channel) ↔ Settings panel `tlStyle.chLines`. */
 function v9ParallelLevelsToChLines(levels) {
   if (!Array.isArray(levels) || !levels.length) return undefined;
-  return levels.map((lv) => {
+  const rows = levels.map((lv) => {
     const raw = (lv.lineType != null && lv.lineType !== '') ? String(lv.lineType).replace(/\s+/g, '') : '';
     let lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw];
     if (lineType == null) {
@@ -5493,30 +5541,23 @@ function v9ParallelLevelsToChLines(levels) {
     const valueStr = Number.isFinite(numVal)
       ? (Number.isInteger(numVal) ? String(numVal) : numVal.toFixed(4).replace(/\.?0+$/, '') || '0')
       : String(lv.value ?? '0');
-    const isMiddle = Number.isFinite(numVal) && Math.abs(numVal - 0.5) < 0.0001;
     return {
       on: lv.enabled !== false,
       value: valueStr,
       color: lv.color || '#2962FF',
       type: lineType,
       width: w,
-      ...(isMiddle ? { middle: true } : {}),
     };
   });
+  const midIdx = v9ParallelChannelMiddleLevelIndexFromRows(rows);
+  return rows.map((row, i) => ({
+    ...row,
+    middle: i === midIdx,
+  }));
 }
 
 function v9ParallelChannelMidLineRowIndex(chLines) {
-  if (!Array.isArray(chLines) || !chLines.length) return -1;
-  const flagged = chLines.findIndex((ln) => ln && ln.middle === true);
-  if (flagged >= 0) return flagged;
-  const halfIdx = chLines.findIndex((ln) => {
-    const v = parseFloat(String(ln?.value ?? "").replace(/,/g, ""));
-    return Number.isFinite(v) && Math.abs(v - 0.5) < 0.0001;
-  });
-  if (halfIdx >= 0) return halfIdx;
-  if (chLines.length >= 5) return 2;
-  if (chLines.length === 3) return 1;
-  return Math.floor(chLines.length / 2);
+  return v9ParallelChannelMiddleLevelIndexFromRows(chLines);
 }
 
 function v9IsPartialChannelLevelValue(val) {
@@ -5650,14 +5691,8 @@ function v9BumpChLinesRowValue(s, idx, delta, stKey = "chLines", drawing = null)
   return v9PatchChLinesRowValue(s, idx, nextVal, stKey, drawing);
 }
 
-let v9LastChLineStep = { key: "", t: 0 };
-
-/** Guard against duplicate pointer events firing two 0.01 steps per click. */
+/** Step one level row — pointer handlers already dedupe click + pointerdown. */
 function v9BumpChLinesRowValueOnce(s, idx, delta, stKey = "chLines", drawing = null) {
-  const key = `${stKey}:${idx}:${delta}`;
-  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-  if (v9LastChLineStep.key === key && now - v9LastChLineStep.t < 350) return s;
-  v9LastChLineStep = { key, t: now };
   return v9BumpChLinesRowValue(s, idx, delta, stKey, drawing);
 }
 
@@ -21332,6 +21367,23 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Parallel channel chLines / midLine — immediate chart sync (toggle, value, style, width). */
+  const applyParallelChannelTlPatch = useCallback((patchFn) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = patchFn(s);
+        const withMid = next.chLines
+          ? { ...next, ...v9ParallelChannelMidLinePatchFromChLines(next.chLines) }
+          : next;
+        v9FlushTlStyleToChartTargets(withMid, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return withMid;
+      });
+    });
+  }, []);
+
   const applyRegUpperBgToggle = useCallback(() => {
     flushSync(() => {
       setTlStyle((s) => {
@@ -23426,46 +23478,63 @@ const TalariaV8bLive = () => {
                       <div/><div/>{(showEp||isPatternTool) && <div/>}
                     </>}
                   </div>}
-                  {/* ── Middle Line (parallel channel — outside showLine grid) ── */}
-                  {tlSubTool.icon === "channel" && (() => {
-                    const da = (v) => (v === "dotted" ? "2,4" : v === "dashed" ? "7,4" : v === "dashdot" ? "7,4,2,4" : undefined);
-                    const midOp = tlStyle.midLine ? 1 : 0.38;
-                    const midPE = tlStyle.midLine ? "auto" : "none";
-                    const toggleMidLine = () => {
-                      flushSync(() => {
-                        setTlStyle((s) => {
+                  {/* ── Channel / Regression lines rows ── */}
+                  {isChannel && (()=>{
+                    const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
+                    const editDrawing = editingDrawingRef.current?.drawing;
+                    const rawLines = isRegCh
+                      ? v9EnsureChLinesRows(tlStyle, "regLines", editDrawing)
+                      : v9ResolveParallelChannelChLines(
+                          tlStyle,
+                          editDrawing,
+                        );
+                    const isParCh = !isRegCh && tlSubTool.icon === "channel";
+                    const parallelMidIdx = isParCh
+                      ? v9ParallelChannelMidLineRowIndex(rawLines)
+                      : -1;
+                    const parChOrdered = isParCh
+                      ? v9ParallelChannelUiRowOrder(rawLines, { includeMiddle: false })
+                      : [];
+                    const parChUpper = isParCh ? parChOrdered.find((e) => v9ParallelChannelRowIsUpper(e.row)) : null;
+                    const parChAfterMid = isParCh ? parChOrdered.filter((e) => e !== parChUpper) : [];
+                    const lines = isParCh
+                      ? []
+                      : (parallelMidIdx >= 0
+                        ? rawLines.filter((_, idx) => idx !== parallelMidIdx)
+                        : rawLines);
+                    const stKey = isRegCh ? "regLines" : "chLines";
+                    const cpKey = isRegCh ? "regLine" : "chLine";
+                    const lineRowIndex = (displayIdx) => {
+                      if (isRegCh || !isParCh || parallelMidIdx < 0) return displayIdx;
+                      return displayIdx < parallelMidIdx ? displayIdx : displayIdx + 1;
+                    };
+                    const parChMidBlock = isParCh ? (() => {
+                      const midDa = (v) => (v === "dotted" ? "2,4" : v === "dashed" ? "7,4" : v === "dashdot" ? "7,4,2,4" : undefined);
+                      const midOp = tlStyle.midLine ? 1 : 0.38;
+                      const midPE = tlStyle.midLine ? "auto" : "none";
+                      const toggleMidLine = () => {
+                        applyParallelChannelTlPatch((s) => {
                           const nextOn = !s.midLine;
                           const chLines = v9SyncParallelChannelMidLineToChLines({ ...s, midLine: nextOn });
                           return { ...s, midLine: nextOn, chLines };
                         });
-                      });
-                      const snap = tlStyleLiveRef.current;
-                      flushV9MiddleLineToChart(snap, snap.midLine);
-                    };
-                    return (
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"start", marginBottom:8 }}>
-                        <div/><div/>
-                        <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
-                          <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>STYLE</span>
-                        </div>
-                        <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
-                          <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
-                        </div>
-                        <div style={{ padding:"8px 0", alignSelf:"center" }}>
-                          {TlChk(tlStyle.midLine, "tlchk-midLine", "Middle Line", toggleMidLine)}
-                        </div>
-                        <div style={{ padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
-                          {colorSwatch("tlMidLineColor", tlStyle.midLineColor)}
-                        </div>
-                        <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
-                          <div style={{ position:"relative" }}>
+                      };
+                      return (
+                        <React.Fragment key="par-ch-mid">
+                          <div style={{ padding:"5px 0", alignSelf:"center" }}>
+                            {TlChk(tlStyle.midLine, "tlchk-midLine", "Middle Line", toggleMidLine)}
+                          </div>
+                          <div style={{ padding:"5px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
+                            {colorSwatch("tlMidLineColor", tlStyle.midLineColor)}
+                          </div>
+                          <div style={{ padding:"5px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s", position:"relative" }}>
                             <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop==="midType"?null:"midType");}}
                               onMouseEnter={()=>setHov("tl-btn-midType")} onMouseLeave={()=>setHov(null)}
                               style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
                                        background:tlStyleDrop==="midType"?"rgba(74,106,255,0.08)":hov==="tl-btn-midType"?c.hv:"transparent", transition:"background 0.12s" }}>
                               <svg width={22} height={10} viewBox="0 0 22 10">
                                 <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop==="midType"?c.acL:c.ts}
-                                  strokeWidth={tlStyle.midLineType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.midLineType)}/>
+                                  strokeWidth={tlStyle.midLineType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={midDa(tlStyle.midLineType)}/>
                               </svg>
                               <I n="chevDown" s={7} cl={tlStyleDrop==="midType"?c.acL:c.ts}/>
                             </div>
@@ -23486,9 +23555,7 @@ const TalariaV8bLive = () => {
                               })
                             )}
                           </div>
-                        </div>
-                        <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
-                          <div style={{ position:"relative" }}>
+                          <div style={{ padding:"5px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s", position:"relative" }}>
                             <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop==="midWidth"?null:"midWidth");}}
                               onMouseEnter={()=>setHov("tl-btn-midWidth")} onMouseLeave={()=>setHov(null)}
                               style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
@@ -23516,53 +23583,38 @@ const TalariaV8bLive = () => {
                               })
                             )}
                           </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  {/* ── Channel / Regression lines rows ── */}
-                  {isChannel && (()=>{
-                    const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
-                    const editDrawing = editingDrawingRef.current?.drawing;
-                    const rawLines = isRegCh
-                      ? v9EnsureChLinesRows(tlStyle, "regLines", editDrawing)
-                      : v9ResolveParallelChannelChLines(
-                          tlStyle,
-                          editDrawing,
-                        );
-                    const parallelMidIdx = !isRegCh && tlSubTool.icon === "channel"
-                      ? v9ParallelChannelMidLineRowIndex(rawLines)
-                      : -1;
-                    const lines = parallelMidIdx >= 0
-                      ? rawLines.filter((_, idx) => idx !== parallelMidIdx)
-                      : rawLines;
-                    const stKey = isRegCh ? "regLines" : "chLines";
-                    const cpKey = isRegCh ? "regLine" : "chLine";
-                    const lineRowIndex = (displayIdx) => {
-                      if (isRegCh || tlSubTool.icon !== "channel" || parallelMidIdx < 0) return displayIdx;
-                      return displayIdx < parallelMidIdx ? displayIdx : displayIdx + 1;
-                    };
+                        </React.Fragment>
+                      );
+                    })() : null;
+                    const parChSegments = isParCh
+                      ? [
+                          ...(parChUpper ? [{ kind: "line", ln: parChUpper.row, srcIdx: parChUpper.i }] : []),
+                          { kind: "mid" },
+                          ...parChAfterMid.map((e) => ({ kind: "line", ln: e.row, srcIdx: e.i })),
+                        ]
+                      : lines.map((ln, idx) => ({ kind: "line", ln, srcIdx: lineRowIndex(idx) }));
                     return <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"end" }}>
                       {/* Column headers */}
                       <div/><div/>
                       <div style={{ display:"flex", justifyContent:"center", padding:"0 0 4px" }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>STYLE</span></div>
                       <div style={{ display:"flex", justifyContent:"center", padding:"0 0 4px" }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span></div>
-                      {lines.map((ln, idx) => {
-                        const srcIdx = lineRowIndex(idx);
+                      {parChSegments.map((seg, segIdx) => {
+                        if (seg.kind === "mid") return parChMidBlock;
+                        const ln = seg.ln;
+                        const srcIdx = seg.srcIdx;
                         const op = ln.on ? 1 : 0.38;
                         const pe = ln.on ? "auto" : "none";
                         const chDk = `${cpKey}Type-${srcIdx}`, chWk = `${cpKey}Width-${srcIdx}`;
-                        return <React.Fragment key={srcIdx}>
+                        return <React.Fragment key={`${srcIdx}-${segIdx}`}>
                           {isRegCh
                             ? <div style={{ padding:"5px 0", alignSelf:"center" }}>
                                 {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, v9RegressionChannelRowLabel(srcIdx, ln), () => applyRegLineRowToggle(srcIdx))}
                               </div>
-                            : tlSubTool.icon === "channel" ? (
+                            : isParCh ? (
                               <div style={{ padding:"5px 0", alignSelf:"center" }}>
-                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, v9ParallelChannelStyleRowLabel(idx, lines.length, ln), ()=>setTlStyle(s=>{
-                                  const nextLines = s.chLines.map((l,i)=>i===srcIdx?{...l,on:!l.on}:l);
-                                  const sorted = v9SortParallelChannelChLines(nextLines);
-                                  return { ...s, chLines: sorted, ...v9ParallelChannelMidLinePatchFromChLines(sorted) };
+                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, v9ParallelChannelStyleRowLabel(segIdx, parChSegments.length, ln), () => applyParallelChannelTlPatch((s) => {
+                                  const nextLines = s.chLines.map((l, i) => i === srcIdx ? { ...l, on: !l.on } : l);
+                                  return { ...s, chLines: v9SortParallelChannelChLines(nextLines) };
                                 }))}
                               </div>
                             ) : (
@@ -23618,7 +23670,7 @@ const TalariaV8bLive = () => {
                               [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                                 const isA=ln.type===v; const isH=hov===`${cpKey}t-${srcIdx}-${v}`;
                                 return (
-                                  <div key={v} onClick={()=>{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,type:v}:l)}));setTlStyleDrop(null);}}
+                                  <div key={v} onClick={()=>{if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,type:v}:l))}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,type:v}:l)}));}setTlStyleDrop(null);}}
                                     onMouseEnter={()=>setHov(`${cpKey}t-${srcIdx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                              background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -23648,7 +23700,7 @@ const TalariaV8bLive = () => {
                               ["1","2","3","4"].map(w=>{
                                 const isA=ln.width===w; const isH=hov===`${cpKey}w-${srcIdx}-${w}`;
                                 return (
-                                  <div key={w} onClick={()=>{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,width:w}:l)}));setTlStyleDrop(null);}}
+                                  <div key={w} onClick={()=>{if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,width:w}:l))}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,width:w}:l)}));}setTlStyleDrop(null);}}
                                     onMouseEnter={()=>setHov(`${cpKey}w-${srcIdx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                              background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -25152,35 +25204,50 @@ const TalariaV8bLive = () => {
             {/* ── INPUT TAB (parallel channel levels) ── */}
             {tlSettTab==="input" && tlSubTool.icon === "channel" && (() => {
               const editDrawing = editingDrawingRef.current?.drawing;
-              const lines = v9ResolveParallelChannelChLines(tlStyle, editDrawing);
+              const rawLines = v9ResolveParallelChannelChLines(tlStyle, editDrawing);
+              const ordered = v9ParallelChannelUiRowOrder(rawLines, { includeMiddle: true });
               const stKey = "chLines";
               const cpKey = "chLine";
+              const midIdx = v9ParallelChannelMidLineRowIndex(rawLines);
               return (
                 <>
                   <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"4px 0 10px" }}>LEVELS</div>
-                  {lines.map((ln, idx) => {
-                    const midIdx = v9ParallelChannelMidLineRowIndex(lines);
+                  {ordered.map(({ row: ln, i: idx }) => {
                     const isMiddle = idx === midIdx;
-                    const op = (isMiddle || ln.on) ? 1 : 0.38;
-                    const pe = (isMiddle || ln.on) ? "auto" : "none";
-                    const lvlLabel = v9ParallelChannelInputRowLabel(ln, idx, lines, midIdx);
+                    const rowOn = isMiddle ? tlStyle.midLine !== false : !!ln.on;
+                    const op = rowOn ? 1 : 0.38;
+                    const pe = rowOn ? "auto" : "none";
+                    const lvlLabel = v9ParallelChannelInputRowLabel(ln, idx, rawLines, midIdx);
                     return (
                       <div key={idx} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 0" }}>
                         <div style={{ minWidth:72 }}>
-                          {!isMiddle
-                            ? TlChk(ln.on, `tlchk-in-${cpKey}-${idx}`, lvlLabel, () => setTlStyle(s => ({ ...s, [stKey]: s[stKey].map((l, i) => i === idx ? { ...l, on: !l.on } : l) })))
-                            : <span style={{ fontSize:12, color:c.ts }}>{lvlLabel}</span>}
+                          {TlChk(rowOn, `tlchk-in-${cpKey}-${idx}`, lvlLabel, () => {
+                            if (isMiddle) {
+                              applyParallelChannelTlPatch((s) => {
+                                const nextOn = !s.midLine;
+                                const chLines = v9SyncParallelChannelMidLineToChLines({ ...s, midLine: nextOn });
+                                return { ...s, midLine: nextOn, chLines };
+                              });
+                            } else {
+                              applyParallelChannelTlPatch((s) => ({
+                                ...s,
+                                chLines: v9SortParallelChannelChLines(
+                                  s.chLines.map((l, i) => i === idx ? { ...l, on: !l.on } : l),
+                                ),
+                              }));
+                            }
+                          })}
                         </div>
                         <div style={{ position:"relative", width:68, marginRight:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                           <input value={ln.value}
-                            onChange={e => { const val = e.target.value; if (!V9_PARTIAL_LEVEL_VALUE_RE.test(val)) return; setTlStyle(s => v9PatchChLinesRowValue(s, idx, val, stKey, editDrawing)); }}
+                            onChange={e => { const val = e.target.value; if (!V9_PARTIAL_LEVEL_VALUE_RE.test(val)) return; applyParallelChannelTlPatch(s => v9PatchChLinesRowValue(s, idx, val, stKey, editDrawing)); }}
                             onClick={e => e.stopPropagation()}
                             className="tlr-nospinner"
                             style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
-                              <button type="button" key={i} {...v9ChLineStepPointerActivate(() => setTlStyle(s => v9BumpChLinesRowValueOnce(s, idx, delta, stKey, editDrawing)))}
+                              <button type="button" key={i} {...v9ChLineStepPointerActivate(() => applyParallelChannelTlPatch(s => v9BumpChLinesRowValueOnce(s, idx, delta, stKey, editDrawing)))}
                                 onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",

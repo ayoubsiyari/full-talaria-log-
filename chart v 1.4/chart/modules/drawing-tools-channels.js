@@ -337,7 +337,7 @@ class ParallelChannelTool extends BaseDrawing {
                     .style('cursor', 'default');
             }
 
-            // Draw all level lines (enabled ones from levels array + always draw 0 and 1)
+            // Draw level lines from levels array; legacy 0/1 rails only when levels are empty
             const drawLevelLine = (t, color, lineWidth, lineType) => {
                 const levelOffsetX = offsetX * t;
                 const levelOffsetY = offsetY * t;
@@ -429,9 +429,11 @@ class ParallelChannelTool extends BaseDrawing {
                 });
             }
 
-            // Legacy drawings without explicit 0 / 1 rows — keep fixed boundary rails
-            if (!levelNear(0, sortedLevelList)) drawLevelLine(0, baseStroke, baseWidth, baseDash);
-            if (!levelNear(1, sortedLevelList)) drawLevelLine(1, baseStroke, baseWidth, baseDash);
+            // Legacy drawings without a levels array — draw default 0 / 1 rails only then
+            if (sortedLevelList.length === 0) {
+                if (!levelNear(0, sortedLevelList)) drawLevelLine(0, baseStroke, baseWidth, baseDash);
+                if (!levelNear(1, sortedLevelList)) drawLevelLine(1, baseStroke, baseWidth, baseDash);
+            }
 
             if (this.text && this.text.trim()) {
                 this.renderTextLabel(scales);
