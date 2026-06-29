@@ -2390,6 +2390,14 @@ class ReplaySystem {
         
         this.isActive = true;
         
+        // Force indicator rebuild on the replay slice (not the pre-replay full dataset snapshot).
+        if (this.chart) {
+            this.chart._indCalcSnapshot = null;
+            if (typeof this.chart._invalidateIndicatorLayerCache === 'function') {
+                this.chart._invalidateIndicatorLayerCache();
+            }
+        }
+        
         // Reset auto-scroll state
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
@@ -2994,8 +3002,8 @@ class ReplaySystem {
                 }
                 if (runRecalc) {
                     if (typeof this.chart.scheduleIndicatorRecalc === 'function') {
-                        this.chart.scheduleIndicatorRecalc('live-tick', {
-                            force: sliceLen <= maxFullRecalc,
+                        this.chart.scheduleIndicatorRecalc('replay-tick', {
+                            force: true,
                             immediate: sliceLen <= maxFullRecalc
                         });
                     } else if (typeof this.chart.recalculateIndicatorsAsync === 'function') {
@@ -4449,7 +4457,7 @@ class ReplaySystem {
         
         // Recalculate indicators
         if (typeof this.chart.scheduleIndicatorRecalc === 'function') {
-            try { this.chart.scheduleIndicatorRecalc('replay-step', { force: false }); } catch (error) { /* silent */ }
+            try { this.chart.scheduleIndicatorRecalc('replay-step', { force: true, immediate: true }); } catch (error) { /* silent */ }
         } else if (typeof this.chart.recalculateIndicators === 'function') {
             try {
                 this.chart.recalculateIndicators();
@@ -4964,7 +4972,7 @@ class ReplaySystem {
         
         // Recalculate indicators
         if (typeof this.chart.scheduleIndicatorRecalc === 'function') {
-            try { this.chart.scheduleIndicatorRecalc('replay-step', { force: false }); } catch (error) {
+            try { this.chart.scheduleIndicatorRecalc('replay-step', { force: true, immediate: true }); } catch (error) {
                 console.warn('⚠️ Error recalculating indicators:', error);
             }
         } else if (typeof this.chart.recalculateIndicators === 'function') {

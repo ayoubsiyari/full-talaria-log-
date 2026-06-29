@@ -2508,8 +2508,58 @@ function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
     return out;
 }
 
-function talariaFillLegendValueSpan(valuesSpan, tokens) {
+function talariaEnsureIndLegendLoadingDotsCss() {
+    if (document.getElementById('tf-loading-dots-style')) return;
+    const styleEl = document.createElement('style');
+    styleEl.id = 'tf-loading-dots-style';
+    styleEl.textContent = '@keyframes tfLoadingDotPulse {' +
+        '0%,80%,100% { opacity: 0.25; transform: scale(0.7); }' +
+        '40% { opacity: 1; transform: scale(1.15); }' +
+        '}';
+    document.head.appendChild(styleEl);
+}
+
+function talariaIndicatorLegendIsLoading(chart, indicator) {
+    if (!indicator) return false;
+    if (indicator._calculating === true) return true;
+    const data = chart && chart.indicators && chart.indicators.data
+        ? chart.indicators.data[indicator.id]
+        : undefined;
+    if (data && data.loading === true) return true;
+    return false;
+}
+
+function talariaFillLegendLoadingDots(valuesSpan) {
     if (!valuesSpan) return;
+    talariaEnsureIndLegendLoadingDotsCss();
+    valuesSpan.innerHTML = '';
+    valuesSpan.setAttribute('data-talaria-ind-loading', '1');
+    const wrap = document.createElement('span');
+    wrap.className = 'talaria-ind-legend-loading-dots';
+    wrap.setAttribute('aria-label', 'Calculating indicator');
+    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin-left:2px;line-height:1;';
+    const dotCss = [
+        'width:4px',
+        'height:4px',
+        'border-radius:50%',
+        'background:#9598a1',
+        'display:inline-block',
+        'animation:tfLoadingDotPulse 1.1s ease-in-out infinite'
+    ].join(';');
+    wrap.innerHTML =
+        '<span style="' + dotCss + ';animation-delay:0s"></span>' +
+        '<span style="' + dotCss + ';animation-delay:0.18s"></span>' +
+        '<span style="' + dotCss + ';animation-delay:0.36s"></span>';
+    valuesSpan.appendChild(wrap);
+}
+
+function talariaFillLegendValueSpan(valuesSpan, tokens, loading) {
+    if (!valuesSpan) return;
+    if (loading) {
+        talariaFillLegendLoadingDots(valuesSpan);
+        return;
+    }
+    valuesSpan.removeAttribute('data-talaria-ind-loading');
     valuesSpan.innerHTML = '';
     if (!tokens || tokens.length === 0) {
         const dash = document.createElement('span');
@@ -2548,10 +2598,11 @@ function talariaSyncOhlcIndicatorLegendValues(chart, div) {
         if (!row) return;
         const valuesSpan = row.querySelector('[data-talaria-ind-val]') || row.querySelector('span:nth-child(2)');
         if (!valuesSpan) return;
-        const tokens = isVolume
+        const loading = talariaIndicatorLegendIsLoading(chart, indicator);
+        const tokens = loading ? [] : (isVolume
             ? talariaFormatVolumeIndicatorValueTokens(chart, indicator)
-            : talariaFormatOverlayIndicatorValueTokens(chart, indicator);
-        talariaFillLegendValueSpan(valuesSpan, tokens);
+            : talariaFormatOverlayIndicatorValueTokens(chart, indicator));
+        talariaFillLegendValueSpan(valuesSpan, tokens, loading);
     });
 }
 
@@ -2603,10 +2654,11 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
     const valuesSpan = document.createElement('span');
     valuesSpan.setAttribute('data-talaria-ind-val', '1');
     valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:' + (indicator.visible !== false ? '1' : '0.55') + ';';
-    const valueTokens = isVolume
+    const loading = talariaIndicatorLegendIsLoading(chart, indicator);
+    const valueTokens = loading ? [] : (isVolume
         ? talariaFormatVolumeIndicatorValueTokens(chart, indicator)
-        : talariaFormatOverlayIndicatorValueTokens(chart, indicator);
-    talariaFillLegendValueSpan(valuesSpan, valueTokens);
+        : talariaFormatOverlayIndicatorValueTokens(chart, indicator));
+    talariaFillLegendValueSpan(valuesSpan, valueTokens, loading);
     item.appendChild(valuesSpan);
 
     const actions = document.createElement('span');
