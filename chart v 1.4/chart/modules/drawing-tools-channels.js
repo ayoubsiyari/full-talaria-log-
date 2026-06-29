@@ -1090,36 +1090,18 @@ class RegressionTrendTool extends BaseDrawing {
             .text(r2Text);
     }
 
-    createHandles(group, scales) {
-        this.handles = [];
-        const handleRadius = 3;
-        const hitRadius = 12;
-        const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
-        const handleStrokeWidth = 2;
-        
-        group.selectAll('.resize-handle').remove();
-        group.selectAll('.resize-handle-group').remove();
-        group.selectAll('.resize-handle-hit').remove();
-        group.selectAll('.vertical-guide').remove();
-        
-        const showFull = this.selected;
-        
-        // Get chart data for regression calculation
+    /** Shared candle regression context for render + handles (bar-index space). */
+    _getRegressionGeometry(scales) {
+        if (!scales || this.points.length < 2) return null;
         const chart = scales.chart || window.chart || this.chart;
-        let chartData = null;
-        if (chart && chart.data) {
-            chartData = chart.data;
-        }
-        
-        if (!chartData || chartData.length === 0) return;
-        
+        const chartData = chart && chart.data;
+        if (!Array.isArray(chartData) || chartData.length === 0) return null;
+
         const p1 = this.points[0];
         const p2 = this.points[1];
         const startIdx = Math.round(Math.min(p1.x, p2.x));
         const endIdx = Math.round(Math.max(p1.x, p2.x));
-        
-        // Extract source data and calculate regression
+
         const sourceData = [];
         for (let i = startIdx; i <= endIdx; i++) {
             if (i >= 0 && i < chartData.length) {
@@ -1135,33 +1117,112 @@ class RegressionTrendTool extends BaseDrawing {
                 sourceData.push(value);
             }
         }
-        
-        if (sourceData.length < 2) return;
-        
+        if (sourceData.length < 2) return null;
+
         const regression = this.calculateLinearRegression(sourceData, 0, sourceData.length - 1);
-        if (!regression) return;
-        
-        const { a, b } = regression;
-        
-        // Get chart bounds for vertical guide lines
+        if (!regression) return null;
+
+        const idxToPx = (idx) => (chart.dataIndexToPixel
+            ? chart.dataIndexToPixel(idx)
+            : scales.xScale(idx));
+        const regPriceAt = (barIdx) => regression.a + regression.b * (barIdx - startIdx);
+
+        return { chart, scales, startIdx, endIdx, regression, idxToPx, regPriceAt };
+    }
+
+    /** Screen positions for endpoint handles on the middle regression line. */
+    _regressionHandleScreenPositions(scales) {
+        const geo = this._getRegressionGeometry(scales);
+        if (!geo) return [];
+        const { scales: sc, regPriceAt, idxToPx } = geo;
+        return this.points.map((point, index) => {
+            if (!point) return null;
+            const barIdx = Math.round(point.x);
+            const cx = idxToPx(barIdx);
+            const cy = sc.yScale(regPriceAt(barIdx));
+            if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+            return { cx, cy, index, barIdx };
+        }).filter(Boolean);
+    }
+
+    /** Keep stored anchor Y on the regression midline (X defines the sample range). */
+    _syncPointsYToRegression(scales) {
+        const geo = this._getRegressionGeometry(scales);
+        if (!geo) return;
+        const { regPriceAt } = geo;
+        this.points.forEach((p) => {
+            if (!p || !Number.isFinite(p.x)) return;
+            p.y = regPriceAt(Math.round(p.x));
+        });
+    }
+
+    /** Handle drag: time range only — Y is derived from candle regression. */
+    onPointHandleDrag(pointIndex, context = {}) {
+        const point = context.point;
+        const scales = context.scales;
+        if (!point || pointIndex == null || isNaN(pointIndex)) return false;
+        if (!Array.isArray(this.points) || pointIndex < 0 || pointIndex >= this.points.length) return false;
+        const barIdx = Math.round(point.x);
+        this.points[pointIndex] = {
+            x: barIdx,
+            y: this.points[pointIndex].y,
+        };
+        this._syncPointsYToRegression(scales);
+        if (this.meta) this.meta.updatedAt = Date.now();
+        return true;
+    }
+
+    updateHandlePositions(scales) {
+        if (!this.group || this.group.empty() || !scales) return;
         const yMin = scales.yScale.domain()[0];
         const yMax = scales.yScale.domain()[1];
         const topY = scales.yScale(yMax);
         const bottomY = scales.yScale(yMin);
+
+        this._regressionHandleScreenPositions(scales).forEach((pos) => {
+            this.group.selectAll(`.resize-handle-group[data-point-index="${pos.index}"] circle`)
+                .attr('cx', pos.cx)
+                .attr('cy', pos.cy);
+            this.group.selectAll(`.vertical-guide[data-point-index="${pos.index}"]`)
+                .attr('x1', pos.cx)
+                .attr('x2', pos.cx)
+                .attr('y1', topY)
+                .attr('y2', bottomY);
+        });
+    }
+
+    createHandles(group, scales) {
+        this.handles = [];
+        const handleRadius = 3;
+        const hitRadius = 12;
+        const handleFill = 'transparent';
+        const handleStroke = '#2962FF';
+        const handleStrokeWidth = 2;
         
-        // Position handles on the middle regression line
-        this.points.forEach((point, index) => {
-            const cx = chart.dataIndexToPixel ? chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
-            
-            // Calculate the regression value at this point's x position
-            const dataIndex = point.x - startIdx;
-            const regressionValue = a + b * dataIndex;
-            const cy = scales.yScale(regressionValue);
-            
-            // Draw vertical guide line for this handle (selected only)
+        group.selectAll('.resize-handle').remove();
+        group.selectAll('.resize-handle-group').remove();
+        group.selectAll('.resize-handle-hit').remove();
+        group.selectAll('.vertical-guide').remove();
+        
+        const showFull = this.selected;
+        const geo = this._getRegressionGeometry(scales);
+        if (!geo) return;
+
+        const { scales: sc, regPriceAt } = geo;
+        this._syncPointsYToRegression(scales);
+
+        const yMin = sc.yScale.domain()[0];
+        const yMax = sc.yScale.domain()[1];
+        const topY = sc.yScale(yMax);
+        const bottomY = sc.yScale(yMin);
+
+        this._regressionHandleScreenPositions(scales).forEach((pos) => {
+            const { cx, cy, index } = pos;
+
             if (showFull) {
                 group.append('line')
                     .attr('class', 'vertical-guide')
+                    .attr('data-point-index', index)
                     .attr('x1', cx)
                     .attr('y1', topY)
                     .attr('x2', cx)
@@ -1172,11 +1233,11 @@ class RegressionTrendTool extends BaseDrawing {
                     .attr('opacity', 0.4)
                     .style('pointer-events', 'none');
             }
-            
+
             const handleGroup = group.append('g')
                 .attr('class', 'resize-handle-group')
                 .attr('data-point-index', index);
-            
+
             handleGroup.append('circle')
                 .attr('class', 'resize-handle-hit')
                 .attr('cx', cx)
@@ -1187,7 +1248,7 @@ class RegressionTrendTool extends BaseDrawing {
                 .style('cursor', 'ew-resize')
                 .style('pointer-events', 'all')
                 .attr('data-point-index', index);
-            
+
             const handle = handleGroup.append('circle')
                 .attr('class', 'resize-handle')
                 .attr('cx', cx)
@@ -1200,8 +1261,8 @@ class RegressionTrendTool extends BaseDrawing {
                 .style('pointer-events', showFull ? 'all' : 'none')
                 .style('opacity', showFull ? 1 : 0)
                 .attr('data-point-index', index);
-            
-            this.handles.push({ element: handle, point, index });
+
+            this.handles.push({ element: handle, point: this.points[index], index });
         });
     }
 

@@ -5619,6 +5619,15 @@ function v9RegressionChannelRowLabel(rowIdx, ln) {
   return `Line ${rowIdx + 1}`;
 }
 
+/** UI row order for regression channel Style tab: Upper → Middle → Lower. */
+function v9RegressionChannelUiRowOrder(regLines) {
+  const rows = v9NormalizeRegLines(regLines);
+  const order = [1, 0, 2];
+  return order
+    .filter((i) => i >= 0 && i < rows.length)
+    .map((i) => ({ row: rows[i], i }));
+}
+
 function v9NormalizeRegLines(regLines) {
   const defaults = v9DefaultRegLinesTl();
   if (!Array.isArray(regLines) || regLines.length < 3) {
@@ -21353,19 +21362,33 @@ const TalariaV8bLive = () => {
     });
   }, [applyTlGannStylePatch]);
 
-  /** Regression channel line on/off — sync chart in same frame (avoids double-click from midLine patch race). */
-  const applyRegLineRowToggle = useCallback((srcIdx) => {
+  /** Regression channel regLines — immediate chart sync (toggle, style, width). */
+  const applyRegressionChannelTlPatch = useCallback((patchFn) => {
     flushSync(() => {
       setTlStyle((s) => {
-        const nextLines = (s.regLines || []).map((l, i) =>
-          i === srcIdx ? { ...l, on: !l.on } : l,
-        );
-        const next = { ...s, regLines: nextLines };
-        v9PushRegressionStyleToSelectedDrawings(next);
-        return next;
+        const next = patchFn(s);
+        const normalized = {
+          ...next,
+          regLines: v9NormalizeRegLines(next.regLines),
+        };
+        v9FlushTlStyleToChartTargets(normalized, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return normalized;
       });
     });
   }, []);
+
+  /** Regression channel line on/off — sync chart in same frame (avoids double-click from midLine patch race). */
+  const applyRegLineRowToggle = useCallback((srcIdx) => {
+    applyRegressionChannelTlPatch((s) => ({
+      ...s,
+      regLines: (s.regLines || []).map((l, i) =>
+        i === srcIdx ? { ...l, on: !l.on } : l,
+      ),
+    }));
+  }, [applyRegressionChannelTlPatch]);
 
   /** Parallel channel chLines / midLine — immediate chart sync (toggle, value, style, width). */
   const applyParallelChannelTlPatch = useCallback((patchFn) => {
@@ -23592,7 +23615,13 @@ const TalariaV8bLive = () => {
                           { kind: "mid" },
                           ...parChAfterMid.map((e) => ({ kind: "line", ln: e.row, srcIdx: e.i })),
                         ]
-                      : lines.map((ln, idx) => ({ kind: "line", ln, srcIdx: lineRowIndex(idx) }));
+                      : isRegCh
+                        ? v9RegressionChannelUiRowOrder(rawLines).map((e) => ({
+                            kind: "line",
+                            ln: e.row,
+                            srcIdx: e.i,
+                          }))
+                        : lines.map((ln, idx) => ({ kind: "line", ln, srcIdx: lineRowIndex(idx) }));
                     return <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"end" }}>
                       {/* Column headers */}
                       <div/><div/>
@@ -23670,7 +23699,7 @@ const TalariaV8bLive = () => {
                               [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                                 const isA=ln.type===v; const isH=hov===`${cpKey}t-${srcIdx}-${v}`;
                                 return (
-                                  <div key={v} onClick={()=>{if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,type:v}:l))}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,type:v}:l)}));}setTlStyleDrop(null);}}
+                                  <div key={v} onClick={()=>{if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,type:v}:l))}));}else if(isRegCh){applyRegressionChannelTlPatch(s=>({...s,regLines:(s.regLines||[]).map((l,i)=>i===srcIdx?{...l,type:v}:l)}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,type:v}:l)}));}setTlStyleDrop(null);}}
                                     onMouseEnter={()=>setHov(`${cpKey}t-${srcIdx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                              background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -23700,7 +23729,7 @@ const TalariaV8bLive = () => {
                               ["1","2","3","4"].map(w=>{
                                 const isA=ln.width===w; const isH=hov===`${cpKey}w-${srcIdx}-${w}`;
                                 return (
-                                  <div key={w} onClick={()=>{if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,width:w}:l))}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,width:w}:l)}));}setTlStyleDrop(null);}}
+                                  <div key={w} onClick={()=>{if(isParCh){applyParallelChannelTlPatch(s=>({...s,chLines:v9SortParallelChannelChLines(s.chLines.map((l,i)=>i===srcIdx?{...l,width:w}:l))}));}else if(isRegCh){applyRegressionChannelTlPatch(s=>({...s,regLines:(s.regLines||[]).map((l,i)=>i===srcIdx?{...l,width:w}:l)}));}else{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,width:w}:l)}));}setTlStyleDrop(null);}}
                                     onMouseEnter={()=>setHov(`${cpKey}w-${srcIdx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                              background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>

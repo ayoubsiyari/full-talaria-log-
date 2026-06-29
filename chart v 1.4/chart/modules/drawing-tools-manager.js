@@ -10150,7 +10150,6 @@ class DrawingToolsManager {
         }
         if (drawing.baseScale != null) payload.baseScale = drawing.baseScale;
         if (drawing.levels) payload.levels = JSON.parse(JSON.stringify(drawing.levels));
-        payload.locked = !!drawing.locked;
         return payload;
     }
 
@@ -10160,9 +10159,11 @@ class DrawingToolsManager {
         if (!toolInfo) return null;
 
         const data = JSON.parse(JSON.stringify(payload));
+        delete data.locked;
         const newDrawing = toolInfo.class.fromJSON(data, this.chart);
         newDrawing.id = generateUUID();
         newDrawing.coordinateSystem = 'index';
+        newDrawing.locked = false;
 
         if (this._isFreehandDrawingType(newDrawing.type) && Array.isArray(data.points) && data.points.length > 0) {
             newDrawing.points = this._sanitizeFreehandClonePoints(
