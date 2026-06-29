@@ -7575,10 +7575,11 @@
         const replayActive = !!(this.replaySystem && this.replaySystem.isActive);
         const appendOnly = !opts.force && !replayActive && prev
             && barCount > prev.barCount && (barCount - prev.barCount) <= 8;
+        const replaySyncMax = 12000;
 
         if (appendOnly && typeof this.recalculateIndicatorsIncremental === 'function') {
             this.recalculateIndicatorsIncremental(prev.barCount);
-        } else if (replayActive && barCount <= 12000 && typeof this.recalculateIndicators === 'function') {
+        } else if (replayActive && barCount <= replaySyncMax && typeof this.recalculateIndicators === 'function') {
             // Replay replaces the visible slice each step — sync full recalc is safer and
             // avoids worker races that leave indicators stuck in a loading state.
             try { this.recalculateIndicators(); } catch (_) {}
@@ -8116,6 +8117,9 @@
         }
         if (typeof this.bumpIndicatorRenderVersion === 'function') {
             this.bumpIndicatorRenderVersion();
+        }
+        if (typeof this.updateOHLCIndicators === 'function') {
+            this.updateOHLCIndicators();
         }
     };
     
@@ -9892,6 +9896,12 @@ Chart.prototype._syncReplayPlayheadCrosshairValues = function() {
     this.hoverIndex = this.data.length - 1;
     if (typeof this.syncCrosshairIndicatorValues === 'function') {
         this.syncCrosshairIndicatorValues();
+    }
+    const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
+    const ohlcDiv = typeof document !== 'undefined' ? document.getElementById('ohlcIndicators' + idSuffix) : null;
+    if (ohlcDiv && ohlcDiv.childElementCount === 0
+        && typeof this.updateOHLCIndicators === 'function') {
+        this.updateOHLCIndicators();
     }
 
     let candle = null;

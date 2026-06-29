@@ -2966,21 +2966,21 @@ class ReplaySystem {
             return;
         }
         
-        // Recalculate indicators — on 1m near session end, rawData can be 50k–100k bars;
-        // full recalc every frame freezes when pressing Play. Stride while playing; skip
-        // when paused on the last bar with a huge slice (Play at end is usually a no-op).
+        // Recalculate indicators — use resampled bar count for cost (raw 1m can be 50k+
+        // while chart.data on 5m/15m/1h is small). Stride only when the visible series is huge.
         if (typeof this.chart.scheduleIndicatorRecalc === 'function'
             || typeof this.chart.recalculateIndicators === 'function') {
             try {
-                const sliceLen = this.chart.rawData.length;
+                const resampledLen = Array.isArray(this.chart.data) ? this.chart.data.length : 0;
                 const maxFullRecalc = 12000;
                 const stride = 20;
-                let runRecalc = sliceLen <= maxFullRecalc;
-                if (!runRecalc && this.isPlaying) {
+                const heavySeries = resampledLen > maxFullRecalc;
+                let runRecalc = resampledLen > 0;
+                if (this.isPlaying && heavySeries) {
                     runRecalc = this.currentIndex < 4000
                         || (this.currentIndex % stride === 0);
                 }
-                if (!runRecalc && !this.isPlaying && this._isAtLastLoadedBar()) {
+                if (!this.isPlaying && this._isAtLastLoadedBar() && heavySeries) {
                     runRecalc = false;
                 }
                 if (this._tfSwitchSkipHeavyIndicators) {
@@ -3004,7 +3004,7 @@ class ReplaySystem {
                     if (typeof this.chart.scheduleIndicatorRecalc === 'function') {
                         this.chart.scheduleIndicatorRecalc('replay-tick', {
                             force: true,
-                            immediate: sliceLen <= maxFullRecalc
+                            immediate: !heavySeries
                         });
                     } else if (typeof this.chart.recalculateIndicatorsAsync === 'function') {
                         this.chart.recalculateIndicatorsAsync();
@@ -3015,6 +3015,9 @@ class ReplaySystem {
             } catch (error) {
                 console.warn('⚠️ Error recalculating indicators:', error);
             }
+        }
+        if (typeof this.chart.updateOHLCIndicators === 'function') {
+            try { this.chart.updateOHLCIndicators(); } catch (_) {}
         }
         if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
             const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
@@ -4465,6 +4468,9 @@ class ReplaySystem {
                 // Silent fail for performance
             }
         }
+        if (typeof this.chart.updateOHLCIndicators === 'function') {
+            try { this.chart.updateOHLCIndicators(); } catch (_) {}
+        }
         
         // Auto-scroll if enabled
         if (this.autoScrollEnabled && !this._viewportLockForPlayback && !this.userHasPanned) {
@@ -4981,6 +4987,9 @@ class ReplaySystem {
             } catch (error) {
                 console.warn('⚠️ Error recalculating indicators:', error);
             }
+        }
+        if (typeof this.chart.updateOHLCIndicators === 'function') {
+            try { this.chart.updateOHLCIndicators(); } catch (_) {}
         }
         
         // Update slider
