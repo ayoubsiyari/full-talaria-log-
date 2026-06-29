@@ -6029,11 +6029,16 @@
         if (indicator.type !== 'custom' && indicator.type !== 'cotnet') {
             indicator._calculating = false;
         }
-        
-        if (typeof chartRef.render === 'function') {
+
+        if (typeof chartRef.bumpIndicatorRenderVersion === 'function') {
+            chartRef.bumpIndicatorRenderVersion();
+        }
+        if (typeof chartRef.scheduleRender === 'function') {
+            chartRef.scheduleRender();
+        } else if (typeof chartRef.render === 'function') {
             chartRef.render();
         }
-        
+
         chartRef.updateOHLCIndicators();
         chartRef.persistIndicators();
         emitIndicatorsChanged(chartRef, 'add', indicator);
@@ -6138,7 +6143,9 @@
                     error: check.error || 'Invalid script',
                     overlay: indicator.overlay !== false
                 };
-                if (typeof self.render === 'function') self.render();
+                if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
+                if (typeof self.scheduleRender === 'function') self.scheduleRender();
+                else if (typeof self.render === 'function') self.render();
                 return;
             }
         }
@@ -6176,8 +6183,10 @@
             if (typeof self._updateIndicatorPanelHeight === 'function') {
                 self._updateIndicatorPanelHeight();
             }
+            if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
             if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
-            if (typeof self.render === 'function') self.render();
+            if (typeof self.scheduleRender === 'function') self.scheduleRender();
+            else if (typeof self.render === 'function') self.render();
             self.persistIndicators();
         }).catch(function(err) {
             if (!self.indicators || !self.indicators.active) return;
@@ -6191,8 +6200,10 @@
                 error: err && err.message ? err.message : String(err),
                 overlay: indicator.overlay !== false
             };
+            if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
             if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
-            if (typeof self.render === 'function') self.render();
+            if (typeof self.scheduleRender === 'function') self.scheduleRender();
+            else if (typeof self.render === 'function') self.render();
             if (typeof self.showNotification === 'function') {
                 self.showNotification('Custom indicator: ' + (err && err.message ? err.message : 'error'));
             }
@@ -6220,8 +6231,10 @@
                 _cotCodeUsed: rm.code || ''
             };
             if (typeof self._updateIndicatorPanelHeight === 'function') self._updateIndicatorPanelHeight();
+            if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
             if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
-            if (typeof self.render === 'function') self.render();
+            if (typeof self.scheduleRender === 'function') self.scheduleRender();
+            else if (typeof self.render === 'function') self.render();
             if (typeof self.persistIndicators === 'function') self.persistIndicators();
         }
 
@@ -6230,8 +6243,10 @@
             const still = self.indicators.active.some(function(i) { return i.id === indicator.id; });
             if (!still) return;
             self.indicators.data[indicator.id] = { loading: false, error: msg, bull: null, bear: null };
+            if (typeof self.bumpIndicatorRenderVersion === 'function') self.bumpIndicatorRenderVersion();
             if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
-            if (typeof self.render === 'function') self.render();
+            if (typeof self.scheduleRender === 'function') self.scheduleRender();
+            else if (typeof self.render === 'function') self.render();
         }
 
         if (!this.data || this.data.length === 0) {
@@ -7200,20 +7215,22 @@
         }
 
         clampIndicatorStyleLineWidths(indicator.style);
-        
-        if (typeof this.render === 'function') {
-            this.render();
-        }
-        
-        this.updateOHLCIndicators();
-        this.persistIndicators({ force: true });
+
         if (typeof this.bumpIndicatorRenderVersion === 'function') {
             this.bumpIndicatorRenderVersion();
         }
-        
+        if (typeof this.scheduleRender === 'function') {
+            this.scheduleRender();
+        } else if (typeof this.render === 'function') {
+            this.render();
+        }
+
+        this.updateOHLCIndicators();
+        this.persistIndicators({ force: true });
+
         return indicator;
     };
-    
+
     // ── Indicator Web Worker manager ──────────────────────────────────────
     // Singleton: first chart instance to call recalculateIndicators spins up
     // the worker; all subsequent chart instances share it.
@@ -7730,6 +7747,7 @@
         const key = [
             this.dataVersion != null ? this.dataVersion : 0,
             this._indicatorRenderVersion || 0,
+            typeof this._indicatorParamsHash === 'function' ? this._indicatorParamsHash() : '',
             String(this.currentTimeframe || ''),
             this.w, this.h,
             this.candleWidth, this.offsetX, this.priceZoom, this.priceOffset,
