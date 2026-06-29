@@ -1958,7 +1958,7 @@ function v9LineTypeFromDashRaw(dashRaw) {
 function v9BuildColorOnlyStrokePatchFromTlStyle(tlStyle, legacyTool) {
   if (!tlStyle) return {};
   if (legacyTool === "pitchfork") {
-    const col = tlStyle.pfMedianColor || tlStyle.lineColor;
+    const col = tlStyle.lineColor || tlStyle.pfMedianColor;
     return col ? { medianColor: col } : {};
   }
   const col = tlStyle.lineColor;
@@ -1987,6 +1987,9 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
     }
     if (v9IsFilledShapeBorderChartType(legacyTool)) {
       return { borderColor: col, stroke: col, color: col };
+    }
+    if (legacyTool === "pitchfork") {
+      return { medianColor: col, stroke: col, color: col };
     }
     return { stroke: col, color: col };
   }
@@ -2106,7 +2109,8 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
   if (d.type === "pitchfork") {
     if (pickerKey.startsWith("pfLevel-") || pickerKey === "pfMedianColor" || pickerKey === "pfBgColor") {
       if (Array.isArray(tlStyle.pfLevels)) {
-        d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
+        const pfFallbackW = String(parseInt(tlStyle.pfLevelsWidth ?? tlStyle.lineWidth, 10) || 2);
+        d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels, pfFallbackW);
       }
       v9ApplyPitchforkFromTl(d.style, tlStyle);
       return true;
@@ -5946,33 +5950,44 @@ function v9ChartPitchforkStyleToUi(v) {
   return "Original";
 }
 
-function v9PitchforkLevelsToPf(levels) {
+function v9PitchforkLevelsToPf(levels, fallbackWidth = "2") {
   if (!Array.isArray(levels) || !levels.length) return undefined;
-  return v9SortPfLevelsTl(levels.map((lv) => {
-    const raw = lv.value != null ? lv.value : lv.label;
-    const valueStr =
-      raw !== undefined && raw !== null && raw !== ""
-        ? String(raw).trim()
-        : "0";
-    return {
-      on: lv.enabled !== false,
-      value: valueStr,
-      color: lv.color || "#2962FF",
-    };
-  }));
+  return v9NormalizePfLevelsTl(
+    levels.map((lv) => {
+      const raw = lv.value != null ? lv.value : lv.label;
+      const valueStr =
+        raw !== undefined && raw !== null && raw !== ""
+          ? String(raw).trim()
+          : "0";
+      const dashRaw = String(lv.lineType ?? "").replace(/\s+/g, "");
+      const lineType = v9RegDashStringToType(dashRaw);
+      const lineW = parseInt(lv.lineWidth, 10);
+      return v9NormalizePfLevelRowTl({
+        on: lv.enabled !== false,
+        value: valueStr,
+        color: lv.color || "#2962FF",
+        type: lineType,
+        width: String(Number.isFinite(lineW) && lineW > 0 ? lineW : fallbackWidth),
+      }, fallbackWidth);
+    }),
+    fallbackWidth,
+  );
 }
 
-function v9PfToPitchforkLevels(pfLevels) {
+function v9PfToPitchforkLevels(pfLevels, fallbackWidth = "2") {
   if (!Array.isArray(pfLevels)) return [];
-  return v9SortPfLevelsTl(pfLevels).map((ln) => {
+  return v9NormalizePfLevelsTl(pfLevels, fallbackWidth).map((ln) => {
     const t = parseFloat(ln.value);
     const value = Number.isFinite(t) ? t : 0;
     const vs = String(ln.value != null ? ln.value : "").trim() || String(value);
+    const { dash, width } = v9LineDashAndWidthFromType(ln.type, ln.width);
     return {
       value,
       label: vs,
       color: ln.color || "#2962FF",
       enabled: ln.on !== false,
+      lineType: dash,
+      lineWidth: width,
     };
   });
 }
@@ -5985,11 +6000,12 @@ function v9SortPfLevelsTl(rows) {
 }
 
 function v9EnsurePfLevelsRows(s, drawing = null) {
+  const fallbackWidth = String(parseInt(s?.pfLevelsWidth ?? s?.lineWidth, 10) || 2);
   const existing = Array.isArray(s.pfLevels) ? s.pfLevels : [];
-  if (existing.length > 0) return v9SortPfLevelsTl(existing);
+  if (existing.length > 0) return v9NormalizePfLevelsTl(existing, fallbackWidth);
   if (drawing && Array.isArray(drawing.levels) && drawing.levels.length) {
-    const pf = v9PitchforkLevelsToPf(drawing.levels);
-    return pf ? v9SortPfLevelsTl(pf) : v9DefaultPfLevelsTl();
+    const pf = v9PitchforkLevelsToPf(drawing.levels, fallbackWidth);
+    return pf ? pf : v9DefaultPfLevelsTl();
   }
   return v9DefaultPfLevelsTl();
 }
@@ -7227,6 +7243,8 @@ function v9ApplyTlLineColorToStyle(prev, colorVal, subToolIcon) {
   if (subToolIcon === "pitchfork") {
     return {
       ...prev,
+      lineColor: colorVal,
+      pfMedianColor: colorVal,
       pfLevels: mapRows(prev.pfLevels),
     };
   }
@@ -7897,8 +7915,9 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     }
   }
   if (d.type === "pitchfork") {
+    const pfFallbackW = String(parseInt(tlStyle.pfLevelsWidth ?? tlStyle.lineWidth, 10) || 2);
     if (Array.isArray(tlStyle.pfLevels)) {
-      d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
+      d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels, pfFallbackW);
     }
     v9ApplyPitchforkFromTl(d.style, tlStyle);
   }
@@ -8155,7 +8174,8 @@ function v9TlStylePatchFromDrawing(d) {
       : {}),
     ...(d.type === "pitchfork"
       ? (() => {
-          const pf = v9PitchforkLevelsToPf(d.levels);
+          const pfFallbackW = String(parseInt(s.strokeWidth, 10) || 2);
+          const pf = v9PitchforkLevelsToPf(d.levels, pfFallbackW);
           const medianDash = String(s.medianStrokeDasharray ?? s.strokeDasharray ?? "").replace(/\s+/g, "");
           const medianType =
             V9_LEGACY_DASH_STRING_TO_LINE_TYPE[medianDash] ?? (medianDash ? "dashed" : "solid");
@@ -18507,6 +18527,24 @@ const TalariaV8bLive = () => {
         if (typeof window !== "undefined") window.__v9MultichartFocusToolTick = false;
       }
     };
+    const onV9DeleteToolDismissed = () => {
+      try {
+        if (editingDrawingRef.current) return;
+        v9UserExplicitToolRef.current = false;
+        setGroupSelected((p) => {
+          const next = { ...p };
+          delete next.trash;
+          if (next.crosshair && next.crosshair.icon === "eraser") {
+            next.crosshair = { icon: "crosshair", label: "Cross" };
+          }
+          return v9SanitizeGroupSelected(next);
+        });
+        setTool("crosshair");
+        setDropdown(null);
+        setBtnPressed(null);
+        v9ClearDeleteMode();
+      } catch (_) {}
+    };
     const onV9DrawingToolCleared = () => {
       try {
         if (editingDrawingRef.current) return;
@@ -18538,6 +18576,7 @@ const TalariaV8bLive = () => {
     // guarded by __v9MultichartFocusToolTick + syncDrawingToolAcrossPanels).
     window.addEventListener("multichartFocusChanged", onMultichartFocusChanged);
     window.addEventListener("v9DrawingToolCleared", onV9DrawingToolCleared);
+    window.addEventListener("v9DeleteToolDismissed", onV9DeleteToolDismissed);
     return () => {
       cancelled = true;
       window.removeEventListener("panelSelected", onPanelSelected);
@@ -18545,6 +18584,7 @@ const TalariaV8bLive = () => {
       window.removeEventListener("chartDataLoaded", onPanelSelected);
       window.removeEventListener("multichartFocusChanged", onMultichartFocusChanged);
       window.removeEventListener("v9DrawingToolCleared", onV9DrawingToolCleared);
+      window.removeEventListener("v9DeleteToolDismissed", onV9DeleteToolDismissed);
     };
     // layoutPanels.n is in deps so we re-run when the multichart grid
     // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.
@@ -21407,6 +21447,23 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Pitchfork type / levels / per-level style — immediate chart sync. */
+  const applyPitchforkTlPatch = useCallback((patchFn) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const editDrawing = editingDrawingRef.current?.drawing ?? null;
+        const next = patchFn(s);
+        const pfLevels = v9EnsurePfLevelsRows(next, editDrawing);
+        const normalized = { ...next, pfLevels };
+        v9FlushTlStyleToChartTargets(normalized, {
+          editingRefDrawing: editDrawing,
+          resolveLegacyTool,
+        });
+        return normalized;
+      });
+    });
+  }, []);
+
   const applyRegUpperBgToggle = useCallback(() => {
     flushSync(() => {
       setTlStyle((s) => {
@@ -23885,7 +23942,7 @@ const TalariaV8bLive = () => {
                       </div>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 0 6px" }}>
                         <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>LEVEL COLORS</div>
-                        <div onClick={e=>{e.stopPropagation();flushSync(()=>setTlStyle(s=>({...s,pfLevels:v9DefaultPfLevelsTl()})));v9FlushTlStyleToChartTargets(tlStyleLiveRef.current,{editingRefDrawing:editingDrawingRef.current?.drawing??null,resolveLegacyTool});}}
+                        <div onClick={e=>{e.stopPropagation();applyPitchforkTlPatch(s=>({...s,pfLevels:v9DefaultPfLevelsTl()}));}}
                           onMouseEnter={()=>setHov("pfReset")} onMouseLeave={()=>setHov(null)}
                           style={{ height:24, padding:"0 10px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                                    border:`1px solid rgba(140,160,255,0.15)`, background:hov==="pfReset"?c.hv2:"transparent",
@@ -23893,13 +23950,82 @@ const TalariaV8bLive = () => {
                           <span style={{ fontSize:10, color:c.ts }}>Reset</span>
                         </div>
                       </div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:16, rowGap:10 }}>
-                        {(tlStyle.pfLevels || []).map((lv, idx) => (
-                          <div key={idx} style={{ display:"flex", alignItems:"center", gap:8, opacity:lv.on ? 1 : 0.55 }}>
-                            <span style={{ fontSize:11, color:c.ts, width:36, fontVariantNumeric:"tabular-nums" }}>{lv.value}</span>
-                            {colorSwatch(`pfLevel-${idx}`, lv.color)}
-                          </div>
-                        ))}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:10, alignItems:"center" }}>
+                        <div/><div/>
+                        <div style={{ display:"flex", justifyContent:"center" }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>STYLE</span></div>
+                        <div style={{ display:"flex", justifyContent:"center" }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span></div>
+                        {(tlStyle.pfLevels || []).map((lv, idx) => {
+                          const op = lv.on ? 1 : 0.38;
+                          const pe = lv.on ? "auto" : "none";
+                          const typeDk = `pfLvlType-${idx}`;
+                          const widDk = `pfLvlWidth-${idx}`;
+                          return (
+                            <React.Fragment key={`${lv.value}-${idx}`}>
+                              <span style={{ fontSize:11, color:c.ts, fontVariantNumeric:"tabular-nums", opacity:op }}>{lv.value}</span>
+                              <div style={{ opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                                {colorSwatch(`pfLevel-${idx}`, lv.color)}
+                              </div>
+                              <div style={{ position:"relative", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                                <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===typeDk?null:typeDk);}}
+                                  onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
+                                  style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
+                                           background:tlStyleDrop===typeDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent",
+                                           transition:"background 0.12s" }}>
+                                  <svg width={22} height={10} viewBox="0 0 22 10">
+                                    <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===typeDk?c.acL:c.ts}
+                                      strokeWidth={lv.type==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(lv.type)}/>
+                                  </svg>
+                                  <I n="chevDown" s={7} cl={tlStyleDrop===typeDk?c.acL:c.ts}/>
+                                </div>
+                                {tlStyleDrop===typeDk && dropShell(typeDk, 56, false,
+                                  [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
+                                    const isA=lv.type===v; const isH=hov===`pflvt-${idx}-${v}`;
+                                    return (
+                                      <div key={v} onClick={()=>{applyPitchforkTlPatch(s=>({...s,pfLevels:s.pfLevels.map((l,i)=>i===idx?{...l,type:v}:l)}));setTlStyleDrop(null);}}
+                                        onMouseEnter={()=>setHov(`pflvt-${idx}-${v}`)} onMouseLeave={()=>setHov(null)}
+                                        style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                                 background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                        {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                                        <svg width={28} height={10} viewBox="0 0 28 10">
+                                          <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                        </svg>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                              <div style={{ position:"relative", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
+                                <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===widDk?null:widDk);}}
+                                  onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
+                                  style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
+                                           background:tlStyleDrop===widDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent",
+                                           transition:"background 0.12s" }}>
+                                  <svg width={22} height={Math.max(8,+lv.width+4)} viewBox={`0 0 22 ${Math.max(8,+lv.width+4)}`}>
+                                    <line x1={0} y1={Math.max(8,+lv.width+4)/2} x2={22} y2={Math.max(8,+lv.width+4)/2}
+                                      stroke={tlStyleDrop===widDk?c.acL:c.ts} strokeWidth={+lv.width} strokeLinecap="round"/>
+                                  </svg>
+                                  <I n="chevDown" s={7} cl={tlStyleDrop===widDk?c.acL:c.ts}/>
+                                </div>
+                                {tlStyleDrop===widDk && dropShell(widDk, 56, false,
+                                  ["1","2","3","4"].map(w=>{
+                                    const isA=String(lv.width)===w; const isH=hov===`pflvw-${idx}-${w}`;
+                                    return (
+                                      <div key={w} onClick={()=>{applyPitchforkTlPatch(s=>({...s,pfLevels:s.pfLevels.map((l,i)=>i===idx?{...l,width:w}:l)}));setTlStyleDrop(null);}}
+                                        onMouseEnter={()=>setHov(`pflvw-${idx}-${w}`)} onMouseLeave={()=>setHov(null)}
+                                        style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                                 background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                        {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                                        <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
+                                          <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                        </svg>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </React.Fragment>
+                          );
+                        })}
                       </div>
                     </>;
                   })()}
@@ -25322,7 +25448,7 @@ const TalariaV8bLive = () => {
                             const isA = tlStyle.pitchforkStyle === opt;
                             const isH = hov === `pfInSty-${opt}`;
                             return (
-                              <div key={opt} onClick={() => { setTlStyle(s => ({ ...s, pitchforkStyle: opt })); setTlStyleDrop(null); }}
+                              <div key={opt} onClick={() => { applyPitchforkTlPatch(s => ({ ...s, pitchforkStyle: opt })); setTlStyleDrop(null); }}
                                 onMouseEnter={() => setHov(`pfInSty-${opt}`)} onMouseLeave={() => setHov(null)}
                                 style={{ padding:"6px 12px", cursor:"default", position:"relative",
                                          background:isA ? c.acD : isH ? c.hv2 : "transparent", transition:"background 0.1s" }}>
@@ -25341,7 +25467,7 @@ const TalariaV8bLive = () => {
                       return (
                         <div key={`${lv.value}-${idx}`} style={{ display:"flex", alignItems:"center", gap:6 }}>
                           <div style={{ width:18, flexShrink:0 }}>
-                            {TlChk(lv.on, `tlchk-pf-in-${idx}`, "", () => setTlStyle(s => {
+                            {TlChk(lv.on, `tlchk-pf-in-${idx}`, "", () => applyPitchforkTlPatch(s => {
                               const rows = v9EnsurePfLevelsRows(s, editDrawing);
                               const target = rows[idx];
                               if (!target) return s;
@@ -25353,14 +25479,14 @@ const TalariaV8bLive = () => {
                           </div>
                           <div style={{ position:"relative", width:58, opacity:op, transition:"opacity 0.15s" }}>
                             <input value={lv.value}
-                              onChange={e => { const val = e.target.value; if (/^[0-9.]*$/.test(val)) setTlStyle(s => v9PatchPfLevelsRowValue(s, idx, val, editDrawing)); }}
+                              onChange={e => { const val = e.target.value; if (/^[0-9.]*$/.test(val)) applyPitchforkTlPatch(s => v9PatchPfLevelsRowValue(s, idx, val, editDrawing)); }}
                               onClick={e => e.stopPropagation()}
                               className="tlr-nospinner"
                               style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                        color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                             <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                               {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
-                                <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s => v9BumpPfLevelsRowValueOnce(s, idx, delta, editDrawing)))}
+                                <button type="button" key={i} {...modalPointerActivate(() => applyPitchforkTlPatch(s => v9BumpPfLevelsRowValueOnce(s, idx, delta, editDrawing)))}
                                   onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
                                   style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                            display:"flex", alignItems:"center", justifyContent:"center",
@@ -30279,14 +30405,44 @@ const TalariaV8bLive = () => {
                         return;
                       }
                       const action =
-                        item.icon === "trashDraw" ? "drawings"
-                        : item.icon === "trashInd" ? "indicators"
-                        : item.icon === "trash" ? "both"
-                        : null;
+                        item.icon === "trash" ? "both" : null;
+                      if (item.icon === "trashDraw") {
+                        setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, trash: item }));
+                        v9UserExplicitToolRef.current = true;
+                        setTool("trash");
+                        const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+                        if (grid && typeof grid.runCommandIframes === "function") {
+                          void grid.runCommandIframes("setChartCursorType", { cursorType: "eraser", skipSync: false }).catch(() => {});
+                        }
+                        v9ForEachChartInstance((ch) => {
+                          if (ch && typeof ch.setCursorType === "function") ch.setCursorType("eraser");
+                        });
+                        setTlBarSelected(false);
+                        setTlBarSelectedType(null);
+                        closeDropdown();
+                        return;
+                      }
+                      if (item.icon === "trashInd") {
+                        setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, trash: item }));
+                        v9UserExplicitToolRef.current = true;
+                        setTool("trash");
+                        v9ForEachChartInstance((ch) => {
+                          if (ch) ch.v9DeleteIndicatorsMode = true;
+                        });
+                        setTlBarSelected(false);
+                        setTlBarSelectedType(null);
+                        closeDropdown();
+                        return;
+                      }
                       if (action) v9ExecuteBulkDelete(action);
-                      setGroupSelected((p) => v9SanitizeGroupSelected({ ...p, trash: item }));
-                      v9UserExplicitToolRef.current = true;
-                      setTool("trash");
+                      setGroupSelected((p) => {
+                        const next = { ...p };
+                        delete next.trash;
+                        return v9SanitizeGroupSelected(next);
+                      });
+                      v9UserExplicitToolRef.current = false;
+                      setTool("crosshair");
+                      applyV9DeleteMode(null);
                       setTlBarSelected(false);
                       setTlBarSelectedType(null);
                       closeDropdown();

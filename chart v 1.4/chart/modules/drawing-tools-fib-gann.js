@@ -2615,6 +2615,17 @@ class PitchforkTool extends BaseDrawing {
 
         // Calculate all level lines first (both upper and lower)
         const levelLines = [];
+        const defaultLevelWidth = this.style.strokeWidth || 2;
+        const levelStrokeProps = (level) => {
+            const baseWidth = (level.lineWidth != null && !isNaN(parseInt(level.lineWidth, 10)))
+                ? parseInt(level.lineWidth, 10)
+                : defaultLevelWidth;
+            const baseType = (level.lineType != null) ? `${level.lineType}` : '';
+            return {
+                strokeWidth: baseWidth,
+                strokeDasharray: baseType,
+            };
+        };
         
         // Keep midX and midY for level calculations (midpoint of B and C)
         const midX = midBC_X;
@@ -2642,6 +2653,7 @@ class PitchforkTool extends BaseDrawing {
         
         this.levels.forEach(level => {
             if (!level.enabled) return;
+            const { strokeWidth: levelWidth, strokeDasharray: levelDash } = levelStrokeProps(level);
             
             // For level 1.0, draw boundary lines from B and C
             if (level.value === 1) {
@@ -2656,7 +2668,8 @@ class PitchforkTool extends BaseDrawing {
                         endY: lowerSeg.y2,
                         color: level.color,
                         isMedian: false,
-                        strokeWidth: this.style.strokeWidth,
+                        strokeWidth: levelWidth,
+                        strokeDasharray: levelDash,
                         levelValue: level.value
                     });
                     
@@ -2669,7 +2682,8 @@ class PitchforkTool extends BaseDrawing {
                         endY: upperSeg.y2,
                         color: level.color,
                         isMedian: false,
-                        strokeWidth: this.style.strokeWidth,
+                        strokeWidth: levelWidth,
+                        strokeDasharray: levelDash,
                         levelValue: level.value
                     });
                 } else {
@@ -2683,7 +2697,8 @@ class PitchforkTool extends BaseDrawing {
                         endY: lowerSeg.y2,
                         color: level.color,
                         isMedian: false,
-                        strokeWidth: this.style.strokeWidth,
+                        strokeWidth: levelWidth,
+                        strokeDasharray: levelDash,
                         levelValue: level.value
                     });
                     
@@ -2696,7 +2711,8 @@ class PitchforkTool extends BaseDrawing {
                         endY: upperSeg.y2,
                         color: level.color,
                         isMedian: false,
-                        strokeWidth: this.style.strokeWidth,
+                        strokeWidth: levelWidth,
+                        strokeDasharray: levelDash,
                         levelValue: level.value
                     });
                 }
@@ -2716,7 +2732,8 @@ class PitchforkTool extends BaseDrawing {
                         endY: lowerSeg.y2,
                         color: level.color,
                         isMedian: false,
-                        strokeWidth: 1,
+                        strokeWidth: levelWidth,
+                        strokeDasharray: levelDash,
                         levelValue: level.value
                     });
                     
@@ -2732,7 +2749,8 @@ class PitchforkTool extends BaseDrawing {
                         endY: upperSeg.y2,
                         color: level.color,
                         isMedian: false,
-                        strokeWidth: 1,
+                        strokeWidth: levelWidth,
+                        strokeDasharray: levelDash,
                         levelValue: level.value
                     });
                 } else {
@@ -2749,7 +2767,8 @@ class PitchforkTool extends BaseDrawing {
                         endY: lowerSeg.y2,
                         color: level.color,
                         isMedian: false,
-                        strokeWidth: 1,
+                        strokeWidth: levelWidth,
+                        strokeDasharray: levelDash,
                         levelValue: level.value
                     });
                     
@@ -2765,7 +2784,8 @@ class PitchforkTool extends BaseDrawing {
                         endY: upperSeg.y2,
                         color: level.color,
                         isMedian: false,
-                        strokeWidth: 1,
+                        strokeWidth: levelWidth,
+                        strokeDasharray: levelDash,
                         levelValue: level.value
                     });
                 }
@@ -2908,7 +2928,8 @@ class PitchforkTool extends BaseDrawing {
             const anchor = Math.abs(lvVal - 1) < 1e-6 ? (line.value < 0 ? 'b' : 'c') : null;
             appendPitchforkLine(seg.x1, seg.y1, seg.x2, seg.y2, {
                 stroke: line.color,
-                strokeWidth: line.strokeWidth || 1,
+                strokeWidth: line.strokeWidth || defaultLevelWidth,
+                strokeDasharray: line.strokeDasharray || '',
                 dataPfLevelValue: lvVal,
                 dataPfSide: side,
                 dataPfAnchor: anchor,

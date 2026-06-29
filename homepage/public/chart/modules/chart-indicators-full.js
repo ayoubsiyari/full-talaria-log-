@@ -10275,6 +10275,12 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
                 if (typeof this.showNotification === "function") {
                     this.showNotification("Indicator removed ✓");
                 }
+                try {
+                    this.v9DeleteIndicatorsMode = false;
+                    if (typeof window !== "undefined") {
+                        window.dispatchEvent(new CustomEvent("v9DeleteToolDismissed"));
+                    }
+                } catch (_) {}
                 return true;
             }
             if (typeof window.createIndicatorSettingsPanel === "function") {

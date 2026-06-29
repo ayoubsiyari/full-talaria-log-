@@ -6809,6 +6809,7 @@ class DrawingToolsManager {
                 event.preventDefault();
                 // [debug removed]
                 self.deleteDrawing(drawing);
+                self._finishEraserOneShotDelete();
                 // [debug removed]
                 return;
             }
@@ -8960,6 +8961,7 @@ class DrawingToolsManager {
         // If eraser mode is active, delete the drawing instead of selecting
         if (this.eraserMode) {
             this.deleteDrawing(drawing); // Pass the drawing object, not ID
+            this._finishEraserOneShotDelete();
             // [debug removed]
             return;
         }
@@ -11527,6 +11529,25 @@ class DrawingToolsManager {
     }
 
     /**
+     * After one eraser delete, exit eraser mode and tell V9 to deselect the delete tool.
+     */
+    _finishEraserOneShotDelete() {
+        if (!this.eraserMode) return;
+        this.setEraserMode(false);
+        try {
+            const chart = this.chart;
+            if (chart && typeof chart.setCursorType === 'function') {
+                chart.setCursorType('cross', true);
+            }
+        } catch (_) {}
+        try {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('v9DeleteToolDismissed'));
+            }
+        } catch (_) {}
+    }
+
+    /**
      * Handle eraser click on drawing
      */
     handleEraserClick(drawingId) {
@@ -11534,7 +11555,7 @@ class DrawingToolsManager {
         const drawing = this.drawings.find(d => d.id === drawingId);
         if (drawing) {
             this.deleteDrawing(drawing); // Pass the drawing object, not ID
-            // [debug removed]
+            this._finishEraserOneShotDelete();
         }
     }
 
