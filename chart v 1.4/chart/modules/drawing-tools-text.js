@@ -540,6 +540,140 @@ function measurePlainTextLayoutBBox(drawing, scales, lines, display, baselineY, 
     };
 }
 
+function sanitizeInlineTextLine(line) {
+    return line && line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
+}
+
+/** Layout lines inside a fixed annotation box (callout, notebox, note, comment, …). */
+function layoutBoxedTextLines(box, cfg) {
+    const padding = Number.isFinite(box.padding) ? box.padding : 12;
+    const innerLeft = box.left + padding;
+    const innerRight = box.left + box.width - padding;
+    const innerWidth = Math.max(1, box.width - padding * 2);
+    const lines = cfg.lines || [];
+    const text = cfg.text || '';
+    const rtl = typeof drawingTextHasArabicScript === 'function'
+        && drawingTextHasArabicScript(text);
+    const wrap = !!cfg.wrap;
+    const align = cfg.textAlign || (rtl ? 'right' : 'left');
+    const measure = typeof cfg.measureLineWidth === 'function'
+        ? cfg.measureLineWidth
+        : () => 0;
+    const lineWidths = lines.map((line) => measure(line));
+    const contentWidth = Math.max(0, ...lineWidths);
+
+    const rows = lines.map((line) => {
+        let x = innerLeft;
+        let textAnchor = 'start';
+        if (!wrap) {
+            if (align === 'center') {
+                x = box.left + box.width / 2;
+                textAnchor = 'middle';
+            } else if (rtl) {
+                x = innerLeft + contentWidth;
+                textAnchor = 'start';
+            } else if (align === 'right') {
+                x = innerRight;
+                textAnchor = 'end';
+            } else {
+                x = innerLeft;
+                textAnchor = 'start';
+            }
+        } else if (align === 'center') {
+            x = innerLeft + innerWidth / 2;
+            textAnchor = 'middle';
+        } else if (rtl) {
+            if (align === 'right') {
+                x = innerRight;
+                textAnchor = 'start';
+            } else {
+                x = innerLeft;
+                textAnchor = 'end';
+            }
+        } else if (align === 'right') {
+            x = innerRight;
+            textAnchor = 'end';
+        } else {
+            x = innerLeft;
+            textAnchor = 'start';
+        }
+        return { x, textAnchor, line };
+    });
+    return { rows, innerLeft, innerRight, innerWidth, rtl, align };
+}
+
+/** Apply boxed line layout + Arabic typography to an SVG text node. */
+function syncBoxedInlineText(textElement, opts) {
+    if (!textElement || textElement.empty()) return textElement;
+    const {
+        baselineY,
+        lineHeight,
+        text = '',
+        fontStyle = 'normal',
+        fontFamily = 'Roboto, sans-serif',
+        fontWeight = 'normal',
+        rows = [],
+    } = opts;
+    const primary = rows[0] || { x: 0, textAnchor: 'start', line: '' };
+    textElement
+        .attr('x', primary.x)
+        .attr('y', baselineY)
+        .attr('text-anchor', primary.textAnchor);
+    applyDrawingTextElementPresentation(textElement, {
+        text,
+        fontStyle,
+        fontFamily,
+        fontWeight,
+        x: primary.x,
+        y: baselineY,
+    });
+    textElement.selectAll('tspan').remove();
+    rows.forEach((row, i) => {
+        textElement.append('tspan')
+            .attr('x', row.x)
+            .attr('text-anchor', row.textAnchor)
+            .attr('dy', i === 0 ? 0 : lineHeight)
+            .text(sanitizeInlineTextLine(row.line || ''));
+    });
+    return textElement;
+}
+
+/** Centered single/multi-line label (signpost, pin, anchored text) — RTL font + direction only. */
+function syncCenteredInlineText(textElement, opts) {
+    if (!textElement || textElement.empty()) return textElement;
+    const {
+        centerX,
+        baselineY,
+        lineHeight,
+        text = '',
+        fontStyle = 'normal',
+        fontFamily = 'Roboto, sans-serif',
+        fontWeight = 'normal',
+        lines = [],
+    } = opts;
+    textElement
+        .attr('x', centerX)
+        .attr('y', baselineY)
+        .attr('text-anchor', 'middle');
+    applyDrawingTextElementPresentation(textElement, {
+        text,
+        fontStyle,
+        fontFamily,
+        fontWeight,
+        x: centerX,
+        y: baselineY,
+    });
+    textElement.selectAll('tspan').remove();
+    lines.forEach((line, i) => {
+        textElement.append('tspan')
+            .attr('x', centerX)
+            .attr('text-anchor', 'middle')
+            .attr('dy', i === 0 ? 0 : lineHeight)
+            .text(sanitizeInlineTextLine(line || ''));
+    });
+    return textElement;
+}
+
 /** Measure rendered plain-text block width (px) at current style/zoom. */
 function measurePlainTextBlockWidth(drawing, scales) {
     const sf = (typeof drawing.getZoomScaleFactor === 'function')
@@ -1783,25 +1917,32 @@ class NoteBoxTool extends BaseDrawing {
             .style('cursor', 'move');
 
         const noteboxFill = resolveTextToolLabelBackgroundFill(this.style);
+        const textBaselineY = boxY + padding + scaledFontSize;
+        const boxedLayout = layoutBoxedTextLines(
+            { left: boxX, width: boxWidth, padding },
+            {
+                lines,
+                text: noteboxDisplay.text,
+                wrap: this.style.wrapText,
+                measureLineWidth: (line) => measureWidth(line || ' '),
+            }
+        );
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
-            .attr('x', boxX + padding)
-            .attr('y', boxY + padding + scaledFontSize)
             .attr('fill', resolveAnnotationTextFill(this.style.textColor, noteboxFill, noteboxDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('dominant-baseline', 'alphabetic')
             .style('pointer-events', 'all')
             .style('cursor', 'move')
             .style('user-select', 'none');
-
-        lines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', boxX + padding)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
+        syncBoxedInlineText(textElement, {
+            baselineY: textBaselineY,
+            lineHeight,
+            text: noteboxDisplay.text,
+            fontStyle: this.style.fontStyle,
+            fontFamily: this.style.fontFamily,
+            fontWeight: this.style.fontWeight || 'normal',
+            rows: boxedLayout.rows,
         });
 
         if (this.style.wrapText) {
@@ -2244,24 +2385,30 @@ class AnchoredTextTool extends BaseDrawing {
             .style('cursor', 'move');
 
         const textStartY = boxY + padding + scaledFontSize;
+        const anchoredLayout = layoutBoxedTextLines(
+            { left: boxX, width: boxWidth, padding },
+            {
+                lines,
+                text: anchoredDisplay.text,
+                wrap: this.style.wrapText,
+                textAlign: 'center',
+                measureLineWidth: (line) => measureWidth(line || ' '),
+            }
+        );
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
-            .attr('x', x)
-            .attr('y', textStartY)
             .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, anchoredDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
-            .attr('text-anchor', 'middle')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
-
-        lines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', x)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
+        syncBoxedInlineText(textElement, {
+            baselineY: textStartY,
+            lineHeight,
+            text: anchoredDisplay.text,
+            fontStyle: this.style.fontStyle,
+            fontFamily: this.style.fontFamily,
+            fontWeight: this.style.fontWeight || 'normal',
+            rows: anchoredLayout.rows,
         });
 
         if (this.style.wrapText) {
@@ -2628,24 +2775,30 @@ class NoteTool extends BaseDrawing {
             ? TEXT_TOOL_PLACEHOLDER_COLOR
             : resolveAnnotationTextFill(this.style.textColor, boxFill, false);
 
-        // Text with wrapped lines
+        const noteBaselineY = boxY + padding + scaledFontSize;
+        const noteLayout = layoutBoxedTextLines(
+            { left: boxX, width: boxWidth, padding },
+            {
+                lines: wrappedLines,
+                text: noteDisplay.text,
+                wrap: this.style.wrapText,
+                measureLineWidth: (line) => measureWidth(line || ' '),
+            }
+        );
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
-            .attr('x', boxX + padding)
-            .attr('y', boxY + padding + scaledFontSize)
             .attr('fill', textFill)
             .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
-
-        wrappedLines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', boxX + padding)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
+        syncBoxedInlineText(textElement, {
+            baselineY: noteBaselineY,
+            lineHeight,
+            text: noteDisplay.text,
+            fontStyle: this.style.fontStyle,
+            fontFamily: this.style.fontFamily,
+            fontWeight: this.style.fontWeight || 'normal',
+            rows: noteLayout.rows,
         });
 
         if (this.style.wrapText) {
@@ -3293,22 +3446,19 @@ class PinTool extends BaseDrawing {
             const firstLineY = textBodyTop + (boxHeight - totalTextHeight) / 2 + scaledFontSize * 0.85;
             const boxTextEl = textBoxGroup.append('text')
                 .attr('class', 'inline-editable-text')
-                .attr('x', boxX + boxWidth / 2)
-                .attr('y', firstLineY)
                 .attr('fill', this.style.textColor)
                 .attr('font-size', `${scaledFontSize}px`)
-                .attr('font-family', this.style.fontFamily)
-                .attr('font-weight', this.style.fontWeight || 'normal')
-                .attr('font-style', this.style.fontStyle || 'normal')
-                .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
-
-            pinLines.forEach((line, i) => {
-                boxTextEl.append('tspan')
-                    .attr('x', boxX + boxWidth / 2)
-                    .attr('dy', i === 0 ? 0 : lineHeight)
-                    .text(line || '\u00A0');
+            syncCenteredInlineText(boxTextEl, {
+                centerX: boxX + boxWidth / 2,
+                baselineY: firstLineY,
+                lineHeight,
+                text: pinDisplay.text,
+                fontStyle: this.style.fontStyle,
+                fontFamily: this.style.fontFamily,
+                fontWeight: this.style.fontWeight || 'normal',
+                lines: pinLines,
             });
 
             if (this.style.wrapText) {
@@ -3904,25 +4054,30 @@ class CalloutTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Text with wrapped lines
-        const textStartY = bubbleY + padding + scaledFontSize;
+        const calloutBaselineY = bubbleY + padding + scaledFontSize;
+        const calloutLayout = layoutBoxedTextLines(
+            { left: bubbleX, width: bubbleWidth, padding },
+            {
+                lines: wrappedLines,
+                text: calloutDisplay.text,
+                wrap: this.style.wrapText,
+                measureLineWidth: (line) => measureW(line || ' '),
+            }
+        );
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
-            .attr('x', bubbleX + padding)
-            .attr('y', textStartY)
-            .attr('text-anchor', 'start')
             .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, calloutDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', _cFontFamily)
-            .attr('font-weight', _cFontWeight)
-            .attr('font-style', _cFontStyle)
             .style('pointer-events', 'all')
             .style('cursor', 'move');
-
-        wrappedLines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', bubbleX + padding)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
+        syncBoxedInlineText(textElement, {
+            baselineY: calloutBaselineY,
+            lineHeight,
+            text: calloutDisplay.text,
+            fontStyle: this.style.fontStyle,
+            fontFamily: _cFontFamily,
+            fontWeight: _cFontWeight,
+            rows: calloutLayout.rows,
         });
 
         if (this.style.wrapText) {
@@ -4233,36 +4388,31 @@ class CommentTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        // Calculate text position based on alignment
-        let textX = bubbleX + w / 2;
-        let textAnchor = 'middle';
-        
-        if (this.style.textAlign === 'left') {
-            textX = bubbleX + padding;
-            textAnchor = 'start';
-        } else if (this.style.textAlign === 'right') {
-            textX = bubbleX + w - padding;
-            textAnchor = 'end';
-        }
-
-        const textStartY = bubbleY + padding + _cFontSize;
+        const commentBaselineY = bubbleY + padding + _cFontSize;
+        const commentLayout = layoutBoxedTextLines(
+            { left: bubbleX, width: w, padding },
+            {
+                lines,
+                text: commentDisplay.text,
+                wrap: this.style.wrapText,
+                textAlign: this.style.textAlign || 'center',
+                measureLineWidth: (line) => measureW(line || ' '),
+            }
+        );
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
-            .attr('x', textX)
-            .attr('y', textStartY)
-            .attr('text-anchor', textAnchor)
             .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, commentDisplay.isPlaceholder))
             .attr('font-size', `${_cFontSize}px`)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
-
-        lines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', textX)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
+        syncBoxedInlineText(textElement, {
+            baselineY: commentBaselineY,
+            lineHeight,
+            text: commentDisplay.text,
+            fontStyle: this.style.fontStyle,
+            fontFamily: _cFontFamily,
+            fontWeight: _cFontWeight,
+            rows: commentLayout.rows,
         });
 
         if (this.style.wrapText) {
@@ -4305,19 +4455,31 @@ class CommentTool extends BaseDrawing {
                 .attr('y', bY)
                 .attr('width', wN)
                 .attr('height', hN);
-            let tXN = bX + wN / 2, tAN = 'middle';
-            if (self.style.textAlign === 'left')  { tXN = bX + padding;       tAN = 'start'; }
-            if (self.style.textAlign === 'right') { tXN = bX + wN - padding;  tAN = 'end'; }
+            const liveLayout = layoutBoxedTextLines(
+                { left: bX, width: wN, padding },
+                {
+                    lines: lNew,
+                    text: liveDisplay.text,
+                    wrap: self.style.wrapText,
+                    textAlign: self.style.textAlign || 'center',
+                    measureLineWidth: (line) => measureW(line || ' '),
+                }
+            );
             const tEl = self.group.select('text.inline-editable-text');
             const liveFill = resolveAnnotationTextFill(
                 self.style.textColor,
                 self.style.backgroundColor,
                 liveDisplay.isPlaceholder,
             );
-            tEl.attr('x', tXN).attr('y', bY + padding + _cFontSize).attr('text-anchor', tAN).attr('fill', liveFill);
-            tEl.selectAll('tspan').remove();
-            lNew.forEach((line, i) => {
-                tEl.append('tspan').attr('x', tXN).attr('dy', i === 0 ? 0 : lineHeight).text(line || '\u00A0');
+            tEl.attr('fill', liveFill);
+            syncBoxedInlineText(tEl, {
+                baselineY: bY + padding + _cFontSize,
+                lineHeight,
+                text: liveDisplay.text,
+                fontStyle: self.style.fontStyle,
+                fontFamily: _cFontFamily,
+                fontWeight: _cFontWeight,
+                rows: liveLayout.rows,
             });
             // Sync inline editor to bubble body (not text glyph bbox — avoids doubled offset bubble)
             const boxNode = self.group.select('rect.comment-body-hit').node();
@@ -4971,22 +5133,19 @@ class Signpost2Tool extends BaseDrawing {
         const firstLineY = boxY + (boxHeight - totalTextHeight) / 2 + scaledFontSize * 0.85;
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
-            .attr('x', x1)
-            .attr('y', firstLineY)
             .attr('fill', resolveAnnotationTextFill(this.style.textColor, labelFill, signDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
-            .attr('text-anchor', 'middle')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
-
-        signLines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', x1)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
+        syncCenteredInlineText(textElement, {
+            centerX: x1,
+            baselineY: firstLineY,
+            lineHeight,
+            text: displayText,
+            fontStyle: this.style.fontStyle,
+            fontFamily: this.style.fontFamily,
+            fontWeight: this.style.fontWeight || 'normal',
+            lines: signLines,
         });
 
         if (this.style.wrapText) {
@@ -5484,6 +5643,9 @@ if (typeof window !== 'undefined') {
         plainTextEffectiveHorizAlign,
         layoutPlainTextLines,
         layoutPlainTextLinePositions,
+        layoutBoxedTextLines,
+        syncBoxedInlineText,
+        syncCenteredInlineText,
         measurePlainTextLayoutBBox,
         ensurePlainTextLeftEdgePoint,
         migratePlainTextHorizAlign,

@@ -63,15 +63,16 @@ function fibHorizontalSpanLabelPlacement(style, spanMinX, spanMaxX, pad = 5) {
     return { x: maxX + pad, anchor: 'start' };
 }
 
-/** Fib Arcs: place each label on the arc bulge (semi) or a cardinal point (full circle). */
+/** Fib Arcs: semi-circle labels on the flat diameter (left/center/right); full circle uses cardinals. */
 function fibArcsLevelLabelPlacement(style, cx, cy, r, isDown, fullCircle) {
     const pad = 5;
     if (!fullCircle) {
+        const lp = fibHorizontalSpanLabelPlacement(style, cx - r, cx + r, pad);
         return {
-            x: cx,
-            y: isDown ? cy - r - pad : cy + r + pad,
-            anchor: 'middle',
-            dominantBaseline: isDown ? 'auto' : 'hanging',
+            x: lp.x,
+            y: cy,
+            anchor: lp.anchor,
+            dominantBaseline: 'middle',
         };
     }
     const pos = normalizeFibLevelsLabelPosition(style);
@@ -102,6 +103,9 @@ function resolveFibArcLabelCollisions(slots, group, fontSize, fontWeight = '700'
             const minGap = (prev.block.width + cur.block.width) / 2 + gap;
             if (cur.x - prev.x < minGap) cur.x = prev.x + minGap;
         }
+        measured.forEach((cur, i) => {
+            cur.y = cur.y + (i % 2 === 0 ? -1 : 1) * (fontSize * 0.42);
+        });
         return measured;
     }
     measured.sort((a, b) => a.y - b.y);
