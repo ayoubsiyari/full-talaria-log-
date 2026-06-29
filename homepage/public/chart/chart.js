@@ -14681,6 +14681,14 @@ class Chart {
             return 'timeAxis';
         }
         if (mx > m.l && mx < this.w - m.r && my > m.t && my < this.h - m.b) {
+            if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
+                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 16);
+                if (resizeHandle) {
+                    this.cursor.separatePanelSlot = null;
+                    this._separatePanelHoverHandle = resizeHandle;
+                    return 'separatePanelResize';
+                }
+            }
             const plotSlot = typeof this._findSeparatePanelPlotSlot === 'function'
                 ? this._findSeparatePanelPlotSlot(mx, my)
                 : null;
@@ -27172,22 +27180,12 @@ class Chart {
                 return;
             }
 
-            if (this.tool) return;
-
-            // Ctrl in cursor mode: marquee or drawing move — never chart pan.
-            if (e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
-                const dm = this.drawingManager;
-                if (dm && typeof dm._isCursorSelectMode === 'function' && dm._isCursorSelectMode()) {
-                    return;
-                }
-            }
-
             const [mx, my] = this._eventCanvasLocalXY(e);
 
             // Start separate indicator panel resize when dragging a panel separator.
-            // Must run before drawing-tool guards — separator sits in the chart body.
+            // Must run before tool / drawing guards — separator sits in the chart body.
             if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
+                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 16);
                 if (resizeHandle && typeof this.startSeparatePanelResize === 'function' && this.startSeparatePanelResize(resizeHandle, my)) {
                     this.drag.active = true;
                     this.drag.type = 'separatePanelResize';
@@ -27197,6 +27195,16 @@ class Chart {
                     this.drag.lastY = e.clientY;
                     this._lockDragCursor('ns-resize');
                     e.preventDefault();
+                    return;
+                }
+            }
+
+            if (this.tool) return;
+
+            // Ctrl in cursor mode: marquee or drawing move — never chart pan.
+            if (e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                const dm = this.drawingManager;
+                if (dm && typeof dm._isCursorSelectMode === 'function' && dm._isCursorSelectMode()) {
                     return;
                 }
             }
@@ -27481,7 +27489,7 @@ class Chart {
                     return;
                 }
                 if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                    const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
+                    const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 16);
                     if (resizeHandle) {
                         const prevY = this._separatePanelHoverHandle && this._separatePanelHoverHandle.y;
                         if (prevY !== resizeHandle.y) {
@@ -27507,6 +27515,9 @@ class Chart {
                 
                 if (mode === 'priceAxis' || mode === 'separatePanelAxis') {
                     this.canvas.classList.add('cursor-price-axis');
+                    this.canvas.style.cursor = 'ns-resize';
+                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
+                } else if (mode === 'separatePanelResize') {
                     this.canvas.style.cursor = 'ns-resize';
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
                 } else if (mode === 'timeAxis') {

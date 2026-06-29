@@ -9311,7 +9311,7 @@ Chart.prototype._persistSeparatePanelHeights = function(indicators, heights, sav
     }
 };
 
-Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 10) {
+Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 14) {
     if (!this.separatePanelInfo || !this.separatePanelInfo.resizeHandles) return null;
     const m = this.margin || { l: 0, r: 0 };
     if (x < m.l || x > this.w - m.r) return null;
@@ -10498,7 +10498,7 @@ Chart.prototype._findSeparatePanelPlotSlot = function(x, y, opts) {
         const slot = spi.panelSlots[i];
         if (y < slot.top || y > slot.bottom) continue;
         if (skipResize && typeof this.getSeparatePanelResizeHandleAt === 'function') {
-            const handle = this.getSeparatePanelResizeHandleAt(x, y, 10);
+            const handle = this.getSeparatePanelResizeHandleAt(x, y, 14);
             if (handle) return null;
         }
         return slot;
