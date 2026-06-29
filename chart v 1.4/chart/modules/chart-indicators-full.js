@@ -15382,9 +15382,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             overlay = document.createElement('div');
             overlay.id = 'separatePanelsOverlay';
             overlay.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:35;';
-            if (Number.isFinite(self.w) && Number.isFinite(self.h)) {
-                overlay.style.width = self.w + 'px';
-                overlay.style.height = self.h + 'px';
+            if (Number.isFinite(this.w) && Number.isFinite(this.h)) {
+                overlay.style.width = this.w + 'px';
+                overlay.style.height = this.h + 'px';
             }
             wrapper.appendChild(overlay);
         }
