@@ -4468,7 +4468,7 @@ function v9ApplyTxtStyleToDrawing(d, txt, opts = {}) {
     }
     return;
   }
-    if (t === "text") {
+  if (t === "text") {
     if (txt.horizAlign != null && txt.horizAlign !== (s.textAlign || "left") && (txt.wrapText || s.wrapText)) {
       try {
         const helpers = typeof window !== "undefined" ? window.DrawingTextHelpers : null;
@@ -26704,10 +26704,6 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               </>}
-              {/* Wrap Text — basic text tools only (pin/signpost use Text tab) */}
-              {!isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && !isPin && !isSignpost && <div style={{padding:"8px 0"}}>
-                {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>applyTxtStylePatch(s=>({...s,wrapText:!s.wrapText})))}
-              </div>}
             </>}
             {/* ── TEXT TAB (pin, signpost) ── */}
             {txtSettTab==="text" && (isPin||isSignpost) && <>

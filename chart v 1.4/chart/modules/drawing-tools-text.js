@@ -5389,6 +5389,7 @@ if (typeof window !== 'undefined') {
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
+        plainTextEffectiveHorizAlign,
         migratePlainTextHorizAlign,
         measurePlainTextBlockWidth,
         ensurePlainTextAlignAnchorPoint,

@@ -303,7 +303,9 @@ function resolveInlineEditorTypographyFromDrawing(drawing, textOverride = null) 
         color,
         direction: resolved.direction,
         italicSkew: Number(resolved.italicSkew) || 0,
-        textAlign: style.textAlign || (resolved.direction ? 'right' : 'left'),
+        textAlign: style.wrapText
+            ? (style.textAlign || (resolved.direction ? 'right' : 'left'))
+            : (resolved.direction ? 'right' : 'left'),
     };
 }
 
@@ -468,6 +470,13 @@ function resolvePlainTextSvgTextAnchor(textAlign, text) {
     return align === 'right' ? 'end' : 'start';
 }
 
+/** Horizontal alignment applies only when wrap-text mode is on. */
+function plainTextEffectiveHorizAlign(drawing) {
+    const style = drawing?.style || {};
+    if (!style.wrapText) return 'left';
+    return style.textAlign || 'left';
+}
+
 /** Measure rendered plain-text block width (px) at current style/zoom. */
 function measurePlainTextBlockWidth(drawing, scales) {
     const sf = (typeof drawing.getZoomScaleFactor === 'function')
@@ -504,7 +513,7 @@ function measurePlainTextBlockWidth(drawing, scales) {
 /** Legacy drawings stored the left edge — convert once to alignment anchor. */
 function ensurePlainTextAlignAnchorPoint(drawing, scales) {
     if (!drawing?.points?.[0] || !drawing.style || drawing.style._alignAnchorPoint) return;
-    const align = drawing.style.textAlign || 'left';
+    const align = plainTextEffectiveHorizAlign(drawing);
     const w = measurePlainTextBlockWidth(drawing, scales);
     const legacyLeftPx = plainTextPointToPixelX(drawing, scales);
     const anchorPx = legacyLeftPx + plainTextAnchorOffsetFromLeft(align, w);
@@ -515,6 +524,7 @@ function ensurePlainTextAlignAnchorPoint(drawing, scales) {
 /** Keep the text block fixed on chart when horizontal alignment changes. */
 function migratePlainTextHorizAlign(drawing, oldAlign, newAlign) {
     if (!drawing?.points?.[0] || !drawing.chart || oldAlign === newAlign) return;
+    if (!drawing.style?.wrapText) return;
     const scales = {
         chart: drawing.chart,
         xScale: drawing.chart.xScale,
@@ -967,7 +977,8 @@ class TextTool extends BaseDrawing {
 
         ensurePlainTextAlignAnchorPoint(this, scales);
         const anchorX = plainTextPointToPixelX(this, scales);
-        const textAnchor = resolvePlainTextSvgTextAnchor(this.style.textAlign, display.text);
+        const effectiveAlign = plainTextEffectiveHorizAlign(this);
+        const textAnchor = resolvePlainTextSvgTextAnchor(effectiveAlign, display.text);
 
         if (this.style.anchored) {
             const anchorLen = (this.style.anchorLength || 24) * scaleFactor;
@@ -1115,7 +1126,8 @@ class TextTool extends BaseDrawing {
             const display = resolveTextToolDisplay(self.text);
             ensurePlainTextAlignAnchorPoint(self, liveScales);
             const anchorPx = plainTextPointToPixelX(self, liveScales);
-            const svgTextAnchor = resolvePlainTextSvgTextAnchor(self.style.textAlign, display.text);
+            const effectiveAlign = plainTextEffectiveHorizAlign(self);
+            const svgTextAnchor = resolvePlainTextSvgTextAnchor(effectiveAlign, display.text);
             const lineList = self.style.wrapText
                 ? TextTool.wrapTextLines(
                     display.text,
@@ -5377,6 +5389,7 @@ if (typeof window !== 'undefined') {
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
+        plainTextEffectiveHorizAlign,
         migratePlainTextHorizAlign,
         measurePlainTextBlockWidth,
         ensurePlainTextAlignAnchorPoint,
