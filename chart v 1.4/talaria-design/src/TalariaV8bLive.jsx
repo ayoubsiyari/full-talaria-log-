@@ -14426,7 +14426,14 @@ const TalariaV8bLive = () => {
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [indOpen]);
 
+  /** Reset manual hover/press chrome when a panel closes without mouseleave (e.g. Esc). */
+  const clearSettingsPanelHover = () => {
+    setHov(null);
+    setBtnPressed(null);
+    setSwHov(null);
+  };
   const finishTlSettPanel = ({ save = false, restore = false } = {}) => {
+    clearSettingsPanelHover();
     if (restore) {
       const editing = editingDrawingRef.current;
       if (editing?.editSnapshot) {
@@ -14455,6 +14462,7 @@ const TalariaV8bLive = () => {
   const closeTlSett = cancelTlSett;
   /** User clicked a different shape while settings were open — drop panel state immediately. */
   const dismissShapeSettingsForNewSelection = () => {
+    clearSettingsPanelHover();
     const editing = editingDrawingRef.current;
     if (editing?.editSnapshot) {
       suppressForwardBridge.current = true;
@@ -14477,6 +14485,7 @@ const TalariaV8bLive = () => {
     setTxtSettOpen(false);
   };
   const finishTxtSettPanel = ({ restore = false } = {}) => {
+    clearSettingsPanelHover();
     if (restore) {
       const editing = editingDrawingRef.current;
       if (editing?.editSnapshot) {
@@ -14495,6 +14504,7 @@ const TalariaV8bLive = () => {
   const confirmTxtSett = () => finishTxtSettPanel({ restore: false });
   const closeTxtSett = cancelTxtSett;
   const closeVwapSett = () => {
+    clearSettingsPanelHover();
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing(s => new Set([...s, "vwapsett"]));
@@ -14502,6 +14512,7 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setVwapSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("vwapsett"); return n; }); }, 155);
   };
   const closeVpSett = () => {
+    clearSettingsPanelHover();
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing(s => new Set([...s, "vpsett"]));
@@ -14509,6 +14520,7 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setVpSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("vpsett"); return n; }); }, 155);
   };
   const closeAvSett = () => {
+    clearSettingsPanelHover();
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing(s => new Set([...s, "avsett"]));
@@ -14516,6 +14528,7 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setAvSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("avsett"); return n; }); }, 155);
   };
   const closeIndSett = () => {
+    clearSettingsPanelHover();
     setV9IndSelectMenu(null);
     setIndStyleDrop(null);
     setIndStyleDropAnchor(null);
@@ -14540,6 +14553,7 @@ const TalariaV8bLive = () => {
   };
   const dismissTlSettOnChartKeepSelection = () => {
     if (!tlSettOpenRef.current) return;
+    clearSettingsPanelHover();
     try { v9StyleBridgeFlushRef.current?.(); } catch (_) {}
     cpPickerDraggingRef.current = false;
     cpBarAnchorRef.current = null;
@@ -14570,6 +14584,7 @@ const TalariaV8bLive = () => {
   };
   const dismissTxtSettOnChartKeepSelection = () => {
     if (!txtSettOpenRef.current) return;
+    clearSettingsPanelHover();
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing((s) => new Set([...s, "txtsett"]));
@@ -14609,6 +14624,7 @@ const TalariaV8bLive = () => {
   };
   /** Close every V9 drawing settings window synchronously (no 155ms overlap flash on dblclick). */
   const v9DismissAllDrawingSettingsImmediate = () => {
+    clearSettingsPanelHover();
     v9DismissQuickBarPopoversSync();
     setTlSettTplDrop(false);
     setTlSaveAsMode(false);
@@ -14651,6 +14667,7 @@ const TalariaV8bLive = () => {
   };
   const dismissVwapSettOnChartKeepSelection = () => {
     if (!vwapSettOpenRef.current) return;
+    clearSettingsPanelHover();
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing((s) => new Set([...s, "vwapsett"]));
@@ -14667,6 +14684,7 @@ const TalariaV8bLive = () => {
   };
   const dismissVpSettOnChartKeepSelection = () => {
     if (!vpSettOpenRef.current) return;
+    clearSettingsPanelHover();
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing((s) => new Set([...s, "vpsett"]));
@@ -14683,6 +14701,7 @@ const TalariaV8bLive = () => {
   };
   const dismissAvSettOnChartKeepSelection = () => {
     if (!avSettOpenRef.current) return;
+    clearSettingsPanelHover();
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing((s) => new Set([...s, "avsett"]));
@@ -14699,6 +14718,7 @@ const TalariaV8bLive = () => {
   };
   const dismissIndSettOnChartKeepSelection = () => {
     if (!indSettOpenRef.current) return;
+    clearSettingsPanelHover();
     setV9IndSelectMenu(null);
     cpBarAnchorRef.current = null;
     setColorPicker(null);
@@ -22282,7 +22302,7 @@ const TalariaV8bLive = () => {
     v9FlushVwapAnchorCoordToChart(vwapStyle, editingDrawingRef.current?.drawing ?? null);
   }, [vwapStyle.anchorPrice, vwapStyle.anchorBar, vwapSettOpen]);
 
-  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
+  const closeWindows = () => { clearSettingsPanelHover(); setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   closeWindowsRef.current = closeWindows;
 
   const toggleSupportChat = () => {

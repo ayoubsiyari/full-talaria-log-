@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260628b174';
+const CHART_ENGINE_BUILD = '20260628b175';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -21441,7 +21441,9 @@ class Chart {
         const effectiveDy = (clientY - this.drag.lastY) / zPan;
 
         this.offsetX += effectiveDx;
-        const panelSlot = this.drag && this.drag.separatePanelSlot;
+        const panelSlot = (typeof this._resolveSeparatePanelSlotForDrag === 'function')
+            ? this._resolveSeparatePanelSlotForDrag()
+            : (this.drag && this.drag.separatePanelSlot);
         if (panelSlot && typeof this.separatePanelLineDragStep === 'function' && effectiveDy !== 0) {
             this.separatePanelLineDragStep(panelSlot, effectiveDy);
         } else if (this.yScale && !this.priceScale.locked && effectiveDy !== 0) {
@@ -27364,7 +27366,13 @@ class Chart {
                 }
             } else if (mode === 'chart' || mode === 'separatePanelPlot') {
                 this.drag.type = 'pan';
-                this.drag.separatePanelSlot = mode === 'separatePanelPlot' ? this.cursor.separatePanelSlot : null;
+                if (mode === 'separatePanelPlot' && this.cursor.separatePanelSlot) {
+                    this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
+                    this.drag.separatePanelIndicator = this.cursor.separatePanelSlot.indicator;
+                } else {
+                    this.drag.separatePanelSlot = null;
+                    this.drag.separatePanelIndicator = null;
+                }
                 this._tryCapturePanPointer(e);
                 this._snapshotPanDrawingsLayer();
                 this._lockDragCursor(mode === 'separatePanelPlot' ? 'ns-resize' : this._panDragCursorStyle());
@@ -27836,6 +27844,7 @@ class Chart {
             this.drag.active = false;
             this.drag.type = null;
             this.drag.separatePanelSlot = null;
+            this.drag.separatePanelIndicator = null;
             this.boxZoom.active = false;
             if (this.ctrlMarqueeSelect) this.ctrlMarqueeSelect.active = false;
             this.movement.isDragging = false;
@@ -28030,7 +28039,9 @@ class Chart {
                             const effectiveDx = this.timeScale.locked ? 0 : dx;
                             const effectiveDy = dy;
                             this.offsetX += effectiveDx;
-                            const panelSlot = this.drag.separatePanelSlot;
+                            const panelSlot = (typeof this._resolveSeparatePanelSlotForDrag === 'function')
+                                ? this._resolveSeparatePanelSlotForDrag()
+                                : this.drag.separatePanelSlot;
                             if (panelSlot && typeof this.separatePanelLineDragStep === 'function' && effectiveDy !== 0) {
                                 this.separatePanelLineDragStep(panelSlot, effectiveDy);
                             } else if (this.yScale && !this.priceScale.locked && effectiveDy !== 0) {

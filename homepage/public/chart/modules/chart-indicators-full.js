@@ -9323,21 +9323,78 @@ Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 18) 
     return null;
 };
 
+/** Auto-fit Y range bases for separate-panel line drag (before first paint caches _panelBaseMin). */
+Chart.prototype._getIndicatorPanelAxisBases = function(indicator) {
+    if (!indicator) return null;
+    let b0 = indicator._panelBaseMin;
+    let b1 = indicator._panelBaseMax;
+    if (Number.isFinite(b0) && Number.isFinite(b1) && b1 > b0) {
+        return { b0: b0, b1: b1 };
+    }
+    const t = String(indicator.type || '').toLowerCase();
+    if (t === 'rsi' || t === 'stoch' || t === 'stochastic' || t === 'stochrsi' || t === 'mfi' || t === 'uo') {
+        return { b0: 0, b1: 100 };
+    }
+    if (t === 'willr' || t === 'williamsr') return { b0: -100, b1: 0 };
+    if (t === 'cci') return { b0: -200, b1: 200 };
+    if (t === 'aroon') return { b0: 0, b1: 100 };
+    return { b0: 0, b1: 100 };
+};
+
+/** Resolve live panel slot during drag (panelSlots are rebuilt every render). */
+Chart.prototype._resolveSeparatePanelSlotForDrag = function() {
+    const drag = this.drag;
+    if (!drag) return null;
+    const ind = drag.separatePanelIndicator
+        || (drag.separatePanelSlot && drag.separatePanelSlot.indicator);
+    if (!ind) return drag.separatePanelSlot || null;
+    const spi = this.separatePanelInfo;
+    if (spi && Array.isArray(spi.panelSlots)) {
+        for (let i = 0; i < spi.panelSlots.length; i++) {
+            const s = spi.panelSlots[i];
+            if (!s || !s.indicator) continue;
+            if (s.indicator === ind || (ind.id != null && s.indicator.id === ind.id)) {
+                drag.separatePanelSlot = s;
+                drag.separatePanelIndicator = s.indicator;
+                return s;
+            }
+        }
+    }
+    if (drag.separatePanelSlot && drag.separatePanelSlot.indicator === ind) {
+        return drag.separatePanelSlot;
+    }
+    const h = Math.max(1, Number(drag.separatePanelSlot && drag.separatePanelSlot.height) || 80);
+    return { indicator: ind, top: 0, bottom: h, height: h };
+};
+
 /** Drag inside indicator plot — move the indicator line up/down (Y offset, not panel resize). */
 Chart.prototype.separatePanelLineDragStep = function(slot, dy) {
-    if (!slot || !slot.indicator || !Number.isFinite(dy) || dy === 0) return;
-    const ind = slot.indicator;
-    const b0 = ind._panelBaseMin;
-    const b1 = ind._panelBaseMax;
-    if (b0 == null || b1 == null || !Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) return;
+    if (!Number.isFinite(dy) || dy === 0) return;
+    const resolved = (typeof this._resolveSeparatePanelSlotForDrag === 'function')
+        ? this._resolveSeparatePanelSlotForDrag()
+        : slot;
+    const activeSlot = resolved || slot;
+    if (!activeSlot || !activeSlot.indicator) return;
+    const ind = activeSlot.indicator;
+    const bases = typeof this._getIndicatorPanelAxisBases === 'function'
+        ? this._getIndicatorPanelAxisBases(ind)
+        : null;
+    if (!bases) return;
+    if (!Number.isFinite(ind._panelBaseMin) || !Number.isFinite(ind._panelBaseMax)) {
+        ind._panelBaseMin = bases.b0;
+        ind._panelBaseMax = bases.b1;
+    }
     this._ensureIndicatorPanelAxis(ind);
     const pa = ind._panelAxis;
-    const baseSpan = b1 - b0;
+    const baseSpan = bases.b1 - bases.b0;
     const z = Math.max(0.02, Math.min(200, pa.zoom || 1));
     const displaySpan = baseSpan / z;
-    const h = Math.max(1, slot.bottom - slot.top);
+    const h = Math.max(1, activeSlot.bottom - activeSlot.top);
     const valuePerPixel = displaySpan / h;
     pa.offset = (pa.offset || 0) + dy * valuePerPixel;
+    if (typeof this.bumpIndicatorRenderVersion === 'function') {
+        this.bumpIndicatorRenderVersion();
+    }
 };
 
 /** @deprecated Panel-height resize handles removed — indicator line moves via separatePanelLineDragStep. */
@@ -14976,13 +15033,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     const xy = typeof self._eventCanvasLocalXY === 'function'
                         ? self._eventCanvasLocalXY(ev)
                         : [0, 0];
-                    const plotSlot = typeof self._findSeparatePanelPlotSlot === 'function'
-                        ? self._findSeparatePanelPlotSlot(xy[0], xy[1], { skipResizeHandles: true })
-                        : null;
                     if (!self.drag) self.drag = {};
                     self.drag.active = true;
                     self.drag.type = 'pan';
-                    self.drag.separatePanelSlot = plotSlot;
+                    self.drag.separatePanelSlot = slot;
+                    self.drag.separatePanelIndicator = slot.indicator;
                     self.drag.startX = ev.clientX;
                     self.drag.startY = ev.clientY;
                     self.drag.lastX = ev.clientX;
