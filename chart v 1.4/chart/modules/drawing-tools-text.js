@@ -333,6 +333,103 @@ function syncInlineEditorTypographyFromDrawing(drawing) {
     fieldNode.style.transform = typo.italicSkew ? `skewX(${typo.italicSkew}deg)` : '';
 }
 
+/** Resolved background/border/wrap chrome for the HTML inline editor. */
+function resolveInlineEditorChromeFromDrawing(drawing) {
+    const style = drawing?.style || {};
+    const t = drawing?.type;
+    let editorBackground = 'transparent';
+    let editorBorder = 'none';
+    let editorPadding = '0';
+    let editorBorderRadius = '';
+
+    if (t === 'text') {
+        const hasBg = style.fill && style.fill !== 'none' && style.fill !== 'transparent';
+        const hasBorder = style.stroke && style.stroke !== 'none';
+        if (hasBg) {
+            editorBackground = style.fill;
+            editorPadding = '6px 8px';
+            editorBorderRadius = '4px';
+        }
+        if (hasBorder) {
+            editorBorder = `1px solid ${style.stroke}`;
+            if (!hasBg) editorPadding = '3px 5px';
+        }
+    } else if (t === 'callout' || t === 'comment') {
+        const hasBg = style.backgroundColor && style.backgroundColor !== 'transparent';
+        const hasBorder = style.borderColor && style.borderColor !== 'none' && style.borderColor !== 'transparent';
+        if (hasBg) {
+            editorBackground = style.backgroundColor;
+            editorPadding = '6px 8px';
+            editorBorderRadius = '4px';
+        }
+        if (hasBorder) {
+            editorBorder = `1px solid ${style.borderColor}`;
+        }
+    } else if (t === 'note' || t === 'notebox') {
+        const { boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(style);
+        if (boxFill && boxFill !== 'transparent') {
+            editorBackground = boxFill;
+            editorPadding = '6px 8px';
+            editorBorderRadius = '4px';
+        }
+        if (borderOn) {
+            editorBorder = `1px solid ${boxStroke}`;
+        }
+    } else {
+        const bg = style.backgroundColor || style.fill || style.labelBackgroundColor;
+        const hasBg = bg && bg !== 'transparent' && bg !== 'none';
+        const brd = style.borderColor || style.stroke;
+        const hasBorder = brd && brd !== 'none' && brd !== 'transparent';
+        if (hasBg) {
+            editorBackground = bg;
+            editorPadding = '6px 8px';
+            editorBorderRadius = '4px';
+        }
+        if (hasBorder) {
+            editorBorder = `1px solid ${brd}`;
+        }
+    }
+
+    const wrap = style.wrapText === true;
+    const maxW = (Number.isFinite(Number(style.maxWidth)) && Number(style.maxWidth) > 0)
+        ? Number(style.maxWidth)
+        : 260;
+
+    return {
+        editorBackground,
+        editorBorder,
+        editorPadding,
+        editorBorderRadius,
+        noWrap: !wrap,
+        fieldMaxWidth: wrap ? `${maxW}px` : 'none',
+        fieldWidth: wrap ? '100%' : 'auto',
+        fieldWhiteSpace: wrap ? 'pre-wrap' : 'pre',
+        fieldWordBreak: wrap ? 'break-word' : 'normal',
+        fieldOverflowWrap: wrap ? 'break-word' : 'normal',
+        fieldOverflowX: wrap ? 'hidden' : 'visible',
+    };
+}
+
+/** Push drawing.style background/border/wrap onto the open inline editor shell. */
+function syncInlineEditorChromeFromDrawing(drawing) {
+    if (!drawing) return;
+    const edDiv = document.querySelector('.inline-text-editor--inline');
+    if (!edDiv) return;
+    const chrome = resolveInlineEditorChromeFromDrawing(drawing);
+    edDiv.style.background = chrome.editorBackground;
+    edDiv.style.border = chrome.editorBorder;
+    edDiv.style.padding = chrome.editorPadding;
+    edDiv.style.borderRadius = chrome.editorBorderRadius || '';
+    const fieldNode = edDiv.querySelector('.inline-text-editor-field');
+    if (!fieldNode) return;
+    fieldNode.style.whiteSpace = chrome.fieldWhiteSpace;
+    fieldNode.style.wordBreak = chrome.fieldWordBreak;
+    fieldNode.style.overflowWrap = chrome.fieldOverflowWrap;
+    fieldNode.style.overflowX = chrome.fieldOverflowX;
+    fieldNode.style.width = chrome.fieldWidth;
+    fieldNode.style.maxWidth = chrome.fieldMaxWidth;
+}
+
 /** Reposition the open HTML inline editor to match the drawing's current on-chart edit box. */
 function syncInlineEditorForDrawing(drawing) {
     if (!drawing) return;
@@ -340,6 +437,7 @@ function syncInlineEditorForDrawing(drawing) {
     if (!measured || !measured.posNode) return;
     syncInlineEditorToEditBoxRect(measured.posNode);
     syncInlineEditorTypographyFromDrawing(drawing);
+    syncInlineEditorChromeFromDrawing(drawing);
 }
 
 /** Standard inline editor options for any wrap-capable text annotation. */

@@ -6214,6 +6214,15 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
   if (legacyType === "regression-trend") {
     out.regLines = v9NormalizeRegLines(out.regLines);
   }
+  const panelGroup = legacyType ? v9DrawingTypeToPanelGroup(legacyType) : null;
+  if (panelGroup === "fib" || panelGroup === "gann") {
+    if (out.fibLevelsOn == null) {
+      out.fibLevelsOn = fall.fibLevelsOn != null ? fall.fibLevelsOn !== false : true;
+    }
+    if (!out.fibLevelsMode) out.fibLevelsMode = fall.fibLevelsMode || "Value";
+    if (!out.fibLevelPosition) out.fibLevelPosition = fall.fibLevelPosition || "Right";
+    if (out.fibPrices == null) out.fibPrices = false;
+  }
   v9EnsureTlStyleVisibilityRows(out, fall);
   return out;
 }
@@ -7692,6 +7701,47 @@ function v9GannFanLabelForValue(value) {
 
 const V9_GANN_DEFAULT_BG_OPACITY = 0.12;
 
+/** Default Fib Style-tab fields for Apply default + panel hydrate (must match chart `levelsEnabled` bridge). */
+function v9FibDefaultTlStyleFields(legacyType) {
+  if (!legacyType || v9DrawingTypeToPanelGroup(legacyType) !== "fib") return {};
+  const common = {
+    fibLevelsOn: true,
+    fibLevelsMode: "Value",
+    fibLevelPosition: "Right",
+    fibPrices: false,
+    fibLineType: "solid",
+    fibLineWidth: "2",
+    fibReverse: false,
+  };
+  if (v9IsClassicFibRetracementType(legacyType) || legacyType === "fibonacci-extension") {
+    return {
+      ...common,
+      fibTrendLine: true,
+      fibBackground: false,
+      fibBgOpacity: 0.5,
+    };
+  }
+  if (v9IsFibTimeZoneType(legacyType)) {
+    return { ...common, fibTrendLine: true };
+  }
+  if (v9IsFibSpeedFanType(legacyType)) {
+    return { ...common, fibTrendLine: true, fibGrid: false };
+  }
+  if (v9IsTrendFibTimeType(legacyType)) {
+    return {
+      ...common,
+      fibTrendLine: true,
+      fibBackground: true,
+      fibBgOpacity: 0.12,
+      fibTimeTrendType: "dashed",
+      fibTimeTrendWidth: "1",
+      fibPriceLabels: false,
+      fibTimeLabels: false,
+    };
+  }
+  return common;
+}
+
 /** Default Fib arcs/wedge/circles Style+Input fields for Apply default + fresh hydrate. */
 function v9FibSubtypeDefaultTlStyleFields(legacyType) {
   if (legacyType === "fib-wedge") {
@@ -7744,6 +7794,9 @@ function v9GannDefaultTlStyleFields(legacyType) {
     gannLineWidth: "2",
     gannBackground: false,
     gannBgOpacity: V9_GANN_DEFAULT_BG_OPACITY,
+    fibLevelsOn: true,
+    fibLevelsMode: "Value",
+    fibLevelPosition: "Right",
   };
 }
 
@@ -8991,6 +9044,7 @@ function v9BuildDefaultTlStyleForDrawingType(type) {
       ...v9FreshTlStyleDefaults(),
       ...toolDefaults,
       ...v9GannDefaultTlStyleFields(type),
+      ...v9FibDefaultTlStyleFields(type),
       ...v9FibSubtypeDefaultTlStyleFields(type),
       ...(type === "pitchfork" ? v9PitchforkDefaultTlStyleFields() : {}),
       ...(fibLevelsDefault.length
@@ -21264,6 +21318,26 @@ const TalariaV8bLive = () => {
     }
   }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
 
+  /** Text style patch — same-frame chart + inline-editor sync (bg/border/wrap toggles). */
+  const applyTxtStylePatch = useCallback((updater) => {
+    const next = typeof updater === "function" ? updater(txtStyleLiveRef.current) : updater;
+    txtStyleLiveRef.current = next;
+    flushSync(() => setTxtStyle(next));
+    v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      armedLegacyTool: txtArmedLegacyRef.current,
+      txtStyleOwnerType: v9TxtStyleOwnerTypeRef.current,
+    });
+    const textUiActive =
+      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+    if (textUiActive && !editingDrawingRef.current) {
+      const legacy = resolveArmedTextLegacyTool();
+      if (legacy && v9IsTextLegacyDrawingType(legacy)) {
+        v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(next, legacy));
+      }
+    }
+  }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
+
   /** Settings-panel text field — one drawing only; never broadcast via the style bridge. */
   const applyTxtContent = useCallback((content) => {
     const next = typeof content === "string" ? content : "";
@@ -24258,10 +24332,11 @@ const TalariaV8bLive = () => {
                       {/* Level values */}
                       {(() => {
                         const fibSupportsLevelsMode = tlSubTool.icon !== "fibSpiral";
+                        const fibLevelsOn = tlStyle.fibLevelsOn !== false;
                         if (!fibSupportsLevelsMode) {
                           return (
                             <div style={{ padding:"6px 0" }}>
-                              {TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Level values",()=>applyTlFibLevelsOn(!(tlStyle.fibLevelsOn !== false)))}
+                              {TlChk(fibLevelsOn,"tlchk-fibLvl","Level values",()=>applyTlFibLevelsOn(!fibLevelsOn))}
                             </div>
                           );
                         }
@@ -24270,8 +24345,8 @@ const TalariaV8bLive = () => {
                         const options = ["Value","Percent","Value and Percent"];
                         return (
                           <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
-                            <div style={{ width:130 }}>{TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Level values",()=>applyTlFibLevelsOn(!(tlStyle.fibLevelsOn !== false)))}</div>
-                            <div style={{ position:"relative", marginLeft:78, opacity:tlStyle.fibLevelsOn?1:0.38, pointerEvents:tlStyle.fibLevelsOn?"auto":"none", transition:"opacity 0.15s" }}>
+                            <div style={{ width:130 }}>{TlChk(fibLevelsOn,"tlchk-fibLvl","Level values",()=>applyTlFibLevelsOn(!fibLevelsOn))}</div>
+                            <div style={{ position:"relative", marginLeft:78, opacity:fibLevelsOn?1:0.38, pointerEvents:fibLevelsOn?"auto":"none", transition:"opacity 0.15s" }}>
                               <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===dk?null:dk);}}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ height:26, padding:"0 10px", display:"flex", alignItems:"center", gap:5, cursor:"default", position:"relative",
@@ -24395,7 +24470,7 @@ const TalariaV8bLive = () => {
                         </div>
                       </div>
                       <div style={{ padding:"6px 0" }}>
-                        {TlChk(tlStyle.fibLevelsOn,"tlchk-gannLvlVal","Level values",()=>applyTlFibLevelsOn(!(tlStyle.fibLevelsOn !== false)))}
+                        {TlChk(tlStyle.fibLevelsOn !== false,"tlchk-gannLvlVal","Level values",()=>applyTlFibLevelsOn(!(tlStyle.fibLevelsOn !== false)))}
                       </div>
                     </>;
                   })()}
@@ -26115,9 +26190,9 @@ const TalariaV8bLive = () => {
         const txtSizes = [10,12,14,16,18,20,22,24];
         const openTxtCP = (e, key, val) => {
           if (key === "txtBgColor") {
-            setTxtStyle((s) => (s.bgOn ? s : { ...s, bgOn: true }));
+            applyTxtStylePatch((s) => (s.bgOn ? s : { ...s, bgOn: true }));
           } else if (key === "txtBorderColor") {
-            setTxtStyle((s) => (s.borderOn ? s : { ...s, borderOn: true }));
+            applyTxtStylePatch((s) => (s.borderOn ? s : { ...s, borderOn: true }));
           }
           const p = parseColor(val||'#ffffff'); const hsv = rgbToHsv(p.r,p.g,p.b);
           setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p.a);
@@ -26503,8 +26578,8 @@ const TalariaV8bLive = () => {
               </div>}
               {/* Background row — tools with optional fill (signpost label bg uses same row) */}
               {!isImage && !isFlag && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                {TlChk(txtStyle.bgOn,"txtBgChk",null,()=>setTxtStyle(s=>({...s,bgOn:!s.bgOn})))}
-                <span onClick={()=>setTxtStyle(s=>({...s,bgOn:!s.bgOn}))}
+                {TlChk(txtStyle.bgOn,"txtBgChk",null,()=>applyTxtStylePatch(s=>({...s,bgOn:!s.bgOn})))}
+                <span onClick={()=>applyTxtStylePatch(s=>({...s,bgOn:!s.bgOn}))}
                   style={{fontSize:12,color:txtStyle.bgOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>{isSignpost ? "Label background" : "Background"}</span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <TxtSwatch ck="txtBgColor" val={txtStyle.bgColor} showDisabled={!txtStyle.bgOn}/>
@@ -26530,8 +26605,8 @@ const TalariaV8bLive = () => {
               </div>}
               {/* Border row — hidden for flag, image */}
               {!isFlag && !isImage && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                {TlChk(txtStyle.borderOn,"txtBorderChk",null,()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn})))}
-                <span onClick={()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn}))}
+                {TlChk(txtStyle.borderOn,"txtBorderChk",null,()=>applyTxtStylePatch(s=>({...s,borderOn:!s.borderOn})))}
+                <span onClick={()=>applyTxtStylePatch(s=>({...s,borderOn:!s.borderOn}))}
                   style={{fontSize:12,color:txtStyle.borderOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>Border</span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <TxtSwatch ck="txtBorderColor" val={txtStyle.borderColor} showDisabled={!txtStyle.borderOn}/>
@@ -26596,7 +26671,7 @@ const TalariaV8bLive = () => {
               </>}
               {/* Wrap Text — basic text tools only (pin/signpost use Text tab) */}
               {!isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && !isPin && !isSignpost && <div style={{padding:"8px 0"}}>
-                {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}
+                {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>applyTxtStylePatch(s=>({...s,wrapText:!s.wrapText})))}
               </div>}
             </>}
             {/* ── TEXT TAB (pin, signpost) ── */}
@@ -26666,7 +26741,7 @@ const TalariaV8bLive = () => {
                       style={v9DrawingSettingsTextareaStyle(txtStyle.content, { c, F })}/>
                   </div>
                   <div style={{padding:"8px 0"}}>
-                    {TlChk(txtStyle.wrapText,"txtWrapChkPin","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}
+                    {TlChk(txtStyle.wrapText,"txtWrapChkPin","Wrap Text",()=>applyTxtStylePatch(s=>({...s,wrapText:!s.wrapText})))}
                   </div>
                 </div>
             </>}
