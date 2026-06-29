@@ -24789,7 +24789,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} {...modalPointerActivate(() => applyFibTzLevelsPatch((rows)=>rows.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)))}
+                              <button type="button" key={i} {...modalPointerActivate(() => applyFibTzLevelsPatch((rows)=>rows.map((l,j)=>j===idx?{...l,value:String(Math.max(0,+l.value+delta))}:l)))}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
