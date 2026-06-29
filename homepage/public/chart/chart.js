@@ -7187,9 +7187,7 @@ class Chart {
                 this._pendingChartViewSanityCheck = true;
             }
 
-            if (typeof this.scheduleIndicatorRecalc === 'function') {
-                this.scheduleIndicatorRecalc('pair-switch', { force: true, immediate: true });
-            } else if (typeof this.recalculateIndicators === 'function') {
+            if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (e) {}
             }
 
@@ -8353,9 +8351,7 @@ class Chart {
         if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
             this._normalizeVolumeIndicatorLayout();
         }
-        if (typeof this.scheduleIndicatorRecalc === 'function') {
-            this.scheduleIndicatorRecalc('restore', { force: true, immediate: true });
-        } else if (typeof this.recalculateIndicators === 'function') {
+        if (typeof this.recalculateIndicators === 'function') {
             try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
         }
         if (this.replaySystem && this.replaySystem.isActive
@@ -15969,8 +15965,11 @@ class Chart {
                 userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
                 this.needsRender = true;
             }
-            // Ctrl/Cmd + Z - undo last drawing
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            // Ctrl/Cmd + Z - undo last drawing (physical KeyZ — works on Arabic keyboard layouts)
+            const _undoKey = (typeof isPhysicalShortcutKey === 'function')
+                ? isPhysicalShortcutKey(e, 'z')
+                : (e.key === 'z' || e.key === 'Z');
+            if ((e.ctrlKey || e.metaKey) && _undoKey && !e.shiftKey) {
                 e.preventDefault();
                 if (this.drawings.length > 0) {
                     this.drawings.pop();
@@ -15984,8 +15983,11 @@ class Chart {
                 e.preventDefault();
                 this.jumpToLatest();
             }
-            // M - toggle magnet mode
-            if (e.key === 'm' || e.key === 'M') {
+            // M - toggle magnet mode (physical KeyM)
+            const _magnetKey = (typeof isPhysicalShortcutKey === 'function')
+                ? isPhysicalShortcutKey(e, 'm')
+                : (e.key === 'm' || e.key === 'M');
+            if (_magnetKey) {
                 if (this.drawingManager) {
                     const mode = this.drawingManager.toggleMagnetMode();
                     this.magnetMode = mode;
@@ -15998,8 +16000,11 @@ class Chart {
                 }
                 this.syncMagnetButton();
             }
-            // Ctrl/Cmd + U - unlock all drawings
-            if ((e.ctrlKey || e.metaKey) && (e.key === 'u' || e.key === 'U')) {
+            // Ctrl/Cmd + U - unlock all drawings (physical KeyU)
+            const _unlockKey = (typeof isPhysicalShortcutKey === 'function')
+                ? isPhysicalShortcutKey(e, 'u')
+                : (e.key === 'u' || e.key === 'U');
+            if ((e.ctrlKey || e.metaKey) && _unlockKey) {
                 e.preventDefault();
                 let unlockedCount = 0;
                 this.drawings.forEach(drawing => {

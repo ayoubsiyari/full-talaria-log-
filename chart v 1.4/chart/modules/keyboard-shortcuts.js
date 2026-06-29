@@ -475,13 +475,19 @@ class KeyboardShortcutsManager {
         
         // Handle symbol search (typing letters)
         if (this.isSymbolSearchKey(e)) {
-            this.handleSymbolSearch(e.key);
+            const token = typeof physicalShortcutKeyTokenFromEvent === 'function'
+                ? physicalShortcutKeyTokenFromEvent(e)
+                : e.key;
+            this.handleSymbolSearch(token);
             return;
         }
         
         // Handle interval change (digits and comma)
         if (this.isIntervalKey(e)) {
-            this.handleIntervalChange(e.key);
+            const token = typeof physicalShortcutKeyTokenFromEvent === 'function'
+                ? physicalShortcutKeyTokenFromEvent(e)
+                : e.key;
+            this.handleIntervalChange(token);
             return;
         }
     }
@@ -518,19 +524,17 @@ class KeyboardShortcutsManager {
      * Build shortcut key string from event
      */
     buildShortcutKey(e) {
+        if (typeof buildPhysicalShortcutKey === 'function') {
+            return buildPhysicalShortcutKey(e);
+        }
         let parts = [];
-        
         if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
         if (e.altKey) parts.push('Alt');
         if (e.shiftKey) parts.push('Shift');
-        
-        // Handle special keys
         let key = e.key;
         if (key === ' ') key = 'Space';
         else if (key.length === 1) key = key.toLowerCase();
-        
         parts.push(key);
-        
         return parts.join('+');
     }
     
@@ -538,10 +542,13 @@ class KeyboardShortcutsManager {
      * Check if key is for symbol search
      */
     isSymbolSearchKey(e) {
+        const token = typeof physicalShortcutKeyTokenFromEvent === 'function'
+            ? physicalShortcutKeyTokenFromEvent(e)
+            : (typeof e.key === 'string' ? e.key.toLowerCase() : '');
         return (
             !e.ctrlKey && !e.altKey && !e.metaKey &&
-            e.key.length === 1 &&
-            /[a-zA-Z]/.test(e.key)
+            token.length === 1 &&
+            /[a-z]/.test(token)
         );
     }
     
@@ -549,9 +556,12 @@ class KeyboardShortcutsManager {
      * Check if key is for interval change
      */
     isIntervalKey(e) {
+        const token = typeof physicalShortcutKeyTokenFromEvent === 'function'
+            ? physicalShortcutKeyTokenFromEvent(e)
+            : e.key;
         return (
             !e.ctrlKey && !e.altKey && !e.metaKey &&
-            (e.key === ',' || /[0-9]/.test(e.key))
+            (token === ',' || /[0-9]/.test(token))
         );
     }
     
@@ -1481,13 +1491,17 @@ class KeyboardShortcutsManager {
             if (e.altKey) pressedKeys.push('Alt');
             if (e.shiftKey) pressedKeys.push('Shift');
             
-            if (!['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-                let keyName = e.key;
-                if (keyName === ' ') keyName = 'Space';
-                if (keyName === 'ArrowLeft') keyName = '←';
-                if (keyName === 'ArrowRight') keyName = '→';
-                if (keyName === 'ArrowUp') keyName = '↑';
-                if (keyName === 'ArrowDown') keyName = '↓';
+            const modifierOnly = ['Control', 'Alt', 'Shift', 'Meta'];
+            const physicalToken = typeof physicalShortcutKeyTokenFromEvent === 'function'
+                ? physicalShortcutKeyTokenFromEvent(e)
+                : '';
+            if (physicalToken && !modifierOnly.includes(e.key)) {
+                let keyName = physicalToken;
+                if (keyName === 'Space') keyName = 'Space';
+                else if (keyName === 'ArrowLeft') keyName = '←';
+                else if (keyName === 'ArrowRight') keyName = '→';
+                else if (keyName === 'ArrowUp') keyName = '↑';
+                else if (keyName === 'ArrowDown') keyName = '↓';
                 pressedKeys.push(keyName.length === 1 ? keyName.toUpperCase() : keyName);
                 
                 const displayKey = pressedKeys.join('+');

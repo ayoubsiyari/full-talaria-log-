@@ -34344,7 +34344,10 @@ class InlineTextEditor {
 
                     }
 
-                } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+                } else if ((event.ctrlKey || event.metaKey) && (
+                    (typeof isPhysicalShortcutKey === 'function' && isPhysicalShortcutKey(event, 'a'))
+                    || event.key.toLowerCase() === 'a'
+                )) {
 
                     event.preventDefault();
 

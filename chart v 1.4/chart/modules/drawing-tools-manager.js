@@ -5072,8 +5072,10 @@ class DrawingToolsManager {
 
         const mod = event.ctrlKey || event.metaKey;
         if (mod && this._isDrawingShortcutTarget(event)) {
-            const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
-            if (key === 'c' && !event.shiftKey && !event.altKey) {
+            const isKey = (token) => (typeof isPhysicalShortcutKey === 'function'
+                ? isPhysicalShortcutKey(event, token)
+                : (typeof event.key === 'string' && event.key.toLowerCase() === token));
+            if (isKey('c') && !event.shiftKey && !event.altKey) {
                 const drawing = this._getPrimarySelectedDrawingForClipboard();
                 if (drawing && !drawing.locked) {
                     event.preventDefault();
@@ -5086,7 +5088,7 @@ class DrawingToolsManager {
                 }
                 return;
             }
-            if (key === 'v' && !event.shiftKey && !event.altKey) {
+            if (isKey('v') && !event.shiftKey && !event.altKey) {
                 if (this.clipboardDrawing) {
                     event.preventDefault();
                     const pasted = this.pasteDrawing();

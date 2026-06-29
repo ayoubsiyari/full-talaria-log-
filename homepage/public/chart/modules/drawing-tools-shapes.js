@@ -1634,13 +1634,24 @@ class ArrowTool extends BaseDrawing {
             const fontSize = this.style.fontSize || 14;
             const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
             const fontWeight = this.style.fontWeight || 'normal';
+            const fontStyle = this.style.fontStyle || 'normal';
+            const measureStyle = typeof resolveDrawingTextStyle === 'function'
+                ? resolveDrawingTextStyle(this.text, fontStyle, fontFamily)
+                : { fontFamily, fontStyle };
 
             const tempText = this.group.append('text')
                 .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
+                .attr('font-family', measureStyle.fontFamily)
                 .attr('font-weight', fontWeight)
+                .attr('font-style', measureStyle.fontStyle)
                 .attr('text-anchor', 'middle')
-                .text(this.text);
+                .style('visibility', 'hidden')
+                .style('pointer-events', 'none');
+            if (measureStyle.direction) {
+                tempText.style('direction', measureStyle.direction);
+                tempText.attr('unicode-bidi', 'plaintext');
+            }
+            tempText.text(this.text);
 
             const textBBox = tempText.node().getBBox();
             const textWidth = textBBox.width;
@@ -1913,19 +1924,72 @@ class ArrowTool extends BaseDrawing {
 
         if (this._splitInfo) {
             let angle = this._splitInfo.angle;
-            if (angle > 90 || angle < -90) {
-                angle += 180;
+            while (angle > 180) angle -= 360;
+            while (angle < -180) angle += 360;
+            if (angle > 90 || angle < -90) angle += 180;
+
+            const offsetX = this.style.textOffsetX || 0;
+            const { scales } = coords;
+            const sp1 = this.points[0];
+            const sp2 = this.points[1];
+            const sox1 = scales && scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(sp1.x) : (scales ? scales.xScale(sp1.x) : this._splitInfo.textX);
+            const soy1 = scales ? scales.yScale(sp1.y) : this._splitInfo.textY;
+            const sox2 = scales && scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(sp2.x) : (scales ? scales.xScale(sp2.x) : this._splitInfo.textX);
+            const soy2 = scales ? scales.yScale(sp2.y) : this._splitInfo.textY;
+            const sRawLX = sox1 <= sox2 ? sox1 : sox2;
+            const sRawLY = sox1 <= sox2 ? soy1 : soy2;
+            const sRawRX = sox1 <= sox2 ? sox2 : sox1;
+            const sRawRY = sox1 <= sox2 ? soy2 : soy1;
+            const sRawDX = sRawRX - sRawLX;
+            const sRawDY = sRawRY - sRawLY;
+            const sRawLen = Math.sqrt(sRawDX * sRawDX + sRawDY * sRawDY) || 1;
+            const sUx = sRawDX / sRawLen;
+            const sUy = sRawDY / sRawLen;
+            const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            const siScaleFactor = typeof this.getZoomScaleFactor === 'function'
+                ? this.getZoomScaleFactor(scales)
+                : 1;
+            const scaledStrokeWidth = Math.max(0.5, (this.style.strokeWidth || 1) * siScaleFactor);
+            const endArrowInset = Math.max(8, scaledStrokeWidth * 5) + 4;
+            const SI_EDGE = 5;
+            let siTextX;
+            let siTextY;
+            let siAnchor;
+            switch (siTextHAlign) {
+                case 'left':
+                    siTextX = sRawLX + sUx * SI_EDGE;
+                    siTextY = sRawLY + sUy * SI_EDGE;
+                    siAnchor = resolveLineEndpointSvgAnchor('left', label);
+                    break;
+                case 'right':
+                    siTextX = sRawRX - sUx * (SI_EDGE + endArrowInset);
+                    siTextY = sRawRY - sUy * (SI_EDGE + endArrowInset);
+                    siAnchor = resolveLineEndpointSvgAnchor('right', label);
+                    break;
+                default:
+                    siTextX = (sRawLX + sRawRX) / 2;
+                    siTextY = (sRawLY + sRawRY) / 2;
+                    siAnchor = 'middle';
             }
+
+            const siPerpX = -Math.sin(angle * Math.PI / 180);
+            const siPerpY = Math.cos(angle * Math.PI / 180);
+            const siSignUp = siPerpY <= 0 ? 1 : -1;
+
             appendTextLabel(this.group, label, {
-                x: this._splitInfo.textX + (this.style.textOffsetX || 0),
-                y: this._splitInfo.textY + offY,
-                anchor: 'middle',
+                x: siTextX + offsetX,
+                y: siTextY + offY,
+                anchor: siAnchor,
+                yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
                 fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal',
-                rotation: angle
+                rotation: angle,
+                ...lineLabelGapConfig(siTextX, siTextY, 'middle', siPerpX, siPerpY, siSignUp)
             });
             return;
         }

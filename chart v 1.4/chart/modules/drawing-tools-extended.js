@@ -266,36 +266,26 @@ class ArrowMarkerTool extends BaseDrawing {
         }
 
         // Render text near tail (p1) — offset perpendicular to arrow so it never overlaps the body
-        if (this.text && this.text.trim()) {
-            const textColor = this.style.textColor || '#FFFFFF';
-            const fontSize = this.style.fontSize || 14;
-            const fontWeight = this.style.fontWeight || 'normal';
-            const fontStyle = this.style.fontStyle || 'normal';
-
-            // Place text BEHIND the tail (opposite to arrow direction).
-            // Anchor the edge of the text that faces the arrow so all text
-            // extends away from the body — no overlap at any angle or width.
+        if (this.text && this.text.trim() && typeof appendTextLabel === 'function') {
             const backAngle = angle + Math.PI;
             const backDist = tailHalf + 6;
             const textX = x1 + backDist * Math.cos(backAngle) + (this.style.textOffsetX || 0);
             const textY = y1 + backDist * Math.sin(backAngle) + (this.style.textOffsetY || 0);
-            // If the back-anchor is to the left of the tail, use 'end' so text
-            // extends left; if to the right, use 'start' so it extends right.
-            const textAnchor = Math.cos(backAngle) >= 0 ? 'start' : 'end';
+            const textAnchor = typeof resolveLineEndpointSvgAnchor === 'function'
+                ? resolveLineEndpointSvgAnchor(Math.cos(backAngle) >= 0 ? 'left' : 'right', this.text)
+                : (Math.cos(backAngle) >= 0 ? 'start' : 'end');
 
-            this.group.append('text')
-                .attr('x', textX)
-                .attr('y', textY)
-                .attr('text-anchor', textAnchor)
-                .attr('dominant-baseline', 'middle')
-                .attr('fill', textColor)
-                .attr('font-size', fontSize)
-                .attr('font-weight', fontWeight)
-                .attr('font-style', fontStyle)
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
-                .style('pointer-events', 'none')
-                .style('user-select', 'none')
-                .text(this.text);
+            appendTextLabel(this.group, this.text, {
+                x: textX,
+                y: textY,
+                anchor: textAnchor,
+                yAnchor: 'middle',
+                fill: this.style.textColor || '#FFFFFF',
+                fontSize: this.style.fontSize || 14,
+                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontWeight: this.style.fontWeight || 'normal',
+                fontStyle: this.style.fontStyle || 'normal'
+            });
         }
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -452,28 +442,19 @@ class ArrowMarkUpTool extends BaseDrawing {
         }
 
         // Render text below the arrow
-        if (this.text && this.text.trim()) {
-            const textColor = this.style.textColor || '#FFFFFF';
-            const fontSize = this.style.fontSize || 14;
-            const fontWeight = this.style.fontWeight || 'normal';
-            const fontStyle = this.style.fontStyle || 'normal';
-            
-            // Position text below the arrow
+        if (this.text && this.text.trim() && typeof appendTextLabel === 'function') {
             const textOffsetY = layout.totalHeight / 2 + 8;
-            
-            this.group.append('text')
-                .attr('x', x)
-                .attr('y', y + textOffsetY)
-                .attr('text-anchor', 'middle')
-                .attr('dominant-baseline', 'hanging')
-                .attr('fill', textColor)
-                .attr('font-size', fontSize)
-                .attr('font-weight', fontWeight)
-                .attr('font-style', fontStyle)
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
-                .style('pointer-events', 'none')
-                .style('user-select', 'none')
-                .text(this.text);
+            appendTextLabel(this.group, this.text, {
+                x: x + (this.style.textOffsetX || 0),
+                y: y + textOffsetY + (this.style.textOffsetY || 0),
+                anchor: 'middle',
+                baseline: 'hanging',
+                fill: this.style.textColor || '#FFFFFF',
+                fontSize: this.style.fontSize || 14,
+                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontWeight: this.style.fontWeight || 'normal',
+                fontStyle: this.style.fontStyle || 'normal'
+            });
         }
 
         // Single-point marker: create handles but force move cursor (not resize)
@@ -593,28 +574,19 @@ class ArrowMarkDownTool extends BaseDrawing {
         }
 
         // Render text above the arrow
-        if (this.text && this.text.trim()) {
-            const textColor = this.style.textColor || '#FFFFFF';
-            const fontSize = this.style.fontSize || 14;
-            const fontWeight = this.style.fontWeight || 'normal';
-            const fontStyle = this.style.fontStyle || 'normal';
-            
-            // Position text above the arrow
+        if (this.text && this.text.trim() && typeof appendTextLabel === 'function') {
             const textOffsetY = -layout.totalHeight / 2 - 8;
-            
-            this.group.append('text')
-                .attr('x', x)
-                .attr('y', y + textOffsetY)
-                .attr('text-anchor', 'middle')
-                .attr('dominant-baseline', 'baseline')
-                .attr('fill', textColor)
-                .attr('font-size', fontSize)
-                .attr('font-weight', fontWeight)
-                .attr('font-style', fontStyle)
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
-                .style('pointer-events', 'none')
-                .style('user-select', 'none')
-                .text(this.text);
+            appendTextLabel(this.group, this.text, {
+                x: x + (this.style.textOffsetX || 0),
+                y: y + textOffsetY + (this.style.textOffsetY || 0),
+                anchor: 'middle',
+                baseline: 'middle',
+                fill: this.style.textColor || '#FFFFFF',
+                fontSize: this.style.fontSize || 14,
+                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                fontWeight: this.style.fontWeight || 'normal',
+                fontStyle: this.style.fontStyle || 'normal'
+            });
         }
 
         // Single-point marker: create handles but force move cursor (not resize)

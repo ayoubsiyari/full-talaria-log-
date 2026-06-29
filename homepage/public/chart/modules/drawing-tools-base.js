@@ -193,6 +193,66 @@ function drawingTextHasArabicScript(text) {
     return ARABIC_SCRIPT_RE.test(String(text || ''));
 }
 
+/** Layout-independent key token from KeyboardEvent.code (Arabic/FR/etc. keep Ctrl+Z on the Z key). */
+function physicalShortcutKeyTokenFromEvent(event) {
+    const e = event;
+    if (!e) return '';
+    const code = e.code || '';
+
+    if (code.startsWith('Key') && code.length === 4) {
+        return code.slice(3).toLowerCase();
+    }
+    if (code.startsWith('Digit') && code.length === 6) {
+        return code.slice(5);
+    }
+
+    if (code === 'Slash' && e.shiftKey) return '?';
+    if (code === 'Slash') return '/';
+    if (code === 'Equal' && e.shiftKey) return '+';
+    if (code === 'Equal') return '=';
+    if (code === 'Minus') return '-';
+    if (code === 'Period') return '.';
+    if (code === 'Comma') return ',';
+    if (code === 'NumpadAdd') return '+';
+    if (code === 'NumpadSubtract') return '-';
+
+    const codeMap = {
+        Space: 'Space',
+        ArrowLeft: 'ArrowLeft',
+        ArrowRight: 'ArrowRight',
+        ArrowUp: 'ArrowUp',
+        ArrowDown: 'ArrowDown',
+        Escape: 'Escape',
+        Delete: 'Delete',
+        Backspace: 'Backspace',
+        Enter: 'Enter',
+        Tab: 'Tab',
+        Home: 'Home',
+        End: 'End'
+    };
+    if (codeMap[code]) return codeMap[code];
+
+    let key = e.key;
+    if (key === ' ') key = 'Space';
+    else if (typeof key === 'string' && key.length === 1) key = key.toLowerCase();
+    return key || '';
+}
+
+function isPhysicalShortcutKey(event, keyToken) {
+    const want = String(keyToken || '').toLowerCase();
+    return physicalShortcutKeyTokenFromEvent(event).toLowerCase() === want;
+}
+
+function buildPhysicalShortcutKey(event) {
+    const parts = [];
+    if (event.ctrlKey || event.metaKey) parts.push('Ctrl');
+    if (event.altKey) parts.push('Alt');
+    if (event.shiftKey) parts.push('Shift');
+    const key = physicalShortcutKeyTokenFromEvent(event);
+    if (key) parts.push(key);
+    return parts.join('+');
+}
+
 function resolveDrawingTextStyle(text, fontStyle, fontFamily) {
     const wantsItalic = fontStyle === 'italic';
     const hasArabic = drawingTextHasArabicScript(text);
@@ -358,7 +418,8 @@ const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
     'parallel-channel',
     'regression-trend',
     'flat-top-bottom',
-    'disjoint-channel'
+    'disjoint-channel',
+    'arrow'
 ]);
 
 /** Freehand strokes: axis labels only at path endpoints (not every point). */
@@ -3003,12 +3064,21 @@ class SVGHelpers {
 // ============================================================================
 // Export for use in other modules
 // ============================================================================
+if (typeof window !== 'undefined') {
+    window.physicalShortcutKeyTokenFromEvent = physicalShortcutKeyTokenFromEvent;
+    window.isPhysicalShortcutKey = isPhysicalShortcutKey;
+    window.buildPhysicalShortcutKey = buildPhysicalShortcutKey;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         generateUUID,
         BaseDrawing,
         DrawingState,
         CoordinateUtils,
-        SVGHelpers
+        SVGHelpers,
+        physicalShortcutKeyTokenFromEvent,
+        isPhysicalShortcutKey,
+        buildPhysicalShortcutKey
     };
 }
