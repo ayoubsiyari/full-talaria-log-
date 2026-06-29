@@ -7545,7 +7545,9 @@
             this._indRecalcTimer = null;
         }
 
-        const delay = opts.immediate ? 0 : (reason === 'live-tick' ? 48 : 12);
+        const delay = opts.immediate ? 0
+            : (reason === 'live-tick' || reason === 'replay-tick' || reason === 'replay-step' || reason === 'replay-pause') ? 0
+            : 12;
         const chart = this;
         const run = function() {
             chart._indRecalcTimer = null;
@@ -7572,18 +7574,37 @@
         opts = opts || {};
         const barCount = this.data.length;
         const prev = this._indCalcSnapshot;
-        const replayActive = !!(this.replaySystem && this.replaySystem.isActive);
+        const replay = this.replaySystem;
+        const replayActive = !!(replay && replay.isActive);
+        const replayPlaying = replayActive && !!replay.isPlaying;
+        const replaySyncMax = 12000;
         const appendOnly = !opts.force && !replayActive && prev
             && barCount > prev.barCount && (barCount - prev.barCount) <= 8;
-        const replaySyncMax = 12000;
+        const replayTail = replayPlaying && prev && barCount >= prev.barCount
+            && (barCount - prev.barCount) <= 4;
 
+        if (replayTail && typeof this.recalculateIndicatorsIncremental === 'function') {
+            this.recalculateIndicatorsIncremental(prev.barCount);
+            return;
+        }
         if (appendOnly && typeof this.recalculateIndicatorsIncremental === 'function') {
             this.recalculateIndicatorsIncremental(prev.barCount);
-        } else if (replayActive && barCount <= replaySyncMax && typeof this.recalculateIndicators === 'function') {
-            // Replay replaces the visible slice each step — sync full recalc is safer and
-            // avoids worker races that leave indicators stuck in a loading state.
+            return;
+        }
+        if (replayPlaying) {
+            if (typeof this.recalculateIndicatorsAsync === 'function') {
+                this.recalculateIndicatorsAsync();
+            } else if (typeof this.recalculateIndicators === 'function') {
+                try { this.recalculateIndicators(); } catch (_) {}
+            }
+            return;
+        }
+        if (replayActive && !replayPlaying && barCount <= replaySyncMax
+            && typeof this.recalculateIndicators === 'function') {
             try { this.recalculateIndicators(); } catch (_) {}
-        } else if (typeof this.recalculateIndicatorsAsync === 'function') {
+            return;
+        }
+        if (typeof this.recalculateIndicatorsAsync === 'function') {
             this.recalculateIndicatorsAsync();
         } else if (typeof this.recalculateIndicators === 'function') {
             this.recalculateIndicators();
@@ -7702,6 +7723,26 @@
         if (!Array.isArray(this.data) || !this.data.length) return;
 
         const chart = this;
+        if (chart._indicatorWorkerBusy) {
+            chart._indicatorWorkerCoalesce = true;
+            return;
+        }
+        chart._indicatorWorkerBusy = true;
+        chart._indicatorWorkerCoalesce = false;
+
+        function finishIncrementalPass() {
+            chart._indicatorWorkerBusy = false;
+            var again = chart._indicatorWorkerCoalesce;
+            chart._indicatorWorkerCoalesce = false;
+            if (again) {
+                if (typeof chart.recalculateIndicatorsAsync === 'function') {
+                    try { chart.recalculateIndicatorsAsync(); } catch (_) {}
+                } else if (typeof chart.recalculateIndicators === 'function') {
+                    try { chart.recalculateIndicators(); } catch (_) {}
+                }
+            }
+        }
+
         const perf = global.IndicatorPerf;
         const lookback = perf && typeof perf.estimateTailLookback === 'function'
             ? perf.estimateTailLookback(this.indicators.active)
@@ -7710,6 +7751,7 @@
         const worker = _getIndicatorWorker();
 
         if (!worker) {
+            finishIncrementalPass();
             try { chart.recalculateIndicators(); } catch (_) {}
             return;
         }
@@ -7730,6 +7772,7 @@
         });
 
         if (Object.keys(indicators).length === 0) {
+            finishIncrementalPass();
             try { chart.recalculateIndicators(); } catch (_) {}
             return;
         }
@@ -7753,7 +7796,10 @@
                 }
             }, []);
         }).then(function(results) {
-            if (chart._indicatorWorkerSeq !== mySeq) return;
+            if (chart._indicatorWorkerSeq !== mySeq) {
+                finishIncrementalPass();
+                return;
+            }
             const merge = perf && typeof perf.mergeIndicatorTail === 'function'
                 ? perf.mergeIndicatorTail
                 : null;
@@ -7776,11 +7822,16 @@
             }
             chart.bumpIndicatorRenderVersion();
             if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            finishIncrementalPass();
         }).catch(function() {
-            if (chart._indicatorWorkerSeq !== mySeq) return;
+            if (chart._indicatorWorkerSeq !== mySeq) {
+                finishIncrementalPass();
+                return;
+            }
             try { chart.recalculateIndicatorsAsync(); } catch (_) {
                 try { chart.recalculateIndicators(); } catch (_2) {}
             }
+            finishIncrementalPass();
         });
     };
 
