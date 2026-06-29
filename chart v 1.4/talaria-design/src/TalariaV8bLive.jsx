@@ -4469,14 +4469,6 @@ function v9ApplyTxtStyleToDrawing(d, txt, opts = {}) {
     return;
   }
   if (t === "text") {
-    if (txt.horizAlign != null && txt.horizAlign !== (s.textAlign || "left") && (txt.wrapText || s.wrapText)) {
-      try {
-        const helpers = typeof window !== "undefined" ? window.DrawingTextHelpers : null;
-        if (helpers && typeof helpers.migratePlainTextHorizAlign === "function") {
-          helpers.migratePlainTextHorizAlign(d, s.textAlign || "left", txt.horizAlign);
-        }
-      } catch (_) {}
-    }
     applyCommon();
     applyTextBlock();
     s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "none";
@@ -7742,7 +7734,7 @@ function v9FibDefaultTlStyleFields(legacyType) {
     };
   }
   if (v9IsFibTimeZoneType(legacyType)) {
-    return { ...common, fibTrendLine: true, fibBackground: false, fibBgOpacity: 0.12 };
+    return { ...common, fibTrendLine: true, fibBackground: false, fibBgOpacity: 0.12, fibLevelPosition: "Middle" };
   }
   if (v9IsFibSpeedFanType(legacyType)) {
     return { ...common, fibTrendLine: true, fibGrid: false };

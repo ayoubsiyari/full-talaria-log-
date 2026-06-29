@@ -134,13 +134,41 @@ function fibHorizontalLabelBaselineY(style, lineY, offsetBelow = 4) {
 }
 
 /** Vertical span: top / middle / bottom along [spanMinY, spanMaxY] (maps left/center/right). */
-function fibVerticalSpanLabelPlacement(style, lineX, spanMinY, spanMaxY, pad = 8) {
+function fibVerticalSpanLabelFontSize(scaleFactor, base = 11) {
+    const sf = Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1;
+    return Math.max(11, Math.round(base * sf));
+}
+
+function fibVerticalSpanLabelPlacement(style, lineX, spanMinY, spanMaxY, fontSize = 11) {
     const pos = normalizeFibLevelsLabelPosition(style);
     const minY = Math.min(spanMinY, spanMaxY);
     const maxY = Math.max(spanMinY, spanMaxY);
-    if (pos === 'left') return { x: lineX, y: minY + pad, anchor: 'middle', dominantBaseline: 'hanging' };
-    if (pos === 'center') return { x: lineX, y: (minY + maxY) / 2, anchor: 'middle', dominantBaseline: 'middle' };
-    return { x: lineX, y: maxY - pad, anchor: 'middle', dominantBaseline: 'auto' };
+    const inset = Math.max(12, Math.round(fontSize * 0.9) + 8);
+    if (pos === 'left') {
+        return { x: lineX, y: minY + inset, anchor: 'middle', dominantBaseline: 'hanging' };
+    }
+    if (pos === 'center') {
+        return { x: lineX, y: (minY + maxY) / 2, anchor: 'middle', dominantBaseline: 'middle' };
+    }
+    // Bottom: keep the full label block above the plot edge (time axis clips `dominant-baseline: auto`).
+    return {
+        x: lineX,
+        y: maxY - inset - fontSize * 0.45,
+        anchor: 'middle',
+        dominantBaseline: 'middle',
+    };
+}
+
+function applyFibSpanLabelTextStyle(textSel, color, fontSize, fontWeight = '700') {
+    textSel
+        .attr('fill', color)
+        .attr('font-size', `${fontSize}px`)
+        .attr('font-weight', fontWeight)
+        .attr('stroke', 'rgba(13, 17, 23, 0.9)')
+        .attr('stroke-width', Math.max(2.5, fontSize * 0.32))
+        .attr('paint-order', 'stroke fill')
+        .attr('stroke-linejoin', 'round')
+        .style('pointer-events', 'none');
 }
 
 /** Gap in a vertical level line when the label sits in the middle. */
@@ -1317,10 +1345,13 @@ class BaseDrawing {
             const xIndex = xIndex1 + (baseDx * fibN);
             const x = BaseDrawing.fibIndexToPixel(scales, xIndex);
             if (!Number.isFinite(x)) return;
-            const lp = fibVerticalSpanLabelPlacement(tool.style, x, plotTop, plotBottom);
             const label = d3.select(this);
+            const fsRaw = parseFloat(String(label.attr('font-size') || '').replace('px', ''));
+            const fontSize = Number.isFinite(fsRaw) && fsRaw > 0 ? fsRaw : 11;
+            const lp = fibVerticalSpanLabelPlacement(tool.style, x, plotTop, plotBottom, fontSize);
             label.attr('x', lp.x);
             label.attr('y', lp.y);
+            label.attr('text-anchor', lp.anchor || 'middle');
             if (lp.dominantBaseline) label.attr('dominant-baseline', lp.dominantBaseline);
             else label.attr('dominant-baseline', null);
         });

@@ -452,11 +452,11 @@ class FibTimeZoneTool extends BaseDrawing {
                 let labelText = null;
                 let lp = null;
                 let vGap = null;
-                const tzLabelFontSize = 10;
+                const tzLabelFontSize = fibVerticalSpanLabelFontSize(scaleFactor);
                 if (showLevelValues) {
                     labelText = BaseDrawing.formatFibLevelLabel(this.style, fibN);
-                    lp = fibVerticalSpanLabelPlacement(this.style, x, plotTop, plotBottom);
-                    vGap = fibVerticalCenterLabelGap(this.style, this.group, labelText, lp.y, tzLabelFontSize, '600');
+                    lp = fibVerticalSpanLabelPlacement(this.style, x, plotTop, plotBottom, tzLabelFontSize);
+                    vGap = fibVerticalCenterLabelGap(this.style, this.group, labelText, lp.y, tzLabelFontSize, '700');
                 }
 
                 appendFibVerticalLineWithCenterGap(this.group, x, plotTop, plotBottom, vGap, {
@@ -478,11 +478,9 @@ class FibTimeZoneTool extends BaseDrawing {
                         .attr('x', lp.x)
                         .attr('y', lp.y)
                         .attr('text-anchor', lp.anchor)
-                        .attr('fill', color)
-                        .attr('font-size', `${tzLabelFontSize}px`)
-                        .style('pointer-events', 'none')
                         .text(labelText);
                     if (lp.dominantBaseline) textEl.attr('dominant-baseline', lp.dominantBaseline);
+                    applyFibSpanLabelTextStyle(textEl, color, tzLabelFontSize);
                 }
             }
         });
@@ -1002,11 +1000,11 @@ class TrendFibTimeTool extends BaseDrawing {
                 let tftLabelText = null;
                 let tftLp = null;
                 let tftGap = null;
-                const tftLabelFontSize = 10;
+                const tftLabelFontSize = fibVerticalSpanLabelFontSize(scaleFactor);
                 if (showLevelValues) {
                     tftLabelText = BaseDrawing.formatFibLevelLabel(this.style, level);
-                    tftLp = fibVerticalSpanLabelPlacement(this.style, x, plotTop, plotBottom);
-                    tftGap = fibVerticalCenterLabelGap(this.style, this.group, tftLabelText, tftLp.y, tftLabelFontSize, '600');
+                    tftLp = fibVerticalSpanLabelPlacement(this.style, x, plotTop, plotBottom, tftLabelFontSize);
+                    tftGap = fibVerticalCenterLabelGap(this.style, this.group, tftLabelText, tftLp.y, tftLabelFontSize, '700');
                 }
 
                 appendFibVerticalLineWithCenterGap(this.group, x, plotTop, plotBottom, tftGap, {
@@ -1021,12 +1019,10 @@ class TrendFibTimeTool extends BaseDrawing {
                         .attr('class', 'fib-tft-label')
                         .attr('x', tftLp.x)
                         .attr('y', tftLp.y)
-                        .attr('fill', lvl.color)
-                        .attr('font-size', `${tftLabelFontSize}px`)
                         .attr('text-anchor', tftLp.anchor)
-                        .style('pointer-events', 'none')
                         .text(tftLabelText);
                     if (tftLp.dominantBaseline) textEl.attr('dominant-baseline', tftLp.dominantBaseline);
+                    applyFibSpanLabelTextStyle(textEl, lvl.color, tftLabelFontSize);
                 }
             });
         }

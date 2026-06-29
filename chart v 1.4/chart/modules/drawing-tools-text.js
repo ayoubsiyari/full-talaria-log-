@@ -452,29 +452,42 @@ function plainTextPixelXToPoint(drawing, scales, pixelX) {
     }
 }
 
-/** Distance from visual left edge of the text block to the alignment anchor. */
-function plainTextAnchorOffsetFromLeft(textAlign, blockWidth) {
-    const w = Number(blockWidth) || 0;
-    const align = textAlign || 'left';
-    if (align === 'center') return w / 2;
-    if (align === 'right') return w;
-    return 0;
+/** Measure one plain-text line width (px). */
+function measurePlainTextLineWidth(line, drawing, scales, sampleText) {
+    const sf = (typeof drawing.getZoomScaleFactor === 'function')
+        ? drawing.getZoomScaleFactor(scales)
+        : 1;
+    const fs = Math.max(6, (Number(drawing.style?.fontSize) || 14) * sf);
+    const style = drawing.style || {};
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = buildDrawingTextCanvasFont(sampleText, fs, style.fontFamily, style.fontWeight, style.fontStyle);
+    try {
+        return ctx.measureText(line || '').width;
+    } catch (_) {
+        return (line || '').length * fs * 0.55;
+    }
 }
 
-/** SVG text-anchor for plain text (mirrors for Arabic RTL). */
-function resolvePlainTextSvgTextAnchor(textAlign, text) {
-    const rtl = typeof drawingTextHasArabicScript === 'function' && drawingTextHasArabicScript(text);
-    const align = textAlign || (rtl ? 'right' : 'left');
-    if (align === 'center') return 'middle';
-    if (rtl) return align === 'right' ? 'start' : 'end';
-    return align === 'right' ? 'end' : 'start';
-}
-
-/** Horizontal alignment applies only when wrap-text mode is on. */
-function plainTextEffectiveHorizAlign(drawing) {
-    const style = drawing?.style || {};
-    if (!style.wrapText) return 'left';
-    return style.textAlign || 'left';
+/** Per-line X positions: wrap box stays at points[0]; alignment only shifts lines inside the box. */
+function layoutPlainTextLinePositions(drawing, scales, lines, display) {
+    const leftPx = plainTextPointToPixelX(drawing, scales);
+    const sf = (typeof drawing.getZoomScaleFactor === 'function')
+        ? drawing.getZoomScaleFactor(scales)
+        : 1;
+    const style = drawing.style || {};
+    const mw = Math.max(40, (Number(style.maxWidth) || 200) * sf);
+    const wrap = !!style.wrapText;
+    const align = plainTextEffectiveHorizAlign(drawing);
+    return lines.map((line) => {
+        let lineX = leftPx;
+        if (wrap && (align === 'center' || align === 'right')) {
+            const lw = measurePlainTextLineWidth(line, drawing, scales, display.text);
+            if (align === 'center') lineX = leftPx + Math.max(0, (mw - lw) / 2);
+            else lineX = leftPx + Math.max(0, mw - lw);
+        }
+        return lineX;
+    });
 }
 
 /** Measure rendered plain-text block width (px) at current style/zoom. */
@@ -510,32 +523,38 @@ function measurePlainTextBlockWidth(drawing, scales) {
     return style.wrapText ? Math.min(maxW, mw) : maxW;
 }
 
-/** Legacy drawings stored the left edge — convert once to alignment anchor. */
-function ensurePlainTextAlignAnchorPoint(drawing, scales) {
-    if (!drawing?.points?.[0] || !drawing.style || drawing.style._alignAnchorPoint) return;
-    const align = plainTextEffectiveHorizAlign(drawing);
-    const w = measurePlainTextBlockWidth(drawing, scales);
-    const legacyLeftPx = plainTextPointToPixelX(drawing, scales);
-    const anchorPx = legacyLeftPx + plainTextAnchorOffsetFromLeft(align, w);
-    plainTextPixelXToPoint(drawing, scales, anchorPx);
-    drawing.style._alignAnchorPoint = true;
+/** SVG text-anchor for plain text (mirrors for Arabic RTL). */
+function resolvePlainTextSvgTextAnchor(textAlign, text) {
+    const rtl = typeof drawingTextHasArabicScript === 'function' && drawingTextHasArabicScript(text);
+    const align = textAlign || (rtl ? 'right' : 'left');
+    if (align === 'center') return 'middle';
+    if (rtl) return align === 'right' ? 'start' : 'end';
+    return align === 'right' ? 'end' : 'start';
 }
 
-/** Keep the text block fixed on chart when horizontal alignment changes. */
-function migratePlainTextHorizAlign(drawing, oldAlign, newAlign) {
-    if (!drawing?.points?.[0] || !drawing.chart || oldAlign === newAlign) return;
-    if (!drawing.style?.wrapText) return;
-    const scales = {
-        chart: drawing.chart,
-        xScale: drawing.chart.xScale,
-        yScale: drawing.chart.yScale,
-    };
-    ensurePlainTextAlignAnchorPoint(drawing, scales);
+/** Horizontal alignment applies only when wrap-text mode is on. */
+function plainTextEffectiveHorizAlign(drawing) {
+    const style = drawing?.style || {};
+    if (!style.wrapText) return 'left';
+    return style.textAlign || 'left';
+}
+
+/** One-time undo prior alignment-anchor migration — points[0] is always the box left edge. */
+function ensurePlainTextLeftEdgePoint(drawing, scales) {
+    if (!drawing?.points?.[0] || !drawing.style?._alignAnchorPoint) return;
     const w = measurePlainTextBlockWidth(drawing, scales);
+    const align = drawing.style.textAlign || 'left';
     const anchorPx = plainTextPointToPixelX(drawing, scales);
-    const leftPx = anchorPx - plainTextAnchorOffsetFromLeft(oldAlign || 'left', w);
-    const newAnchorPx = leftPx + plainTextAnchorOffsetFromLeft(newAlign || 'left', w);
-    plainTextPixelXToPoint(drawing, scales, newAnchorPx);
+    let offset = 0;
+    if (align === 'center') offset = w / 2;
+    else if (align === 'right') offset = w;
+    plainTextPixelXToPoint(drawing, scales, anchorPx - offset);
+    delete drawing.style._alignAnchorPoint;
+}
+
+/** Horizontal alignment only repositions lines inside the wrap box — never moves points[0]. */
+function migratePlainTextHorizAlign(_drawing, _oldAlign, _newAlign) {
+    /* no-op: alignment is layout-only inside the wrap box */
 }
 
 /** Reposition the open HTML inline editor to match the drawing's current on-chart edit box. */
@@ -975,10 +994,9 @@ class TextTool extends BaseDrawing {
         const y = scales.yScale(p.y);
         const display = resolveTextToolDisplay(this.text);
 
-        ensurePlainTextAlignAnchorPoint(this, scales);
-        const anchorX = plainTextPointToPixelX(this, scales);
-        const effectiveAlign = plainTextEffectiveHorizAlign(this);
-        const textAnchor = resolvePlainTextSvgTextAnchor(effectiveAlign, display.text);
+        ensurePlainTextLeftEdgePoint(this, scales);
+        const leftPx = plainTextPointToPixelX(this, scales);
+        const textAnchor = 'start';
 
         if (this.style.anchored) {
             const anchorLen = (this.style.anchorLength || 24) * scaleFactor;
@@ -987,9 +1005,9 @@ class TextTool extends BaseDrawing {
                 : (this.style.textColor || '#787b86');
             this.group.append('line')
                 .attr('class', 'text-anchor-stem')
-                .attr('x1', anchorX)
+                .attr('x1', leftPx)
                 .attr('y1', y)
-                .attr('x2', anchorX)
+                .attr('x2', leftPx)
                 .attr('y2', y + anchorLen)
                 .attr('stroke', anchorColor)
                 .attr('stroke-width', Math.max(1, 1.5 * scaleFactor))
@@ -997,7 +1015,7 @@ class TextTool extends BaseDrawing {
                 .style('pointer-events', 'none');
             this.group.append('circle')
                 .attr('class', 'text-anchor-dot')
-                .attr('cx', anchorX)
+                .attr('cx', leftPx)
                 .attr('cy', y + anchorLen)
                 .attr('r', Math.max(2, 3 * scaleFactor))
                 .attr('fill', anchorColor)
@@ -1010,7 +1028,7 @@ class TextTool extends BaseDrawing {
         // Draw the text with scaled font size (no transform locking)
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
-            .attr('x', anchorX)
+            .attr('x', leftPx)
             .attr('y', y)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
@@ -1024,7 +1042,7 @@ class TextTool extends BaseDrawing {
             fontStyle: this.style.fontStyle,
             fontFamily: this.style.fontFamily,
             fontWeight: this.style.fontWeight,
-            x: anchorX,
+            x: leftPx,
             y,
         });
 
@@ -1042,10 +1060,11 @@ class TextTool extends BaseDrawing {
                 this.style.fontStyle
             )
             : display.text.split('\n');
+        const lineXs = layoutPlainTextLinePositions(this, scales, lines, display);
         lines.forEach((line, index) => {
             const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
             textElement.append('tspan')
-                .attr('x', anchorX)
+                .attr('x', lineXs[index])
                 .attr('dy', index === 0 ? 0 : lineHeight)
                 .text(sanitizedLine);
         });
@@ -1061,7 +1080,17 @@ class TextTool extends BaseDrawing {
         try {
             bbox = textNode.getBBox();
         } catch (e) {
-            bbox = { x: anchorX, y: y - scaledFontSize, width: 50, height: scaledFontSize * 1.2 };
+            bbox = { x: leftPx, y: y - scaledFontSize, width: 50, height: scaledFontSize * 1.2 };
+        }
+
+        if (this.style.wrapText) {
+            const blockH = Math.max(lineHeight, lines.length * lineHeight);
+            bbox = {
+                x: leftPx,
+                y: y - scaledFontSize,
+                width: maxWrapWidth,
+                height: blockH,
+            };
         }
         
         // Add background rectangle if enabled
@@ -1124,10 +1153,8 @@ class TextTool extends BaseDrawing {
             const lh = fs * 1.2;
             const mw = Math.max(40, (self.style.maxWidth || 200) * sf);
             const display = resolveTextToolDisplay(self.text);
-            ensurePlainTextAlignAnchorPoint(self, liveScales);
-            const anchorPx = plainTextPointToPixelX(self, liveScales);
-            const effectiveAlign = plainTextEffectiveHorizAlign(self);
-            const svgTextAnchor = resolvePlainTextSvgTextAnchor(effectiveAlign, display.text);
+            ensurePlainTextLeftEdgePoint(self, liveScales);
+            const leftPx = plainTextPointToPixelX(self, liveScales);
             const lineList = self.style.wrapText
                 ? TextTool.wrapTextLines(
                     display.text,
@@ -1138,6 +1165,7 @@ class TextTool extends BaseDrawing {
                     self.style.fontStyle
                 )
                 : display.text.split('\n');
+            const lineXs = layoutPlainTextLinePositions(self, liveScales, lineList, display);
 
             const textEl = self.group.select('text.inline-editable-text');
             if (textEl.empty()) return;
@@ -1148,21 +1176,21 @@ class TextTool extends BaseDrawing {
                     ? resolveAnnotationTextFill(self.style.textColor, phBg, true)
                     : self.style.textColor)
                 .attr('font-size', `${fs}px`)
-                .attr('x', anchorPx)
-                .attr('text-anchor', svgTextAnchor);
+                .attr('x', leftPx)
+                .attr('text-anchor', 'start');
             applyDrawingTextElementPresentation(textEl, {
                 text: display.text,
                 fontStyle: self.style.fontStyle,
                 fontFamily: self.style.fontFamily,
                 fontWeight: self.style.fontWeight,
-                x: anchorPx,
+                x: leftPx,
                 y: py,
             });
             textEl.selectAll('tspan').remove();
             lineList.forEach((line, index) => {
                 const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
                 textEl.append('tspan')
-                    .attr('x', anchorPx)
+                    .attr('x', lineXs[index])
                     .attr('dy', index === 0 ? 0 : lh)
                     .text(sanitizedLine);
             });
@@ -1171,7 +1199,11 @@ class TextTool extends BaseDrawing {
             try {
                 rawBbox = textEl.node().getBBox();
             } catch (e) {
-                rawBbox = { x: anchorPx, y: py - fs, width: 50, height: fs * 1.2 };
+                rawBbox = { x: leftPx, y: py - fs, width: 50, height: fs * 1.2 };
+            }
+            if (self.style.wrapText) {
+                const blockH = Math.max(lh, lineList.length * lh);
+                rawBbox = { x: leftPx, y: py - fs, width: mw, height: blockH };
             }
 
             const pad = 6;
@@ -1398,6 +1430,11 @@ class TextTool extends BaseDrawing {
 
     _shouldCreateHandles(opts = {}) {
         return false;
+    }
+
+    /** Plain text uses the dashed box for move — no blue point handle at points[0]. */
+    createHandles(_group, _scales) {
+        if (this.handles) this.handles = [];
     }
 
     _syncLiveTextChrome(group, bbox) {
@@ -5390,10 +5427,9 @@ if (typeof window !== 'undefined') {
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
         plainTextEffectiveHorizAlign,
+        layoutPlainTextLinePositions,
+        ensurePlainTextLeftEdgePoint,
         migratePlainTextHorizAlign,
-        measurePlainTextBlockWidth,
-        ensurePlainTextAlignAnchorPoint,
-        resolvePlainTextSvgTextAnchor,
         syncTextHandlePositions,
         runTextAnnotationLiveInput,
         scheduleTextAnnotationLiveRender,

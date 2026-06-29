@@ -8209,6 +8209,10 @@ class DrawingToolsManager {
     /** Keep endpoint handles visible and positioned during / after handle edits. */
     _syncResizeHandleChrome(drawing) {
         if (!drawing?.group || drawing.group.empty() || !this.chart?.xScale || !this.chart?.yScale) return;
+        if (drawing.type === 'text') {
+            drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
+            return;
+        }
         const scales = {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale,
@@ -8487,6 +8491,10 @@ class DrawingToolsManager {
      */
     _resetResizeHandleDom(drawing) {
         if (!drawing?.group || drawing.group.empty() || !this.chart?.xScale || !this.chart?.yScale) return;
+        if (drawing.type === 'text') {
+            drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
+            return;
+        }
         drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
         const scales = {
             xScale: this.chart.xScale,

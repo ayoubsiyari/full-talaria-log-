@@ -7681,11 +7681,19 @@ class Chart {
     }
 
     _resolveIndicatorsForSessionRestore(sessionId, state, backupSnap) {
+        const serverHasKey = state && Object.prototype.hasOwnProperty.call(state, 'indicators');
         const server = state && Array.isArray(state.indicators) ? state.indicators : [];
         const backupHasKey = backupSnap && Object.prototype.hasOwnProperty.call(backupSnap, 'indicators');
         const backup = backupSnap && Array.isArray(backupSnap.indicators) ? backupSnap.indicators : [];
-        // Explicit empty array in local backup = user cleared indicators; do not resurrect from server.
+
+        // User deleted all indicators — explicit empty list must win over stale copies.
         if (backupHasKey && backup.length === 0) return [];
+        if (serverHasKey && server.length === 0) return [];
+
+        // Legacy snapshots without an indicators key — fall back to whichever side has data.
+        if (!backupHasKey && backup.length === 0) return server;
+        if (!serverHasKey && server.length === 0) return backup;
+
         if (backup.length === 0) return server;
         if (server.length === 0) return backup;
         if (this._shouldPreferLocalBackupRuntime(sessionId, backupSnap)) return backup;
