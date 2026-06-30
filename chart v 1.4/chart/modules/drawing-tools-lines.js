@@ -141,6 +141,24 @@ const TEXT_EDGE_PADDING = 5;
 
 const LINE_LABEL_OFFSET = 14;
 
+/** V9 uses vertAlign "center"; chart split/on-line logic uses "middle". */
+function readLineTextVAlign(style) {
+    if (!style) return 'top';
+    let v = String(style.textVAlign || style.textPosition || 'top').toLowerCase();
+    if (v === 'center') v = 'middle';
+    if (v === 'start') v = 'top';
+    if (v === 'end') v = 'bottom';
+    return v;
+}
+
+function normalizeLineTextVAlign(style) {
+    if (!style) return 'top';
+    const v = readLineTextVAlign(style);
+    style.textVAlign = v;
+    style.textPosition = v;
+    return v;
+}
+
 /** Flip stored line angle (deg) for readable label rotation. */
 function flipLineLabelReadableAngleDeg(angleDeg) {
     let angle = Number(angleDeg) || 0;
@@ -220,9 +238,9 @@ function resolveSplitAngledLineLabelAnchor(opts) {
     }
 
     const rawLX = x1 <= x2 ? x1 : x2;
-    const rawLY = y1 <= y2 ? y1 : y2;
+    const rawLY = x1 <= x2 ? y1 : y2;
     const rawRX = x1 <= x2 ? x2 : x1;
-    const rawRY = y1 <= y2 ? y2 : y1;
+    const rawRY = x1 <= x2 ? y2 : y1;
     const rawDX = rawRX - rawLX;
     const rawDY = rawRY - rawLY;
     const rawLen = Math.hypot(rawDX, rawDY) || 1;
@@ -252,27 +270,43 @@ function resolveSplitAngledLineLabelAnchor(opts) {
 }
 
 function appendSplitAngledLineTextLabel(group, label, splitInfo, coords, tool, style, anchorMode) {
-    const rotation = flipLineLabelReadableAngleDeg(splitInfo.angle);
     const offsetX = style.textOffsetX || 0;
     const rawOffsetY = (style.textOffsetY === undefined || style.textOffsetY === null)
         ? 0 : style.textOffsetY;
     const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-    const siScales = coords.scales || coords;
-    const sp1 = tool.points[0];
-    const sp2 = tool.points[1];
-    const p1 = screenPointFromToolPoint(siScales, sp1, splitInfo.textX, splitInfo.textY);
-    const p2 = screenPointFromToolPoint(siScales, sp2, splitInfo.textX, splitInfo.textY);
+    let x1;
+    let y1;
+    let x2;
+    let y2;
+    if (coords && [coords.x1, coords.y1, coords.x2, coords.y2].every(Number.isFinite)) {
+        ({ x1, y1, x2, y2 } = coords);
+    } else {
+        const siScales = coords?.scales || coords;
+        const sp1 = tool.points[0];
+        const sp2 = tool.points[1];
+        const p1 = screenPointFromToolPoint(siScales, sp1, splitInfo.textX, splitInfo.textY);
+        const p2 = screenPointFromToolPoint(siScales, sp2, splitInfo.textX, splitInfo.textY);
+        x1 = p1.x;
+        y1 = p1.y;
+        x2 = p2.x;
+        y2 = p2.y;
+    }
+
     const textHAlign = style.textHAlign || style.textAlign || 'center';
     const anchorPos = resolveSplitAngledLineLabelAnchor({
-        x1: p1.x,
-        y1: p1.y,
-        x2: p2.x,
-        y2: p2.y,
+        x1,
+        y1,
+        x2,
+        y2,
         textHAlign,
         label,
         mode: anchorMode
     });
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const rotation = flipLineLabelReadableAngleDeg(Math.atan2(dy, dx) * (180 / Math.PI));
 
     appendTextLabel(group, label, {
         x: anchorPos.x + offsetX,
@@ -427,7 +461,7 @@ function syncLiveLineTextLabel(tool, scales, screenPts) {
 
     removeGroupTextNodes(tool.group);
 
-    const textVAlign = tool.style?.textVAlign || tool.style?.textPosition || 'top';
+    const textVAlign = readLineTextVAlign(tool.style);
     if (textVAlign === 'middle' && tool._splitInfo) {
         const rawLX = x1 <= x2 ? x1 : x2;
         const rawLY = x1 <= x2 ? y1 : y2;
@@ -723,8 +757,7 @@ class TrendlineTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        let textVAlign = String(this.style.textVAlign || this.style.textPosition || 'top').toLowerCase();
-        if (textVAlign === 'center') textVAlign = 'middle';
+        const textVAlign = normalizeLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         // Store split info for text rendering
@@ -978,7 +1011,7 @@ class TrendlineTool extends BaseDrawing {
         if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
 
         const hasText = this.text && String(this.text).trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         if (shouldSplitLine) {
             return liveRenderTwoPointDrawingGeometry(this, scales);
@@ -1212,7 +1245,7 @@ class TrendlineTool extends BaseDrawing {
         angle = flipLineLabelReadableAngleDeg(angle);
 
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
         const xRange2 = scales && scales.xScale ? scales.xScale.range() : null;
@@ -1364,7 +1397,7 @@ class HorizontalLineTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         this._splitInfo = null;
@@ -1662,7 +1695,7 @@ class HorizontalLineTool extends BaseDrawing {
         }
 
         const y = scales.yScale(point.y);
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
         
         const chartLeftX = (scales.chart && scales.chart.margin && typeof scales.chart.margin.l === 'number')
@@ -1769,7 +1802,7 @@ class VerticalLineTool extends BaseDrawing {
 
         // Check if text should be ON the line (needs gap)
         const hasText = this.text && this.text.trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
         // When center-aligned, the label should be on the line for top/middle/bottom
         // and we should hide the line behind the label by creating a gap.
@@ -1987,7 +2020,7 @@ class VerticalLineTool extends BaseDrawing {
             return;
         }
 
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
         const textOrientation = this.style.textOrientation || 'horizontal';
         const rotation = textOrientation === 'vertical' ? 90 : 0;
@@ -2214,7 +2247,7 @@ class RayTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         this._splitInfo = null;
@@ -2375,7 +2408,7 @@ class RayTool extends BaseDrawing {
     _patchLiveTwoPointGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
         const hasText = this.text && String(this.text).trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         if (hasText && (textVAlign === 'middle' || this._splitInfo)) {
             return liveRenderTwoPointDrawingGeometry(this, scales);
         }
@@ -2410,7 +2443,7 @@ class RayTool extends BaseDrawing {
         angle = flipLineLabelReadableAngleDeg(angle);
 
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
         let baseX, baseY, elAnchor;
@@ -2536,7 +2569,7 @@ class HorizontalRayTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         this._splitInfo = null;
@@ -2866,7 +2899,7 @@ class HorizontalRayTool extends BaseDrawing {
         const visibleStartX = Math.max(startX, chartLeftX);
 
         const y = scales.yScale(point.y);
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
         let baseX;
@@ -3011,7 +3044,7 @@ class ExtendedLineTool extends BaseDrawing {
         
         // Check if we need to split the line for centered text
         const hasText = this.text && this.text.trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         this._splitInfo = null;
@@ -3192,7 +3225,7 @@ class ExtendedLineTool extends BaseDrawing {
     _patchLiveTwoPointGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
         const hasText = this.text && String(this.text).trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         if (hasText && (textVAlign === 'middle' || this._splitInfo)) {
             return liveRenderTwoPointDrawingGeometry(this, scales);
         }
@@ -3229,7 +3262,7 @@ class ExtendedLineTool extends BaseDrawing {
         angle = flipLineLabelReadableAngleDeg(angle);
 
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = readLineTextVAlign(this.style);
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
         const origLen = Math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2) || 1;
@@ -3402,7 +3435,7 @@ class CrossLineTool extends BaseDrawing {
 
         // Render text label if exists
         if (this.text && this.text.trim()) {
-            const cl_textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+            const cl_textVAlign = readLineTextVAlign(this.style);
             const cl_textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             const cl_xRange = scales.xScale.range();
             const CLEDGE = 20;

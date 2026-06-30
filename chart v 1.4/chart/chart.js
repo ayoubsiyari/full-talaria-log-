@@ -21114,6 +21114,80 @@ class Chart {
         } catch (_e) {}
     }
 
+    /** Synthesize a mouse event on the canvas so touch/pen reuse the mouse drag pipeline. */
+    _dispatchCompatMouseEvent(sourceEvent, type) {
+        if (!this.canvas || !sourceEvent) return;
+        const detail = type === 'dblclick' ? 2 : (type === 'click' ? 1 : 0);
+        const button = typeof sourceEvent.button === 'number' ? sourceEvent.button : 0;
+        let buttons = typeof sourceEvent.buttons === 'number' ? sourceEvent.buttons : undefined;
+        if (buttons === undefined) {
+            buttons = (type === 'mouseup' || type === 'mouseleave') ? 0 : 1;
+        }
+        this.canvas.dispatchEvent(new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            detail,
+            clientX: sourceEvent.clientX,
+            clientY: sourceEvent.clientY,
+            screenX: sourceEvent.screenX,
+            screenY: sourceEvent.screenY,
+            button,
+            buttons,
+            ctrlKey: !!sourceEvent.ctrlKey,
+            shiftKey: !!sourceEvent.shiftKey,
+            altKey: !!sourceEvent.altKey,
+            metaKey: !!sourceEvent.metaKey,
+        }));
+    }
+
+    /** Route touch/pen pointer events through mousedown/mousemove/mouseup handlers. */
+    _setupTouchPointerBridge() {
+        if (!this.canvas) return;
+        const opts = { passive: false };
+        const isTouchLike = (e) => !!(e && e.pointerType && e.pointerType !== 'mouse');
+
+        const forward = (e, mouseType) => {
+            if (!isTouchLike(e) || this._pinchActive) return;
+            this._dispatchCompatMouseEvent(e, mouseType);
+        };
+
+        this.canvas.addEventListener('pointerdown', (e) => {
+            if (!isTouchLike(e) || this._pinchActive) return;
+            if (typeof e.button === 'number' && e.button !== 0) return;
+            e.preventDefault();
+            this._activeTouchPointerId = e.pointerId;
+            forward(e, 'mousedown');
+        }, opts);
+
+        const onPointerMove = (e) => {
+            if (!isTouchLike(e) || this._pinchActive) return;
+            const tracking = this._activeTouchPointerId === e.pointerId
+                || (this.drag && this.drag.active);
+            if (!tracking) return;
+            e.preventDefault();
+            forward(e, 'mousemove');
+        };
+        this.canvas.addEventListener('pointermove', onPointerMove, opts);
+        document.addEventListener('pointermove', onPointerMove, opts);
+
+        const onPointerUp = (e) => {
+            if (!isTouchLike(e) || this._pinchActive) return;
+            const tracking = this._activeTouchPointerId === e.pointerId
+                || (this.drag && this.drag.active);
+            if (!tracking) return;
+            e.preventDefault();
+            forward(e, 'mouseup');
+            if (this._activeTouchPointerId === e.pointerId) {
+                this._activeTouchPointerId = null;
+            }
+        };
+        this.canvas.addEventListener('pointerup', onPointerUp, opts);
+        this.canvas.addEventListener('pointercancel', onPointerUp, opts);
+        document.addEventListener('pointerup', onPointerUp, opts);
+        document.addEventListener('pointercancel', onPointerUp, opts);
+    }
+
     /**
      * Cheap bounds clamp while dragging — no history fetch, no elastic resistance.
      * Keeps pan feeling 1:1 with the mouse (TradingView-style).
@@ -27904,6 +27978,9 @@ class Chart {
         // Add document-level mouseup to catch releases outside canvas/axis zones
         // This prevents stuck drag state when mouse is released outside the chart area
         document.addEventListener('mouseup', handleMouseUp);
+
+        // Touch/pen → same drag pipeline as mouse (single-finger pan + axis drag)
+        this._setupTouchPointerBridge();
         
         this.canvas.addEventListener('mouseleave', (e) => {
             const hasPressedButton = !!(e && typeof e.buttons === 'number' && e.buttons !== 0);
@@ -28953,28 +29030,79 @@ class Chart {
     }
     
     setupTouchEvents() {
-        let touchStartX = 0;
-        let touchStartY = 0;
-        let touchLastX = 0;
-        let touchLastY = 0;
-        let isTouchDragging = false;
         let initialPinchDistance = 0;
         let initialCandleWidth = this.candleWidth;
-        
-        this.canvas.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-                // Single touch - pan
-                const touch = e.touches[0];
-                touchStartX = touchLastX = touch.clientX;
-                touchStartY = touchLastY = touch.clientY;
-                isTouchDragging = true;
-                if (this.replaySystem?.isActive) {
-                    this.replaySystem.onUserPan();
+        let initialOffsetX = this.offsetX;
+        let initialCandleSpacing = this.getCandleSpacing();
+
+        const pinchWidths = () => (
+            (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+                ? this.zoomLevel.allowedWidths
+                : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89]
+        );
+
+        const applyPinchZoom = (touch1, touch2) => {
+            if (!initialPinchDistance || !this.data || this.data.length === 0) return;
+            const timeLocked = this.timeScale && this.timeScale.locked;
+            if (timeLocked) return;
+
+            const currentDistance = Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+            );
+            const scale = currentDistance / initialPinchDistance;
+            const widths = pinchWidths();
+            const minWidth = this._getEffectiveMinCandleWidth(widths);
+            const maxWidth = widths[widths.length - 1];
+            const newWidth = Math.max(minWidth, Math.min(maxWidth, initialCandleWidth * scale));
+
+            const priceLocked = this.priceScale && this.priceScale.locked;
+            if (!priceLocked) {
+                this.autoScale = false;
+                this.priceScale.autoScale = false;
+            }
+
+            const midX = (touch1.clientX + touch2.clientX) / 2;
+            const midY = (touch1.clientY + touch2.clientY) / 2;
+            const [mx] = this._eventCanvasLocalXY({ clientX: midX, clientY: midY });
+            const m = this.margin;
+            const anchorIndex = (mx - m.l - initialOffsetX) / initialCandleSpacing;
+            const oldAnchorX = m.l + anchorIndex * initialCandleSpacing + initialOffsetX;
+
+            this.candleWidth = newWidth;
+            const newCandleSpacing = this.getCandleSpacing();
+            this.offsetX = oldAnchorX - (m.l + anchorIndex * newCandleSpacing);
+
+            let nearestIdx = 0;
+            let minDiff = Math.abs(newWidth - widths[0]);
+            for (let i = 1; i < widths.length; i++) {
+                const diff = Math.abs(newWidth - widths[i]);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    nearestIdx = i;
                 }
-                this.movement.lastTime = performance.now();
-                e.preventDefault();
-            } else if (e.touches.length === 2) {
-                // Two finger pinch - zoom
+            }
+            if (this.zoomLevel) {
+                this.zoomLevel.candleWidthIndex = nearestIdx;
+            }
+
+            this._lastWheelZoomDirection = scale > 1 ? 1 : -1;
+            if (this.replaySystem?.isActive) {
+                this.replaySystem.onUserPan();
+            }
+            this.constrainOffset();
+            this.scheduleRender();
+        };
+
+        this.canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                this._pinchActive = true;
+                this._activeTouchPointerId = null;
+                if (this.drag && this.drag.active) {
+                    this.drag.active = false;
+                    this.drag.type = null;
+                    this.movement.isDragging = false;
+                }
                 const touch1 = e.touches[0];
                 const touch2 = e.touches[1];
                 initialPinchDistance = Math.hypot(
@@ -28982,79 +29110,30 @@ class Chart {
                     touch2.clientY - touch1.clientY
                 );
                 initialCandleWidth = this.candleWidth;
+                initialOffsetX = this.offsetX;
+                initialCandleSpacing = this.getCandleSpacing();
                 e.preventDefault();
             }
         }, { passive: false });
-        
+
         this.canvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 1 && isTouchDragging) {
-                // Single touch pan
-                const touch = e.touches[0];
-                const now = performance.now();
-                const deltaTime = now - this.movement.lastTime || 16;
-                
-                const dx = touch.clientX - touchLastX;
-                const dy = touch.clientY - touchLastY;
-                
-                // Calculate velocity for momentum
-                this.movement.velocityX = dx / (deltaTime / 16);
-                this.movement.velocityY = dy / (deltaTime / 16);
-                
-                // Apply movement
-                this.offsetX += dx;
-                if (this.yScale) {
-                    const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                    const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
-                    this.priceOffset -= dy * pricePerPixel;
-                }
-                
-                touchLastX = touch.clientX;
-                touchLastY = touch.clientY;
-                this.movement.lastTime = now;
-                
-                this.constrainOffset();
-                this.scheduleRender();
-                e.preventDefault();
-            } else if (e.touches.length === 2) {
-                // Pinch zoom
-                const touch1 = e.touches[0];
-                const touch2 = e.touches[1];
-                const currentDistance = Math.hypot(
-                    touch2.clientX - touch1.clientX,
-                    touch2.clientY - touch1.clientY
-                );
-                
-                const scale = currentDistance / initialPinchDistance;
-                const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
-                    ? this.zoomLevel.allowedWidths
-                    : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
-                const minWidth = this._getEffectiveMinCandleWidth(widths);
-                const maxWidth = widths[widths.length - 1];
-                this.candleWidth = Math.max(minWidth, Math.min(maxWidth, initialCandleWidth * scale));
-                
-                this.constrainOffset();
-                this.scheduleRender();
+            if (e.touches.length === 2 && this._pinchActive) {
+                applyPinchZoom(e.touches[0], e.touches[1]);
                 e.preventDefault();
             }
         }, { passive: false });
-        
-        this.canvas.addEventListener('touchend', (e) => {
-            if (e.touches.length === 0 && isTouchDragging) {
-                // Apply momentum
-                this.applyMomentum();
-                isTouchDragging = false;
-            }
+
+        const endPinch = (e) => {
             if (e.touches.length < 2) {
+                this._pinchActive = false;
                 initialPinchDistance = 0;
             }
-        }, { passive: false });
-        
+        };
+        this.canvas.addEventListener('touchend', endPinch, { passive: false });
         this.canvas.addEventListener('touchcancel', () => {
-            isTouchDragging = false;
+            this._pinchActive = false;
             initialPinchDistance = 0;
-            this.movement.velocityX = 0;
-            this.movement.velocityY = 0;
-        });
+        }, { passive: false });
     }
     
     setupDraggableToolbox() {
@@ -33423,44 +33502,70 @@ async function _talariaInitializeChart() {
             chartInstance.cursor.mode = 'timeAxis';
         }
 
-        if (zone === 'price' && e.type === 'dblclick'
+        const rawType = e.type || '';
+        const mouseType = rawType === 'pointerdown' ? 'mousedown'
+            : rawType === 'pointermove' ? 'mousemove'
+            : (rawType === 'pointerup' || rawType === 'pointercancel') ? 'mouseup'
+            : rawType;
+
+        if (zone === 'price' && (rawType === 'dblclick' || mouseType === 'dblclick')
             && typeof chartInstance._applyPriceAxisDoubleClickLock === 'function') {
             e.preventDefault();
             chartInstance._applyPriceAxisDoubleClickLock();
             return;
         }
-        if (zone === 'time' && e.type === 'dblclick'
+        if (zone === 'time' && (rawType === 'dblclick' || mouseType === 'dblclick')
             && typeof chartInstance._applyTimeAxisDoubleClickReset === 'function') {
             e.preventDefault();
             chartInstance._applyTimeAxisDoubleClickReset();
             return;
         }
-        
+
+        if (rawType.startsWith('pointer') && e.pointerType && e.pointerType !== 'mouse') {
+            e.preventDefault();
+            if (rawType === 'pointerdown' && typeof e.pointerId === 'number') {
+                chartInstance._activeTouchPointerId = e.pointerId;
+            } else if ((rawType === 'pointerup' || rawType === 'pointercancel')
+                && chartInstance._activeTouchPointerId === e.pointerId) {
+                chartInstance._activeTouchPointerId = null;
+            }
+        }
+
+        if (!chartCanvas) return;
+
         // Forward the event to canvas
-        const newEvent = new MouseEvent(e.type, {
+        const button = typeof e.button === 'number' ? e.button : 0;
+        const buttons = typeof e.buttons === 'number' ? e.buttons : (mouseType === 'mouseup' ? 0 : 1);
+        chartCanvas.dispatchEvent(new MouseEvent(mouseType, {
             bubbles: true,
             cancelable: true,
             clientX: e.clientX,
             clientY: e.clientY,
-            button: e.button,
-            buttons: e.buttons,
+            button,
+            buttons,
             shiftKey: e.shiftKey,
             ctrlKey: e.ctrlKey,
             altKey: e.altKey,
             metaKey: e.metaKey
-        });
-        chartCanvas.dispatchEvent(newEvent);
+        }));
     };
-    
+
+    const axisForwardTypes = [
+        'mousedown', 'mouseup', 'mousemove', 'wheel', 'dblclick',
+        'pointerdown', 'pointermove', 'pointerup', 'pointercancel',
+    ];
+
     if (priceAxisZone) {
-        ['mousedown', 'mouseup', 'mousemove', 'wheel', 'dblclick'].forEach(type => {
-            priceAxisZone.addEventListener(type, (e) => forwardEvent(e, 'price'));
+        priceAxisZone.style.touchAction = 'none';
+        axisForwardTypes.forEach(type => {
+            priceAxisZone.addEventListener(type, (e) => forwardEvent(e, 'price'), { passive: false });
         });
     }
-    
+
     if (timeAxisZone) {
-        ['mousedown', 'mouseup', 'mousemove', 'wheel', 'dblclick'].forEach(type => {
-            timeAxisZone.addEventListener(type, (e) => forwardEvent(e, 'time'));
+        timeAxisZone.style.touchAction = 'none';
+        axisForwardTypes.forEach(type => {
+            timeAxisZone.addEventListener(type, (e) => forwardEvent(e, 'time'), { passive: false });
         });
     }
     
