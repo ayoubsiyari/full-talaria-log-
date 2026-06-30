@@ -1975,6 +1975,18 @@
         indicator.separatePanel = true;
     }
 
+    function applyAdrStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Step line';
+        indicator.style.color = params.color || '#26a69a';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = legacyW;
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+    }
+
     function applyMassIndexStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -5594,11 +5606,7 @@
             
             case 'adr':
                 indicator.params.period = Math.max(1, parseInt(params.period, 10) || 14);
-                indicator.style.color = params.color || '#26a69a';
-                indicator.style.lineWidth = params.lineWidth || 2;
-                indicator.style.lineStyle = params.lineStyle || 'Step line';
-                indicator.overlay = false;
-                indicator.separatePanel = true;
+                applyAdrStyleFromParams(indicator, params);
                 indicator.name = 'ADR(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateADR(this.data, indicator.params.period);
                 break;
@@ -8627,7 +8635,9 @@
         if (!vis || !vis._ranges) return true;
         const parsed = this._parseChartTimeframeForVisibility(this.currentTimeframe);
         if (!parsed) return true;
-        const r = vis._ranges[parsed.unit];
+        const r = vis._ranges[parsed.unit]
+            || (parsed.unit === 'M' ? vis._ranges.mo : null)
+            || (parsed.unit === 'mo' ? vis._ranges.M : null);
         if (!r) return true;
         if (r.enabled === false) return false;
         const minV = Number.isFinite(+r.min) ? +r.min : null;
@@ -14172,8 +14182,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
 
         const lineColor = resolve(style.color || '#26a69a', style.lineOpacity);
-        const plotStyle = style.lineStyle || 'Step line';
-        this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, plotStyle, style.lineDashStyle || 'Solid');
+        const plotStyle = this._normalizePlotStyle(style.lineStyle || 'Step line');
+        const dashStyle = style.lineDashStyle || 'Solid';
+        this.drawLineIndicator(values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, plotStyle, {
+            yScale: scaleY,
+            baselineY: panelBottom - 2,
+            panelTop: panelTop,
+            panelBottom: panelBottom,
+            dashStyle: dashStyle
+        });
 
         let last = null;
         for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
@@ -14181,7 +14198,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
         indicator._displayColor = lineColor;
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
-        if (last !== null && Number.isFinite(last)) {
+        indicator._axisLabelTags = [];
+        indicator._axisLabelY = null;
+        indicator._axisLabelText = '';
+        if (style.showLabel !== false && last !== null && Number.isFinite(last)) {
             const currentY = scaleY(last);
             indicator._axisLabelY = currentY;
             indicator._axisLabelText = last.toFixed(2);
@@ -15846,6 +15866,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 }
             }
             tags.forEach(function(tag) {
+                if (indicator.style && indicator.style.showLabel === false) return;
                 if (!Number.isFinite(tag.y)) return;
                 const y = Math.max(topBound, Math.min(bottomBound, tag.y));
                 const axisTag = document.createElement('div');

@@ -1058,7 +1058,9 @@ class DrawingToolsManager {
         const parsed = this._parseTimeframe(currentTf);
         if (!parsed) return true;
 
-        const r = ranges[parsed.unit];
+        const r = ranges[parsed.unit]
+            || (parsed.unit === 'M' ? ranges.mo : null)
+            || (parsed.unit === 'mo' ? ranges.M : null);
         if (!r) return true;
         if (r.enabled === false) return false;
 

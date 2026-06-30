@@ -91,7 +91,7 @@ function appendTextLabel(group, text, config = {}) {
         const interim = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, nudgeY);
         if (interim) textEl.attr('transform', interim);
         const gapNudge = nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text, {
-            anchorOnStroke: anchor === 'middle' && yAnchor === 'middle'
+            anchorOnStroke: anchor === 'middle' && yAnchor === 'middle' && !!lineSide
         });
         nudgeX += gapNudge.nudgeX;
         nudgeY += gapNudge.nudgeY;
@@ -291,10 +291,7 @@ function syncLiveLineTextLabel(tool, scales, screenPts) {
         const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
         const ux = rawDX / rawLen;
         const uy = rawDY / rawLen;
-        let angleDeg = Math.atan2(rawDY, rawDX) * (180 / Math.PI);
-        while (angleDeg > 180) angleDeg -= 360;
-        while (angleDeg < -180) angleDeg += 360;
-        if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+        const angleDeg = resolveLineLabelReadableAngleDeg(rawDY, rawDX);
 
         const textHAlign = tool.style?.textHAlign || tool.style?.textAlign || 'center';
         let textX;
@@ -579,7 +576,8 @@ class TrendlineTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        let textVAlign = String(this.style.textVAlign || this.style.textPosition || 'top').toLowerCase();
+        if (textVAlign === 'center') textVAlign = 'middle';
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         // Store split info for text rendering
@@ -598,37 +596,30 @@ class TrendlineTool extends BaseDrawing {
             
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             
-            // Calculate gap size based on actual text width
             const fontSize = this.style.fontSize || 14;
             const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
             const fontWeight = this.style.fontWeight || 'normal';
+            const fontStyle = this.style.fontStyle || 'normal';
+            const textWidth = measureLineLabelTextWidth(this.group, this.text, {
+                fontSize,
+                fontFamily,
+                fontWeight,
+                fontStyle
+            });
             
-            // Create temporary text element to measure actual width
-            const tempText = this.group.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .attr('font-weight', fontWeight)
-                .attr('text-anchor', 'middle')
-                .text(this.text);
-            
-            const textBBox = tempText.node().getBBox();
-            const textWidth = textBBox.width;
-            tempText.remove();
-            
-            // Calculate angle and direction along the line
-            const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
+            const rawLX = origX1 <= origX2 ? origX1 : origX2;
+            const rawLY = origX1 <= origX2 ? origY1 : origY2;
+            const rawRX = origX1 <= origX2 ? origX2 : origX1;
+            const rawRY = origX1 <= origX2 ? origY2 : origY1;
+            const rawDX = rawRX - rawLX;
+            const rawDY = rawRY - rawLY;
+            const readableAngleDeg = resolveLineLabelReadableAngleDeg(rawDY, rawDX);
             
             // Use exact text width for gap with minimal padding
             const padding = 2;
             const capPad = 2;
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            // Use raw (unclamped) data-point pixel positions for gap/text placement
-            const rawLX = origX1 <= origX2 ? origX1 : origX2;
-            const rawLY = origX1 <= origX2 ? origY1 : origY2;
-            const rawRX = origX1 <= origX2 ? origX2 : origX1;
-            const rawRY = origX1 <= origX2 ? origY2 : origY1;
-            const rawDX = rawRX - rawLX, rawDY = rawRY - rawLY;
             const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
             const seg_ux = rawDX / rawLen;
             const seg_uy = rawDY / rawLen;
@@ -678,7 +669,7 @@ class TrendlineTool extends BaseDrawing {
             this._splitInfo = {
                 textX: textX,
                 textY: textY,
-                angle: lineAngle * (180 / Math.PI),
+                angle: readableAngleDeg,
                 gapSize: gapSize,
                 split1X: split1X,
                 split1Y: split1Y,
@@ -1053,46 +1044,31 @@ class TrendlineTool extends BaseDrawing {
             return;
         }
 
-        // If we have split info from line rendering, use it for exact positioning
+        // On-line split: place text in the gap (same path as ray / extended-line)
         if (this._splitInfo) {
-            let angle = this._splitInfo.angle;
-            while (angle > 180) angle -= 360;
-            while (angle < -180) angle += 360;
-            if (angle > 90 || angle < -90) angle += 180;
-
             const offsetX = this.style.textOffsetX || 0;
             const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
                 ? 0 : this.style.textOffsetY;
             const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-            const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            let siAnchor;
-            switch (siTextHAlign) {
-                case 'left':  siAnchor = resolveLineEndpointSvgAnchor('left', label); break;
-                case 'right': siAnchor = resolveLineEndpointSvgAnchor('right', label); break;
-                default:      siAnchor = 'middle';
+            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            let labelAnchor = 'middle';
+            switch (textHAlign) {
+                case 'left':  labelAnchor = resolveLineEndpointSvgAnchor('left', label); break;
+                case 'right': labelAnchor = resolveLineEndpointSvgAnchor('right', label); break;
             }
 
-            const siPerp = lineLabelPerpFromAngleDeg(angle);
-            const siPerpX = siPerp.x;
-            const siPerpY = siPerp.y;
-            const siSignUp = siPerpY <= 0 ? 1 : -1;
-            const siTextVAlign = this.style.textVAlign || this.style.textPosition || 'top';
-            const splitTextX = this._splitInfo.textX;
-            const splitTextY = this._splitInfo.textY;
-
             appendTextLabel(this.group, label, {
-                x: splitTextX + offsetX,
-                y: splitTextY + offsetY,
-                anchor: siAnchor,
+                x: this._splitInfo.textX + offsetX,
+                y: this._splitInfo.textY + offsetY,
+                anchor: labelAnchor,
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
                 fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
                 fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-                rotation: angle,
-                ...lineLabelGapConfig(splitTextX, splitTextY, siTextVAlign, siPerpX, siPerpY, siSignUp)
+                rotation: this._splitInfo.angle
             });
             return;
         }

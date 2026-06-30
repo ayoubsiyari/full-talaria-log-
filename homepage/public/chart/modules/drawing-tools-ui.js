@@ -18343,7 +18343,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            cb.addEventListener('click', () => {
+            cb.addEventListener('click', (e) => {
+
+                e.stopPropagation();
 
                 cb.classList.toggle('checked');
 

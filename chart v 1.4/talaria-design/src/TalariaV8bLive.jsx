@@ -26138,7 +26138,7 @@ const TalariaV8bLive = () => {
                 F={F}
                 hov={hov}
                 setHov={setHov}
-                renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle)}
+                renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle, { immediate: true })}
               />
             )}
           </div>
@@ -26983,7 +26983,7 @@ const TalariaV8bLive = () => {
                 F={F}
                 hov={hov}
                 setHov={setHov}
-                renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle)}
+                renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle, { immediate: true })}
               />
             )}
           </div>
@@ -28376,7 +28376,7 @@ const TalariaV8bLive = () => {
                     F={F}
                     hov={hov}
                     setHov={setHov}
-                    renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle)}
+                    renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle, { immediate: true })}
                     inputMode="ind-text"
                   />
                   {inTab.length > 0 && (
@@ -30072,7 +30072,7 @@ const TalariaV8bLive = () => {
                   F={F}
                   hov={hov}
                   setHov={setHov}
-                  renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle)}
+                  renderCheckbox={(checked, chkId, toggle) => TlChk(checked, chkId, null, toggle, { immediate: true })}
                 />
               )}
 

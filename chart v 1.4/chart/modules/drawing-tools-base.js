@@ -389,6 +389,42 @@ function lineLabelBlockHeight(text, fontSize) {
     return Math.max(lines.length, 1) * fs * 1.2;
 }
 
+/** Measure line-label width with full font style (italic, RTL) for on-line gap sizing. */
+function measureLineLabelTextWidth(group, text, options = {}) {
+    const label = String(text || '').trim();
+    if (!group || !label) return 0;
+
+    const fontSize = Number(options.fontSize) || 14;
+    const fontFamily = options.fontFamily || 'Roboto, sans-serif';
+    const fontWeight = options.fontWeight || 'normal';
+    const fontStyle = options.fontStyle || 'normal';
+    const anchor = options.anchor || 'middle';
+
+    const resolved = resolveDrawingTextStyle(label, fontStyle, fontFamily);
+    const tempText = group.append('text')
+        .attr('font-size', `${fontSize}px`)
+        .attr('font-family', resolved.fontFamily)
+        .attr('font-weight', fontWeight)
+        .attr('font-style', resolved.fontStyle)
+        .attr('text-anchor', anchor)
+        .style('visibility', 'hidden')
+        .style('pointer-events', 'none');
+
+    if (resolved.direction) {
+        tempText.style('direction', resolved.direction);
+        tempText.attr('unicode-bidi', 'plaintext');
+    }
+    tempText.text(label);
+
+    let width = 0;
+    try {
+        width = tempText.node().getBBox().width;
+    } catch (_) { /* ignore measure failures */ }
+    tempText.remove();
+    if (Number.isFinite(width) && width > 0) return width;
+    return fontSize * Math.max(label.length, 1) * 0.55;
+}
+
 /** Readable label rotation (deg) aligned with line direction. */
 function resolveLineLabelReadableAngleDeg(dx, dy) {
     let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
