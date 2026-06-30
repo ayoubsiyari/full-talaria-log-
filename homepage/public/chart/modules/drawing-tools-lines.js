@@ -82,7 +82,7 @@ function appendTextLabel(group, text, config = {}) {
     let nudgeX = 0;
     let nudgeY = 0;
     if (onLineMiddle) {
-        // Center visual bbox on the stroke for LTR + RTL (Arabic central baseline is unreliable).
+        // Center on stroke; equalize perpendicular extent (same top/bottom spacing for Arabic + Latin).
         try {
             if (resolved.italicSkew) {
                 const skewOnly = buildDrawingTextTransform(x, yPos, 0, resolved.italicSkew, 0, 0);
@@ -92,7 +92,11 @@ function appendTextLabel(group, text, config = {}) {
             if (anchor === 'middle' && Number.isFinite(bbox.width) && bbox.width > 0) {
                 nudgeX = x - (bbox.x + bbox.width / 2);
             }
-            if (Number.isFinite(bbox.height) && bbox.height > 0) {
+            if (typeof equalizeOnLineMiddleExtent === 'function') {
+                const eq = equalizeOnLineMiddleExtent(bbox, x, yPos, rotation);
+                nudgeX += eq.nudgeX;
+                nudgeY += eq.nudgeY;
+            } else if (Number.isFinite(bbox.height) && bbox.height > 0) {
                 nudgeY = yPos - (bbox.y + bbox.height / 2);
             }
             if (resolved.italicSkew) textEl.attr('transform', null);
@@ -143,6 +147,17 @@ function lineLabelGapConfig(lineX, lineY, textVAlign, perpX, perpY, signUp) {
 }
 
 window.lineLabelGapConfig = lineLabelGapConfig;
+
+/** Gap config for angled line labels above/below the stroke. */
+function angledLineLabelGapConfig(strokeX, strokeY, textVAlign, angleRad) {
+    if (textVAlign !== 'top' && textVAlign !== 'bottom') return {};
+    const perpX = -Math.sin(angleRad);
+    const perpY = Math.cos(angleRad);
+    const signUp = perpY <= 0 ? 1 : -1;
+    return lineLabelGapConfig(strokeX, strokeY, textVAlign, perpX, perpY, signUp);
+}
+
+window.angledLineLabelGapConfig = angledLineLabelGapConfig;
 
 const DEFAULT_TEXT_STYLE = {
     fontFamily: 'Roboto, sans-serif',
@@ -1324,12 +1339,6 @@ class TrendlineTool extends BaseDrawing {
                 break;
         }
 
-        const nudged = applyAngledLineLabelVAlignOffset(baseX, baseY, angleRad, textVAlign, fontSize);
-        baseX = nudged.x;
-        baseY = nudged.y;
-
-        if (baseX < vLeft || baseX > vRight) return;
-
         const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
             ? 0
             : this.style.textOffsetX;
@@ -1339,17 +1348,23 @@ class TrendlineTool extends BaseDrawing {
         const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
+        const strokeX = baseX;
+        const strokeY = baseY;
+        if (strokeX < vLeft || strokeX > vRight) return;
+
+        const gapCfg = angledLineLabelGapConfig(strokeX, strokeY, textVAlign, angleRad);
+
         appendTextLabel(this.group, label, {
-            x: baseX + offsetX,
-            y: baseY + offsetY,
+            x: strokeX + offsetX,
+            y: strokeY + offsetY,
             anchor: labelAnchor,
-            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle
+            rotation: angle,
+            ...gapCfg
         });
     }
 
@@ -1435,11 +1450,12 @@ class HorizontalLineTool extends BaseDrawing {
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
 
-        // Check if we need to split the line for text
+        // Check if we need to split the line for text (on-line center only; left/right keep full line)
         const hasText = this.text && this.text.trim();
         normalizeLineTextVAlign(this.style);
         const textVAlign = readLineTextVAlign(this.style);
-        const shouldSplitLine = hasText && textVAlign === 'middle';
+        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+        const shouldSplitLine = hasText && textVAlign === 'middle' && textHAlign === 'center';
         
         this._splitInfo = null;
         
@@ -1453,7 +1469,6 @@ class HorizontalLineTool extends BaseDrawing {
             const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             // fixed 30px from endpoint, clamped so gap stays on line
             const HL_EDGE_S = 30;
             const hl_lineLen = xRange[1] - xRange[0];
@@ -1706,20 +1721,10 @@ class HorizontalLineTool extends BaseDrawing {
             const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
                 ? 0
                 : rawOffsetY;
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            let splitAnchor = 'middle';
-            switch (textHAlign) {
-                case 'left':
-                    splitAnchor = resolveLineEndpointSvgAnchor('left', label);
-                    break;
-                case 'right':
-                    splitAnchor = resolveLineEndpointSvgAnchor('right', label);
-                    break;
-            }
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: splitAnchor,
+                anchor: 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -1757,10 +1762,22 @@ class HorizontalLineTool extends BaseDrawing {
         }
         
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const valignOffsetY = horizontalLineLabelYOffset(textVAlign, fontSize);
+        const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
+            ? 0
+            : this.style.textOffsetX;
+        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+            ? 0
+            : this.style.textOffsetY;
+        const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
+        const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
+            ? 0
+            : rawOffsetY;
+        const labelY = textVAlign === 'middle'
+            ? y + offsetY
+            : y + horizontalLineLabelYOffset(textVAlign, fontSize) + offsetY;
         appendTextLabel(this.group, label, {
-            x: baseX + (this.style.textOffsetX || 0),
-            y: y + valignOffsetY,
+            x: baseX + offsetX,
+            y: labelY,
             anchor: hlAnchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
@@ -2478,9 +2495,9 @@ class RayTool extends BaseDrawing {
                 elAnchor = 'middle';
         }
 
-        const nudged = applyAngledLineLabelVAlignOffset(baseX, baseY, originalAngleRad, textVAlign, fontSize);
-        baseX = nudged.x;
-        baseY = nudged.y;
+        const strokeX = baseX;
+        const strokeY = baseY;
+        const gapCfg = angledLineLabelGapConfig(strokeX, strokeY, textVAlign, originalAngleRad);
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
@@ -2490,20 +2507,21 @@ class RayTool extends BaseDrawing {
 
         const chartBottomY = coords.chartBottomY;
         const chartTopY = coords.chartTopY;
-        if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
-        if (chartTopY !== undefined) baseY = Math.max(baseY, chartTopY + 2);
+        let labelY = strokeY + offsetY;
+        if (chartBottomY !== undefined) labelY = Math.min(labelY, chartBottomY - 2);
+        if (chartTopY !== undefined) labelY = Math.max(labelY, chartTopY + 2);
 
         appendTextLabel(this.group, label, {
-            x: baseX + offsetX,
-            y: baseY + offsetY,
+            x: strokeX + offsetX,
+            y: labelY,
             anchor: elAnchor,
-            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle
+            rotation: angle,
+            ...gapCfg
         });
     }
 
@@ -2581,11 +2599,12 @@ class HorizontalRayTool extends BaseDrawing {
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
 
-        // Check if we need to split the line for text
+        // Check if we need to split the line for text (on-line center only; left/right keep full line)
         const hasText = this.text && this.text.trim();
         normalizeLineTextVAlign(this.style);
         const textVAlign = readLineTextVAlign(this.style);
-        const shouldSplitLine = hasText && textVAlign === 'middle';
+        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+        const shouldSplitLine = hasText && textVAlign === 'middle' && textHAlign === 'center';
         
         this._splitInfo = null;
         const y = scales.yScale(p.y);
@@ -2597,7 +2616,6 @@ class HorizontalRayTool extends BaseDrawing {
             const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             // fixed 30px from endpoint, clamped so gap stays on line
             const HR_EDGE_S = 30;
             let hr_rawTextX;
@@ -2874,20 +2892,10 @@ class HorizontalRayTool extends BaseDrawing {
             const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
                 ? 0
                 : rawOffsetY;
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            let splitAnchor = 'middle';
-            switch (textHAlign) {
-                case 'left':
-                    splitAnchor = resolveLineEndpointSvgAnchor('left', label);
-                    break;
-                case 'right':
-                    splitAnchor = resolveLineEndpointSvgAnchor('right', label);
-                    break;
-            }
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: splitAnchor,
+                anchor: 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -2930,11 +2938,23 @@ class HorizontalRayTool extends BaseDrawing {
         }
         
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const valignOffsetY = horizontalLineLabelYOffset(textVAlign, fontSize);
+        const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
+            ? 0
+            : this.style.textOffsetX;
+        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+            ? 0
+            : this.style.textOffsetY;
+        const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
+        const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
+            ? 0
+            : rawOffsetY;
+        const labelY = textVAlign === 'middle'
+            ? y + offsetY
+            : y + horizontalLineLabelYOffset(textVAlign, fontSize) + offsetY;
 
         appendTextLabel(this.group, label, {
-            x: baseX + (this.style.textOffsetX || 0),
-            y: y + valignOffsetY,
+            x: baseX + offsetX,
+            y: labelY,
             anchor: hrAnchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
@@ -3284,9 +3304,9 @@ class ExtendedLineTool extends BaseDrawing {
                 elAnchor = 'middle';
         }
 
-        const nudged = applyAngledLineLabelVAlignOffset(baseX, baseY, originalAngleRad, textVAlign, fontSize);
-        baseX = nudged.x;
-        baseY = nudged.y;
+        const strokeX = baseX;
+        const strokeY = baseY;
+        const gapCfg = angledLineLabelGapConfig(strokeX, strokeY, textVAlign, originalAngleRad);
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
@@ -3296,20 +3316,21 @@ class ExtendedLineTool extends BaseDrawing {
 
         const chartBottomY = coords.chartBottomY;
         const chartTopY = coords.chartTopY;
-        if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
-        if (chartTopY !== undefined) baseY = Math.max(baseY, chartTopY + 2);
+        let labelY = strokeY + offsetY;
+        if (chartBottomY !== undefined) labelY = Math.min(labelY, chartBottomY - 2);
+        if (chartTopY !== undefined) labelY = Math.max(labelY, chartTopY + 2);
 
         appendTextLabel(this.group, label, {
-            x: baseX + offsetX,
-            y: baseY + offsetY,
+            x: strokeX + offsetX,
+            y: labelY,
             anchor: elAnchor,
-            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle
+            rotation: angle,
+            ...gapCfg
         });
     }
 
@@ -3447,7 +3468,7 @@ class CrossLineTool extends BaseDrawing {
                 x: cl_baseX + (this.style.textOffsetX || 0),
                 y: yScreen,
                 anchor: cl_anchor,
-                yAnchor: 'middle',
+                yAnchor: cl_textVAlign === 'middle' ? 'middle' : undefined,
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,

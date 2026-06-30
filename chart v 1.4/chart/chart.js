@@ -21177,6 +21177,9 @@ class Chart {
                 const dm = this.drawingManager;
                 if (dm && typeof dm.handleMouseDown === 'function') {
                     dm._touchPointerActive = true;
+                    if (typeof dm._rememberPlacementCrosshair === 'function') {
+                        dm._rememberPlacementCrosshair(e);
+                    }
                     this._drawingTouchPointerId = e.pointerId;
                     dm.handleMouseDown(e);
                     try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
@@ -21196,6 +21199,9 @@ class Chart {
                 e.preventDefault();
                 const dm = this.drawingManager;
                 if (dm && typeof dm.handleMouseMove === 'function') {
+                    if (typeof dm._rememberPlacementCrosshair === 'function') {
+                        dm._rememberPlacementCrosshair(e);
+                    }
                     dm.handleMouseMove(e);
                 }
                 if (typeof this.updateCrosshair === 'function') {
@@ -21204,7 +21210,16 @@ class Chart {
                 return;
             }
 
-            if (this._touchDrawingConsumesPointer(e) && !this.drag?.active) return;
+            if (this._touchDrawingConsumesPointer(e) && !this.drag?.active) {
+                const dm = this.drawingManager;
+                if (dm && typeof dm._rememberPlacementCrosshair === 'function') {
+                    dm._rememberPlacementCrosshair(e);
+                }
+                if (typeof this.updateCrosshair === 'function') {
+                    this.updateCrosshair(e);
+                }
+                return;
+            }
             const tracking = this._activeTouchPointerId === e.pointerId
                 || (this.drag && this.drag.active);
             if (!tracking) return;
@@ -30021,6 +30036,10 @@ class Chart {
 
     updateCrosshair(e) {
         e = (e && e.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
+        const _dm = this.drawingManager;
+        const touchPlacement = _dm && typeof _dm._shouldKeepPlacementCrosshair === 'function'
+            && _dm._shouldKeepPlacementCrosshair();
+        const fromPlacementPin = !!(e && e.__fromPlacementPin);
         // Multichart: document-level mousemove still runs on the parent page while
         // the pointer is over grid chrome or another tile. Do not treat that as
         // "leave plot" on this chart — it spammed crosshair-clear to every peer.
@@ -30041,6 +30060,9 @@ class Chart {
                 const insideTile = e.clientX >= rect.left && e.clientX <= rect.right
                     && e.clientY >= rect.top && e.clientY <= rect.bottom;
                 if (!insideTile) {
+                    if (touchPlacement && _dm._placementCrosshairClient && !fromPlacementPin) {
+                        return this.updateCrosshair({ ..._dm._placementCrosshairClient, __fromPlacementPin: true });
+                    }
                     this.hideCrosshair();
                     this.currentCrosshairTimestamp = null;
                     return;
@@ -30073,6 +30095,9 @@ class Chart {
         this._lastCrosshairShiftKey = !!e.shiftKey;
         
         if (x < m.l || x > this.w - m.r || y < m.t || y > this.h - m.b) {
+            if (touchPlacement && _dm._placementCrosshairClient && !fromPlacementPin) {
+                return this.updateCrosshair({ ..._dm._placementCrosshairClient, __fromPlacementPin: true });
+            }
             this.hideCrosshair();
             this.currentCrosshairTimestamp = null;
             // Broadcast hide to other panels (skip during pan — causes peer storms).
@@ -30092,7 +30117,6 @@ class Chart {
         const hLine = container.querySelector('.crosshair-horizontal');
         const priceLabel = container.querySelector('.price-label');
         const timeLabel = container.querySelector('.time-label');
-        const _dm = this.drawingManager;
         
         // Bar under cursor (for OHLC / lock). Lines & labels use raw (x,y) so the pointer
         // sits on the crosshair intersection (snap-to-bar caused visible offset vs cursor).
@@ -30236,7 +30260,10 @@ class Chart {
             && _dm._isDrawingGeometryMoveActive();
         const _drawingActive = !!(_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDrawing || _dm.isDragging || _geometryMove));
         const crosshairSettingOn = this.chartSettings?.showCrosshair !== false;
-        const showLines = crosshairSettingOn && (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
+        const showLines = crosshairSettingOn && (
+            this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive || touchPlacement
+        ) && (this.cursorType !== 'dot' || touchPlacement);
+        const showCrosshairUi = showLines || this.cursorType === 'dot' || this.cursorType === 'eraser' || touchPlacement;
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
         const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
@@ -30333,7 +30360,7 @@ class Chart {
             priceLabel.style.transform = 'translateY(-50%)';
             priceLabel.style.width = (_axisW - 4) + 'px';
             priceLabel.style.textAlign = 'center';
-            const showPanelCrosshairUi = showLines || this.cursorType === 'dot' || this.cursorType === 'eraser';
+            const showPanelCrosshairUi = showCrosshairUi;
             priceLabel.style.display = (inIndicatorSubPanel || !showPanelCrosshairUi) ? 'none' : 'block';
             if (labelBg) priceLabel.style.background = labelBg;
             if (labelTextColor) priceLabel.style.color = labelTextColor;
@@ -30394,13 +30421,13 @@ class Chart {
                 timeLabel.style.top = 'auto';
                 timeLabel.style.bottom = `${Math.max(2, Math.floor(m.b * 0.2))}px`;
                 timeLabel.style.transform = 'translateX(-50%)';
-                timeLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
+                timeLabel.style.display = showCrosshairUi ? 'block' : 'none';
                 // Enforce label colors from settings
                 if (this.chartSettings.cursorLabelBgColor) timeLabel.style.background = this.chartSettings.cursorLabelBgColor;
                 if (this.chartSettings.cursorLabelTextColor) timeLabel.style.color = this.chartSettings.cursorLabelTextColor;
             } else if (this.data.length === 0) {
                 // Even with no data, show the label (will be empty but visible)
-                timeLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
+                timeLabel.style.display = showCrosshairUi ? 'block' : 'none';
             }
             
             if (hasSnappedCandle) {
@@ -30497,6 +30524,14 @@ class Chart {
     }
     
     hideCrosshair() {
+        const _dm = this.drawingManager;
+        if (_dm && typeof _dm._shouldKeepPlacementCrosshair === 'function'
+            && _dm._shouldKeepPlacementCrosshair() && _dm._placementCrosshairClient) {
+            if (typeof this.updateCrosshair === 'function') {
+                this.updateCrosshair({ ..._dm._placementCrosshairClient, __fromPlacementPin: true });
+            }
+            return;
+        }
         if (this.data && this.data.length > 0) {
             this.hoverIndex = this.data.length - 1;
             if (typeof this.syncCrosshairIndicatorValues === 'function') {

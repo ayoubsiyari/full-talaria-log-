@@ -1450,11 +1450,12 @@ class HorizontalLineTool extends BaseDrawing {
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
 
-        // Check if we need to split the line for text
+        // Check if we need to split the line for text (on-line center only; left/right keep full line)
         const hasText = this.text && this.text.trim();
         normalizeLineTextVAlign(this.style);
         const textVAlign = readLineTextVAlign(this.style);
-        const shouldSplitLine = hasText && textVAlign === 'middle';
+        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+        const shouldSplitLine = hasText && textVAlign === 'middle' && textHAlign === 'center';
         
         this._splitInfo = null;
         
@@ -1468,7 +1469,6 @@ class HorizontalLineTool extends BaseDrawing {
             const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             // fixed 30px from endpoint, clamped so gap stays on line
             const HL_EDGE_S = 30;
             const hl_lineLen = xRange[1] - xRange[0];
@@ -1721,20 +1721,10 @@ class HorizontalLineTool extends BaseDrawing {
             const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
                 ? 0
                 : rawOffsetY;
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            let splitAnchor = 'middle';
-            switch (textHAlign) {
-                case 'left':
-                    splitAnchor = resolveLineEndpointSvgAnchor('left', label);
-                    break;
-                case 'right':
-                    splitAnchor = resolveLineEndpointSvgAnchor('right', label);
-                    break;
-            }
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: splitAnchor,
+                anchor: 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -1782,16 +1772,19 @@ class HorizontalLineTool extends BaseDrawing {
         const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
             ? 0
             : rawOffsetY;
+        const labelY = textVAlign === 'middle'
+            ? y + offsetY
+            : y + horizontalLineLabelYOffset(textVAlign, fontSize) + offsetY;
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
-            y: y + offsetY,
+            y: labelY,
             anchor: hlAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize, 
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            ...lineLabelGapConfig(baseX, y, textVAlign)
+            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle
         });
     }
 
@@ -2606,11 +2599,12 @@ class HorizontalRayTool extends BaseDrawing {
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
 
-        // Check if we need to split the line for text
+        // Check if we need to split the line for text (on-line center only; left/right keep full line)
         const hasText = this.text && this.text.trim();
         normalizeLineTextVAlign(this.style);
         const textVAlign = readLineTextVAlign(this.style);
-        const shouldSplitLine = hasText && textVAlign === 'middle';
+        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+        const shouldSplitLine = hasText && textVAlign === 'middle' && textHAlign === 'center';
         
         this._splitInfo = null;
         const y = scales.yScale(p.y);
@@ -2622,7 +2616,6 @@ class HorizontalRayTool extends BaseDrawing {
             const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             // fixed 30px from endpoint, clamped so gap stays on line
             const HR_EDGE_S = 30;
             let hr_rawTextX;
@@ -2899,20 +2892,10 @@ class HorizontalRayTool extends BaseDrawing {
             const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
                 ? 0
                 : rawOffsetY;
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            let splitAnchor = 'middle';
-            switch (textHAlign) {
-                case 'left':
-                    splitAnchor = resolveLineEndpointSvgAnchor('left', label);
-                    break;
-                case 'right':
-                    splitAnchor = resolveLineEndpointSvgAnchor('right', label);
-                    break;
-            }
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: splitAnchor,
+                anchor: 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -2965,17 +2948,20 @@ class HorizontalRayTool extends BaseDrawing {
         const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
             ? 0
             : rawOffsetY;
+        const labelY = textVAlign === 'middle'
+            ? y + offsetY
+            : y + horizontalLineLabelYOffset(textVAlign, fontSize) + offsetY;
 
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
-            y: y + offsetY,
+            y: labelY,
             anchor: hrAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            ...lineLabelGapConfig(baseX, y, textVAlign)
+            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle
         });
     }
 

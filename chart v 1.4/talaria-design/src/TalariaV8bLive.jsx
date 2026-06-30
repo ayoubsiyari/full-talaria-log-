@@ -15017,6 +15017,7 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlFontSizeDrop"); return n; }); }, 130);
   };
   const closeTlInfoDrop = () => {
+    if (tlStyleDrop !== "info" && !closing.has("tlInfoDrop")) return;
     setClosing((s) => new Set([...s, "tlInfoDrop"]));
     setTlStyleDrop(null);
     setTimeout(() => {
@@ -17440,6 +17441,8 @@ const TalariaV8bLive = () => {
     setTplNameInput("");
   };
   const tlChkLastActRef = useRef(Object.create(null));
+  /** Blocks metrics dropdown toggle on the same pointer gesture as Show Info master checkbox. */
+  const tlShowInfoChkGuardRef = useRef(false);
   const tlStyleLiveRef = useRef(tlStyle);
   tlStyleLiveRef.current = tlStyle;
   const txtStyleLiveRef = useRef(txtStyle);
@@ -21335,6 +21338,8 @@ const TalariaV8bLive = () => {
 
   /** Show Info master toggle — auto-select first metric when enabling; do not auto-open dropdown. */
   const applyTlShowInfoToggle = useCallback(() => {
+    tlShowInfoChkGuardRef.current = true;
+    requestAnimationFrame(() => { tlShowInfoChkGuardRef.current = false; });
     suppressForwardBridge.current = true;
     flushSync(() => setTlStyle((s) => {
       const legacy = resolveLegacyTool();
@@ -21344,9 +21349,7 @@ const TalariaV8bLive = () => {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
       resolveLegacyTool,
     });
-    if (!tlStyleLiveRef.current?.showInfo) {
-      closeTlInfoDrop();
-    }
+    closeTlInfoDrop();
   }, []);
 
   /** Middle-line dash style — immediate repaint (rect / ellipse / circle / parallel channel). */
@@ -23585,10 +23588,11 @@ const TalariaV8bLive = () => {
                     {/* Separator spanning all columns */}
                     <div style={{gridColumn:"1 / -1",height:1,background:c.br,margin:"2px 0 4px"}}/>
                     {/* Stats row: checkbox col1, dropdown spanning cols 2-4 */}
-                    <div data-tl-style-drop="1" style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",applyTlShowInfoToggle,{ immediate: true })}</div>
+                    <div style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",applyTlShowInfoToggle,{ immediate: true })}</div>
                     <div data-tl-style-drop="1" style={{gridColumn:"2 / -1",padding:"8px 0",opacity:tlStyle.showInfo?1:0.38,pointerEvents:tlStyle.showInfo?"auto":"none",transition:"opacity 0.15s"}}>
                       <div style={{position:"relative"}}>
                         <div data-tl-style-drop="1" {...modalPointerActivate((e) => {
+                          if (tlShowInfoChkGuardRef.current) return;
                           if (!tlStyle.showInfo) return;
                           if (tlStyleDrop==="info"||closing.has("tlInfoDrop")) {
                             closeTlInfoDrop();
@@ -24735,10 +24739,18 @@ const TalariaV8bLive = () => {
                 </div>
               ))}
                             {/* Show Info row — dropdown always visible, dimmed when off (hidden for hline) */}
-              {!isRRTool && tlSubTool.icon !== "measure" && !isFibTool && !isGannTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon) && <div data-tl-style-drop="1" style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",applyTlShowInfoToggle,{ immediate: true })}
-                <div style={{ position:"relative", marginLeft:"auto" }}>
+              {!isRRTool && tlSubTool.icon !== "measure" && !isFibTool && !isGannTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon) && <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
+                <div
+                  onPointerDown={(e) => { e.stopPropagation(); tlShowInfoChkGuardRef.current = true; }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ flexShrink: 0 }}
+                >
+                  {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",applyTlShowInfoToggle,{ immediate: true })}
+                </div>
+                <div data-tl-style-drop="1" style={{ position:"relative", marginLeft:"auto" }}>
                   <div data-tl-style-drop="1" {...modalPointerActivate((e) => {
+                          if (tlShowInfoChkGuardRef.current) return;
                           e.stopPropagation();
                           if (!tlStyle.showInfo) return;
                           if (tlStyleDrop==="info"||closing.has("tlInfoDrop")) {

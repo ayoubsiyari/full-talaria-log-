@@ -486,8 +486,7 @@ function horizontalLineLabelPerp(textVAlign) {
 
 /**
  * Nudge label so the edge nearest the stroke sits exactly `gap` px away.
- * Uses font block height for the perpendicular span — axis-aligned bbox corners
- * grow with label width on rotated/diagonal lines and wrongly push text farther away.
+ * Uses actual bbox edge (not block-height estimate) so Arabic/Latin share the same gap.
  */
 function nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text, options = {}) {
     const gap = lineLabelGapFromStroke(fontSize);
@@ -503,26 +502,61 @@ function nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text, opt
 
     const lx = lineRef.x;
     const ly = lineRef.y;
-    const halfPerp = lineLabelBlockHeight(text, fontSize) / 2;
 
-    let centerAlong = 0;
+    let edgeTowardLine = 0;
     if (!anchorOnStroke) {
         let bb;
         try { bb = node.getBBox(); } catch (_) { return { nudgeX: 0, nudgeY: 0 }; }
         if (!Number.isFinite(bb.width) && !Number.isFinite(bb.height)) {
             return { nudgeX: 0, nudgeY: 0 };
         }
-        const cx = bb.x + bb.width / 2;
-        const cy = bb.y + bb.height / 2;
-        centerAlong = (cx - lx) * px + (cy - ly) * py;
+        const corners = [
+            [bb.x, bb.y],
+            [bb.x + bb.width, bb.y],
+            [bb.x + bb.width, bb.y + bb.height],
+            [bb.x, bb.y + bb.height]
+        ];
+        let minAlong = Infinity;
+        for (let i = 0; i < corners.length; i++) {
+            const cx = corners[i][0];
+            const cy = corners[i][1];
+            const along = (cx - lx) * px + (cy - ly) * py;
+            if (along < minAlong) minAlong = along;
+        }
+        edgeTowardLine = Number.isFinite(minAlong) ? minAlong : 0;
     }
-
-    const edgeTowardLine = centerAlong - halfPerp;
-    if (!Number.isFinite(edgeTowardLine)) return { nudgeX: 0, nudgeY: 0 };
 
     const adjust = gap - edgeTowardLine;
     if (Math.abs(adjust) < 0.01) return { nudgeX: 0, nudgeY: 0 };
     return { nudgeX: px * adjust, nudgeY: py * adjust };
+}
+
+/** Equal top/bottom (or perpendicular) extent around an on-line anchor after rotation. */
+function equalizeOnLineMiddleExtent(bbox, anchorX, anchorY, rotationDeg) {
+    if (!bbox || !Number.isFinite(bbox.width) || !Number.isFinite(bbox.height)) {
+        return { nudgeX: 0, nudgeY: 0 };
+    }
+    const rad = (Number(rotationDeg) || 0) * Math.PI / 180;
+    const perpX = -Math.sin(rad);
+    const perpY = Math.cos(rad);
+    const corners = [
+        [bbox.x, bbox.y],
+        [bbox.x + bbox.width, bbox.y],
+        [bbox.x + bbox.width, bbox.y + bbox.height],
+        [bbox.x, bbox.y + bbox.height]
+    ];
+    let minP = Infinity;
+    let maxP = -Infinity;
+    for (let i = 0; i < corners.length; i++) {
+        const p = (corners[i][0] - anchorX) * perpX + (corners[i][1] - anchorY) * perpY;
+        if (p < minP) minP = p;
+        if (p > maxP) maxP = p;
+    }
+    if (!Number.isFinite(minP) || !Number.isFinite(maxP)) {
+        return { nudgeX: 0, nudgeY: 0 };
+    }
+    const shift = (maxP + minP) / 2;
+    return { nudgeX: -perpX * shift, nudgeY: -perpY * shift };
 }
 
 /** @deprecated Use lineRef + linePerp + nudgeLineLabelFromStroke in appendTextLabel. */

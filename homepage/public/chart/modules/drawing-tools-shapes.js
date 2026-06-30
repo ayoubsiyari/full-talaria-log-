@@ -1958,23 +1958,21 @@ class ArrowTool extends BaseDrawing {
 
         let baseX = origX1 + (origX2 - origX1) * t;
         let baseY = origY1 + (origY2 - origY1) * t;
-        if (typeof applyAngledLineLabelVAlignOffset === 'function') {
-            const nudged = applyAngledLineLabelVAlignOffset(baseX, baseY, angleRad, textVAlign, fontSize);
-            baseX = nudged.x;
-            baseY = nudged.y;
-        }
+        const gapCfg = (typeof angledLineLabelGapConfig === 'function')
+            ? angledLineLabelGapConfig(baseX, baseY, textVAlign, angleRad)
+            : {};
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
             y: baseY + offY,
             anchor,
-            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
             fontWeight: this.style.fontWeight || 'normal',
             fontStyle: this.style.fontStyle || 'normal',
-            rotation: angle
+            rotation: angle,
+            ...gapCfg
         });
     }
 

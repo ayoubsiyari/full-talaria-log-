@@ -235,6 +235,8 @@ class DrawingToolsManager {
         this._directResizeDragCleanup = null;
         this._touchPointerActive = false;
         this._lastTouchSynthAt = 0;
+        this._placementCrosshairClient = null;
+        this._placementCrosshairPinned = false;
         /** Drawings being moved via canvas geometric drag (not isDragging SVG path). */
         this._directMoveDrawings = null;
         /** Active d3 body-drag gestures (whole-shape move via setupDrawingDrag). */
@@ -2625,27 +2627,59 @@ class DrawingToolsManager {
         }
     }
 
+    /** True on phones/tablets (coarse pointer or no hover). */
+    _isCoarsePointerDevice() {
+        if (this._touchPointerActive) return true;
+        if (typeof window !== 'undefined' && window.matchMedia) {
+            if (window.matchMedia('(pointer: coarse)').matches) return true;
+            if (window.matchMedia('(hover: none)').matches) return true;
+        }
+        return false;
+    }
+
+    /** Keep crosshair visible while a draw tool is armed on touch (TradingView-style). */
+    _shouldKeepPlacementCrosshair() {
+        return this._isPlacementModeActive() && this._isCoarsePointerDevice();
+    }
+
+    _rememberPlacementCrosshair(event) {
+        if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return;
+        this._placementCrosshairClient = { clientX: event.clientX, clientY: event.clientY };
+    }
+
     /** TradingView-style: show crosshair when a draw tool is armed (center on touch if no prior pointer). */
-    _showInitialPlacementCrosshair() {
+    _showInitialPlacementCrosshair(retry = false) {
         const c = this.chart;
         if (!c || typeof c.updateCrosshair !== 'function') return;
         const m = c.margin || { l: 60, r: 60, t: 5, b: 30 };
+        let clientX;
+        let clientY;
         const inPlot = Number.isFinite(c.mouseX) && Number.isFinite(c.mouseY)
             && c.mouseX >= m.l && c.mouseX <= (c.w || 0) - m.r
             && c.mouseY >= m.t && c.mouseY <= (c.h || 0) - m.b;
-        if (inPlot && typeof c.refreshCrosshairFromLastPointer === 'function') {
-            c.refreshCrosshairFromLastPointer();
-            return;
-        }
-        const cx = (((c.w || 0) - m.l - m.r) / 2) + m.l;
-        const cy = (((c.h || 0) - m.t - m.b) / 2) + m.t;
         const rect = typeof c._pointerLayoutRect === 'function' ? c._pointerLayoutRect() : null;
         const z = typeof c._v9LayoutZoom === 'function' ? c._v9LayoutZoom() : 1;
         if (!rect) return;
-        c.updateCrosshair({
-            clientX: rect.left + cx * z,
-            clientY: rect.top + cy * z,
-        });
+        if (inPlot) {
+            clientX = rect.left + c.mouseX * z;
+            clientY = rect.top + c.mouseY * z;
+        } else {
+            const cx = (((c.w || 0) - m.l - m.r) / 2) + m.l;
+            const cy = (((c.h || 0) - m.t - m.b) / 2) + m.t;
+            clientX = rect.left + cx * z;
+            clientY = rect.top + cy * z;
+        }
+        const ev = { clientX, clientY };
+        this._rememberPlacementCrosshair(ev);
+        if (this._shouldKeepPlacementCrosshair()) {
+            this._placementCrosshairPinned = true;
+        }
+        c.updateCrosshair(ev);
+        if (!retry && this._isCoarsePointerDevice()) {
+            requestAnimationFrame(() => {
+                if (this.currentTool) this._showInitialPlacementCrosshair(true);
+            });
+        }
     }
 
     /**
@@ -2762,6 +2796,8 @@ class DrawingToolsManager {
         }
         this._clearLiveSyncPreview();
         this._clearCurvePlacementCache();
+        this._placementCrosshairPinned = false;
+        this._placementCrosshairClient = null;
         this.currentTool = null;
         this.drawingState.reset();
         const svgNode = this.svg && this.svg.node();
@@ -5337,6 +5373,9 @@ class DrawingToolsManager {
         const onPointerMove = (e) => {
             if (!this._isTouchLikePointer(e) || !shouldTrackPointer(e)) return;
             e.preventDefault();
+            if (this.currentTool || (this.drawingState && this.drawingState.isDrawing)) {
+                this._rememberPlacementCrosshair(e);
+            }
             this.handleMouseMove(e);
         };
         svgNode.addEventListener('pointermove', onPointerMove, opts);
@@ -5364,10 +5403,13 @@ class DrawingToolsManager {
             chartWrapper.addEventListener('pointermove', (e) => {
                 if (!this._isTouchLikePointer(e)) return;
                 if (this.currentTool || (this.drawingState && this.drawingState.isDrawing)) {
+                    this._rememberPlacementCrosshair(e);
                     if (this.chart && typeof this.chart.updateCrosshair === 'function') {
                         this.chart.updateCrosshair(e);
                     }
                     if (this.drawingState && this.drawingState.isDrawing) {
+                        this.handleMouseMove(e);
+                    } else if (this.currentTool && typeof this.handleMouseMove === 'function') {
                         this.handleMouseMove(e);
                     }
                     return;
