@@ -725,6 +725,44 @@ function v9ChartTypeMatchesCatalog(chartType, catalogType) {
   return alias != null && v9NormalizeChartIndicatorType(alias) === cat;
 }
 
+const V9_CHART_TYPE_TO_ENGINE = {
+  "Candles": "candles",
+  "Hollow Candles": "hollow",
+  "Heikin Ashi": "heikinashi",
+  "Bars": "bars",
+  "Line": "line",
+  "Area": "area",
+};
+const V9_ENGINE_TO_CHART_TYPE = {
+  candles: "Candles",
+  hollow: "Hollow Candles",
+  heikinashi: "Heikin Ashi",
+  bars: "Bars",
+  line: "Line",
+  area: "Area",
+};
+
+function v9ChartTypeLabelFromEngine(engineType) {
+  const key = String(engineType || "").toLowerCase().trim();
+  return V9_ENGINE_TO_CHART_TYPE[key] || "Candles";
+}
+
+function v9ReadPersistedChartTypeLabel() {
+  try {
+    const us = typeof window !== "undefined" ? window.userStorage : null;
+    const raw = us?.getItem?.("chartSettings");
+    if (raw) {
+      const s = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (s?.chartType) return v9ChartTypeLabelFromEngine(s.chartType);
+    }
+  } catch (_) {}
+  try {
+    const eng = typeof window !== "undefined" ? window.chart?.chartSettings?.chartType : null;
+    if (eng) return v9ChartTypeLabelFromEngine(eng);
+  } catch (_) {}
+  return "Candles";
+}
+
 function v9FindChartIndicatorForV9Id(chart, v9Id, idToType) {
   if (!chart || !Array.isArray(chart.indicators?.active)) return null;
   const catalogType = idToType[v9Id];
@@ -11215,7 +11253,11 @@ const TalariaV8bLive = () => {
   const [sessionPairs, setSessionPairs] = useState([]);
   const [symbolSearch, setSymbolSearch] = useState("");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
-  const [chartType, setChartType] = useState("Candles");
+  const [chartType, setChartType] = useState(() => {
+    if (typeof window === "undefined") return "Candles";
+    return v9ReadPersistedChartTypeLabel();
+  });
+  const chartTypeHydratedRef = useRef(false);
   const [chartTypeDropL, setChartTypeDropL] = useState(185);
   const [tfOpen, setTfOpen] = useState(false);
   const [tfCat, setTfCat] = useState(null);
@@ -11779,21 +11821,10 @@ const TalariaV8bLive = () => {
 
   // ─── SYNC CHART TYPE → chart.js ──────────────────────────────────────────
   // V9 React state (chartType) drives chart.js's chartSettings.chartType.
-  // chart.js value vocabulary is lowercase / no spaces; map V9 labels here.
-  // Mirrors what legacy index.html's chart-type dropdown handler does:
-  //     activeChart.chartSettings.chartType = chartType;
-  //     activeChart.render();
-  // Plus _syncChartTypeUI keeps the legacy toolbar icon in sync if it's around.
+  // Hydrate from userStorage/chart first so refresh does not reset to Candles.
+  // On user change, mirror legacy toolbar: saveSettings() for persistence.
   useEffect(() => {
-    const CHART_TYPE_MAP = {
-      "Candles": "candles",
-      "Hollow Candles": "hollow",
-      "Heikin Ashi": "heikinashi",
-      "Bars": "bars",
-      "Line": "line",
-      "Area": "area",
-    };
-    const mapped = CHART_TYPE_MAP[chartType] || "candles";
+    const mapped = V9_CHART_TYPE_TO_ENGINE[chartType] || "candles";
 
     let cancelled = false;
     let attempts = 0;
@@ -11802,13 +11833,26 @@ const TalariaV8bLive = () => {
       if (cancelled) return;
       const chart = window.chart;
       if (!chart || !chart.chartSettings || typeof chart.render !== "function") {
-        // chart.js not ready yet — retry briefly. Once ready it stays ready.
-        if (attempts++ < 60) setTimeout(apply, 100);
+        if (attempts++ < 80) setTimeout(apply, 100);
         return;
       }
+
+      if (!chartTypeHydratedRef.current) {
+        chartTypeHydratedRef.current = true;
+        const persisted = v9ReadPersistedChartTypeLabel();
+        if (persisted !== chartType) {
+          setChartType(persisted);
+          return;
+        }
+      }
+
       if (chart.chartSettings.chartType === mapped) return;
+
       chart.chartSettings.chartType = mapped;
       try { chart.render(); } catch (err) { console.warn("[V9] chart.render failed after chartType change:", err); }
+      if (typeof chart.saveSettings === "function") {
+        try { chart.saveSettings(); } catch (_) {}
+      }
       // Apply to other panels too (multi-panel sync, mirrors legacy behavior).
       try {
         const panels = window.panelManager?.getPanels?.() || [];
@@ -11817,6 +11861,9 @@ const TalariaV8bLive = () => {
           if (pc && pc !== chart && pc.chartSettings) {
             pc.chartSettings.chartType = mapped;
             if (typeof pc.render === "function") pc.render();
+            if (typeof pc.saveSettings === "function") {
+              try { pc.saveSettings(); } catch (_) {}
+            }
           }
         }
       } catch (_) {}
@@ -27731,7 +27778,7 @@ const TalariaV8bLive = () => {
                   onPointerDown={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [pid]: e.target.value }))}
+                  onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [pid]: v9NormalizeIndNumericString(e.target.value) }))}
                   style={{ width: 44, height: 26, background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
                     color: disabled ? c.tm : c.tx, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none", boxSizing: "border-box",
                     fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: disabled ? "default" : "text", opacity: disabled ? 0.45 : 1 }} />

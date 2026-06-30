@@ -3885,6 +3885,20 @@ function indicatorPayloadValueChanged(nextVal, prevVal) {
     return String(nextVal) !== String(prevVal);
 }
 
+/** Panel reference levels (zero / bands) — changing these must refresh Y autoscale + redraw lines. */
+const PANEL_REFERENCE_LEVEL_IDS = [
+    'zeroValue', 'midValue', 'overboughtValue', 'oversoldValue', 'upperValue', 'lowerValue'
+];
+
+function indicatorPanelReferenceLevelChanged(merged, prev) {
+    if (!merged) return false;
+    const prior = prev || {};
+    return PANEL_REFERENCE_LEVEL_IDS.some(function (id) {
+        if (merged[id] === undefined) return false;
+        return indicatorPayloadValueChanged(merged[id], prior[id]);
+    });
+}
+
 function isIndicatorStyleOrThicknessParam(param) {
     if (!param || param.type === 'heading' || param.type === 'divider') return false;
     if (param.tab === 'style') return true;
@@ -5845,6 +5859,7 @@ window.__v9IndDashStyleParamId = v9IndDashStyleParamId;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
 window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
 window.__v9IndicatorUpdateNeedsDataRecalc = indicatorUpdateNeedsDataRecalc;
+window.__v9IndicatorPanelReferenceLevelChanged = indicatorPanelReferenceLevelChanged;
 window.__v9ApplyIndicatorLiveUpdate = applyIndicatorLiveUpdate;
 window.__v9IsIndicatorStyleOrThicknessParam = isIndicatorStyleOrThicknessParam;
 window.__v9SanitizeIndicatorParamValue = sanitizeIndicatorParamValue;

@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260628b184';
+const CHART_ENGINE_BUILD = '20260628b186';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -21943,9 +21943,8 @@ class Chart {
             }
 
             this.drawGrid();
-            if (!interactionLite) {
-                this.drawVolume(visible, panOpts);
-            }
+            // Volume uses panFast LOD — keep painted every frame (canvas clears each paint; skipping caused flicker).
+            this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
             if (typeof this.drawIndicatorsOptimized === 'function') {

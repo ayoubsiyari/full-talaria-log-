@@ -6336,6 +6336,12 @@
         const needsDataRecalc = typeof window.__v9IndicatorUpdateNeedsDataRecalc === 'function'
             ? window.__v9IndicatorUpdateNeedsDataRecalc(indicator.type, newParams, prevMerged)
             : true;
+
+        if (typeof window.__v9IndicatorPanelReferenceLevelChanged === 'function'
+            && window.__v9IndicatorPanelReferenceLevelChanged(newParams, prevMerged)
+            && typeof this._resetIndicatorPanelAutoscale === 'function') {
+            this._resetIndicatorPanelAutoscale(indicator);
+        }
         
         if (newParams.visible !== undefined) {
             indicator.visible = newParams.visible !== false;
@@ -10899,6 +10905,33 @@ Chart.prototype._indicatorPanelHasUserAxis = function(indicator) {
     return Math.abs(z - 1) > 1e-6 || Math.abs(o) > 1e-12;
 };
 
+/** Clear cached panel Y range / user zoom when reference levels (zero line, bands) change. */
+Chart.prototype._resetIndicatorPanelAutoscale = function(indicator) {
+    if (!indicator) return;
+    delete indicator._panelBaseMin;
+    delete indicator._panelBaseMax;
+    this._ensureIndicatorPanelAxis(indicator);
+    indicator._panelAxis.zoom = 1;
+    indicator._panelAxis.offset = 0;
+    if (this._panelSnapDomains && indicator.id != null) {
+        delete this._panelSnapDomains[indicator.id];
+    }
+};
+
+Chart.prototype._resolveIndicatorLevelValue = function(indicator, style, key, fallback) {
+    const st = style || indicator.style || {};
+    const pa = indicator.params || {};
+    if (st[key] != null && st[key] !== '') {
+        const n = Number(st[key]);
+        if (Number.isFinite(n)) return n;
+    }
+    if (pa[key] != null && pa[key] !== '') {
+        const n = Number(pa[key]);
+        if (Number.isFinite(n)) return n;
+    }
+    return fallback != null ? fallback : 0;
+};
+
 Chart.prototype._finalizePanelRange = function(indicator, baseMin, baseMax) {
     let b0 = baseMin;
     let b1 = baseMax;
@@ -13179,7 +13212,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     Chart.prototype._drawPanelHLine = function(ctx, m, panelTop, panelBottom, scaleY, value, color, lineStyle, labelText, lineWidth, dashStyle) {
         if (value === null || value === undefined || isNaN(value)) return;
         const y = scaleY(value);
-        if (y === null || !Number.isFinite(y) || y <= panelTop || y >= panelBottom) return;
+        if (y === null || !Number.isFinite(y)) return;
+        // Reference levels may sit on the panel edge after autoscale — clip handles masking.
+        if (y < panelTop - 4 || y > panelBottom + 4) return;
         ctx.strokeStyle = color || '#787b86';
         ctx.lineWidth = lineWidth != null ? lineWidth : 1;
         var dash = dashStyle;
@@ -15055,7 +15090,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!values || !values.length) return;
         const style = indicator.style || {};
         const resolve = this._resolveIndicatorBandLineColor.bind(this);
-        const zeroVal = style.zeroValue != null ? style.zeroValue : 0;
+        const zeroVal = typeof this._resolveIndicatorLevelValue === 'function'
+            ? this._resolveIndicatorLevelValue(indicator, style, 'zeroValue', 0)
+            : (style.zeroValue != null ? Number(style.zeroValue) : 0);
 
         let min = Infinity;
         let max = -Infinity;

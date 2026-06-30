@@ -314,13 +314,66 @@
         return Date.now();
     }
 
-    /** Local YYYY-MM-DD for a timestamp (matches chart date display for that instant). */
-    function isoDateLocal(ms) {
+    function chartTimezoneId() {
+        try {
+            if (window.timezoneManager && typeof window.timezoneManager.getTimezone === 'function') {
+                var tz = window.timezoneManager.getTimezone();
+                if (tz && tz.id) return tz.id;
+            }
+        } catch (_e) { /* ignore */ }
+        return null;
+    }
+
+    /** Wall-clock fields in the chart settings timezone (falls back to browser local). */
+    function wallClockPartsMs(ms) {
+        var tzId = chartTimezoneId();
+        if (tzId && window.timezoneManager && typeof window.timezoneManager._wallClockParts === 'function') {
+            try {
+                return window.timezoneManager._wallClockParts(ms, tzId);
+            } catch (_e2) { /* fall through */ }
+        }
+        if (tzId) {
+            try {
+                var o = {};
+                new Intl.DateTimeFormat('en-US', {
+                    timeZone: tzId,
+                    hour12: false,
+                    year: 'numeric',
+                    month: 'numeric',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: 'numeric'
+                }).formatToParts(new Date(ms)).forEach(function (p) {
+                    if (p.type !== 'literal') {
+                        var n = parseInt(p.value, 10);
+                        if (!Number.isNaN(n)) o[p.type] = n;
+                    }
+                });
+                return {
+                    year: o.year,
+                    month: o.month,
+                    day: o.day,
+                    hour: o.hour,
+                    minute: o.minute
+                };
+            } catch (_e3) { /* fall through */ }
+        }
         var d = new Date(ms);
-        var y = d.getFullYear();
-        var mo = String(d.getMonth() + 1).padStart(2, '0');
-        var day = String(d.getDate()).padStart(2, '0');
-        return y + '-' + mo + '-' + day;
+        return {
+            year: d.getFullYear(),
+            month: d.getMonth() + 1,
+            day: d.getDate(),
+            hour: d.getHours(),
+            minute: d.getMinutes()
+        };
+    }
+
+    /** YYYY-MM-DD in chart timezone (matches chart date display for that instant). */
+    function isoDateLocal(ms) {
+        var p = wallClockPartsMs(ms);
+        var mo = String(p.month).padStart(2, '0');
+        var day = String(p.day).padStart(2, '0');
+        return p.year + '-' + mo + '-' + day;
     }
 
     function dateStrToMsStart(dateStr) {
@@ -862,13 +915,12 @@
     }
 
     function timeParts(ms) {
-        var d = new Date(ms);
-        var hh = String(d.getHours()).padStart(2, '0');
-        var mm = String(d.getMinutes()).padStart(2, '0');
-        var y = d.getFullYear();
-        var mo = String(d.getMonth() + 1).padStart(2, '0');
-        var day = String(d.getDate()).padStart(2, '0');
-        return { clock: hh + ':' + mm, dateStr: y + '.' + mo + '.' + day };
+        var p = wallClockPartsMs(ms);
+        var hh = String(p.hour).padStart(2, '0');
+        var mm = String(p.minute).padStart(2, '0');
+        var mo = String(p.month).padStart(2, '0');
+        var day = String(p.day).padStart(2, '0');
+        return { clock: hh + ':' + mm, dateStr: p.year + '.' + mo + '.' + day };
     }
 
     function formatCountdown(msUntil) {
@@ -1427,6 +1479,18 @@
         if (document.hidden) stopCountdownLoop();
         else if (state.loaded) startCountdownLoop();
     });
+
+    function bindChartTimezoneListener() {
+        if (!window.timezoneManager || window.timezoneManager.__economicNewsTzBound) return;
+        window.timezoneManager.__economicNewsTzBound = true;
+        window.timezoneManager.addListener(function () {
+            if (state.loaded) render();
+            invalidateAxisEventsCache();
+            requestChartMarkerRedraw();
+        });
+    }
+    bindChartTimezoneListener();
+    setTimeout(bindChartTimezoneListener, 0);
 
     window.addEventListener('replayVirtualTimeChanged', function () {
         if (state.replayDayReloadTimer) clearTimeout(state.replayDayReloadTimer);
