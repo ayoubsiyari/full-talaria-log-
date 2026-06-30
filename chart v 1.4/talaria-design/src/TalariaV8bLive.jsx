@@ -17988,18 +17988,11 @@ const TalariaV8bLive = () => {
   const openIndShapeDropAnchor = (e, dropKey, dropH, minWidth) => {
     const btn = e.currentTarget;
     const r = btn.getBoundingClientRect();
-    const panelEl = typeof btn.closest === "function" ? btn.closest("[data-v9-ind-sett]") : null;
-    const footerEl = panelEl && typeof panelEl.querySelector === "function"
-      ? panelEl.querySelector("[data-ind-sett-footer]")
-      : null;
-    const limitBottom = footerEl ? footerEl.getBoundingClientRect().top : window.innerHeight - 8;
-    const spaceBelow = limitBottom - r.bottom - 4;
-    const openUp = spaceBelow < dropH;
     setIndStyleDropAnchor({
-      top: openUp ? r.top - dropH - 4 : r.bottom + 4,
+      top: r.bottom + 4,
       left: r.left,
       width: Math.max(r.width, minWidth || 56),
-      openUp,
+      openUp: false,
     });
     setIndStyleDrop(dropKey);
   };

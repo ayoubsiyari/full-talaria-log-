@@ -13283,7 +13283,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Line', zeroVal, zeroW, style.zeroLineDashStyle || 'Solid');
         }
 
-        if (style.showHist !== false && this._panelRenderFast !== true) {
+        if (style.showHist !== false) {
             const barW = Math.max(1, (this.candleWidth || 8) * 0.8);
             for (let i = visibleStart; i < visibleEnd && i < histArr.length; i++) {
                 const val = histArr[i];
