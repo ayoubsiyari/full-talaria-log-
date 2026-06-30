@@ -21142,6 +21142,22 @@ class Chart {
     }
 
     /** Route touch/pen pointer events through mousedown/mousemove/mouseup handlers. */
+    _touchDrawingConsumesPointer(e) {
+        const dm = this.drawingManager;
+        if (!dm) return false;
+        if (dm.currentTool || dm.drawingState?.isDrawing || dm.isRectSelecting || dm.isDrawingPath) {
+            return true;
+        }
+        if (typeof dm._isDrawingGeometryMoveActive === 'function' && dm._isDrawingGeometryMoveActive()) {
+            return true;
+        }
+        if (typeof dm._isLiveHandleEditing === 'function' && dm._isLiveHandleEditing()) {
+            return true;
+        }
+        if (this.tool) return true;
+        return false;
+    }
+
     _setupTouchPointerBridge() {
         if (!this.canvas) return;
         const opts = { passive: false };
@@ -21154,6 +21170,7 @@ class Chart {
 
         this.canvas.addEventListener('pointerdown', (e) => {
             if (!isTouchLike(e) || this._pinchActive) return;
+            if (this._touchDrawingConsumesPointer(e)) return;
             if (typeof e.button === 'number' && e.button !== 0) return;
             e.preventDefault();
             this._activeTouchPointerId = e.pointerId;
@@ -21162,6 +21179,7 @@ class Chart {
 
         const onPointerMove = (e) => {
             if (!isTouchLike(e) || this._pinchActive) return;
+            if (this._touchDrawingConsumesPointer(e) && !this.drag?.active) return;
             const tracking = this._activeTouchPointerId === e.pointerId
                 || (this.drag && this.drag.active);
             if (!tracking) return;
