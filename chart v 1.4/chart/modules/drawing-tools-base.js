@@ -413,10 +413,11 @@ function horizontalLineLabelPerp(textVAlign) {
 }
 
 /**
- * Nudge label so the bbox edge nearest the stroke sits exactly `gap` px away.
- * Works for horizontal, diagonal, and rotated line labels.
+ * Nudge label so the edge nearest the stroke sits exactly `gap` px away.
+ * Uses font block height for the perpendicular span — axis-aligned bbox corners
+ * grow with label width on rotated/diagonal lines and wrongly push text farther away.
  */
-function nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize) {
+function nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text) {
     const gap = lineLabelGapFromStroke(fontSize);
     const node = textEl && typeof textEl.node === 'function' ? textEl.node() : null;
     if (!node || !lineRef || !linePerp) return { nudgeX: 0, nudgeY: 0 };
@@ -435,20 +436,14 @@ function nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize) {
     px /= plen;
     py /= plen;
 
-    const corners = [
-        [bb.x, bb.y],
-        [bb.x + bb.width, bb.y],
-        [bb.x, bb.y + bb.height],
-        [bb.x + bb.width, bb.y + bb.height]
-    ];
-    let minAlong = Infinity;
-    for (const [cx, cy] of corners) {
-        const along = (cx - lx) * px + (cy - ly) * py;
-        if (along < minAlong) minAlong = along;
-    }
-    if (!Number.isFinite(minAlong)) return { nudgeX: 0, nudgeY: 0 };
+    const cx = bb.x + bb.width / 2;
+    const cy = bb.y + bb.height / 2;
+    const centerAlong = (cx - lx) * px + (cy - ly) * py;
+    const halfPerp = lineLabelBlockHeight(text, fontSize) / 2;
+    const edgeTowardLine = centerAlong - halfPerp;
+    if (!Number.isFinite(edgeTowardLine)) return { nudgeX: 0, nudgeY: 0 };
 
-    const adjust = gap - minAlong;
+    const adjust = gap - edgeTowardLine;
     if (Math.abs(adjust) < 0.01) return { nudgeX: 0, nudgeY: 0 };
     return { nudgeX: px * adjust, nudgeY: py * adjust };
 }

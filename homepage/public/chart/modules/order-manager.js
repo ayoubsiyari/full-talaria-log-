@@ -17366,6 +17366,10 @@ class OrderManager {
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
         this._refreshLevelCtrlHoverIfNeeded(pc);
+        if (pc?.svg) {
+            const clipUrl = this._syncMainPlotSvgClip(pc);
+            this._applyPlotClipToOrderOverlays(pc, clipUrl);
+        }
     }
 
     updatePreviewLines() {
@@ -38020,6 +38024,8 @@ class OrderManager {
         this._alignAllOrderLabels(ch);
         if (ch?.svg) {
             this._purgeOrderOverlayArtifacts(ch);
+            const clipUrl = this._syncMainPlotSvgClip(ch);
+            this._applyPlotClipToOrderOverlays(ch, clipUrl);
         }
     }
 

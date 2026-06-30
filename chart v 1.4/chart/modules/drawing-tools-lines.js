@@ -90,7 +90,7 @@ function appendTextLabel(group, text, config = {}) {
     if (lineSide && lineRef && linePerp) {
         const interim = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, nudgeY);
         if (interim) textEl.attr('transform', interim);
-        const gapNudge = nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize);
+        const gapNudge = nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text);
         nudgeX += gapNudge.nudgeX;
         nudgeY += gapNudge.nudgeY;
     }
@@ -1051,42 +1051,24 @@ class TrendlineTool extends BaseDrawing {
                 ? 0 : this.style.textOffsetY;
             const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-            const { scales: siScales } = coords;
-            const sp1 = this.points[0], sp2 = this.points[1];
-            const sox1 = siScales && siScales.chart && siScales.chart.dataIndexToPixel
-                ? siScales.chart.dataIndexToPixel(sp1.x) : (siScales ? siScales.xScale(sp1.x) : this._splitInfo.textX);
-            const soy1 = siScales ? siScales.yScale(sp1.y) : this._splitInfo.textY;
-            const sox2 = siScales && siScales.chart && siScales.chart.dataIndexToPixel
-                ? siScales.chart.dataIndexToPixel(sp2.x) : (siScales ? siScales.xScale(sp2.x) : this._splitInfo.textX);
-            const soy2 = siScales ? siScales.yScale(sp2.y) : this._splitInfo.textY;
-            const sRawLX = sox1 <= sox2 ? sox1 : sox2, sRawLY = sox1 <= sox2 ? soy1 : soy2;
-            const sRawRX = sox1 <= sox2 ? sox2 : sox1, sRawRY = sox1 <= sox2 ? soy2 : soy1;
-            const sRawDX = sRawRX - sRawLX, sRawDY = sRawRY - sRawLY;
-            const sRawLen = Math.sqrt(sRawDX * sRawDX + sRawDY * sRawDY) || 1;
-            const sUx = sRawDX / sRawLen, sUy = sRawDY / sRawLen;
             const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            const siScaleFactor = typeof this.getZoomScaleFactor === 'function'
-                ? this.getZoomScaleFactor(siScales)
-                : 1;
-            const startArrowInset = trendlineEndpointArrowInset(this.style, siScaleFactor, 'start');
-            const endArrowInset = trendlineEndpointArrowInset(this.style, siScaleFactor, 'end');
-            const SI_EDGE = 5;
-            let siTextX, siTextY, siAnchor;
+            let siAnchor;
             switch (siTextHAlign) {
-                case 'left':  siTextX = sRawLX + sUx * (SI_EDGE + startArrowInset); siTextY = sRawLY + sUy * (SI_EDGE + startArrowInset); siAnchor = resolveLineEndpointSvgAnchor('left', label); break;
-                case 'right': siTextX = sRawRX - sUx * (SI_EDGE + endArrowInset); siTextY = sRawRY - sUy * (SI_EDGE + endArrowInset); siAnchor = resolveLineEndpointSvgAnchor('right', label); break;
-                default:      siTextX = (sRawLX + sRawRX) / 2;  siTextY = (sRawLY + sRawRY) / 2;  siAnchor = 'middle';
+                case 'left':  siAnchor = resolveLineEndpointSvgAnchor('left', label); break;
+                case 'right': siAnchor = resolveLineEndpointSvgAnchor('right', label); break;
+                default:      siAnchor = 'middle';
             }
 
-            const siFontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
             const siPerpX = -Math.sin(angle * Math.PI / 180);
             const siPerpY = Math.cos(angle * Math.PI / 180);
             const siSignUp = siPerpY <= 0 ? 1 : -1;
             const siTextVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+            const splitTextX = this._splitInfo.textX;
+            const splitTextY = this._splitInfo.textY;
 
             appendTextLabel(this.group, label, {
-                x: siTextX + offsetX,
-                y: siTextY + offsetY,
+                x: splitTextX + offsetX,
+                y: splitTextY + offsetY,
                 anchor: siAnchor,
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
@@ -1095,7 +1077,7 @@ class TrendlineTool extends BaseDrawing {
                 fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
                 fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
                 rotation: angle,
-                ...lineLabelGapConfig(siTextX, siTextY, siTextVAlign, siPerpX, siPerpY, siSignUp)
+                ...lineLabelGapConfig(splitTextX, splitTextY, siTextVAlign, siPerpX, siPerpY, siSignUp)
             });
             return;
         }
