@@ -389,6 +389,19 @@ function lineLabelBlockHeight(text, fontSize) {
     return Math.max(lines.length, 1) * fs * 1.2;
 }
 
+/** Readable label rotation (deg) aligned with line direction. */
+function resolveLineLabelReadableAngleDeg(dx, dy) {
+    let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+    if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+    return angleDeg;
+}
+
+/** Unit normal matching the rotation angle used for line labels. */
+function lineLabelPerpFromAngleDeg(angleDeg) {
+    const rad = (Number(angleDeg) || 0) * Math.PI / 180;
+    return { x: -Math.sin(rad), y: Math.cos(rad) };
+}
+
 function resolveLineLabelSide(textVAlign) {
     if (textVAlign === 'top') return 'above';
     if (textVAlign === 'bottom') return 'below';
@@ -417,29 +430,34 @@ function horizontalLineLabelPerp(textVAlign) {
  * Uses font block height for the perpendicular span — axis-aligned bbox corners
  * grow with label width on rotated/diagonal lines and wrongly push text farther away.
  */
-function nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text) {
+function nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text, options = {}) {
     const gap = lineLabelGapFromStroke(fontSize);
+    const anchorOnStroke = !!options.anchorOnStroke;
     const node = textEl && typeof textEl.node === 'function' ? textEl.node() : null;
     if (!node || !lineRef || !linePerp) return { nudgeX: 0, nudgeY: 0 };
 
-    let bb;
-    try { bb = node.getBBox(); } catch (_) { return { nudgeX: 0, nudgeY: 0 }; }
-    if (!Number.isFinite(bb.width) && !Number.isFinite(bb.height)) {
-        return { nudgeX: 0, nudgeY: 0 };
-    }
-
-    const lx = lineRef.x;
-    const ly = lineRef.y;
     let px = linePerp.x;
     let py = linePerp.y;
     const plen = Math.hypot(px, py) || 1;
     px /= plen;
     py /= plen;
 
-    const cx = bb.x + bb.width / 2;
-    const cy = bb.y + bb.height / 2;
-    const centerAlong = (cx - lx) * px + (cy - ly) * py;
+    const lx = lineRef.x;
+    const ly = lineRef.y;
     const halfPerp = lineLabelBlockHeight(text, fontSize) / 2;
+
+    let centerAlong = 0;
+    if (!anchorOnStroke) {
+        let bb;
+        try { bb = node.getBBox(); } catch (_) { return { nudgeX: 0, nudgeY: 0 }; }
+        if (!Number.isFinite(bb.width) && !Number.isFinite(bb.height)) {
+            return { nudgeX: 0, nudgeY: 0 };
+        }
+        const cx = bb.x + bb.width / 2;
+        const cy = bb.y + bb.height / 2;
+        centerAlong = (cx - lx) * px + (cy - ly) * py;
+    }
+
     const edgeTowardLine = centerAlong - halfPerp;
     if (!Number.isFinite(edgeTowardLine)) return { nudgeX: 0, nudgeY: 0 };
 

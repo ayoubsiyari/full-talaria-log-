@@ -90,7 +90,9 @@ function appendTextLabel(group, text, config = {}) {
     if (lineSide && lineRef && linePerp) {
         const interim = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, nudgeY);
         if (interim) textEl.attr('transform', interim);
-        const gapNudge = nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text);
+        const gapNudge = nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text, {
+            anchorOnStroke: anchor === 'middle' && yAnchor === 'middle'
+        });
         nudgeX += gapNudge.nudgeX;
         nudgeY += gapNudge.nudgeY;
     }
@@ -1059,8 +1061,9 @@ class TrendlineTool extends BaseDrawing {
                 default:      siAnchor = 'middle';
             }
 
-            const siPerpX = -Math.sin(angle * Math.PI / 180);
-            const siPerpY = Math.cos(angle * Math.PI / 180);
+            const siPerp = lineLabelPerpFromAngleDeg(angle);
+            const siPerpX = siPerp.x;
+            const siPerpY = siPerp.y;
             const siSignUp = siPerpY <= 0 ? 1 : -1;
             const siTextVAlign = this.style.textVAlign || this.style.textPosition || 'top';
             const splitTextX = this._splitInfo.textX;
@@ -1092,21 +1095,10 @@ class TrendlineTool extends BaseDrawing {
         const midX = (x1 + x2) / 2;
         const midY = (y1 + y2) / 2;
 
-        // Calculate angle of the line for text rotation (match RayTool)
-        let angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-        const angleRad = Math.atan2(y2 - y1, x2 - x1);
-
-        const isFlipped = angle > 90 || angle < -90;
-        if (isFlipped) {
-            angle += 180;
-        }
-
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
-
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        // Compute visible segment: clamp original endpoints to [visLeft, visRight]
         const xRange2 = scales && scales.xScale ? scales.xScale.range() : null;
         const vLeft  = xRange2 ? xRange2[0] : 0;
         const vRight = xRange2 ? xRange2[1] : 99999;
@@ -1117,6 +1109,14 @@ class TrendlineTool extends BaseDrawing {
         const rawRY = x1 <= x2 ? y2 : y1;
         const rawDX = rawRX - rawLX;
         const rawDY = rawRY - rawLY;
+
+        // Readable rotation + perpendicular in the same frame (matches horizontal-line gap math)
+        const renderAngleDeg = resolveLineLabelReadableAngleDeg(rawDY, rawDX);
+        const angle = renderAngleDeg;
+        const labelPerp = lineLabelPerpFromAngleDeg(renderAngleDeg);
+        const perpX = labelPerp.x;
+        const perpY = labelPerp.y;
+        const signUp = perpY <= 0 ? 1 : -1;
 
         // Clamp left endpoint to visLeft
         let segLX = rawLX, segLY = rawLY;
@@ -1166,11 +1166,6 @@ class TrendlineTool extends BaseDrawing {
                 labelAnchor = 'middle';
                 break;
         }
-
-        const perpX = -Math.sin(angleRad);
-        const perpY = Math.cos(angleRad);
-
-        const signUp = perpY <= 0 ? 1 : -1;
 
         // Don't render if text position is outside the visible chart area
         // (prevents partial-clip "empty place" artifact in the price axis)
@@ -2349,12 +2344,11 @@ class RayTool extends BaseDrawing {
         const rux = rdx / rlen, ruy = rdy / rlen;
 
         // Calculate angle for text rotation from ray direction
-        let angle = Math.atan2(rdy, rdx) * (180 / Math.PI);
-        const originalAngleRad = Math.atan2(rdy, rdx);
-
-        // Keep text readable by flipping it if upside down
-        const isFlipped = angle > 90 || angle < -90;
-        if (isFlipped) angle += 180;
+        const renderAngleDeg = resolveLineLabelReadableAngleDeg(rdy, rdx);
+        const angle = renderAngleDeg;
+        const labelPerp = lineLabelPerpFromAngleDeg(renderAngleDeg);
+        const perpX = labelPerp.x;
+        const perpY = labelPerp.y;
 
         // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
@@ -2380,9 +2374,6 @@ class RayTool extends BaseDrawing {
                 baseY = (p1y + p2y) / 2;
                 elAnchor = 'middle';
         }
-
-        const perpX = -Math.sin(originalAngleRad);
-        const perpY = Math.cos(originalAngleRad);
 
         const signUp = perpY <= 0 ? 1 : -1;
         const lineRefX = baseX;
@@ -3198,14 +3189,11 @@ class ExtendedLineTool extends BaseDrawing {
         const ry = x1 <= x2 ? y2 : y1;
         
         // Calculate angle of the line for text rotation
-        let angle = Math.atan2(ry - ly, rx - lx) * (180 / Math.PI);
-        const originalAngleRad = Math.atan2(ry - ly, rx - lx);
-        
-        // Keep text readable by flipping it if upside down
-        const isFlipped = angle > 90 || angle < -90;
-        if (isFlipped) {
-            angle += 180;
-        }
+        const renderAngleDeg = resolveLineLabelReadableAngleDeg(ry - ly, rx - lx);
+        const angle = renderAngleDeg;
+        const labelPerp = lineLabelPerpFromAngleDeg(renderAngleDeg);
+        const perpX = labelPerp.x;
+        const perpY = labelPerp.y;
         
         // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
@@ -3235,9 +3223,6 @@ class ExtendedLineTool extends BaseDrawing {
                 elAnchor = 'middle';
         }
 
-        const perpX = -Math.sin(originalAngleRad);
-        const perpY = Math.cos(originalAngleRad);
-        
         const signUp = perpY <= 0 ? 1 : -1;
         const lineRefX = baseX;
         const lineRefY = baseY;

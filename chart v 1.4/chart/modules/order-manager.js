@@ -22885,6 +22885,9 @@ class OrderManager {
         if (!hChart?.scales?.yScale || !hChart?.svg) return null;
 
         const y = hChart.scales.yScale(price);
+        if (typeof hChart._isYInMainPricePlot === 'function' && !hChart._isYInMainPricePlot(y)) {
+            return null;
+        }
         const priceText = this.formatPrice(price);
         const isPreview = !!(opts && opts.isPreview);
         
@@ -36930,6 +36933,7 @@ class OrderManager {
         if (!ch?.scales) {
             return;
         }
+        const plotClipUrl = this._syncMainPlotSvgClip(ch);
 
         const slForChart = (slAll || []).filter((sl) => (sl.chart || this.chart) === ch);
         const tpForChart = (tpAll || []).filter((tp) => (tp.chart || this.chart) === ch);
@@ -37024,6 +37028,17 @@ class OrderManager {
 
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 this._applyOrderLevelLineStyle(line, false);
+                this._applyOrderRowMainPlotVisibility(ch, y, {
+                    line: line,
+                    labelBox: labelBox,
+                    labelAccent: labelAccent,
+                    labelText: labelText,
+                    pnlBox: pnlBox,
+                    pnlText: pnlText,
+                    closeBtn: closeBtn,
+                    priceBox: priceBox,
+                    priceText: priceText
+                }, plotClipUrl);
 
                 this._styleOpenSlProfitProtectionVisuals(position, line, {
                     labelBox,
@@ -37040,7 +37055,10 @@ class OrderManager {
             
             // Create Y-axis highlights for unique SL prices
             yAxisHighlightPrices.sl.forEach((slPrice) => {
-                this.drawYAxisPriceHighlight(slPrice, '#f23645', 'sl', 0, ch);
+                const slY = ch.scales.yScale(slPrice);
+                if (this._isOrderYInMainPlot(ch, slY)) {
+                    this.drawYAxisPriceHighlight(slPrice, '#f23645', 'sl', 0, ch);
+                }
             });
         }
         
@@ -37378,17 +37396,35 @@ class OrderManager {
 
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 this._applyOrderLevelLineStyle(line, false);
+                this._applyOrderRowMainPlotVisibility(ch, y, {
+                    line: line,
+                    labelBox: labelBox,
+                    labelAccent: labelAccent,
+                    labelText: labelText,
+                    pnlBox: pnlBox,
+                    pnlText: pnlText,
+                    closeBtn: closeBtn,
+                    priceBox: priceBox,
+                    priceText: priceText,
+                    splitBtn: splitBtn,
+                    deleteBtn: deleteBtn,
+                    pctStepperBtn: pctStepperBtn
+                }, plotClipUrl);
                 
                 yAxisHighlightPrices.tp.add(tpPrice);
             });
             
             // Create Y-axis highlights for unique TP prices
             yAxisHighlightPrices.tp.forEach((tpPrice) => {
-                this.drawYAxisPriceHighlight(tpPrice, '#089981', 'tp', 0, ch);
+                const tpY = ch.scales.yScale(tpPrice);
+                if (this._isOrderYInMainPlot(ch, tpY)) {
+                    this.drawYAxisPriceHighlight(tpPrice, '#089981', 'tp', 0, ch);
+                }
             });
         }
         
         // Entry prices are handled in updateOrderLines
+        this._applyPlotClipToOrderOverlays(ch, plotClipUrl);
     }
     
     /**
@@ -37414,6 +37450,7 @@ class OrderManager {
             return;
         }
 
+        const plotClipUrl = this._syncMainPlotSvgClip(ch);
         const beForChart = this.beLines.filter((be) => (be.chart || this.chart) === ch);
         if (beForChart.length === 0) {
             return;
@@ -37460,8 +37497,16 @@ class OrderManager {
                 .attr('x', startX + pad)
                 .attr('y', y + 4);
 
+            this._applyOrderRowMainPlotVisibility(ch, y, {
+                line: line,
+                hitLine: hitLine,
+                labelBox: labelBox,
+                labelText: labelText
+            }, plotClipUrl);
+
             beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
         });
+        this._applyPlotClipToOrderOverlays(ch, plotClipUrl);
     }
     
     /** Remove entry/exit/connector markers whose event time is outside the loaded replay slice. */
@@ -37696,9 +37741,53 @@ class OrderManager {
         const dm = chart.drawingManager;
         if (dm && typeof dm.updateClipPath === 'function') {
             dm.updateClipPath();
-            return typeof dm._clipUrl === 'function' ? dm._clipUrl() : null;
+            if (typeof dm._clipUrl === 'function') {
+                return dm._clipUrl();
+            }
+        }
+        if (typeof chart._ensureMainPlotSvgClipDef === 'function') {
+            return chart._ensureMainPlotSvgClipDef();
         }
         return null;
+    }
+
+    _isOrderYInMainPlot(ch, y) {
+        if (ch && typeof ch._isYInMainPricePlot === 'function') {
+            return ch._isYInMainPricePlot(y);
+        }
+        if (!Number.isFinite(y) || !ch) return false;
+        const m = ch.margin || { t: 0, b: 0 };
+        const plotBottom = ch.h - m.b - (ch.separateIndicatorPanelHeight || 0);
+        return y >= m.t && y <= plotBottom;
+    }
+
+    /** Hide order row when its Y maps into the indicator stack; clip when inside main plot. */
+    _applyOrderRowMainPlotVisibility(ch, y, parts, clipUrl) {
+        if (!parts) return;
+        const inPlot = this._isOrderYInMainPlot(ch, y);
+        const clip = clipUrl || null;
+        const keys = [
+            'line', 'hitLine', 'labelBox', 'labelAccent', 'labelText',
+            'pnlBox', 'pnlText', 'closeBtn', 'priceBox', 'priceText',
+            'splitBtn', 'deleteBtn', 'pctStepperBtn', 'arrow'
+        ];
+        keys.forEach(function(key) {
+            const sel = parts[key];
+            if (!sel || (sel.empty && sel.empty())) return;
+            if (!inPlot) {
+                sel.style('display', 'none');
+                return;
+            }
+            sel.style('display', null);
+            if (key === 'line' || key === 'hitLine') {
+                if (clip) sel.attr('clip-path', clip);
+                else sel.attr('clip-path', null);
+            } else if (clip) {
+                sel.attr('clip-path', clip);
+            } else {
+                sel.attr('clip-path', null);
+            }
+        });
     }
 
     /** Clip order / preview geometry to the main price pane (not the indicator stack below). */
@@ -37708,15 +37797,33 @@ class OrderManager {
             '.order-line', '.order-drag-hit',
             '.pending-order-line', '.pending-order-hit-line',
             '.pending-sl-line', '.pending-tp-line', '.pending-be-line',
-            '.sl-line', '.tp-line', '.be-line',
+            '.sl-line', '.tp-line', '.be-line', '.be-hit-line',
             '.split-avg-line', '.multi-tp-avg-line',
             '.preview-line', '.preview-line-hit',
             '.plus-badge-ghost',
             '.trade-connector',
             '.entry-marker', '.exit-marker', '.partial-close-marker',
-            '.mfe-mae-marker-root'
+            '.mfe-mae-marker-root',
+            '.order-label-box', '.order-label-accent', '.order-label-text',
+            '.order-arrow', '.order-close-btn', '.order-pnl-box', '.order-pnl-text',
+            '.order-price-box', '.order-price-text',
+            '.pending-order-label-box', '.pending-order-label-accent', '.pending-order-label-text',
+            '.pending-order-close-btn', '.pending-order-price-box', '.pending-order-price-text',
+            '.sl-label-box', '.sl-label-accent', '.sl-label-text',
+            '.sl-pnl-box', '.sl-pnl-text', '.sl-close-btn', '.sl-price-box', '.sl-price-text',
+            '.tp-label-box', '.tp-label-accent', '.tp-label-text',
+            '.tp-pnl-box', '.tp-pnl-text', '.tp-close-btn', '.tp-split-btn',
+            '.tp-price-box', '.tp-price-text',
+            '.be-label-box', '.be-label-accent', '.be-label-text',
+            '.be-price-box', '.be-price-text',
+            '.split-avg-label', '.multi-tp-avg-label',
+            '.y-axis-price-highlight:not(.preview-y-axis-highlight)'
         ].join(',');
-        ch.svg.selectAll(plotClipSelectors).style('clip-path', clipUrl);
+        ch.svg.selectAll(plotClipSelectors).each(function() {
+            const el = d3.select(this);
+            el.attr('clip-path', clipUrl);
+            el.style('clip-path', null);
+        });
     }
 
     updateOrderLines(sourceChart) {
@@ -37737,6 +37844,8 @@ class OrderManager {
         if (!ch?.scales) {
             return;
         }
+
+        let plotClipUrl = this._syncMainPlotSvgClip(ch);
 
         this._updateEntryMarkersForChart(ch);
 
@@ -37805,6 +37914,18 @@ class OrderManager {
                         .attr('y2', y)
                         .style('pointer-events', 'none');
                     this._applyOrderLevelLineStyle(line, false);
+                    this._applyOrderRowMainPlotVisibility(ch, y, {
+                        line: line,
+                        hitLine: dragHitLine,
+                        labelBox: labelBox,
+                        labelText: labelText,
+                        closeBtn: closeBtn,
+                        pnlBox: pnlBox,
+                        pnlText: pnlText,
+                        priceBox: priceBox,
+                        priceText: priceText,
+                        arrow: arrow
+                    }, plotClipUrl);
                 }
 
                 if (priceBox) priceBox.style('display', 'none');
@@ -38002,7 +38123,24 @@ class OrderManager {
                 const highlightColor = isPending
                     ? (orderData.direction === 'BUY' ? '#2962ff' : '#f23645')
                     : '#2962ff';
-                this.drawYAxisPriceHighlight(price, highlightColor, isPending ? 'pending' : 'entry', 0, ch);
+                if (this._isOrderYInMainPlot(ch, y)) {
+                    this.drawYAxisPriceHighlight(price, highlightColor, isPending ? 'pending' : 'entry', 0, ch);
+                }
+
+                if (!skipPendingEntryGeom) {
+                    this._applyOrderRowMainPlotVisibility(ch, y, {
+                        line: line,
+                        hitLine: dragHitLine,
+                        labelBox: labelBox,
+                        labelText: labelText,
+                        closeBtn: closeBtn,
+                        pnlBox: pnlBox,
+                        pnlText: pnlText,
+                        priceBox: priceBox,
+                        priceText: priceText,
+                        arrow: arrow
+                    }, plotClipUrl);
+                }
             });
         }
 
@@ -38024,8 +38162,8 @@ class OrderManager {
         this._alignAllOrderLabels(ch);
         if (ch?.svg) {
             this._purgeOrderOverlayArtifacts(ch);
-            const clipUrl = this._syncMainPlotSvgClip(ch);
-            this._applyPlotClipToOrderOverlays(ch, clipUrl);
+            plotClipUrl = this._syncMainPlotSvgClip(ch) || plotClipUrl;
+            this._applyPlotClipToOrderOverlays(ch, plotClipUrl);
         }
     }
 

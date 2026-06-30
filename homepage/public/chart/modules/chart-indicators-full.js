@@ -9281,6 +9281,48 @@ Chart.prototype._getMainPricePlotLayout = function() {
     return { m: m, ch: ch, volumeAreaHeight: volumeAreaHeight, indPanelH: indPanelH, plotBottom: plotBottom, plotHeight: plotHeight };
 };
 
+/** Ensure SVG clip path for main price pane (shared by drawings + orders). */
+Chart.prototype._ensureMainPlotSvgClipDef = function() {
+    if (!this.svg || this.svg.empty()) return null;
+    const panelIdx = (this.panelIndex !== undefined) ? this.panelIndex : '';
+    const clipId = 'chart-clip-path' + (panelIdx !== '' && panelIdx !== 0 ? panelIdx : '');
+    let defs = this.svg.select('defs');
+    if (defs.empty()) defs = this.svg.append('defs');
+    let clipPath = defs.select('#' + clipId);
+    if (clipPath.empty()) {
+        clipPath = defs.append('clipPath')
+            .attr('id', clipId)
+            .attr('clipPathUnits', 'userSpaceOnUse');
+        clipPath.append('rect').attr('class', 'chart-clip-rect');
+    }
+    const m = this.margin || { l: 0, r: 0, t: 0, b: 0 };
+    const layout = typeof this._getMainPricePlotLayout === 'function'
+        ? this._getMainPricePlotLayout()
+        : null;
+    const plotBottom = layout && Number.isFinite(layout.plotBottom)
+        ? layout.plotBottom
+        : (this.h - m.b - (this.separateIndicatorPanelHeight || 0));
+    const clipH = Math.max(1, plotBottom - m.t);
+    clipPath.select('rect')
+        .attr('x', m.l)
+        .attr('y', m.t)
+        .attr('width', Math.max(1, this.w - m.l - m.r))
+        .attr('height', clipH);
+    return 'url(#' + clipId + ')';
+};
+
+Chart.prototype._isYInMainPricePlot = function(y) {
+    if (!Number.isFinite(y)) return false;
+    const m = this.margin || { t: 0, b: 0 };
+    const layout = typeof this._getMainPricePlotLayout === 'function'
+        ? this._getMainPricePlotLayout()
+        : null;
+    const plotBottom = layout && Number.isFinite(layout.plotBottom)
+        ? layout.plotBottom
+        : (this.h - m.b - (this.separateIndicatorPanelHeight || 0));
+    return y >= m.t && y <= plotBottom;
+};
+
 /** Remove DOM axis tick labels on indicator panels (canvas grids are separate). */
 Chart.prototype._clearSeparatePanelAxisOverlayDecor = function() {
     const canvas = this.ctx && this.ctx.canvas;

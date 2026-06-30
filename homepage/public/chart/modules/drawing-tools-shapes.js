@@ -1942,8 +1942,9 @@ class ArrowTool extends BaseDrawing {
                     siAnchor = 'middle';
             }
 
-            const siPerpX = -Math.sin(angle * Math.PI / 180);
-            const siPerpY = Math.cos(angle * Math.PI / 180);
+            const siPerp = lineLabelPerpFromAngleDeg(angle);
+            const siPerpX = siPerp.x;
+            const siPerpY = siPerp.y;
             const siSignUp = siPerpY <= 0 ? 1 : -1;
             const splitTextX = this._splitInfo.textX;
             const splitTextY = this._splitInfo.textY;
@@ -1975,10 +1976,8 @@ class ArrowTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : coords.x2);
         const origY2 = scales ? scales.yScale(p2.y) : coords.y2;
         
-        let angle = Math.atan2(origY2 - origY1, origX2 - origX1) * (180 / Math.PI);
-        if (angle > 90 || angle < -90) {
-            angle += 180;
-        }
+        const renderAngleDeg = resolveLineLabelReadableAngleDeg(origY2 - origY1, origX2 - origX1);
+        const angle = renderAngleDeg;
 
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
@@ -1999,12 +1998,12 @@ class ArrowTool extends BaseDrawing {
                 anchor = 'middle';
         }
         
-        const angleRad_sh = Math.atan2(origY2 - origY1, origX2 - origX1);
         let baseX = origX1 + (origX2 - origX1) * t;
         let baseY = origY1 + (origY2 - origY1) * t;
 
-        const perpX_sh = -Math.sin(angleRad_sh);
-        const perpY_sh = Math.cos(angleRad_sh);
+        const labelPerp = lineLabelPerpFromAngleDeg(renderAngleDeg);
+        const perpX_sh = labelPerp.x;
+        const perpY_sh = labelPerp.y;
         const signUp_sh = perpY_sh <= 0 ? 1 : -1;
         const lineRefX = baseX;
         const lineRefY = baseY;
