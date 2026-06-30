@@ -2171,11 +2171,12 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for drawing drag/select (Ctrl+marquee is handled by chart.js)
             const onMouseDown = (event) => {
+                this._syncCtrlSelectModeFromEvent(event);
                 if (this._tryStartCtrlSelectionMove(event)) {
                     suppressNextCanvasClick = true;
                     return;
                 }
-                if (event.button === 0 && event.ctrlKey && !event.shiftKey && !this.currentTool && !this.isRectSelecting) {
+                if (event.button === 0 && this._isCtrlPointerModifier(event) && !this.currentTool && !this.isRectSelecting) {
                     const [ctrlMx, ctrlMy] = this._eventCanvasLocalXY(event);
                     const ctrlHits = this.findDrawingsAtPoint(ctrlMx, ctrlMy, { includeVolumeProfileBodyHit: true });
                     if (!ctrlHits || ctrlHits.length === 0) {
@@ -2185,7 +2186,8 @@ class DrawingToolsManager {
 
                 // Make drag-start use the same geometric hover hit zone, even when the
                 // cursor is not exactly on an SVG stroke target.
-                if (event.button !== 0 || this.isRectSelecting || event.shiftKey || event.altKey) {
+                if (event.button !== 0 || this.isRectSelecting || event.shiftKey || event.altKey
+                    || this._isCtrlPointerModifier(event)) {
                     return;
                 }
                 // While actively placing a stroke, canvas is for placement only.
@@ -2539,7 +2541,7 @@ class DrawingToolsManager {
                     return;
                 }
                 
-                if (!event.ctrlKey && this.selectedDrawings.length > 0 && !this.isRectSelecting) {
+                if (!this._isCtrlPointerModifier(event) && this.selectedDrawings.length > 0 && !this.isRectSelecting) {
                     // [debug removed]
                     this.deselectAll({ fromCanvasBackground: true });
                 }
@@ -3257,6 +3259,7 @@ class DrawingToolsManager {
             return;
         }
 
+        this._syncCtrlSelectModeFromEvent(event);
         if (this._tryStartCtrlSelectionMove(event)) {
             return;
         }
@@ -3484,7 +3487,7 @@ class DrawingToolsManager {
                 );
             }
 
-            if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey) {
+            if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey && !this._isCtrlPointerModifier(event)) {
                 const lineTypeSet = new Set([
                     'trendline',
                     'horizontal',
@@ -3588,7 +3591,7 @@ class DrawingToolsManager {
             // If multiple drawings overlap, start a direct move drag for the best hit immediately.
             // This avoids relying on DOM event targeting (which always hits the topmost SVG element),
             // allowing lines behind shapes to be dragged on the first attempt.
-            if (drawingsAtPoint.length > 1 && !event.shiftKey && !event.altKey) {
+            if (drawingsAtPoint.length > 1 && !event.shiftKey && !event.altKey && !this._isCtrlPointerModifier(event)) {
                 const best = drawingsAtPoint[0];
                 const shouldBlockVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && best
@@ -3619,7 +3622,8 @@ class DrawingToolsManager {
                 const toMove = (this.selectedDrawings || []).filter((d) =>
                     d && !d.locked && !this._isHorizontalAnchorToolType(d.type)
                 );
-                if (selectedAtPoint.length > 0 && toMove.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
+                if (selectedAtPoint.length > 0 && toMove.length > 0 && !event.shiftKey && !this._isCtrlPointerModifier(event)
+                    && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(toMove, event);
@@ -3644,8 +3648,8 @@ class DrawingToolsManager {
             let drawing = null;
             let drawingGroup = null;
             
-            // If stacked lines detected and Shift key is held, select all drawings with lines at this point
-            if (stackedLinesInfo.isStacked && event.shiftKey) {
+            // If stacked lines detected and Shift/Ctrl held, select all drawings with lines at this point
+            if (stackedLinesInfo.isStacked && this._isMultiSelectModifier(event)) {
                 // [debug removed]
                 stackedLinesInfo.drawings.forEach((d, i) => {
                     this.selectDrawing(d, i > 0); // Add to selection for subsequent drawings
@@ -3901,8 +3905,7 @@ class DrawingToolsManager {
                     return;
                 }
 
-                // Pass shift key state for multi-selection
-                this.selectDrawing(drawing, event.shiftKey);
+                this.selectDrawing(drawing, this._isMultiSelectModifier(event));
 
                 if (event.altKey && drawingsAtPoint.length > 1) {
                     event.preventDefault();
@@ -5062,10 +5065,7 @@ class DrawingToolsManager {
         // Note: magnetKeyHeld is no longer used for snap - event.metaKey/ctrlKey checked directly
         if (event.metaKey || event.ctrlKey) {
             this.magnetKeyHeld = true;
-            // Enable Ctrl+hover to select mode (only Ctrl, not Command on Mac)
-            if (event.ctrlKey && !this.currentTool && !this._isDrawingGeometryMoveActive()) {
-                this.ctrlSelectMode = true;
-            }
+            this._syncCtrlSelectModeFromEvent(event);
         }
         
         // Delete key - delete selected drawing(s)
@@ -6883,9 +6883,9 @@ class DrawingToolsManager {
             
             self._drawingClickTimes[drawing.id] = now;
             
-            // Single click - select (with Shift for multi-select); locked = select only, no drag/resize
+            // Single click - select (Shift/Ctrl for multi-select); locked = select only, no drag/resize
             if (!self.currentTool) {
-                self.selectDrawing(drawing, event.shiftKey);
+                self.selectDrawing(drawing, self._isMultiSelectModifier(event));
             }
         };
         
@@ -7198,10 +7198,14 @@ class DrawingToolsManager {
                 .filter(function(event) {
                     const src = event.sourceEvent || event;
                     // Multi-select + Ctrl uses canvas direct-move; single selection uses normal d3 body drag.
-                    if (!self.currentTool && src && src.ctrlKey && !src.shiftKey
-                        && Array.isArray(self.selectedDrawings) && self.selectedDrawings.length > 1
-                        && self.selectedDrawings.includes(drawing)) {
-                        return false;
+                    if (!self.currentTool && src && (src.ctrlKey || src.metaKey) && !src.shiftKey) {
+                        if (!drawing.selected) {
+                            return false;
+                        }
+                        if (Array.isArray(self.selectedDrawings) && self.selectedDrawings.length > 1
+                            && self.selectedDrawings.includes(drawing)) {
+                            return false;
+                        }
                     }
                     // Only allow drag if not currently drawing and not clicking on a handle
                     const targetSelection = d3.select(event.target);
@@ -7419,7 +7423,7 @@ class DrawingToolsManager {
 
                     if (horizontalAnchorPointDrag) {
                         if (!drawing.selected) {
-                            self.selectDrawing(drawing, event.sourceEvent.shiftKey);
+                            self.selectDrawing(drawing, self._isMultiSelectModifier(event.sourceEvent));
                         }
                         dragStartPoints = drawing.points.map(p => ({ ...p }));
                         self._bodyDragActiveDrawings = [drawing];
@@ -7437,7 +7441,7 @@ class DrawingToolsManager {
                     
                     // Select the drawing when starting to drag (if not already selected)
                     if (!drawing.selected) {
-                        self.selectDrawing(drawing, event.sourceEvent.shiftKey);
+                        self.selectDrawing(drawing, self._isMultiSelectModifier(event.sourceEvent));
                     }
                     
                     // Store original points and start position
@@ -7695,7 +7699,7 @@ class DrawingToolsManager {
             if (!dragMeta) return;
 
             if (!drawing.selected) {
-                self.selectDrawing(drawing, event.shiftKey);
+                self.selectDrawing(drawing, self._isMultiSelectModifier(event));
             }
 
             if (dragMeta.anchor === 'b' || dragMeta.anchor === 'c') {
@@ -7943,7 +7947,7 @@ class DrawingToolsManager {
             if (!dragMeta) return;
 
             if (!drawing.selected) {
-                self.selectDrawing(drawing, event.shiftKey);
+                self.selectDrawing(drawing, self._isMultiSelectModifier(event));
             }
 
             const arr = drawing.style?.[dragMeta.arrayKey];
@@ -12062,7 +12066,7 @@ class DrawingToolsManager {
      * @returns {boolean} true when the gesture was consumed
      */
     _tryStartCtrlSelectionMove(event) {
-        if (!event || event.button !== 0 || !event.ctrlKey || event.shiftKey || this.currentTool || this.isRectSelecting) {
+        if (!event || event.button !== 0 || !this._isCtrlPointerModifier(event) || this.currentTool || this.isRectSelecting) {
             return false;
         }
         const toMove = (this.selectedDrawings || []).filter((d) =>
@@ -12101,6 +12105,25 @@ class DrawingToolsManager {
         if (typeof chart.scheduleRender === 'function') {
             chart.scheduleRender();
         }
+    }
+
+    /** Shift/Ctrl/Cmd held for additive selection (toggle/add). */
+    _isMultiSelectModifier(event) {
+        if (!event) return false;
+        return !!(event.shiftKey || event.ctrlKey || event.metaKey);
+    }
+
+    /** Ctrl/Cmd without Shift — marquee, multi-select click, or hover-select. */
+    _isCtrlPointerModifier(event) {
+        if (!event || event.shiftKey) return false;
+        return !!(event.ctrlKey || event.metaKey);
+    }
+
+    /** Ctrl held (no Shift) for hover-to-select; synced from keyboard and pointer. */
+    _syncCtrlSelectModeFromEvent(event) {
+        if (!event) return;
+        this.ctrlSelectMode = !!(event.ctrlKey && !event.shiftKey
+            && !this.currentTool && !this._isDrawingGeometryMoveActive());
     }
 
     /**
@@ -13790,6 +13813,8 @@ class DrawingToolsManager {
         if (this._isPlacementModeActive()) {
             return;
         }
+
+        this._syncCtrlSelectModeFromEvent(event);
 
         const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
         

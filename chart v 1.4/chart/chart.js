@@ -27158,8 +27158,9 @@ class Chart {
         const tryStartCtrlMarqueeSelect = (e) => {
             if (this.drag && this.drag.active) return false;
             if (e.button !== 0 || !(e.ctrlKey || e.metaKey) || e.shiftKey) return false;
-            if (this.tool) return false;
             const dm = this.drawingManager;
+            if (this.tool && this.tool !== 'cursor') return false;
+            if (dm && dm.currentTool) return false;
             if (!dm || typeof dm._isCursorSelectMode !== 'function' || !dm._isCursorSelectMode()) {
                 return false;
             }
