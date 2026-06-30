@@ -426,8 +426,8 @@ function measureLineLabelTextWidth(group, text, options = {}) {
 }
 
 /** Readable label rotation (deg) aligned with line direction. */
-function resolveLineLabelReadableAngleDeg(dx, dy) {
-    let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+function resolveLineLabelReadableAngleDeg(deltaX, deltaY) {
+    let angleDeg = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
     if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
     return angleDeg;
 }

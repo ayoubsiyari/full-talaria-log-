@@ -1976,7 +1976,7 @@ class ArrowTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : coords.x2);
         const origY2 = scales ? scales.yScale(p2.y) : coords.y2;
         
-        const renderAngleDeg = resolveLineLabelReadableAngleDeg(origY2 - origY1, origX2 - origX1);
+        const renderAngleDeg = resolveLineLabelReadableAngleDeg(origX2 - origX1, origY2 - origY1);
         const angle = renderAngleDeg;
 
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';

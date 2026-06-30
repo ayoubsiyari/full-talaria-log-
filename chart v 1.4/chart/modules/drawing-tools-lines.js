@@ -291,7 +291,7 @@ function syncLiveLineTextLabel(tool, scales, screenPts) {
         const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
         const ux = rawDX / rawLen;
         const uy = rawDY / rawLen;
-        const angleDeg = resolveLineLabelReadableAngleDeg(rawDY, rawDX);
+        const angleDeg = resolveLineLabelReadableAngleDeg(rawDX, rawDY);
 
         const textHAlign = tool.style?.textHAlign || tool.style?.textAlign || 'center';
         let textX;
@@ -613,7 +613,7 @@ class TrendlineTool extends BaseDrawing {
             const rawRY = origX1 <= origX2 ? origY2 : origY1;
             const rawDX = rawRX - rawLX;
             const rawDY = rawRY - rawLY;
-            const readableAngleDeg = resolveLineLabelReadableAngleDeg(rawDY, rawDX);
+            const readableAngleDeg = resolveLineLabelReadableAngleDeg(rawDX, rawDY);
             
             // Use exact text width for gap with minimal padding
             const padding = 2;
@@ -1099,7 +1099,7 @@ class TrendlineTool extends BaseDrawing {
         const rawDY = rawRY - rawLY;
 
         // Readable rotation + perpendicular in the same frame (matches horizontal-line gap math)
-        const renderAngleDeg = resolveLineLabelReadableAngleDeg(rawDY, rawDX);
+        const renderAngleDeg = resolveLineLabelReadableAngleDeg(rawDX, rawDY);
         const angle = renderAngleDeg;
         const labelPerp = lineLabelPerpFromAngleDeg(renderAngleDeg);
         const perpX = labelPerp.x;
@@ -2332,7 +2332,7 @@ class RayTool extends BaseDrawing {
         const rux = rdx / rlen, ruy = rdy / rlen;
 
         // Calculate angle for text rotation from ray direction
-        const renderAngleDeg = resolveLineLabelReadableAngleDeg(rdy, rdx);
+        const renderAngleDeg = resolveLineLabelReadableAngleDeg(rdx, rdy);
         const angle = renderAngleDeg;
         const labelPerp = lineLabelPerpFromAngleDeg(renderAngleDeg);
         const perpX = labelPerp.x;
@@ -3181,7 +3181,7 @@ class ExtendedLineTool extends BaseDrawing {
         const ry = x1 <= x2 ? y2 : y1;
         
         // Calculate angle of the line for text rotation
-        const renderAngleDeg = resolveLineLabelReadableAngleDeg(ry - ly, rx - lx);
+        const renderAngleDeg = resolveLineLabelReadableAngleDeg(rx - lx, ry - ly);
         const angle = renderAngleDeg;
         const labelPerp = lineLabelPerpFromAngleDeg(renderAngleDeg);
         const perpX = labelPerp.x;
