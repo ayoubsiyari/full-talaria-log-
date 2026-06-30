@@ -1631,31 +1631,9 @@ class ArrowTool extends BaseDrawing {
 
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-            const fontSize = this.style.fontSize || 14;
-            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
-            const fontWeight = this.style.fontWeight || 'normal';
-            const fontStyle = this.style.fontStyle || 'normal';
-            const measureStyle = typeof resolveDrawingTextStyle === 'function'
-                ? resolveDrawingTextStyle(this.text, fontStyle, fontFamily)
-                : { fontFamily, fontStyle };
-
-            const tempText = this.group.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', measureStyle.fontFamily)
-                .attr('font-weight', fontWeight)
-                .attr('font-style', measureStyle.fontStyle)
-                .attr('text-anchor', 'middle')
-                .style('visibility', 'hidden')
-                .style('pointer-events', 'none');
-            if (measureStyle.direction) {
-                tempText.style('direction', measureStyle.direction);
-                tempText.attr('unicode-bidi', 'plaintext');
-            }
-            tempText.text(this.text);
-
-            const textBBox = tempText.node().getBBox();
-            const textWidth = textBBox.width;
-            tempText.remove();
+            const textWidth = (typeof measureLineToolLabelWidth === 'function')
+                ? measureLineToolLabelWidth(this.group, this.text, this.style, 'middle')
+                : 0;
 
             const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
 

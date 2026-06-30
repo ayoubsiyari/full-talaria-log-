@@ -231,6 +231,10 @@ class DrawingToolsManager {
         this._directResizeUpHandler = null;
         this._directMoveMoveHandler = null;
         this._directMoveUpHandler = null;
+        this._directMoveDragCleanup = null;
+        this._directResizeDragCleanup = null;
+        this._touchPointerActive = false;
+        this._lastTouchSynthAt = 0;
         /** Drawings being moved via canvas geometric drag (not isDragging SVG path). */
         this._directMoveDrawings = null;
         /** Active d3 body-drag gestures (whole-shape move via setupDrawingDrag). */
@@ -426,6 +430,10 @@ class DrawingToolsManager {
                     event.preventDefault();
                     event.stopPropagation();
 
+                    if (this._directResizeDragCleanup) {
+                        this._directResizeDragCleanup();
+                        this._directResizeDragCleanup = null;
+                    }
                     if (this._directResizeMoveHandler) {
                         document.removeEventListener('mousemove', this._directResizeMoveHandler, true);
                     }
@@ -2171,11 +2179,12 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for drawing drag/select (Ctrl+marquee is handled by chart.js)
             const onMouseDown = (event) => {
+                this._syncCtrlSelectModeFromEvent(event);
                 if (this._tryStartCtrlSelectionMove(event)) {
                     suppressNextCanvasClick = true;
                     return;
                 }
-                if (event.button === 0 && event.ctrlKey && !event.shiftKey && !this.currentTool && !this.isRectSelecting) {
+                if (event.button === 0 && this._isCtrlPointerModifier(event) && !this.currentTool && !this.isRectSelecting) {
                     const [ctrlMx, ctrlMy] = this._eventCanvasLocalXY(event);
                     const ctrlHits = this.findDrawingsAtPoint(ctrlMx, ctrlMy, { includeVolumeProfileBodyHit: true });
                     if (!ctrlHits || ctrlHits.length === 0) {
@@ -2185,7 +2194,8 @@ class DrawingToolsManager {
 
                 // Make drag-start use the same geometric hover hit zone, even when the
                 // cursor is not exactly on an SVG stroke target.
-                if (event.button !== 0 || this.isRectSelecting || event.shiftKey || event.altKey) {
+                if (event.button !== 0 || this.isRectSelecting || event.shiftKey || event.altKey
+                    || this._isCtrlPointerModifier(event)) {
                     return;
                 }
                 // While actively placing a stroke, canvas is for placement only.
@@ -2539,7 +2549,7 @@ class DrawingToolsManager {
                     return;
                 }
                 
-                if (!event.ctrlKey && this.selectedDrawings.length > 0 && !this.isRectSelecting) {
+                if (!this._isCtrlPointerModifier(event) && this.selectedDrawings.length > 0 && !this.isRectSelecting) {
                     // [debug removed]
                     this.deselectAll({ fromCanvasBackground: true });
                 }
@@ -2587,6 +2597,8 @@ class DrawingToolsManager {
                 dblclick: onDblClick
             };
         }
+
+        this._installDrawingPointerBridge();
     }
 
     /** Cursor for armed drawing tools — respects chart.js cursorType (cross / dot / arrow). */
@@ -2611,6 +2623,29 @@ class DrawingToolsManager {
         if (chartWrapper) {
             chartWrapper.style.cursor = cursorStyle;
         }
+    }
+
+    /** TradingView-style: show crosshair when a draw tool is armed (center on touch if no prior pointer). */
+    _showInitialPlacementCrosshair() {
+        const c = this.chart;
+        if (!c || typeof c.updateCrosshair !== 'function') return;
+        const m = c.margin || { l: 60, r: 60, t: 5, b: 30 };
+        const inPlot = Number.isFinite(c.mouseX) && Number.isFinite(c.mouseY)
+            && c.mouseX >= m.l && c.mouseX <= (c.w || 0) - m.r
+            && c.mouseY >= m.t && c.mouseY <= (c.h || 0) - m.b;
+        if (inPlot && typeof c.refreshCrosshairFromLastPointer === 'function') {
+            c.refreshCrosshairFromLastPointer();
+            return;
+        }
+        const cx = (((c.w || 0) - m.l - m.r) / 2) + m.l;
+        const cy = (((c.h || 0) - m.t - m.b) / 2) + m.t;
+        const rect = typeof c._pointerLayoutRect === 'function' ? c._pointerLayoutRect() : null;
+        const z = typeof c._v9LayoutZoom === 'function' ? c._v9LayoutZoom() : 1;
+        if (!rect) return;
+        c.updateCrosshair({
+            clientX: rect.left + cx * z,
+            clientY: rect.top + cy * z,
+        });
     }
 
     /**
@@ -2644,6 +2679,11 @@ class DrawingToolsManager {
         
         // Update cursor — honor cross / dot / arrow preference from chart.setCursorType
         this._applyChartPlacementCursor();
+        this._showInitialPlacementCrosshair();
+        const svgNode = this.svg && this.svg.node();
+        if (svgNode) {
+            svgNode.classList.add('drawing');
+        }
         this.svg.style('pointer-events', toolName ? 'all' : 'none');
         
         // Disable pointer events on all existing drawings when a tool is active
@@ -2724,6 +2764,10 @@ class DrawingToolsManager {
         this._clearCurvePlacementCache();
         this.currentTool = null;
         this.drawingState.reset();
+        const svgNode = this.svg && this.svg.node();
+        if (svgNode) {
+            svgNode.classList.remove('drawing');
+        }
         this.svg.style('cursor', 'default');
         
         // Clear any active drawing
@@ -3257,6 +3301,19 @@ class DrawingToolsManager {
             return;
         }
 
+        // Touch is handled via pointerdown/up bridge; ignore duplicate compatibility mousedown.
+        if (this._touchPointerActive && event && event.type === 'mousedown' && !this._isTouchLikePointer(event)) {
+            return;
+        }
+
+        // Block iOS/Android ghost mouse events that follow a touch (not our active touch bridge).
+        if (event && event.type === 'mousedown' && !this._isTouchLikePointer(event) && !this._touchPointerActive) {
+            if (this._lastTouchSynthAt && performance.now() - this._lastTouchSynthAt < 450) {
+                return;
+            }
+        }
+
+        this._syncCtrlSelectModeFromEvent(event);
         if (this._tryStartCtrlSelectionMove(event)) {
             return;
         }
@@ -3484,7 +3541,7 @@ class DrawingToolsManager {
                 );
             }
 
-            if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey) {
+            if (drawingsAtPoint.length > 0 && !event.shiftKey && !event.altKey && !this._isCtrlPointerModifier(event)) {
                 const lineTypeSet = new Set([
                     'trendline',
                     'horizontal',
@@ -3588,7 +3645,7 @@ class DrawingToolsManager {
             // If multiple drawings overlap, start a direct move drag for the best hit immediately.
             // This avoids relying on DOM event targeting (which always hits the topmost SVG element),
             // allowing lines behind shapes to be dragged on the first attempt.
-            if (drawingsAtPoint.length > 1 && !event.shiftKey && !event.altKey) {
+            if (drawingsAtPoint.length > 1 && !event.shiftKey && !event.altKey && !this._isCtrlPointerModifier(event)) {
                 const best = drawingsAtPoint[0];
                 const shouldBlockVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && best
@@ -3619,7 +3676,8 @@ class DrawingToolsManager {
                 const toMove = (this.selectedDrawings || []).filter((d) =>
                     d && !d.locked && !this._isHorizontalAnchorToolType(d.type)
                 );
-                if (selectedAtPoint.length > 0 && toMove.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
+                if (selectedAtPoint.length > 0 && toMove.length > 0 && !event.shiftKey && !this._isCtrlPointerModifier(event)
+                    && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(toMove, event);
@@ -3644,8 +3702,8 @@ class DrawingToolsManager {
             let drawing = null;
             let drawingGroup = null;
             
-            // If stacked lines detected and Shift key is held, select all drawings with lines at this point
-            if (stackedLinesInfo.isStacked && event.shiftKey) {
+            // If stacked lines detected and Shift/Ctrl held, select all drawings with lines at this point
+            if (stackedLinesInfo.isStacked && this._isMultiSelectModifier(event)) {
                 // [debug removed]
                 stackedLinesInfo.drawings.forEach((d, i) => {
                     this.selectDrawing(d, i > 0); // Add to selection for subsequent drawings
@@ -3758,6 +3816,10 @@ class DrawingToolsManager {
 
 
                 const stopDirectResizeListeners = () => {
+                    if (this._directResizeDragCleanup) {
+                        this._directResizeDragCleanup();
+                        this._directResizeDragCleanup = null;
+                    }
                     if (this._directResizeMoveHandler) {
                         document.removeEventListener('mousemove', this._directResizeMoveHandler, true);
                     }
@@ -3810,8 +3872,10 @@ class DrawingToolsManager {
                         stopDirectResizeListeners();
                         this.endCustomHandleDrag({ sourceEvent: e });
                     };
-                    document.addEventListener('mousemove', this._directResizeMoveHandler, true);
-                    document.addEventListener('mouseup', this._directResizeUpHandler, true);
+                    this._directResizeDragCleanup = this._addDocumentDragListeners(
+                        this._directResizeMoveHandler,
+                        this._directResizeUpHandler
+                    );
                     return;
                 }
 
@@ -3896,13 +3960,14 @@ class DrawingToolsManager {
                         }
                     }
 
-                    document.addEventListener('mousemove', this._directResizeMoveHandler, true);
-                    document.addEventListener('mouseup', this._directResizeUpHandler, true);
+                    this._directResizeDragCleanup = this._addDocumentDragListeners(
+                        this._directResizeMoveHandler,
+                        this._directResizeUpHandler
+                    );
                     return;
                 }
 
-                // Pass shift key state for multi-selection
-                this.selectDrawing(drawing, event.shiftKey);
+                this.selectDrawing(drawing, this._isMultiSelectModifier(event));
 
                 if (event.altKey && drawingsAtPoint.length > 1) {
                     event.preventDefault();
@@ -5062,10 +5127,7 @@ class DrawingToolsManager {
         // Note: magnetKeyHeld is no longer used for snap - event.metaKey/ctrlKey checked directly
         if (event.metaKey || event.ctrlKey) {
             this.magnetKeyHeld = true;
-            // Enable Ctrl+hover to select mode (only Ctrl, not Command on Mac)
-            if (event.ctrlKey && !this.currentTool && !this._isDrawingGeometryMoveActive()) {
-                this.ctrlSelectMode = true;
-            }
+            this._syncCtrlSelectModeFromEvent(event);
         }
         
         // Delete key - delete selected drawing(s)
@@ -5171,6 +5233,152 @@ class DrawingToolsManager {
                     shiftKey: event.shiftKey
                 });
             }
+        }
+    }
+
+    _isTouchLikePointer(event) {
+        const e = event && event.sourceEvent ? event.sourceEvent : event;
+        return !!(e && e.pointerType && e.pointerType !== 'mouse');
+    }
+
+    _coarsePointerHitSlop() {
+        if (this._touchPointerActive) return 14;
+        if (typeof window !== 'undefined' && window.matchMedia
+            && window.matchMedia('(pointer: coarse)').matches) {
+            return 10;
+        }
+        return 0;
+    }
+
+    _dispatchMouseEventOn(target, sourceEvent, mouseType) {
+        if (!target || !sourceEvent) return;
+        const buttons = typeof sourceEvent.buttons === 'number'
+            ? sourceEvent.buttons
+            : (mouseType === 'mouseup' ? 0 : 1);
+        target.dispatchEvent(new MouseEvent(mouseType, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: sourceEvent.clientX,
+            clientY: sourceEvent.clientY,
+            button: typeof sourceEvent.button === 'number' ? sourceEvent.button : 0,
+            buttons,
+            shiftKey: !!sourceEvent.shiftKey,
+            ctrlKey: !!sourceEvent.ctrlKey,
+            altKey: !!sourceEvent.altKey,
+            metaKey: !!sourceEvent.metaKey,
+        }));
+    }
+
+    /** Document-level drag listeners for touch (pointer) + mouse. Returns cleanup fn. */
+    _addDocumentDragListeners(onMove, onUp, options = {}) {
+        const capture = options.capture !== false;
+        const pointerOpts = { capture, passive: false };
+        const onPointerMove = (e) => {
+            if (!this._isTouchLikePointer(e)) return;
+            if (typeof e.preventDefault === 'function') e.preventDefault();
+            onMove(e);
+        };
+        const onPointerUp = (e) => {
+            if (!this._isTouchLikePointer(e)) return;
+            onUp(e);
+        };
+        document.addEventListener('mousemove', onMove, capture);
+        document.addEventListener('mouseup', onUp, capture);
+        document.addEventListener('pointermove', onPointerMove, pointerOpts);
+        document.addEventListener('pointerup', onPointerUp, pointerOpts);
+        document.addEventListener('pointercancel', onPointerUp, pointerOpts);
+        return () => {
+            document.removeEventListener('mousemove', onMove, capture);
+            document.removeEventListener('mouseup', onUp, capture);
+            document.removeEventListener('pointermove', onPointerMove, pointerOpts);
+            document.removeEventListener('pointerup', onPointerUp, pointerOpts);
+            document.removeEventListener('pointercancel', onPointerUp, pointerOpts);
+        };
+    }
+
+    /** Route touch/pen on the SVG layer through the same mousedown/mousemove/mouseup handlers as mouse. */
+    _installDrawingPointerBridge() {
+        const svgNode = this.svg && this.svg.node();
+        if (!svgNode || svgNode.__drawingTouchPointerBridgeInstalled) return;
+        svgNode.__drawingTouchPointerBridgeInstalled = true;
+
+        const opts = { passive: false };
+        let activePointerId = null;
+
+        const isGeometryActive = () => !!(
+            this.isDragging
+            || this.isResizing
+            || this.isCustomHandleDrag
+            || this.drawingState?.isDrawing
+            || this.isRectSelecting
+            || this.isDrawingPath
+            || this._directMoveMoveHandler
+            || this._isDrawingGeometryMoveActive()
+            || this._isLiveHandleEditing()
+        );
+
+        const isPlacementMode = () => !!(this.currentTool || (this.drawingState && this.drawingState.isDrawing));
+
+        const shouldTrackPointer = (e) => activePointerId === e.pointerId || isGeometryActive() || isPlacementMode();
+
+        svgNode.addEventListener('pointerdown', (e) => {
+            if (!this._isTouchLikePointer(e)) return;
+            if (typeof e.button === 'number' && e.button !== 0) return;
+            if (this.chart && this.chart._pinchActive) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this._touchPointerActive = true;
+            activePointerId = e.pointerId;
+            this.handleMouseDown(e);
+            try { svgNode.setPointerCapture(e.pointerId); } catch (_) {}
+        }, opts);
+
+        const onPointerMove = (e) => {
+            if (!this._isTouchLikePointer(e) || !shouldTrackPointer(e)) return;
+            e.preventDefault();
+            this.handleMouseMove(e);
+        };
+        svgNode.addEventListener('pointermove', onPointerMove, opts);
+        document.addEventListener('pointermove', onPointerMove, opts);
+
+        const onPointerUp = (e) => {
+            if (!this._isTouchLikePointer(e) || !shouldTrackPointer(e)) return;
+            e.preventDefault();
+            this._lastTouchSynthAt = performance.now();
+            this.handleMouseUp(e);
+            if (activePointerId === e.pointerId) {
+                activePointerId = null;
+                this._touchPointerActive = false;
+            }
+        };
+        svgNode.addEventListener('pointerup', onPointerUp, opts);
+        svgNode.addEventListener('pointercancel', onPointerUp, opts);
+        document.addEventListener('pointerup', onPointerUp, opts);
+        document.addEventListener('pointercancel', onPointerUp, opts);
+
+        const canvas = this.chart && this.chart.canvas;
+        const chartWrapper = canvas && canvas.parentElement;
+        if (chartWrapper && !chartWrapper.__drawingTouchProximityBridge) {
+            chartWrapper.__drawingTouchProximityBridge = true;
+            chartWrapper.addEventListener('pointermove', (e) => {
+                if (!this._isTouchLikePointer(e)) return;
+                if (this.currentTool || (this.drawingState && this.drawingState.isDrawing)) {
+                    if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+                        this.chart.updateCrosshair(e);
+                    }
+                    if (this.drawingState && this.drawingState.isDrawing) {
+                        this.handleMouseMove(e);
+                    }
+                    return;
+                }
+                if (this.isRectSelecting) return;
+                this.checkDrawingProximity(e);
+            }, { passive: true });
+        }
+
+        if (svgNode.style) {
+            svgNode.style.touchAction = 'none';
         }
     }
 
@@ -6883,9 +7091,9 @@ class DrawingToolsManager {
             
             self._drawingClickTimes[drawing.id] = now;
             
-            // Single click - select (with Shift for multi-select); locked = select only, no drag/resize
+            // Single click - select (Shift/Ctrl for multi-select); locked = select only, no drag/resize
             if (!self.currentTool) {
-                self.selectDrawing(drawing, event.shiftKey);
+                self.selectDrawing(drawing, self._isMultiSelectModifier(event));
             }
         };
         
@@ -7198,10 +7406,14 @@ class DrawingToolsManager {
                 .filter(function(event) {
                     const src = event.sourceEvent || event;
                     // Multi-select + Ctrl uses canvas direct-move; single selection uses normal d3 body drag.
-                    if (!self.currentTool && src && src.ctrlKey && !src.shiftKey
-                        && Array.isArray(self.selectedDrawings) && self.selectedDrawings.length > 1
-                        && self.selectedDrawings.includes(drawing)) {
-                        return false;
+                    if (!self.currentTool && src && (src.ctrlKey || src.metaKey) && !src.shiftKey) {
+                        if (!drawing.selected) {
+                            return false;
+                        }
+                        if (Array.isArray(self.selectedDrawings) && self.selectedDrawings.length > 1
+                            && self.selectedDrawings.includes(drawing)) {
+                            return false;
+                        }
                     }
                     // Only allow drag if not currently drawing and not clicking on a handle
                     const targetSelection = d3.select(event.target);
@@ -7419,7 +7631,7 @@ class DrawingToolsManager {
 
                     if (horizontalAnchorPointDrag) {
                         if (!drawing.selected) {
-                            self.selectDrawing(drawing, event.sourceEvent.shiftKey);
+                            self.selectDrawing(drawing, self._isMultiSelectModifier(event.sourceEvent));
                         }
                         dragStartPoints = drawing.points.map(p => ({ ...p }));
                         self._bodyDragActiveDrawings = [drawing];
@@ -7437,7 +7649,7 @@ class DrawingToolsManager {
                     
                     // Select the drawing when starting to drag (if not already selected)
                     if (!drawing.selected) {
-                        self.selectDrawing(drawing, event.sourceEvent.shiftKey);
+                        self.selectDrawing(drawing, self._isMultiSelectModifier(event.sourceEvent));
                     }
                     
                     // Store original points and start position
@@ -7695,7 +7907,7 @@ class DrawingToolsManager {
             if (!dragMeta) return;
 
             if (!drawing.selected) {
-                self.selectDrawing(drawing, event.shiftKey);
+                self.selectDrawing(drawing, self._isMultiSelectModifier(event));
             }
 
             if (dragMeta.anchor === 'b' || dragMeta.anchor === 'c') {
@@ -7709,12 +7921,13 @@ class DrawingToolsManager {
                     self.handleDrag({ sourceEvent: e });
                 };
                 const onUp = (e) => {
-                    document.removeEventListener('mousemove', onMove, true);
-                    document.removeEventListener('mouseup', onUp, true);
+                    if (self._pitchforkLevelDragCleanup) {
+                        self._pitchforkLevelDragCleanup();
+                        self._pitchforkLevelDragCleanup = null;
+                    }
                     self.endHandleDrag(drawing);
                 };
-                document.addEventListener('mousemove', onMove, true);
-                document.addEventListener('mouseup', onUp, true);
+                self._pitchforkLevelDragCleanup = self._addDocumentDragListeners(onMove, onUp);
                 return;
             }
 
@@ -7752,8 +7965,10 @@ class DrawingToolsManager {
             };
 
             const onUp = () => {
-                document.removeEventListener('mousemove', onMove, true);
-                document.removeEventListener('mouseup', onUp, true);
+                if (self._pitchforkLevelDragCleanup) {
+                    self._pitchforkLevelDragCleanup();
+                    self._pitchforkLevelDragCleanup = null;
+                }
                 self._endDrawingLiveInteraction();
                 if (beforeState && self.history) {
                     self.history.pushState(drawing, beforeState);
@@ -7768,8 +7983,7 @@ class DrawingToolsManager {
                 } catch (_) {}
             };
 
-            document.addEventListener('mousemove', onMove, true);
-            document.addEventListener('mouseup', onUp, true);
+            self._pitchforkLevelDragCleanup = self._addDocumentDragListeners(onMove, onUp);
         });
     }
 
@@ -7943,7 +8157,7 @@ class DrawingToolsManager {
             if (!dragMeta) return;
 
             if (!drawing.selected) {
-                self.selectDrawing(drawing, event.shiftKey);
+                self.selectDrawing(drawing, self._isMultiSelectModifier(event));
             }
 
             const arr = drawing.style?.[dragMeta.arrayKey];
@@ -7987,8 +8201,10 @@ class DrawingToolsManager {
             const onUp = (ev) => {
                 ev.preventDefault();
                 ev.stopPropagation();
-                document.removeEventListener('mousemove', onMove, true);
-                document.removeEventListener('mouseup', onUp, true);
+                if (self._gannLevelDragCleanup) {
+                    self._gannLevelDragCleanup();
+                    self._gannLevelDragCleanup = null;
+                }
 
                 if (drawing.selected) {
                     self.setupDrawingInteraction(drawing);
@@ -8009,8 +8225,7 @@ class DrawingToolsManager {
                 }
             };
 
-            document.addEventListener('mousemove', onMove, true);
-            document.addEventListener('mouseup', onUp, true);
+            self._gannLevelDragCleanup = self._addDocumentDragListeners(onMove, onUp);
         });
     }
 
@@ -8154,8 +8369,10 @@ class DrawingToolsManager {
             this._endDrawingLiveInteraction();
         };
 
-        document.addEventListener('mousemove', this._directMoveMoveHandler, true);
-        document.addEventListener('mouseup', this._directMoveUpHandler, true);
+        this._directMoveDragCleanup = this._addDocumentDragListeners(
+            this._directMoveMoveHandler,
+            this._directMoveUpHandler
+        );
     }
 
     /**
@@ -12031,7 +12248,11 @@ class DrawingToolsManager {
 
     _stopDirectMoveDrag(options = {}) {
         this._clearAxisHighlightDragState();
-        const hadDirectMove = !!(this._directMoveMoveHandler || this._directMoveUpHandler);
+        const hadDirectMove = !!(this._directMoveMoveHandler || this._directMoveUpHandler || this._directMoveDragCleanup);
+        if (this._directMoveDragCleanup) {
+            this._directMoveDragCleanup();
+            this._directMoveDragCleanup = null;
+        }
         if (this._directMoveMoveHandler) {
             document.removeEventListener('mousemove', this._directMoveMoveHandler, true);
             this._directMoveMoveHandler = null;
@@ -12062,7 +12283,7 @@ class DrawingToolsManager {
      * @returns {boolean} true when the gesture was consumed
      */
     _tryStartCtrlSelectionMove(event) {
-        if (!event || event.button !== 0 || !event.ctrlKey || event.shiftKey || this.currentTool || this.isRectSelecting) {
+        if (!event || event.button !== 0 || !this._isCtrlPointerModifier(event) || this.currentTool || this.isRectSelecting) {
             return false;
         }
         const toMove = (this.selectedDrawings || []).filter((d) =>
@@ -12101,6 +12322,25 @@ class DrawingToolsManager {
         if (typeof chart.scheduleRender === 'function') {
             chart.scheduleRender();
         }
+    }
+
+    /** Shift/Ctrl/Cmd held for additive selection (toggle/add). */
+    _isMultiSelectModifier(event) {
+        if (!event) return false;
+        return !!(event.shiftKey || event.ctrlKey || event.metaKey);
+    }
+
+    /** Ctrl/Cmd without Shift — marquee, multi-select click, or hover-select. */
+    _isCtrlPointerModifier(event) {
+        if (!event || event.shiftKey) return false;
+        return !!(event.ctrlKey || event.metaKey);
+    }
+
+    /** Ctrl held (no Shift) for hover-to-select; synced from keyboard and pointer. */
+    _syncCtrlSelectModeFromEvent(event) {
+        if (!event) return;
+        this.ctrlSelectMode = !!(event.ctrlKey && !event.shiftKey
+            && !this.currentTool && !this._isDrawingGeometryMoveActive());
     }
 
     /**
@@ -12184,46 +12424,41 @@ class DrawingToolsManager {
                 .style('pointer-events', 'none');
         }
         
-        // Set up document-level mouse event listeners for dragging
+        const cleanupRectListeners = () => {
+            if (this._rectSelectDragCleanup) {
+                this._rectSelectDragCleanup();
+                this._rectSelectDragCleanup = null;
+            }
+            document.removeEventListener('keyup', handleKeyUp);
+        };
+
         const handleMouseMove = (e) => {
             if (this.isRectSelecting) {
-                // Check if Ctrl is still held
                 if (!e.ctrlKey) {
-                    // [debug removed]
                     this.cancelRectangularSelection();
-                    document.removeEventListener('mousemove', handleMouseMove);
-                    document.removeEventListener('mouseup', handleMouseUp);
-                    document.removeEventListener('keyup', handleKeyUp);
+                    cleanupRectListeners();
                     return;
                 }
                 this.updateRectangularSelection(e);
             }
         };
-        
+
         const handleMouseUp = (e) => {
             if (this.isRectSelecting) {
                 this.completeRectangularSelection();
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-                document.removeEventListener('keyup', handleKeyUp);
+                cleanupRectListeners();
             }
         };
-        
+
         const handleKeyUp = (e) => {
             if (e.key === 'Control' && this.isRectSelecting) {
-                // [debug removed]
                 this.cancelRectangularSelection();
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-                document.removeEventListener('keyup', handleKeyUp);
+                cleanupRectListeners();
             }
         };
-        
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
+
+        this._rectSelectDragCleanup = this._addDocumentDragListeners(handleMouseMove, handleMouseUp);
         document.addEventListener('keyup', handleKeyUp);
-        
-        // [debug removed]
     }
 
     /**
@@ -12351,7 +12586,7 @@ class DrawingToolsManager {
      *     `this.drawings` / visually on top) wins so selection matches what you see.
      */
     findDrawingsAtPoint(mouseX, mouseY, options = {}) {
-        const baseHitTolerance = 10; // pixels - how close to a line to consider it a hit
+        const baseHitTolerance = 10 + this._coarsePointerHitSlop(); // pixels - how close to a line to consider it a hit
         const hitsById = new Map(); // drawingId -> { drawing, distance, z }
         
         // Check if mouse is outside the chart's visible area (in axis regions)
@@ -13484,7 +13719,7 @@ class DrawingToolsManager {
         if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
             return false;
         }
-        const baseHitTolerance = 10;
+        const baseHitTolerance = 10 + this._coarsePointerHitSlop();
         try {
             const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary').nodes();
             let bestBoundaryDistance = Infinity;
@@ -13542,7 +13777,7 @@ class DrawingToolsManager {
         if (!drawing || drawing.type !== 'anchored-volume-profile' || !drawing.group) {
             return false;
         }
-        const baseHitTolerance = 10;
+        const baseHitTolerance = 10 + this._coarsePointerHitSlop();
         try {
             const anchorLines = drawing.group.selectAll('.volume-profile-anchor-boundary').nodes();
             for (const el of anchorLines) {
@@ -13790,6 +14025,8 @@ class DrawingToolsManager {
         if (this._isPlacementModeActive()) {
             return;
         }
+
+        this._syncCtrlSelectModeFromEvent(event);
 
         const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
         

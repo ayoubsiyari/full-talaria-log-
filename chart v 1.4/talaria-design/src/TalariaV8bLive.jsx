@@ -1897,6 +1897,7 @@ function v9ChartInfoSettingsFromTlStyle(tlStyle) {
     angle: false,
   };
   types.forEach((label) => {
+    if (!show) return;
     const prop = V9_INFO_LABEL_TO_PROP[label];
     if (prop) info[prop] = true;
   });
@@ -8303,10 +8304,13 @@ function v9TlStylePatchFromDrawing(d) {
     ...(s.infoSettings && typeof s.infoSettings === 'object'
       ? (() => {
           let types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
+          const info = s.infoSettings;
           const masterOn =
-            s.showLabel === true ||
-            s.infoSettings.showInfo === true ||
-            (types.length > 0 && s.infoSettings.showInfo !== false);
+            info.showInfo === false
+              ? false
+              : (s.showLabel === true ||
+                info.showInfo === true ||
+                (types.length > 0 && info.showInfo !== false));
           if (masterOn && types.length === 0) {
             types = d.type && v9IsRangeMeasureChartType(d.type)
               ? v9DefaultShowInfoTypesForRangeType(
@@ -21317,6 +21321,7 @@ const TalariaV8bLive = () => {
 
   /** Range Tool / trend line Show Info metric toggle — close dropdown when nothing remains selected. */
   const applyTlShowInfoTypeToggle = useCallback((metric) => {
+    suppressForwardBridge.current = true;
     flushSync(() => setTlStyle((s) => v9PatchTlShowInfoTypesOnToggle(s, metric)));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
@@ -21330,6 +21335,7 @@ const TalariaV8bLive = () => {
 
   /** Show Info master toggle — auto-select first metric when enabling; do not auto-open dropdown. */
   const applyTlShowInfoToggle = useCallback(() => {
+    suppressForwardBridge.current = true;
     flushSync(() => setTlStyle((s) => {
       const legacy = resolveLegacyTool();
       return v9PatchTlShowInfoOnToggle(s, !s.showInfo, legacy);
@@ -23173,8 +23179,11 @@ const TalariaV8bLive = () => {
           onMouseDown={e => e.stopPropagation()}
           onClick={e => {
             e.stopPropagation();
-            if (typeof e.target?.closest === "function" && e.target.closest("[data-tl-style-drop]")) return;
-            if (tlStyleDrop === "info") closeTlInfoDrop();
+            if (typeof e.target?.closest === "function") {
+              const inStyleDrop = e.target.closest("[data-tl-style-drop]");
+              if (inStyleDrop && !closing.has("tlInfoDrop")) return;
+            }
+            if (tlStyleDrop === "info" || closing.has("tlInfoDrop")) closeTlInfoDrop();
             else setTlStyleDrop(null);
           }}
           style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:2147483647, width:440, fontFamily:F,
@@ -23576,7 +23585,7 @@ const TalariaV8bLive = () => {
                     {/* Separator spanning all columns */}
                     <div style={{gridColumn:"1 / -1",height:1,background:c.br,margin:"2px 0 4px"}}/>
                     {/* Stats row: checkbox col1, dropdown spanning cols 2-4 */}
-                    <div data-tl-style-drop="1" style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",applyTlShowInfoToggle)}</div>
+                    <div data-tl-style-drop="1" style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",applyTlShowInfoToggle,{ immediate: true })}</div>
                     <div data-tl-style-drop="1" style={{gridColumn:"2 / -1",padding:"8px 0",opacity:tlStyle.showInfo?1:0.38,pointerEvents:tlStyle.showInfo?"auto":"none",transition:"opacity 0.15s"}}>
                       <div style={{position:"relative"}}>
                         <div data-tl-style-drop="1" {...modalPointerActivate((e) => {
@@ -23606,6 +23615,7 @@ const TalariaV8bLive = () => {
                           <div data-tl-style-drop="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                             style={{position:"absolute",zIndex:10,...(tlInfoDropUp?{bottom:"calc(100% + 4px)"}:{top:"calc(100% + 4px)"}),
                               right:0,width:152,background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",fontFamily:F,
+                              pointerEvents:closing.has("tlInfoDrop")?"none":"auto",
                               animation:closing.has("tlInfoDrop")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
                             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                             {["Price range","Percent change","Change in pips","Bars range","Date/time range","Volume"].map(v=>{
@@ -24726,9 +24736,21 @@ const TalariaV8bLive = () => {
               ))}
                             {/* Show Info row — dropdown always visible, dimmed when off (hidden for hline) */}
               {!isRRTool && tlSubTool.icon !== "measure" && !isFibTool && !isGannTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon) && <div data-tl-style-drop="1" style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",applyTlShowInfoToggle)}
+                {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",applyTlShowInfoToggle,{ immediate: true })}
                 <div style={{ position:"relative", marginLeft:"auto" }}>
-                  <div data-tl-style-drop="1" onClick={e=>{e.stopPropagation();if(tlStyle.showInfo){if(tlStyleDrop==="info"||closing.has("tlInfoDrop")){closeTlInfoDrop();}else{const r=e.currentTarget.getBoundingClientRect();const dropH=210;const goUp=r.bottom/Z+dropH>window.innerHeight/Z;setTlInfoDropUp(goUp);setTlStyleDrop("info");}}}}
+                  <div data-tl-style-drop="1" {...modalPointerActivate((e) => {
+                          e.stopPropagation();
+                          if (!tlStyle.showInfo) return;
+                          if (tlStyleDrop==="info"||closing.has("tlInfoDrop")) {
+                            closeTlInfoDrop();
+                            return;
+                          }
+                          const r=e.currentTarget.getBoundingClientRect();
+                          const dropH=210;
+                          const goUp=r.bottom/Z+dropH>window.innerHeight/Z;
+                          setTlInfoDropUp(goUp);
+                          setTlStyleDrop("info");
+                        })}
                     onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
                     style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:5, position:"relative",
                              background:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"rgba(74,106,255,0.08)":hov==="tlInfoBtn"?c.hv:"transparent",
@@ -24744,6 +24766,7 @@ const TalariaV8bLive = () => {
                       ...(tlInfoDropUp?{bottom:"calc(100% + 4px)"}:{top:"calc(100% + 4px)"}),
                       right:0, width:148,
                       background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", fontFamily:F,
+                      pointerEvents:closing.has("tlInfoDrop")?"none":"auto",
                       animation:closing.has("tlInfoDrop")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease" }}>
                       <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
                       {["Price range","Percent change","Change in pips","Bars range","Date/time range","Distance","Angle"].map(v=>{

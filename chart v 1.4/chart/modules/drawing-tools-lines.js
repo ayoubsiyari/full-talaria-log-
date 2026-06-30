@@ -33,7 +33,8 @@ function appendTextLabel(group, text, config = {}) {
     const totalHeight = lines.length * lineHeight;
     const isRotated = rotation !== 0;
 
-    const useCenteredY = isRotated || yAnchor === 'middle';
+    const onLineMiddle = yAnchor === 'middle';
+    const useCenteredY = isRotated || onLineMiddle;
 
     // Legacy behavior for non-rotated labels: y is treated like a top reference (via text-before-edge)
     // unless yAnchor:'middle' is explicitly requested.
@@ -48,6 +49,8 @@ function appendTextLabel(group, text, config = {}) {
     const yPos = useCenteredY ? y : (y + legacyOffset);
 
     const resolved = resolveDrawingTextStyle(text, fontStyle, fontFamily);
+    // 'middle' matches Arabic/Latin on-line labels; 'central' for rotated off-line labels.
+    const centeredBaseline = onLineMiddle && !isRotated ? 'middle' : 'central';
 
     const textEl = group.append('text')
         .attr('x', x)
@@ -58,7 +61,7 @@ function appendTextLabel(group, text, config = {}) {
         .attr('font-weight', fontWeight)
         .attr('font-style', resolved.fontStyle)
         .attr('text-anchor', anchor)
-        .attr('dominant-baseline', useCenteredY ? 'central' : 'text-before-edge')
+        .attr('dominant-baseline', useCenteredY ? centeredBaseline : 'text-before-edge')
         .attr('xml:space', 'preserve')
         .style('pointer-events', 'none')
         .style('user-select', 'none');
@@ -78,21 +81,28 @@ function appendTextLabel(group, text, config = {}) {
 
     let nudgeX = 0;
     let nudgeY = 0;
-    if (anchor === 'middle' && resolved.direction === 'rtl') {
+    if (onLineMiddle) {
+        // Center visual bbox on the stroke for LTR + RTL (Arabic central baseline is unreliable).
         try {
-            // Italic skew changes Arabic glyph bounds — measure before centering nudge.
             if (resolved.italicSkew) {
                 const skewOnly = buildDrawingTextTransform(x, yPos, 0, resolved.italicSkew, 0, 0);
                 if (skewOnly) textEl.attr('transform', skewOnly);
             }
             const bbox = textEl.node().getBBox();
-            if (Number.isFinite(bbox.width) && bbox.width > 0) {
+            if (anchor === 'middle' && Number.isFinite(bbox.width) && bbox.width > 0) {
                 nudgeX = x - (bbox.x + bbox.width / 2);
             }
             if (Number.isFinite(bbox.height) && bbox.height > 0) {
                 nudgeY = yPos - (bbox.y + bbox.height / 2);
             }
             if (resolved.italicSkew) textEl.attr('transform', null);
+        } catch (_) { /* ignore measure failures */ }
+    } else if (anchor === 'middle' && resolved.direction === 'rtl') {
+        try {
+            const bbox = textEl.node().getBBox();
+            if (Number.isFinite(bbox.width) && bbox.width > 0) {
+                nudgeX = x - (bbox.x + bbox.width / 2);
+            }
         } catch (_) { /* ignore measure failures */ }
     }
 
@@ -176,7 +186,8 @@ function measureLineToolLabelWidth(group, text, style, anchor = 'middle') {
         fontFamily: style?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
         fontWeight: style?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
         fontStyle: style?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-        anchor
+        anchor,
+        onLineMiddle: true
     });
 }
 
@@ -188,7 +199,8 @@ function measureLineToolLabelBlock(group, text, style, anchor = 'middle') {
             fontFamily: style?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: style?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: style?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            anchor
+            anchor,
+            onLineMiddle: true
         });
     }
     const w = measureLineToolLabelWidth(group, text, style, anchor);
@@ -1425,6 +1437,7 @@ class HorizontalLineTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
+        normalizeLineTextVAlign(this.style);
         const textVAlign = readLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
@@ -1693,10 +1706,20 @@ class HorizontalLineTool extends BaseDrawing {
             const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
                 ? 0
                 : rawOffsetY;
+            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            let splitAnchor = 'middle';
+            switch (textHAlign) {
+                case 'left':
+                    splitAnchor = resolveLineEndpointSvgAnchor('left', label);
+                    break;
+                case 'right':
+                    splitAnchor = resolveLineEndpointSvgAnchor('right', label);
+                    break;
+            }
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: splitAnchor,
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -2250,6 +2273,7 @@ class RayTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
+        normalizeLineTextVAlign(this.style);
         const textVAlign = readLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
@@ -2559,6 +2583,7 @@ class HorizontalRayTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
+        normalizeLineTextVAlign(this.style);
         const textVAlign = readLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
@@ -2849,10 +2874,20 @@ class HorizontalRayTool extends BaseDrawing {
             const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
                 ? 0
                 : rawOffsetY;
+            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            let splitAnchor = 'middle';
+            switch (textHAlign) {
+                case 'left':
+                    splitAnchor = resolveLineEndpointSvgAnchor('left', label);
+                    break;
+                case 'right':
+                    splitAnchor = resolveLineEndpointSvgAnchor('right', label);
+                    break;
+            }
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: 'middle',
+                anchor: splitAnchor,
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,

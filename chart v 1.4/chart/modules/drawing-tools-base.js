@@ -407,6 +407,7 @@ function measureLineLabelTextWidth(group, text, options = {}) {
         .attr('font-weight', fontWeight)
         .attr('font-style', resolved.fontStyle)
         .attr('text-anchor', anchor)
+        .attr('dominant-baseline', options.onLineMiddle ? 'middle' : 'auto')
         .style('visibility', 'hidden')
         .style('pointer-events', 'none');
 
@@ -414,9 +415,17 @@ function measureLineLabelTextWidth(group, text, options = {}) {
         tempText.style('direction', resolved.direction);
         tempText.attr('unicode-bidi', 'plaintext');
     }
-    const measureLine = label.split('\n')[0] || label;
-    const sanitized = measureLine.length ? measureLine.replace(/ /g, '\u00A0') : '\u00A0';
-    tempText.text(sanitized);
+
+    const textLines = label.split('\n');
+    const lineHeight = fontSize * 1.2;
+    const verticalOffset = textLines.length > 1 ? -((textLines.length - 1) / 2) * lineHeight : 0;
+    textLines.forEach((line, index) => {
+        const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
+        tempText.append('tspan')
+            .attr('x', 0)
+            .attr('dy', index === 0 ? verticalOffset : lineHeight)
+            .text(sanitized);
+    });
 
     let width = 0;
     let height = 0;

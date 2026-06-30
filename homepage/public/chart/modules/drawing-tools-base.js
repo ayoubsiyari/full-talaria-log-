@@ -407,6 +407,7 @@ function measureLineLabelTextWidth(group, text, options = {}) {
         .attr('font-weight', fontWeight)
         .attr('font-style', resolved.fontStyle)
         .attr('text-anchor', anchor)
+        .attr('dominant-baseline', options.onLineMiddle ? 'middle' : 'auto')
         .style('visibility', 'hidden')
         .style('pointer-events', 'none');
 
@@ -414,15 +415,37 @@ function measureLineLabelTextWidth(group, text, options = {}) {
         tempText.style('direction', resolved.direction);
         tempText.attr('unicode-bidi', 'plaintext');
     }
-    tempText.text(label);
+
+    const textLines = label.split('\n');
+    const lineHeight = fontSize * 1.2;
+    const verticalOffset = textLines.length > 1 ? -((textLines.length - 1) / 2) * lineHeight : 0;
+    textLines.forEach((line, index) => {
+        const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
+        tempText.append('tspan')
+            .attr('x', 0)
+            .attr('dy', index === 0 ? verticalOffset : lineHeight)
+            .text(sanitized);
+    });
 
     let width = 0;
+    let height = 0;
     try {
-        width = tempText.node().getBBox().width;
+        const bbox = tempText.node().getBBox();
+        width = bbox.width;
+        height = bbox.height;
     } catch (_) { /* ignore measure failures */ }
     tempText.remove();
-    if (Number.isFinite(width) && width > 0) return width;
-    return fontSize * Math.max(label.length, 1) * 0.55;
+    if (Number.isFinite(width) && width > 0) {
+        return options.returnBlock ? { width, height } : width;
+    }
+    const fallbackW = fontSize * Math.max(label.length, 1) * 0.55;
+    const fallbackH = fontSize * 1.2;
+    return options.returnBlock ? { width: fallbackW, height: fallbackH } : fallbackW;
+}
+
+/** Width + height for line-label gap sizing (RTL/italic-aware). */
+function measureLineLabelTextBlock(group, text, options = {}) {
+    return measureLineLabelTextWidth(group, text, { ...options, returnBlock: true });
 }
 
 /** Readable label rotation (deg) aligned with line direction. */

@@ -2680,6 +2680,10 @@ class DrawingToolsManager {
         // Update cursor — honor cross / dot / arrow preference from chart.setCursorType
         this._applyChartPlacementCursor();
         this._showInitialPlacementCrosshair();
+        const svgNode = this.svg && this.svg.node();
+        if (svgNode) {
+            svgNode.classList.add('drawing');
+        }
         this.svg.style('pointer-events', toolName ? 'all' : 'none');
         
         // Disable pointer events on all existing drawings when a tool is active
@@ -2760,6 +2764,10 @@ class DrawingToolsManager {
         this._clearCurvePlacementCache();
         this.currentTool = null;
         this.drawingState.reset();
+        const svgNode = this.svg && this.svg.node();
+        if (svgNode) {
+            svgNode.classList.remove('drawing');
+        }
         this.svg.style('cursor', 'default');
         
         // Clear any active drawing
@@ -3293,8 +3301,13 @@ class DrawingToolsManager {
             return;
         }
 
-        // Block iOS/Android ghost mouse events that follow a touch synthesis (double-place).
-        if (event && event.type === 'mousedown' && !this._isTouchLikePointer(event)) {
+        // Touch is handled via pointerdown/up bridge; ignore duplicate compatibility mousedown.
+        if (this._touchPointerActive && event && event.type === 'mousedown' && !this._isTouchLikePointer(event)) {
+            return;
+        }
+
+        // Block iOS/Android ghost mouse events that follow a touch (not our active touch bridge).
+        if (event && event.type === 'mousedown' && !this._isTouchLikePointer(event) && !this._touchPointerActive) {
             if (this._lastTouchSynthAt && performance.now() - this._lastTouchSynthAt < 450) {
                 return;
             }
@@ -5314,17 +5327,17 @@ class DrawingToolsManager {
             if (typeof e.button === 'number' && e.button !== 0) return;
             if (this.chart && this.chart._pinchActive) return;
             e.preventDefault();
+            e.stopPropagation();
             this._touchPointerActive = true;
-            this._lastTouchSynthAt = performance.now();
             activePointerId = e.pointerId;
-            this._dispatchMouseEventOn(svgNode, e, 'mousedown');
+            this.handleMouseDown(e);
             try { svgNode.setPointerCapture(e.pointerId); } catch (_) {}
         }, opts);
 
         const onPointerMove = (e) => {
             if (!this._isTouchLikePointer(e) || !shouldTrackPointer(e)) return;
             e.preventDefault();
-            this._dispatchMouseEventOn(svgNode, e, 'mousemove');
+            this.handleMouseMove(e);
         };
         svgNode.addEventListener('pointermove', onPointerMove, opts);
         document.addEventListener('pointermove', onPointerMove, opts);
@@ -5333,7 +5346,7 @@ class DrawingToolsManager {
             if (!this._isTouchLikePointer(e) || !shouldTrackPointer(e)) return;
             e.preventDefault();
             this._lastTouchSynthAt = performance.now();
-            this._dispatchMouseEventOn(svgNode, e, 'mouseup');
+            this.handleMouseUp(e);
             if (activePointerId === e.pointerId) {
                 activePointerId = null;
                 this._touchPointerActive = false;

@@ -21170,8 +21170,20 @@ class Chart {
 
         this.canvas.addEventListener('pointerdown', (e) => {
             if (!isTouchLike(e) || this._pinchActive) return;
-            if (this._touchDrawingConsumesPointer(e)) return;
             if (typeof e.button === 'number' && e.button !== 0) return;
+
+            if (this._touchDrawingConsumesPointer(e)) {
+                e.preventDefault();
+                const dm = this.drawingManager;
+                if (dm && typeof dm.handleMouseDown === 'function') {
+                    dm._touchPointerActive = true;
+                    this._drawingTouchPointerId = e.pointerId;
+                    dm.handleMouseDown(e);
+                    try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
+                }
+                return;
+            }
+
             e.preventDefault();
             this._activeTouchPointerId = e.pointerId;
             forward(e, 'mousedown');
@@ -21179,6 +21191,19 @@ class Chart {
 
         const onPointerMove = (e) => {
             if (!isTouchLike(e) || this._pinchActive) return;
+
+            if (this._drawingTouchPointerId === e.pointerId) {
+                e.preventDefault();
+                const dm = this.drawingManager;
+                if (dm && typeof dm.handleMouseMove === 'function') {
+                    dm.handleMouseMove(e);
+                }
+                if (typeof this.updateCrosshair === 'function') {
+                    this.updateCrosshair(e);
+                }
+                return;
+            }
+
             if (this._touchDrawingConsumesPointer(e) && !this.drag?.active) return;
             const tracking = this._activeTouchPointerId === e.pointerId
                 || (this.drag && this.drag.active);
@@ -21191,6 +21216,21 @@ class Chart {
 
         const onPointerUp = (e) => {
             if (!isTouchLike(e) || this._pinchActive) return;
+
+            if (this._drawingTouchPointerId === e.pointerId) {
+                e.preventDefault();
+                const dm = this.drawingManager;
+                if (dm) {
+                    dm._lastTouchSynthAt = performance.now();
+                    if (typeof dm.handleMouseUp === 'function') {
+                        dm.handleMouseUp(e);
+                    }
+                    dm._touchPointerActive = false;
+                }
+                this._drawingTouchPointerId = null;
+                return;
+            }
+
             const tracking = this._activeTouchPointerId === e.pointerId
                 || (this.drag && this.drag.active);
             if (!tracking) return;
