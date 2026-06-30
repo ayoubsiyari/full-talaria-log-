@@ -33960,19 +33960,25 @@ const TalariaV8bLive = () => {
                       {isA&&<svg width={9} height={7} viewBox="0 0 9 7"><path d="M1,3.5 L3.5,6 L8,1" stroke={c.acL} strokeWidth={1.7} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                     </button>);
                   })}
-                  <div style={{height:1,margin:"3px 10px",background:`linear-gradient(90deg,transparent,${c.brL},transparent)`}}/>
-                  <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
-                  <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
-                    {replayIntervalOptions.map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
-                      <div key={t} onClick={(e)=>{e.stopPropagation();const nextMode=t!=="Auto"?"candle":replayMode;if(t!=="Auto")setReplayMode("candle");setReplayInterval(t);applyReplayControlsToEngine(getReplaySystem(), nextMode, t);closePopup(setReplayOpts,"replayOpts");}}
-                        onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
-                        style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        {t}
-                        {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                        {!isA&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
-                      </div>);
-                    })}
-                  </div>
+                  {replayMode === "candle" ? (
+                    <>
+                      <div style={{height:1,margin:"3px 10px",background:`linear-gradient(90deg,transparent,${c.brL},transparent)`}}/>
+                      <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
+                      <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
+                        {replayIntervalOptions.map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
+                          <div key={t} onClick={(e)=>{e.stopPropagation();const nextMode=t!=="Auto"?"candle":replayMode;if(t!=="Auto")setReplayMode("candle");setReplayInterval(t);applyReplayControlsToEngine(getReplaySystem(), nextMode, t);closePopup(setReplayOpts,"replayOpts");}}
+                            onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
+                            style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {t}
+                            {isA&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+                            {!isA&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                          </div>);
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{paddingBottom: 6}} />
+                  )}
                 </div>
               </div>}
             </div>

@@ -9397,19 +9397,218 @@ Chart.prototype.separatePanelLineDragStep = function(slot, dy) {
     }
 };
 
-/** @deprecated Panel-height resize handles removed — indicator line moves via separatePanelLineDragStep. */
-Chart.prototype._syncSeparatePanelSeparatorHandles = function(_m) {
-    const canvas = this.ctx && this.ctx.canvas;
-    const wrapper = canvas ? canvas.parentElement : null;
-    if (wrapper) {
-        wrapper.querySelectorAll('.talaria-separate-panel-separator').forEach(function(n) { n.remove(); });
-    }
+/**
+ * TradingView-style panel separator drag — document-level tracking (same pattern as compare-overlay).
+ */
+Chart.prototype._beginSeparatePanelResizeDrag = function(startEvent, handle) {
+    if (!startEvent || !handle) return false;
+    if (typeof startEvent.button === 'number' && startEvent.button !== 0) return false;
+    if (this._separatePanelResizeDragActive || this._separatePanelLineDragActive) return false;
+    if (typeof this.startSeparatePanelResize !== 'function') return false;
+    const xy = typeof this._eventCanvasLocalXY === 'function'
+        ? this._eventCanvasLocalXY(startEvent)
+        : [0, startEvent.clientY];
+    if (!this.startSeparatePanelResize(handle, xy[1])) return false;
+
+    if (!this.drag) this.drag = {};
+    this.drag.active = true;
+    this.drag.type = 'separatePanelResize';
+    this.drag.startX = startEvent.clientX;
+    this.drag.startY = startEvent.clientY;
+    this.drag.lastX = startEvent.clientX;
+    this.drag.lastY = startEvent.clientY;
+    if (typeof this._lockDragCursor === 'function') this._lockDragCursor('row-resize');
+
+    const self = this;
+    self._separatePanelResizeDragActive = true;
+
+    const onMove = function(ev) {
+        if (!self._separatePanelResizeDragActive) return;
+        const [, my] = typeof self._eventCanvasLocalXY === 'function'
+            ? self._eventCanvasLocalXY(ev)
+            : [0, ev.clientY];
+        if (typeof self.updateSeparatePanelResize === 'function') {
+            self.updateSeparatePanelResize(my);
+        }
+        self.renderPending = false;
+        if (typeof self.render === 'function') self.render();
+        if (typeof ev.preventDefault === 'function') ev.preventDefault();
+    };
+    const onUp = function() {
+        if (!self._separatePanelResizeDragActive) return;
+        self._separatePanelResizeDragActive = false;
+        document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('mouseup', onUp, true);
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', onUp, true);
+        document.removeEventListener('pointercancel', onUp, true);
+        if (self._separatePanelResizeHandleEl) {
+            self._separatePanelResizeHandleEl.classList.remove('dragging');
+            self._separatePanelResizeHandleEl = null;
+        }
+        if (typeof self.finishSeparatePanelResize === 'function') {
+            self.finishSeparatePanelResize();
+        }
+        if (typeof self._finishSeparatePanelResizeInteraction === 'function') {
+            self._finishSeparatePanelResizeInteraction();
+        }
+        if (self.drag) {
+            self.drag.active = false;
+            self.drag.type = null;
+        }
+        self._separatePanelHoverHandle = null;
+        if (typeof self._releaseDragCursor === 'function') self._releaseDragCursor();
+    };
+
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('mouseup', onUp, true);
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerup', onUp, true);
+    document.addEventListener('pointercancel', onUp, true);
+
+    if (typeof startEvent.preventDefault === 'function') startEvent.preventDefault();
+    if (typeof startEvent.stopPropagation === 'function') startEvent.stopPropagation();
+    if (typeof startEvent.stopImmediatePropagation === 'function') startEvent.stopImmediatePropagation();
+    return true;
 };
 
-/** @deprecated */
-Chart.prototype._beginSeparatePanelResizeDrag = function() { return false; };
+/** Drag inside indicator plot — move line vertically + pan time horizontally. */
+Chart.prototype._beginSeparatePanelLineDrag = function(startEvent, slot) {
+    if (!startEvent || !slot || !slot.indicator) return false;
+    if (typeof startEvent.button === 'number' && startEvent.button !== 0) return false;
+    if (this._separatePanelLineDragActive || this._separatePanelResizeDragActive) return false;
+    if (this.drag && this.drag.active) return false;
 
-/** @deprecated */
+    const self = this;
+    if (!self.drag) self.drag = {};
+    self.drag.active = true;
+    self.drag.type = 'separatePanelLine';
+    self.drag.separatePanelSlot = slot;
+    self.drag.separatePanelIndicator = slot.indicator;
+    self.drag.startX = startEvent.clientX;
+    self.drag.startY = startEvent.clientY;
+    self.drag.lastX = startEvent.clientX;
+    self.drag.lastY = startEvent.clientY;
+    if (typeof self._snapshotPanDrawingsLayer === 'function') self._snapshotPanDrawingsLayer();
+    if (typeof self._lockDragCursor === 'function') self._lockDragCursor('ns-resize');
+    self._separatePanelLineDragActive = true;
+
+    const onMove = function(ev) {
+        if (!self._separatePanelLineDragActive) return;
+        const zd = typeof self._v9LayoutZoom === 'function' ? self._v9LayoutZoom() : 1;
+        const dx = (ev.clientX - self.drag.lastX) / zd;
+        const dy = (ev.clientY - self.drag.lastY) / zd;
+        const effectiveDx = self.timeScale && self.timeScale.locked ? 0 : dx;
+        if (effectiveDx !== 0) {
+            self.offsetX += effectiveDx;
+            if (typeof self._constrainOffsetDuringDrag === 'function') self._constrainOffsetDuringDrag();
+        }
+        if (dy !== 0 && typeof self.separatePanelLineDragStep === 'function') {
+            const panelSlot = typeof self._resolveSeparatePanelSlotForDrag === 'function'
+                ? self._resolveSeparatePanelSlotForDrag()
+                : slot;
+            self.separatePanelLineDragStep(panelSlot || slot, dy);
+        }
+        self.drag.lastX = ev.clientX;
+        self.drag.lastY = ev.clientY;
+        self.renderPending = false;
+        if (typeof self.render === 'function') self.render();
+        if (typeof ev.preventDefault === 'function') ev.preventDefault();
+    };
+    const onUp = function() {
+        if (!self._separatePanelLineDragActive) return;
+        self._separatePanelLineDragActive = false;
+        document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('mouseup', onUp, true);
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', onUp, true);
+        document.removeEventListener('pointercancel', onUp, true);
+        if (typeof self._flushChartPanFrame === 'function') {
+            self._flushChartPanFrame();
+        } else {
+            self.renderPending = false;
+            if (typeof self.render === 'function') self.render();
+        }
+        if (self.drag) {
+            self.drag.active = false;
+            self.drag.type = null;
+            self.drag.separatePanelSlot = null;
+            self.drag.separatePanelIndicator = null;
+        }
+        if (typeof self._releaseDragCursor === 'function') self._releaseDragCursor();
+        if (typeof self.scheduleChartViewSave === 'function') self.scheduleChartViewSave();
+        if (typeof self.dispatchScrollSync === 'function') self.dispatchScrollSync(true);
+    };
+
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('mouseup', onUp, true);
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerup', onUp, true);
+    document.addEventListener('pointercancel', onUp, true);
+
+    if (typeof startEvent.preventDefault === 'function') startEvent.preventDefault();
+    if (typeof startEvent.stopPropagation === 'function') startEvent.stopPropagation();
+    if (typeof startEvent.stopImmediatePropagation === 'function') startEvent.stopImmediatePropagation();
+    return true;
+};
+
+/** Draggable separator grips on #chartWrapper (above overlay drag-zones). */
+Chart.prototype._syncSeparatePanelSeparatorHandles = function(m) {
+    const canvas = this.ctx && this.ctx.canvas;
+    const wrapper = canvas ? canvas.parentElement : null;
+    if (!wrapper) return;
+    const handles = this.separatePanelInfo && this.separatePanelInfo.resizeHandles;
+    if (!handles || !handles.length) {
+        wrapper.querySelectorAll('.talaria-separate-panel-separator').forEach(function(n) { n.remove(); });
+        return;
+    }
+    const self = this;
+    const hitH = 14;
+    const plotLeft = m.l;
+    const plotWidth = Math.max(1, this.w - m.l);
+    handles.forEach(function(handle, idx) {
+        if (!handle || !Number.isFinite(handle.y)) return;
+        let bar = wrapper.querySelector('.talaria-separate-panel-separator[data-sp-sep="' + idx + '"]');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'panel-resize-handle horizontal talaria-separate-panel-separator';
+            bar.setAttribute('data-sp-sep', String(idx));
+            bar.title = 'Drag to resize panel';
+            const onDown = function(ev) {
+                if (typeof ev.button === 'number' && ev.button !== 0) return;
+                const h = bar._talariaResizeHandle;
+                if (!h || typeof self._beginSeparatePanelResizeDrag !== 'function') return;
+                self._separatePanelResizeHandleEl = bar;
+                bar.classList.add('dragging');
+                self._beginSeparatePanelResizeDrag(ev, h);
+            };
+            bar.addEventListener('mousedown', onDown);
+            bar.addEventListener('pointerdown', onDown);
+            wrapper.appendChild(bar);
+        }
+        bar._talariaResizeHandle = handle;
+        const hover = !!(self._separatePanelHoverHandle && Math.abs(self._separatePanelHoverHandle.y - handle.y) <= 2);
+        bar.style.cssText = [
+            'position:absolute',
+            'left:' + plotLeft + 'px',
+            'top:' + (handle.y - hitH / 2) + 'px',
+            'width:' + plotWidth + 'px',
+            'height:' + hitH + 'px',
+            'z-index:210',
+            'pointer-events:auto',
+            'cursor:row-resize',
+            'background:' + (hover ? 'rgba(106,138,255,0.18)' : 'rgba(106,138,255,0.04)'),
+            'border-top:1px solid ' + (hover ? 'rgba(106,138,255,0.55)' : 'rgba(120,123,134,0.35)'),
+            'transform:none',
+            'touch-action:none'
+        ].join(';');
+    });
+    wrapper.querySelectorAll('.talaria-separate-panel-separator').forEach(function(bar) {
+        const idx = Number(bar.getAttribute('data-sp-sep'));
+        if (!Number.isFinite(idx) || idx >= handles.length) bar.remove();
+    });
+};
+
 Chart.prototype._syncSeparatePanelResizeGrips = function(_overlay, m) {
     if (typeof this._syncSeparatePanelSeparatorHandles === 'function') {
         this._syncSeparatePanelSeparatorHandles(m);
@@ -15026,36 +15225,25 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 const onPanStart = function(ev) {
                     if (typeof ev.button === 'number' && ev.button !== 0) return;
                     if (self.drag && self.drag.active) return;
+                    if (self._separatePanelResizeDragActive || self._separatePanelLineDragActive) return;
                     if (self.tool) return;
                     if (skipLegendHit(ev)) return;
-                    ev.preventDefault();
-                    ev.stopPropagation();
+                    if (ev.target && ev.target.closest && (
+                        ev.target.closest('.talaria-separate-panel-separator') ||
+                        ev.target.closest('.panel-resize-handle')
+                    )) return;
                     const xy = typeof self._eventCanvasLocalXY === 'function'
                         ? self._eventCanvasLocalXY(ev)
                         : [0, 0];
-                    if (!self.drag) self.drag = {};
-                    self.drag.active = true;
-                    self.drag.type = 'pan';
-                    self.drag.separatePanelSlot = slot;
-                    self.drag.separatePanelIndicator = slot.indicator;
-                    self.drag.startX = ev.clientX;
-                    self.drag.startY = ev.clientY;
-                    self.drag.lastX = ev.clientX;
-                    self.drag.lastY = ev.clientY;
                     self.mouseX = xy[0];
                     self.mouseY = xy[1];
-                    if (typeof self._tryCapturePanPointer === 'function') self._tryCapturePanPointer(ev);
-                    if (typeof self._snapshotPanDrawingsLayer === 'function') self._snapshotPanDrawingsLayer();
-                    if (typeof self._lockDragCursor === 'function') {
-                        self._lockDragCursor('ns-resize');
-                    }
-                    if (typeof self._scheduleChartPanRender === 'function') {
-                        self._scheduleChartPanRender();
-                        self.renderPending = false;
-                        if (typeof self.render === 'function') self.render();
-                    }
-                    if (self.replaySystem && self.replaySystem.isActive && typeof self.replaySystem.onUserPan === 'function') {
-                        self.replaySystem.onUserPan();
+                    if (typeof self._beginSeparatePanelLineDrag === 'function'
+                        && self._beginSeparatePanelLineDrag(ev, slot)) {
+                        if (self.replaySystem && self.replaySystem.isActive
+                            && typeof self.replaySystem.onUserPan === 'function') {
+                            self.replaySystem.onUserPan();
+                        }
+                        return;
                     }
                 };
                 const onDblClick = function(ev) {

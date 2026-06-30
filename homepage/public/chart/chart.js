@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260628b175';
+const CHART_ENGINE_BUILD = '20260628b176';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -20848,7 +20848,8 @@ class Chart {
     _tryStartSeparatePanelResizeFromEvent(e) {
         if (!this.canvas || this.isPanel || !e) return false;
         if (typeof e.button === 'number' && e.button !== 0) return false;
-        if (this._separatePanelResizeDragActive || (this.drag && this.drag.active)) return false;
+        if (this._separatePanelResizeDragActive || this._separatePanelLineDragActive
+            || (this.drag && this.drag.active)) return false;
         const rect = this._pointerLayoutRect();
         if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
             return false;
@@ -27220,6 +27221,15 @@ class Chart {
             tryStartBoxZoom.call(this, e);
         }, true);
 
+        document.addEventListener('pointerdown', (e) => {
+            if (typeof e.button === 'number' && e.button !== 0) return;
+            if (tryStartCtrlMarqueeSelect.call(this, e)) return;
+            if (typeof this._tryStartSeparatePanelResizeFromEvent === 'function'
+                && this._tryStartSeparatePanelResizeFromEvent(e)) {
+                return;
+            }
+        }, true);
+
         this.canvas.addEventListener('mousedown', e => {
             if (e.button === 0 && this._isMultichartHostPanel()) {
                 // Defer so drawing-tools selectDrawing can run first and arm the guard.
@@ -27246,6 +27256,14 @@ class Chart {
             const [mx, my] = this._eventCanvasLocalXY(e);
 
             if (this.tool) return;
+
+            if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
+                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my, 24);
+                if (resizeHandle && typeof this._beginSeparatePanelResizeDrag === 'function'
+                    && this._beginSeparatePanelResizeDrag(e, resizeHandle)) {
+                    return;
+                }
+            }
 
             // Ctrl in cursor mode: marquee or drawing move — never chart pan.
             if (e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
@@ -27363,6 +27381,14 @@ class Chart {
                 this._lockDragCursor('ew-resize');
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
+                }
+            } else if (mode === 'separatePanelPlot' && this.cursor.separatePanelSlot) {
+                if (typeof this._beginSeparatePanelLineDrag === 'function'
+                    && this._beginSeparatePanelLineDrag(e, this.cursor.separatePanelSlot)) {
+                    if (this.replaySystem?.isActive) {
+                        this.replaySystem.onUserPan();
+                    }
+                    return;
                 }
             } else if (mode === 'chart' || mode === 'separatePanelPlot') {
                 this.drag.type = 'pan';
