@@ -2,7 +2,7 @@
  * Minimal service worker for the V9 chart app — enables install-to-desktop.
  * SW_VERSION must match ?v= on chart scripts (bump-dist-v9-cache.mjs).
  */
-const SW_VERSION = "talaria-chart-20260627b175";
+const SW_VERSION = "talaria-chart-20260627b178";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

@@ -752,6 +752,13 @@ function v9RemoveChartIndicatorForV9Id(chart, v9Id, chartId, idToType) {
   return false;
 }
 
+function v9IndicatorSettingsMatchesV9Id(ctx, v9Id, idToType) {
+  if (!ctx || !v9Id || !ctx.indicatorType) return false;
+  const catalogType = idToType[v9Id];
+  if (!catalogType) return false;
+  return v9ChartTypeMatchesCatalog(ctx.indicatorType, catalogType);
+}
+
 function v9ChartHasIndicatorForV9Id(chart, v9Id, idToType) {
   return !!v9FindChartIndicatorForV9Id(chart, v9Id, idToType);
 }
@@ -14595,8 +14602,14 @@ const TalariaV8bLive = () => {
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing(s => new Set([...s, "indsett"]));
-    setTimeout(() => { setIndSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("indsett"); return n; }); }, 155);
+    setTimeout(() => {
+      setIndSettOpen(false);
+      indSettOpenRef.current = false;
+      setClosing(s => { const n = new Set(s); n.delete("indsett"); return n; });
+    }, 155);
   };
+  const closeIndSettRef = useRef(closeIndSett);
+  closeIndSettRef.current = closeIndSett;
   const closeDrawingSettingsOnChartClickRef = useRef(() => false);
   const v9SuppressNextChartDeselect = () => {
     const until = Date.now() + 700;
@@ -14819,8 +14832,26 @@ const TalariaV8bLive = () => {
       if (vwapSettOpen) closeVwapSett();
       if (vpSettOpen) closeVpSett();
       if (avSettOpen) closeAvSett();
+      if (indOpen) {
+        animClose(setIndOpen, "ind");
+        setIndSearch("");
+        setIndSelectedId(null);
+      }
     } catch (_) {}
   };
+  useEffect(() => {
+    const onIndicatorRemoved = (ev) => {
+      const d = ev && ev.detail;
+      if (!d || d.action !== "remove") return;
+      if (!indSettOpenRef.current) return;
+      const ctx = indSettCtxRef.current;
+      const removed = d.indicator;
+      if (!ctx?.indicator || !removed) return;
+      if (ctx.indicator.id === removed.id) closeIndSettRef.current();
+    };
+    window.addEventListener("indicatorsChanged", onIndicatorRemoved);
+    return () => window.removeEventListener("indicatorsChanged", onIndicatorRemoved);
+  }, []);
   useEffect(() => {
     const openInd = (chartInstance, indicatorType, existingIndicator) => {
       if (!existingIndicator || !chartInstance || !indicatorType) return false;
@@ -22355,7 +22386,7 @@ const TalariaV8bLive = () => {
     v9FlushVwapAnchorCoordToChart(vwapStyle, editingDrawingRef.current?.drawing ?? null);
   }, [vwapStyle.anchorPrice, vwapStyle.anchorBar, vwapSettOpen]);
 
-  const closeWindows = () => { clearSettingsPanelHover(); setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
+  const closeWindows = () => { clearSettingsPanelHover(); setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); if (indSettOpenRef.current) closeIndSett(); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   closeWindowsRef.current = closeWindows;
 
   const toggleSupportChat = () => {
@@ -31492,7 +31523,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"4px 0"}}>
                     {[["Save current",()=>{setIndTplSaveMode(true);setIndTplName("");}],
-              ["Clear all",()=>{indUserDismissRef.current=true;setIndActive([]);setIndTplOpen(false);}]
+              ["Clear all",()=>{indUserDismissRef.current=true; if (indSettOpenRef.current) closeIndSett(); setIndActive([]);setIndTplOpen(false);}]
                     ].map(([lbl,action])=>{
                       const isH=swHov===`ind-tpl-act-${lbl}`, isAct=lbl==="Save current"&&indTplSaveMode;
                       return (
@@ -31616,6 +31647,9 @@ const TalariaV8bLive = () => {
               const toggleIndActive=()=>{
                 if (isAct) {
                   indUserDismissRef.current=true;
+                  if (indSettOpenRef.current && v9IndicatorSettingsMatchesV9Id(indSettCtxRef.current, ind.id, ID_TO_TYPE)) {
+                    closeIndSett();
+                  }
                   setIndActive(prev=>prev.filter(x=>x!==ind.id));
                 } else addIndActive(ind.id);
               };
@@ -33179,7 +33213,7 @@ const TalariaV8bLive = () => {
           {hov==="chartType" && !chartTypeOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button type="button" data-indicators-btn="1" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);}else{closeWindows();setSettingsOpen(false);setIndSelectedId(null);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
+        <button type="button" data-indicators-btn="1" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");setIndSelectedId(null);}else{if(indSettOpenRef.current) closeIndSett(); closeWindows();setSettingsOpen(false);setIndSelectedId(null);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
