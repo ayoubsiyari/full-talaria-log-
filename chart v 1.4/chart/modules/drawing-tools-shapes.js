@@ -1923,93 +1923,68 @@ class ArrowTool extends BaseDrawing {
         const offY = lineTextOffsetY(this.style, textVAlign);
 
         if (this._splitInfo) {
-            let angle = this._splitInfo.angle;
-            while (angle > 180) angle -= 360;
-            while (angle < -180) angle += 360;
-            if (angle > 90 || angle < -90) angle += 180;
-
-            const offsetX = this.style.textOffsetX || 0;
-            const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            let siAnchor;
-            switch (siTextHAlign) {
-                case 'left':
-                    siAnchor = resolveLineEndpointSvgAnchor('left', label);
-                    break;
-                case 'right':
-                    siAnchor = resolveLineEndpointSvgAnchor('right', label);
-                    break;
-                default:
-                    siAnchor = 'middle';
+            if (typeof appendSplitAngledLineTextLabel === 'function') {
+                appendSplitAngledLineTextLabel(
+                    this.group, label, this._splitInfo, coords, this, this.style, 'geometric'
+                );
+            } else {
+                let angle = flipLineLabelReadableAngleDeg(this._splitInfo.angle);
+                appendTextLabel(this.group, label, {
+                    x: this._splitInfo.textX + (this.style.textOffsetX || 0),
+                    y: this._splitInfo.textY + offY,
+                    anchor: 'middle',
+                    yAnchor: 'middle',
+                    fill: this.style.textColor || this.style.stroke,
+                    fontSize: this.style.fontSize || 14,
+                    fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
+                    fontWeight: this.style.fontWeight || 'normal',
+                    fontStyle: this.style.fontStyle || 'normal',
+                    rotation: angle
+                });
             }
-
-            const siPerp = lineLabelPerpFromAngleDeg(angle);
-            const siPerpX = siPerp.x;
-            const siPerpY = siPerp.y;
-            const siSignUp = siPerpY <= 0 ? 1 : -1;
-            const splitTextX = this._splitInfo.textX;
-            const splitTextY = this._splitInfo.textY;
-
-            appendTextLabel(this.group, label, {
-                x: splitTextX + offsetX,
-                y: splitTextY + offY,
-                anchor: siAnchor,
-                yAnchor: 'middle',
-                fill: this.style.textColor || this.style.stroke,
-                fontSize: this.style.fontSize || 14,
-                fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
-                fontWeight: this.style.fontWeight || 'normal',
-                fontStyle: this.style.fontStyle || 'normal',
-                rotation: angle,
-                ...lineLabelGapConfig(splitTextX, splitTextY, textVAlign, siPerpX, siPerpY, siSignUp)
-            });
             return;
         }
 
         const { scales } = coords;
         const p1 = this.points[0];
         const p2 = this.points[1];
-        
-        const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
+
+        const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p1.x) : (scales ? scales.xScale(p1.x) : coords.x1);
         const origY1 = scales ? scales.yScale(p1.y) : coords.y1;
-        const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
+        const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : coords.x2);
         const origY2 = scales ? scales.yScale(p2.y) : coords.y2;
-        
-        const renderAngleDeg = resolveLineLabelReadableAngleDeg(origX2 - origX1, origY2 - origY1);
-        const angle = renderAngleDeg;
 
+        let angle = Math.atan2(origY2 - origY1, origX2 - origX1) * (180 / Math.PI);
+        const angleRad = Math.atan2(origY2 - origY1, origX2 - origX1);
+        angle = typeof flipLineLabelReadableAngleDeg === 'function'
+            ? flipLineLabelReadableAngleDeg(angle)
+            : (angle > 90 || angle < -90 ? angle + 180 : angle);
+
+        const fontSize = this.style.fontSize || 14;
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-
         const sh_mP1IsLeft = origX1 <= origX2;
         let t = 0.5;
         let anchor = 'middle';
         switch (textHAlign) {
             case 'left':
-                t = sh_mP1IsLeft ? 0 : 1;
+                t = sh_mP1IsLeft ? 0.05 : 0.95;
                 anchor = resolveLineEndpointSvgAnchor('left', label);
                 break;
             case 'right':
-                t = sh_mP1IsLeft ? 1 : 0;
+                t = sh_mP1IsLeft ? 0.95 : 0.05;
                 anchor = resolveLineEndpointSvgAnchor('right', label);
                 break;
-            default:
-                t = 0.5;
-                anchor = 'middle';
         }
-        
+
         let baseX = origX1 + (origX2 - origX1) * t;
         let baseY = origY1 + (origY2 - origY1) * t;
-
-        const labelPerp = lineLabelPerpFromAngleDeg(renderAngleDeg);
-        const perpX_sh = labelPerp.x;
-        const perpY_sh = labelPerp.y;
-        const signUp_sh = perpY_sh <= 0 ? 1 : -1;
-        const lineRefX = baseX;
-        const lineRefY = baseY;
-        const gapCfg = typeof lineLabelGapConfig === 'function'
-            ? lineLabelGapConfig(lineRefX, lineRefY, textVAlign, perpX_sh, perpY_sh, signUp_sh)
-            : {};
+        if (typeof applyAngledLineLabelVAlignOffset === 'function') {
+            const nudged = applyAngledLineLabelVAlignOffset(baseX, baseY, angleRad, textVAlign, fontSize);
+            baseX = nudged.x;
+            baseY = nudged.y;
+        }
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
@@ -2017,12 +1992,11 @@ class ArrowTool extends BaseDrawing {
             anchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
-            fontSize: this.style.fontSize || 14,
+            fontSize: fontSize,
             fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
             fontWeight: this.style.fontWeight || 'normal',
             fontStyle: this.style.fontStyle || 'normal',
-            rotation: angle,
-            ...gapCfg
+            rotation: angle
         });
     }
 
