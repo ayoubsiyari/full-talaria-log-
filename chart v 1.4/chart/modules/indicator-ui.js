@@ -3839,6 +3839,7 @@ function mergeIndicatorDraftParamEntry(param, draft, baseExisting, newParams, ne
         || isIndicatorLineWidthParam(param)
         || pid.indexOf('fill') >= 0
         || pid.indexOf('linestyle') >= 0
+        || pid.indexOf('dashstyle') >= 0
         || pid.indexOf('opacity') >= 0
         || pid === 'showlabel'
         || /^show(middle|upper|lower|fill|bg|smoothma|smoothema)$/.test(pid);
@@ -3866,8 +3867,74 @@ function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
         mergeIndicatorDraftParamEntry(param, draft, baseExisting, newParams, newStyle);
     });
     const merged = Object.assign({}, baseExisting, newParams, newStyle);
+    // V9 dash picker writes *LineDashStyle keys directly on the draft.
+    Object.keys(draft).forEach(function(key) {
+        if (!/DashStyle$/i.test(key)) return;
+        merged[key] = draft[key];
+    });
     clampIndicatorStyleLineWidths(merged);
     return merged;
+}
+
+function indicatorPayloadValueChanged(nextVal, prevVal) {
+    if (nextVal === prevVal) return false;
+    if (nextVal == null && prevVal == null) return false;
+    const nn = Number(nextVal);
+    const pn = Number(prevVal);
+    if (Number.isFinite(nn) && Number.isFinite(pn)) return nn !== pn;
+    return String(nextVal) !== String(prevVal);
+}
+
+function isIndicatorStyleOrThicknessParam(param) {
+    if (!param || param.type === 'heading' || param.type === 'divider') return false;
+    if (param.tab === 'style') return true;
+    const pid = String(param.id || '').toLowerCase();
+    return pid.indexOf('color') >= 0
+        || isIndicatorLineWidthParam(param)
+        || pid.indexOf('fill') >= 0
+        || pid.indexOf('linestyle') >= 0
+        || pid.indexOf('opacity') >= 0
+        || pid.indexOf('dashstyle') >= 0
+        || pid === 'showlabel'
+        || /^show(middle|upper|lower|fill|bg|smoothma|smoothema|line|ma|hist|macd|signal|k|d|adx|plusdi|minusdi|up|down|body|zero|obv|vwap|volume|coppock|ao|bbpower)$/i.test(pid);
+}
+
+/** True when merged settings differ on input/calc fields (not style/thickness-only). */
+function indicatorUpdateNeedsDataRecalc(indicatorType, merged, previous) {
+    indicatorType = resolveIndicatorDefinitionKey(indicatorType);
+    const def = INDICATOR_DEFINITIONS[indicatorType];
+    if (!def || !merged) return false;
+    const prev = previous || {};
+    if (indicatorPayloadValueChanged(merged.visible, prev.visible)) return true;
+    if (indicatorPayloadValueChanged(merged.visibility, prev.visibility)) return true;
+    if (indicatorType === 'custom' && indicatorPayloadValueChanged(merged.script, prev.script)) return true;
+    if (indicatorType === 'cotnet' && (indicatorPayloadValueChanged(merged.cftcCode, prev.cftcCode)
+        || indicatorPayloadValueChanged(merged.dataUrl, prev.dataUrl))) return true;
+    return def.params.some(function(param) {
+        if (param.type === 'heading' || param.type === 'divider') return false;
+        if (isIndicatorStyleOrThicknessParam(param)) return false;
+        if (param.type === 'timeRange') {
+            return indicatorPayloadValueChanged(merged[param.startId], prev[param.startId])
+                || indicatorPayloadValueChanged(merged[param.endId], prev[param.endId]);
+        }
+        if (param.type === 'sessionInput') {
+            return indicatorPayloadValueChanged(merged[param.showId], prev[param.showId])
+                || indicatorPayloadValueChanged(merged[param.nameId], prev[param.nameId])
+                || indicatorPayloadValueChanged(merged[param.startId], prev[param.startId])
+                || indicatorPayloadValueChanged(merged[param.endId], prev[param.endId]);
+        }
+        return indicatorPayloadValueChanged(merged[param.id], prev[param.id]);
+    });
+}
+
+function applyIndicatorLiveUpdate(chart, indicator, draft) {
+    if (!chart || !indicator || !draft || typeof chart.updateIndicator !== 'function') return false;
+    const merged = mergeIndicatorDraftForUpdate(indicator.type, indicator, draft);
+    if (!merged) return false;
+    if (draft.visible !== undefined) merged.visible = draft.visible !== false;
+    if (draft.visibility !== undefined) merged.visibility = draft.visibility;
+    chart.updateIndicator(indicator.id, merged);
+    return true;
 }
 
 function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndicator = null) {
@@ -4394,7 +4461,53 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
                 wrapper.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))';
             };
         }
+        if (existingIndicator && input && isIndicatorStyleOrThicknessParam(param)) {
+            const applyStyleLive = function() { scheduleLegacyIndicatorStyleLiveApply(); };
+            input.addEventListener('change', applyStyleLive);
+            if (param.type === 'number') input.addEventListener('input', applyStyleLive);
+        }
         mountEl.appendChild(wrapper);
+    }
+
+    let legacyStyleLiveTimer = null;
+    function collectIndicatorPanelDraft() {
+        const scratchParams = {};
+        const scratchStyle = {};
+        def.params.forEach(function(param) {
+            if (param.type === 'heading' || param.type === 'divider') return;
+            if (param.type === 'timeRange' || param.type === 'sessionInput') {
+                const scratch = {};
+                const startEl = panel.querySelector('[data-param-id="' + param.startId + '"]');
+                const endEl = panel.querySelector('[data-param-id="' + param.endId + '"]');
+                if (startEl) scratch[param.startId] = startEl.value;
+                if (endEl) scratch[param.endId] = endEl.value;
+                if (param.type === 'sessionInput') {
+                    const showEl = panel.querySelector('[data-param-id="' + param.showId + '"]');
+                    const nameEl = panel.querySelector('[data-param-id="' + param.nameId + '"]');
+                    if (showEl) scratch[param.showId] = showEl.checked;
+                    if (nameEl) scratch[param.nameId] = nameEl.value;
+                }
+                mergeIndicatorDraftParamEntry(param, scratch, baseExisting, scratchParams, scratchStyle);
+                return;
+            }
+            const inputEl = panel.querySelector('[data-param-id="' + param.id + '"]');
+            if (!inputEl) return;
+            let value = param.type === 'checkbox' ? inputEl.checked : inputEl.value;
+            if (param.type === 'number') value = sanitizeIndicatorParamValue(param, value);
+            const bucket = isIndicatorStyleOrThicknessParam(param) ? scratchStyle : scratchParams;
+            bucket[param.id] = value;
+        });
+        return Object.assign({}, baseExisting, scratchParams, scratchStyle);
+    }
+    function scheduleLegacyIndicatorStyleLiveApply() {
+        if (!existingIndicator) return;
+        if (legacyStyleLiveTimer) clearTimeout(legacyStyleLiveTimer);
+        legacyStyleLiveTimer = setTimeout(function() {
+            legacyStyleLiveTimer = null;
+            let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
+            if (!targetChart || typeof targetChart.updateIndicator !== 'function') return;
+            applyIndicatorLiveUpdate(targetChart, existingIndicator, collectIndicatorPanelDraft());
+        }, 40);
     }
 
     def.params.forEach(param => {
@@ -5731,6 +5844,9 @@ window.INDICATOR_DASH_STYLE_OPTIONS = INDICATOR_DASH_STYLE_OPTIONS;
 window.__v9IndDashStyleParamId = v9IndDashStyleParamId;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
 window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
+window.__v9IndicatorUpdateNeedsDataRecalc = indicatorUpdateNeedsDataRecalc;
+window.__v9ApplyIndicatorLiveUpdate = applyIndicatorLiveUpdate;
+window.__v9IsIndicatorStyleOrThicknessParam = isIndicatorStyleOrThicknessParam;
 window.__v9SanitizeIndicatorParamValue = sanitizeIndicatorParamValue;
 window.__v9NormalizeIndicatorNumericString = normalizeIndicatorNumericString;
 window.__v9ClampIndicatorLineWidth = clampIndicatorLineWidth;

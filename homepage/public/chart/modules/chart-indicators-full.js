@@ -6328,8 +6328,14 @@
 
         indicator.type = String(indicator.type || '').toLowerCase();
 
+        const prevMerged = Object.assign({}, indicator.style || {}, indicator.params || {});
+
         newParams = newParams || {};
         newParams = sanitizeIndicatorRuntimePayload(indicator, Object.assign({}, newParams));
+
+        const needsDataRecalc = typeof window.__v9IndicatorUpdateNeedsDataRecalc === 'function'
+            ? window.__v9IndicatorUpdateNeedsDataRecalc(indicator.type, newParams, prevMerged)
+            : true;
         
         if (newParams.visible !== undefined) {
             indicator.visible = newParams.visible !== false;
@@ -6474,9 +6480,8 @@
         }
         if (indicator.type === 'cotnet') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const reload = newParams.cftcCode !== undefined || newParams.dataUrl !== undefined;
             applyCotNetStyleFromParams(indicator, merged);
-            if (reload) {
+            if (needsDataRecalc) {
                 this.indicators.data[indicator.id] = { loading: true, error: null };
                 if (typeof this._scheduleCotNetLoad === 'function') this._scheduleCotNetLoad(indicator);
             }
@@ -6511,10 +6516,7 @@
         if (indicator.type === 'rsi') {
             const mergedRsi = Object.assign({}, indicator.style, indicator.params, newParams);
             applyRsiStyleFromParams(indicator, mergedRsi);
-            const rsiRecalc = ['period', 'source', 'smoothingType', 'smoothingLength', 'bbStdDev', 'divergenceEnabled'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (rsiRecalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'RSI(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateRSIIndicatorData(this.data, indicator.params);
             }
@@ -6535,10 +6537,7 @@
                 indicator.params.offset = Number.isFinite(Number(mergedDc.offset)) ? Number(mergedDc.offset) : 0;
             }
             applyDonchianStyleFromParams(indicator, mergedDc);
-            const dcRecalc = ['period', 'offset'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (dcRecalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'Donchian(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateDonchian(
                     this.data,
@@ -6552,10 +6551,7 @@
             const mergedBb = Object.assign({}, indicator.style, indicator.params, newParams);
             applyBbCalcParams(indicator, mergedBb);
             applyBollingerStyleFromParams(indicator, mergedBb);
-            const bbRecalc = ['period', 'source', 'stdDev', 'offset', 'maType'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (bbRecalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
                 this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params);
             }
@@ -6574,9 +6570,8 @@
         }
         if (indicator.type === 'ao') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = newParams.fastLength !== undefined || newParams.slowLength !== undefined;
             applyAoStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
                 this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
             }
@@ -6586,31 +6581,23 @@
         }
         if (indicator.type === 'vortex') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = newParams.period !== undefined;
             applyVortexStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'Vortex(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
             }
         }
         if (indicator.type === 'vwap') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = ['source', 'offset', 'anchorPeriod', 'bandsCalcMode', 'band1Enabled', 'band1Mult',
-                'band2Enabled', 'band2Mult', 'band3Enabled', 'band3Mult'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
             applyVwapStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 this.indicators.data[indicator.id] = calculateVWAPIndicatorData(this.data, indicator.params);
             }
         }
         if (indicator.type === 'obv') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = ['smoothingType', 'smoothingLength', 'bbStdDev'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
             applyObvStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 this.indicators.data[indicator.id] = calculateOBVIndicatorData(this.data, indicator.params);
             }
         }
@@ -6633,9 +6620,8 @@
         }
         if (indicator.type === 'trix') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = newParams.period !== undefined;
             applyTrixStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'TRIX(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateTRIX(this.data, indicator.params.period);
             }
@@ -6645,38 +6631,33 @@
         }
         if (indicator.type === 'elderray') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = newParams.period !== undefined;
-            if (recalc) indicator.params.period = Math.max(2, Number(merged.period) | 0) || 13;
+            if (needsDataRecalc) indicator.params.period = Math.max(2, Number(merged.period) | 0) || 13;
             applyElderRayStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'Elder Ray(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
             }
         }
         if (indicator.type === 'massindex') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            if (newParams.period !== undefined) indicator.params.period = massIndexPeriodFromParams(merged);
+            if (needsDataRecalc) indicator.params.period = massIndexPeriodFromParams(merged);
             applyMassIndexStyleFromParams(indicator, merged);
-            if (newParams.period !== undefined) {
+            if (needsDataRecalc) {
                 indicator.name = 'Mass Index(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateMassIndex(this.data, MASS_INDEX_EMA_PERIOD, indicator.params.period);
             }
         }
         if (indicator.type === 'coppock') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = ['longRocLength', 'shortRocLength', 'wmaPeriod'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
             applyCoppockStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params);
             }
         }
         if (indicator.type === 'atr') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = newParams.period !== undefined || newParams.smoothingType !== undefined;
             applyAtrStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'ATR(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateATR(
                     this.data,
@@ -6720,9 +6701,8 @@
         }
         if (indicator.type === 'stddev') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
-            const recalc = newParams.period !== undefined || newParams.source !== undefined;
             applyStddevStyleFromParams(indicator, merged);
-            if (recalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'StdDev(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateStdDevLine(
                     this.data,
@@ -6734,10 +6714,7 @@
         if (indicator.type === 'supertrend') {
             const mergedSt = Object.assign({}, indicator.style, indicator.params, newParams);
             applySupertrendStyleFromParams(indicator, mergedSt);
-            const stRecalc = ['period', 'multiplier'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (stRecalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'Supertrend(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateSupertrend(
                     this.data,
@@ -6749,10 +6726,7 @@
         if (indicator.type === 'dema') {
             const mergedDema = Object.assign({}, indicator.style, indicator.params, newParams);
             applyDemaStyleFromParams(indicator, mergedDema);
-            const demaRecalc = ['period', 'source', 'offset'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (demaRecalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'DEMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateDEMAOverlayData(this.data, indicator.params);
             }
@@ -6760,10 +6734,7 @@
         if (indicator.type === 'tema') {
             const mergedTema = Object.assign({}, indicator.style, indicator.params, newParams);
             applyTemaStyleFromParams(indicator, mergedTema);
-            const temaRecalc = ['period', 'source', 'offset'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (temaRecalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'TEMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateTEMAOverlayData(this.data, indicator.params);
             }
@@ -6771,10 +6742,7 @@
         if (indicator.type === 'hma') {
             const mergedHma = Object.assign({}, indicator.style, indicator.params, newParams);
             applyHmaStyleFromParams(indicator, mergedHma);
-            const hmaRecalc = ['period', 'source', 'offset'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (hmaRecalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'HMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateHMAOverlayData(this.data, indicator.params);
             }
@@ -6782,10 +6750,7 @@
         if (indicator.type === 'wma') {
             const mergedWma = Object.assign({}, indicator.style, indicator.params, newParams);
             applyWmaStyleFromParams(indicator, mergedWma);
-            const wmaRecalc = ['period', 'source', 'offset'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (wmaRecalc) {
+            if (needsDataRecalc) {
                 indicator.name = 'WMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateWMAOverlayData(this.data, indicator.params);
             }
@@ -6797,10 +6762,7 @@
             } else {
                 applyEmaStyleFromParams(indicator, mergedMa);
             }
-            const maRecalc = ['period', 'source', 'offset', 'smoothingType', 'smoothingLength', 'bbStdDev'].some(function(k) {
-                return newParams[k] !== undefined;
-            });
-            if (maRecalc) {
+            if (needsDataRecalc) {
                 if (indicator.type === 'sma') {
                     indicator.name = 'SMA(' + indicator.params.period + ')';
                     this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
@@ -6817,8 +6779,8 @@
             applyOpeningRangeStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
-        // Recalculate data
-        switch (indicator.type) {
+        // Recalculate data only when input/calc settings changed (style/thickness edits preview immediately).
+        if (needsDataRecalc) switch (indicator.type) {
             case 'sma':
                 indicator.name = 'SMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
@@ -13318,7 +13280,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const zeroY = scaleY(zeroVal);
         if (style.showZero !== false && zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
-                style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Line', zeroVal, zeroW);
+                style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Line', zeroVal, zeroW, style.zeroLineDashStyle || 'Solid');
         }
 
         if (style.showHist !== false && this._panelRenderFast !== true) {
@@ -14278,13 +14240,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
 
         if (style.showPlusDI !== false) {
-            this._drawPanelLine(ctx, m, plusArr, style.plusDIColor || '#00e676', style.plusDILineWidth != null ? style.plusDILineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.plusDILineStyle || legacyS);
+            this._drawPanelLine(ctx, m, plusArr, style.plusDIColor || '#00e676', style.plusDILineWidth != null ? style.plusDILineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.plusDILineStyle || legacyS, style.plusDILineDashStyle || 'Solid');
         }
         if (style.showMinusDI !== false) {
-            this._drawPanelLine(ctx, m, minusArr, style.minusDIColor || '#f23645', style.minusDILineWidth != null ? style.minusDILineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.minusDILineStyle || legacyS);
+            this._drawPanelLine(ctx, m, minusArr, style.minusDIColor || '#f23645', style.minusDILineWidth != null ? style.minusDILineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.minusDILineStyle || legacyS, style.minusDILineDashStyle || 'Solid');
         }
         if (style.showAdx !== false) {
-            this._drawPanelLine(ctx, m, adxArr, style.adxColor || '#ff00ff', style.adxLineWidth != null ? style.adxLineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.adxLineStyle || legacyS);
+            this._drawPanelLine(ctx, m, adxArr, style.adxColor || '#ff00ff', style.adxLineWidth != null ? style.adxLineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.adxLineStyle || legacyS, style.adxLineDashStyle || 'Solid');
         }
 
         let lastADX = null;
