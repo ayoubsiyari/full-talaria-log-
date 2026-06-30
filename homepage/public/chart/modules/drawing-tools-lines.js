@@ -322,6 +322,18 @@ function syncLiveLineTextLabel(tool, scales, screenPts) {
     }
 }
 
+/** Live patch for single-anchor horizontal tools (horizontal ray) — rebuild line + label in place. */
+function liveRenderSingleAnchorHorizontalGeometry(tool, scales) {
+    if (!tool?.group || tool.group.empty() || !scales) return false;
+    const parent = tool.group.node()?.parentNode;
+    if (!parent || typeof tool.render !== 'function') return false;
+    tool.render(d3.select(parent), scales, { reuseGroup: true, skipHandles: true });
+    if (typeof tool.updateHandlePositions === 'function') {
+        tool.updateHandlePositions(scales);
+    }
+    return true;
+}
+
 /** Live patch with centered split label — rebuild line + text in place (keep handles). */
 function liveRenderTwoPointDrawingGeometry(tool, scales) {
     if (!tool?.group || tool.group.empty() || !scales) return false;
@@ -2670,6 +2682,10 @@ class HorizontalRayTool extends BaseDrawing {
 
     patchLiveAnchorGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
+        // Custom labels depend on anchor x/y and split metadata — fast line-only patch leaves text stuck.
+        if (this.text && String(this.text).trim()) {
+            return liveRenderSingleAnchorHorizontalGeometry(this, scales);
+        }
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel
             ? scales.chart.dataIndexToPixel(p.x)
