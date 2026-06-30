@@ -5164,8 +5164,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 checkboxRow: { showId: 'showAO', label: 'AO' },
                 bandStyleHeader: true,
                 rows: [
-                    v9BandStyleRow('Color 0', 'histColor0', 'histColor0Opacity', 'histColor0LineStyle', 'histColor0LineWidth', null),
-                    v9BandStyleRow('Color 1', 'histColor1', 'histColor1Opacity', 'histColor1LineStyle', 'histColor1LineWidth', null)
+                    v9BandStyleRow('Color 0', 'histColor0', 'histColor0Opacity', null, null, null),
+                    v9BandStyleRow('Color 1', 'histColor1', 'histColor1Opacity', null, null, null)
                 ]
             }],
             footers: footers
@@ -5180,8 +5180,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     checkboxRow: { showId: 'showBBPower', label: 'BBPower' },
                     bandStyleHeader: true,
                     rows: [
-                        v9BandStyleRow('Color 0', 'bullColor', 'bullOpacity', 'bullLineStyle', 'bullLineWidth', null),
-                        v9BandStyleRow('Color 1', 'bearColor', 'bearOpacity', 'bearLineStyle', 'bearLineWidth', null)
+                        v9BandStyleRow('Color 0', 'bullColor', 'bullOpacity', null, null, null),
+                        v9BandStyleRow('Color 1', 'bearColor', 'bearOpacity', null, null, null)
                     ]
                 },
                 {
@@ -5665,8 +5665,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     checkboxRow: { showId: 'showVolume', label: 'Volume' },
                     bandStyleHeader: true,
                     rows: [
-                        v9BandStyleRow('Growing', 'growingColor', 'growingOpacity', 'growingLineStyle', 'growingLineWidth', null),
-                        v9BandStyleRow('Falling', 'fallingColor', 'fallingOpacity', 'fallingLineStyle', 'fallingLineWidth', null)
+                        v9BandStyleRow('Growing', 'growingColor', 'growingOpacity', null, null, null),
+                        v9BandStyleRow('Falling', 'fallingColor', 'fallingOpacity', null, null, null)
                     ]
                 },
                 {

@@ -27666,7 +27666,11 @@ const TalariaV8bLive = () => {
           /** Single grid for all Style-tab rows when plot/dash pickers hidden — keeps COLOR column aligned. */
           const gcAlign = "16px 1fr 26px 56px 56px 44px";
           const hideStylePickers = v9HideIndPlotStylePickers();
-          const styleRowCols = (fallbackCols) => (hideStylePickers ? gcAlign : fallbackCols);
+          const styleRowCols = (fallbackCols) => {
+            if (!hideStylePickers) return fallbackCols;
+            if (fallbackCols === gcColorOnly || fallbackCols === gcBandColorOnly) return fallbackCols;
+            return gcAlign;
+          };
           const lineStyleHdr = () => hdr(hideStylePickers ? "LINE STYLE" : "STYLE");
           const sectionHasStyleCol = (section) => {
             const rows = (section && section.rows) || [];
@@ -27759,9 +27763,9 @@ const TalariaV8bLive = () => {
                 </div>
                 {lbl(row.label, on)}
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
-                {hasStyleCol ? styleSlot(row.styleId, !on) : (hideStylePickers ? <div /> : null)}
-                {hasStyleCol ? (row.widthId ? numW(row.widthId, !on) : <div />) : (hideStylePickers ? <div /> : null)}
-                {hideStylePickers ? <div /> : (hasStyleCol && !hidePlot ? psSel(row.styleId, !on) : null)}
+                {hasStyleCol ? styleSlot(row.styleId, !on) : null}
+                {hasStyleCol ? (row.widthId ? numW(row.widthId, !on) : <div />) : null}
+                {hasStyleCol ? (hideStylePickers ? <div /> : (!hidePlot ? psSel(row.styleId, !on) : null)) : null}
               </div>
             );
           };
@@ -27903,15 +27907,15 @@ const TalariaV8bLive = () => {
                   </div>
                 )}
                 {section.bandStyleHeader && !skipDupBandStyleHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? gcAlign : styleGridCols(section), columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? (sectionHasStyleCol(section) ? gcAlign : gcColorOnly) : styleGridCols(section), columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    {hideStylePickers ? (
+                    {hideStylePickers && sectionHasStyleCol(section) ? (
                       <>
                         <div>{lineStyleHdr()}</div>
                         <div>{hdr("THICKNESS")}</div>
                         <div />
                       </>
-                    ) : sectionHasStyleCol(section) ? (
+                    ) : !hideStylePickers && sectionHasStyleCol(section) ? (
                       <>
                         <div>{hdr("STYLE")}</div>
                         <div>{hdr("THICKNESS")}</div>
