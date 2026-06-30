@@ -2637,9 +2637,40 @@
         return parseInt(parts[0], 10) + (parseInt(parts[1] || 0, 10) / 60);
     }
 
+    /** Reuse Intl formatters — creating one per bar freezes the UI on large datasets. */
+    const _chartWallFmtCache = Object.create(null);
+    const _chartWallDowFmtCache = Object.create(null);
+    function chartCachedDateTimeFormat(locale, options) {
+        const opts = options || {};
+        const keys = Object.keys(opts).sort();
+        let sig = String(locale) + '|';
+        for (let ki = 0; ki < keys.length; ki++) {
+            const k = keys[ki];
+            sig += k + ':' + String(opts[k]) + ';';
+        }
+        if (!_chartWallFmtCache[sig]) {
+            _chartWallFmtCache[sig] = new Intl.DateTimeFormat(locale, opts);
+        }
+        return _chartWallFmtCache[sig];
+    }
+
+    function chartWallClockDow(utcMs, tzId) {
+        const key = tzId || 'UTC';
+        if (!_chartWallDowFmtCache[key]) {
+            _chartWallDowFmtCache[key] = chartCachedDateTimeFormat('en-US', { timeZone: key, weekday: 'short' });
+        }
+        try {
+            const parts = _chartWallDowFmtCache[key].formatToParts(new Date(utcMs));
+            const wd = parts.find(function (p) { return p.type === 'weekday'; });
+            const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+            if (wd && map[wd.value] != null) return map[wd.value];
+        } catch (e) { /* keep 0 */ }
+        return 0;
+    }
+
     function sessionWallDecimal(utcMs, tzId) {
         try {
-            const parts = new Intl.DateTimeFormat('en-GB', {
+            const parts = chartCachedDateTimeFormat('en-GB', {
                 timeZone: tzId || 'Etc/UTC',
                 hour: '2-digit',
                 minute: '2-digit',
@@ -2788,7 +2819,7 @@
 
     function killzonesNyDayKey(utcMs) {
         try {
-            return new Intl.DateTimeFormat('en-CA', {
+            return chartCachedDateTimeFormat('en-CA', {
                 timeZone: KILLZONES_TZ,
                 year: 'numeric',
                 month: '2-digit',
@@ -2797,6 +2828,50 @@
         } catch (e) {
             return '0';
         }
+    }
+
+    function buildKillzonesWallClockSeries(data) {
+        const n = data ? data.length : 0;
+        const out = new Array(n);
+        const tm = typeof window !== 'undefined' ? window.timezoneManager : null;
+        const dayFmt = chartCachedDateTimeFormat('en-CA', {
+            timeZone: KILLZONES_TZ,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        for (let i = 0; i < n; i++) {
+            const t = data[i].t;
+            if (!Number.isFinite(t)) {
+                out[i] = { hours: 0, minutes: 0, decimal: 0, dayKey: '0' };
+                continue;
+            }
+            const dayKey = dayFmt.format(new Date(t));
+            let hours = 0;
+            let minutes = 0;
+            if (tm && typeof tm._wallClockParts === 'function') {
+                try {
+                    const p = tm._wallClockParts(t, KILLZONES_TZ);
+                    hours = Number.isFinite(p.hour) ? (p.hour % 24) : 0;
+                    minutes = Number.isFinite(p.minute) ? p.minute : 0;
+                } catch (e0) {
+                    const dec = sessionWallDecimal(t, KILLZONES_TZ);
+                    hours = Math.floor(dec);
+                    minutes = Math.round((dec - hours) * 60) % 60;
+                }
+            } else {
+                const dec = sessionWallDecimal(t, KILLZONES_TZ);
+                hours = Math.floor(dec);
+                minutes = Math.round((dec - hours) * 60) % 60;
+            }
+            out[i] = {
+                hours: hours,
+                minutes: minutes,
+                decimal: hours + minutes / 60,
+                dayKey: dayKey
+            };
+        }
+        return out;
     }
 
     /** NY wall clock for a bar — matches chart axis when chart TZ is America/New_York (DST-aware). */
@@ -2957,13 +3032,23 @@
         
         const sessionOrder = ['cbdr', 'asia', 'london', 'nyam', 'londonClose'];
         const activeBoxes = {};
-        const dayKeysInData = Object.create(null);
-        
+        const walls = buildKillzonesWallClockSeries(data);
+        const midnightByDay = Object.create(null);
+
         for (let i = 0; i < data.length; i++) {
-            const nyWall = killzonesBarWallClock(data[i].t);
+            const nyWall = walls[i];
             const nyTime = { hours: nyWall.hours, minutes: nyWall.minutes, decimal: nyWall.decimal };
-            if (nyWall.dayKey && nyWall.dayKey !== '0') {
-                dayKeysInData[nyWall.dayKey] = true;
+            if (params.showNYMidnight !== false && nyWall.dayKey && nyWall.dayKey !== '0') {
+                const dist = nyWall.hours * 60 + nyWall.minutes;
+                const prevMid = midnightByDay[nyWall.dayKey];
+                if (!prevMid || dist < prevMid.dist) {
+                    midnightByDay[nyWall.dayKey] = {
+                        index: i,
+                        price: data[i].o,
+                        time: data[i].t,
+                        dist: dist
+                    };
+                }
             }
             
             sessionOrder.forEach(function(key) {
@@ -2997,11 +3082,10 @@
         }
         
         if (params.showNYMidnight !== false) {
-            result.nyMidnight = Object.keys(dayKeysInData).sort().map(function (dk) {
-                const idx = killzonesFindMidnightBarIndex(data, dk);
-                if (idx < 0) return null;
-                return { index: idx, price: data[idx].o, time: data[idx].t };
-            }).filter(function (row) { return row != null; });
+            result.nyMidnight = Object.keys(midnightByDay).sort().map(function (dk) {
+                const row = midnightByDay[dk];
+                return { index: row.index, price: row.price, time: row.time };
+            });
             const deduped = [];
             for (let mi = 0; mi < result.nyMidnight.length; mi++) {
                 const cur = result.nyMidnight[mi];
@@ -3094,10 +3178,13 @@
 
     /** Chart wall clock for ICT Everything — uses chart timezone (not browser local). */
     function _ictBarWallClock(utcMs) {
+        return _ictBarWallClockInTz(utcMs, resolveChartWallTimezoneId());
+    }
+
+    function _ictBarWallClockInTz(utcMs, tzId) {
         if (!Number.isFinite(utcMs)) {
-            return { y: 0, M: 0, D: 0, hour: 0, minute: 0, dec: 0, dayKey: '0', dow: 0 };
+            return { y: 0, M: 0, D: 0, hour: 0, minute: 0, dec: 0, dayKey: '0', dow: 0, weekKey: '0-W00' };
         }
-        const tzId = resolveChartWallTimezoneId();
         const dayKey = dayKeyInTimezone(utcMs, tzId);
         const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey);
         const y = dm ? parseInt(dm[1], 10) : 0;
@@ -3106,14 +3193,60 @@
         const dec = sessionWallDecimal(utcMs, tzId);
         const hour = Math.floor(dec);
         const minute = Math.round((dec - hour) * 60) % 60;
-        let dow = 0;
-        try {
-            const parts = new Intl.DateTimeFormat('en-US', { timeZone: tzId, weekday: 'short' }).formatToParts(new Date(utcMs));
-            const wd = parts.find(function (p) { return p.type === 'weekday'; });
-            const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-            if (wd && map[wd.value] != null) dow = map[wd.value];
-        } catch (e) { /* keep 0 */ }
-        return { y: y, M: M, D: D, hour: hour, minute: minute, dec: dec, dayKey: dayKey, dow: dow };
+        const dow = chartWallClockDow(utcMs, tzId);
+        return {
+            y: y, M: M, D: D, hour: hour, minute: minute, dec: dec,
+            dayKey: dayKey, dow: dow, weekKey: _ictIsoWeekKey(y, M, D)
+        };
+    }
+
+    function buildIctBarWallClockSeries(data, tzId) {
+        const n = data ? data.length : 0;
+        const id = tzId || resolveChartWallTimezoneId();
+        const out = new Array(n);
+        const tm = typeof window !== 'undefined' ? window.timezoneManager : null;
+        const dayFmt = chartCachedDateTimeFormat('en-CA', {
+            timeZone: id,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        for (let i = 0; i < n; i++) {
+            const t = data[i].t;
+            if (!Number.isFinite(t)) {
+                out[i] = { y: 0, M: 0, D: 0, hour: 0, minute: 0, dec: 0, dayKey: '0', dow: 0, weekKey: '0-W00' };
+                continue;
+            }
+            const dayKey = dayFmt.format(new Date(t));
+            const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey);
+            const y = dm ? parseInt(dm[1], 10) : 0;
+            const M = dm ? parseInt(dm[2], 10) : 0;
+            const D = dm ? parseInt(dm[3], 10) : 0;
+            let hour = 0;
+            let minute = 0;
+            if (tm && typeof tm._wallClockParts === 'function') {
+                try {
+                    const p = tm._wallClockParts(t, id);
+                    hour = Number.isFinite(p.hour) ? (p.hour % 24) : 0;
+                    minute = Number.isFinite(p.minute) ? p.minute : 0;
+                } catch (e0) {
+                    const dec = sessionWallDecimal(t, id);
+                    hour = Math.floor(dec);
+                    minute = Math.round((dec - hour) * 60) % 60;
+                }
+            } else {
+                const dec = sessionWallDecimal(t, id);
+                hour = Math.floor(dec);
+                minute = Math.round((dec - hour) * 60) % 60;
+            }
+            const dec = hour + minute / 60;
+            const dow = chartWallClockDow(t, id);
+            out[i] = {
+                y: y, M: M, D: D, hour: hour, minute: minute, dec: dec,
+                dayKey: dayKey, dow: dow, weekKey: _ictIsoWeekKey(y, M, D)
+            };
+        }
+        return out;
     }
 
     function _ictIsoWeekKey(y, M, D) {
@@ -3164,9 +3297,6 @@
         if (!data || data.length === 0) return empty;
 
         const P = Object.assign({}, indicator.params || {}, indicator.style || {});
-        function wallAt(utcMs) {
-            return _ictBarWallClock(utcMs);
-        }
         const barMin = _ictMedianBarMinutes(data);
         const maxIv = P.inputMaxInterval != null ? +P.inputMaxInterval : 31;
         const dom = barMin <= maxIv && barMin < 18 * 60;
@@ -3175,10 +3305,10 @@
         }
 
         const n = data.length;
-        const lastMs = data[n - 1].t;
-        const lastWall = wallAt(lastMs);
+        const walls = buildIctBarWallClockSeries(data);
+        const lastWall = walls[n - 1];
         const lastDayKey = lastWall.dayKey;
-        const lastWeekKey = _ictIsoWeekKey(lastWall.y, lastWall.M, lastWall.D);
+        const lastWeekKey = lastWall.weekKey;
 
         function passesTimeFilter(dayKey, weekKey, barT) {
             if (P.ShowTSO) {
@@ -3189,7 +3319,7 @@
             }
             if (P.SL4W) {
                 if (!barT) return true;
-                return barT >= lastMs - 35 * 86400000;
+                return barT >= data[n - 1].t - 35 * 86400000;
             }
             return true;
         }
@@ -3224,12 +3354,14 @@
         ];
 
         const order = ['london', 'ny', 'lc', 'pm', 'asia2', 'free'];
+        const sessionDefByKey = Object.create(null);
+        sessionDefs.forEach(function (sd) { sessionDefByKey[sd.key] = sd; });
         const activeRun = {};
         order.forEach(function (k) { activeRun[k] = null; });
 
         for (let i = 0; i < n; i++) {
-            const w = wallAt(data[i].t);
-            if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+            const w = walls[i];
+            if (!passesTimeFilter(w.dayKey, w.weekKey, data[i].t)) {
                 order.forEach(function (key) {
                     if (activeRun[key]) {
                         activeRun[key] = null;
@@ -3238,7 +3370,7 @@
                 continue;
             }
             order.forEach(function (key) {
-                const sd = sessionDefs.find(function (s) { return s.key === key; });
+                const sd = sessionDefByKey[key];
                 if (!sd || !sd.show) return;
                 const inside = _ictInDecSession(w.dec, sd.start, sd.end);
                 if (inside) {
@@ -3265,8 +3397,8 @@
         function pushRangeBox(kind, startDec, endDec, color, name, useFloutStep) {
             let active = null;
             for (let i = 0; i < n; i++) {
-                const w = wallAt(data[i].t);
-                if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+                const w = walls[i];
+                if (!passesTimeFilter(w.dayKey, w.weekKey, data[i].t)) {
                     if (active) {
                         boxes.push(active);
                         active = null;
@@ -3351,15 +3483,15 @@
 
         let prevWall = null;
         for (let i = 0; i < n; i++) {
-            const w = wallAt(data[i].t);
-            if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+            const w = walls[i];
+            if (!passesTimeFilter(w.dayKey, w.weekKey, data[i].t)) {
                 prevWall = w;
                 continue;
             }
             if (prevWall) {
                 if (w.dayKey !== prevWall.dayKey
                     && allowMidnightVline(w.dayKey)
-                    && passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+                    && passesTimeFilter(w.dayKey, w.weekKey, data[i].t)) {
                     pushVline(i, P.MOPColor, P.Midnight_Open_LS, P.Midnight_Open_LW);
                 }
                 if (w.dayKey === prevWall.dayKey) {
@@ -3411,8 +3543,8 @@
         function pushMidnightHline(startIdx, endIdx, dayKey, price) {
             if (startIdx == null || endIdx == null || startIdx > endIdx || !Number.isFinite(price)) return;
             if (!allowMidnightHline(dayKey)) return;
-            const w0 = wallAt(data[startIdx].t);
-            if (!passesTimeFilter(dayKey, _ictIsoWeekKey(w0.y, w0.M, w0.D), data[startIdx].t)) return;
+            const w0 = walls[startIdx];
+            if (!passesTimeFilter(dayKey, w0.weekKey, data[startIdx].t)) return;
             horizontals.push({
                 startIndex: startIdx,
                 endIndex: endIdx,
@@ -3425,7 +3557,7 @@
             });
         }
         for (let i = 0; i < n; i++) {
-            const w = wallAt(data[i].t);
+            const w = walls[i];
             const newDay = midDayKey == null || w.dayKey !== midDayKey;
             if (newDay) {
                 if (openMidnight != null && midStart != null && midDayKey != null) {
@@ -3442,11 +3574,11 @@
 
         function pushOpenAtDec(targetDec, enabled, color, dashS, lwS, label) {
             if (!enabled) return;
-            let prevW = wallAt(data[0].t);
+            let prevW = walls[0];
             const seenDay = {};
             for (let i = 1; i < n; i++) {
-                const w = wallAt(data[i].t);
-                if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
+                const w = walls[i];
+                if (!passesTimeFilter(w.dayKey, w.weekKey, data[i].t)) {
                     prevW = w;
                     continue;
                 }
@@ -3485,8 +3617,8 @@
             const names = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
             const seen = {};
             for (let i = 0; i < n; i++) {
-                const w = wallAt(data[i].t);
-                if (!passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) continue;
+                const w = walls[i];
+                if (!passesTimeFilter(w.dayKey, w.weekKey, data[i].t)) continue;
                 if (w.dow < 1 || w.dow > 5) continue;
                 if (w.hour !== ht || w.minute !== 0) continue;
                 const key = w.dayKey + '-' + w.dow;
@@ -4547,7 +4679,7 @@
 
     function dayKeyInTimezone(utcMs, tzId) {
         try {
-            return new Intl.DateTimeFormat('en-CA', {
+            return chartCachedDateTimeFormat('en-CA', {
                 timeZone: tzId || 'UTC',
                 year: 'numeric',
                 month: '2-digit',

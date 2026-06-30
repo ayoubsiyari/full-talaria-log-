@@ -42,6 +42,7 @@ class TimezoneManager {
         
         // Listeners for timezone changes
         this.listeners = [];
+        this._wallClockFmtCache = Object.create(null);
         
         console.log('🌍 TimezoneManager initialized:', this.currentTimezone);
     }
@@ -130,16 +131,20 @@ class TimezoneManager {
      * Wall-clock calendar fields for UTC instant `timestamp` in IANA zone `tzId`.
      */
     _wallClockParts(timestamp, tzId) {
-        const fmt = new Intl.DateTimeFormat('en-US', {
-            timeZone: tzId,
-            hour12: false,
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: 'numeric',
-            second: 'numeric'
-        });
+        const key = tzId || 'UTC';
+        if (!this._wallClockFmtCache[key]) {
+            this._wallClockFmtCache[key] = new Intl.DateTimeFormat('en-US', {
+                timeZone: key,
+                hour12: false,
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                second: 'numeric'
+            });
+        }
+        const fmt = this._wallClockFmtCache[key];
         const o = {};
         fmt.formatToParts(new Date(timestamp)).forEach((p) => {
             if (p.type !== 'literal') {
