@@ -691,23 +691,78 @@ function v9ChartIndicatorsMutationBlocked(chart) {
   return false;
 }
 
+/** chart.js normalizes some catalog types (e.g. williams → willr). */
+const V9_CHART_TYPE_ALIASES = {
+  willr: "williams",
+  williamsr: "williams",
+  stochastic: "stoch",
+  momentum: "mom",
+  ppo: "macd",
+};
+
+function v9NormalizeChartIndicatorType(type) {
+  return String(type || "").toLowerCase();
+}
+
+function v9BuildTypeToV9(idToType) {
+  const typeToV9 = {};
+  for (const [v9Id, t] of Object.entries(idToType)) {
+    const key = v9NormalizeChartIndicatorType(t);
+    if (key && !typeToV9[key]) typeToV9[key] = v9Id;
+  }
+  for (const [alias, canonical] of Object.entries(V9_CHART_TYPE_ALIASES)) {
+    const canonKey = v9NormalizeChartIndicatorType(canonical);
+    if (typeToV9[canonKey] && !typeToV9[alias]) typeToV9[alias] = typeToV9[canonKey];
+  }
+  return typeToV9;
+}
+
+function v9ChartTypeMatchesCatalog(chartType, catalogType) {
+  const c = v9NormalizeChartIndicatorType(chartType);
+  const cat = v9NormalizeChartIndicatorType(catalogType);
+  if (c === cat) return true;
+  const alias = V9_CHART_TYPE_ALIASES[c];
+  return alias != null && v9NormalizeChartIndicatorType(alias) === cat;
+}
+
+function v9FindChartIndicatorForV9Id(chart, v9Id, idToType) {
+  if (!chart || !Array.isArray(chart.indicators?.active)) return null;
+  const catalogType = idToType[v9Id];
+  if (!catalogType) return null;
+  return chart.indicators.active.find(
+    (ind) => ind && v9ChartTypeMatchesCatalog(ind.type, catalogType),
+  ) || null;
+}
+
+function v9RemoveChartIndicatorForV9Id(chart, v9Id, chartId, idToType) {
+  if (!chart || typeof chart.removeIndicator !== "function") return false;
+  if (chartId && chartId !== "__pending__") {
+    try {
+      chart.removeIndicator(chartId);
+      return true;
+    } catch (_) {}
+  }
+  const live = v9FindChartIndicatorForV9Id(chart, v9Id, idToType);
+  if (live && live.id) {
+    try {
+      chart.removeIndicator(live.id);
+      return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
 function v9ChartHasIndicatorForV9Id(chart, v9Id, idToType) {
-  const type = idToType[v9Id];
-  if (!chart || !type || !Array.isArray(chart.indicators?.active)) return false;
-  const want = String(type).toLowerCase();
-  return chart.indicators.active.some(
-    (ind) => ind && String(ind.type || "").toLowerCase() === want,
-  );
+  return !!v9FindChartIndicatorForV9Id(chart, v9Id, idToType);
 }
 
 function v9SyncIndicatorMapFromChart(chart, map, idToType) {
   if (!chart || !map || !Array.isArray(chart.indicators?.active)) return [];
-  const typeToV9 = {};
-  for (const [v9Id, t] of Object.entries(idToType)) typeToV9[t] = v9Id;
+  const typeToV9 = v9BuildTypeToV9(idToType);
   for (const k of Object.keys(map)) delete map[k];
   const next = [];
   for (const ind of chart.indicators.active) {
-    const v9 = typeToV9[ind.type];
+    const v9 = typeToV9[v9NormalizeChartIndicatorType(ind.type)];
     if (v9 && ind.id) {
       map[v9] = ind.id;
       if (!next.includes(v9)) next.push(v9);
@@ -721,8 +776,7 @@ function v9RemoveIndicatorFromAllMultichartPanels(v9Id, grid, allMaps, idToType)
   if (!type || !grid || typeof grid.runCommand !== "function") {
     return Promise.resolve();
   }
-  const typeToV9 = {};
-  for (const [id, t] of Object.entries(idToType)) typeToV9[t] = id;
+  const typeToV9 = v9BuildTypeToV9(idToType);
   const panelIds = v9ListMultichartPanelIds();
   const proms = panelIds.map((panelId) => {
     let map = allMaps.get(panelId);
@@ -739,7 +793,7 @@ function v9RemoveIndicatorFromAllMultichartPanels(v9Id, grid, allMaps, idToType)
     return grid.runCommand("getIndicators", null, { panelId })
       .then((data) => {
         const items = data && Array.isArray(data.indicators) ? data.indicators : [];
-        const match = items.find((it) => it && (it.type === type || typeToV9[it.type] === v9Id));
+        const match = items.find((it) => it && v9ChartTypeMatchesCatalog(it.type, type));
         if (match && match.id) {
           return grid.runCommand("removeIndicator", { chartId: match.id }, { panelId });
         }
@@ -14102,8 +14156,7 @@ const TalariaV8bLive = () => {
         const g = window.__multichartGrid;
         if (!g || typeof g.getPanelIndicators !== "function") return;
         const id = g.getFocusedPanelId() || "A";
-        const TYPE_TO_V9 = {};
-        for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) TYPE_TO_V9[t] = v9Id;
+        const TYPE_TO_V9 = v9BuildTypeToV9(ID_TO_TYPE);
         g.getPanelIndicators(id)
           .then((items) => {
             if (cancelled) return;
@@ -14112,7 +14165,7 @@ const TalariaV8bLive = () => {
             for (const k of Object.keys(map)) delete map[k];
             const next = [];
             for (const it of items) {
-              const v9 = it.type ? TYPE_TO_V9[it.type] : null;
+              const v9 = it.type ? TYPE_TO_V9[v9NormalizeChartIndicatorType(it.type)] : null;
               if (v9 && it.id) {
                 map[v9] = it.id;
                 if (!next.includes(v9)) next.push(v9);
@@ -14156,9 +14209,23 @@ const TalariaV8bLive = () => {
         }
         const chartId = panelMap[v9Id];
         delete panelMap[v9Id];
-        if (chartId) {
+        if (chartId && chartId !== "__pending__") {
           grid.runCommand("removeIndicator", { chartId }, { panelId: focused })
               .catch((err) => console.warn("[V9 ind multi] removeIndicator failed for", v9Id, err));
+        } else {
+          const type = ID_TO_TYPE[v9Id];
+          if (type) {
+            grid.runCommand("getIndicators", null, { panelId: focused })
+              .then((data) => {
+                const items = data && Array.isArray(data.indicators) ? data.indicators : [];
+                const match = items.find((it) => it && v9ChartTypeMatchesCatalog(it.type, type));
+                if (match && match.id) {
+                  return grid.runCommand("removeIndicator", { chartId: match.id }, { panelId: focused });
+                }
+                return null;
+              })
+              .catch((err) => console.warn("[V9 ind multi] removeIndicator fallback failed for", v9Id, err));
+          }
         }
       }
       // Add new indicators to focused panel (or every tile when sync is on).
@@ -14223,16 +14290,13 @@ const TalariaV8bLive = () => {
           ? window.getActiveChart()
           : window.chart;
       if (!chart || !Array.isArray(chart.indicators?.active)) return;
-      const TYPE_TO_V9 = {};
-      for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) {
-        TYPE_TO_V9[t] = v9Id;
-      }
+      const TYPE_TO_V9 = v9BuildTypeToV9(ID_TO_TYPE);
       const map = getMapForChart(chart);
       if (!map) return;
       for (const k of Object.keys(map)) delete map[k];
       const next = [];
       for (const ind of chart.indicators.active) {
-        const v9 = TYPE_TO_V9[ind.type];
+        const v9 = TYPE_TO_V9[v9NormalizeChartIndicatorType(ind.type)];
         if (v9 && ind.id) {
           map[v9] = ind.id;
           if (!next.includes(v9)) next.push(v9);
@@ -14294,14 +14358,12 @@ const TalariaV8bLive = () => {
       for (const v9Id of prevSet) {
         if (!nowSet.has(v9Id)) {
           const chartId = map[v9Id];
+          delete map[v9Id];
           try {
-            if (chartId && typeof chart.removeIndicator === "function") {
-              chart.removeIndicator(chartId);
-            }
+            v9RemoveChartIndicatorForV9Id(chart, v9Id, chartId, ID_TO_TYPE);
           } catch (err) {
             console.warn("[V9] removeIndicator failed for", v9Id, err);
           }
-          delete map[v9Id];
         }
       }
 
@@ -14314,9 +14376,7 @@ const TalariaV8bLive = () => {
           continue;
         }
         if (v9ChartHasIndicatorForV9Id(chart, v9Id, ID_TO_TYPE)) {
-          const live = chart.indicators.active.find(
-            (ind) => ind && String(ind.type || "").toLowerCase() === String(type).toLowerCase(),
-          );
+          const live = v9FindChartIndicatorForV9Id(chart, v9Id, ID_TO_TYPE);
           if (live && live.id) map[v9Id] = live.id;
           continue;
         }

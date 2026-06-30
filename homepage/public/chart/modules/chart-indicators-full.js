@@ -8362,8 +8362,10 @@
     };
     
     Chart.prototype.removeIndicator = function(id) {
+        if (id == null) return;
+        const idStr = String(id);
         const index = this.indicators.active.findIndex(function(ind) {
-            return ind.id === id;
+            return ind && (ind.id === id || String(ind.id) === idStr);
         });
         
         if (index >= 0) {
@@ -8377,10 +8379,20 @@
             
             this.indicators.active.splice(index, 1);
             delete this.indicators.data[id];
-            if (this.selectedOverlayIndicatorId === id) {
+            if (this.indicators.data[indicator.id] !== undefined) {
+                delete this.indicators.data[indicator.id];
+            }
+            if (this.chartSettings && this.chartSettings.separatePanelHeights) {
+                delete this.chartSettings.separatePanelHeights[id];
+                if (indicator.id != null) delete this.chartSettings.separatePanelHeights[indicator.id];
+            }
+            if (this.selectedOverlayIndicatorId === id || String(this.selectedOverlayIndicatorId) === idStr) {
                 this.selectedOverlayIndicatorId = null;
             }
             this._updateIndicatorPanelHeight();
+            if (typeof this.calculateScales === 'function') {
+                this.calculateScales();
+            }
             
             if (typeof this.render === 'function') {
                 this.render();
