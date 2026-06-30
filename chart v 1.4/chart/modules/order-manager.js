@@ -17366,6 +17366,10 @@ class OrderManager {
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
         this._refreshLevelCtrlHoverIfNeeded(pc);
+        if (pc?.svg) {
+            const clipUrl = this._syncMainPlotSvgClip(pc);
+            this._applyPlotClipToOrderOverlays(pc, clipUrl);
+        }
     }
 
     updatePreviewLines() {
@@ -37685,6 +37689,36 @@ class OrderManager {
         }
     }
 
+    /** Keep main-plot SVG clip in sync with separate indicator stack height. */
+    _syncMainPlotSvgClip(ch) {
+        const chart = ch || this.chart;
+        if (!chart) return null;
+        const dm = chart.drawingManager;
+        if (dm && typeof dm.updateClipPath === 'function') {
+            dm.updateClipPath();
+            return typeof dm._clipUrl === 'function' ? dm._clipUrl() : null;
+        }
+        return null;
+    }
+
+    /** Clip order / preview geometry to the main price pane (not the indicator stack below). */
+    _applyPlotClipToOrderOverlays(ch, clipUrl) {
+        if (!ch?.svg?.selectAll || !clipUrl) return;
+        const plotClipSelectors = [
+            '.order-line', '.order-drag-hit',
+            '.pending-order-line', '.pending-order-hit-line',
+            '.pending-sl-line', '.pending-tp-line', '.pending-be-line',
+            '.sl-line', '.tp-line', '.be-line',
+            '.split-avg-line', '.multi-tp-avg-line',
+            '.preview-line', '.preview-line-hit',
+            '.plus-badge-ghost',
+            '.trade-connector',
+            '.entry-marker', '.exit-marker', '.partial-close-marker',
+            '.mfe-mae-marker-root'
+        ].join(',');
+        ch.svg.selectAll(plotClipSelectors).style('clip-path', clipUrl);
+    }
+
     updateOrderLines(sourceChart) {
         this._pruneReplayFutureTradeMarkers();
         if (sourceChart === undefined && this._isMultiPanelLayout()) {
@@ -37990,6 +38024,8 @@ class OrderManager {
         this._alignAllOrderLabels(ch);
         if (ch?.svg) {
             this._purgeOrderOverlayArtifacts(ch);
+            const clipUrl = this._syncMainPlotSvgClip(ch);
+            this._applyPlotClipToOrderOverlays(ch, clipUrl);
         }
     }
 

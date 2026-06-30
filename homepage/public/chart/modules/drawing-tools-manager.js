@@ -1843,7 +1843,16 @@ class DrawingToolsManager {
         let clipX = m.l;
         let clipY = m.t;
         let clipW = w - m.l - m.r;
-        let clipH = h - m.t - m.b;
+        let plotBottom = h - m.b;
+        if (this.chart && typeof this.chart._getMainPricePlotLayout === 'function') {
+            const layout = this.chart._getMainPricePlotLayout();
+            if (layout && Number.isFinite(layout.plotBottom)) {
+                plotBottom = layout.plotBottom;
+            }
+        } else if (this.chart && Number.isFinite(this.chart.separateIndicatorPanelHeight)) {
+            plotBottom = h - m.b - (this.chart.separateIndicatorPanelHeight || 0);
+        }
+        let clipH = Math.max(1, plotBottom - m.t);
         if (panPadding) {
             const padL = Math.max(0, Number(panPadding.left) || 0);
             const padR = Math.max(0, Number(panPadding.right) || 0);
@@ -1859,6 +1868,18 @@ class DrawingToolsManager {
             .attr('y', clipY)
             .attr('width', Math.max(1, clipW))
             .attr('height', Math.max(1, clipH));
+
+        const clipUrl = this._clipUrl();
+        const indPanelH = this.chart && typeof this.chart._getMainPricePlotLayout === 'function'
+            ? (this.chart._getMainPricePlotLayout().indPanelH || 0)
+            : (this.chart && this.chart.separateIndicatorPanelHeight) || 0;
+        if (this.labelsGroup && !this.labelsGroup.empty()) {
+            if (indPanelH > 0 && clipUrl) {
+                this.labelsGroup.attr('clip-path', clipUrl);
+            } else {
+                this.labelsGroup.attr('clip-path', null);
+            }
+        }
     }
 
     /** Keep drawings clipped to the plot (excludes price/time axis margins). */
