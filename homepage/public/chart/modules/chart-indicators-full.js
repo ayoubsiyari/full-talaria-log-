@@ -794,6 +794,8 @@
         indicator.style.obGradientColor = params.obGradientColor || 'rgba(239,83,80,0.12)';
         indicator.style.showOsGradient = params.showOsGradient === true;
         indicator.style.osGradientColor = params.osGradientColor || 'rgba(38,166,154,0.12)';
+        indicator.overlay = false;
+        indicator.separatePanel = true;
     }
 
     function applyStochasticStyleFromParams(indicator, params) {
@@ -5323,10 +5325,13 @@
         indicator._calculating = true;
         indicator.name = String(type || '').toUpperCase();
         chartRef.indicators.active.push(indicator);
+        if (typeof chartRef._primeSeparatePanelForNewIndicator === 'function') {
+            chartRef._primeSeparatePanelForNewIndicator(indicator, normalizedType);
+        }
         if (typeof chartRef.updateOHLCIndicators === 'function') chartRef.updateOHLCIndicators();
         if (typeof chartRef.scheduleRender === 'function') chartRef.scheduleRender();
 
-        setTimeout(function() {
+        (function finishAddIndicator() {
             if (!chartRef.indicators || !chartRef.indicators.active
                 || !chartRef.indicators.active.some(function(i) { return i && i.id === indicator.id; })) {
                 return;
@@ -5413,6 +5418,7 @@
                 indicator.params.period = params.period || 14;
                 indicator.params.source = params.source || 'close';
                 indicator.overlay = false;
+                indicator.separatePanel = true;
                 applyRsiStyleFromParams(indicator, params);
                 indicator.name = 'RSI(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateRSIIndicatorData(this.data, indicator.params);
@@ -6042,7 +6048,7 @@
         chartRef.updateOHLCIndicators();
         chartRef.persistIndicators();
         emitIndicatorsChanged(chartRef, 'add', indicator);
-        }, 0);
+        })();
         
         return indicator;
     };
@@ -9323,6 +9329,27 @@ Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 18) 
     return null;
 };
 
+/** Reserve panel layout immediately when a separate-panel indicator is added (before calc finishes). */
+Chart.prototype._primeSeparatePanelForNewIndicator = function(indicator, typeHint) {
+    if (!indicator) return;
+    const t = String(typeHint || indicator.type || '').toLowerCase();
+    const separateTypes = {
+        rsi: 1, macd: 1, ppo: 1, stoch: 1, stochastic: 1, stochrsi: 1, cci: 1, mfi: 1,
+        willr: 1, williamsr: 1, adx: 1, aroon: 1, atr: 1, adr: 1, obv: 1, ao: 1, mom: 1,
+        momentum: 1, roc: 1, uo: 1, vortex: 1, elderray: 1, dpo: 1, cmf: 1, cotnet: 1
+    };
+    if (separateTypes[t] || indicator.separatePanel === true || indicator.overlay === false) {
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+    }
+    if (typeof this._updateIndicatorPanelHeight === 'function') {
+        this._updateIndicatorPanelHeight();
+    }
+    if (typeof this.calculateScales === 'function') {
+        this.calculateScales();
+    }
+};
+
 /** Auto-fit Y range bases for separate-panel line drag (before first paint caches _panelBaseMin). */
 Chart.prototype._getIndicatorPanelAxisBases = function(indicator) {
     if (!indicator) return null;
@@ -9492,7 +9519,6 @@ Chart.prototype._beginSeparatePanelLineDrag = function(startEvent, slot) {
     self.drag.startY = startEvent.clientY;
     self.drag.lastX = startEvent.clientX;
     self.drag.lastY = startEvent.clientY;
-    if (typeof self._snapshotPanDrawingsLayer === 'function') self._snapshotPanDrawingsLayer();
     if (typeof self._lockDragCursor === 'function') self._lockDragCursor('ns-resize');
     self._separatePanelLineDragActive = true;
 
@@ -10696,6 +10722,12 @@ Chart.prototype.syncCrosshairIndicatorValues = function() {
         separateIndicators.forEach((ind) => stack.push(ind));
         this._syncSeparatePanelOverlayValues(overlay, stack);
     }
+};
+
+Chart.prototype._panelMapValueToY = function(v, rMin, rSpan, panelTop, panelBottom, panelHeight) {
+    if (v === null || v === undefined) return null;
+    const y = panelBottom - 5 - ((v - rMin) / Math.max(1e-9, rSpan)) * (panelHeight - 10);
+    return Number.isFinite(y) ? y : null;
 };
 
 /** Per-indicator Y zoom/pan for separate panels (right-axis drag / wheel). */
@@ -13100,7 +13132,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             let y = scaleY(val);
             // Do not skip by x: panel ctx is already clipped; skipping broke polylines at pan edges.
             if (y === null || !Number.isFinite(y)) { started = false; continue; }
-            if (useClip) y = Math.max(clipTop + 0.5, Math.min(clipBottom - 0.5, y));
             if (!started) { ctx.moveTo(x, y); started = true; }
             else { ctx.lineTo(x, y); }
         }
@@ -13190,7 +13221,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
@@ -13274,7 +13305,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - min) / mSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         if (style.showBg) {
@@ -13399,7 +13430,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (val === null || val === undefined) return null;
             const y = panelBottom - 5 - ((val - min) / vSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
         this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 2);
 
@@ -13499,7 +13530,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (val === null || val === undefined) return null;
             const y = panelBottom - 5 - ((val - min) / vSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
         this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 2);
 
@@ -13596,7 +13627,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (val === null || val === undefined) return null;
             const y = panelBottom - 5 - ((val - min) / vSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
         const zy = scaleY(0);
         if (zy !== null && zy > panelTop && zy < panelBottom) {
@@ -13661,7 +13692,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - tMin) / tSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         this._drawPanelAxisTicks(ctx, m, tMin, tMax, scaleY, 2);
@@ -13780,12 +13811,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const rMin = dom.min;
         const rMax = dom.max;
         const rSpan = Math.max(1e-9, rMax - rMin);
-        const scaleY = v => {
-            if (v === null || v === undefined) return null;
-            let y = panelBottom - 5 - ((v - rMin) / rSpan) * (panelHeight - 10);
-            if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
-        };
+        const scaleY = v => this._panelMapValueToY(v, rMin, rSpan, panelTop, panelBottom, panelHeight);
 
         this._drawPanelAxisTicks(ctx, m, rMin, rMax, scaleY, 2);
 
@@ -13876,7 +13902,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
@@ -13927,7 +13953,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
@@ -13979,7 +14005,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - cMin) / cSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         this._drawPanelAxisTicks(ctx, m, cMin, cMax, scaleY, 2);
@@ -14031,7 +14057,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - mMin) / mSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         this._drawPanelAxisTicks(ctx, m, mMin, mMax, scaleY, 2);
@@ -14068,7 +14094,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             const y = panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
         this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
         [[70, 'rgba(239,83,80,0.45)'], [50, 'rgba(120,123,134,0.3)'], [30, 'rgba(38,166,154,0.45)']].forEach(function(row) {
@@ -14124,7 +14150,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
@@ -14230,7 +14256,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
 
@@ -14382,12 +14408,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const rMin = dom.min;
         const rMax = dom.max;
         const rSpan = Math.max(1e-9, rMax - rMin);
-        const scaleY = v => {
-            if (v === null || v === undefined) return null;
-            let y = panelBottom - 5 - ((v - rMin) / rSpan) * (panelHeight - 10);
-            if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
-        };
+        const scaleY = v => this._panelMapValueToY(v, rMin, rSpan, panelTop, panelBottom, panelHeight);
 
         const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
         const osVal = style.oversoldValue != null ? style.oversoldValue : levelDefaults.oversold;
@@ -14534,7 +14555,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - cMin) / cSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         const panelW = Math.max(0, this.w - m.l);
@@ -14640,7 +14661,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - dMin) / dSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         if (style.showBg) {
@@ -14716,7 +14737,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - oMin) / oSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         this._drawPanelAxisTicks(ctx, m, oMin, oMax, scaleY, 2);
@@ -14820,7 +14841,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         if (style.showBg) {
@@ -14882,7 +14903,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - mMin) / mSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         if (style.showBg) {
@@ -14937,7 +14958,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - wMin) / wSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         if (style.showBg) {
@@ -15025,7 +15046,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - mMin) / mSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         if (style.showBg) {
@@ -15098,7 +15119,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - mMin) / mSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         this._drawPanelAxisTicks(ctx, m, mMin, mMax, scaleY, 2);
@@ -15147,7 +15168,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (v === null || v === undefined) return null;
             let y = panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return y;
         };
 
         const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
