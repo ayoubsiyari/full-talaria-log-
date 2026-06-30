@@ -9918,7 +9918,8 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             indicatorData = this.indicators.data[indicator.id];
             if (!indicatorData || !indicatorData.obv || !indicatorData.obv.length) return;
         }
-        
+
+        this._withSeparatePanelSlotClip(ctx, m.l, indTop, indBottom, panelFullRight, () => {
         // Type-specific rendering for multi-series indicators
         if (indicator.type === 'macd' || indicator.type === 'ppo') {
             indicator.type = 'macd';
@@ -10158,6 +10159,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             ctx.textAlign = 'center';
             ctx.fillText(currentValue.toFixed(2), this.w - m.r + 2 + labelWidth/2, currentY + 4);
         }
+        });
     });
     
     // Store panel info for mouse interactions (full stacked area)
@@ -10690,6 +10692,26 @@ Chart.prototype._panelMapValueToY = function(v, rMin, rSpan, panelTop, panelBott
     if (v === null || v === undefined) return null;
     const y = panelBottom - 5 - ((v - rMin) / Math.max(1e-9, rSpan)) * (panelHeight - 10);
     return Number.isFinite(y) ? y : null;
+};
+
+/** Clip indicator geometry to one stacked pane so Y-axis pan/zoom cannot bleed into neighbors. */
+Chart.prototype._withSeparatePanelSlotClip = function(ctx, left, top, bottom, fullRight, drawFn) {
+    if (!ctx || typeof drawFn !== 'function') return;
+    const w = Math.max(0, fullRight - left);
+    const h = Math.max(0, bottom - top);
+    if (w <= 0 || h <= 0) {
+        drawFn();
+        return;
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, top, w, h);
+    ctx.clip();
+    try {
+        drawFn();
+    } finally {
+        ctx.restore();
+    }
 };
 
 /** Per-indicator Y zoom/pan for separate panels (right-axis drag / wheel). */
