@@ -9392,6 +9392,9 @@ Chart.prototype.separatePanelLineDragStep = function(slot, dy) {
     const h = Math.max(1, activeSlot.bottom - activeSlot.top);
     const valuePerPixel = displaySpan / h;
     pa.offset = (pa.offset || 0) + dy * valuePerPixel;
+    if (typeof this._clampIndicatorPanelOffset === 'function') {
+        this._clampIndicatorPanelOffset(ind, bases.b0, bases.b1);
+    }
     if (typeof this.bumpIndicatorRenderVersion === 'function') {
         this.bumpIndicatorRenderVersion();
     }
@@ -10700,6 +10703,104 @@ Chart.prototype._ensureIndicatorPanelAxis = function(indicator) {
     if (!indicator._panelAxis) indicator._panelAxis = { zoom: 1, offset: 0 };
 };
 
+/** Visible min/max of plotted indicator values (prevents Y pan from flattening line at panel edge). */
+Chart.prototype._getIndicatorVisibleValueExtent = function(indicator) {
+    const store = this.indicators && this.indicators.data && indicator && indicator.id != null
+        ? this.indicators.data[indicator.id]
+        : null;
+    if (!store) return null;
+    const v0 = Math.max(0, Math.floor(Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0));
+    const v1 = Math.min(
+        this.data ? this.data.length : 0,
+        Math.ceil(Number.isFinite(this.visibleEndIndex) ? this.visibleEndIndex : (this.data ? this.data.length : 0))
+    );
+    if (v1 <= v0) return null;
+
+    let min = Infinity;
+    let max = -Infinity;
+    const scan = function(arr) {
+        if (!Array.isArray(arr)) return;
+        for (let i = v0; i < v1 && i < arr.length; i++) {
+            const v = arr[i];
+            if (v !== null && v !== undefined && Number.isFinite(v)) {
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+        }
+    };
+
+    const t = String(indicator.type || '').toLowerCase();
+    if (Array.isArray(store)) {
+        scan(store);
+    } else if (store && typeof store === 'object') {
+        if (t === 'macd' || t === 'ppo') {
+            scan(store.macd);
+            scan(store.signal);
+            scan(store.histogram);
+        } else if (t === 'rsi') {
+            scan(store.rsi);
+            scan(store.ma);
+            scan(store.bbUpper);
+            scan(store.bbLower);
+        } else if (t === 'stoch' || t === 'stochastic' || t === 'stochrsi') {
+            scan(store.k);
+            scan(store.d);
+        } else if (t === 'aroon') {
+            scan(store.up);
+            scan(store.down);
+        } else if (t === 'vortex') {
+            scan(store.viPlus);
+            scan(store.viMinus);
+        } else {
+            Object.keys(store).forEach(function(k) { scan(store[k]); });
+        }
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    if (min === max) {
+        const pad = Math.max(Math.abs(min) * 0.1, 1e-6);
+        min -= pad;
+        max += pad;
+    }
+    return { min: min, max: max };
+};
+
+/** Keep pan offset so visible data stays inside the Y domain (avoids flat clamped lines). */
+Chart.prototype._clampIndicatorPanelOffset = function(indicator, b0, b1) {
+    if (!indicator || !Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) return;
+    this._ensureIndicatorPanelAxis(indicator);
+    const pa = indicator._panelAxis;
+    const extent = this._getIndicatorVisibleValueExtent(indicator);
+    if (!extent) return;
+    const z = Math.max(0.02, Math.min(200, pa.zoom || 1));
+    const span = (b1 - b0) / z;
+    const mid0 = (b0 + b1) / 2;
+    const dataLo = extent.min;
+    const dataHi = extent.max;
+    const dataSpan = Math.max(1e-9, dataHi - dataLo);
+    const pad = Math.max(dataSpan * 0.08, span * 0.02);
+    const minOffset = (dataHi + pad) - mid0 - span / 2;
+    const maxOffset = (dataLo - pad) - mid0 + span / 2;
+    if (minOffset > maxOffset) {
+        pa.offset = 0;
+        return;
+    }
+    pa.offset = Math.max(minOffset, Math.min(maxOffset, pa.offset || 0));
+};
+
+/** Double-click indicator right axis — reset zoom/offset to auto-fit. */
+Chart.prototype.resetSeparatePanelIndicatorAxis = function(indicator) {
+    if (!indicator) return;
+    indicator._panelAxis = { zoom: 1, offset: 0 };
+    delete indicator._panelBaseMin;
+    delete indicator._panelBaseMax;
+    if (typeof this.bumpIndicatorRenderVersion === 'function') {
+        this.bumpIndicatorRenderVersion();
+    }
+    if (typeof this.scheduleRender === 'function') {
+        this.scheduleRender();
+    }
+};
+
 /**
  * Map auto-fit [baseMin, baseMax] to displayed domain using indicator._panelAxis.
  * Bases are stored on indicator as _panelBaseMin / _panelBaseMax each render.
@@ -10743,6 +10844,9 @@ Chart.prototype._finalizePanelRange = function(indicator, baseMin, baseMax) {
     }
     indicator._panelBaseMin = b0;
     indicator._panelBaseMax = b1;
+    if (typeof this._clampIndicatorPanelOffset === 'function') {
+        this._clampIndicatorPanelOffset(indicator, b0, b1);
+    }
     return this._applyIndicatorPanelDomain(b0, b1, indicator);
 };
 
@@ -10821,6 +10925,9 @@ Chart.prototype.separatePanelAxisDragStep = function(slot, dy, pointerY) {
     const newMid = mid - rangeChange * (0.5 - cursorRatio);
     pa.offset = newMid - (b0 + b1) / 2;
     pa.zoom = newZoom;
+    if (typeof this._clampIndicatorPanelOffset === 'function') {
+        this._clampIndicatorPanelOffset(ind, b0, b1);
+    }
 };
 
 /** Mouse wheel while cursor is over separate-pane price strip */
@@ -10846,6 +10953,9 @@ Chart.prototype.applySeparatePanelAxisWheel = function(priceZoomFactor, mx, my) 
     const newMid = mid - rangeChange * (0.5 - cursorRatio);
     pa.offset = newMid - (b0 + b1) / 2;
     pa.zoom = newZoom;
+    if (typeof this._clampIndicatorPanelOffset === 'function') {
+        this._clampIndicatorPanelOffset(ind, b0, b1);
+    }
 };
 
 // Handle click on separate panel indicator to open settings

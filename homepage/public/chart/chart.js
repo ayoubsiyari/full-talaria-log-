@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260628b176';
+const CHART_ENGINE_BUILD = '20260628b177';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -26831,11 +26831,16 @@ class Chart {
             if (e.button !== 0 && e.button !== undefined) return;
             const [mx, my] = this._eventCanvasLocalXY(e);
             const axisMode = this._detectCursorModeAt(mx, my);
-            if (axisMode !== 'priceAxis' && axisMode !== 'timeAxis') return;
+            if (axisMode !== 'priceAxis' && axisMode !== 'timeAxis' && axisMode !== 'separatePanelAxis') return;
             e.preventDefault();
             if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
             if (typeof e.stopPropagation === 'function') e.stopPropagation();
-            if (axisMode === 'priceAxis') {
+            if (axisMode === 'separatePanelAxis' && this.cursor.separatePanelSlot &&
+                this.cursor.separatePanelSlot.indicator) {
+                if (typeof this.resetSeparatePanelIndicatorAxis === 'function') {
+                    this.resetSeparatePanelIndicatorAxis(this.cursor.separatePanelSlot.indicator);
+                }
+            } else if (axisMode === 'priceAxis') {
                 this._applyPriceAxisDoubleClickLock();
             } else {
                 this._applyTimeAxisDoubleClickReset();
@@ -28163,9 +28168,15 @@ class Chart {
             
             if (mode === 'separatePanelAxis' && this.cursor.separatePanelSlot &&
                 this.cursor.separatePanelSlot.indicator) {
-                const ind = this.cursor.separatePanelSlot.indicator;
-                ind._panelAxis = { zoom: 1, offset: 0 };
-                this.scheduleRender();
+                if (typeof this.resetSeparatePanelIndicatorAxis === 'function') {
+                    this.resetSeparatePanelIndicatorAxis(this.cursor.separatePanelSlot.indicator);
+                } else {
+                    const ind = this.cursor.separatePanelSlot.indicator;
+                    ind._panelAxis = { zoom: 1, offset: 0 };
+                    this.scheduleRender();
+                }
+                e.preventDefault();
+                e.stopPropagation();
                 return;
             }
             
