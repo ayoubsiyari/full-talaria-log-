@@ -234,6 +234,7 @@ class DrawingToolsManager {
         this._directMoveDragCleanup = null;
         this._directResizeDragCleanup = null;
         this._touchPointerActive = false;
+        this._lastTouchSynthAt = 0;
         /** Drawings being moved via canvas geometric drag (not isDragging SVG path). */
         this._directMoveDrawings = null;
         /** Active d3 body-drag gestures (whole-shape move via setupDrawingDrag). */
@@ -2624,6 +2625,29 @@ class DrawingToolsManager {
         }
     }
 
+    /** TradingView-style: show crosshair when a draw tool is armed (center on touch if no prior pointer). */
+    _showInitialPlacementCrosshair() {
+        const c = this.chart;
+        if (!c || typeof c.updateCrosshair !== 'function') return;
+        const m = c.margin || { l: 60, r: 60, t: 5, b: 30 };
+        const inPlot = Number.isFinite(c.mouseX) && Number.isFinite(c.mouseY)
+            && c.mouseX >= m.l && c.mouseX <= (c.w || 0) - m.r
+            && c.mouseY >= m.t && c.mouseY <= (c.h || 0) - m.b;
+        if (inPlot && typeof c.refreshCrosshairFromLastPointer === 'function') {
+            c.refreshCrosshairFromLastPointer();
+            return;
+        }
+        const cx = (((c.w || 0) - m.l - m.r) / 2) + m.l;
+        const cy = (((c.h || 0) - m.t - m.b) / 2) + m.t;
+        const rect = typeof c._pointerLayoutRect === 'function' ? c._pointerLayoutRect() : null;
+        const z = typeof c._v9LayoutZoom === 'function' ? c._v9LayoutZoom() : 1;
+        if (!rect) return;
+        c.updateCrosshair({
+            clientX: rect.left + cx * z,
+            clientY: rect.top + cy * z,
+        });
+    }
+
     /**
      * Set the current drawing tool
      */
@@ -2655,6 +2679,7 @@ class DrawingToolsManager {
         
         // Update cursor — honor cross / dot / arrow preference from chart.setCursorType
         this._applyChartPlacementCursor();
+        this._showInitialPlacementCrosshair();
         this.svg.style('pointer-events', toolName ? 'all' : 'none');
         
         // Disable pointer events on all existing drawings when a tool is active
@@ -3266,6 +3291,13 @@ class DrawingToolsManager {
         // Ignore right-click - handled by contextmenu event
         if (event.button === 2) {
             return;
+        }
+
+        // Block iOS/Android ghost mouse events that follow a touch synthesis (double-place).
+        if (event && event.type === 'mousedown' && !this._isTouchLikePointer(event)) {
+            if (this._lastTouchSynthAt && performance.now() - this._lastTouchSynthAt < 450) {
+                return;
+            }
         }
 
         this._syncCtrlSelectModeFromEvent(event);
@@ -5273,7 +5305,9 @@ class DrawingToolsManager {
             || this._isLiveHandleEditing()
         );
 
-        const shouldTrackPointer = (e) => activePointerId === e.pointerId || isGeometryActive();
+        const isPlacementMode = () => !!(this.currentTool || (this.drawingState && this.drawingState.isDrawing));
+
+        const shouldTrackPointer = (e) => activePointerId === e.pointerId || isGeometryActive() || isPlacementMode();
 
         svgNode.addEventListener('pointerdown', (e) => {
             if (!this._isTouchLikePointer(e)) return;
@@ -5281,6 +5315,7 @@ class DrawingToolsManager {
             if (this.chart && this.chart._pinchActive) return;
             e.preventDefault();
             this._touchPointerActive = true;
+            this._lastTouchSynthAt = performance.now();
             activePointerId = e.pointerId;
             this._dispatchMouseEventOn(svgNode, e, 'mousedown');
             try { svgNode.setPointerCapture(e.pointerId); } catch (_) {}
@@ -5297,6 +5332,7 @@ class DrawingToolsManager {
         const onPointerUp = (e) => {
             if (!this._isTouchLikePointer(e) || !shouldTrackPointer(e)) return;
             e.preventDefault();
+            this._lastTouchSynthAt = performance.now();
             this._dispatchMouseEventOn(svgNode, e, 'mouseup');
             if (activePointerId === e.pointerId) {
                 activePointerId = null;
@@ -5314,8 +5350,16 @@ class DrawingToolsManager {
             chartWrapper.__drawingTouchProximityBridge = true;
             chartWrapper.addEventListener('pointermove', (e) => {
                 if (!this._isTouchLikePointer(e)) return;
-                if (this.currentTool || this.isRectSelecting) return;
-                if (this.drawingState && this.drawingState.isDrawing) return;
+                if (this.currentTool || (this.drawingState && this.drawingState.isDrawing)) {
+                    if (this.chart && typeof this.chart.updateCrosshair === 'function') {
+                        this.chart.updateCrosshair(e);
+                    }
+                    if (this.drawingState && this.drawingState.isDrawing) {
+                        this.handleMouseMove(e);
+                    }
+                    return;
+                }
+                if (this.isRectSelecting) return;
                 this.checkDrawingProximity(e);
             }, { passive: true });
         }

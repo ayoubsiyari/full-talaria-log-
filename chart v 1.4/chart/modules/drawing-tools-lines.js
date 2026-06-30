@@ -80,10 +80,19 @@ function appendTextLabel(group, text, config = {}) {
     let nudgeY = 0;
     if (anchor === 'middle' && resolved.direction === 'rtl') {
         try {
+            // Italic skew changes Arabic glyph bounds — measure before centering nudge.
+            if (resolved.italicSkew) {
+                const skewOnly = buildDrawingTextTransform(x, yPos, 0, resolved.italicSkew, 0, 0);
+                if (skewOnly) textEl.attr('transform', skewOnly);
+            }
             const bbox = textEl.node().getBBox();
             if (Number.isFinite(bbox.width) && bbox.width > 0) {
                 nudgeX = x - (bbox.x + bbox.width / 2);
             }
+            if (Number.isFinite(bbox.height) && bbox.height > 0) {
+                nudgeY = yPos - (bbox.y + bbox.height / 2);
+            }
+            if (resolved.italicSkew) textEl.attr('transform', null);
         } catch (_) { /* ignore measure failures */ }
     }
 
@@ -157,6 +166,34 @@ function normalizeLineTextVAlign(style) {
     style.textVAlign = v;
     style.textPosition = v;
     return v;
+}
+
+/** Gap width for on-line split labels — Arabic/RTL/italic aware. */
+function measureLineToolLabelWidth(group, text, style, anchor = 'middle') {
+    if (typeof measureLineLabelTextWidth !== 'function') return 0;
+    return measureLineLabelTextWidth(group, text, {
+        fontSize: style?.fontSize || DEFAULT_TEXT_STYLE.fontSize,
+        fontFamily: style?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+        fontWeight: style?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+        fontStyle: style?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+        anchor
+    });
+}
+
+/** Block size for vertical-line gaps (height for horizontal text, width when vertical). */
+function measureLineToolLabelBlock(group, text, style, anchor = 'middle') {
+    if (typeof measureLineLabelTextBlock === 'function') {
+        return measureLineLabelTextBlock(group, text, {
+            fontSize: style?.fontSize || DEFAULT_TEXT_STYLE.fontSize,
+            fontFamily: style?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+            fontWeight: style?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+            fontStyle: style?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+            anchor
+        });
+    }
+    const w = measureLineToolLabelWidth(group, text, style, anchor);
+    const fs = Number(style?.fontSize) || DEFAULT_TEXT_STYLE.fontSize;
+    return { width: w, height: fs * 1.2 };
 }
 
 /** Flip stored line angle (deg) for readable label rotation. */
@@ -776,16 +813,7 @@ class TrendlineTool extends BaseDrawing {
             
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             
-            const fontSize = this.style.fontSize || 14;
-            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
-            const fontWeight = this.style.fontWeight || 'normal';
-            const fontStyle = this.style.fontStyle || 'normal';
-            const textWidth = measureLineLabelTextWidth(this.group, this.text, {
-                fontSize,
-                fontFamily,
-                fontWeight,
-                fontStyle
-            });
+            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
             
             const rawLX = origX1 <= origX2 ? origX1 : origX2;
             const rawLY = origX1 <= origX2 ? origY1 : origY2;
@@ -1406,21 +1434,7 @@ class HorizontalLineTool extends BaseDrawing {
             // Calculate text position
             const y = scales.yScale(p.y);
             
-            // Measure text width first
-            const fontSize = this.style.fontSize || 14;
-            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
-            const fontWeight = this.style.fontWeight || 'normal';
-            
-            const tempText = this.group.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .attr('font-weight', fontWeight)
-                .attr('text-anchor', 'middle')
-                .text(this.text);
-            
-            const textBBox = tempText.node().getBBox();
-            const textWidth = textBBox.width;
-            tempText.remove();
+            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
             
             const padding = 10; // Small space on each side of text
             const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
@@ -1812,22 +1826,11 @@ class VerticalLineTool extends BaseDrawing {
         const bottomY = Math.max(yRange[0], yRange[1]);
         
         if (textOnLine) {
-            // Measure text to create gap
+            // Measure text to create gap (RTL/Arabic-aware)
             const fontSize = this.style.fontSize || 14;
-            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
-            const fontWeight = this.style.fontWeight || 'normal';
-            
-            const tempText = this.group.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .attr('font-weight', fontWeight)
-                .attr('text-anchor', 'middle')
-                .text(this.text);
-            
-            const textBBox = tempText.node().getBBox();
+            const labelBlock = measureLineToolLabelBlock(this.group, this.text, this.style, 'middle');
             const textOrientation = this.style.textOrientation || 'horizontal';
-            const gapMeasure = textOrientation === 'vertical' ? textBBox.width : textBBox.height;
-            tempText.remove();
+            const gapMeasure = textOrientation === 'vertical' ? labelBlock.width : labelBlock.height;
             
             const padding = 10 + Math.max(0, fontSize / 2 - 6);
             const capPad = Math.max(2, scaledStrokeWidth);
@@ -2255,20 +2258,7 @@ class RayTool extends BaseDrawing {
         if (shouldSplitLine) {
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-            const fontSize = this.style.fontSize || 14;
-            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
-            const fontWeight = this.style.fontWeight || 'normal';
-
-            const tempText = this.group.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .attr('font-weight', fontWeight)
-                .attr('text-anchor', 'middle')
-                .text(this.text);
-
-            const textBBox = tempText.node().getBBox();
-            const textWidth = textBBox.width;
-            tempText.remove();
+            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
 
             // Use original data point screen coords for text anchor (same as ExtendedLineTool)
             const origLX = x1Screen <= x2Screen ? x1Screen : x2Screen;
@@ -2576,21 +2566,7 @@ class HorizontalRayTool extends BaseDrawing {
         const y = scales.yScale(p.y);
         
         if (shouldSplitLine) {
-            // Measure text width first
-            const fontSize = this.style.fontSize || 14;
-            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
-            const fontWeight = this.style.fontWeight || 'normal';
-            
-            const tempText = this.group.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .attr('font-weight', fontWeight)
-                .attr('text-anchor', 'middle')
-                .text(this.text);
-            
-            const textBBox = tempText.node().getBBox();
-            const textWidth = textBBox.width;
-            tempText.remove();
+            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
             
             const padding = 10; // Small space on each side of text
             const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
@@ -3051,20 +3027,7 @@ class ExtendedLineTool extends BaseDrawing {
         
         if (shouldSplitLine) {
             // Measure text width for gap calculation
-            const fontSize = this.style.fontSize || 14;
-            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
-            const fontWeight = this.style.fontWeight || 'normal';
-            
-            const tempText = this.group.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .attr('font-weight', fontWeight)
-                .attr('text-anchor', 'middle')
-                .text(this.text);
-            
-            const textBBox = tempText.node().getBBox();
-            const textWidth = textBBox.width;
-            tempText.remove();
+            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
             
             // Calculate line angle
             const lineAngle = Math.atan2(rightY - leftY, rightX - leftX);
