@@ -1447,9 +1447,12 @@
                 upper.push(null);
                 lower.push(null);
             } else {
-                const stdev = Math.sqrt(sumSq / p);
-                upper.push(middle[i] + st * stdev);
-                lower.push(middle[i] - st * stdev);
+                const stdev = Math.sqrt(Math.max(0, sumSq / p));
+                const hi = middle[i] + st * stdev;
+                const lo = middle[i] - st * stdev;
+                upper.push(hi);
+                lower.push(lo);
+                middle[i] = (hi + lo) / 2;
             }
         }
         return { middle: middle, upper: upper, lower: lower };
@@ -1629,25 +1632,27 @@
                 lower.push(null);
                 continue;
             }
-            let sum = 0;
-            let sumSq = 0;
+            let sumSqDiff = 0;
             let ok = true;
             for (let j = 0; j < p; j++) {
                 const idx = i - j;
                 if (idx < 0) { ok = false; break; }
                 const v = srcArr[idx];
                 if (v == null || isNaN(v)) { ok = false; break; }
-                sum += v;
-                sumSq += v * v;
+                const d = v - middle[i];
+                sumSqDiff += d * d;
             }
             if (!ok) {
                 upper.push(null);
                 lower.push(null);
             } else {
-                const mean = sum / p;
-                const stdev = Math.sqrt(Math.max(0, sumSq / p - mean * mean));
-                upper.push(middle[i] + sd * stdev);
-                lower.push(middle[i] - sd * stdev);
+                const basis = middle[i];
+                const stdev = Math.sqrt(Math.max(0, sumSqDiff / p));
+                const hi = basis + sd * stdev;
+                const lo = basis - sd * stdev;
+                upper.push(hi);
+                lower.push(lo);
+                middle[i] = (hi + lo) / 2;
             }
         }
 
@@ -6531,7 +6536,14 @@
         if (newParams.downColor !== undefined) indicator.style.downColor = newParams.downColor;
         if (newParams.lineWidth !== undefined) indicator.style.lineWidth = newParams.lineWidth;
         if (newParams.lineStyle !== undefined) indicator.style.lineStyle = newParams.lineStyle;
-        if (newParams.showLine !== undefined) indicator.style.showLine = newParams.showLine !== false;
+        if (newParams.showLine !== undefined) {
+            indicator.style.showLine = newParams.showLine !== false;
+            if (indicator.style.showLine === false
+                && this.selectedOverlayIndicatorId != null
+                && String(this.selectedOverlayIndicatorId) === String(indicator.id)) {
+                this.clearOverlayIndicatorSelection();
+            }
+        }
         if (newParams.showLabel !== undefined) indicator.style.showLabel = newParams.showLabel !== false;
         if (newParams.source !== undefined) indicator.params.source = newParams.source;
         if (newParams.smoothingType !== undefined) indicator.params.smoothingType = newParams.smoothingType;
@@ -11394,6 +11406,12 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
     function isSelectableOverlayLineIndicator(indicator) {
         if (!indicator || indicator.overlay === false || indicator.visible === false) return false;
         if (indicator.separatePanel) return false;
+        const st = indicator.style || {};
+        const t = String(indicator.type || '').toLowerCase();
+        if ((t === 'sma' || t === 'ema' || t === 'wma' || t === 'dema' || t === 'tema' || t === 'hma')
+            && st.showLine === false) {
+            return false;
+        }
         if (indicator.type === 'custom') return true;
         return !!OVERLAY_LINE_SELECT_TYPES[indicator.type];
     }
@@ -16002,6 +16020,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ? this._getMainPricePlotLayout()
             : null;
         const maxY = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
+        const mx = Number(this.mouseX);
+        const my = Number(this.mouseY);
+        const crosshairInPlot = Number.isFinite(mx) && Number.isFinite(my)
+            && mx >= m.l && mx <= this.w - m.r
+            && my >= m.t && my <= maxY;
         const labels = [];
         let labelOrder = 0;
 
@@ -16040,7 +16063,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (bandData && (Array.isArray(bandData.upper) || Array.isArray(bandData.middle) || Array.isArray(bandData.lower))) {
                 const st = indicator.style || {};
                 const plotOff = this._indicatorPlotOffset(indicator);
-                const barIdx = typeof this._getCrosshairBarIndex === 'function' && this._getCrosshairBarIndex() >= 0
+                const barIdx = crosshairInPlot && typeof this._getCrosshairBarIndex === 'function'
                     ? this._getCrosshairBarIndex()
                     : (this.data ? this.data.length - 1 : 0);
                 const bandDefs = [
@@ -16059,7 +16082,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                         val: val,
                         color: b.color || '#2962ff',
                         order: labelOrder++,
-                        key: String(indicator.id) + ':' + b.k
+                        key: String(indicator.id) + ':' + b.k,
+                        pinY: true
                     });
                 }, this);
                 return;
@@ -16072,7 +16096,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!lineArr) return;
 
             const plotOff = this._indicatorPlotOffset(indicator);
-            const barIdx = typeof this._getCrosshairBarIndex === 'function' && this._getCrosshairBarIndex() >= 0
+            const barIdx = crosshairInPlot && typeof this._getCrosshairBarIndex === 'function'
                 ? this._getCrosshairBarIndex()
                 : (this.data ? this.data.length - 1 : lineArr.length - 1);
             const val = seriesValueAtPlotOffset(lineArr, barIdx, plotOff);
@@ -16092,6 +16116,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         if (!labels.length) return;
 
+        const pinnedLabels = [];
+        const stackLabels = [];
+        labels.forEach(function(lbl) {
+            if (lbl.pinY) pinnedLabels.push(lbl);
+            else stackLabels.push(lbl);
+        });
+
         if (!this._overlayLabelAnchorY) this._overlayLabelAnchorY = Object.create(null);
         if (!this._overlayLabelDisplayY) this._overlayLabelDisplayY = Object.create(null);
         const anchorMap = this._overlayLabelAnchorY;
@@ -16102,23 +16133,26 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const minGap = 21;
         const topBound = m.t + 10;
         const bottomBound = maxY - 10;
+        const snapPx = 0.45;
 
         // Stable stack order (indicator list order) — never sort by Y (causes slot swaps).
-        labels.sort(function(a, b) { return a.order - b.order; });
+        stackLabels.sort(function(a, b) { return a.order - b.order; });
 
-        labels.forEach(function(lbl) {
+        stackLabels.forEach(function(lbl) {
             if (!lbl.key) return;
             activeKeys[lbl.key] = true;
             const rawY = lbl.y;
             const prevAnchor = anchorMap[lbl.key];
-            lbl.anchorY = Number.isFinite(prevAnchor)
+            let anchorY = Number.isFinite(prevAnchor)
                 ? prevAnchor + (rawY - prevAnchor) * anchorLerp
                 : rawY;
-            anchorMap[lbl.key] = lbl.anchorY;
+            if (Number.isFinite(prevAnchor) && Math.abs(rawY - anchorY) < snapPx) anchorY = rawY;
+            lbl.anchorY = anchorY;
+            anchorMap[lbl.key] = anchorY;
         });
 
         // Push apart in stable order, then shift the whole stack if clamping would collapse labels.
-        const stackYs = labels.map(function(lbl) { return lbl.anchorY; });
+        const stackYs = stackLabels.map(function(lbl) { return lbl.anchorY; });
         for (let i = 1; i < stackYs.length; i++) {
             if (stackYs[i] - stackYs[i - 1] < minGap) {
                 stackYs[i] = stackYs[i - 1] + minGap;
@@ -16143,14 +16177,20 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             }
         }
 
-        labels.forEach(function(lbl, idx) {
+        stackLabels.forEach(function(lbl, idx) {
             if (!lbl.key) return;
             const targetY = stackYs[idx];
             const prevDisplay = displayMap[lbl.key];
-            lbl.y = Number.isFinite(prevDisplay)
+            let displayY = Number.isFinite(prevDisplay)
                 ? prevDisplay + (targetY - prevDisplay) * displayLerp
                 : targetY;
-            displayMap[lbl.key] = lbl.y;
+            if (Number.isFinite(prevDisplay) && Math.abs(targetY - displayY) < snapPx) displayY = targetY;
+            lbl.y = displayY;
+            displayMap[lbl.key] = displayY;
+        });
+
+        pinnedLabels.forEach(function(lbl) {
+            if (lbl.key) activeKeys[lbl.key] = true;
         });
 
         Object.keys(anchorMap).forEach(function(k) {

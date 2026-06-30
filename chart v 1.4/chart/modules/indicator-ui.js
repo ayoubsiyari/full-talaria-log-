@@ -1321,16 +1321,16 @@ function smoothedOverlayMaStyleParams(lineLabel, defaultColor) {
 }
 
 function emaInputParams() {
-    return smoothedOverlayMaInputParams().concat([
-        { id: 'showSmoothEma', label: 'EMA-based MA', type: 'checkbox', default: false, tab: 'input' },
-        { id: 'smoothColor', label: 'Color', type: 'color', default: '#787b86', tab: 'input' },
-        { id: 'smoothLineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'input' },
-        { id: 'smoothLineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'input' }
-    ]);
+    return smoothedOverlayMaInputParams();
 }
 
 function emaStyleParams() {
-    return smoothedOverlayMaStyleParams('EMA', '#f23645');
+    return smoothedOverlayMaStyleParams('EMA', '#f23645').concat([
+        { id: 'showSmoothEma', label: 'EMA-based MA', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'smoothColor', label: 'Color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'smoothLineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'smoothLineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' }
+    ]);
 }
 
 function smaInputParams() {
@@ -4934,18 +4934,6 @@ function v9BuildIndicatorInputLayout(indicatorType) {
             }]
         };
     }
-    if (indicatorType === 'ema') {
-        return {
-            excludeFlexIds: ['showSmoothEma', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'smoothLineDashStyle'],
-            sections: [{
-                title: 'EMA-based MA',
-                header: true,
-                rows: [
-                    v9PlotRow('EMA-based MA', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'showSmoothEma')
-                ]
-            }]
-        };
-    }
     return null;
 }
 
@@ -5371,10 +5359,17 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'ema') {
         return {
+            excludeFlexIds: ['showSmoothEma', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'smoothLineDashStyle'],
             sections: [{
                 header: true,
                 rows: [
                     v9PlotRow('EMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }, {
+                title: 'EMA-based MA',
+                header: true,
+                rows: [
+                    v9PlotRow('EMA-based MA', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'showSmoothEma')
                 ]
             }],
             footers: footers

@@ -471,21 +471,25 @@ function calculateBollingerBands(data, calcOrPeriod, stdDev, source) {
     const upper = [], lower = [];
     for (let i = 0; i < data.length; i++) {
         if (middle[i] == null || isNaN(middle[i])) { upper.push(null); lower.push(null); continue; }
-        let sum = 0, sumSq = 0, ok = true;
-        for (let j = 0; j < p; j++) {
-            const idx = i - j;
-            if (idx < 0) { ok = false; break; }
-            const v = srcArr[idx];
-            if (v == null || isNaN(v)) { ok = false; break; }
-            sum += v; sumSq += v * v;
-        }
-        if (!ok) { upper.push(null); lower.push(null); }
-        else {
-            const mean = sum / p;
-            const stdev = Math.sqrt(Math.max(0, sumSq / p - mean * mean));
-            upper.push(middle[i] + sd * stdev);
-            lower.push(middle[i] - sd * stdev);
-        }
+            let sumSqDiff = 0;
+            let ok = true;
+            for (let j = 0; j < p; j++) {
+                const idx = i - j;
+                if (idx < 0) { ok = false; break; }
+                const v = srcArr[idx];
+                if (v == null || isNaN(v)) { ok = false; break; }
+                const d = v - middle[i];
+                sumSqDiff += d * d;
+            }
+            if (!ok) { upper.push(null); lower.push(null); }
+            else {
+                const stdev = Math.sqrt(Math.max(0, sumSqDiff / p));
+                const hi = middle[i] + sd * stdev;
+                const lo = middle[i] - sd * stdev;
+                upper.push(hi);
+                lower.push(lo);
+                middle[i] = (hi + lo) / 2;
+            }
     }
     return shiftBandSeries({ upper, middle, lower }, calc.offset);
 }
