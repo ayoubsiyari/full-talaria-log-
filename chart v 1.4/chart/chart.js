@@ -364,7 +364,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260628b182';
+const CHART_ENGINE_BUILD = '20260628b183';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -20809,6 +20809,7 @@ class Chart {
 
     _finishAxisZoomInteraction() {
         this._cancelAxisZoomRender();
+        this._panelSnapDomains = null;
         if (this.drawingManager && typeof this.drawingManager.redrawAll === 'function') {
             this.drawingManager.redrawAll({ forceFull: true });
         }
@@ -27358,6 +27359,9 @@ class Chart {
             
             // Set drag type based on cursor location
             if (mode === 'separatePanelAxis' && this.cursor.separatePanelSlot) {
+                if (typeof this._snapshotSeparatePanelDomains === 'function') {
+                    this._snapshotSeparatePanelDomains();
+                }
                 this.drag.type = 'separatePanelAxis';
                 this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
                 this.isZooming = true;

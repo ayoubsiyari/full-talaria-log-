@@ -9327,6 +9327,13 @@ Chart.prototype._getIndicatorPanelAxisBases = function(indicator) {
     if (t === 'willr' || t === 'williamsr') return { b0: -100, b1: 0 };
     if (t === 'cci') return { b0: -200, b1: 200 };
     if (t === 'aroon') return { b0: 0, b1: 100 };
+    const extent = typeof this._getIndicatorVisibleValueExtent === 'function'
+        ? this._getIndicatorVisibleValueExtent(indicator)
+        : null;
+    if (extent && Number.isFinite(extent.min) && Number.isFinite(extent.max) && extent.max > extent.min) {
+        const pad = Math.max((extent.max - extent.min) * 0.1, 1e-9);
+        return { b0: extent.min - pad, b1: extent.max + pad };
+    }
     return { b0: 0, b1: 100 };
 };
 
@@ -9365,17 +9372,31 @@ Chart.prototype.separatePanelLineDragStep = function(slot, dy) {
     const activeSlot = resolved || slot;
     if (!activeSlot || !activeSlot.indicator) return;
     const ind = activeSlot.indicator;
-    const bases = typeof this._getIndicatorPanelAxisBases === 'function'
-        ? this._getIndicatorPanelAxisBases(ind)
-        : null;
-    if (!bases) return;
+    let b0 = ind._panelBaseMin;
+    let b1 = ind._panelBaseMax;
+    if ((!Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0)
+        && this._panelSnapDomains && ind.id != null) {
+        const snap = this._panelSnapDomains[ind.id];
+        if (snap && Number.isFinite(snap.min) && Number.isFinite(snap.max) && snap.max > snap.min) {
+            b0 = snap.min;
+            b1 = snap.max;
+        }
+    }
+    if (!Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) {
+        const bases = typeof this._getIndicatorPanelAxisBases === 'function'
+            ? this._getIndicatorPanelAxisBases(ind)
+            : null;
+        if (!bases) return;
+        b0 = bases.b0;
+        b1 = bases.b1;
+    }
     if (!Number.isFinite(ind._panelBaseMin) || !Number.isFinite(ind._panelBaseMax)) {
-        ind._panelBaseMin = bases.b0;
-        ind._panelBaseMax = bases.b1;
+        ind._panelBaseMin = b0;
+        ind._panelBaseMax = b1;
     }
     this._ensureIndicatorPanelAxis(ind);
     const pa = ind._panelAxis;
-    const baseSpan = bases.b1 - bases.b0;
+    const baseSpan = b1 - b0;
     const z = Math.max(0.02, Math.min(200, pa.zoom || 1));
     const displaySpan = baseSpan / z;
     const h = Math.max(1, activeSlot.bottom - activeSlot.top);
@@ -9480,6 +9501,9 @@ Chart.prototype._beginSeparatePanelLineDrag = function(startEvent, slot) {
     self.drag.lastY = startEvent.clientY;
     if (typeof self._lockDragCursor === 'function') self._lockDragCursor('ns-resize');
     self._separatePanelLineDragActive = true;
+    if (typeof self._snapshotSeparatePanelDomains === 'function') {
+        self._snapshotSeparatePanelDomains();
+    }
 
     const onMove = function(ev) {
         if (!self._separatePanelLineDragActive) return;
@@ -9506,6 +9530,7 @@ Chart.prototype._beginSeparatePanelLineDrag = function(startEvent, slot) {
     const onUp = function() {
         if (!self._separatePanelLineDragActive) return;
         self._separatePanelLineDragActive = false;
+        self._panelSnapDomains = null;
         document.removeEventListener('mousemove', onMove, true);
         document.removeEventListener('mouseup', onUp, true);
         document.removeEventListener('pointermove', onMove, true);
@@ -10845,15 +10870,43 @@ Chart.prototype._snapshotSeparatePanelDomains = function() {
     }, this);
 };
 
+/** True while user is dragging inside a separate panel plot or its right Y-axis. */
+Chart.prototype._isSeparatePanelYInteracting = function() {
+    if (this._separatePanelLineDragActive) return true;
+    const d = this.drag;
+    return !!(d && d.active && d.type === 'separatePanelAxis');
+};
+
+/** User has panned/zoomed a separate panel Y-axis (offset/zoom away from defaults). */
+Chart.prototype._indicatorPanelHasUserAxis = function(indicator) {
+    if (!indicator) return false;
+    this._ensureIndicatorPanelAxis(indicator);
+    const pa = indicator._panelAxis;
+    const z = pa.zoom != null ? pa.zoom : 1;
+    const o = pa.offset != null ? pa.offset : 0;
+    return Math.abs(z - 1) > 1e-6 || Math.abs(o) > 1e-12;
+};
+
 Chart.prototype._finalizePanelRange = function(indicator, baseMin, baseMax) {
     let b0 = baseMin;
     let b1 = baseMax;
-    if (this._isChartViewPanning && this._panelSnapDomains && indicator && indicator.id != null) {
+    const stored = indicator
+        && Number.isFinite(indicator._panelBaseMin)
+        && Number.isFinite(indicator._panelBaseMax)
+        && indicator._panelBaseMax > indicator._panelBaseMin;
+    const snapInteraction = (typeof this._isChartViewPanning === 'function' && this._isChartViewPanning())
+        || (typeof this._isSeparatePanelYInteracting === 'function' && this._isSeparatePanelYInteracting());
+    if (snapInteraction && this._panelSnapDomains && indicator && indicator.id != null) {
         const snap = this._panelSnapDomains[indicator.id];
         if (snap && Number.isFinite(snap.min) && Number.isFinite(snap.max) && snap.max > snap.min) {
             b0 = snap.min;
             b1 = snap.max;
         }
+    } else if (stored
+        && typeof this._indicatorPanelHasUserAxis === 'function'
+        && this._indicatorPanelHasUserAxis(indicator)) {
+        b0 = indicator._panelBaseMin;
+        b1 = indicator._panelBaseMax;
     }
     indicator._panelBaseMin = b0;
     indicator._panelBaseMax = b1;
