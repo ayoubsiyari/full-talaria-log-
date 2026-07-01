@@ -275,7 +275,8 @@
         if (!positioned && Number.isFinite(m.endTime)) {
             const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
             if (Number.isFinite(idxAtRight)) {
-                chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+                const rightMargin = Math.max(0, (chart.timeScale?.rightOffsetCandles || 15)) * spacing;
+                chart.offsetX = plotW - rightMargin - (idxAtRight + 1) * spacing;
                 positioned = true;
             }
         }
@@ -316,8 +317,34 @@
         return true;
     }
 
+    /** Mirror leader zoom/pan geometry (offsetX + candleWidth) across different plot widths. */
+    function applyZoomViewportFromLeader(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.offsetX) || !Number.isFinite(m.candleWidth)) return false;
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+        const srcCw = Number(m.candleWidth);
+        if (!(srcCw > 0)) return false;
+
+        chart.candleWidth = srcCw;
+        if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+            chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+        }
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const sw = Number(m.plotWidthPx);
+        chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
+        }
+        chart._chartViewRestored = countVisibleBars(chart) > 0;
+        return chart._chartViewRestored;
+    }
+
     /**
-     * Same-TF date-range sync: mirror source zoom (candleWidth) + visible bar
      * count + right-edge time so pan/zoom feel like one chart (TradingView).
      * @returns {boolean}
      */
@@ -358,7 +385,13 @@
         const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
         if (!Number.isFinite(idxAtRight)) return false;
 
-        chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+        if (Number.isFinite(m.offsetX) && Number.isFinite(m.plotWidthPx)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+        } else {
+            const rightMargin = Math.max(0, (chart.timeScale?.rightOffsetCandles || 15)) * spacing;
+            chart.offsetX = plotW - rightMargin - (idxAtRight + 1) * spacing;
+        }
         if (typeof chart.constrainOffset === 'function') {
             try { chart.constrainOffset(); } catch (_) {}
         }
@@ -420,7 +453,13 @@
         }
         if (idxAtRight == null || !Number.isFinite(idxAtRight)) return false;
 
-        chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+        if (Number.isFinite(m.offsetX) && Number.isFinite(m.plotWidthPx)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+        } else {
+            const rightMargin = Math.max(0, (chart.timeScale?.rightOffsetCandles || 15)) * spacing;
+            chart.offsetX = plotW - rightMargin - (idxAtRight + 1) * spacing;
+        }
         if (typeof chart.constrainOffset === 'function') {
             try { chart.constrainOffset(); } catch (_) {}
         }
@@ -475,7 +514,8 @@
             ? chart.getCandleSpacing()
             : chart.candleWidth;
         if (spacing > 0) {
-            chart.offsetX = widthPx - (iR2 + 1) * spacing;
+            const rightMargin = Math.max(0, (chart.timeScale?.rightOffsetCandles || 15)) * spacing;
+            chart.offsetX = widthPx - rightMargin - (iR2 + 1) * spacing;
             if (typeof chart.constrainOffset === 'function') {
                 try { chart.constrainOffset(); } catch (_) {}
             }
@@ -791,7 +831,8 @@
             ? chart.getCandleSpacing()
             : chart.candleWidth;
         if (spacing > 0) {
-            chart.offsetX = widthPx - (iR2 + 1) * spacing;
+            const rightMargin = Math.max(0, (chart.timeScale?.rightOffsetCandles || 15)) * spacing;
+            chart.offsetX = widthPx - rightMargin - (iR2 + 1) * spacing;
             if (typeof chart.constrainOffset === 'function') {
                 try { chart.constrainOffset(); } catch (_) {}
             }
@@ -933,7 +974,8 @@
             ? chart.getCandleSpacing()
             : chart.candleWidth;
         if (candleSpacing > 0 && cwDraw > 0) {
-            chart.offsetX = cwDraw - (iR2 + 1) * candleSpacing;
+            const rightMargin = Math.max(0, (chart.timeScale?.rightOffsetCandles || 15)) * candleSpacing;
+            chart.offsetX = cwDraw - rightMargin - (iR2 + 1) * candleSpacing;
             if (typeof chart.constrainOffset === 'function') {
                 try { chart.constrainOffset(); } catch (_) {}
             }
@@ -2142,7 +2184,13 @@
             } else if (isTimeOnlySyncEnabled()) {
                 applied = applyDiscreteTimeSync(chart, m);
             } else if (canMatchViewport) {
-                applied = applyMatchedViewport(chart, m);
+                if (Number.isFinite(m.offsetX) && Number.isFinite(m.candleWidth)) {
+                    applied = applyZoomViewportFromLeader(chart, m);
+                    if (applied) finishViewportApply(chart, false);
+                }
+                if (!applied) {
+                    applied = applyMatchedViewport(chart, m);
+                }
             }
             if (!applied && hasWallClock && !sameTf) {
                 applied = applyWallClockDateRange(chart, m);

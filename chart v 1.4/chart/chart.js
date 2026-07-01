@@ -2514,15 +2514,20 @@ class Chart {
         const spacing = (typeof parent.getCandleSpacing === 'function')
             ? parent.getCandleSpacing()
             : parent.candleWidth;
+        const ppm = parent.margin || { l: 60, r: 60 };
+        const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
         if (spacing > 0 && plotW > 0) {
-            let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
-                ? parent.getVisibleEndIndex()
-                : parent.data.length - 1;
-            rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
-            this.offsetX = plotW - (rightIdx + 1) * spacing;
+            if (Number.isFinite(parent.offsetX) && parentPlotW > 0) {
+                this.offsetX = parent.offsetX * (plotW / parentPlotW);
+            } else {
+                let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
+                    ? parent.getVisibleEndIndex()
+                    : parent.data.length - 1;
+                rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
+                const rightMargin = Math.max(0, (this.timeScale?.rightOffsetCandles || 15)) * spacing;
+                this.offsetX = plotW - rightMargin - (rightIdx + 1) * spacing;
+            }
         } else {
-            const ppm = parent.margin || { l: 60, r: 60 };
-            const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
             this.offsetX = parent.offsetX * (plotW / parentPlotW);
         }
 
