@@ -14,10 +14,8 @@
         const Chart = global.Chart;
 
         (function ensureIndLegendHoverCss() {
-            if (typeof document === 'undefined' || document.getElementById('talaria-ind-legend-hover-css')) return;
-            const s = document.createElement('style');
-            s.id = 'talaria-ind-legend-hover-css';
-            s.textContent = [
+            if (typeof document === 'undefined') return;
+            const css = [
                 '@media (hover: hover) and (pointer: fine) {',
                 '  .talaria-ind-legend-row .talaria-ind-actions {',
                 '    opacity: 0;',
@@ -28,8 +26,28 @@
                 '    opacity: 1;',
                 '    pointer-events: auto;',
                 '  }',
+                '}',
+                '#chart-container #chartWrapper .ohlc-indicators,',
+                '#panels-container .ohlc-indicators,',
+                '.ohlc-indicators {',
+                '  pointer-events: auto;',
+                '  position: relative;',
+                '  z-index: 100;',
+                '}',
+                '#ohlcIndicators .talaria-ind-legend-row .talaria-ind-actions,',
+                '.ohlc-indicators .talaria-ind-legend-row .talaria-ind-actions,',
+                '#separatePanelsOverlay .talaria-ind-legend-row .talaria-ind-actions {',
+                '  pointer-events: auto !important;',
                 '}'
             ].join('\n');
+            let s = document.getElementById('talaria-ind-legend-hover-css');
+            if (s) {
+                s.textContent = css;
+                return;
+            }
+            s = document.createElement('style');
+            s.id = 'talaria-ind-legend-hover-css';
+            s.textContent = css;
             document.head.appendChild(s);
         })();
 
@@ -7623,7 +7641,35 @@
         if (perf && typeof perf.hashIndicatorParams === 'function') {
             return perf.hashIndicatorParams(this.indicators && this.indicators.active);
         }
-        return '';
+        return this._indicatorVisibilityKey();
+    };
+
+    Chart.prototype._indicatorVisibilityKey = function() {
+        const active = this.indicators && this.indicators.active;
+        if (!active || !active.length) return '';
+        try {
+            return active.map(function(ind) {
+                if (!ind) return '';
+                const v = ind.visible === false ? '0' : '1';
+                const h = ind.hidePlot === true ? '1' : '0';
+                const sl = (ind.style && ind.style.showLine === false) ? '0' : '1';
+                return String(ind.id) + ':' + v + h + sl;
+            }).join('|');
+        } catch (_) {
+            return '';
+        }
+    };
+
+    Chart.prototype._hasHiddenOverlayIndicator = function() {
+        const active = this.indicators && this.indicators.active;
+        if (!active || !active.length) return false;
+        for (let i = 0; i < active.length; i++) {
+            const ind = active[i];
+            if (!ind || ind.overlay === false || ind.type === 'volume' || ind.isVolume) continue;
+            if (ind.visible === false || ind.hidePlot === true) return true;
+            if (ind.style && ind.style.showLine === false) return true;
+        }
+        return false;
     };
 
     Chart.prototype.bumpIndicatorRenderVersion = function() {
@@ -7872,7 +7918,8 @@
 
     Chart.prototype.drawIndicatorsOptimized = function() {
         const interaction = typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender();
-        if (interaction || typeof this.drawIndicators !== 'function') {
+        const hasHiddenOverlay = typeof this._hasHiddenOverlayIndicator === 'function' && this._hasHiddenOverlayIndicator();
+        if (interaction || hasHiddenOverlay || typeof this.drawIndicators !== 'function') {
             if (typeof this.drawIndicators === 'function') this.drawIndicators();
             return;
         }
@@ -7883,6 +7930,7 @@
             this.dataVersion != null ? this.dataVersion : 0,
             this._indicatorRenderVersion || 0,
             typeof this._indicatorParamsHash === 'function' ? this._indicatorParamsHash() : '',
+            typeof this._indicatorVisibilityKey === 'function' ? this._indicatorVisibilityKey() : '',
             String(this.currentTimeframe || ''),
             this.w, this.h,
             this.candleWidth, this.offsetX, this.priceZoom, this.priceOffset,
@@ -16143,7 +16191,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         let labelOrder = 0;
 
         this.indicators.active.forEach(function(indicator) {
-            if (indicator.overlay === false || indicator.visible === false) return;
+            if (indicator.overlay === false || indicator.visible === false || indicator.hidePlot === true) return;
             if (!this._indicatorVisibleForCurrentTimeframe(indicator)) return;
             if (indicator.style && indicator.style.showLabel === false) return;
             if (indicator.style && indicator.style.showLine === false) return;

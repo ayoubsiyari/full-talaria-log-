@@ -2314,25 +2314,42 @@ if (typeof window !== 'undefined') {
 /** TradingView-style: hide eye/settings/remove on legend rows until hover (fine pointer only). */
 function ensureTalariaIndLegendHoverCss() {
     if (typeof document === 'undefined') return;
-    if (document.getElementById('talaria-ind-legend-hover-css')) return;
-    const s = document.createElement('style');
+    const css = [
+        '@media (hover: hover) and (pointer: fine) {',
+        '  .talaria-ind-legend-row .talaria-ind-actions {',
+        '    opacity: 0;',
+        '    transition: opacity 0.12s ease;',
+        '    pointer-events: none;',
+        '  }',
+        '  .talaria-ind-legend-row:hover .talaria-ind-actions {',
+        '    opacity: 1;',
+        '    pointer-events: auto;',
+        '  }',
+        '}',
+        '#chart-container #chartWrapper .ohlc-indicators,',
+        '#panels-container .ohlc-indicators,',
+        '.ohlc-indicators {',
+        '  pointer-events: auto;',
+        '  position: relative;',
+        '  z-index: 100;',
+        '}',
+        '#ohlcIndicators .talaria-ind-legend-row .talaria-ind-actions,',
+        '.ohlc-indicators .talaria-ind-legend-row .talaria-ind-actions,',
+        '#separatePanelsOverlay .talaria-ind-legend-row .talaria-ind-actions {',
+        '  pointer-events: auto !important;',
+        '}',
+        '#separatePanelsOverlay .talaria-ind-legend-row .talaria-ind-actions {',
+        '  opacity: 1;',
+        '}'
+    ].join('\n');
+    let s = document.getElementById('talaria-ind-legend-hover-css');
+    if (s) {
+        s.textContent = css;
+        return;
+    }
+    s = document.createElement('style');
     s.id = 'talaria-ind-legend-hover-css';
-    s.textContent = `
-@media (hover: hover) and (pointer: fine) {
-  .talaria-ind-legend-row .talaria-ind-actions {
-    opacity: 0;
-    transition: opacity 0.12s ease;
-    pointer-events: none;
-  }
-  .talaria-ind-legend-row:hover .talaria-ind-actions {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
-#separatePanelsOverlay .talaria-ind-legend-row .talaria-ind-actions {
-  opacity: 1;
-  pointer-events: auto;
-}`;
+    s.textContent = css;
     document.head.appendChild(s);
 }
 
@@ -2667,7 +2684,7 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
 
     const actions = document.createElement('span');
     actions.className = 'talaria-ind-actions';
-    actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;padding:0;background:transparent;border:none;box-shadow:none;';
+    actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;padding:0;background:transparent;border:none;box-shadow:none;pointer-events:auto;';
 
     const self = chart;
     const id = indicator.id;
@@ -2687,10 +2704,13 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
     visibilityBtn.onmouseleave = function() {
         applyEyeState();
     };
+    visibilityBtn.style.pointerEvents = 'auto';
     visibilityBtn.onclick = function(e) {
         e.stopPropagation();
-        const nextOn = indicator.visible === false
-            || (isVolume && self.chartSettings && self.chartSettings.showVolume === false);
+        e.preventDefault();
+        const nextOn = isVolume
+            ? (indicator.visible === false || (self.chartSettings && self.chartSettings.showVolume === false))
+            : (indicator.visible === false);
         if (typeof self._setIndicatorPlotLegendVisible === 'function') {
             self._setIndicatorPlotLegendVisible(indicator, nextOn, { isVolume: isVolume });
         } else {
@@ -2719,8 +2739,11 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
                 self.recalculateIndicators();
             }
         }
-        if (typeof self.render === 'function') self.render();
-        if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
+        if (typeof self.scheduleRender === 'function') {
+            self.scheduleRender();
+        } else if (typeof self.render === 'function') {
+            self.render();
+        }
     };
     actions.appendChild(visibilityBtn);
 

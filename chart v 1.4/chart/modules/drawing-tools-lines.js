@@ -21,10 +21,7 @@ function appendTextLabel(group, text, config = {}) {
         fontStyle = 'normal',
         baseline = 'middle',
         yAnchor,
-        rotation = 0,
-        lineSide = null,
-        lineRef = null,
-        linePerp = null
+        rotation = 0
     } = config;
 
     const lines = text.split('\n');
@@ -33,8 +30,7 @@ function appendTextLabel(group, text, config = {}) {
     const totalHeight = lines.length * lineHeight;
     const isRotated = rotation !== 0;
 
-    const onLineMiddle = yAnchor === 'middle';
-    const useCenteredY = isRotated || onLineMiddle;
+    const useCenteredY = isRotated || yAnchor === 'middle';
 
     // Legacy behavior for non-rotated labels: y is treated like a top reference (via text-before-edge)
     // unless yAnchor:'middle' is explicitly requested.
@@ -49,8 +45,7 @@ function appendTextLabel(group, text, config = {}) {
     const yPos = useCenteredY ? y : (y + legacyOffset);
 
     const resolved = resolveDrawingTextStyle(text, fontStyle, fontFamily);
-    // 'middle' matches Arabic/Latin on-line labels; 'central' for rotated off-line labels.
-    const centeredBaseline = onLineMiddle && !isRotated ? 'middle' : 'central';
+    const transform = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew);
 
     const textEl = group.append('text')
         .attr('x', x)
@@ -61,14 +56,16 @@ function appendTextLabel(group, text, config = {}) {
         .attr('font-weight', fontWeight)
         .attr('font-style', resolved.fontStyle)
         .attr('text-anchor', anchor)
-        .attr('dominant-baseline', useCenteredY ? centeredBaseline : 'text-before-edge')
+        .attr('dominant-baseline', useCenteredY ? 'central' : 'text-before-edge')
         .attr('xml:space', 'preserve')
         .style('pointer-events', 'none')
         .style('user-select', 'none');
 
+    if (transform) {
+        textEl.attr('transform', transform);
+    }
     if (resolved.direction) {
         textEl.style('direction', resolved.direction);
-        textEl.attr('unicode-bidi', 'plaintext');
     }
 
     lines.forEach((line, index) => {
@@ -79,85 +76,11 @@ function appendTextLabel(group, text, config = {}) {
             .text(sanitized);
     });
 
-    let nudgeX = 0;
-    let nudgeY = 0;
-    if (onLineMiddle) {
-        // Center on stroke; equalize perpendicular extent (same top/bottom spacing for Arabic + Latin).
-        try {
-            if (resolved.italicSkew) {
-                const skewOnly = buildDrawingTextTransform(x, yPos, 0, resolved.italicSkew, 0, 0);
-                if (skewOnly) textEl.attr('transform', skewOnly);
-            }
-            const bbox = textEl.node().getBBox();
-            if (anchor === 'middle' && Number.isFinite(bbox.width) && bbox.width > 0) {
-                nudgeX = x - (bbox.x + bbox.width / 2);
-            }
-            if (typeof equalizeOnLineMiddleExtent === 'function') {
-                const eq = equalizeOnLineMiddleExtent(bbox, x, yPos, rotation);
-                nudgeX += eq.nudgeX;
-                nudgeY += eq.nudgeY;
-            } else if (Number.isFinite(bbox.height) && bbox.height > 0) {
-                nudgeY = yPos - (bbox.y + bbox.height / 2);
-            }
-            if (resolved.italicSkew) textEl.attr('transform', null);
-        } catch (_) { /* ignore measure failures */ }
-    } else if (anchor === 'middle' && resolved.direction === 'rtl') {
-        try {
-            const bbox = textEl.node().getBBox();
-            if (Number.isFinite(bbox.width) && bbox.width > 0) {
-                nudgeX = x - (bbox.x + bbox.width / 2);
-            }
-        } catch (_) { /* ignore measure failures */ }
-    }
-
-    if (lineSide && lineRef && linePerp) {
-        const interim = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, nudgeY);
-        if (interim) textEl.attr('transform', interim);
-        const gapNudge = nudgeLineLabelFromStroke(textEl, lineRef, linePerp, fontSize, text, {
-            anchorOnStroke: anchor === 'middle' && yAnchor === 'middle' && !!lineSide
-        });
-        nudgeX += gapNudge.nudgeX;
-        nudgeY += gapNudge.nudgeY;
-    }
-
-    const transform = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, nudgeY);
-    if (transform) {
-        textEl.attr('transform', transform);
-    }
-
     return textEl;
 }
 
 // Make appendTextLabel globally available for all drawing tools
 window.appendTextLabel = appendTextLabel;
-
-/** Gap + RTL extras for line-tool labels (top/bottom of stroke). */
-function lineLabelGapConfig(lineX, lineY, textVAlign, perpX, perpY, signUp) {
-    const lineSide = resolveLineLabelSide(textVAlign);
-    if (!lineSide) return {};
-    const linePerp = (perpX != null && perpY != null && signUp != null)
-        ? lineLabelPerpTowardText(textVAlign, perpX, perpY, signUp)
-        : horizontalLineLabelPerp(textVAlign);
-    if (!linePerp) return {};
-    return {
-        lineSide,
-        lineRef: { x: lineX, y: lineY },
-        linePerp
-    };
-}
-
-window.lineLabelGapConfig = lineLabelGapConfig;
-
-/** Gap config for angled line labels above/below the stroke. */
-function angledLineLabelGapConfig(strokeX, strokeY, textVAlign, angleRad) {
-    if (textVAlign !== 'top' && textVAlign !== 'bottom') return {};
-    const perpX = -Math.sin(angleRad);
-    const perpY = Math.cos(angleRad);
-    const signUp = perpY <= 0 ? 1 : -1;
-    return lineLabelGapConfig(strokeX, strokeY, textVAlign, perpX, perpY, signUp);
-}
-
-window.angledLineLabelGapConfig = angledLineLabelGapConfig;
 
 const DEFAULT_TEXT_STYLE = {
     fontFamily: 'Roboto, sans-serif',
@@ -174,240 +97,6 @@ const DEFAULT_TEXT_STYLE = {
 const TEXT_EDGE_PADDING = 5;
 
 const LINE_LABEL_OFFSET = 14;
-
-/** Top/bottom Y offset for horizontal lines and horizontal rays. */
-function horizontalLineLabelYOffset(textVAlign, fontSize) {
-    const hlOffset = 10 + Math.max(0, (Number(fontSize) || 14) / 2 - 6);
-    if (textVAlign === 'top') return -hlOffset;
-    if (textVAlign === 'bottom') return hlOffset;
-    return 0;
-}
-
-/** V9 uses vertAlign "center"; chart split/on-line logic uses "middle". */
-function readLineTextVAlign(style) {
-    if (!style) return 'top';
-    let v = String(style.textVAlign || style.textPosition || 'top').toLowerCase();
-    if (v === 'center') v = 'middle';
-    if (v === 'start') v = 'top';
-    if (v === 'end') v = 'bottom';
-    return v;
-}
-
-function normalizeLineTextVAlign(style) {
-    if (!style) return 'top';
-    const v = readLineTextVAlign(style);
-    style.textVAlign = v;
-    style.textPosition = v;
-    return v;
-}
-
-/** Gap width for on-line split labels — Arabic/RTL/italic aware. */
-function measureLineToolLabelWidth(group, text, style, anchor = 'middle') {
-    if (typeof measureLineLabelTextWidth !== 'function') return 0;
-    return measureLineLabelTextWidth(group, text, {
-        fontSize: style?.fontSize || DEFAULT_TEXT_STYLE.fontSize,
-        fontFamily: style?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
-        fontWeight: style?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-        fontStyle: style?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-        anchor,
-        onLineMiddle: true
-    });
-}
-
-/** Block size for vertical-line gaps (height for horizontal text, width when vertical). */
-function measureLineToolLabelBlock(group, text, style, anchor = 'middle') {
-    if (typeof measureLineLabelTextBlock === 'function') {
-        return measureLineLabelTextBlock(group, text, {
-            fontSize: style?.fontSize || DEFAULT_TEXT_STYLE.fontSize,
-            fontFamily: style?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
-            fontWeight: style?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-            fontStyle: style?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            anchor,
-            onLineMiddle: true
-        });
-    }
-    const w = measureLineToolLabelWidth(group, text, style, anchor);
-    const fs = Number(style?.fontSize) || DEFAULT_TEXT_STYLE.fontSize;
-    return { width: w, height: fs * 1.2 };
-}
-
-/** On-line middle split for full-width horizontal lines (asymmetric left/right, symmetric center). */
-function computeHorizontalLineMiddleSplit(opts) {
-    const {
-        textHAlign,
-        lineLeftX,
-        lineRightX,
-        textWidth,
-        padding = 10,
-        capPad = 2
-    } = opts;
-
-    let textX;
-    let split1X;
-    let split2X;
-
-    if (textHAlign === 'left') {
-        textX = lineLeftX + TEXT_EDGE_PADDING + capPad;
-        split1X = lineLeftX;
-        split2X = textX + textWidth + padding + capPad;
-    } else if (textHAlign === 'right') {
-        textX = lineRightX - TEXT_EDGE_PADDING - capPad;
-        split2X = lineRightX;
-        split1X = textX - textWidth - padding - capPad;
-    } else {
-        const gapSize = textWidth + (padding * 2) + (capPad * 2);
-        textX = (lineLeftX + lineRightX) / 2;
-        textX = Math.max(lineLeftX + gapSize / 2, Math.min(lineRightX - gapSize / 2, textX));
-        split1X = Math.max(lineLeftX, textX - gapSize / 2);
-        split2X = Math.min(lineRightX, textX + gapSize / 2);
-    }
-
-    split1X = Math.max(lineLeftX, Math.min(lineRightX, split1X));
-    split2X = Math.max(lineLeftX, Math.min(lineRightX, split2X));
-    if (split1X > split2X) {
-        const mid = (split1X + split2X) / 2;
-        split1X = mid;
-        split2X = mid;
-    }
-    return { textX, split1X, split2X };
-}
-
-/** Flip stored line angle (deg) for readable label rotation. */
-function flipLineLabelReadableAngleDeg(angleDeg) {
-    let angle = Number(angleDeg) || 0;
-    while (angle > 180) angle -= 360;
-    while (angle < -180) angle += 360;
-    if (angle > 90 || angle < -90) angle += 180;
-    return angle;
-}
-
-function screenPointFromToolPoint(scales, point, fallbackX, fallbackY) {
-    if (!point) return { x: fallbackX, y: fallbackY };
-    const x = scales?.chart?.dataIndexToPixel
-        ? scales.chart.dataIndexToPixel(point.x)
-        : (scales ? scales.xScale(point.x) : fallbackX);
-    const y = scales ? scales.yScale(point.y) : fallbackY;
-    return { x, y };
-}
-
-/** On-line split label anchor from live endpoints (8a4a7305 style). */
-function resolveSplitAngledLineLabelAnchor(opts) {
-    const {
-        x1, y1, x2, y2,
-        textHAlign = 'center',
-        label = '',
-        edge = 5,
-        mode = 'geometric'
-    } = opts;
-
-    if (mode === 'semantic') {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        switch (textHAlign) {
-            case 'left':
-                return {
-                    x: x1 + ux * edge,
-                    y: y1 + uy * edge,
-                    anchor: resolveRayEndpointSvgAnchor('left', label, dx >= 0)
-                };
-            case 'right':
-                return {
-                    x: x2 - ux * edge,
-                    y: y2 - uy * edge,
-                    anchor: resolveRayEndpointSvgAnchor('right', label, dx >= 0)
-                };
-            default:
-                return { x: (x1 + x2) / 2, y: (y1 + y2) / 2, anchor: 'middle' };
-        }
-    }
-
-    const rawLX = x1 <= x2 ? x1 : x2;
-    const rawLY = x1 <= x2 ? y1 : y2;
-    const rawRX = x1 <= x2 ? x2 : x1;
-    const rawRY = x1 <= x2 ? y2 : y1;
-    const rawDX = rawRX - rawLX;
-    const rawDY = rawRY - rawLY;
-    const rawLen = Math.hypot(rawDX, rawDY) || 1;
-    const sUx = rawDX / rawLen;
-    const sUy = rawDY / rawLen;
-
-    switch (textHAlign) {
-        case 'left':
-            return {
-                x: rawLX + sUx * edge,
-                y: rawLY + sUy * edge,
-                anchor: resolveLineEndpointSvgAnchor('left', label)
-            };
-        case 'right':
-            return {
-                x: rawRX - sUx * edge,
-                y: rawRY - sUy * edge,
-                anchor: resolveLineEndpointSvgAnchor('right', label)
-            };
-        default:
-            return {
-                x: (rawLX + rawRX) / 2,
-                y: (rawLY + rawRY) / 2,
-                anchor: 'middle'
-            };
-    }
-}
-
-function appendSplitAngledLineTextLabel(group, label, splitInfo, coords, tool, style, anchorMode) {
-    const offsetX = style.textOffsetX || 0;
-    const rawOffsetY = (style.textOffsetY === undefined || style.textOffsetY === null)
-        ? 0 : style.textOffsetY;
-    const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
-
-    let x1;
-    let y1;
-    let x2;
-    let y2;
-    if (coords && [coords.x1, coords.y1, coords.x2, coords.y2].every(Number.isFinite)) {
-        ({ x1, y1, x2, y2 } = coords);
-    } else {
-        const siScales = coords?.scales || coords;
-        const sp1 = tool.points[0];
-        const sp2 = tool.points[1];
-        const p1 = screenPointFromToolPoint(siScales, sp1, splitInfo.textX, splitInfo.textY);
-        const p2 = screenPointFromToolPoint(siScales, sp2, splitInfo.textX, splitInfo.textY);
-        x1 = p1.x;
-        y1 = p1.y;
-        x2 = p2.x;
-        y2 = p2.y;
-    }
-
-    const textHAlign = style.textHAlign || style.textAlign || 'center';
-    const anchorPos = resolveSplitAngledLineLabelAnchor({
-        x1,
-        y1,
-        x2,
-        y2,
-        textHAlign,
-        label,
-        mode: anchorMode
-    });
-
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const rotation = flipLineLabelReadableAngleDeg(Math.atan2(dy, dx) * (180 / Math.PI));
-
-    appendTextLabel(group, label, {
-        x: anchorPos.x + offsetX,
-        y: anchorPos.y + offsetY,
-        anchor: anchorPos.anchor,
-        yAnchor: 'middle',
-        fill: style.textColor || style.stroke,
-        fontSize: style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
-        fontFamily: style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
-        fontWeight: style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-        fontStyle: style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-        rotation
-    });
-}
 
 const EXTENDED_LINE_TEXT_EDGE_PADDING = 10;
 
@@ -510,105 +199,14 @@ function patchTwoPointLineElements(group, x1, y1, x2, y2) {
     });
 }
 
-/** Extend lines cannot be patched with a single segment — needs full re-render. */
+/** Extend / centered label split cannot be patched with a single segment — needs full re-render. */
 function trendlineNeedsFullLivePatch(style, drawing) {
     if (!style) return true;
     if (style.extendLeft || style.extendRight) return true;
+    const hasText = drawing && drawing.text && String(drawing.text).trim();
+    const textVAlign = style.textVAlign || style.textPosition || 'top';
+    if (hasText && textVAlign === 'middle') return true;
     return false;
-}
-
-/** Remove on-shape text nodes (not resize handles) before live label sync. */
-function removeGroupTextNodes(group) {
-    if (!group || group.empty()) return;
-    group.selectAll('text').remove();
-}
-
-/** Recompute split-label anchor from current endpoints and redraw text during live drag. */
-function syncLiveLineTextLabel(tool, scales, screenPts) {
-    if (!tool?.group || tool.group.empty() || !tool.text || !String(tool.text).trim()) return;
-    if (!tool.points || tool.points.length < 2 || !scales) return;
-
-    let x1;
-    let y1;
-    let x2;
-    let y2;
-    if (screenPts && [screenPts.x1, screenPts.y1, screenPts.x2, screenPts.y2].every(Number.isFinite)) {
-        ({ x1, y1, x2, y2 } = screenPts);
-    } else {
-        const p1 = tool.points[0];
-        const p2 = tool.points[1];
-        x1 = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        y1 = scales.yScale(p1.y);
-        x2 = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        y2 = scales.yScale(p2.y);
-    }
-    if (![x1, y1, x2, y2].every(Number.isFinite)) return;
-
-    removeGroupTextNodes(tool.group);
-
-    const textVAlign = readLineTextVAlign(tool.style);
-    if (textVAlign === 'middle' && tool._splitInfo) {
-        const rawLX = x1 <= x2 ? x1 : x2;
-        const rawLY = x1 <= x2 ? y1 : y2;
-        const rawRX = x1 <= x2 ? x2 : x1;
-        const rawRY = x1 <= x2 ? y2 : y1;
-        const rawDX = rawRX - rawLX;
-        const rawDY = rawRY - rawLY;
-        const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
-        const ux = rawDX / rawLen;
-        const uy = rawDY / rawLen;
-        const angleDeg = Math.atan2(rawDY, rawDX) * (180 / Math.PI);
-
-        const textHAlign = tool.style?.textHAlign || tool.style?.textAlign || 'center';
-        let textX;
-        let textY;
-        switch (textHAlign) {
-            case 'left':
-                textX = rawLX + ux * TEXT_EDGE_PADDING;
-                textY = rawLY + uy * TEXT_EDGE_PADDING;
-                break;
-            case 'right':
-                textX = rawRX - ux * TEXT_EDGE_PADDING;
-                textY = rawRY - uy * TEXT_EDGE_PADDING;
-                break;
-            default:
-                textX = (rawLX + rawRX) / 2;
-                textY = (rawLY + rawRY) / 2;
-        }
-        tool._splitInfo = { ...tool._splitInfo, textX, textY, angle: angleDeg };
-    } else if (textVAlign !== 'middle') {
-        tool._splitInfo = null;
-    }
-
-    if (typeof tool.renderTextLabel === 'function') {
-        tool.renderTextLabel({ x1, y1, x2, y2, scales });
-    }
-}
-
-/** Live patch for single-anchor horizontal tools (horizontal ray) — rebuild line + label in place. */
-function liveRenderSingleAnchorHorizontalGeometry(tool, scales) {
-    if (!tool?.group || tool.group.empty() || !scales) return false;
-    const parent = tool.group.node()?.parentNode;
-    if (!parent || typeof tool.render !== 'function') return false;
-    tool.render(d3.select(parent), scales, { reuseGroup: true, skipHandles: true });
-    if (typeof tool.updateHandlePositions === 'function') {
-        tool.updateHandlePositions(scales);
-    }
-    return true;
-}
-
-/** Live patch with centered split label — rebuild line + text in place (keep handles). */
-function liveRenderTwoPointDrawingGeometry(tool, scales) {
-    if (!tool?.group || tool.group.empty() || !scales) return false;
-    const parent = tool.group.node()?.parentNode;
-    if (!parent || typeof tool.render !== 'function') return false;
-    tool.render(d3.select(parent), scales, { reuseGroup: true, skipHandles: true });
-    if (typeof tool.updateHandlePositions === 'function') {
-        tool.updateHandlePositions(scales);
-    }
-    return true;
 }
 
 function patchTrendlineArrowHeads(group, origX1, origY1, origX2, origY2, stroke, strokeWidth, scaleFactor, startStyle, endStyle) {
@@ -620,7 +218,9 @@ function patchTrendlineArrowHeads(group, origX1, origY1, origX2, origY2, stroke,
     const alen = Math.sqrt(adx * adx + ady * ady) || 1;
     const ux = adx / alen;
     const uy = ady / alen;
-    const { aLen, aHalf } = BaseDrawing.arrowEndpointMetrics(strokeWidth, scaleFactor);
+    const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth || 2) * (scaleFactor || 1));
+    const aLen = Math.max(8, scaledStrokeWidth * 5);
+    const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
     const fill = stroke || '#787b86';
 
     if (startStyle === 'arrow') {
@@ -652,58 +252,8 @@ function patchTrendlineArrowHeads(group, origX1, origY1, origX2, origY2, stroke,
 }
 
 function trendlineArrowHeadLength(strokeWidth, scaleFactor) {
-    return BaseDrawing.arrowEndpointMetrics(strokeWidth, scaleFactor).aLen;
-}
-
-/** Stop the stroke at arrowhead bases so the line does not run through the triangle tip. */
-function trimLineEndpointsForTrendlineArrows(x1, y1, x2, y2, origX1, origY1, origX2, origY2, startStyle, endStyle, strokeWidth, scaleFactor) {
-    if (startStyle !== 'arrow' && endStyle !== 'arrow') {
-        return { x1, y1, x2, y2 };
-    }
-    const adx = origX2 - origX1;
-    const ady = origY2 - origY1;
-    const segLen = Math.sqrt(adx * adx + ady * ady);
-    if (!Number.isFinite(segLen) || segLen < 0.5) {
-        return { x1, y1, x2, y2 };
-    }
-    const ux = adx / segLen;
-    const uy = ady / segLen;
-    const aLen = BaseDrawing.arrowEndpointMetrics(strokeWidth, scaleFactor).aLen;
-
-    let tx1 = x1;
-    let ty1 = y1;
-    let tx2 = x2;
-    let ty2 = y2;
-
-    if (startStyle === 'arrow') {
-        const bx = origX1 + ux * aLen;
-        const by = origY1 + uy * aLen;
-        const d1 = (x1 - origX1) * ux + (y1 - origY1) * uy;
-        const d2 = (x2 - origX1) * ux + (y2 - origY1) * uy;
-        if (d1 >= -0.5 && d1 <= aLen + 0.5) {
-            tx1 = bx;
-            ty1 = by;
-        } else if (d2 >= -0.5 && d2 <= aLen + 0.5) {
-            tx2 = bx;
-            ty2 = by;
-        }
-    }
-
-    if (endStyle === 'arrow') {
-        const bx = origX2 - ux * aLen;
-        const by = origY2 - uy * aLen;
-        const d1 = (x1 - origX2) * ux + (y1 - origY2) * uy;
-        const d2 = (x2 - origX2) * ux + (y2 - origY2) * uy;
-        if (d1 <= 0.5 && d1 >= -aLen - 0.5) {
-            tx1 = bx;
-            ty1 = by;
-        } else if (d2 <= 0.5 && d2 >= -aLen - 0.5) {
-            tx2 = bx;
-            ty2 = by;
-        }
-    }
-
-    return { x1: tx1, y1: ty1, x2: tx2, y2: ty2 };
+    const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth || 2) * (scaleFactor || 1));
+    return Math.max(8, scaledStrokeWidth * 5);
 }
 
 /** Pixel inset from anchor tip so on-line labels clear polygon arrowheads. */
@@ -834,17 +384,9 @@ class TrendlineTool extends BaseDrawing {
         const startStyle = this.style.startStyle || 'normal';
         const endStyle = this.style.endStyle || 'normal';
 
-        ({
-            x1, y1, x2, y2
-        } = trimLineEndpointsForTrendlineArrows(
-            x1, y1, x2, y2,
-            origX1, origY1, origX2, origY2,
-            startStyle, endStyle, this.style.strokeWidth, scaleFactor
-        ));
-
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        const textVAlign = normalizeLineTextVAlign(this.style);
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         // Store split info for text rendering
@@ -863,21 +405,37 @@ class TrendlineTool extends BaseDrawing {
             
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             
-            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
+            // Calculate gap size based on actual text width
+            const fontSize = this.style.fontSize || 14;
+            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
+            const fontWeight = this.style.fontWeight || 'normal';
             
-            const rawLX = origX1 <= origX2 ? origX1 : origX2;
-            const rawLY = origX1 <= origX2 ? origY1 : origY2;
-            const rawRX = origX1 <= origX2 ? origX2 : origX1;
-            const rawRY = origX1 <= origX2 ? origY2 : origY1;
-            const rawDX = rawRX - rawLX;
-            const rawDY = rawRY - rawLY;
-            const lineAngle = Math.atan2(rawDY, rawDX);
+            // Create temporary text element to measure actual width
+            const tempText = this.group.append('text')
+                .attr('font-size', fontSize)
+                .attr('font-family', fontFamily)
+                .attr('font-weight', fontWeight)
+                .attr('text-anchor', 'middle')
+                .text(this.text);
+            
+            const textBBox = tempText.node().getBBox();
+            const textWidth = textBBox.width;
+            tempText.remove();
+            
+            // Calculate angle and direction along the line
+            const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
             
             // Use exact text width for gap with minimal padding
             const padding = 2;
             const capPad = 2;
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
+            // Use raw (unclamped) data-point pixel positions for gap/text placement
+            const rawLX = origX1 <= origX2 ? origX1 : origX2;
+            const rawLY = origX1 <= origX2 ? origY1 : origY2;
+            const rawRX = origX1 <= origX2 ? origX2 : origX1;
+            const rawRY = origX1 <= origX2 ? origY2 : origY1;
+            const rawDX = rawRX - rawLX, rawDY = rawRY - rawLY;
             const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
             const seg_ux = rawDX / rawLen;
             const seg_uy = rawDY / rawLen;
@@ -1034,7 +592,8 @@ class TrendlineTool extends BaseDrawing {
             const alen = Math.sqrt(adx * adx + ady * ady) || 1;
             const ux = adx / alen;
             const uy = ady / alen;
-            const { aLen, aHalf } = BaseDrawing.arrowEndpointMetrics(this.style.strokeWidth, scaleFactor);
+            const aLen = Math.max(8, scaledStrokeWidth * 5);
+            const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
 
             if (startStyle === 'arrow') {
                 // Tip at p1, base points towards p2
@@ -1088,25 +647,13 @@ class TrendlineTool extends BaseDrawing {
         const y2 = scales.yScale(p2.y);
         if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
 
-        const hasText = this.text && String(this.text).trim();
-        const textVAlign = readLineTextVAlign(this.style);
-        const shouldSplitLine = hasText && textVAlign === 'middle';
-        if (shouldSplitLine) {
-            return liveRenderTwoPointDrawingGeometry(this, scales);
-        }
+        patchTwoPointLineElements(this.group, x1, y1, x2, y2);
 
         const startStyle = this.style.startStyle || 'normal';
         const endStyle = this.style.endStyle || 'normal';
         const scaleFactor = typeof this.getZoomScaleFactor === 'function'
             ? this.getZoomScaleFactor(scales)
             : 1;
-        const trimmed = trimLineEndpointsForTrendlineArrows(
-            x1, y1, x2, y2,
-            x1, y1, x2, y2,
-            startStyle, endStyle, this.style.strokeWidth, scaleFactor
-        );
-        patchTwoPointLineElements(this.group, trimmed.x1, trimmed.y1, trimmed.x2, trimmed.y2);
-
         patchTrendlineArrowHeads(
             this.group,
             x1, y1, x2, y2,
@@ -1119,7 +666,6 @@ class TrendlineTool extends BaseDrawing {
 
         this.group.selectAll('.trendline-info').remove();
         this.renderInfoBox(x1, y1, x2, y2, scales);
-        syncLiveLineTextLabel(this, scales, { x1, y1, x2, y2 });
 
         if (typeof this.updateHandlePositions === 'function') {
             this.updateHandlePositions(scales);
@@ -1304,9 +850,55 @@ class TrendlineTool extends BaseDrawing {
 
         // If we have split info from line rendering, use it for exact positioning
         if (this._splitInfo) {
-            appendSplitAngledLineTextLabel(
-                this.group, label, this._splitInfo, coords, this, this.style, 'geometric'
-            );
+            let angle = this._splitInfo.angle;
+            while (angle > 180) angle -= 360;
+            while (angle < -180) angle += 360;
+            if (angle > 90 || angle < -90) angle += 180;
+
+            const offsetX = this.style.textOffsetX || 0;
+            const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+                ? 0 : this.style.textOffsetY;
+            const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
+
+            const { scales: siScales } = coords;
+            const sp1 = this.points[0], sp2 = this.points[1];
+            const sox1 = siScales && siScales.chart && siScales.chart.dataIndexToPixel
+                ? siScales.chart.dataIndexToPixel(sp1.x) : (siScales ? siScales.xScale(sp1.x) : this._splitInfo.textX);
+            const soy1 = siScales ? siScales.yScale(sp1.y) : this._splitInfo.textY;
+            const sox2 = siScales && siScales.chart && siScales.chart.dataIndexToPixel
+                ? siScales.chart.dataIndexToPixel(sp2.x) : (siScales ? siScales.xScale(sp2.x) : this._splitInfo.textX);
+            const soy2 = siScales ? siScales.yScale(sp2.y) : this._splitInfo.textY;
+            const sRawLX = sox1 <= sox2 ? sox1 : sox2, sRawLY = sox1 <= sox2 ? soy1 : soy2;
+            const sRawRX = sox1 <= sox2 ? sox2 : sox1, sRawRY = sox1 <= sox2 ? soy2 : soy1;
+            const sRawDX = sRawRX - sRawLX, sRawDY = sRawRY - sRawLY;
+            const sRawLen = Math.sqrt(sRawDX * sRawDX + sRawDY * sRawDY) || 1;
+            const sUx = sRawDX / sRawLen, sUy = sRawDY / sRawLen;
+            const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            const siScaleFactor = typeof this.getZoomScaleFactor === 'function'
+                ? this.getZoomScaleFactor(siScales)
+                : 1;
+            const startArrowInset = trendlineEndpointArrowInset(this.style, siScaleFactor, 'start');
+            const endArrowInset = trendlineEndpointArrowInset(this.style, siScaleFactor, 'end');
+            const SI_EDGE = 5;
+            let siTextX, siTextY, siAnchor;
+            switch (siTextHAlign) {
+                case 'left':  siTextX = sRawLX + sUx * (SI_EDGE + startArrowInset); siTextY = sRawLY + sUy * (SI_EDGE + startArrowInset); siAnchor = 'start'; break;
+                case 'right': siTextX = sRawRX - sUx * (SI_EDGE + endArrowInset); siTextY = sRawRY - sUy * (SI_EDGE + endArrowInset); siAnchor = 'end';   break;
+                default:      siTextX = (sRawLX + sRawRX) / 2;  siTextY = (sRawLY + sRawRY) / 2;  siAnchor = 'middle';
+            }
+
+            appendTextLabel(this.group, label, {
+                x: siTextX + offsetX,
+                y: siTextY + offsetY,
+                anchor: siAnchor,
+                yAnchor: 'middle',
+                fill: this.style.textColor || this.style.stroke,
+                fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
+                fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+                fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+                fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+                rotation: angle
+            });
             return;
         }
 
@@ -1317,15 +909,26 @@ class TrendlineTool extends BaseDrawing {
         const x2 = coords.x2;
         const y2 = coords.y2;
 
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+
         // Calculate angle of the line for text rotation (match RayTool)
         let angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
         const angleRad = Math.atan2(y2 - y1, x2 - x1);
-        angle = flipLineLabelReadableAngleDeg(angle);
+
+        const isFlipped = angle > 90 || angle < -90;
+        if (isFlipped) {
+            angle += 180;
+        }
 
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const textVAlign = readLineTextVAlign(this.style);
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
+        const edgePadding = TEXT_EDGE_PADDING;
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
+        // Compute visible segment: clamp original endpoints to [visLeft, visRight]
         const xRange2 = scales && scales.xScale ? scales.xScale.range() : null;
         const vLeft  = xRange2 ? xRange2[0] : 0;
         const vRight = xRange2 ? xRange2[1] : 99999;
@@ -1337,23 +940,47 @@ class TrendlineTool extends BaseDrawing {
         const rawDX = rawRX - rawLX;
         const rawDY = rawRY - rawLY;
 
+        // Clamp left endpoint to visLeft
+        let segLX = rawLX, segLY = rawLY;
+        if (rawDX !== 0 && rawLX < vLeft) {
+            const f = (vLeft - rawLX) / rawDX;
+            segLX = vLeft;
+            segLY = rawLY + f * rawDY;
+        }
+        // Clamp right endpoint to visRight
+        let segRX = rawRX, segRY = rawRY;
+        if (rawDX !== 0 && rawRX > vRight) {
+            const f = (vRight - rawLX) / rawDX;
+            segRX = vRight;
+            segRY = rawLY + f * rawDY;
+        }
+
+        // Actual line unit vector (direction never changes with clipping)
         const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
         const line_ux = rawDX / rawLen;
         const line_uy = rawDY / rawLen;
+        const labelScaleFactor = typeof this.getZoomScaleFactor === 'function'
+            ? this.getZoomScaleFactor(scales)
+            : 1;
+        const startArrowInset = trendlineEndpointArrowInset(this.style, labelScaleFactor, 'start');
+        const endArrowInset = trendlineEndpointArrowInset(this.style, labelScaleFactor, 'end');
 
+        // Use raw (actual data-point) positions — no clamping to visible boundaries.
+        // Text moves exactly with the line. When the endpoint is off-screen the text
+        // is also off-screen (clipped by the SVG clip-path) — same as the line itself.
         const EDGE = 5;
         let baseX, baseY;
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = rawLX + line_ux * EDGE;
-                baseY = rawLY + line_uy * EDGE;
-                labelAnchor = resolveLineEndpointSvgAnchor('left', label);
+                baseX = rawLX + line_ux * (EDGE + startArrowInset);
+                baseY = rawLY + line_uy * (EDGE + startArrowInset);
+                labelAnchor = 'start';
                 break;
             case 'right':
-                baseX = rawRX - line_ux * EDGE;
-                baseY = rawRY - line_uy * EDGE;
-                labelAnchor = resolveLineEndpointSvgAnchor('right', label);
+                baseX = rawRX - line_ux * (EDGE + endArrowInset);
+                baseY = rawRY - line_uy * (EDGE + endArrowInset);
+                labelAnchor = 'end';
                 break;
             default:
                 baseX = (rawLX + rawRX) / 2;
@@ -1361,6 +988,22 @@ class TrendlineTool extends BaseDrawing {
                 labelAnchor = 'middle';
                 break;
         }
+
+        const perpX = -Math.sin(angleRad);
+        const perpY = Math.cos(angleRad);
+
+        const signUp = perpY <= 0 ? 1 : -1;
+        if (textVAlign === 'top') {
+            baseX += perpX * verticalOffset * signUp;
+            baseY += perpY * verticalOffset * signUp;
+        } else if (textVAlign === 'bottom') {
+            baseX -= perpX * verticalOffset * signUp;
+            baseY -= perpY * verticalOffset * signUp;
+        }
+
+        // Don't render if text position is outside the visible chart area
+        // (prevents partial-clip "empty place" artifact in the price axis)
+        if (baseX < vLeft || baseX > vRight) return;
 
         const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
             ? 0
@@ -1371,23 +1014,17 @@ class TrendlineTool extends BaseDrawing {
         const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
-        const strokeX = baseX;
-        const strokeY = baseY;
-        if (strokeX < vLeft || strokeX > vRight) return;
-
-        const gapCfg = angledLineLabelGapConfig(strokeX, strokeY, textVAlign, angleRad);
-
         appendTextLabel(this.group, label, {
-            x: strokeX + offsetX,
-            y: strokeY + offsetY,
+            x: baseX + offsetX,
+            y: baseY + offsetY,
             anchor: labelAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle,
-            ...gapCfg
+            rotation: angle
         });
     }
 
@@ -1464,53 +1101,70 @@ class HorizontalLineTool extends BaseDrawing {
         this._clearDrawingLabels(scales);
 
         const p = this.points[0];
-        const { chartLeftX, chartRightX } = _lineToolChartBounds(scales);
-        const lineLeftX = chartLeftX;
-        const lineRightX = chartRightX;
+        const xRange = scales.xScale.range();
+        const chartRightX = (scales.chart && scales.chart.margin && typeof scales.chart.w === 'number')
+            ? (scales.chart.w - scales.chart.margin.r)
+            : xRange[1];
 
         // Convert data index to screen position
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
 
-        // On-line middle: split gap under label (asymmetric at left/right like ray/trendline)
+        // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        normalizeLineTextVAlign(this.style);
-        const textVAlign = readLineTextVAlign(this.style);
-        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         this._splitInfo = null;
         
         if (shouldSplitLine) {
+            // Calculate text position
             const y = scales.yScale(p.y);
-            const padding = 10;
+            
+            // Measure text width first
+            const fontSize = this.style.fontSize || 14;
+            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
+            const fontWeight = this.style.fontWeight || 'normal';
+            
+            const tempText = this.group.append('text')
+                .attr('font-size', fontSize)
+                .attr('font-family', fontFamily)
+                .attr('font-weight', fontWeight)
+                .attr('text-anchor', 'middle')
+                .text(this.text);
+            
+            const textBBox = tempText.node().getBBox();
+            const textWidth = textBBox.width;
+            tempText.remove();
+            
+            const padding = 10; // Small space on each side of text
+            const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
             const capPad = Math.max(2, scaledStrokeWidth);
-            const measureAnchor = textHAlign === 'left'
-                ? resolveLineEndpointSvgAnchor('left', this.text)
-                : textHAlign === 'right'
-                    ? resolveLineEndpointSvgAnchor('right', this.text)
-                    : 'middle';
-            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, measureAnchor);
-            const { textX, split1X, split2X } = computeHorizontalLineMiddleSplit({
-                textHAlign,
-                lineLeftX,
-                lineRightX,
-                textWidth,
-                padding,
-                capPad
-            });
+            const gapSize = textWidth + (padding * 2) + (capPad * 2);
+            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            // fixed 30px from endpoint, clamped so gap stays on line
+            const HL_EDGE_S = 30;
+            const hl_lineLen = xRange[1] - xRange[0];
+            let hl_rawTextX;
+            switch (textHAlign) {
+                case 'left':  hl_rawTextX = xRange[0] + HL_EDGE_S; break;
+                case 'right': hl_rawTextX = xRange[1] - HL_EDGE_S; break;
+                default:      hl_rawTextX = (xRange[0] + xRange[1]) / 2;
+            }
+            const textX = Math.max(xRange[0] + gapSize/2, Math.min(xRange[1] - gapSize/2, hl_rawTextX));
+            const split1X = Math.max(xRange[0], textX - gapSize / 2);
+            const split2X = Math.min(xRange[1], textX + gapSize / 2);
             
             this._splitInfo = {
                 textX: textX,
                 textY: y,
                 angle: 0,
-                gapSize: split2X - split1X,
-                textHAlign
+                gapSize: gapSize
             };
             
             // Draw invisible wider stroke for easier clicking (first segment)
             this.group.append('line')
-                .attr('x1', lineLeftX)
+                .attr('x1', xRange[0])
                 .attr('y1', y)
                 .attr('x2', split1X)
                 .attr('y2', y)
@@ -1521,7 +1175,7 @@ class HorizontalLineTool extends BaseDrawing {
             
             // Draw first segment
             this.group.append('line')
-                .attr('x1', lineLeftX)
+                .attr('x1', xRange[0])
                 .attr('y1', y)
                 .attr('x2', split1X)
                 .attr('y2', y)
@@ -1537,7 +1191,7 @@ class HorizontalLineTool extends BaseDrawing {
             this.group.append('line')
                 .attr('x1', split2X)
                 .attr('y1', y)
-                .attr('x2', lineRightX)
+                .attr('x2', xRange[1])
                 .attr('y2', y)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(16, (this.style.strokeWidth || 2) * 5))
@@ -1548,7 +1202,7 @@ class HorizontalLineTool extends BaseDrawing {
             this.group.append('line')
                 .attr('x1', split2X)
                 .attr('y1', y)
-                .attr('x2', lineRightX)
+                .attr('x2', xRange[1])
                 .attr('y2', y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
@@ -1560,9 +1214,9 @@ class HorizontalLineTool extends BaseDrawing {
         } else {
             // Draw invisible wider stroke for easier clicking
             this.group.append('line')
-                .attr('x1', lineLeftX)
+                .attr('x1', xRange[0])
                 .attr('y1', scales.yScale(p.y))
-                .attr('x2', lineRightX)
+                .attr('x2', xRange[1])
                 .attr('y2', scales.yScale(p.y))
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(16, (this.style.strokeWidth || 2) * 5))
@@ -1571,9 +1225,9 @@ class HorizontalLineTool extends BaseDrawing {
             
             // Draw horizontal line normally
             this.group.append('line')
-                .attr('x1', lineLeftX)
+                .attr('x1', xRange[0])
                 .attr('y1', scales.yScale(p.y))
-                .attr('x2', lineRightX)
+                .attr('x2', xRange[1])
                 .attr('y2', scales.yScale(p.y))
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
@@ -1586,11 +1240,11 @@ class HorizontalLineTool extends BaseDrawing {
 
         // Render price label on the right side (if enabled)
         if (this.style.showPriceLabel !== false) {
-            this.renderPriceLabel(scales, [lineLeftX, lineRightX], p);
+            this.renderPriceLabel(scales, xRange, p);
         }
 
         // Render custom text label if provided
-        this.renderTextLabel(scales, [lineLeftX, lineRightX], p);
+        this.renderTextLabel(scales, xRange, p);
 
         if (this._shouldCreateHandles(renderOpts)) {
             this._recreateDirectResizeHandles(scales);
@@ -1740,20 +1394,10 @@ class HorizontalLineTool extends BaseDrawing {
             const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
                 ? 0
                 : rawOffsetY;
-            const textHAlign = this._splitInfo.textHAlign
-                || this.style.textHAlign
-                || this.style.textAlign
-                || 'center';
-            let splitAnchor = 'middle';
-            if (textHAlign === 'left') {
-                splitAnchor = resolveLineEndpointSvgAnchor('left', label);
-            } else if (textHAlign === 'right') {
-                splitAnchor = resolveLineEndpointSvgAnchor('right', label);
-            }
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + offsetX,
                 y: this._splitInfo.textY + offsetY,
-                anchor: splitAnchor,
+                anchor: 'middle',
                 yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
@@ -1766,7 +1410,7 @@ class HorizontalLineTool extends BaseDrawing {
         }
 
         const y = scales.yScale(point.y);
-        const textVAlign = readLineTextVAlign(this.style);
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
         
         const chartLeftX = (scales.chart && scales.chart.margin && typeof scales.chart.margin.l === 'number')
@@ -1779,11 +1423,11 @@ class HorizontalLineTool extends BaseDrawing {
         switch (textHAlign) {
             case 'left':
                 baseX = chartLeftX + TEXT_EDGE_PADDING;
-                hlAnchor = resolveLineEndpointSvgAnchor('left', label);
+                hlAnchor = 'start';
                 break;
             case 'right':
                 baseX = chartRightX - TEXT_EDGE_PADDING;
-                hlAnchor = resolveLineEndpointSvgAnchor('right', label);
+                hlAnchor = 'end';
                 break;
             default:
                 baseX = (chartLeftX + chartRightX) / 2;
@@ -1791,22 +1435,16 @@ class HorizontalLineTool extends BaseDrawing {
         }
         
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
-            ? 0
-            : this.style.textOffsetX;
-        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
-            ? 0
-            : this.style.textOffsetY;
-        const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
-        const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
-            ? 0
-            : rawOffsetY;
-        const labelY = textVAlign === 'middle'
-            ? y + offsetY
-            : y + horizontalLineLabelYOffset(textVAlign, fontSize) + offsetY;
+        const HL_LABEL_OFFSET = 10 + Math.max(0, fontSize / 2 - 6);
+        let offsetY = 0;
+        if (textVAlign === 'top') {
+            offsetY = -HL_LABEL_OFFSET;
+        } else if (textVAlign === 'bottom') {
+            offsetY = HL_LABEL_OFFSET;
+        }
         appendTextLabel(this.group, label, {
-            x: baseX + offsetX,
-            y: labelY,
+            x: baseX + (this.style.textOffsetX || 0),
+            y: y + offsetY,
             anchor: hlAnchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
@@ -1885,7 +1523,7 @@ class VerticalLineTool extends BaseDrawing {
 
         // Check if text should be ON the line (needs gap)
         const hasText = this.text && this.text.trim();
-        const textVAlign = readLineTextVAlign(this.style);
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
         // When center-aligned, the label should be on the line for top/middle/bottom
         // and we should hide the line behind the label by creating a gap.
@@ -1895,11 +1533,22 @@ class VerticalLineTool extends BaseDrawing {
         const bottomY = Math.max(yRange[0], yRange[1]);
         
         if (textOnLine) {
-            // Measure text to create gap (RTL/Arabic-aware)
+            // Measure text to create gap
             const fontSize = this.style.fontSize || 14;
-            const labelBlock = measureLineToolLabelBlock(this.group, this.text, this.style, 'middle');
+            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
+            const fontWeight = this.style.fontWeight || 'normal';
+            
+            const tempText = this.group.append('text')
+                .attr('font-size', fontSize)
+                .attr('font-family', fontFamily)
+                .attr('font-weight', fontWeight)
+                .attr('text-anchor', 'middle')
+                .text(this.text);
+            
+            const textBBox = tempText.node().getBBox();
             const textOrientation = this.style.textOrientation || 'horizontal';
-            const gapMeasure = textOrientation === 'vertical' ? labelBlock.width : labelBlock.height;
+            const gapMeasure = textOrientation === 'vertical' ? textBBox.width : textBBox.height;
+            tempText.remove();
             
             const padding = 10 + Math.max(0, fontSize / 2 - 6);
             const capPad = Math.max(2, scaledStrokeWidth);
@@ -2092,7 +1741,7 @@ class VerticalLineTool extends BaseDrawing {
             return;
         }
 
-        const textVAlign = readLineTextVAlign(this.style);
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
         const textOrientation = this.style.textOrientation || 'horizontal';
         const rotation = textOrientation === 'vertical' ? 90 : 0;
@@ -2103,15 +1752,24 @@ class VerticalLineTool extends BaseDrawing {
         const textLines = label.split('\n');
         const lineHeight = fontSize * 1.2;
         const totalHeight = textLines.length * lineHeight;
+        const xRange = scales && scales.xScale ? scales.xScale.range() : [0, 0];
+        const leftX = Math.min(xRange[0], xRange[1]);
+        const rightX = Math.max(xRange[0], xRange[1]);
 
-        const topY = Math.min(yRange[0], yRange[1]);
-        const bottomY = Math.max(yRange[0], yRange[1]);
-
+        // Horizontal offset from line.
+        // When text is rotated 90° its rendered height (lineHeight) becomes its
+        // horizontal extent, so the offset must be at least lineHeight/2 + padding
+        // to keep the text clear of the vertical line for any font size.
         const textLineHeight = fontSize * 1.2;
         const horizontalOffset = rotation !== 0
             ? Math.ceil(textLineHeight / 2) + 6
             : 10;
-
+        
+        // Get Y range bounds
+        const topY = Math.min(yRange[0], yRange[1]);
+        const bottomY = Math.max(yRange[0], yRange[1]);
+        
+        // textVAlign controls position along the vertical line (top/middle/bottom)
         let baseY;
         switch (textVAlign) {
             case 'top':
@@ -2120,38 +1778,58 @@ class VerticalLineTool extends BaseDrawing {
             case 'bottom':
                 baseY = bottomY - LINE_LABEL_OFFSET;
                 break;
-            default:
+            default: // middle
                 baseY = (topY + bottomY) / 2;
         }
-
-        let baseX = x;
+        
+        // textHAlign controls position relative to the line
+        // For middle vAlign: center = ON the line, left/right = beside the line
+        // For top/bottom vAlign: left = left side, center/right = right side
+        let baseX;
         let anchor;
+
+        const clampPad = 10;
 
         if (textVAlign === 'middle') {
             if (textHAlign === 'left') {
                 baseX = x - horizontalOffset;
-                anchor = resolveVerticalLineSvgAnchor('left', label);
+                anchor = 'end';
             } else if (textHAlign === 'right') {
                 baseX = x + horizontalOffset;
-                anchor = resolveVerticalLineSvgAnchor('right', label);
+                anchor = 'start';
             } else {
                 baseX = x;
                 anchor = 'middle';
             }
-        } else if (textHAlign === 'center') {
-            baseX = x;
-            anchor = 'middle';
-        } else if (textHAlign === 'left') {
-            baseX = x - horizontalOffset;
-            anchor = resolveVerticalLineSvgAnchor('left', label);
         } else {
-            baseX = x + horizontalOffset;
-            anchor = resolveVerticalLineSvgAnchor('right', label);
+             // top/bottom: center behaves like right
+            if (textHAlign === 'center') {
+                baseX = x;
+                anchor = 'middle';
+            } else if (textHAlign === 'left') {
+                baseX = x - horizontalOffset;
+                anchor = 'end';
+            } else {
+                baseX = x + horizontalOffset;
+                anchor = 'start';
+            }
         }
 
         if (rotation !== 0) {
             anchor = 'middle';
         }
+
+        const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
+            ? 0
+            : this.style.textOffsetX;
+        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+            ? 0
+            : this.style.textOffsetY;
+        const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
+        const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
+
+        baseX = baseX + offsetX;
+        baseY = baseY + offsetY;
 
         const measureStyle = resolveDrawingTextStyle(label, fontStyle, fontFamily);
         const tempText = this.group.append('text')
@@ -2174,22 +1852,14 @@ class VerticalLineTool extends BaseDrawing {
         }
         tempText.remove();
 
-        const clampPad = 10;
         const halfY = rotation === 0 ? (totalHeight / 2) : (maxTextWidth / 2);
+        // Do not clamp X: label must follow the vertical line when panning/scrolling.
+        // Clamp only Y to avoid pushing the label out of the visible plot vertically.
         baseY = Math.max(topY + halfY + clampPad, Math.min(bottomY - halfY - clampPad, baseY));
 
-        const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
-            ? 0
-            : this.style.textOffsetX;
-        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
-            ? 0
-            : this.style.textOffsetY;
-        const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
-        const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
-
         appendTextLabel(this.group, label, {
-            x: baseX + offsetX,
-            y: baseY + offsetY,
+            x: baseX,
+            y: baseY,
             anchor: anchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
@@ -2319,8 +1989,7 @@ class RayTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        normalizeLineTextVAlign(this.style);
-        const textVAlign = readLineTextVAlign(this.style);
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         this._splitInfo = null;
@@ -2328,7 +1997,20 @@ class RayTool extends BaseDrawing {
         if (shouldSplitLine) {
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
+            const fontSize = this.style.fontSize || 14;
+            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
+            const fontWeight = this.style.fontWeight || 'normal';
+
+            const tempText = this.group.append('text')
+                .attr('font-size', fontSize)
+                .attr('font-family', fontFamily)
+                .attr('font-weight', fontWeight)
+                .attr('text-anchor', 'middle')
+                .text(this.text);
+
+            const textBBox = tempText.node().getBBox();
+            const textWidth = textBBox.width;
+            tempText.remove();
 
             // Use original data point screen coords for text anchor (same as ExtendedLineTool)
             const origLX = x1Screen <= x2Screen ? x1Screen : x2Screen;
@@ -2342,6 +2024,9 @@ class RayTool extends BaseDrawing {
             const srvY = visX1 <= visX2 ? visY2 : visY1;
 
             const lineAngle = Math.atan2(srvY - slvY, srvX - slvX);
+            let angleDeg = lineAngle * (180 / Math.PI);
+            const isFlipped = angleDeg > 90 || angleDeg < -90;
+            if (isFlipped) angleDeg += 180;
 
             const padding = 10;
             const capPad = Math.max(2, scaledStrokeWidth);
@@ -2385,7 +2070,7 @@ class RayTool extends BaseDrawing {
             this._splitInfo = {
                 textX: rawTextX,
                 textY: rawTextY,
-                angle: lineAngle * (180 / Math.PI),
+                angle: angleDeg,
                 gapSize: gapSize
             };
 
@@ -2467,15 +2152,9 @@ class RayTool extends BaseDrawing {
 
     _patchLiveTwoPointGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
-        const hasText = this.text && String(this.text).trim();
-        const textVAlign = readLineTextVAlign(this.style);
-        if (hasText && (textVAlign === 'middle' || this._splitInfo)) {
-            return liveRenderTwoPointDrawingGeometry(this, scales);
-        }
         const seg = computeRayScreenEndpoints(scales, this.points[0], this.points[1]);
         if (![seg.x1, seg.y1, seg.x2, seg.y2].every(Number.isFinite)) return false;
         patchTwoPointLineElements(this.group, seg.x1, seg.y1, seg.x2, seg.y2);
-        syncLiveLineTextLabel(this, scales, { x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
         this.updateHandlePositions(scales);
         return true;
     }
@@ -2484,39 +2163,63 @@ class RayTool extends BaseDrawing {
         const label = this.text || '';
         if (!label.trim()) return;
 
+        // If we have split info, use it for exact positioning (centered text on line)
         if (this._splitInfo) {
-            appendSplitAngledLineTextLabel(
-                this.group, label, this._splitInfo, coords, this, this.style, 'semantic'
-            );
+            const offsetX = this.style.textOffsetX || 0;
+            const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+                ? 0 : this.style.textOffsetY;
+            const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
+            appendTextLabel(this.group, label, {
+                x: this._splitInfo.textX + offsetX,
+                y: this._splitInfo.textY + offsetY,
+                anchor: 'middle',
+                yAnchor: 'middle',
+                fill: this.style.textColor || this.style.stroke,
+                fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
+                fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+                fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+                fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+                rotation: this._splitInfo.angle
+            });
             return;
         }
 
+        // p1 = anchor/start of ray, p2 = direction point (End)
         const p1x = coords.x1, p1y = coords.y1;
         const p2x = coords.x2, p2y = coords.y2;
 
+        // Ray direction vector (p1 → p2) for angle and unit vector
         const rdx = p2x - p1x, rdy = p2y - p1y;
         const rlen = Math.sqrt(rdx * rdx + rdy * rdy) || 1;
         const rux = rdx / rlen, ruy = rdy / rlen;
 
+        // Calculate angle for text rotation from ray direction
         let angle = Math.atan2(rdy, rdx) * (180 / Math.PI);
         const originalAngleRad = Math.atan2(rdy, rdx);
-        angle = flipLineLabelReadableAngleDeg(angle);
 
+        // Keep text readable by flipping it if upside down
+        const isFlipped = angle > 90 || angle < -90;
+        if (isFlipped) angle += 180;
+
+        // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const textVAlign = readLineTextVAlign(this.style);
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
+
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
+        // 'left' = Start (p1), 'right' = End (p2) — semantic, not geometric sort
         let baseX, baseY, elAnchor;
         switch (textHAlign) {
             case 'left':
                 baseX = p1x + rux * TEXT_EDGE_PADDING;
                 baseY = p1y + ruy * TEXT_EDGE_PADDING;
-                elAnchor = resolveRayEndpointSvgAnchor('left', label, rdx >= 0);
+                elAnchor = rdx >= 0 ? 'start' : 'end';
                 break;
             case 'right':
                 baseX = p2x - rux * TEXT_EDGE_PADDING;
                 baseY = p2y - ruy * TEXT_EDGE_PADDING;
-                elAnchor = resolveRayEndpointSvgAnchor('right', label, rdx >= 0);
+                elAnchor = rdx >= 0 ? 'end' : 'start';
                 break;
             default:
                 baseX = (p1x + p2x) / 2;
@@ -2524,9 +2227,17 @@ class RayTool extends BaseDrawing {
                 elAnchor = 'middle';
         }
 
-        const strokeX = baseX;
-        const strokeY = baseY;
-        const gapCfg = angledLineLabelGapConfig(strokeX, strokeY, textVAlign, originalAngleRad);
+        const perpX = -Math.sin(originalAngleRad);
+        const perpY = Math.cos(originalAngleRad);
+
+        const signUp = perpY <= 0 ? 1 : -1;
+        if (textVAlign === 'top') {
+            baseX += perpX * verticalOffset * signUp;
+            baseY += perpY * verticalOffset * signUp;
+        } else if (textVAlign === 'bottom') {
+            baseX -= perpX * verticalOffset * signUp;
+            baseY -= perpY * verticalOffset * signUp;
+        }
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
@@ -2534,23 +2245,23 @@ class RayTool extends BaseDrawing {
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
+        // Clamp label to stay within chart area (don't overlap time or price axes)
         const chartBottomY = coords.chartBottomY;
         const chartTopY = coords.chartTopY;
-        let labelY = strokeY + offsetY;
-        if (chartBottomY !== undefined) labelY = Math.min(labelY, chartBottomY - 2);
-        if (chartTopY !== undefined) labelY = Math.max(labelY, chartTopY + 2);
+        if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
+        if (chartTopY !== undefined) baseY = Math.max(baseY, chartTopY + 2);
 
         appendTextLabel(this.group, label, {
-            x: strokeX + offsetX,
-            y: labelY,
+            x: baseX + offsetX,
+            y: baseY + offsetY,
             anchor: elAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle,
-            ...gapCfg
+            rotation: angle
         });
     }
 
@@ -2628,23 +2339,36 @@ class HorizontalRayTool extends BaseDrawing {
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
 
-        // Check if we need to split the line for text (on-line center only; left/right keep full line)
+        // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        normalizeLineTextVAlign(this.style);
-        const textVAlign = readLineTextVAlign(this.style);
-        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-        const shouldSplitLine = hasText && textVAlign === 'middle' && textHAlign === 'center';
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const shouldSplitLine = hasText && textVAlign === 'middle';
         
         this._splitInfo = null;
         const y = scales.yScale(p.y);
         
         if (shouldSplitLine) {
-            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
+            // Measure text width first
+            const fontSize = this.style.fontSize || 14;
+            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
+            const fontWeight = this.style.fontWeight || 'normal';
+            
+            const tempText = this.group.append('text')
+                .attr('font-size', fontSize)
+                .attr('font-family', fontFamily)
+                .attr('font-weight', fontWeight)
+                .attr('text-anchor', 'middle')
+                .text(this.text);
+            
+            const textBBox = tempText.node().getBBox();
+            const textWidth = textBBox.width;
+            tempText.remove();
             
             const padding = 10; // Small space on each side of text
             const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
+            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             // fixed 30px from endpoint, clamped so gap stays on line
             const HR_EDGE_S = 30;
             let hr_rawTextX;
@@ -2805,10 +2529,6 @@ class HorizontalRayTool extends BaseDrawing {
 
     patchLiveAnchorGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
-        // Custom labels depend on anchor x/y and split metadata — fast line-only patch leaves text stuck.
-        if (this.text && String(this.text).trim()) {
-            return liveRenderSingleAnchorHorizontalGeometry(this, scales);
-        }
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel
             ? scales.chart.dataIndexToPixel(p.x)
@@ -2947,7 +2667,7 @@ class HorizontalRayTool extends BaseDrawing {
         const visibleStartX = Math.max(startX, chartLeftX);
 
         const y = scales.yScale(point.y);
-        const textVAlign = readLineTextVAlign(this.style);
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
         let baseX;
@@ -2955,11 +2675,11 @@ class HorizontalRayTool extends BaseDrawing {
         switch (textHAlign) {
             case 'left':
                 baseX = visibleStartX + TEXT_EDGE_PADDING;
-                hrAnchor = resolveLineEndpointSvgAnchor('left', label);
+                hrAnchor = 'start';
                 break;
             case 'right':
                 baseX = chartRightX - TEXT_EDGE_PADDING;
-                hrAnchor = resolveLineEndpointSvgAnchor('right', label);
+                hrAnchor = 'end';
                 break;
             default:
                 baseX = (visibleStartX + chartRightX) / 2;
@@ -2967,23 +2687,17 @@ class HorizontalRayTool extends BaseDrawing {
         }
         
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const rawOffsetX = (this.style.textOffsetX === undefined || this.style.textOffsetX === null)
-            ? 0
-            : this.style.textOffsetX;
-        const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
-            ? 0
-            : this.style.textOffsetY;
-        const offsetX = rawOffsetX === DEFAULT_TEXT_STYLE.textOffsetX ? 0 : rawOffsetX;
-        const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
-            ? 0
-            : rawOffsetY;
-        const labelY = textVAlign === 'middle'
-            ? y + offsetY
-            : y + horizontalLineLabelYOffset(textVAlign, fontSize) + offsetY;
+        const HL_LABEL_OFFSET = 10 + Math.max(0, fontSize / 2 - 6);
+        let offsetY = 0;
+        if (textVAlign === 'top') {
+            offsetY = -HL_LABEL_OFFSET;
+        } else if (textVAlign === 'bottom') {
+            offsetY = HL_LABEL_OFFSET;
+        }
 
         appendTextLabel(this.group, label, {
-            x: baseX + offsetX,
-            y: labelY,
+            x: baseX + (this.style.textOffsetX || 0),
+            y: y + offsetY,
             anchor: hrAnchor,
             yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
@@ -3104,20 +2818,39 @@ class ExtendedLineTool extends BaseDrawing {
         
         // Check if we need to split the line for centered text
         const hasText = this.text && this.text.trim();
-        const textVAlign = readLineTextVAlign(this.style);
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         this._splitInfo = null;
         
         if (shouldSplitLine) {
             // Measure text width for gap calculation
-            const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, 'middle');
+            const fontSize = this.style.fontSize || 14;
+            const fontFamily = this.style.fontFamily || 'system-ui, -apple-system, sans-serif';
+            const fontWeight = this.style.fontWeight || 'normal';
+            
+            const tempText = this.group.append('text')
+                .attr('font-size', fontSize)
+                .attr('font-family', fontFamily)
+                .attr('font-weight', fontWeight)
+                .attr('text-anchor', 'middle')
+                .text(this.text);
+            
+            const textBBox = tempText.node().getBBox();
+            const textWidth = textBBox.width;
+            tempText.remove();
             
             // Calculate line angle
             const lineAngle = Math.atan2(rightY - leftY, rightX - leftX);
+            let angleDeg = lineAngle * (180 / Math.PI);
 
             // Calculate text position based on alignment
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            // Check if text will be flipped
+            const isFlipped = angleDeg > 90 || angleDeg < -90;
+            if (isFlipped) {
+                angleDeg += 180;
+            }
 
             // Calculate gap size
             const padding = 10;
@@ -3162,7 +2895,7 @@ class ExtendedLineTool extends BaseDrawing {
             this._splitInfo = {
                 textX: textX,
                 textY: textY,
-                angle: lineAngle * (180 / Math.PI),
+                angle: angleDeg,
                 gapSize: gapSize
             };
 
@@ -3271,15 +3004,9 @@ class ExtendedLineTool extends BaseDrawing {
 
     _patchLiveTwoPointGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
-        const hasText = this.text && String(this.text).trim();
-        const textVAlign = readLineTextVAlign(this.style);
-        if (hasText && (textVAlign === 'middle' || this._splitInfo)) {
-            return liveRenderTwoPointDrawingGeometry(this, scales);
-        }
         const seg = computeExtendedLineScreenEndpoints(scales, this.points[0], this.points[1]);
         if (![seg.x1, seg.y1, seg.x2, seg.y2].every(Number.isFinite)) return false;
         patchTwoPointLineElements(this.group, seg.x1, seg.y1, seg.x2, seg.y2);
-        syncLiveLineTextLabel(this, scales, { x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
         this.updateHandlePositions(scales);
         return true;
     }
@@ -3290,28 +3017,54 @@ class ExtendedLineTool extends BaseDrawing {
             return;
         }
 
+        // If we have split info, use it for exact positioning (centered text on line)
         if (this._splitInfo) {
-            appendSplitAngledLineTextLabel(
-                this.group, label, this._splitInfo, coords, this, this.style, 'geometric'
-            );
+            const offsetX = this.style.textOffsetX || 0;
+            const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
+                ? 0
+                : this.style.textOffsetY;
+            const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
+            appendTextLabel(this.group, label, {
+                x: this._splitInfo.textX + offsetX,
+                y: this._splitInfo.textY + offsetY,
+                anchor: 'middle',
+                yAnchor: 'middle',
+                fill: this.style.textColor || this.style.stroke,
+                fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
+                fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+                fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+                fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+                rotation: this._splitInfo.angle
+            });
             return;
         }
 
         const { x1, y1, x2, y2 } = coords;
 
+        // Sort by x to get left/right data points
         const lx = x1 <= x2 ? x1 : x2;
         const ly = x1 <= x2 ? y1 : y2;
         const rx = x1 <= x2 ? x2 : x1;
         const ry = x1 <= x2 ? y2 : y1;
-
+        
+        // Calculate angle of the line for text rotation
         let angle = Math.atan2(ry - ly, rx - lx) * (180 / Math.PI);
         const originalAngleRad = Math.atan2(ry - ly, rx - lx);
-        angle = flipLineLabelReadableAngleDeg(angle);
-
+        
+        // Keep text readable by flipping it if upside down
+        const isFlipped = angle > 90 || angle < -90;
+        if (isFlipped) {
+            angle += 180;
+        }
+        
+        // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const textVAlign = readLineTextVAlign(this.style);
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
+        
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
+        // Use original data point screen coords for text positioning
         const origLen = Math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2) || 1;
         const ux = (rx - lx) / origLen;
         const uy = (ry - ly) / origLen;
@@ -3320,12 +3073,12 @@ class ExtendedLineTool extends BaseDrawing {
             case 'left':
                 baseX = lx + ux * TEXT_EDGE_PADDING;
                 baseY = ly + uy * TEXT_EDGE_PADDING;
-                elAnchor = resolveLineEndpointSvgAnchor('left', label);
+                elAnchor = 'start';
                 break;
             case 'right':
                 baseX = rx - ux * TEXT_EDGE_PADDING;
                 baseY = ry - uy * TEXT_EDGE_PADDING;
-                elAnchor = resolveLineEndpointSvgAnchor('right', label);
+                elAnchor = 'end';
                 break;
             default:
                 baseX = (lx + rx) / 2;
@@ -3333,9 +3086,17 @@ class ExtendedLineTool extends BaseDrawing {
                 elAnchor = 'middle';
         }
 
-        const strokeX = baseX;
-        const strokeY = baseY;
-        const gapCfg = angledLineLabelGapConfig(strokeX, strokeY, textVAlign, originalAngleRad);
+        const perpX = -Math.sin(originalAngleRad);
+        const perpY = Math.cos(originalAngleRad);
+        
+        const signUp = perpY <= 0 ? 1 : -1;
+        if (textVAlign === 'top') {
+            baseX += perpX * verticalOffset * signUp;
+            baseY += perpY * verticalOffset * signUp;
+        } else if (textVAlign === 'bottom') {
+            baseX -= perpX * verticalOffset * signUp;
+            baseY -= perpY * verticalOffset * signUp;
+        }
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
@@ -3343,23 +3104,23 @@ class ExtendedLineTool extends BaseDrawing {
             : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
+        // Clamp label to stay within chart area (don't overlap time or price axes)
         const chartBottomY = coords.chartBottomY;
         const chartTopY = coords.chartTopY;
-        let labelY = strokeY + offsetY;
-        if (chartBottomY !== undefined) labelY = Math.min(labelY, chartBottomY - 2);
-        if (chartTopY !== undefined) labelY = Math.max(labelY, chartTopY + 2);
+        if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
+        if (chartTopY !== undefined) baseY = Math.max(baseY, chartTopY + 2);
 
         appendTextLabel(this.group, label, {
-            x: strokeX + offsetX,
-            y: labelY,
+            x: baseX + offsetX,
+            y: baseY + offsetY,
             anchor: elAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
             fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-            rotation: angle,
-            ...gapCfg
+            rotation: angle
         });
     }
 
@@ -3483,28 +3244,31 @@ class CrossLineTool extends BaseDrawing {
 
         // Render text label if exists
         if (this.text && this.text.trim()) {
-            const cl_textVAlign = readLineTextVAlign(this.style);
+            const cl_textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
             const cl_textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
             const cl_xRange = scales.xScale.range();
             const CLEDGE = 20;
             let cl_baseX, cl_anchor;
             switch (cl_textHAlign) {
-                case 'left':  cl_baseX = cl_xRange[0] + CLEDGE; cl_anchor = resolveLineEndpointSvgAnchor('left', this.text); break;
-                case 'right': cl_baseX = cl_xRange[1] - CLEDGE; cl_anchor = resolveLineEndpointSvgAnchor('right', this.text); break;
+                case 'left':  cl_baseX = cl_xRange[0] + CLEDGE; cl_anchor = 'start'; break;
+                case 'right': cl_baseX = cl_xRange[1] - CLEDGE; cl_anchor = 'end';   break;
                 default:      cl_baseX = (cl_xRange[0] + cl_xRange[1]) / 2; cl_anchor = 'middle';
             }
+            const CL_HL_OFFSET = 10;
+            let cl_offsetY = 0;
+            if (cl_textVAlign === 'top')    cl_offsetY = -CL_HL_OFFSET;
+            else if (cl_textVAlign === 'bottom') cl_offsetY =  CL_HL_OFFSET;
             appendTextLabel(this.group, this.text, {
                 x: cl_baseX + (this.style.textOffsetX || 0),
-                y: yScreen,
+                y: yScreen + cl_offsetY,
                 anchor: cl_anchor,
-                yAnchor: cl_textVAlign === 'middle' ? 'middle' : undefined,
+                yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
                 fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
                 fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
                 fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-                rotation: 0,
-                ...lineLabelGapConfig(cl_baseX, yScreen, cl_textVAlign)
+                rotation: 0
             });
         }
 
