@@ -7051,8 +7051,13 @@ class DrawingToolsManager {
 
             if (self._isFillInteriorPassthroughType(drawing.type)) {
                 const isShapeBorderHit = targetSel.classed('shape-border-hit');
+                const isGannFibBodyHit = self._isGannFibBodyHitTarget(targetSel);
                 const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
-                const clickedOnStroke = isShapeBorderHit || drawingsAtPoint.some(d => d && d.id === drawing.id);
+                const clickedOnStroke = isShapeBorderHit
+                    || isGannFibBodyHit
+                    || self._isPointOnGannToolBody(drawing, mouseX, mouseY)
+                    || self._isPointInFibWedgeBody(drawing, mouseX, mouseY)
+                    || drawingsAtPoint.some(d => d && d.id === drawing.id);
 
                 if (!clickedOnStroke) {
                     return;
@@ -7583,9 +7588,13 @@ class DrawingToolsManager {
                         const srcEvent = event.sourceEvent || event;
                         if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
                             const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
-                            const hits = self.findDrawingsAtPoint(mouseX, mouseY);
-                            if (!hits.some((d) => d && d.id === drawing.id)) {
-                                return false;
+                            if (!isGannBoxBodyHit && !isFibWedgeBodyHit) {
+                                const hits = self.findDrawingsAtPoint(mouseX, mouseY);
+                                if (!hits.some((d) => d && d.id === drawing.id)
+                                    && !self._isPointOnGannToolBody(drawing, mouseX, mouseY)
+                                    && !self._isPointInFibWedgeBody(drawing, mouseX, mouseY)) {
+                                    return false;
+                                }
                             }
                         }
                     }
@@ -8055,6 +8064,14 @@ class DrawingToolsManager {
         group.selectAll(this._gannFibBodyHitboxSelector())
             .style('pointer-events', 'all')
             .style('cursor', 'move');
+    }
+
+    _isGannFibBodyHitTarget(targetSel) {
+        if (!targetSel || !targetSel.classed) return false;
+        return targetSel.classed('gann-box-hitbox')
+            || targetSel.classed('gann-square-fixed-hitbox')
+            || targetSel.classed('gann-fan-hitbox')
+            || targetSel.classed('fib-wedge-hitbox');
     }
 
     _isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY) {

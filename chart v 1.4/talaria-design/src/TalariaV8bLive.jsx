@@ -7935,7 +7935,7 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
     return;
   }
   if (legacyType === "gann-box") {
-    if (!Array.isArray(out.gannPriceLevels)) {
+    if (!Array.isArray(out.gannPriceLevels) || !out.gannPriceLevels.length) {
       out.gannPriceLevels = [
         { on: true, value: "0", color: "#787B86" },
         { on: true, value: "0.25", color: "#2196F3" },
@@ -7944,7 +7944,7 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
         { on: true, value: "1", color: "#787B86" },
       ];
     }
-    if (!Array.isArray(out.gannTimeLevels)) {
+    if (!Array.isArray(out.gannTimeLevels) || !out.gannTimeLevels.length) {
       out.gannTimeLevels = [
         { on: true, value: "0", color: "#787B86" },
         { on: true, value: "0.25", color: "#2196F3" },
@@ -7958,7 +7958,7 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
     return;
   }
   if (legacyType === "gann-square-fixed") {
-    if (!Array.isArray(out.gannGridLevels)) {
+    if (!Array.isArray(out.gannGridLevels) || !out.gannGridLevels.length) {
       out.gannGridLevels = [
         { on: true, value: "0", color: "#787B86" },
         { on: true, value: "0.125", color: "#2196F3" },
@@ -8018,11 +8018,12 @@ function v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle) {
 
 function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
   if (!d || d.type !== "gann-box" || !d.style) return;
+  tlStyle = v9TlStyleWithEnsuredLevels(tlStyle, d.type);
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  if (Array.isArray(tlStyle.gannPriceLevels)) {
+  if (Array.isArray(tlStyle.gannPriceLevels) && tlStyle.gannPriceLevels.length) {
     d.style.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
   }
-  if (Array.isArray(tlStyle.gannTimeLevels)) {
+  if (Array.isArray(tlStyle.gannTimeLevels) && tlStyle.gannTimeLevels.length) {
     d.style.timeLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannTimeLevels);
   }
 }

@@ -80,6 +80,30 @@ class GannBoxTool extends BaseDrawing {
         const labelOffset = Math.max(6, 10 * scaleFactor);
         const showLevelValues = this.style.levelsEnabled !== false;
 
+        const defaultPriceLevels = [
+            { value: 0, enabled: true, color: '#787b86' },
+            { value: 0.25, enabled: true, color: '#787b86' },
+            { value: 0.5, enabled: true, color: '#787b86' },
+            { value: 0.75, enabled: true, color: '#787b86' },
+            { value: 1, enabled: true, color: '#787b86' }
+        ];
+        const defaultTimeLevels = [
+            { value: 0, enabled: true, color: '#787b86' },
+            { value: 0.25, enabled: true, color: '#787b86' },
+            { value: 0.382, enabled: true, color: '#787b86' },
+            { value: 0.5, enabled: true, color: '#787b86' },
+            { value: 0.618, enabled: true, color: '#787b86' },
+            { value: 0.75, enabled: true, color: '#787b86' },
+            { value: 1, enabled: true, color: '#787b86' }
+        ];
+        const ensureLevelArray = (key, defaults) => {
+            if (!Array.isArray(this.style[key]) || this.style[key].length === 0) {
+                this.style[key] = defaults.map((l) => ({ ...l }));
+            }
+        };
+        ensureLevelArray('priceLevels', defaultPriceLevels);
+        ensureLevelArray('timeLevels', defaultTimeLevels);
+
         const fmt = (v) => {
             const n = Number(v);
             if (!Number.isFinite(n)) return '';
