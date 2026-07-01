@@ -1,10 +1,12 @@
 {
   "name": "talaria-trading-chart-runtime",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": true,
   "scripts": {
     "sync-env": "node scripts/sync-chart-env.mjs",
+    "version:bump": "node scripts/bump-chart-engine-build.mjs",
     "build:chart-client": "node scripts/build-chart-client-bundle.mjs",
+    "build": "npm run version:bump && npm run build:chart-client",
     "bundle-fonts": "node scripts/bundle-self-hosted-fonts.mjs"
   },
   "dependencies": {
