@@ -169,7 +169,7 @@ export function buildExcursionSeries(trade: PriceBehaviorTrade): ExcursionSeries
   const exitBarIndex = inLen > 0 ? inLen - 1 : 0;
   const storedCapture = pbNum(trade.capture_ratio);
   const mfeR = pbNum(trade.mfe_r) || (favIn.length ? Math.max(...favIn) : 0);
-  const maeR = pbNum(trade.mae_r) || (advIn.length ? Math.max(...advIn) : 0);
+  const maeR = Math.abs(pbNum(trade.mae_r)) || (advIn.length ? Math.max(...advIn) : 0);
   const totalMfeStored = pbNum(trade.total_mfe_r);
   const totalMfeR =
     totalMfeStored > 0
@@ -224,7 +224,7 @@ export function buildSessionSummary(trades: PriceBehaviorTrade[]): PriceBehavior
     }
     if (t.would_have_won === true) wouldHaveWon += 1;
     const mfe = pbNum(t.mfe_r);
-    const mae = pbNum(t.mae_r);
+    const mae = Math.abs(pbNum(t.mae_r));
     if (mfe !== 0 || series?.mfeR) {
       mfeSum += mfe || series?.mfeR || 0;
       mfeN += 1;
@@ -253,7 +253,7 @@ export function buildMaeMfeScatter(trades: PriceBehaviorTrade[]): MaeMfeScatterP
       const mfe = pbNum(t.mfe_r);
       if (mae === 0 && mfe === 0) return null;
       return {
-        x: mae,
+        x: mae <= 0 ? mae : -Math.abs(mae),
         y: mfe,
         win: tradePnl(t) > 0,
         ticker: String(t.ticker || t.symbol || "—"),

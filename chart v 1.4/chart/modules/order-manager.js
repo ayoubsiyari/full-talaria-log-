@@ -2516,8 +2516,16 @@ class OrderManager {
         if (!risk) return { mfe_r: 0, mae_r: 0 };
         const arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
         const isBuy = position.type === 'BUY';
-        const mfePrice = Number.parseFloat(position.mfe ?? (isBuy ? position.highestPrice : position.lowestPrice));
-        const maePrice = Number.parseFloat(position.mae ?? (isBuy ? position.lowestPrice : position.highestPrice));
+        const mfePrice = Number.parseFloat(
+            position.in_trade_mfe
+            ?? position.mfe
+            ?? (isBuy ? (position.in_trade_highest_price ?? position.highestPrice) : (position.in_trade_lowest_price ?? position.lowestPrice))
+        );
+        const maePrice = Number.parseFloat(
+            position.in_trade_mae
+            ?? position.mae
+            ?? (isBuy ? (position.in_trade_lowest_price ?? position.lowestPrice) : (position.in_trade_highest_price ?? position.highestPrice))
+        );
         let mfeMag = 0;
         let maeMag = 0;
         if (isBuy) {
@@ -2535,8 +2543,9 @@ class OrderManager {
      * Source of truth: bar_high_r / bar_low_r arrays; price extremes fill gaps.
      * mfe_r ≥ 0 (favorable); mae_r ≤ 0 (adverse magnitude, negative sign).
      */
-    _finalizeExcursionScalars(target, position) {
+    _finalizeExcursionScalars(target, position, options = {}) {
         if (!target || !position) return target;
+        const inTradeOnly = options.inTradeOnly !== false;
         const copyArr = (a) => (Array.isArray(a) ? a.slice() : null);
         if (!target.bar_high_r?.length) {
             const bh = copyArr(position.bar_high_r);
@@ -2557,14 +2566,21 @@ class OrderManager {
         };
         const mfeFromBars = maxBar(target.bar_high_r);
         const maeMagFromBars = maxBar(target.bar_low_r);
-        const derived = this._deriveExcursionRFromPriceExtremes(position);
+        const priceSource = inTradeOnly ? {
+            ...position,
+            mfe: position.in_trade_mfe ?? position.mfe,
+            mae: position.in_trade_mae ?? position.mae,
+            highestPrice: position.in_trade_highest_price ?? position.highestPrice,
+            lowestPrice: position.in_trade_lowest_price ?? position.lowestPrice,
+        } : position;
+        const derived = this._deriveExcursionRFromPriceExtremes(priceSource);
         const mfe_r = Math.max(mfeFromBars, derived.mfe_r);
         const maeMag = Math.max(maeMagFromBars, Math.abs(derived.mae_r));
         target.mfe_r = parseFloat(mfe_r.toFixed(4));
         target.mae_r = parseFloat((maeMag > 0 ? -maeMag : 0).toFixed(4));
 
-        const mfePrice = position.mfe ?? (position.type === 'BUY' ? position.highestPrice : position.lowestPrice);
-        const maePrice = position.mae ?? (position.type === 'BUY' ? position.lowestPrice : position.highestPrice);
+        const mfePrice = priceSource.mfe ?? (position.type === 'BUY' ? priceSource.highestPrice : priceSource.lowestPrice);
+        const maePrice = priceSource.mae ?? (position.type === 'BUY' ? priceSource.lowestPrice : priceSource.highestPrice);
         if (mfePrice != null && Number.isFinite(Number(mfePrice))) {
             target.mfe_points = parseFloat(Number(mfePrice).toFixed(8));
         }
@@ -2575,6 +2591,8 @@ class OrderManager {
         if (position.lowestPrice != null) target.lowestPrice = position.lowestPrice;
         if (position.mfe != null) target.mfe = position.mfe;
         if (position.mae != null) target.mae = position.mae;
+        if (position.in_trade_mfe != null) target.in_trade_mfe = position.in_trade_mfe;
+        if (position.in_trade_mae != null) target.in_trade_mae = position.in_trade_mae;
         return target;
     }
 
@@ -2583,6 +2601,15 @@ class OrderManager {
         const r = Number.parseFloat(riskBasis);
         if (!Number.isFinite(p) || !Number.isFinite(r) || r <= 0) return null;
         return parseFloat((p / r).toFixed(2));
+    }
+
+    /** Freeze in-trade excursion prices before post-exit tracking mutates them. */
+    _freezeInTradeExcursionSnapshot(position) {
+        if (!position || position.in_trade_mfe != null) return;
+        position.in_trade_mfe = position.mfe;
+        position.in_trade_mae = position.mae;
+        position.in_trade_highest_price = position.highestPrice;
+        position.in_trade_lowest_price = position.lowestPrice;
     }
 
     /**
@@ -6767,6 +6794,10 @@ class OrderManager {
             { key: 'closeType', label: 'Close Type' },
             { key: 'mfe', label: 'MFE' },
             { key: 'mae', label: 'MAE' },
+            { key: 'mfe_r', label: 'MFE (R)' },
+            { key: 'mae_r', label: 'MAE (R)' },
+            { key: 'mfe_points', label: 'MFE Price' },
+            { key: 'mae_points', label: 'MAE Price' },
             { key: 'highestPrice', label: 'High' },
             { key: 'lowestPrice', label: 'Low' }
         ];
@@ -6938,7 +6969,8 @@ class OrderManager {
             'Trade ID', 'Direction', 'Symbol', 'Ticker', 'Lots', 'Entry Price', 'Exit Price',
             'Stop Loss', 'Take Profit', 'Net P&L', 'R-Multiple', 'RR Ratio', 'Risk Amount',
             'Holding Time (hours)', 'Day of Week', 'Entry Hour', 'Exit Hour', 'Month', 'Year',
-            'Close Type', 'MFE', 'MAE', 'Highest Price', 'Lowest Price',
+            'Close Type', 'MFE', 'MAE', 'MFE (R)', 'MAE (R)', 'MFE Price', 'MAE Price',
+            'Highest Price', 'Lowest Price', 'Original Risk',
             'Spread (pips) at Entry', 'Commission at Entry', 'Pip Value at Entry',
             'Entry Time', 'Exit Time'
         ];
@@ -6968,8 +7000,13 @@ class OrderManager {
                 trade.closeType || '',
                 trade.mfe ? this.formatPrice(trade.mfe) : '',
                 trade.mae ? this.formatPrice(trade.mae) : '',
+                trade.mfe_r != null && trade.mfe_r !== '' ? Number.parseFloat(trade.mfe_r).toFixed(4) : '',
+                trade.mae_r != null && trade.mae_r !== '' ? Number.parseFloat(trade.mae_r).toFixed(4) : '',
+                trade.mfe_points != null ? this.formatPrice(trade.mfe_points) : (trade.mfe ? this.formatPrice(trade.mfe) : ''),
+                trade.mae_points != null ? this.formatPrice(trade.mae_points) : (trade.mae ? this.formatPrice(trade.mae) : ''),
                 trade.highestPrice ? this.formatPrice(trade.highestPrice) : '',
                 trade.lowestPrice ? this.formatPrice(trade.lowestPrice) : '',
+                trade.originalRiskAmount ? trade.originalRiskAmount.toFixed(2) : (trade.riskAmount ? trade.riskAmount.toFixed(2) : ''),
                 Number.parseFloat(trade.spread_pips_at_entry ?? 0).toFixed(4),
                 Number.parseFloat(trade.commission_at_entry ?? 0).toFixed(4),
                 Number.parseFloat(trade.pip_value_at_entry ?? this.pipValuePerLot ?? 0).toFixed(4),
@@ -7600,6 +7637,13 @@ class OrderManager {
                 rMultiple = (rm >= 0 ? '+' : '') + rm.toFixed(2) + 'R';
             }
         }
+        const _modalExcursion = closeData ? this._finalizeExcursionScalars({
+            bar_high_r: order.bar_high_r,
+            bar_low_r: order.bar_low_r,
+            bar_close_r: order.bar_close_r
+        }, order) : null;
+        const modalMfeR = _modalExcursion?.mfe_r != null ? `${Number(_modalExcursion.mfe_r).toFixed(2)}R` : '—';
+        const modalMaeR = _modalExcursion?.mae_r != null ? `${Number(_modalExcursion.mae_r).toFixed(2)}R` : '—';
         
         const title = isClosing ? '📝 Trade Closed - Add Notes' : '📝 Trade Journal Entry';
         
@@ -7710,8 +7754,16 @@ class OrderManager {
                         <div style="grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 8px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                 <div style="font-size: 10px; color: #787b86; text-transform: uppercase;">Excursion Metrics</div>
-                                <div style="font-size: 9px; color: #787b86;">(${this.mfeMaeTrackingHours}h window)</div>
+                                <div style="font-size: 9px; color: #787b86;">(in-trade + ${this.mfeMaeTrackingHours}h post-exit)</div>
                             </div>
+                        </div>
+                        <div>
+                            <div style="color: #787b86;">Close Type</div>
+                            <div style="color: #e5e7eb; font-weight: 600;">${closeData.type === 'TP' ? 'Take Profit' : closeData.type === 'BE' ? 'Breakeven' : closeData.type === 'SL' ? 'Stop Loss' : 'Manual'}</div>
+                        </div>
+                        <div>
+                            <div style="color: #787b86;">R-Multiple</div>
+                            <div style="color: ${(closeData.pnl / (order.originalRiskAmount || order.riskAmount || 1)) >= 0 ? '#22c55e' : '#ef4444'}; font-weight: 600;">${rMultiple || '—'}</div>
                         </div>
                         <div>
                             <div style="color: #787b86;">MFE (Best Price)</div>
@@ -7720,6 +7772,18 @@ class OrderManager {
                         <div>
                             <div style="color: #787b86;">MAE (Worst Price)</div>
                             <div style="color: #ef4444; font-weight: 600;">${this.formatPrice(order.mae || order.openPrice)}</div>
+                        </div>
+                        <div>
+                            <div style="color: #787b86;">MFE (R)</div>
+                            <div style="color: #22c55e; font-weight: 600;">${modalMfeR}</div>
+                        </div>
+                        <div>
+                            <div style="color: #787b86;">MAE (R)</div>
+                            <div style="color: #ef4444; font-weight: 600;">${modalMaeR}</div>
+                        </div>
+                        <div>
+                            <div style="color: #787b86;">Highest / Lowest</div>
+                            <div style="color: #e5e7eb; font-weight: 600;">${this.formatPrice(order.highestPrice || order.openPrice)} / ${this.formatPrice(order.lowestPrice || order.openPrice)}</div>
                         </div>
                     ` : ''}
                 </div>
@@ -8107,7 +8171,7 @@ class OrderManager {
         const holdingTimeHours = (holdingTime / (1000 * 60 * 60)).toFixed(2);
         const holdingTimeDays = (holdingTime / (1000 * 60 * 60 * 24)).toFixed(2);
         
-        // Calculate reward-to-risk ratio
+        // Calculate reward-to-risk ratio (magnitude only — signed R is rMultiple)
         let rewardToRisk = 0;
         if (order.riskAmount && order.riskAmount > 0) {
             rewardToRisk = Math.abs(closeData.pnl) / order.riskAmount;
@@ -8184,8 +8248,6 @@ class OrderManager {
             post_exit_bar_close_r: Array.isArray(order.post_exit_bar_close_r) ? order.post_exit_bar_close_r.slice() : [],
             post_exit_bar_high_r: Array.isArray(order.post_exit_bar_high_r) ? order.post_exit_bar_high_r.slice() : [],
             post_exit_bar_low_r: Array.isArray(order.post_exit_bar_low_r) ? order.post_exit_bar_low_r.slice() : [],
-            mfe_r: Array.isArray(order.bar_high_r) && order.bar_high_r.length > 0 ? Math.max(...order.bar_high_r) : 0,
-            mae_r: Array.isArray(order.bar_low_r) && order.bar_low_r.length > 0 ? Math.max(...order.bar_low_r) : 0,
             
             // Position Details
             quantity: order.quantity,
@@ -26088,7 +26150,7 @@ class OrderManager {
                 this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
-                this._finalizeExcursionScalars(this.tradeJournal[journalIndex], position);
+                this._finalizeExcursionScalars(this.tradeJournal[journalIndex], position, { inTradeOnly: true });
                 // M4-2: post-exit checkpoints
                 this.tradeJournal[journalIndex].post_checkpoints = Array.isArray(position.post_checkpoints) ? position.post_checkpoints.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_anchor_time = position.post_exit_anchor_time ?? null;
@@ -27659,6 +27721,10 @@ class OrderManager {
         const pnl = gross - commRt;
         closePrice = execClosePrice;
 
+        if (!isPartialClose) {
+            this._freezeInTradeExcursionSnapshot(position);
+        }
+        
         // Update balance
         this.balance += pnl;
         this.equity = this.balance;
@@ -28592,6 +28658,7 @@ class OrderManager {
             ? (Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10) > 0)
             : (currentCandle && _postExitAnchor < position.mfeMaeTrackingEndTime);
         if (shouldTrackAfterClose) {
+            this._freezeInTradeExcursionSnapshot(position);
             // Continue tracking this position for MFE/MAE
             this.mfeMaeTrackingPositions.push({
                 ...position,

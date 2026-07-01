@@ -51,6 +51,8 @@ def normalize_trades(raw_trades: list[dict[str, Any]]) -> list[NormalizedTrade]:
         pnl_net = to_float(t.get("netPnL", t.get("realizedPnL", t.get("pnl", 0.0))))
         rr_actual = to_float(t.get("rMultiple", t.get("rewardToRiskRatio", 0.0)))
         mae_r = to_float(t.get("mae_r", 0.0))
+        if mae_r > 0:
+            mae_r = -mae_r
         mfe_r = to_float(t.get("mfe_r", 0.0))
         quantity = to_float(t.get("quantity", 0.0))
         # Prefer flat fields saved on the journal row; fall back to instrument_settings once (no duplicate work in Python).
