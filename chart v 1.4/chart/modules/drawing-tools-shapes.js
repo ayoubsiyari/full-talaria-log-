@@ -1906,10 +1906,8 @@ class ArrowTool extends BaseDrawing {
                     this.group, label, this._splitInfo, coords, this, this.style, 'geometric'
                 );
             } else {
-                const rawAngle = this._splitInfo.angle;
-                let angle = typeof flipLineLabelReadableAngleDeg === 'function'
-                    ? flipLineLabelReadableAngleDeg(rawAngle)
-                    : (rawAngle > 90 || rawAngle < -90 ? rawAngle + 180 : rawAngle);
+                let angle = Number(this._splitInfo.angle) || 0;
+                if (angle > 90 || angle < -90) angle += 180;
                 appendTextLabel(this.group, label, {
                     x: this._splitInfo.textX + (this.style.textOffsetX || 0),
                     y: this._splitInfo.textY + offY,
@@ -1939,9 +1937,7 @@ class ArrowTool extends BaseDrawing {
 
         let angle = Math.atan2(origY2 - origY1, origX2 - origX1) * (180 / Math.PI);
         const angleRad = Math.atan2(origY2 - origY1, origX2 - origX1);
-        angle = typeof flipLineLabelReadableAngleDeg === 'function'
-            ? flipLineLabelReadableAngleDeg(angle)
-            : (angle > 90 || angle < -90 ? angle + 180 : angle);
+        if (angle > 90 || angle < -90) angle += 180;
 
         const fontSize = this.style.fontSize || 14;
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';

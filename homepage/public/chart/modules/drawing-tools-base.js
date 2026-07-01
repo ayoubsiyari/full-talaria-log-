@@ -461,6 +461,7 @@ function flipLineLabelReadableAngleDeg(angleDeg) {
     if (angle > 90 || angle < -90) return angle + 180;
     return angle;
 }
+window.flipLineLabelReadableAngleDeg = flipLineLabelReadableAngleDeg;
 
 /** Unit normal matching the rotation angle used for line labels. */
 function lineLabelPerpFromAngleDeg(angleDeg) {
