@@ -85,6 +85,47 @@ function fibArcsLevelLabelPlacement(style, cx, cy, r, isDown, fullCircle) {
     return { x: cx + r + pad, y: cy, anchor: 'start', dominantBaseline: 'middle' };
 }
 
+/** Stagger Fib Time / vertical-span labels on Y while keeping X on each vertical line. */
+function resolveFibVerticalLineLabelCollisions(slots, group, fontSize, fontWeight = '700') {
+    if (!Array.isArray(slots) || !slots.length) return [];
+    if (slots.length === 1) return slots.map((s) => ({ ...s, baseY: s.y }));
+
+    const gap = Math.max(2, fontSize * 0.25);
+    const rowTolerance = fontSize * 0.75;
+    const rowOffset = Math.max(fontSize * 0.9, 13);
+
+    const measured = slots.map((slot) => ({
+        ...slot,
+        baseY: slot.y,
+        block: measureFibLabelTextBlock(group, slot.text, fontSize, fontWeight),
+    }));
+
+    const sameRow = measured.every((s) => Math.abs(s.y - measured[0].y) < rowTolerance);
+    if (!sameRow) return measured;
+
+    measured.sort((a, b) => a.x - b.x);
+
+    const overlaps = (a, b) => {
+        const minXGap = (a.block.width + b.block.width) / 2 + gap;
+        const minYGap = (a.block.height + b.block.height) / 2 + gap;
+        return Math.abs(a.x - b.x) < minXGap && Math.abs(a.y - b.y) < minYGap;
+    };
+
+    for (let i = 0; i < measured.length; i++) {
+        const cur = measured[i];
+        let tier = 0;
+        while (tier <= 12) {
+            const dir = tier === 0 ? 0 : (tier % 2 === 1 ? -1 : 1);
+            const level = tier === 0 ? 0 : Math.ceil(tier / 2);
+            cur.y = cur.baseY + dir * level * rowOffset;
+            const conflict = measured.slice(0, i).some((prev) => overlaps(prev, cur));
+            if (!conflict) break;
+            tier++;
+        }
+    }
+    return measured;
+}
+
 /** Nudge Fib Arcs labels apart when radii are close (common with Value and Percent text). */
 function resolveFibArcLabelCollisions(slots, group, fontSize, fontWeight = '700') {
     if (!Array.isArray(slots) || !slots.length) return [];
@@ -1508,6 +1549,7 @@ class BaseDrawing {
                 .attr('x2', x).attr('y2', plotBottom);
         });
 
+        const tzLabelSlots = [];
         group.selectAll('.fib-tz-label').each(function () {
             const fibN = parseFloat(d3.select(this).attr('data-fib-tz'));
             if (!Number.isFinite(fibN)) return;
@@ -1518,12 +1560,87 @@ class BaseDrawing {
             const fsRaw = parseFloat(String(label.attr('font-size') || '').replace('px', ''));
             const fontSize = Number.isFinite(fsRaw) && fsRaw > 0 ? fsRaw : 11;
             const lp = fibVerticalSpanLabelPlacement(tool.style, x, plotTop, plotBottom, fontSize);
-            label.attr('x', lp.x);
-            label.attr('y', lp.y);
-            label.attr('text-anchor', lp.anchor || 'middle');
-            if (lp.dominantBaseline) label.attr('dominant-baseline', lp.dominantBaseline);
-            else label.attr('dominant-baseline', null);
+            tzLabelSlots.push({
+                node: this,
+                x: lp.x,
+                y: lp.y,
+                anchor: lp.anchor || 'middle',
+                dominantBaseline: lp.dominantBaseline,
+                text: label.text(),
+                fontSize,
+            });
         });
+        if (tzLabelSlots.length) {
+            resolveFibVerticalLineLabelCollisions(tzLabelSlots, group, tzLabelSlots[0].fontSize, '700').forEach((slot) => {
+                const label = d3.select(slot.node);
+                label.attr('x', slot.x);
+                label.attr('y', slot.y);
+                label.attr('text-anchor', slot.anchor || 'middle');
+                if (slot.dominantBaseline) label.attr('dominant-baseline', slot.dominantBaseline);
+                else label.attr('dominant-baseline', null);
+            });
+        }
+
+        const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;
+        group.style('opacity', opacity).attr('transform', null);
+        return true;
+    }
+
+    static patchTrendFibTime(tool, scales) {
+        if (!tool || !tool.group || tool.group.empty() || !scales) return false;
+        if (!tool.group.select('.fib-tft-vertical').node()) return false;
+        if (!Array.isArray(tool.points) || tool.points.length < 3) return false;
+
+        const xIndex1 = tool.points[0].x;
+        const xIndex2 = tool.points[1].x;
+        const xIndex3 = tool.points[2].x;
+        const baseDx = xIndex2 - xIndex1;
+        if (!baseDx) return false;
+
+        const { plotTop, plotBottom } = fibChartPlotVerticalSpan(scales);
+        const group = tool.group;
+
+        group.selectAll('.fib-tft-vertical').each(function () {
+            const line = d3.select(this);
+            const level = parseFloat(line.attr('data-fib-tft'));
+            if (!Number.isFinite(level)) return;
+            const xIndex = xIndex3 + (baseDx * level);
+            const x = BaseDrawing.fibIndexToPixel(scales, xIndex);
+            if (!Number.isFinite(x)) return;
+            line.attr('x1', x).attr('y1', plotTop).attr('x2', x).attr('y2', plotBottom);
+        });
+
+        const tftLabelSlots = [];
+        group.selectAll('.fib-tft-label').each(function () {
+            const level = parseFloat(d3.select(this).attr('data-fib-tft'));
+            if (!Number.isFinite(level)) return;
+            const xIndex = xIndex3 + (baseDx * level);
+            const x = BaseDrawing.fibIndexToPixel(scales, xIndex);
+            if (!Number.isFinite(x)) return;
+            const label = d3.select(this);
+            const fsRaw = parseFloat(String(label.attr('font-size') || '').replace('px', ''));
+            const fontSize = Number.isFinite(fsRaw) && fsRaw > 0 ? fsRaw : 11;
+            const lp = fibVerticalSpanLabelPlacement(tool.style, x, plotTop, plotBottom, fontSize);
+            tftLabelSlots.push({
+                node: this,
+                x: lp.x,
+                y: lp.y,
+                anchor: lp.anchor || 'middle',
+                dominantBaseline: lp.dominantBaseline,
+                text: label.text(),
+                fontSize,
+            });
+        });
+        if (tftLabelSlots.length) {
+            resolveFibVerticalLineLabelCollisions(tftLabelSlots, group, tftLabelSlots[0].fontSize, '700').forEach((slot) => {
+                const label = d3.select(slot.node);
+                label.attr('x', slot.x);
+                label.attr('y', slot.y);
+                label.attr('text-anchor', slot.anchor || 'middle');
+                if (slot.dominantBaseline) label.attr('dominant-baseline', slot.dominantBaseline);
+                else label.attr('dominant-baseline', null);
+            });
+        }
 
         const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;
         group.style('opacity', opacity).attr('transform', null);
