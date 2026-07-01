@@ -1738,6 +1738,14 @@ function v9TxtIconHasContentTab(icon) {
   return !["emoji", "image", "flag", "priceNote"].includes(icon);
 }
 
+/** Quick-bar text field — prefer React state, fall back to live drawing.text. */
+function v9ResolveTxtQuickBarContent(txtStyleContent, liveDrawing) {
+  const fromState = txtStyleContent == null ? "" : String(txtStyleContent);
+  if (fromState.trim() !== "") return fromState;
+  if (liveDrawing && typeof liveDrawing.text === "string") return liveDrawing.text;
+  return fromState;
+}
+
 function v9RailSubtoolOrFallback(groupId, sel, fallback) {
   const allowed = V9_RAIL_ICONS_BY_GROUP[groupId];
   if (!allowed) return sel || fallback;
@@ -15890,6 +15898,25 @@ const TalariaV8bLive = () => {
     }
   }, [txtSettOpen, txtSubTool.icon, txtSettTab]);
 
+  // Keep quick-bar text field in sync when a text annotation is selected (incl. locked).
+  useEffect(() => {
+    if (!(tlBarSelected && tlBarDrawingGroup === "text")) return;
+    if (editingDrawingRef.current) return;
+    try {
+      const live = v9GetLiveSelectedDrawingForQuickBar() || getPrimarySelectedDrawingForActiveChart(null);
+      if (!live || v9DrawingTypeToPanelGroup(live.type) !== "text") return;
+      const liveText = typeof live.text === "string" ? live.text : "";
+      const stateText = txtStyleLiveRef.current?.content ?? "";
+      if (liveText !== stateText && liveText.trim() !== "") {
+        suppressTxtForwardBridge.current = true;
+        setTxtStyle((s) => ({ ...s, content: liveText }));
+        requestAnimationFrame(() => {
+          suppressTxtForwardBridge.current = false;
+        });
+      }
+    } catch (_) {}
+  }, [tlBarSelected, tlBarDrawingGroup, tlBarSelectedType, txtLocked]);
+
   useEffect(() => {
     if (!tlSaveAsMode) return;
     v9FocusInputWhenShown(tlNewTplNameInputRef);
@@ -26377,12 +26404,19 @@ const TalariaV8bLive = () => {
           );
         };
         const txtQuickIcon = txtSubTool.icon;
+        const txtQuickBarHasContent = v9TxtIconHasContentTab(txtQuickIcon);
+        let txtQuickBarLiveDrawing = null;
+        try {
+          txtQuickBarLiveDrawing = v9GetLiveSelectedDrawingForQuickBar() || getPrimarySelectedDrawingForActiveChart(null);
+        } catch (_) {}
+        const txtQuickBarContent = v9ResolveTxtQuickBarContent(txtStyle.content, txtQuickBarLiveDrawing);
+        const txtQuickBarContentRtl = v9DrawingTextHasArabicScript(txtQuickBarContent);
         return v9PortalFloatingUi(
         <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()} onMouseLeave={hideTip}
           style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:11000,
                   background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                   boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
-                  display:"flex",flexDirection:"row",alignItems:"stretch",maxWidth:"min(96vw, 720px)",
+                  display:"flex",flexDirection:"row",alignItems:"stretch",maxWidth:"min(96vw, 920px)",
                   overflowX:"auto",overflowY:"visible",
                   userSelect:"none",animation:"tlrPopIn 0.15s ease",fontFamily:F}}>
           <div style={{width:2,alignSelf:"stretch",background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,flexShrink:0,marginLeft:3}}/>
@@ -26422,6 +26456,54 @@ const TalariaV8bLive = () => {
               </svg>}
             </TxBtn>
           </div>}
+          {/* Inline text — visible when locked (chart inline edit disabled); matches legacy toolbar textarea */}
+          {txtQuickBarHasContent && (
+            <div
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                flex: "1 1 120px",
+                minWidth: 96,
+                maxWidth: 240,
+                padding: "0 4px",
+                height: 32,
+                flexShrink: 1,
+              }}>
+              <input
+                type="text"
+                value={txtQuickBarContent}
+                onChange={(e) => applyTxtContent(e.target.value)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                placeholder="Text"
+                aria-label="Text content"
+                style={{
+                  width: "100%",
+                  height: 26,
+                  background: "rgba(140,160,255,0.05)",
+                  border: "1px solid rgba(140,160,255,0.22)",
+                  borderRadius: 2,
+                  color: c.tx,
+                  fontSize: 12,
+                  fontFamily: F,
+                  fontStyle: "normal",
+                  fontWeight: 400,
+                  padding: "0 8px",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  direction: txtQuickBarContentRtl ? "rtl" : "ltr",
+                  unicodeBidi: txtQuickBarContentRtl ? "plaintext" : "normal",
+                  userSelect: "text",
+                  WebkitUserSelect: "text",
+                  cursor: "text",
+                }}
+              />
+            </div>
+          )}
           {/* Border + background swatches for note / priceNote */}
           {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBorderColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.borderColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBorderColor");}}}>
