@@ -74,6 +74,7 @@ class GannBoxTool extends BaseDrawing {
 
         const strokeColor = this.style.stroke || '#787b86';
         const borderWidth = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
+        const borderDasharray = this.style.strokeDasharray || this.style.dashArray || '';
         const levelsWidth = Math.max(0.5, (parseInt(this.style.levelsLineWidth) || (this.style.strokeWidth || 1)) * scaleFactor);
         const levelsDasharray = this.style.levelsLineDasharray || '';
         const labelSize = Math.max(9, 12 * scaleFactor);
@@ -183,6 +184,7 @@ class GannBoxTool extends BaseDrawing {
             .attr('fill', 'none')
             .attr('stroke', strokeColor)
             .attr('stroke-width', borderWidth)
+            .attr('stroke-dasharray', borderDasharray || null)
             .attr('opacity', this.style.opacity || 1)
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');

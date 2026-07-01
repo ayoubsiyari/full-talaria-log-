@@ -2216,8 +2216,12 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
       return true;
     }
   }
-  if (d.type === "gann-box" && (pickerKey.startsWith("gannGrid-") || pickerKey.startsWith("gannPrice-") || pickerKey.startsWith("gannTime-"))) {
+  if (d.type === "gann-box" && (pickerKey === "gannBorder" || pickerKey.startsWith("gannGrid-") || pickerKey.startsWith("gannPrice-") || pickerKey.startsWith("gannTime-"))) {
     v9ApplyGannBoxFromTlStyle(d, tlStyle);
+    return true;
+  }
+  if (d.type === "gann-square-fixed" && pickerKey === "gannBorder") {
+    v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
     return true;
   }
   if (d.type === "gann-square-fixed" && pickerKey.startsWith("gannGrid-")) {
@@ -2784,6 +2788,21 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         tlStyle.gannFanLevels,
         tlStyle.lineColor || "#4caf50",
       );
+    }
+    if (legacyTool === "gann-box" || legacyTool === "gann-square-fixed") {
+      const borderColor = tlStyle.gannBorderColor || tlStyle.lineColor || "#787b86";
+      const borderDashStr =
+        tlStyle.gannBorderType === "bold"
+          ? ""
+          : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannBorderType] !== undefined
+            ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannBorderType]
+            : "");
+      const borderW = parseInt(String(tlStyle.gannBorderWidth ?? tlStyle.lineWidth), 10) || 1;
+      patch.stroke = borderColor;
+      patch.color = borderColor;
+      patch.strokeWidth = borderW;
+      patch.strokeDasharray = borderDashStr;
+      patch.dashArray = borderDashStr;
     }
   }
   if (legacyTool === "brush" || legacyTool === "highlighter") {
@@ -6244,6 +6263,15 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
           ? +fall.gannBgOpacity
           : V9_GANN_DEFAULT_BG_OPACITY;
     }
+    if (!out.gannBorderColor) {
+      out.gannBorderColor = fall.gannBorderColor || fall.lineColor || "#787B86";
+    }
+    if (!out.gannBorderType) {
+      out.gannBorderType = fall.gannBorderType || "solid";
+    }
+    if (out.gannBorderWidth == null || out.gannBorderWidth === "") {
+      out.gannBorderWidth = fall.gannBorderWidth != null ? fall.gannBorderWidth : (fall.lineWidth || "1");
+    }
   }
   if (legacyType === "trend-fib-time") {
     if (!out.fibTimeTrendType) out.fibTimeTrendType = fall.fibTimeTrendType || "dashed";
@@ -7592,6 +7620,9 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("gannTimeLevels");
     line("gannLineType");
     line("gannLineWidth");
+    line("gannBorderColor");
+    line("gannBorderType");
+    line("gannBorderWidth");
     line("gannBackground");
     line("gannBgOpacity");
     line("fibLevelsOn");
@@ -7605,6 +7636,9 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("gannArcLevels");
     line("gannLineType");
     line("gannLineWidth");
+    line("gannBorderColor");
+    line("gannBorderType");
+    line("gannBorderWidth");
     line("gannBackground");
     line("gannBgOpacity");
     line("fibLevelsOn");
@@ -7910,6 +7944,9 @@ function v9GannDefaultTlStyleFields(legacyType) {
   return {
     gannLineType: "solid",
     gannLineWidth: "2",
+    gannBorderColor: "#787B86",
+    gannBorderType: "solid",
+    gannBorderWidth: "1",
     gannBackground: false,
     gannBgOpacity: V9_GANN_DEFAULT_BG_OPACITY,
     fibLevelsOn: true,
@@ -8016,10 +8053,30 @@ function v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle) {
   st.levelsEnabled = tlStyle.fibLevelsOn !== false;
 }
 
+/** Outer box border (color / dash / width) — separate from Input-tab level grid style. */
+function v9ApplyGannBorderFromTlStyle(d, tlStyle) {
+  if (!d || !d.style) return;
+  const st = d.style;
+  const color = tlStyle.gannBorderColor || tlStyle.lineColor || "#787b86";
+  const dashStr =
+    tlStyle.gannBorderType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannBorderType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannBorderType]
+        : "");
+  const w = parseInt(String(tlStyle.gannBorderWidth ?? tlStyle.lineWidth), 10) || 1;
+  st.stroke = color;
+  st.color = color;
+  st.strokeWidth = w;
+  st.strokeDasharray = dashStr;
+  st.dashArray = dashStr;
+}
+
 function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
   if (!d || d.type !== "gann-box" || !d.style) return;
   tlStyle = v9TlStyleWithEnsuredLevels(tlStyle, d.type);
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  v9ApplyGannBorderFromTlStyle(d, tlStyle);
   if (Array.isArray(tlStyle.gannPriceLevels) && tlStyle.gannPriceLevels.length) {
     d.style.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
   }
@@ -8031,6 +8088,7 @@ function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
 function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
   if (!d || d.type !== "gann-square-fixed" || !d.style) return;
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  v9ApplyGannBorderFromTlStyle(d, tlStyle);
   if (Array.isArray(tlStyle.gannGridLevels)) {
     d.style.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
   }
@@ -8707,11 +8765,15 @@ function v9TlStylePatchFromDrawing(d) {
             s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
               ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
               : 0.12;
+          const borderDashRaw = String(s.strokeDasharray ?? s.dashArray ?? "").replace(/\s+/g, "");
           return {
             gannPriceLevels: price,
             gannTimeLevels: time,
             gannLineType: v9GannDashArrayToLineType(dashRaw),
             gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            gannBorderColor: s.stroke || s.color || stroke,
+            gannBorderType: v9GannDashArrayToLineType(borderDashRaw),
+            gannBorderWidth: String(parseInt(s.strokeWidth, 10) || 1),
             gannBackground: !!s.showZones,
             gannBgOpacity: bgOp,
             lineColor: s.stroke || s.color || stroke,
@@ -8730,12 +8792,16 @@ function v9TlStylePatchFromDrawing(d) {
             s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
               ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
               : 0.12;
+          const borderDashRaw = String(s.strokeDasharray ?? s.dashArray ?? "").replace(/\s+/g, "");
           return {
             gannGridLevels: grid,
             gannFanLevels: fan,
             gannArcLevels: arc,
             gannLineType: v9GannDashArrayToLineType(dashRaw),
             gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            gannBorderColor: s.stroke || stroke,
+            gannBorderType: v9GannDashArrayToLineType(borderDashRaw),
+            gannBorderWidth: String(parseInt(s.strokeWidth, 10) || 1),
             gannBackground: s.showZones !== false,
             gannBgOpacity: bgOp,
             lineColor: s.stroke || stroke,
@@ -12952,6 +13018,7 @@ const TalariaV8bLive = () => {
     fibLineType: "solid", fibLineWidth: "2",
     fibLevels: v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-retracement"),
     gannLineType: "solid", gannLineWidth: "2",
+    gannBorderColor: "#787B86", gannBorderType: "solid", gannBorderWidth: "1",
     gannBackground: false, gannBgOpacity: V9_GANN_DEFAULT_BG_OPACITY,
     gannPriceLevels: [
       { on: true, value: "0", color: "#787B86" },
@@ -17742,6 +17809,7 @@ const TalariaV8bLive = () => {
       const trendOnly = tlSubTool && (tlSubTool.icon === "fibArcs" || tlSubTool.icon === "fibWedge" || tlSubTool.icon === "fibTime");
       cpApplyTlStyle(s => trendOnly ? ({ ...s, fibTrendLineColor: colorVal }) : ({ ...s, lineColor: colorVal }), { colorOnly: true });
     }
+    else if(targetKey === "gannBorder") cpApplyTlStyle(s=>({...s, gannBorderColor: colorVal}), { colorOnly: true });
     else if(targetKey?.startsWith("gannPrice-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannPriceLevels: s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey?.startsWith("gannTime-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannTimeLevels: s.gannTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey === "fibGridColor") cpApplyTlStyle(s=>({...s, fibGridColor: colorVal}), { colorOnly: true });
@@ -19799,7 +19867,8 @@ const TalariaV8bLive = () => {
             if (drawing.type === "gann-box" || drawing.type === "gann-square-fixed" || drawing.type === "gann-fan") {
               [
                 "gannPriceLevels", "gannTimeLevels", "gannGridLevels", "gannFanLevels", "gannArcLevels",
-                "gannLineType", "gannLineWidth", "gannBackground", "gannBgOpacity",
+                "gannLineType", "gannLineWidth", "gannBorderColor", "gannBorderType", "gannBorderWidth",
+                "gannBackground", "gannBgOpacity",
               ].forEach((k) => {
                 if (p[k] !== undefined) out[k] = p[k];
               });
@@ -21231,6 +21300,9 @@ const TalariaV8bLive = () => {
     tlStyle.gannArcLevels,
     tlStyle.gannLineType,
     tlStyle.gannLineWidth,
+    tlStyle.gannBorderColor,
+    tlStyle.gannBorderType,
+    tlStyle.gannBorderWidth,
     tlStyle.gannBackground,
     tlStyle.gannBgOpacity,
     tlStyle.fibSpiralCCW,
@@ -21750,6 +21822,16 @@ const TalariaV8bLive = () => {
       suppressForwardBridge.current = false;
     });
   }, []);
+
+  /** Gann Style-tab Border STYLE — first-click chart sync. */
+  const applyTlGannBorderType = useCallback((gannBorderType) => {
+    applyTlGannStylePatch((s) => ({ ...s, gannBorderType }));
+  }, [applyTlGannStylePatch]);
+
+  /** Gann Style-tab Border THICKNESS — first-click chart sync. */
+  const applyTlGannBorderWidth = useCallback((gannBorderWidth) => {
+    applyTlGannStylePatch((s) => ({ ...s, gannBorderWidth }));
+  }, [applyTlGannStylePatch]);
 
   const toggleTlGannBackground = useCallback(() => {
     applyTlGannStylePatch((s) => ({ ...s, gannBackground: !s.gannBackground }));
@@ -24642,7 +24724,78 @@ const TalariaV8bLive = () => {
                   {isGannTool && (()=>{
                     const gannBgOp = v9GannBgOpacityFromTlStyle(tlStyle);
                     const pct = gannBgOp * 100;
+                    const gannBorderDa = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
+                    const showGannBorderRow = tlSubTool.icon === "gannBox" || tlSubTool.icon === "gannSquare";
+                    const gannBorderColor = tlStyle.gannBorderColor || tlStyle.lineColor || "#787B86";
+                    const gannBorderType = tlStyle.gannBorderType || "solid";
+                    const gannBorderWidth = tlStyle.gannBorderWidth || tlStyle.lineWidth || "1";
                     return <>
+                      {showGannBorderRow && (
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, alignItems:"end", padding:"6px 0 4px" }}>
+                          <span style={{ fontSize:12, color:c.ts, padding:"4px 0" }}>Border</span>
+                          <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
+                            {colorSwatch("gannBorder", gannBorderColor)}
+                          </div>
+                          <div style={{ position:"relative" }}>
+                            <div {...tlStyleDropTrigger("gannBdType")}
+                              onMouseEnter={()=>setHov("tl-btn-gannBdType")} onMouseLeave={()=>setHov(null)}
+                              style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
+                                       background:tlStyleDrop==="gannBdType"?"rgba(74,106,255,0.08)":hov==="tl-btn-gannBdType"?c.hv:"transparent",
+                                       transition:"background 0.12s" }}>
+                              <svg width={34} height={10} viewBox="0 0 34 10">
+                                <line x1={0} y1={5} x2={34} y2={5} stroke={tlStyleDrop==="gannBdType"?c.acL:c.ts}
+                                  strokeWidth={gannBorderType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={gannBorderDa(gannBorderType)}/>
+                              </svg>
+                              <I n="chevDown" s={7} cl={tlStyleDrop==="gannBdType"?c.acL:c.ts}/>
+                            </div>
+                            {tlStyleDrop==="gannBdType" && dropShell("gannBdType", 56, false,
+                              [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
+                                const isA=gannBorderType===v; const isH=hov===`gannbdt-${v}`;
+                                return (
+                                  <div key={v} {...tlStyleDropPick(() => applyTlGannBorderType(v))}
+                                    onMouseEnter={()=>setHov(`gannbdt-${v}`)} onMouseLeave={()=>setHov(null)}
+                                    style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                    {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                                    <svg width={28} height={10} viewBox="0 0 28 10">
+                                      <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                    </svg>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                          <div style={{ position:"relative" }}>
+                            <div {...tlStyleDropTrigger("gannBdWidth")}
+                              onMouseEnter={()=>setHov("tl-btn-gannBdWidth")} onMouseLeave={()=>setHov(null)}
+                              style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
+                                       background:tlStyleDrop==="gannBdWidth"?"rgba(74,106,255,0.08)":hov==="tl-btn-gannBdWidth"?c.hv:"transparent",
+                                       transition:"background 0.12s" }}>
+                              <svg width={22} height={Math.max(8,+gannBorderWidth+4)} viewBox={`0 0 22 ${Math.max(8,+gannBorderWidth+4)}`}>
+                                <line x1={0} y1={Math.max(8,+gannBorderWidth+4)/2} x2={22} y2={Math.max(8,+gannBorderWidth+4)/2}
+                                  stroke={tlStyleDrop==="gannBdWidth"?c.acL:c.ts} strokeWidth={+gannBorderWidth} strokeLinecap="round"/>
+                              </svg>
+                              <I n="chevDown" s={7} cl={tlStyleDrop==="gannBdWidth"?c.acL:c.ts}/>
+                            </div>
+                            {tlStyleDrop==="gannBdWidth" && dropShell("gannBdWidth", 56, false,
+                              ["1","2","3","4"].map(w=>{
+                                const isA=gannBorderWidth===w; const isH=hov===`gannbdw-${w}`;
+                                return (
+                                  <div key={w} {...tlStyleDropPick(() => applyTlGannBorderWidth(w))}
+                                    onMouseEnter={()=>setHov(`gannbdw-${w}`)} onMouseLeave={()=>setHov(null)}
+                                    style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                    {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                                    <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
+                                      <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                    </svg>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
                       <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
                         <div style={{ width:130 }}>{TlChk(!!tlStyle.gannBackground,"tlchk-gannBg","Background",toggleTlGannBackground,{ immediate:true })}</div>
                         <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.gannBackground?1:0.38, pointerEvents:tlStyle.gannBackground?"auto":"none", transition:"opacity 0.15s" }}>

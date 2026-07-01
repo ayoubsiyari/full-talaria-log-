@@ -3608,6 +3608,7 @@ class GannSquareFixedTool extends BaseDrawing {
         };
 
         const scaledStroke = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
+        const borderDasharray = this.style.strokeDasharray || this.style.dashArray || '';
 
         // Hitbox (makes selecting the drawing much easier than targeting a thin stroke)
         this.group.append('rect')
@@ -3650,6 +3651,7 @@ class GannSquareFixedTool extends BaseDrawing {
             .attr('height', size)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', scaledStroke)
+            .attr('stroke-dasharray', borderDasharray || null)
             .attr('fill', 'none')
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
