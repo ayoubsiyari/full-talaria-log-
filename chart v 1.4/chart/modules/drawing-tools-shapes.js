@@ -1913,6 +1913,7 @@ class ArrowTool extends BaseDrawing {
                     y: this._splitInfo.textY + offY,
                     anchor: 'middle',
                     yAnchor: 'middle',
+                    skipRtlAnchorMirror: true,
                     fill: this.style.textColor || this.style.stroke,
                     fontSize: this.style.fontSize || 14,
                     fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
@@ -1947,11 +1948,11 @@ class ArrowTool extends BaseDrawing {
         switch (textHAlign) {
             case 'left':
                 t = sh_mP1IsLeft ? 0.05 : 0.95;
-                anchor = resolveLineEndpointSvgAnchor('left', label);
+                anchor = 'start';
                 break;
             case 'right':
                 t = sh_mP1IsLeft ? 0.95 : 0.05;
-                anchor = resolveLineEndpointSvgAnchor('right', label);
+                anchor = 'end';
                 break;
         }
 
@@ -1965,6 +1966,7 @@ class ArrowTool extends BaseDrawing {
             x: baseX + (this.style.textOffsetX || 0),
             y: baseY + offY,
             anchor,
+            skipRtlAnchorMirror: true,
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || 'Roboto, sans-serif',

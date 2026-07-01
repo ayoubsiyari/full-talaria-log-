@@ -21,7 +21,8 @@ function appendTextLabel(group, text, config = {}) {
         fontStyle = 'normal',
         baseline = 'middle',
         yAnchor,
-        rotation = 0
+        rotation = 0,
+        skipRtlAnchorMirror = false
     } = config;
 
     const lines = text.split('\n');
@@ -54,7 +55,7 @@ function appendTextLabel(group, text, config = {}) {
 
     // Mirror anchor for RTL so label sits on the same side of the anchor point as Latin.
     let svgAnchor = anchor;
-    if (isRtl && !isRotated) {
+    if (isRtl && !isRotated && !skipRtlAnchorMirror) {
         if (anchor === 'start') svgAnchor = 'end';
         else if (anchor === 'end') svgAnchor = 'start';
     }
