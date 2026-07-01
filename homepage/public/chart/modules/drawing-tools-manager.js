@@ -583,7 +583,7 @@ class DrawingToolsManager {
             || type === 'date-price-range'
             || type === 'gann-box' || type === 'gann-square-fixed' || type === 'gann-fan'
             || type === 'fib-wedge'
-            || type === 'arrow';
+            || type === 'arrow' || type === 'arrow-marker' || type === 'arrow-mark-up' || type === 'arrow-mark-down';
     }
 
     /** True when pointer is inside a box shape fill (for locked-shape selection). */
@@ -12026,39 +12026,6 @@ class DrawingToolsManager {
         return false;
     }
 
-    _isArrowMarkDrawingType(type) {
-        return type === 'arrow-marker' || type === 'arrow-mark-up' || type === 'arrow-mark-down';
-    }
-
-    /** Arrow Marker / Mark Up / Mark Down: filled shapes — hit-test the full body, not just borders. */
-    _isPointInArrowMarkBody(drawing, mouseX, mouseY) {
-        if (!drawing?.group || !this._isArrowMarkDrawingType(drawing.type)) return false;
-
-        const point = (typeof DOMPoint !== 'undefined') ? new DOMPoint(mouseX, mouseY) : null;
-        if (point) {
-            for (const el of drawing.group.selectAll('.arrow-fill-hit, .shape-fill').nodes()) {
-                if (!el || typeof el.isPointInFill !== 'function') continue;
-                try {
-                    if (el.isPointInFill(point)) return true;
-                } catch (_) { /* ignore */ }
-            }
-        }
-
-        for (const el of drawing.group.selectAll('.arrow-marker-hitbox').nodes()) {
-            if (!el) continue;
-            const x = parseFloat(el.getAttribute('x'));
-            const y = parseFloat(el.getAttribute('y'));
-            const w = parseFloat(el.getAttribute('width'));
-            const h = parseFloat(el.getAttribute('height'));
-            if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0
-                && mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /** Pin / signpost / flag: filled body is non-stroke — use group bbox for click + dblclick hit tests. */
     _isPointInCompactLabelDrawingBody(drawing, mouseX, mouseY) {
         if (!drawing?.group) return false;
@@ -12798,17 +12765,9 @@ class DrawingToolsManager {
                 continue;
             }
 
-            // Line arrow: stroke-only hit (fill interior pans the chart).
-            if (!hitsById.has(drawing.id) && drawing.type === 'arrow') {
+            // Arrow tools: stroke-only hit (fill interior pans the chart).
+            if (!hitsById.has(drawing.id) && (drawing.type === 'arrow' || drawing.type === 'arrow-marker' || drawing.type === 'arrow-mark-up' || drawing.type === 'arrow-mark-down')) {
                 if (this._isPointOnDrawingVisibleStroke(drawing, mouseX, mouseY)) {
-                    hitsById.set(drawing.id, { drawing, distance: 0, z });
-                }
-                continue;
-            }
-
-            // Arrow Marker / Mark Up / Mark Down: full filled body is interactive.
-            if (!hitsById.has(drawing.id) && this._isArrowMarkDrawingType(drawing.type)) {
-                if (this._isPointInArrowMarkBody(drawing, mouseX, mouseY)) {
                     hitsById.set(drawing.id, { drawing, distance: 0, z });
                 }
                 continue;
