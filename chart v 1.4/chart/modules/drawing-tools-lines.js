@@ -55,7 +55,7 @@ function appendTextLabel(group, text, config = {}) {
 
     // Mirror anchor for RTL so label sits on the same side of the anchor point as Latin.
     let svgAnchor = anchor;
-    if (isRtl && !isRotated && !skipRtlAnchorMirror) {
+    if (isRtl && !skipRtlAnchorMirror) {
         if (anchor === 'start') svgAnchor = 'end';
         else if (anchor === 'end') svgAnchor = 'start';
     }

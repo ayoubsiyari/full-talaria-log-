@@ -2467,6 +2467,124 @@ class OrderManager {
         }
     }
 
+    /** Planned risk distance in price units (frozen initial SL vs array base). */
+    _plannedRiskPrice(position) {
+        if (!position) return null;
+        const arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
+        const initialSL = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
+        if (!Number.isFinite(arrayBase) || !Number.isFinite(initialSL)) return null;
+        const dist = Math.abs(arrayBase - initialSL);
+        return dist > 0 ? dist : null;
+    }
+
+    /** Update in-trade price extremes (full open duration — not limited to post-exit hours window). */
+    _updatePositionPriceExtremes(position, high, low, candleTime) {
+        if (!position || !Number.isFinite(high) || !Number.isFinite(low)) return;
+        const t = candleTime != null ? candleTime : Date.now();
+        const entry = Number.parseFloat(position.openPrice);
+        if (!Number.isFinite(entry)) return;
+        if (position.highestPrice == null) position.highestPrice = entry;
+        if (position.lowestPrice == null) position.lowestPrice = entry;
+        if (position.type === 'BUY') {
+            if (high > position.highestPrice) {
+                position.highestPrice = high;
+                position.mfe = high;
+                position.mfeTime = t;
+            }
+            if (low < position.lowestPrice) {
+                position.lowestPrice = low;
+                position.mae = low;
+                position.maeTime = t;
+            }
+        } else {
+            if (low < position.lowestPrice) {
+                position.lowestPrice = low;
+                position.mfe = low;
+                position.mfeTime = t;
+            }
+            if (high > position.highestPrice) {
+                position.highestPrice = high;
+                position.mae = high;
+                position.maeTime = t;
+            }
+        }
+    }
+
+    /** Fallback MFE/MAE in R from tracked price extremes when bar arrays are incomplete. */
+    _deriveExcursionRFromPriceExtremes(position) {
+        const risk = this._plannedRiskPrice(position);
+        if (!risk) return { mfe_r: 0, mae_r: 0 };
+        const arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
+        const isBuy = position.type === 'BUY';
+        const mfePrice = Number.parseFloat(position.mfe ?? (isBuy ? position.highestPrice : position.lowestPrice));
+        const maePrice = Number.parseFloat(position.mae ?? (isBuy ? position.lowestPrice : position.highestPrice));
+        let mfeMag = 0;
+        let maeMag = 0;
+        if (isBuy) {
+            if (Number.isFinite(mfePrice)) mfeMag = Math.max(0, (mfePrice - arrayBase) / risk);
+            if (Number.isFinite(maePrice)) maeMag = Math.max(0, (arrayBase - maePrice) / risk);
+        } else {
+            if (Number.isFinite(mfePrice)) mfeMag = Math.max(0, (arrayBase - mfePrice) / risk);
+            if (Number.isFinite(maePrice)) maeMag = Math.max(0, (maePrice - arrayBase) / risk);
+        }
+        return { mfe_r: mfeMag, mae_r: maeMag > 0 ? -maeMag : 0 };
+    }
+
+    /**
+     * Authoritative excursion scalars for journal/export.
+     * Source of truth: bar_high_r / bar_low_r arrays; price extremes fill gaps.
+     * mfe_r ≥ 0 (favorable); mae_r ≤ 0 (adverse magnitude, negative sign).
+     */
+    _finalizeExcursionScalars(target, position) {
+        if (!target || !position) return target;
+        const copyArr = (a) => (Array.isArray(a) ? a.slice() : null);
+        if (!target.bar_high_r?.length) {
+            const bh = copyArr(position.bar_high_r);
+            if (bh?.length) target.bar_high_r = bh;
+        }
+        if (!target.bar_low_r?.length) {
+            const bl = copyArr(position.bar_low_r);
+            if (bl?.length) target.bar_low_r = bl;
+        }
+        if (!target.bar_close_r?.length) {
+            const bc = copyArr(position.bar_close_r);
+            if (bc?.length) target.bar_close_r = bc;
+        }
+
+        const maxBar = (arr) => {
+            if (!Array.isArray(arr) || !arr.length) return 0;
+            return Math.max(...arr.map((v) => Number.parseFloat(v)).filter(Number.isFinite));
+        };
+        const mfeFromBars = maxBar(target.bar_high_r);
+        const maeMagFromBars = maxBar(target.bar_low_r);
+        const derived = this._deriveExcursionRFromPriceExtremes(position);
+        const mfe_r = Math.max(mfeFromBars, derived.mfe_r);
+        const maeMag = Math.max(maeMagFromBars, Math.abs(derived.mae_r));
+        target.mfe_r = parseFloat(mfe_r.toFixed(4));
+        target.mae_r = parseFloat((maeMag > 0 ? -maeMag : 0).toFixed(4));
+
+        const mfePrice = position.mfe ?? (position.type === 'BUY' ? position.highestPrice : position.lowestPrice);
+        const maePrice = position.mae ?? (position.type === 'BUY' ? position.lowestPrice : position.highestPrice);
+        if (mfePrice != null && Number.isFinite(Number(mfePrice))) {
+            target.mfe_points = parseFloat(Number(mfePrice).toFixed(8));
+        }
+        if (maePrice != null && Number.isFinite(Number(maePrice))) {
+            target.mae_points = parseFloat(Number(maePrice).toFixed(8));
+        }
+        if (position.highestPrice != null) target.highestPrice = position.highestPrice;
+        if (position.lowestPrice != null) target.lowestPrice = position.lowestPrice;
+        if (position.mfe != null) target.mfe = position.mfe;
+        if (position.mae != null) target.mae = position.mae;
+        return target;
+    }
+
+    _signedRMultiple(pnl, riskBasis) {
+        const p = Number.parseFloat(pnl);
+        const r = Number.parseFloat(riskBasis);
+        if (!Number.isFinite(p) || !Number.isFinite(r) || r <= 0) return null;
+        return parseFloat((p / r).toFixed(2));
+    }
+
     /**
      * Append an SL/TP change to the position's audit log.
      * @param {object} position - open position object
@@ -3963,12 +4081,7 @@ class OrderManager {
             if (pel) entry.post_exit_bar_low_r = pel;
         }
 
-        if ((entry.mfe_r == null || entry.mfe_r === 0) && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
-            entry.mfe_r = Math.max(...position.bar_high_r);
-        }
-        if ((entry.mae_r == null || entry.mae_r === 0) && Array.isArray(position.bar_low_r) && position.bar_low_r.length > 0) {
-            entry.mae_r = Math.max(...position.bar_low_r);
-        }
+        this._finalizeExcursionScalars(entry, position);
 
         const hasFlatSpread = entry.spread_pips_at_entry != null && entry.spread_pips_at_entry !== '';
         const hasFlatComm = entry.commission_at_entry != null && entry.commission_at_entry !== '';
@@ -4007,8 +4120,12 @@ class OrderManager {
             if (entry.originalRiskAmount == null) {
                 entry.originalRiskAmount = position.originalRiskAmount ?? position.riskAmount ?? riskBasis;
             }
-            if (entry.rMultiple == null || entry.rMultiple === '') {
-                entry.rMultiple = (pnlNum / riskBasis).toFixed(2);
+            const signedR = this._signedRMultiple(pnlNum, riskBasis);
+            if (signedR != null) {
+                entry.rMultiple = signedR.toFixed(2);
+            }
+            if (entry.rewardToRiskRatio == null || entry.rewardToRiskRatio === '') {
+                entry.rewardToRiskRatio = Math.abs(signedR ?? 0).toFixed(2);
             }
         }
 
@@ -4105,7 +4222,7 @@ class OrderManager {
             const pnl = Number.parseFloat(trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? 0) || 0;
             const rr = Number.parseFloat(trade.rMultiple ?? 0) || 0;
             const mfe = Number.parseFloat(trade.mfe_r ?? 0) || 0;
-            const mae = Number.parseFloat(trade.mae_r ?? 0) || 0;
+            const mae = Math.abs(Number.parseFloat(trade.mae_r ?? 0) || 0);
             if (pnl > 0) bucket.win_count += 1;
             bucket.net_pnl += pnl;
             bucket.net_rr += rr;
@@ -25971,8 +26088,7 @@ class OrderManager {
                 this.tradeJournal[journalIndex].post_exit_bar_close_r = Array.isArray(position.post_exit_bar_close_r) ? position.post_exit_bar_close_r.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_bar_high_r = Array.isArray(position.post_exit_bar_high_r) ? position.post_exit_bar_high_r.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
-                this.tradeJournal[journalIndex].mfe_r = Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0 ? Math.max(...position.bar_high_r) : (this.tradeJournal[journalIndex].mfe_r ?? 0);
-                this.tradeJournal[journalIndex].mae_r = Array.isArray(position.bar_low_r) && position.bar_low_r.length > 0 ? Math.max(...position.bar_low_r) : (this.tradeJournal[journalIndex].mae_r ?? 0);
+                this._finalizeExcursionScalars(this.tradeJournal[journalIndex], position);
                 // M4-2: post-exit checkpoints
                 this.tradeJournal[journalIndex].post_checkpoints = Array.isArray(position.post_checkpoints) ? position.post_checkpoints.slice() : [];
                 this.tradeJournal[journalIndex].post_exit_anchor_time = position.post_exit_anchor_time ?? null;
@@ -26525,6 +26641,13 @@ class OrderManager {
                 if (bgBar) {
                     const bh = Number.parseFloat(bgBar.h);
                     const bl = Number.parseFloat(bgBar.l);
+                    const bgTime = Number(bgBar.t);
+                    if (Number.isFinite(bgTime) && bgTime !== position.openTime) {
+                        this._appendExcursionSnapshot(position, bgBar, false);
+                    }
+                    if (Number.isFinite(bh) && Number.isFinite(bl)) {
+                        this._updatePositionPriceExtremes(position, bh, bl, bgTime);
+                    }
                     if (Number.isFinite(bh) && Number.isFinite(bl) && !this._shouldDeferBackgroundSLTPTouches(bgBar)) {
                         this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose, queuedSplitSlGroupIds, queuedSplitTpKeys);
                     }
@@ -26560,19 +26683,8 @@ class OrderManager {
                 position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
                 position._miLastMarkPrice = markPx;
                 
-                // Update MFE/MAE for BUY positions (only within tracking window)
-                if (currentCandle.t <= position.mfeMaeTrackingEndTime) {
-                    if (high > position.highestPrice) {
-                        position.highestPrice = high;
-                        position.mfe = high; // MFE = highest price reached (best for BUY)
-                        position.mfeTime = currentCandle.t; // Track when MFE occurred
-                    }
-                    if (low < position.lowestPrice) {
-                        position.lowestPrice = low;
-                        position.mae = low; // MAE = lowest price reached (worst for BUY)
-                        position.maeTime = currentCandle.t; // Track when MAE occurred
-                    }
-                }
+                // Update MFE/MAE price extremes for full in-trade duration
+                this._updatePositionPriceExtremes(position, high, low, currentCandle.t);
                 
                 console.log(`   📊 BUY #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
                 
@@ -26889,19 +27001,8 @@ class OrderManager {
                 position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
                 position._miLastMarkPrice = markPx;
                 
-                // Update MFE/MAE for SELL positions (only within tracking window)
-                if (currentCandle.t <= position.mfeMaeTrackingEndTime) {
-                    if (low < position.lowestPrice) {
-                        position.lowestPrice = low;
-                        position.mfe = low; // MFE = lowest price reached (best for SELL)
-                        position.mfeTime = currentCandle.t; // Track when MFE occurred
-                    }
-                    if (high > position.highestPrice) {
-                        position.highestPrice = high;
-                        position.mae = high; // MAE = highest price reached (worst for SELL)
-                        position.maeTime = currentCandle.t; // Track when MAE occurred
-                    }
-                }
+                // Update MFE/MAE price extremes for full in-trade duration
+                this._updatePositionPriceExtremes(position, high, low, currentCandle.t);
                 
                 console.log(`   📊 SELL #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
                 
