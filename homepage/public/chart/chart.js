@@ -20372,7 +20372,10 @@ class Chart {
 
             // Horizontal zoom-out can reveal OHLC outside the Y range frozen on the first
             // wheel tick — refit the manual base so the chart does not go blank mid-zoom.
-            if (Number.isFinite(minPrice) && Number.isFinite(maxPrice)
+            // Skip during time-axis drag: visible bar window changes but price scale must stay put
+            // (otherwise the price line flickers in/out of the plot).
+            if (!this._isTimeAxisZoomDragging()
+                && Number.isFinite(minPrice) && Number.isFinite(maxPrice)
                 && (domainMax < minPrice || domainMin > maxPrice)) {
                 const visLo = minPrice - padding;
                 const visHi = maxPrice + padding;
@@ -20436,6 +20439,11 @@ class Chart {
             const priceDy = this.priceOffset - snapPo;
             domainMin = snapMin + priceDy;
             domainMax = snapMax + priceDy;
+        } else if (this._isTimeAxisZoomDragging()
+            && this._timeAxisSnapYDomain
+            && this._timeAxisSnapYDomain.length === 2) {
+            domainMin = this._timeAxisSnapYDomain[0];
+            domainMax = this._timeAxisSnapYDomain[1];
         }
 
         // X-axis follows the viewport (not snapped bar window) so time grid scrolls in empty gaps.
@@ -20925,6 +20933,7 @@ class Chart {
     _finishAxisZoomInteraction() {
         this._cancelAxisZoomRender();
         this._panelSnapDomains = null;
+        this._timeAxisSnapYDomain = null;
         if (this.drawingManager && typeof this.drawingManager.redrawAll === 'function') {
             this.drawingManager.redrawAll({ forceFull: true });
         }
@@ -22708,6 +22717,33 @@ class Chart {
         return best;
     }
 
+    /** Drop ticks that share the same screen column — sort by x so labels stay chronological left-to-right. */
+    _thinTimeTicksByPixelSpacing(ticks, minSpacingPx = 50) {
+        if (!Array.isArray(ticks) || ticks.length === 0) return [];
+        const minGap = Math.max(1, minSpacingPx * 0.65);
+        const withX = [];
+        for (let i = 0; i < ticks.length; i++) {
+            const t = ticks[i];
+            if (!t || !Number.isFinite(t.idx)) continue;
+            const x = typeof this.dataIndexToPixel === 'function'
+                ? this.dataIndexToPixel(t.idx)
+                : t.x;
+            if (!Number.isFinite(x)) continue;
+            withX.push({ idx: t.idx, x, label: t.label, isBoundary: !!t.isBoundary });
+        }
+        withX.sort((a, b) => a.x - b.x);
+        const out = [];
+        let lastX = -Infinity;
+        for (let j = 0; j < withX.length; j++) {
+            const tick = withX[j];
+            if (out.length === 0 || tick.x - lastX >= minGap) {
+                out.push(tick);
+                lastX = tick.x;
+            }
+        }
+        return out;
+    }
+
     /** Extend tick list until the viewport right edge has grid/axis coverage. */
     _fillTimeTicksToViewport(ticks, labelInterval, timeframeMs) {
         const m = this.margin || { l: 60, r: 60 };
@@ -22749,16 +22785,7 @@ class Chart {
             if (rightMost >= coverRight && merged.length >= wantTicks) break;
         }
         merged.sort((a, b) => a.idx - b.idx);
-        const deduped = [];
-        let lastDedupeX = -Infinity;
-        for (let di = 0; di < merged.length; di++) {
-            const t = merged[di];
-            if (deduped.length === 0 || t.x - lastDedupeX >= minSpacingPx * 0.6) {
-                deduped.push(t);
-                lastDedupeX = t.x;
-            }
-        }
-        return deduped;
+        return this._thinTimeTicksByPixelSpacing(merged, minSpacingPx);
     }
 
     /**
@@ -23150,12 +23177,11 @@ class Chart {
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
             const gap = useUniformIntradayTicks
-                ? minSpacing * 0.65
+                ? 0
                 : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
+            if (x < viewLeft || x > viewRight) continue;
             if (gap <= 0 || x - lastX >= gap || lastX === -Infinity) {
-                if (x >= viewLeft && x <= viewRight) {
-                    ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
-                }
+                ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
                 lastX = x;
             }
         }
@@ -27676,6 +27702,12 @@ class Chart {
             } else if (mode === 'timeAxis') {
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
+                if (this.yScale) {
+                    const d = this.yScale.domain();
+                    this._timeAxisSnapYDomain = [Number(d[0]), Number(d[1])];
+                } else {
+                    this._timeAxisSnapYDomain = null;
+                }
                 this._cachedInteractionTimeTicks = this._timeTicks;
                 this._lockDragCursor('ew-resize');
                 if (this.replaySystem?.isActive) {
