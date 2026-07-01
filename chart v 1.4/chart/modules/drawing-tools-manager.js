@@ -6978,8 +6978,8 @@ class DrawingToolsManager {
             drawing.group.style('pointer-events', 'none');
             interactiveElements.style('pointer-events', 'stroke');
             drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox, .gann-fan-hitbox, .fib-wedge-hitbox')
-                .style('pointer-events', 'none')
-                .style('cursor', 'default');
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
         }
 
         if (drawing.type === 'date-price-range') {
@@ -7074,6 +7074,8 @@ class DrawingToolsManager {
                     || targetSel.classed('fib-fan-anchor');
                 const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
                 const clickedOnFibLine = onFibStroke
+                    || self._isPointOnGannToolBody(drawing, mouseX, mouseY)
+                    || self._isPointInFibWedgeBody(drawing, mouseX, mouseY)
                     || self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)
                     || drawingsAtPoint.some(d => d && d.id === drawing.id);
                 if (!clickedOnFibLine) {
@@ -7656,7 +7658,8 @@ class DrawingToolsManager {
                     // shape borders, stroked elements, or emoji/text
                     // Block drag from: filled areas and resize handles
                     const canDrag = isPositionZone || isRrBodyDrag
-                        || isFibLevelHit || isGannLevelHit || isFibTrendHit || isLineElement || isShapeBorder
+                        || isFibLevelHit || isGannLevelHit || isGannBodyHit || isFibTrendHit || isLineElement || isShapeBorder
+                        || targetSelection.classed('shape-border-hit')
                         || isTextElement || isEmojiElement || isImageElement || isTextBodyHit || hasStroke;
                     
                     return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
@@ -12780,6 +12783,11 @@ class DrawingToolsManager {
                 continue;
             }
             if ((drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan') && !hitsById.has(drawing.id)) {
+                if (this._isPointOnGannToolBody(drawing, mouseX, mouseY)
+                    && !this._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY)) {
+                    hitsById.set(drawing.id, { drawing, distance: 0, z });
+                    continue;
+                }
                 if (this._isPointOnFibLikeStroke(drawing, mouseX, mouseY)
                     && !this._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY)) {
                     hitsById.set(drawing.id, { drawing, distance: 0, z });
