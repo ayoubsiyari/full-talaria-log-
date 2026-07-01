@@ -6387,19 +6387,20 @@ function v9FibExtendFromChartStyle(s) {
 }
 
 function v9FibLegacyTypeHasLevelPosition(t) {
-  return !v9IsFibCirclesType(t) && !v9IsFibArcsType(t) && !v9IsFibWedgeType(t);
+  return !v9IsFibCirclesType(t) && !v9IsFibArcsType(t) && !v9IsFibWedgeType(t) && !v9IsFibSpiralType(t);
 }
 
 function v9FibToolIconHasLevelPosition(icon) {
-  return icon !== "fibCircles" && icon !== "fibArcs" && icon !== "fibWedge";
+  return icon !== "fibCircles" && icon !== "fibArcs" && icon !== "fibWedge" && icon !== "fibSpiral";
 }
 
-/** Style tab: hide Level position for ray/arc geometry tools (icon + chart type). */
+/** Style tab: hide Level position for tools without level labels (icon + chart type). */
 function v9FibSettingsShowLevelPosition(subToolIcon, drawingType) {
   if (
     drawingType === "fib-circles" ||
     drawingType === "fib-arcs" ||
-    drawingType === "fib-wedge"
+    drawingType === "fib-wedge" ||
+    drawingType === "fib-spiral"
   ) {
     return false;
   }
@@ -6892,7 +6893,6 @@ function v9ApplyFibSpiralFromTlStyle(d, tlStyle, widthFallback) {
     parseInt(String(tlStyle.lineWidth), 10) ||
     (typeof widthFallback === "number" ? widthFallback : parseInt(st.strokeWidth, 10)) ||
     1;
-  v9SyncFibLevelPositionToStyle(st, tlStyle);
 }
 
 function v9IsFibArcsType(t) {
@@ -24570,7 +24570,7 @@ const TalariaV8bLive = () => {
                       })()}
                     </>;
                   })()}
-                  {/* Level position — hidden for Fib Circles / Arcs / Wedge (labels follow trend ray) */}
+                  {/* Level position — hidden for Fib Circles / Arcs / Wedge / Spiral (no level labels) */}
                   {isFibTool && v9FibSettingsShowLevelPosition(tlSubTool.icon, tlActiveDrawingType) && (() => {
                     const dk = "fibLevelPosition";
                     const verticalLevels = v9FibLevelPositionUsesVerticalAxis(tlSubTool.icon);

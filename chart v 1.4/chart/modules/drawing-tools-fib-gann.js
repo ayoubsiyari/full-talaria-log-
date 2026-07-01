@@ -410,6 +410,7 @@ class FibTimeZoneTool extends BaseDrawing {
         }
 
         // Draw vertical lines at Fibonacci intervals
+        const tzLabelSlots = [];
         (this.levels || []).forEach((fibObj) => {
             const fib = typeof fibObj === 'object' ? fibObj.value : fibObj;
             const enabled = typeof fibObj === 'object' ? fibObj.enabled !== false : true;
@@ -472,18 +473,33 @@ class FibTimeZoneTool extends BaseDrawing {
                 }).style('cursor', 'move');
 
                 if (showLevelValues) {
-                    const textEl = this.group.append('text')
-                        .attr('class', 'fib-tz-label')
-                        .attr('data-fib-tz', fib)
-                        .attr('x', lp.x)
-                        .attr('y', lp.y)
-                        .attr('text-anchor', lp.anchor)
-                        .text(labelText);
-                    if (lp.dominantBaseline) textEl.attr('dominant-baseline', lp.dominantBaseline);
-                    applyFibSpanLabelTextStyle(textEl, color, tzLabelFontSize);
+                    tzLabelSlots.push({
+                        x: lp.x,
+                        y: lp.y,
+                        anchor: lp.anchor,
+                        dominantBaseline: lp.dominantBaseline,
+                        text: labelText,
+                        color,
+                        fontSize: tzLabelFontSize,
+                        fib,
+                    });
                 }
             }
         });
+
+        if (showLevelValues && tzLabelSlots.length) {
+            resolveFibVerticalLineLabelCollisions(tzLabelSlots, this.group, tzLabelSlots[0].fontSize, '700').forEach((slot) => {
+                const textEl = this.group.append('text')
+                    .attr('class', 'fib-tz-label')
+                    .attr('data-fib-tz', slot.fib)
+                    .attr('x', slot.x)
+                    .attr('y', slot.y)
+                    .attr('text-anchor', slot.anchor)
+                    .text(slot.text);
+                if (slot.dominantBaseline) textEl.attr('dominant-baseline', slot.dominantBaseline);
+                applyFibSpanLabelTextStyle(textEl, slot.color, slot.fontSize);
+            });
+        }
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
@@ -867,6 +883,10 @@ class TrendFibTimeTool extends BaseDrawing {
         ];
     }
 
+    patchPanZoomGeometry(scales) {
+        return BaseDrawing.patchTrendFibTime(this, scales);
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -996,6 +1016,7 @@ class TrendFibTimeTool extends BaseDrawing {
             }
 
             // Vertical lines at each level
+            const tftLabelSlots = [];
             enabledLevels.forEach(lvl => {
                 const level = lvl.value;
                 const x = xAt(level);
@@ -1010,7 +1031,8 @@ class TrendFibTimeTool extends BaseDrawing {
                 const hitWidth = Math.max(10, scaledWidth * 6);
 
                 this.group.append('line')
-                    .attr('class', 'fib-level-hit')
+                    .attr('class', 'fib-level-hit fib-tft-vertical')
+                    .attr('data-fib-tft', level)
                     .attr('x1', x).attr('y1', plotTop)
                     .attr('x2', x).attr('y2', plotBottom)
                     .attr('stroke', 'rgba(255,255,255,0.001)')
@@ -1031,6 +1053,8 @@ class TrendFibTimeTool extends BaseDrawing {
                 }
 
                 appendFibVerticalLineWithCenterGap(this.group, x, plotTop, plotBottom, tftGap, {
+                    class: 'fib-tft-vertical',
+                    'data-fib-tft': level,
                     stroke: lvl.color,
                     'stroke-width': scaledWidth,
                     'stroke-dasharray': lineType || 'none',
@@ -1038,16 +1062,32 @@ class TrendFibTimeTool extends BaseDrawing {
                 });
 
                 if (showLevelValues) {
-                    const textEl = this.group.append('text')
-                        .attr('class', 'fib-tft-label')
-                        .attr('x', tftLp.x)
-                        .attr('y', tftLp.y)
-                        .attr('text-anchor', tftLp.anchor)
-                        .text(tftLabelText);
-                    if (tftLp.dominantBaseline) textEl.attr('dominant-baseline', tftLp.dominantBaseline);
-                    applyFibSpanLabelTextStyle(textEl, lvl.color, tftLabelFontSize);
+                    tftLabelSlots.push({
+                        x: tftLp.x,
+                        y: tftLp.y,
+                        anchor: tftLp.anchor,
+                        dominantBaseline: tftLp.dominantBaseline,
+                        text: tftLabelText,
+                        color: lvl.color,
+                        fontSize: tftLabelFontSize,
+                        level,
+                    });
                 }
             });
+
+            if (showLevelValues && tftLabelSlots.length) {
+                resolveFibVerticalLineLabelCollisions(tftLabelSlots, this.group, tftLabelSlots[0].fontSize, '700').forEach((slot) => {
+                    const textEl = this.group.append('text')
+                        .attr('class', 'fib-tft-label')
+                        .attr('data-fib-tft', slot.level)
+                        .attr('x', slot.x)
+                        .attr('y', slot.y)
+                        .attr('text-anchor', slot.anchor)
+                        .text(slot.text);
+                    if (slot.dominantBaseline) textEl.attr('dominant-baseline', slot.dominantBaseline);
+                    applyFibSpanLabelTextStyle(textEl, slot.color, slot.fontSize);
+                });
+            }
         }
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
