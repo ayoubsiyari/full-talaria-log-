@@ -1481,36 +1481,6 @@ function computeDoubleCurveHandlePositions(points, scales) {
     return positions;
 }
 
-/** Double-curve inner handles: bend perpendicular to endpoint chord (not slide along it). */
-function setDoubleCurveControlFromScreenDrag(tool, scales, pointIndex, mouseDataPoint, screenOpt) {
-    if (!tool || !scales || tool.points.length < 4) return false;
-    const pi = parseInt(pointIndex, 10);
-    if (pi !== 2 && pi !== 3) return false;
-    const t = pi === 2 ? 1 / 3 : 2 / 3;
-    const p0s = drawingPointToScreen(tool.points[0], scales);
-    const p1s = drawingPointToScreen(tool.points[1], scales);
-    const ms = (screenOpt && Number.isFinite(screenOpt.x) && Number.isFinite(screenOpt.y))
-        ? { x: screenOpt.x, y: screenOpt.y }
-        : (mouseDataPoint ? drawingPointToScreen(mouseDataPoint, scales) : null);
-    if (!p0s || !p1s || !ms) return false;
-    const bx = p0s.x + (p1s.x - p0s.x) * t;
-    const by = p0s.y + (p1s.y - p0s.y) * t;
-    const dx = p1s.x - p0s.x;
-    const dy = p1s.y - p0s.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1) {
-        if (mouseDataPoint) tool.points[pi] = { x: mouseDataPoint.x, y: mouseDataPoint.y };
-        return true;
-    }
-    const perpX = -dy / len;
-    const perpY = dx / len;
-    const proj = (ms.x - bx) * perpX + (ms.y - by) * perpY;
-    const bent = screenPointToDrawing({ x: bx + perpX * proj, y: by + perpY * proj }, scales);
-    if (!bent) return false;
-    tool.points[pi] = bent;
-    return true;
-}
-
 /** Screen positions for quadratic curve handles: endpoints + midpoint on the curve (index 1). */
 function computeQuadraticToolHandlePositions(points, scales) {
     if (!points || points.length < 3 || !scales) return [];
@@ -2272,9 +2242,9 @@ class DoubleCurveTool extends BaseDrawing {
         this._isDragging = false;
     }
 
-    // Custom handle drag to maintain control points on curve
+    // Custom handle drag — all four spline knots move freely in X/Y.
     handleCustomHandleDrag(handleRole, context = {}) {
-        const { point, pointIndex, scales, screen } = context;
+        const { point, pointIndex } = context;
         const pi = parseInt(pointIndex, 10);
 
         if (!point || !Number.isFinite(pi)) return false;
@@ -2283,10 +2253,8 @@ class DoubleCurveTool extends BaseDrawing {
             this._isDragging = true;
         }
 
-        if (pi === 0 || pi === 1) {
+        if (pi >= 0 && pi < this.points.length) {
             this.points[pi] = { x: point.x, y: point.y };
-        } else if ((pi === 2 || pi === 3) && scales) {
-            setDoubleCurveControlFromScreenDrag(this, scales, pi, point, screen);
         }
 
         this.meta.updatedAt = Date.now();
