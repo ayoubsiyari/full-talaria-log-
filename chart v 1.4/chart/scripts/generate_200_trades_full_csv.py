@@ -159,23 +159,18 @@ def _bar_path(
         if i == bars - 1:
             pos = exit_r
         bar_range = rng.uniform(0.05, 0.45)
-        if is_buy:
-            bh = pos + bar_range * rng.uniform(0.2, 1.0)
-            bl = pos - bar_range * rng.uniform(0.2, 1.0)
-            fav = max(0.0, bh)
-            adv = max(0.0, -bl)
-            c = round(pos, 4)
-            if c < -adv:
-                c = round(-adv + rng.uniform(0, 0.03), 4)
-        else:
-            # SELL: favorable = down (negative close direction), adverse = up
-            bh_down = -pos + bar_range * rng.uniform(0.1, 0.9)
-            bl_up = pos + bar_range * rng.uniform(0.1, 0.9)
-            fav = max(0.0, bh_down)
-            adv = max(0.0, bl_up)
-            c = round(pos, 4)
-            if c > adv:
-                c = round(adv - rng.uniform(0, 0.03), 4)
+        wick = bar_range * rng.uniform(0.2, 1.0)
+        # Signed close path: positive = favorable for both BUY (up) and SELL (down).
+        # Mirror order-manager: bar_high_r = favorable extreme, bar_low_r = adverse magnitude.
+        bh = pos + wick
+        bl = pos - wick
+        fav = max(0.0, bh)
+        adv = max(0.0, -bl)
+        c = round(pos, 4)
+        if c < -adv:
+            c = round(-adv + rng.uniform(0, 0.03), 4)
+        if c > fav:
+            c = round(fav - rng.uniform(0, 0.03), 4)
         high_r.append(round(fav, 4))
         low_r.append(round(adv, 4))
         close_r.append(c)
@@ -192,8 +187,7 @@ def _post_exit_bars(
     rng: random.Random,
 ) -> tuple[list[float], list[float], list[float], float]:
     """Per-bar post-exit arrays (same semantics as in-trade)."""
-    _, _, close_r, mfe_r, mae_mag = _bar_path(is_buy, bars, exit_r + rng.uniform(-0.15, 0.35), rng)
-    # Re-roll with slight favorable extension possible after exit
+    del is_buy, in_mfe_r  # signed path is direction-agnostic
     high_r: list[float] = []
     low_r: list[float] = []
     close_r = []
@@ -201,24 +195,17 @@ def _post_exit_bars(
     for i in range(bars):
         pos += rng.uniform(-0.12, 0.18)
         bar_range = rng.uniform(0.03, 0.25)
-        if is_buy:
-            bh = pos + bar_range * rng.uniform(0.2, 1.0)
-            bl = pos - bar_range * rng.uniform(0.2, 1.0)
-            high_r.append(round(max(0.0, bh), 4))
-            low_r.append(round(max(0.0, -bl), 4))
-            c = round(pos, 4)
-            if c < -low_r[-1]:
-                c = round(-low_r[-1], 4)
-            close_r.append(c)
-        else:
-            adv = pos + bar_range * rng.uniform(0.1, 0.9)
-            fav = -pos + bar_range * rng.uniform(0.1, 0.9)
-            high_r.append(round(max(0.0, fav), 4))
-            low_r.append(round(max(0.0, adv), 4))
-            c = round(pos, 4)
-            if c > low_r[-1]:
-                c = round(low_r[-1], 4)
-            close_r.append(c)
+        wick = bar_range * rng.uniform(0.2, 1.0)
+        bh = pos + wick
+        bl = pos - wick
+        high_r.append(round(max(0.0, bh), 4))
+        low_r.append(round(max(0.0, -bl), 4))
+        c = round(pos, 4)
+        if c < -low_r[-1]:
+            c = round(-low_r[-1], 4)
+        if c > high_r[-1]:
+            c = round(high_r[-1], 4)
+        close_r.append(c)
     post_mfe = round(max(high_r) if high_r else 0.0, 4)
     return high_r, low_r, close_r, post_mfe
 
