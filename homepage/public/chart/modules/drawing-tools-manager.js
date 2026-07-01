@@ -14730,12 +14730,12 @@ class DrawingToolsManager {
         if (!drawing) return;
         drawing.visibility = {
             _ranges: {
-                m: { enabled: true, min: 1, max: 60 },
+                m: { enabled: true, min: 1, max: 59 },
                 h: { enabled: true, min: 1, max: 24 },
                 d: { enabled: true, min: 1, max: 366 },
-                w: { enabled: true, min: 1, max: 260 },
-                M: { enabled: true, min: 1, max: 120 },
-                mo: { enabled: true, min: 1, max: 120 },
+                w: { enabled: true, min: 1, max: 52 },
+                M: { enabled: true, min: 1, max: 12 },
+                mo: { enabled: true, min: 1, max: 12 },
             },
         };
     }

@@ -3129,13 +3129,14 @@ function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
   for (const [unit, key] of pairs) {
     const v = tlStyle[key];
     if (!v || typeof v !== "object") continue;
+    const norm = v9NormalizeTlVisRow(key, v);
     if (!d.visibility) d.visibility = {};
     if (!d.visibility._ranges) d.visibility._ranges = {};
     const prev = d.visibility._ranges[unit];
     const next = {
-      enabled: v.checked !== false,
-      min: Number(v.min) || 1,
-      max: Number(v.max) || 1,
+      enabled: norm.checked !== false,
+      min: norm.min,
+      max: norm.max,
     };
     const prevEq =
       prev &&
@@ -3153,11 +3154,11 @@ function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
 
 /** Indicator settings Visibility tab — same draft shape as Ray / tlStyle (visMinutes…visMonths). */
 const V9_IND_VIS_METAS = [
-  ["visMinutes", "m", "Minutes", 60],
+  ["visMinutes", "m", "Minutes", 59],
   ["visHours", "h", "Hours", 24],
   ["visDays", "d", "Days", 366],
-  ["visWeeks", "w", "Weeks", 260],
-  ["visMonths", "M", "Months", 120],
+  ["visWeeks", "w", "Weeks", 52],
+  ["visMonths", "M", "Months", 12],
 ];
 
 function v9DefaultIndicatorVisibilityDraftPatch() {
@@ -3184,7 +3185,7 @@ function v9CloneDefaultVisibilityTlRows() {
 
 function v9NormalizeTlVisRow(key, row) {
   const meta = V9_IND_VIS_METAS.find(([k]) => k === key);
-  const hm = meta ? meta[3] : 60;
+  const hm = meta ? meta[3] : 59;
   if (!row || typeof row !== "object") {
     return { checked: true, min: 1, max: hm };
   }
@@ -3431,7 +3432,7 @@ const V9_VIS_TIMEFRAME_LABELS = [
   ["visWeeks", "Weeks"],
   ["visMonths", "Months"],
 ];
-const V9_VIS_TIMEFRAME_HARD_MAX = { visMinutes: 60, visHours: 24, visDays: 366, visWeeks: 260, visMonths: 120 };
+const V9_VIS_TIMEFRAME_HARD_MAX = { visMinutes: 59, visHours: 24, visDays: 366, visWeeks: 52, visMonths: 12 };
 const V9_VIS_TIMEFRAME_GRID = "24px 72px 44px 1fr 44px";
 
 function V9VisTimeframesPanel({
@@ -4189,11 +4190,11 @@ function v9FreshTxtStyleDefaults() {
     imageDataUrl: "",
     imageTransparency: 100,
     selectedEmoji: "😀",
-    visMinutes: { checked: true, min: 1, max: 60 },
+    visMinutes: { checked: true, min: 1, max: 59 },
     visHours: { checked: true, min: 1, max: 24 },
     visDays: { checked: true, min: 1, max: 366 },
-    visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
+    visWeeks: { checked: true, min: 1, max: 52 },
+    visMonths: { checked: true, min: 1, max: 12 },
   };
 }
 
@@ -12917,9 +12918,9 @@ const TalariaV8bLive = () => {
     pt1Price: "126.96273", pt1Bar: "3775", pt2Price: "126.86393", pt2Bar: "3795", pt3Price: "126.76393", pt3Bar: "3815",
     pt4Price: "126.66393", pt4Bar: "3835", pt5Price: "126.56393", pt5Bar: "3855", pt6Price: "126.46393", pt6Bar: "3875",
     pt7Price: "126.36393", pt7Bar: "3895",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
+    visMinutes: { checked: true, min: 1, max: 59 }, visHours: { checked: true, min: 1, max: 24 },
+    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 52 },
+    visMonths: { checked: true, min: 1, max: 12 },
     midLine: false, midLineColor: "#8C8C8C", midLineType: "dashed", midLineWidth: "1",
     chLines: v9DefaultParallelChannelChLines(V9_DEFAULT_TL_LINE_COLOR),
     regLines: [
@@ -13037,9 +13038,9 @@ const TalariaV8bLive = () => {
     pinLabelColor: "#4A6AFF",
     imageDataUrl: "", imageTransparency: 100,
     selectedEmoji: "😀",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
+    visMinutes: { checked: true, min: 1, max: 59 }, visHours: { checked: true, min: 1, max: 24 },
+    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 52 },
+    visMonths: { checked: true, min: 1, max: 12 },
   });
   const [vwapSettOpen, setVwapSettOpen] = useState(false);
   const [vwapSettPos, setVwapSettPos] = useState({ x: 200, y: 90 });
@@ -13062,9 +13063,9 @@ const TalariaV8bLive = () => {
     mult3On: false, mult3Val: "3.0",
     source: "(H+L+C)/3",
     anchorPrice: "0.00000", anchorBar: "0",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
+    visMinutes: { checked: true, min: 1, max: 59 }, visHours: { checked: true, min: 1, max: 24 },
+    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 52 },
+    visMonths: { checked: true, min: 1, max: 12 },
   });
   const [vpSettOpen, setVpSettOpen] = useState(false);
   const [vpSettPos, setVpSettPos] = useState({ x: 200, y: 90 });
@@ -13095,9 +13096,9 @@ const TalariaV8bLive = () => {
     timeLabels: true,
     pt1Price: "0.00000", pt1Bar: "0",
     pt2Price: "0.00000", pt2Bar: "0",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
+    visMinutes: { checked: true, min: 1, max: 59 }, visHours: { checked: true, min: 1, max: 24 },
+    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 52 },
+    visMonths: { checked: true, min: 1, max: 12 },
   });
   const [avSettOpen, setAvSettOpen] = useState(false);
   const [avSettPos, setAvSettPos] = useState({ x: 200, y: 90 });
@@ -13120,9 +13121,9 @@ const TalariaV8bLive = () => {
     volumeOn: true, volumeType: "Up/Down",
     valueAreaVol: "70", extendRight: false,
     anchorPrice: "0.00000", anchorBar: "0",
-    visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
-    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
-    visMonths: { checked: true, min: 1, max: 120 },
+    visMinutes: { checked: true, min: 1, max: 59 }, visHours: { checked: true, min: 1, max: 24 },
+    visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 52 },
+    visMonths: { checked: true, min: 1, max: 12 },
   });
   const [indSettOpen, setIndSettOpen] = useState(false);
   const [indSettPos, setIndSettPos] = useState({ x: 120, y: 80 });

@@ -18103,9 +18103,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
             { key: 'd', label: 'Days', min: 1, max: 366 },
 
-            { key: 'w', label: 'Weeks', min: 1, max: 260 },
+            { key: 'w', label: 'Weeks', min: 1, max: 52 },
 
-            { key: 'mo', label: 'Months', min: 1, max: 120 },
+            { key: 'mo', label: 'Months', min: 1, max: 12 },
 
         ];
 
