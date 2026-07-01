@@ -1615,77 +1615,34 @@ class ArrowTool extends BaseDrawing {
         }
 
         const hasText = this.text && this.text.trim();
-        const textVAlign = normalizeLineTextVAlign(this.style);
+        const textVAlign = (typeof resolveAngledLineTextVAlign === 'function')
+            ? resolveAngledLineTextVAlign(this.style)
+            : normalizeLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         this._splitInfo = null;
 
-        if (shouldSplitLine) {
-            const p1 = this.points[0];
-            const p2 = this.points[1];
-            const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(p1.x) : (scales ? scales.xScale(p1.x) : x1);
-            const origY1 = scales ? scales.yScale(p1.y) : y1;
-            const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : x2);
-            const origY2 = scales ? scales.yScale(p2.y) : y2;
-
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-
-            const textWidth = (typeof measureLineToolLabelWidth === 'function')
-                ? measureLineToolLabelWidth(this.group, this.text, this.style, 'middle')
-                : 0;
-
-            const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
-
-            const padding = 10;
-            const gapSize = textWidth + (padding * 2);
-
-            // visual left/right + t-based with clamping
-            const sh_p1IsLeft = origX1 <= origX2;
-            let t = 0.5;
-            switch (textHAlign) {
-                case 'left':  t = sh_p1IsLeft ? 0.05 : 0.95; break;
-                case 'right': t = sh_p1IsLeft ? 0.95 : 0.05; break;
-                default:      t = 0.5;
-            }
-            const sh_lineLen = Math.sqrt((origX2-origX1)**2 + (origY2-origY1)**2);
-            const sh_halfGapT = sh_lineLen > 0 ? (gapSize/2) / sh_lineLen : 0;
-            const sh_t1 = Math.max(0, t - sh_halfGapT);
-            const sh_t2 = Math.min(1, t + sh_halfGapT);
-            const textX = origX1 + (origX2 - origX1) * t;
-            const textY = origY1 + (origY2 - origY1) * t;
-            const split1X = origX1 + (origX2 - origX1) * sh_t1;
-            const split1Y = origY1 + (origY2 - origY1) * sh_t1;
-            const split2X = origX1 + (origX2 - origX1) * sh_t2;
-            const split2Y = origY1 + (origY2 - origY1) * sh_t2;
-
-            this._splitInfo = {
-                textX: textX,
-                textY: textY,
-                angle: lineAngle * (180 / Math.PI),
-                gapSize: gapSize,
-                split1X: split1X,
-                split1Y: split1Y,
-                split2X: split2X,
-                split2Y: split2Y
-            };
+        if (shouldSplitLine && typeof computeAngledLineMiddleSplitInfo === 'function') {
+            this._splitInfo = computeAngledLineMiddleSplitInfo(
+                this, origX1, origY1, origX2, origY2, scaleFactor
+            );
+            const { gapNearX1, gapNearY1, gapNearX2, gapNearY2 } = this._splitInfo;
 
             this.group.append('line')
                 .attr('x1', x1)
                 .attr('y1', y1)
-                .attr('x2', split1X)
-                .attr('y2', split1Y)
+                .attr('x2', gapNearX1)
+                .attr('y2', gapNearY1)
                 .attr('class', 'shape-border-hit')
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(18, this.style.strokeWidth))
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            appendVisibleShaft(shaftStartX, shaftStartY, split1X, split1Y);
+            appendVisibleShaft(shaftStartX, shaftStartY, gapNearX1, gapNearY1);
 
             this.group.append('line')
-                .attr('x1', split2X)
-                .attr('y1', split2Y)
+                .attr('x1', gapNearX2)
+                .attr('y1', gapNearY2)
                 .attr('x2', x2)
                 .attr('y2', y2)
                 .attr('class', 'shape-border-hit')
@@ -1694,7 +1651,7 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            appendVisibleShaft(split2X, split2Y, shaftEndX, shaftEndY);
+            appendVisibleShaft(gapNearX2, gapNearY2, shaftEndX, shaftEndY);
             drawExtensionPastHead();
         } else {
             this.group.append('line')
@@ -1892,20 +1849,8 @@ class ArrowTool extends BaseDrawing {
     }
 
     renderTextLabel(coords) {
-        const { scales } = coords;
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-        const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p1.x) : (scales ? scales.xScale(p1.x) : coords.x1);
-        const origY1 = scales ? scales.yScale(p1.y) : coords.y1;
-        const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : coords.x2);
-        const origY2 = scales ? scales.yScale(p2.y) : coords.y2;
-
         if (typeof renderAngledTwoPointLineTextLabel === 'function') {
-            renderAngledTwoPointLineTextLabel(this, {
-                x1: origX1, y1: origY1, x2: origX2, y2: origY2, scales
-            });
+            renderAngledTwoPointLineTextLabel(this, coords);
         }
     }
 

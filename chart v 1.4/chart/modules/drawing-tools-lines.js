@@ -353,6 +353,99 @@ function twoPointLineTextArrowInset(tool, style, scaleFactor, end) {
     return trendlineEndpointArrowInset(style, scaleFactor, end);
 }
 
+function resolveAngledLineTextVAlign(style) {
+    let v = String(style?.textVAlign || style?.textPosition || 'top').toLowerCase();
+    if (v === 'center') return 'middle';
+    if (v === 'start') return 'top';
+    if (v === 'end') return 'bottom';
+    return v;
+}
+
+/** Middle on-line gap + text anchor geometry shared by trendline and arrow. */
+function computeAngledLineMiddleSplitInfo(tool, origX1, origY1, origX2, origY2, scaleFactor) {
+    const textHAlign = tool.style.textHAlign || tool.style.textAlign || 'center';
+    const textWidth = measureLineMiddleGapSpan(tool.group, tool.text, tool.style).width;
+    const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
+    const padding = 2;
+    const capPad = 2;
+    const gapSize = textWidth + (padding * 2) + (capPad * 2);
+
+    const rawLX = origX1 <= origX2 ? origX1 : origX2;
+    const rawLY = origX1 <= origX2 ? origY1 : origY2;
+    const rawRX = origX1 <= origX2 ? origX2 : origX1;
+    const rawRY = origX1 <= origX2 ? origY2 : origY1;
+    const rawDX = rawRX - rawLX;
+    const rawDY = rawRY - rawLY;
+    const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
+    const seg_ux = rawDX / rawLen;
+    const seg_uy = rawDY / rawLen;
+    const startArrowInset = twoPointLineTextArrowInset(tool, tool.style, scaleFactor, 'start');
+    const endArrowInset = twoPointLineTextArrowInset(tool, tool.style, scaleFactor, 'end');
+
+    let textX, textY;
+    switch (textHAlign) {
+        case 'left':
+            textX = rawLX + seg_ux * (TEXT_EDGE_PADDING + capPad + startArrowInset);
+            textY = rawLY + seg_uy * (TEXT_EDGE_PADDING + capPad + startArrowInset);
+            break;
+        case 'right':
+            textX = rawRX - seg_ux * (TEXT_EDGE_PADDING + capPad + endArrowInset);
+            textY = rawRY - seg_uy * (TEXT_EDGE_PADDING + capPad + endArrowInset);
+            break;
+        default:
+            textX = (rawLX + rawRX) / 2;
+            textY = (rawLY + rawRY) / 2;
+    }
+
+    const halfGap = gapSize / 2;
+    let split1X, split1Y, split2X, split2Y;
+    switch (textHAlign) {
+        case 'left':
+            split1X = startArrowInset > 0
+                ? rawLX + seg_ux * startArrowInset
+                : textX - seg_ux * capPad;
+            split1Y = startArrowInset > 0
+                ? rawLY + seg_uy * startArrowInset
+                : textY - seg_uy * capPad;
+            split2X = textX + seg_ux * (textWidth + padding + capPad);
+            split2Y = textY + seg_uy * (textWidth + padding + capPad);
+            break;
+        case 'right':
+            split1X = textX - seg_ux * (textWidth + padding + capPad);
+            split1Y = textY - seg_uy * (textWidth + padding + capPad);
+            split2X = endArrowInset > 0
+                ? rawRX - seg_ux * endArrowInset
+                : textX + seg_ux * capPad;
+            split2Y = endArrowInset > 0
+                ? rawRY - seg_uy * endArrowInset
+                : textY + seg_uy * capPad;
+            break;
+        default:
+            split1X = textX - seg_ux * halfGap;
+            split1Y = textY - seg_uy * halfGap;
+            split2X = textX + seg_ux * halfGap;
+            split2Y = textY + seg_uy * halfGap;
+    }
+
+    const flipped = origX1 > origX2;
+    return {
+        textX,
+        textY,
+        angle: lineAngle * (180 / Math.PI),
+        gapSize,
+        split1X,
+        split1Y,
+        split2X,
+        split2Y,
+        gapNearX1: flipped ? split2X : split1X,
+        gapNearY1: flipped ? split2Y : split1Y,
+        gapNearX2: flipped ? split1X : split2X,
+        gapNearY2: flipped ? split1Y : split2Y
+    };
+}
+window.computeAngledLineMiddleSplitInfo = computeAngledLineMiddleSplitInfo;
+window.resolveAngledLineTextVAlign = resolveAngledLineTextVAlign;
+
 /** Shared on-line label placement for trendline and arrow. */
 function renderAngledTwoPointLineTextLabel(tool, coords) {
     const label = tool.text || '';
@@ -429,8 +522,7 @@ function renderAngledTwoPointLineTextLabel(tool, coords) {
 
     const fontSize = tool.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
     const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
-    let textVAlign = tool.style.textVAlign || tool.style.textPosition || 'top';
-    if (textVAlign === 'center') textVAlign = 'middle';
+    const textVAlign = resolveAngledLineTextVAlign(tool.style);
 
     const textHAlign = tool.style.textHAlign || tool.style.textAlign || 'center';
 
@@ -625,108 +717,18 @@ class TrendlineTool extends BaseDrawing {
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = resolveAngledLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         
         // Store split info for text rendering
         this._splitInfo = null;
         
         if (shouldSplitLine) {
-            // Calculate text position and gap
-            const p1 = this.points[0];
-            const p2 = this.points[1];
-            const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(p1.x) : (scales ? scales.xScale(p1.x) : x1);
-            const origY1 = scales ? scales.yScale(p1.y) : y1;
-            const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : x2);
-            const origY2 = scales ? scales.yScale(p2.y) : y2;
+            this._splitInfo = computeAngledLineMiddleSplitInfo(
+                this, origX1, origY1, origX2, origY2, scaleFactor
+            );
+            const { gapNearX1, gapNearY1, gapNearX2, gapNearY2 } = this._splitInfo;
             
-            const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            
-            // Calculate gap size based on actual text width (RTL-aware for Arabic)
-            const textWidth = measureLineMiddleGapSpan(this.group, this.text, this.style).width;
-            
-            // Calculate angle and direction along the line
-            const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
-            
-            // Use exact text width for gap with minimal padding
-            const padding = 2;
-            const capPad = 2;
-            const gapSize = textWidth + (padding * 2) + (capPad * 2);
-
-            // Use raw (unclamped) data-point pixel positions for gap/text placement
-            const rawLX = origX1 <= origX2 ? origX1 : origX2;
-            const rawLY = origX1 <= origX2 ? origY1 : origY2;
-            const rawRX = origX1 <= origX2 ? origX2 : origX1;
-            const rawRY = origX1 <= origX2 ? origY2 : origY1;
-            const rawDX = rawRX - rawLX, rawDY = rawRY - rawLY;
-            const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
-            const seg_ux = rawDX / rawLen;
-            const seg_uy = rawDY / rawLen;
-            const startArrowInset = trendlineEndpointArrowInset(this.style, scaleFactor, 'start');
-            const endArrowInset = trendlineEndpointArrowInset(this.style, scaleFactor, 'end');
-
-            // Calculate text/gap position from raw endpoints — no clamping
-            let textX, textY;
-            switch (textHAlign) {
-                case 'left':  textX = rawLX + seg_ux * (TEXT_EDGE_PADDING + capPad + startArrowInset); textY = rawLY + seg_uy * (TEXT_EDGE_PADDING + capPad + startArrowInset); break;
-                case 'right': textX = rawRX - seg_ux * (TEXT_EDGE_PADDING + capPad + endArrowInset); textY = rawRY - seg_uy * (TEXT_EDGE_PADDING + capPad + endArrowInset); break;
-                default:      textX = (rawLX + rawRX) / 2; textY = (rawLY + rawRY) / 2;
-            }
-
-            // Calculate split points based on anchor type so gap covers actual text area
-            const halfGap = gapSize / 2;
-            let split1X, split1Y, split2X, split2Y;
-            switch (textHAlign) {
-                case 'left':
-                    split1X = startArrowInset > 0
-                        ? rawLX + seg_ux * startArrowInset
-                        : textX - seg_ux * capPad;
-                    split1Y = startArrowInset > 0
-                        ? rawLY + seg_uy * startArrowInset
-                        : textY - seg_uy * capPad;
-                    split2X = textX + seg_ux * (textWidth + padding + capPad);
-                    split2Y = textY + seg_uy * (textWidth + padding + capPad);
-                    break;
-                case 'right':
-                    split1X = textX - seg_ux * (textWidth + padding + capPad);
-                    split1Y = textY - seg_uy * (textWidth + padding + capPad);
-                    split2X = endArrowInset > 0
-                        ? rawRX - seg_ux * endArrowInset
-                        : textX + seg_ux * capPad;
-                    split2Y = endArrowInset > 0
-                        ? rawRY - seg_uy * endArrowInset
-                        : textY + seg_uy * capPad;
-                    break;
-                default:
-                    split1X = textX - seg_ux * halfGap;
-                    split1Y = textY - seg_uy * halfGap;
-                    split2X = textX + seg_ux * halfGap;
-                    split2Y = textY + seg_uy * halfGap;
-            }
-            
-            // Store split info for text rendering to use
-            this._splitInfo = {
-                textX: textX,
-                textY: textY,
-                angle: lineAngle * (180 / Math.PI),
-                gapSize: gapSize,
-                split1X: split1X,
-                split1Y: split1Y,
-                split2X: split2X,
-                split2Y: split2Y
-            };
-            
-            // Route each segment to the nearest gap boundary.
-            // split1X/split1Y = left side of gap, split2X/split2Y = right side.
-            // When flipped (x1 on right side), swap so each segment ends at its nearest boundary.
-            const flipped = origX1 > origX2;
-            const gapNearX1 = flipped ? split2X : split1X;
-            const gapNearY1 = flipped ? split2Y : split1Y;
-            const gapNearX2 = flipped ? split1X : split2X;
-            const gapNearY2 = flipped ? split1Y : split2Y;
-
             // Draw invisible wider stroke for easier clicking (first segment)
             this.group.append('line')
                 .attr('x1', x1)
