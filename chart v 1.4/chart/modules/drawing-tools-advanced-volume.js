@@ -163,16 +163,16 @@ class GannBoxTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Hitbox — full interior grab for select + move (level lines stack above for ratio drag)
+        // Hitbox — full interior grab for select + move (level hit lines stack above for ratio drag).
         this.group.append('rect')
-            .attr('class', 'shape-border-hit gann-box-hitbox')
+            .attr('class', 'gann-box-hitbox')
             .attr('x', left)
             .attr('y', top)
             .attr('width', width)
             .attr('height', height)
             .attr('fill', 'transparent')
             .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(16, 18 * scaleFactor))
+            .attr('stroke-width', 0)
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 

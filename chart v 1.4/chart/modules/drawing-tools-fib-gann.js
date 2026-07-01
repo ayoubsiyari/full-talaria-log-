@@ -2180,7 +2180,7 @@ class FibWedgeTool extends BaseDrawing {
         // Body hitbox — full wedge interior for select + move (level arcs stack above for ratio drag).
         const wedgeBodyPath = `M ${p2.x} ${p2.y} A ${baseRadius} ${baseRadius} 0 ${largeArcFlag} ${sweepFlag} ${p3.x} ${p3.y} L ${x1} ${y1} Z`;
         this.group.append('path')
-            .attr('class', 'shape-border-hit fib-wedge-hitbox')
+            .attr('class', 'fib-wedge-hitbox')
             .attr('d', wedgeBodyPath)
             .attr('fill', 'transparent')
             .attr('stroke', 'transparent')
@@ -3611,7 +3611,7 @@ class GannSquareFixedTool extends BaseDrawing {
 
         // Hitbox (makes selecting the drawing much easier than targeting a thin stroke)
         this.group.append('rect')
-            .attr('class', 'shape-border-hit gann-square-fixed-hitbox')
+            .attr('class', 'gann-square-fixed-hitbox')
             .attr('x', left)
             .attr('y', top)
             .attr('width', size)
@@ -4365,7 +4365,7 @@ class GannFanTool extends BaseDrawing {
         const appendFanHitbox = () => {
             if (!outerLow || !outerHigh) return;
             this.group.append('path')
-                .attr('class', 'shape-border-hit gann-fan-hitbox')
+                .attr('class', 'gann-fan-hitbox')
                 .attr('d', `M ${x1} ${y1} L ${outerLow.x} ${outerLow.y} L ${outerHigh.x} ${outerHigh.y} Z`)
                 .attr('fill', 'rgba(255,255,255,0.001)')
                 .attr('stroke', 'transparent')

@@ -2844,8 +2844,11 @@ class DrawingToolsManager {
                 drawing.group.selectAll('.shape-border')
                     .style('pointer-events', 'visibleStroke');
                 // Transparent hit areas should remain interactive on stroke (like rectangle edges)
-                drawing.group.selectAll('.shape-border-hit')
+                drawing.group.selectAll(this._shapeBorderHitExcludingGannBodySelector())
                     .style('pointer-events', 'stroke');
+                if (this._isFibLikeDrawingType(drawing.type)) {
+                    this._enableGannFibBodyHitboxes(drawing.group);
+                }
 
                 // Arrow tools: allow fill hit areas to be interactive
                 drawing.group.selectAll('.arrow-fill-hit')
@@ -6863,8 +6866,8 @@ class DrawingToolsManager {
         drawing.group.selectAll('.shape-border:not(.shape-border-hit):not(.rr-entry-stroke)')
             .style('pointer-events', 'stroke');
         
-        // Hit areas also use stroke
-        drawing.group.selectAll('.shape-border-hit:not(.text-body-hit):not(.flag-body-hit)')
+        // Hit areas also use stroke (Gann/Fib wedge body hitboxes stay fill-interactive)
+        drawing.group.selectAll(`${this._shapeBorderHitExcludingGannBodySelector()}:not(.text-body-hit):not(.flag-body-hit)`)
             .style('pointer-events', 'stroke');
 
         // Text/pin/flag body hit areas should stay fully interactive (middle + border drag zone)
@@ -6971,7 +6974,7 @@ class DrawingToolsManager {
                 ? '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line.shape-border-hit, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
-                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .gann-level-hit, .pitchfork-level-hit, .pitchfork-handle-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
+                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .gann-box-hitbox, .gann-square-fixed-hitbox, .gann-fan-hitbox, .fib-wedge-hitbox, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .gann-level-hit, .pitchfork-level-hit, .pitchfork-handle-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit):not(.gann-fan-hitbox):not(.fib-wedge-hitbox), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
         if (this._isFibLikeDrawingType(drawing.type)) {
@@ -8039,6 +8042,21 @@ class DrawingToolsManager {
         return type === 'gann-box' || type === 'gann-square-fixed' || type === 'gann-fan';
     }
 
+    _gannFibBodyHitboxSelector() {
+        return '.gann-box-hitbox, .gann-square-fixed-hitbox, .gann-fan-hitbox, .fib-wedge-hitbox';
+    }
+
+    _shapeBorderHitExcludingGannBodySelector() {
+        return '.shape-border-hit:not(.gann-box-hitbox):not(.gann-square-fixed-hitbox):not(.gann-fan-hitbox):not(.fib-wedge-hitbox)';
+    }
+
+    _enableGannFibBodyHitboxes(group) {
+        if (!group || group.empty()) return;
+        group.selectAll(this._gannFibBodyHitboxSelector())
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
+    }
+
     _isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY) {
         if (!drawing?.group || !this._isGannLevelAdjustDrawingType(drawing.type)) return false;
         if (drawing.type === 'gann-fan') return false;
@@ -8593,7 +8611,9 @@ class DrawingToolsManager {
         if (drawing.group && !drawing.group.empty()) {
             drawing.group.selectAll('.resize-handle').style('pointer-events', 'none');
             drawing.group.selectAll('.resize-handle-hit, .custom-handle').style('pointer-events', 'all');
-            drawing.group.selectAll('.shape-border-hit').style('pointer-events', 'none');
+            drawing.group.selectAll(this._shapeBorderHitExcludingGannBodySelector())
+                .style('pointer-events', 'none');
+            this._enableGannFibBodyHitboxes(drawing.group);
             if (drawing.type === 'image') {
                 drawing.group.selectAll('.image-content, .image-placeholder')
                     .style('pointer-events', 'none');
@@ -8883,8 +8903,9 @@ class DrawingToolsManager {
         this.svg.style('cursor', '');
 
         if (drawing?.group && !drawing.group.empty()) {
-            drawing.group.selectAll('.shape-border-hit')
+            drawing.group.selectAll(this._shapeBorderHitExcludingGannBodySelector())
                 .style('pointer-events', 'stroke');
+            this._enableGannFibBodyHitboxes(drawing.group);
         }
 
         this.renderDrawing(drawing, { skipTimestampSync: true });
@@ -9017,8 +9038,9 @@ class DrawingToolsManager {
         this._endDrawingLiveInteraction();
 
         if (drawing?.group && !drawing.group.empty()) {
-            drawing.group.selectAll('.shape-border-hit')
+            drawing.group.selectAll(this._shapeBorderHitExcludingGannBodySelector())
                 .style('pointer-events', 'stroke');
+            this._enableGannFibBodyHitboxes(drawing.group);
             if (drawing.type === 'image') {
                 drawing.group.selectAll('.image-content, .image-placeholder')
                     .style('pointer-events', 'all');
@@ -12026,6 +12048,22 @@ class DrawingToolsManager {
             if (Math.abs(dist - r) <= effectiveTolerance) return true;
         }
 
+        // Gann box / square outer border (stroke-only rect, not in level-hit selectors).
+        if (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed') {
+            for (const element of drawing.group.selectAll('rect').nodes()) {
+                const elementSel = d3.select(element);
+                if (elementSel.classed('gann-box-hitbox') || elementSel.classed('gann-square-fixed-hitbox')) continue;
+                const fill = elementSel.attr('fill');
+                if (fill && fill !== 'none') continue;
+                const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
+                if (!stroke || stroke === 'none' || stroke === 'transparent') continue;
+                if (elementSel.style('opacity') === '0') continue;
+                if (svgPoint && typeof element.isPointInStroke === 'function' && element.isPointInStroke(svgPoint)) {
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
 
@@ -12795,6 +12833,11 @@ class DrawingToolsManager {
                 }
             }
             if (drawing.type === 'fib-wedge' && !hitsById.has(drawing.id)) {
+                if (this._isPointInFibWedgeBody(drawing, mouseX, mouseY)
+                    && !this._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY)) {
+                    hitsById.set(drawing.id, { drawing, distance: 0, z });
+                    continue;
+                }
                 if (this._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                     hitsById.set(drawing.id, { drawing, distance: 0, z });
                     continue;
@@ -14174,8 +14217,9 @@ class DrawingToolsManager {
                             this._hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 0);
                             this._hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
                                 .style('pointer-events', 'none');
-                            this._hoveredDrawing.group.selectAll('.shape-border-hit')
+                            this._hoveredDrawing.group.selectAll(this._shapeBorderHitExcludingGannBodySelector())
                                 .style('pointer-events', 'stroke');
+                            this._enableGannFibBodyHitboxes(this._hoveredDrawing.group);
                         }
                     }
                 }
@@ -14209,9 +14253,10 @@ class DrawingToolsManager {
                                 .style('pointer-events', 'all');
                             // Keep border hit zones live for locked shapes (no canvas direct-drag fallback).
                             if (!hoveredDrawing.locked) {
-                                hoveredDrawing.group.selectAll('.shape-border-hit')
+                                hoveredDrawing.group.selectAll(this._shapeBorderHitExcludingGannBodySelector())
                                     .style('pointer-events', 'none');
                             }
+                            this._enableGannFibBodyHitboxes(hoveredDrawing.group);
                             this._raiseResizeHandles(hoveredDrawing);
                         }
                     }
@@ -14262,8 +14307,9 @@ class DrawingToolsManager {
                         this._hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 0);
                         this._hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
                             .style('pointer-events', 'none');
-                        this._hoveredDrawing.group.selectAll('.shape-border-hit')
+                        this._hoveredDrawing.group.selectAll(this._shapeBorderHitExcludingGannBodySelector())
                             .style('pointer-events', 'stroke');
+                        this._enableGannFibBodyHitboxes(this._hoveredDrawing.group);
                     }
                 }
                 this._hoveredDrawing = null;
