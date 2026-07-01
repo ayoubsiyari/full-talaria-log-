@@ -687,6 +687,8 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
             ? String(window.__TALARIA_CHART_BUILD_ID)
             : "";
     if (buildV) params.set("v", buildV);
+    // Bust cached chart-embed.html shells (nginx serves /chart/ from static export with 1h TTL).
+    params.set("embedRev", "ohlc2");
     // Lightweight chart-only page — no React bundle per iframe (major multichart perf win).
     return "/chart/multichart-prod/chart-embed.html?" + params.toString();
 }

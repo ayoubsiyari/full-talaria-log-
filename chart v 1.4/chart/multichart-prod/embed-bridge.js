@@ -82,6 +82,23 @@
         tick();
     }
 
+    function ensureEmbedOhlcLegend(chart) {
+        try {
+            var ch = chart || window.chart;
+            if (ch && typeof ch._ensureMultichartEmbedOhlcLegend === 'function') {
+                ch._ensureMultichartEmbedOhlcLegend();
+            }
+            if (ch && ch.currentSymbol && typeof ch.updateChartOHLCSymbol === 'function') {
+                ch.updateChartOHLCSymbol(ch.currentSymbol);
+            } else if (ch && typeof ch.updateChartOHLCSymbol === 'function') {
+                ch.updateChartOHLCSymbol(ch.currentSymbol || 'CHART');
+            }
+            if (ch && typeof ch.updateOHLCIndicators === 'function') {
+                ch.updateOHLCIndicators();
+            }
+        } catch (_) {}
+    }
+
     function suppressEmbedChartBrand() {
         try {
             var styleId = 'multichart-embed-hide-brand';
@@ -133,6 +150,7 @@
 
         installSettingsParentProxy();
         installMultichartSettingsModalGuard();
+        ensureEmbedOhlcLegend(ch);
         suppressEmbedChartBrand();
         var brandSweep = 0;
         var brandSweepTimer = setInterval(function () {
@@ -880,9 +898,7 @@
                     } catch (_) {}
                 }
                 try {
-                    if (typeof ch.updateChartOHLCSymbol === 'function' && ch.currentSymbol) {
-                        ch.updateChartOHLCSymbol(ch.currentSymbol);
-                    }
+                    ensureEmbedOhlcLegend(ch);
                 } catch (_) {}
                 // DO NOT call ch.drawingManager.loadDrawings() here.
                 //

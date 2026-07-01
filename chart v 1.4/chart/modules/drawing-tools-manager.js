@@ -9933,6 +9933,9 @@ class DrawingToolsManager {
         if (!drawing) return;
         const next = !!locked;
         if (!!drawing.locked === next) return;
+        if (next && this._textInlineEditDrawing === drawing) {
+            this.endTextInlineEdit(drawing);
+        }
         drawing.locked = next;
         this._syncDrawingLockVisual(drawing);
         this.renderDrawing(drawing);

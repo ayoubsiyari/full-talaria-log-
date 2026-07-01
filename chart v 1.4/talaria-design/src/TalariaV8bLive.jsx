@@ -1732,6 +1732,12 @@ function v9HideFloatingBarTextColor(icon) {
   return !v9ToolHasTextTab(icon);
 }
 
+/** Text/annotation settings + content tab (not emoji/image/flag/price-note). */
+function v9TxtIconHasContentTab(icon) {
+  if (!icon || typeof icon !== "string") return false;
+  return !["emoji", "image", "flag", "priceNote"].includes(icon);
+}
+
 function v9RailSubtoolOrFallback(groupId, sel, fallback) {
   const allowed = V9_RAIL_ICONS_BY_GROUP[groupId];
   if (!allowed) return sel || fallback;
@@ -18987,6 +18993,9 @@ const TalariaV8bLive = () => {
       try {
         const live = getPrimarySelectedDrawingForActiveChart(null);
         v9SyncQuickBarLockFromDrawing(live, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
+        if (live && v9DrawingTypeToPanelGroup(live.type) === "text") {
+          v9HydrateTxtStyleFromDrawing(live, v9ToolbarBridgeActRef.current, { selectedTypeChanged: false });
+        }
       } catch (_) {}
     };
     window.addEventListener("talaria-drawing-lock-changed", onDrawingLockChanged);
@@ -19920,6 +19929,7 @@ const TalariaV8bLive = () => {
           }
           setTxtSettPos({ x: px, y: py });
           if (drawing.type === 'price-note') setTxtSettTab('style');
+          else if (v9TxtIconHasContentTab(legacyChartTextTypeToV9Icon(drawing.type) || 'text')) setTxtSettTab('text');
           v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
             setTxtSettOpen(true);
@@ -26478,6 +26488,29 @@ const TalariaV8bLive = () => {
               {!txtBarSizeOpen&&hov==="txt-bar-sz"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
             </div>
           </div>}
+          {/* Bold / Italic — same as settings Text tab; stay visible when locked */}
+          {!["flag","emoji","note","priceNote","image"].includes(txtQuickIcon) && <>
+            {[["txt-bar-bold",txtStyle.bold,applyTxtBold,{fontWeight:800,fontSize:14},"B"],
+              ["txt-bar-italic",txtStyle.italic,applyTxtItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
+            ].map(([hk,isAct,toggle,extra,label])=>{
+              const isH=hov===hk;
+              return (
+                <div key={hk}
+                  onPointerDown={(e)=>{e.stopPropagation();toggle();}}
+                  onMouseDown={(e)=>e.stopPropagation()}
+                  onClick={(e)=>e.stopPropagation()}
+                  onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
+                  style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",flexShrink:0,
+                          background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                          cursor:"default",transition:"background 0.12s",
+                          color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,...extra}}>
+                  {label}
+                  {isAct&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+                  {!isAct&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                </div>
+              );
+            })}
+          </>}
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
           <TxBtn id="txt-lock" isAct={txtLocked} onClick={()=>{
             setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);
@@ -26527,7 +26560,7 @@ const TalariaV8bLive = () => {
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{e.stopPropagation();v9SuppressNextChartDeselect();if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const anchorX=r.left+r.width/2;const anchorY=r.bottom+8;let d=getSelectedDrawingForTemplate();if(!d){try{d=getSelectedDrawingAcrossCharts(null);}catch(_){}}try{const grid=typeof window!=="undefined"?window.__multichartGrid:null;if(grid&&typeof grid.openDrawingSettingsForPanel==="function"&&d){const panelId=typeof grid.getFocusedPanelId==="function"?(grid.getFocusedPanelId()||grid.hostPanelId||"A"):"A";grid.openDrawingSettingsForPanel(panelId,d,anchorX,anchorY).catch(()=>{});return;}}catch(_){}const hook=v9ResolveOpenDrawingSettingsHook();if(d&&hook){try{if(hook(d,anchorX,anchorY))return;}catch(_){}}const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
+          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{e.stopPropagation();v9SuppressNextChartDeselect();if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const anchorX=r.left+r.width/2;const anchorY=r.bottom+8;let d=getSelectedDrawingForTemplate();if(!d){try{d=getSelectedDrawingAcrossCharts(null);}catch(_){}}try{const grid=typeof window!=="undefined"?window.__multichartGrid:null;if(grid&&typeof grid.openDrawingSettingsForPanel==="function"&&d){const panelId=typeof grid.getFocusedPanelId==="function"?(grid.getFocusedPanelId()||grid.hostPanelId||"A"):"A";grid.openDrawingSettingsForPanel(panelId,d,anchorX,anchorY).catch(()=>{});return;}}catch(_){}const hook=v9ResolveOpenDrawingSettingsHook();if(d&&hook){try{if(hook(d,anchorX,anchorY))return;}catch(_){}}const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;if(d&&v9DrawingTypeToPanelGroup(d.type)==="text"){suppressTxtForwardBridge.current=true;suppressTxtCoordBridge.current=true;v9MarkTxtStyleOwnerType(v9TxtStyleOwnerTypeRef,d);flushSync(()=>setTxtStyle(v9BuildFullTxtStyleFromDrawing(d)));const icon=legacyChartTextTypeToV9Icon(d.type)||"text";if(v9TxtIconHasContentTab(icon))setTxtSettTab("text");else if(d.type==="price-note")setTxtSettTab("style");}setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
           {/* three dots — more options (menu portaled below) */}
@@ -26594,9 +26627,10 @@ const TalariaV8bLive = () => {
         const isImage = txtSubTool.icon === "image";
         const isEmoji = txtSubTool.icon === "emoji";
         const hasCoords = isNote || isPriceNote || isCallout || isComment || isPin || isPriceLabel || isSignpost || isFlag || isEmoji;
+        const hasTxtContentTab = v9TxtIconHasContentTab(txtSubTool.icon);
         const txtTabs = isEmoji
           ? [["coordinates","Coordinates"],["visibility","Visibility"]]
-          : [["style","Style"],...((isPin||isSignpost)?[["text","Text"]]:[]),...(hasCoords?[["coordinates","Coordinates"]]:[]),["visibility","Visibility"]];
+          : [["style","Style"],...(hasTxtContentTab?[["text","Text"]]:[]),...(hasCoords?[["coordinates","Coordinates"]]:[]),["visibility","Visibility"]];
         const txtTabIdx=txtTabs.findIndex(([id])=>id===txtSettTab);
         return (
         <div data-sdrop="1"
@@ -26822,8 +26856,8 @@ const TalariaV8bLive = () => {
                   </div>
                 </>;
               })()}
-              {!isFlag && !isImage && !isPriceNote && !isPin && !isSignpost && <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>FORMATTING</div>}
-              {!isFlag && !isImage && !isPriceNote && !isPin && !isSignpost && <div style={{marginBottom:16}}>
+              {!isFlag && !isImage && !isPriceNote && !hasTxtContentTab && <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>FORMATTING</div>}
+              {!isFlag && !isImage && !isPriceNote && !hasTxtContentTab && <div style={{marginBottom:16}}>
                 {/* Text row — matches TL settings Text tab exactly: label left, controls right */}
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                   <span style={{fontSize:12,color:c.ts}}>Text</span>
@@ -26893,11 +26927,11 @@ const TalariaV8bLive = () => {
                 </div>}
               </div>}
               {/* Wrap Text — basic text tools only (pin/signpost use Text tab) */}
-              {!isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && !isPin && !isSignpost && <div style={{padding:"8px 0"}}>
+              {!isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && !hasTxtContentTab && <div style={{padding:"8px 0"}}>
                 {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>applyTxtStylePatch(s=>({...s,wrapText:!s.wrapText})))}
               </div>}
-              {/* Horizontal alignment — only when wrap text is enabled */}
-              {!isNote && !isPriceNote && !isCallout && !isComment && !isPin && !isSignpost && !isPriceLabel && !isFlag && !isImage && txtStyle.wrapText && <>
+              {/* Horizontal alignment — only when wrap text is enabled (plain text tools on Text tab) */}
+              {!isNote && !isPriceNote && !isCallout && !isComment && !isPin && !isSignpost && !isPriceLabel && !isFlag && !isImage && !hasTxtContentTab && txtStyle.wrapText && <>
                 <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>ALIGNMENT</div>
                 <div style={{marginBottom:16}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
@@ -27038,8 +27072,8 @@ const TalariaV8bLive = () => {
                 </div>
               </>}
             </>}
-            {/* ── TEXT TAB (pin, signpost) ── */}
-            {txtSettTab==="text" && (isPin||isSignpost) && <>
+            {/* ── TEXT TAB (content + formatting — all text tools except emoji/image/flag/price note) ── */}
+            {txtSettTab==="text" && hasTxtContentTab && <>
                 <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>FORMATTING</div>
                 <div style={{marginBottom:16}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
@@ -27078,9 +27112,9 @@ const TalariaV8bLive = () => {
                           </div>
                         )}
                       </div>
-                      <div style={{display:"flex",gap:4}}>
-                        {[["txt-pin-bold",txtStyle.bold,applyTxtBold,{fontWeight:800,fontSize:14},"B"],
-                          ["txt-pin-italic",txtStyle.italic,applyTxtItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
+                      {!isPriceLabel && <div style={{display:"flex",gap:4}}>
+                        {[["txt-tab-bold",txtStyle.bold,applyTxtBold,{fontWeight:800,fontSize:14},"B"],
+                          ["txt-tab-italic",txtStyle.italic,applyTxtItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
                         ].map(([hk,isAct,toggle,extra,label])=>{
                           const isH=hov===hk;
                           return (
@@ -27095,7 +27129,7 @@ const TalariaV8bLive = () => {
                             </div>
                           );
                         })}
-                      </div>
+                      </div>}
                     </div>
                   </div>
                   <div style={{marginTop:8}}>
@@ -27107,6 +27141,35 @@ const TalariaV8bLive = () => {
                   <div style={{padding:"8px 0"}}>
                     {TlChk(txtStyle.wrapText,"txtWrapChkPin","Wrap Text",()=>applyTxtStylePatch(s=>({...s,wrapText:!s.wrapText})))}
                   </div>
+                  {!isNote && !isPriceNote && !isCallout && !isComment && !isPin && !isSignpost && !isPriceLabel && !isFlag && !isImage && txtStyle.wrapText && <>
+                    <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10,marginTop:4}}>ALIGNMENT</div>
+                    <div style={{marginBottom:16}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+                        <span style={{fontSize:12,color:c.ts}}>Horizontal</span>
+                        <div style={{display:"flex",gap:4}}>
+                          {[["left",  <svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[0,6,10,6],[0,10,12,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>, "txt-ha-left-tab"],
+                            ["center",<svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[2,6,12,6],[1,10,13,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>, "txt-ha-center-tab"],
+                            ["right", <svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[4,6,14,6],[2,10,14,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>, "txt-ha-right-tab"]
+                          ].map(([v,ico,hk])=>{
+                            const isAct=txtStyle.horizAlign===v; const isH=hov===hk;
+                            return (
+                              <div key={v} onClick={()=>applyTxtHorizAlign(v)}
+                                onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
+                                style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
+                                        background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
+                                        cursor:"default",color:isAct?c.acL:isH?c.tx:c.ts,transition:"background 0.12s, color 0.12s"}}>
+                                {ico}
+                                <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:isAct?"70%":"50%",height:isAct?2:1,
+                                  background:isAct?`linear-gradient(90deg,transparent,${c.acL},transparent)`:isH?`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`:"transparent",
+                                  boxShadow:isAct?`0 0 6px ${c.acG}`:"none",pointerEvents:"none",
+                                  transition:"background 0.15s, width 0.15s, height 0.15s, box-shadow 0.15s"}}/>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </>}
                 </div>
             </>}
             {/* ── COORDINATES TAB (note tool only) ── */}

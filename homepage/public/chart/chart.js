@@ -857,6 +857,9 @@ class Chart {
             this.setupTimeframeButtons();
             
             this.setupOHLCCollapse();
+            if (this._isMultichartEmbedPanel()) {
+                this._ensureMultichartEmbedOhlcLegend();
+            }
             
             this.setupChartClickToCloseMenus();
             
@@ -1864,6 +1867,107 @@ class Chart {
             return typeof document !== 'undefined'
                 && document.documentElement.classList.contains('multichart-embed');
         } catch (_e) { return false; }
+    }
+
+    /**
+     * Multichart iframe tiles load chart-embed.html (lightweight shell). Older/cached
+     * copies only had bare #chartSymbol spans with no stacking CSS, so the legend
+     * painted under the canvas. Upgrade DOM + inject layout CSS to match main chart.
+     */
+    _ensureMultichartEmbedOhlcLegend() {
+        if (!this._isMultichartEmbedPanel()) return;
+        try {
+            const styleId = 'multichart-embed-ohlc-style';
+            if (!document.getElementById(styleId)) {
+                const s = document.createElement('style');
+                s.id = styleId;
+                s.textContent = [
+                    '#chart-container #chartWrapper .ohlc-info{',
+                    'position:absolute;top:8px;left:10px;z-index:25;',
+                    'display:flex;flex-direction:column;gap:3px;',
+                    'font-size:11px;font-family:Roboto,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;',
+                    'color:#d1d4dc;pointer-events:none;box-sizing:border-box;',
+                    'max-width:min(560px,calc(100% - 96px));',
+                    '--ohlc-fg:#fff;--ohlc-muted:rgba(255,255,255,0.82);--ohlc-ind:rgba(255,255,255,0.72);}',
+                    '#chart-container #chartWrapper .ohlc-header{display:flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%;min-width:0;box-sizing:border-box;}',
+                    '#chart-container #chartWrapper .ohlc-symbol-block{display:flex;align-items:center;gap:4px;flex:0 0 auto;font-size:13px;line-height:1.25;color:var(--ohlc-fg,#fff);}',
+                    '#chart-container #chartWrapper .ohlc-symbol-block #chartSymbol{color:var(--ohlc-fg,#fff);}',
+                    '#chart-container #chartWrapper .ohlc-symbol-block #chartTimeframe{color:var(--ohlc-muted,rgba(255,255,255,0.82));}',
+                    '#chart-container #chartWrapper .ohlc-stats{display:flex;align-items:center;flex:0 1 auto;min-width:0;max-width:100%;flex-wrap:nowrap;min-height:22px;padding-left:4px;box-sizing:border-box;}',
+                    '#chart-container #chartWrapper .ohlc-stats-flow{display:flex;align-items:center;flex-wrap:nowrap;gap:10px;flex:0 1 auto;min-width:0;overflow:hidden;box-sizing:border-box;}',
+                    '#chart-container #chartWrapper .ohlc-item{display:inline-flex;align-items:center;gap:3px;}',
+                    '#chart-container #chartWrapper .ohlc-item-close-change{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;overflow:hidden;box-sizing:border-box;}',
+                    '#chart-container #chartWrapper .ohlc-label,#chart-container #chartWrapper .ohlc-value,#chart-container #chartWrapper .ohlc-change{font-size:9px;font-weight:500;color:var(--ohlc-muted,rgba(255,255,255,0.82));font-variant-numeric:tabular-nums lining-nums;}',
+                    '#chart-container #chartWrapper .ohlc-item-close-change .ohlc-change{margin-left:0;width:14ch;min-width:14ch;flex:0 0 14ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}',
+                    '#chart-container #chartWrapper .ohlc-body{margin-top:1px;pointer-events:none;}',
+                    '#chart-container #chartWrapper .ohlc-indicators{display:flex;flex-direction:column;align-items:flex-start;gap:0;width:100%;max-width:100%;font-size:10.5px;line-height:1.2;color:var(--ohlc-ind,rgba(255,255,255,0.72));pointer-events:none;position:relative;z-index:100;}',
+                    '#chart-container #chartWrapper .ohlc-legend-footer{display:flex;align-items:center;justify-content:flex-start;margin-top:3px;padding:0;pointer-events:auto;}',
+                    '#chart-container #chartWrapper .ohlc-legend-chevron{appearance:none;border:none;margin:0;padding:2px 4px;background:transparent;color:#787b86;cursor:default;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;line-height:0;pointer-events:auto;opacity:0.88;}',
+                    '#chart-container #chartWrapper .ohlc-legend-chevron svg{width:13px;height:13px;transition:transform .15s ease;}',
+                    '#chart-container #chartWrapper .ohlc-info:not(.collapsed) .ohlc-legend-chevron svg{transform:rotate(180deg);}',
+                    '#chart-container #chartWrapper .ohlc-info.collapsed .ohlc-body{display:none!important;}',
+                ].join('');
+                document.head.appendChild(s);
+            }
+
+            let ohlc = document.getElementById('ohlcInfo');
+            const wrapper = document.getElementById('chartWrapper');
+            if (!wrapper) return;
+
+            const fullMarkup = [
+                '<div class="ohlc-header">',
+                '<div class="ohlc-symbol-block">',
+                '<span id="chartSymbol" class="ohlc-symbol-text"></span>',
+                '<span class="ohlc-separator"> · </span>',
+                '<span id="chartTimeframe"></span>',
+                '</div>',
+                '<div class="ohlc-stats">',
+                '<div class="ohlc-stats-flow">',
+                '<div class="ohlc-item"><span class="ohlc-label">O</span><span class="ohlc-value" id="open">—</span></div>',
+                '<div class="ohlc-item"><span class="ohlc-label">H</span><span class="ohlc-value" id="high">—</span></div>',
+                '<div class="ohlc-item"><span class="ohlc-label">L</span><span class="ohlc-value" id="low">—</span></div>',
+                '<div class="ohlc-item ohlc-item-close-change">',
+                '<span class="ohlc-label">C</span><span class="ohlc-value" id="close">—</span>',
+                '<span class="ohlc-change" id="chartChange">—</span>',
+                '</div></div>',
+                '<div class="ohlc-nav-badge-slot" aria-hidden="true"></div>',
+                '</div></div>',
+                '<div class="ohlc-body"><div id="ohlcIndicators" class="ohlc-indicators"></div></div>',
+                '<div class="ohlc-legend-footer">',
+                '<button type="button" class="ohlc-legend-chevron" id="ohlcCollapseBtn" aria-label="Toggle indicator list" aria-expanded="true">',
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">',
+                '<polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"></polyline>',
+                '</svg></button></div>',
+            ].join('');
+
+            if (!ohlc) {
+                ohlc = document.createElement('div');
+                ohlc.id = 'ohlcInfo';
+                ohlc.className = 'ohlc-info';
+                ohlc.innerHTML = fullMarkup;
+                wrapper.appendChild(ohlc);
+            } else if (!ohlc.querySelector('#open')) {
+                ohlc.className = 'ohlc-info';
+                ohlc.innerHTML = fullMarkup;
+            }
+
+            ohlc.style.display = 'flex';
+            ohlc.style.visibility = 'visible';
+            ohlc.style.opacity = '1';
+            ohlc.style.zIndex = '25';
+            ohlc.style.pointerEvents = 'none';
+
+            if (!this._embedOhlcCollapseWired) {
+                this._embedOhlcCollapseWired = true;
+                if (typeof this.setupOHLCCollapse === 'function') {
+                    this.setupOHLCCollapse();
+                }
+            }
+
+            if (typeof this._syncOhlcLegendMaxWidth === 'function') {
+                this._syncOhlcLegendMaxWidth();
+            }
+        } catch (_e) { /* ignore */ }
     }
 
     _isMultichartHostPanel() {
@@ -15280,6 +15384,9 @@ class Chart {
      * @param {string} symbol - Symbol to display
      */
     updateChartOHLCSymbol(symbol) {
+        if (this._isMultichartEmbedPanel()) {
+            this._ensureMultichartEmbedOhlcLegend();
+        }
         const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         
         const chartSymbol = document.getElementById('chartSymbol' + idSuffix);
