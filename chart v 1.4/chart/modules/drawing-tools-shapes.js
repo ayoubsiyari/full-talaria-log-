@@ -1720,7 +1720,7 @@ class ArrowTool extends BaseDrawing {
             .attr('fill', this.style.stroke)
             .style('pointer-events', 'none');
 
-        this.renderTextLabel({ x1, y1, x2, y2, scales });
+        this.renderTextLabel({ x1: origX1, y1: origY1, x2: origX2, y2: origY2, scales });
 
         // Render info box if enabled
         this.renderInfoBox(origX1, origY1, origX2, origY2, scales);
@@ -1891,89 +1891,22 @@ class ArrowTool extends BaseDrawing {
         });
     }
 
-    renderTextLabel(coords, scaleFactor = 1) {
-        const label = this.text || '';
-        if (!label.trim()) {
-            return;
-        }
-
-        const textVAlign = normalizeLineTextVAlign(this.style);
-        const offY = lineTextOffsetY(this.style, textVAlign);
-
-        if (this._splitInfo) {
-            if (typeof appendSplitAngledLineTextLabel === 'function') {
-                appendSplitAngledLineTextLabel(
-                    this.group, label, this._splitInfo, coords, this, this.style, 'geometric'
-                );
-            } else {
-                let angle = flipLineLabelReadableAngleDeg(this._splitInfo.angle);
-                appendTextLabel(this.group, label, {
-                    x: this._splitInfo.textX + (this.style.textOffsetX || 0),
-                    y: this._splitInfo.textY + offY,
-                    anchor: 'middle',
-                    yAnchor: 'middle',
-                    fill: this.style.textColor || this.style.stroke,
-                    fontSize: this.style.fontSize || 14,
-                    fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
-                    fontWeight: this.style.fontWeight || 'normal',
-                    fontStyle: this.style.fontStyle || 'normal',
-                    rotation: angle
-                });
-            }
-            return;
-        }
-
+    renderTextLabel(coords) {
         const { scales } = coords;
         const p1 = this.points[0];
         const p2 = this.points[1];
-
-        const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel ?
-            scales.chart.dataIndexToPixel(p1.x) : (scales ? scales.xScale(p1.x) : coords.x1);
+        const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x) : (scales ? scales.xScale(p1.x) : coords.x1);
         const origY1 = scales ? scales.yScale(p1.y) : coords.y1;
-        const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel ?
-            scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : coords.x2);
+        const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : coords.x2);
         const origY2 = scales ? scales.yScale(p2.y) : coords.y2;
 
-        let angle = Math.atan2(origY2 - origY1, origX2 - origX1) * (180 / Math.PI);
-        const angleRad = Math.atan2(origY2 - origY1, origX2 - origX1);
-        angle = typeof flipLineLabelReadableAngleDeg === 'function'
-            ? flipLineLabelReadableAngleDeg(angle)
-            : (angle > 90 || angle < -90 ? angle + 180 : angle);
-
-        const fontSize = this.style.fontSize || 14;
-        const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-        const sh_mP1IsLeft = origX1 <= origX2;
-        let t = 0.5;
-        let anchor = 'middle';
-        switch (textHAlign) {
-            case 'left':
-                t = sh_mP1IsLeft ? 0.05 : 0.95;
-                anchor = resolveLineEndpointSvgAnchor('left', label);
-                break;
-            case 'right':
-                t = sh_mP1IsLeft ? 0.95 : 0.05;
-                anchor = resolveLineEndpointSvgAnchor('right', label);
-                break;
+        if (typeof renderAngledTwoPointLineTextLabel === 'function') {
+            renderAngledTwoPointLineTextLabel(this, {
+                x1: origX1, y1: origY1, x2: origX2, y2: origY2, scales
+            });
         }
-
-        let baseX = origX1 + (origX2 - origX1) * t;
-        let baseY = origY1 + (origY2 - origY1) * t;
-        const gapCfg = (typeof angledLineLabelGapConfig === 'function')
-            ? angledLineLabelGapConfig(baseX, baseY, textVAlign, angleRad)
-            : {};
-
-        appendTextLabel(this.group, label, {
-            x: baseX + (this.style.textOffsetX || 0),
-            y: baseY + offY,
-            anchor,
-            fill: this.style.textColor || this.style.stroke,
-            fontSize: fontSize,
-            fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
-            fontWeight: this.style.fontWeight || 'normal',
-            fontStyle: this.style.fontStyle || 'normal',
-            rotation: angle,
-            ...gapCfg
-        });
     }
 
     static fromJSON(data, chart = null) {
