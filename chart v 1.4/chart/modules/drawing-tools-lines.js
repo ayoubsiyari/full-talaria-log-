@@ -46,18 +46,23 @@ function appendTextLabel(group, text, config = {}) {
 
     const resolved = resolveDrawingTextStyle(text, fontStyle, fontFamily);
     const isRtl = resolved.direction === 'rtl';
+    // Skew + rotate breaks Arabic glyph joining; use the same rotate-only path as Latin.
+    const italicSkew = (isRtl && isRotated) ? 0 : resolved.italicSkew;
+    const displayFontStyle = (isRtl && isRotated && fontStyle === 'italic')
+        ? 'italic'
+        : resolved.fontStyle;
 
     // Mirror anchor for RTL so label sits on the same side of the anchor point as Latin.
     let svgAnchor = anchor;
-    if (isRtl) {
+    if (isRtl && !isRotated) {
         if (anchor === 'start') svgAnchor = 'end';
         else if (anchor === 'end') svgAnchor = 'start';
     }
 
-    const needsRtlCenterNudge = isRtl && anchor === 'middle';
+    const needsRtlCenterNudge = isRtl && anchor === 'middle' && !isRotated;
     let transform = needsRtlCenterNudge
         ? null
-        : buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew);
+        : buildDrawingTextTransform(x, yPos, rotation, italicSkew);
 
     const textEl = group.append('text')
         .attr('x', x)
@@ -66,7 +71,7 @@ function appendTextLabel(group, text, config = {}) {
         .attr('font-size', `${fontSize}px`)
         .attr('font-family', resolved.fontFamily)
         .attr('font-weight', fontWeight)
-        .attr('font-style', resolved.fontStyle)
+        .attr('font-style', displayFontStyle)
         .attr('text-anchor', svgAnchor)
         .attr('dominant-baseline', useCenteredY ? 'central' : 'text-before-edge')
         .attr('xml:space', 'preserve')
@@ -78,7 +83,7 @@ function appendTextLabel(group, text, config = {}) {
     }
     if (isRtl) {
         textEl.style('direction', resolved.direction);
-        textEl.attr('unicode-bidi', 'plaintext');
+        textEl.attr('unicode-bidi', isRotated ? 'embed' : 'plaintext');
     } else if (resolved.direction) {
         textEl.style('direction', resolved.direction);
     }
@@ -103,7 +108,7 @@ function appendTextLabel(group, text, config = {}) {
                 nudgeY = yPos - (bbox.y + bbox.height / 2);
             }
         } catch (_) { /* ignore measure failures */ }
-        transform = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew, nudgeX, nudgeY);
+        transform = buildDrawingTextTransform(x, yPos, rotation, italicSkew, nudgeX, nudgeY);
         if (transform) {
             textEl.attr('transform', transform);
         }
