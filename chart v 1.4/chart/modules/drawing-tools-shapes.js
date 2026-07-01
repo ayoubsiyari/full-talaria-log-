@@ -1622,60 +1622,42 @@ class ArrowTool extends BaseDrawing {
         if (shouldSplitLine) {
             const p1 = this.points[0];
             const p2 = this.points[1];
-            const splitOrigX1 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
+            const origX1 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
                 scales.chart.dataIndexToPixel(p1.x) : (scales ? scales.xScale(p1.x) : x1);
-            const splitOrigY1 = scales ? scales.yScale(p1.y) : y1;
-            const splitOrigX2 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
+            const origY1 = scales ? scales.yScale(p1.y) : y1;
+            const origX2 = scales && scales.chart && scales.chart.dataIndexToPixel ? 
                 scales.chart.dataIndexToPixel(p2.x) : (scales ? scales.xScale(p2.x) : x2);
-            const splitOrigY2 = scales ? scales.yScale(p2.y) : y2;
+            const origY2 = scales ? scales.yScale(p2.y) : y2;
 
             const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
-            const textWidth = (typeof measureLineMiddleGapSpan === 'function')
-                ? measureLineMiddleGapSpan(this.group, this.text, this.style).width
+
+            const textWidth = (typeof measureLineToolLabelWidth === 'function')
+                ? measureLineToolLabelWidth(this.group, this.text, this.style, 'middle')
                 : 0;
-            const lineAngle = Math.atan2(splitOrigY2 - splitOrigY1, splitOrigX2 - splitOrigX1);
-            const padding = 2;
-            const capPad = 2;
-            const gapSize = textWidth + (padding * 2) + (capPad * 2);
-            const endArrowInset = headLen + 4;
 
-            const rawLX = splitOrigX1 <= splitOrigX2 ? splitOrigX1 : splitOrigX2;
-            const rawLY = splitOrigX1 <= splitOrigX2 ? splitOrigY1 : splitOrigY2;
-            const rawRX = splitOrigX1 <= splitOrigX2 ? splitOrigX2 : splitOrigX1;
-            const rawRY = splitOrigX1 <= splitOrigX2 ? splitOrigY2 : splitOrigY1;
-            const rawDX = rawRX - rawLX, rawDY = rawRY - rawLY;
-            const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
-            const segUx = rawDX / rawLen;
-            const segUy = rawDY / rawLen;
+            const lineAngle = Math.atan2(origY2 - origY1, origX2 - origX1);
 
-            let textX, textY;
+            const padding = 10;
+            const gapSize = textWidth + (padding * 2);
+
+            // visual left/right + t-based with clamping
+            const sh_p1IsLeft = origX1 <= origX2;
+            let t = 0.5;
             switch (textHAlign) {
-                case 'left':  textX = rawLX + segUx * (5 + capPad); textY = rawLY + segUy * (5 + capPad); break;
-                case 'right': textX = rawRX - segUx * (5 + capPad + endArrowInset); textY = rawRY - segUy * (5 + capPad + endArrowInset); break;
-                default:      textX = (rawLX + rawRX) / 2; textY = (rawLY + rawRY) / 2;
+                case 'left':  t = sh_p1IsLeft ? 0.05 : 0.95; break;
+                case 'right': t = sh_p1IsLeft ? 0.95 : 0.05; break;
+                default:      t = 0.5;
             }
-
-            const halfGap = gapSize / 2;
-            let split1X, split1Y, split2X, split2Y;
-            switch (textHAlign) {
-                case 'left':
-                    split1X = textX - segUx * capPad;
-                    split1Y = textY - segUy * capPad;
-                    split2X = textX + segUx * (textWidth + padding + capPad);
-                    split2Y = textY + segUy * (textWidth + padding + capPad);
-                    break;
-                case 'right':
-                    split1X = textX - segUx * (textWidth + padding + capPad);
-                    split1Y = textY - segUy * (textWidth + padding + capPad);
-                    split2X = rawRX - segUx * endArrowInset;
-                    split2Y = rawRY - segUy * endArrowInset;
-                    break;
-                default:
-                    split1X = textX - segUx * halfGap;
-                    split1Y = textY - segUy * halfGap;
-                    split2X = textX + segUx * halfGap;
-                    split2Y = textY + segUy * halfGap;
-            }
+            const sh_lineLen = Math.sqrt((origX2-origX1)**2 + (origY2-origY1)**2);
+            const sh_halfGapT = sh_lineLen > 0 ? (gapSize/2) / sh_lineLen : 0;
+            const sh_t1 = Math.max(0, t - sh_halfGapT);
+            const sh_t2 = Math.min(1, t + sh_halfGapT);
+            const textX = origX1 + (origX2 - origX1) * t;
+            const textY = origY1 + (origY2 - origY1) * t;
+            const split1X = origX1 + (origX2 - origX1) * sh_t1;
+            const split1Y = origY1 + (origY2 - origY1) * sh_t1;
+            const split2X = origX1 + (origX2 - origX1) * sh_t2;
+            const split2Y = origY1 + (origY2 - origY1) * sh_t2;
 
             this._splitInfo = {
                 textX: textX,
@@ -1689,8 +1671,8 @@ class ArrowTool extends BaseDrawing {
             };
 
             this.group.append('line')
-                .attr('x1', shaftStartX)
-                .attr('y1', shaftStartY)
+                .attr('x1', x1)
+                .attr('y1', y1)
                 .attr('x2', split1X)
                 .attr('y2', split1Y)
                 .attr('class', 'shape-border-hit')
@@ -1704,8 +1686,8 @@ class ArrowTool extends BaseDrawing {
             this.group.append('line')
                 .attr('x1', split2X)
                 .attr('y1', split2Y)
-                .attr('x2', shaftEndX)
-                .attr('y2', shaftEndY)
+                .attr('x2', x2)
+                .attr('y2', y2)
                 .attr('class', 'shape-border-hit')
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', Math.max(18, this.style.strokeWidth))
@@ -1738,7 +1720,7 @@ class ArrowTool extends BaseDrawing {
             .attr('fill', this.style.stroke)
             .style('pointer-events', 'none');
 
-        this.renderTextLabel({ x1: origX1, y1: origY1, x2: origX2, y2: origY2, scales });
+        this.renderTextLabel({ x1, y1, x2, y2, scales });
 
         // Render info box if enabled
         this.renderInfoBox(origX1, origY1, origX2, origY2, scales);
@@ -1909,11 +1891,7 @@ class ArrowTool extends BaseDrawing {
         });
     }
 
-    renderTextLabel(coords) {
-        if (typeof renderTwoPointLineTextLabel === 'function') {
-            renderTwoPointLineTextLabel(this, coords);
-            return;
-        }
+    renderTextLabel(coords, scaleFactor = 1) {
         const label = this.text || '';
         if (!label.trim()) {
             return;

@@ -672,10 +672,6 @@ class DrawingToolsManager {
     /** Two-point line tools that support in-place geometry patch during handle drag. */
     _supportsLiveHandleGeometryPatch(drawing) {
         if (!drawing || !drawing.type) return false;
-        if (drawing.text && String(drawing.text).trim()) {
-            // Labels must full re-render each frame so text stays glued to the line.
-            return false;
-        }
         return [
             'trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray',
             'extended-line', 'cross-line'
