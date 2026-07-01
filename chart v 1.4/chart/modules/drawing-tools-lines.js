@@ -159,6 +159,44 @@ function angledLineLabelGapConfig(strokeX, strokeY, textVAlign, angleRad) {
 
 window.angledLineLabelGapConfig = angledLineLabelGapConfig;
 
+/** Gap config: vertical line, label left/right of stroke (same gap as horizontal top/bottom). */
+function verticalLineSideGapConfig(lineX, lineY, textHAlign) {
+    if (textHAlign === 'left') {
+        return {
+            lineSide: 'left',
+            lineRef: { x: lineX, y: lineY },
+            linePerp: { x: -1, y: 0 }
+        };
+    }
+    if (textHAlign === 'right') {
+        return {
+            lineSide: 'right',
+            lineRef: { x: lineX, y: lineY },
+            linePerp: { x: 1, y: 0 }
+        };
+    }
+    return {};
+}
+
+/** Gap config: vertical line, label inset from top/bottom endpoint. */
+function verticalLineEndpointGapConfig(lineX, endpointY, textVAlign) {
+    if (textVAlign === 'top') {
+        return {
+            lineSide: 'below',
+            lineRef: { x: lineX, y: endpointY },
+            linePerp: { x: 0, y: 1 }
+        };
+    }
+    if (textVAlign === 'bottom') {
+        return {
+            lineSide: 'above',
+            lineRef: { x: lineX, y: endpointY },
+            linePerp: { x: 0, y: -1 }
+        };
+    }
+    return {};
+}
+
 const DEFAULT_TEXT_STYLE = {
     fontFamily: 'Roboto, sans-serif',
     fontSize: 14,
@@ -172,8 +210,6 @@ const DEFAULT_TEXT_STYLE = {
 };
 
 const TEXT_EDGE_PADDING = 5;
-
-const LINE_LABEL_OFFSET = 14;
 
 /** V9 uses vertAlign "center"; chart split/on-line logic uses "middle". */
 function readLineTextVAlign(style) {
@@ -271,32 +307,6 @@ function flipLineLabelReadableAngleDeg(angleDeg) {
     while (angle < -180) angle += 360;
     if (angle > 90 || angle < -90) angle += 180;
     return angle;
-}
-
-/** Above/below offset for angled lines (trendline / ray / extended-line). */
-function applyAngledLineLabelVAlignOffset(baseX, baseY, angleRad, textVAlign, fontSize) {
-    const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, (Number(fontSize) || 14) / 2 - 6);
-    const perpX = -Math.sin(angleRad);
-    const perpY = Math.cos(angleRad);
-    const signUp = perpY <= 0 ? 1 : -1;
-    let x = baseX;
-    let y = baseY;
-    if (textVAlign === 'top') {
-        x += perpX * verticalOffset * signUp;
-        y += perpY * verticalOffset * signUp;
-    } else if (textVAlign === 'bottom') {
-        x -= perpX * verticalOffset * signUp;
-        y -= perpY * verticalOffset * signUp;
-    }
-    return { x, y };
-}
-
-/** Top/bottom Y offset for horizontal lines and horizontal rays. */
-function horizontalLineLabelYOffset(textVAlign, fontSize) {
-    const hlOffset = 10 + Math.max(0, (Number(fontSize) || 14) / 2 - 6);
-    if (textVAlign === 'top') return -hlOffset;
-    if (textVAlign === 'bottom') return hlOffset;
-    return 0;
 }
 
 function screenPointFromToolPoint(scales, point, fallbackX, fallbackY) {
@@ -1819,19 +1829,18 @@ class HorizontalLineTool extends BaseDrawing {
         const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
             ? 0
             : rawOffsetY;
-        const labelY = textVAlign === 'middle'
-            ? y + offsetY
-            : y + horizontalLineLabelYOffset(textVAlign, fontSize) + offsetY;
+        const onLineMiddle = textVAlign === 'middle';
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
-            y: labelY,
+            y: y + offsetY,
             anchor: hlAnchor,
-            yAnchor: 'middle',
+            yAnchor: onLineMiddle ? 'middle' : undefined,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize, 
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle
+            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+            ...(onLineMiddle ? {} : lineLabelGapConfig(baseX, y, textVAlign))
         });
     }
 
@@ -1927,10 +1936,10 @@ class VerticalLineTool extends BaseDrawing {
             let labelY;
             switch (textVAlign) {
                 case 'top':
-                    labelY = topY + LINE_LABEL_OFFSET;
+                    labelY = topY;
                     break;
                 case 'bottom':
-                    labelY = bottomY - LINE_LABEL_OFFSET;
+                    labelY = bottomY;
                     break;
                 default:
                     labelY = (topY + bottomY) / 2;
@@ -2125,50 +2134,59 @@ class VerticalLineTool extends BaseDrawing {
         const topY = Math.min(yRange[0], yRange[1]);
         const bottomY = Math.max(yRange[0], yRange[1]);
 
-        const textLineHeight = fontSize * 1.2;
-        const horizontalOffset = rotation !== 0
-            ? Math.ceil(textLineHeight / 2) + 6
-            : 10;
-
-        let baseY;
+        let strokeY;
         switch (textVAlign) {
             case 'top':
-                baseY = topY + LINE_LABEL_OFFSET;
+                strokeY = topY;
                 break;
             case 'bottom':
-                baseY = bottomY - LINE_LABEL_OFFSET;
+                strokeY = bottomY;
                 break;
             default:
-                baseY = (topY + bottomY) / 2;
+                strokeY = (topY + bottomY) / 2;
         }
 
         let baseX = x;
-        let anchor;
+        let baseY = strokeY;
+        let anchor = 'middle';
+        let gapCfg = {};
+        let onLineMiddle = false;
 
-        if (textVAlign === 'middle') {
-            if (textHAlign === 'left') {
+        if (textHAlign === 'center') {
+            // On vertical line (split gap drawn in render when center-aligned)
+            onLineMiddle = true;
+        } else if (rotation !== 0) {
+            const textLineHeight = fontSize * 1.2;
+            const sidePad = typeof lineLabelGapFromStroke === 'function'
+                ? lineLabelGapFromStroke(fontSize)
+                : 6;
+            const horizontalOffset = Math.ceil(textLineHeight / 2) + sidePad;
+            if (textVAlign === 'middle') {
+                if (textHAlign === 'left') {
+                    baseX = x - horizontalOffset;
+                    anchor = resolveVerticalLineSvgAnchor('left', label);
+                } else if (textHAlign === 'right') {
+                    baseX = x + horizontalOffset;
+                    anchor = resolveVerticalLineSvgAnchor('right', label);
+                }
+            } else if (textHAlign === 'left') {
                 baseX = x - horizontalOffset;
                 anchor = resolveVerticalLineSvgAnchor('left', label);
             } else if (textHAlign === 'right') {
                 baseX = x + horizontalOffset;
                 anchor = resolveVerticalLineSvgAnchor('right', label);
-            } else {
-                baseX = x;
-                anchor = 'middle';
             }
-        } else if (textHAlign === 'center') {
-            baseX = x;
             anchor = 'middle';
         } else if (textHAlign === 'left') {
-            baseX = x - horizontalOffset;
             anchor = resolveVerticalLineSvgAnchor('left', label);
-        } else {
-            baseX = x + horizontalOffset;
+            gapCfg = verticalLineSideGapConfig(x, strokeY, 'left');
+        } else if (textHAlign === 'right') {
             anchor = resolveVerticalLineSvgAnchor('right', label);
-        }
-
-        if (rotation !== 0) {
-            anchor = 'middle';
+            gapCfg = verticalLineSideGapConfig(x, strokeY, 'right');
+        } else if (textVAlign === 'top') {
+            gapCfg = verticalLineEndpointGapConfig(x, topY, 'top');
+        } else if (textVAlign === 'bottom') {
+            gapCfg = verticalLineEndpointGapConfig(x, bottomY, 'bottom');
         }
 
         const measureStyle = resolveDrawingTextStyle(label, fontStyle, fontFamily);
@@ -2192,7 +2210,9 @@ class VerticalLineTool extends BaseDrawing {
         }
         tempText.remove();
 
-        const clampPad = 10;
+        const clampPad = typeof lineLabelGapFromStroke === 'function'
+            ? lineLabelGapFromStroke(fontSize)
+            : 10;
         const halfY = rotation === 0 ? (totalHeight / 2) : (maxTextWidth / 2);
         baseY = Math.max(topY + halfY + clampPad, Math.min(bottomY - halfY - clampPad, baseY));
 
@@ -2209,13 +2229,14 @@ class VerticalLineTool extends BaseDrawing {
             x: baseX + offsetX,
             y: baseY + offsetY,
             anchor: anchor,
-            yAnchor: 'middle',
+            yAnchor: onLineMiddle ? 'middle' : undefined,
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: fontFamily,
             fontWeight: fontWeight,
             fontStyle: fontStyle,
-            rotation: rotation
+            rotation: rotation,
+            ...gapCfg
         });
     }
 
@@ -2995,20 +3016,18 @@ class HorizontalRayTool extends BaseDrawing {
         const offsetY = (rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY || (this._isDefaultTextOffsetY && rawOffsetY === -10))
             ? 0
             : rawOffsetY;
-        const labelY = textVAlign === 'middle'
-            ? y + offsetY
-            : y + horizontalLineLabelYOffset(textVAlign, fontSize) + offsetY;
-
+        const onLineMiddle = textVAlign === 'middle';
         appendTextLabel(this.group, label, {
             x: baseX + offsetX,
-            y: labelY,
+            y: y + offsetY,
             anchor: hrAnchor,
-            yAnchor: 'middle',
+            yAnchor: onLineMiddle ? 'middle' : undefined,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
             fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle
+            fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+            ...(onLineMiddle ? {} : lineLabelGapConfig(baseX, y, textVAlign))
         });
     }
 
