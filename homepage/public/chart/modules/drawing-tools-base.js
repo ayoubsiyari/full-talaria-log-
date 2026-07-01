@@ -455,6 +455,13 @@ function resolveLineLabelReadableAngleDeg(deltaX, deltaY) {
     return angleDeg;
 }
 
+/** Flip a precomputed angle (deg) so label text stays upright/readable. */
+function flipLineLabelReadableAngleDeg(angleDeg) {
+    const angle = Number(angleDeg) || 0;
+    if (angle > 90 || angle < -90) return angle + 180;
+    return angle;
+}
+
 /** Unit normal matching the rotation angle used for line labels. */
 function lineLabelPerpFromAngleDeg(angleDeg) {
     const rad = (Number(angleDeg) || 0) * Math.PI / 180;
