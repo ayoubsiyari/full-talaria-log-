@@ -6551,6 +6551,15 @@
                 && String(this.selectedOverlayIndicatorId) === String(indicator.id)) {
                 this.clearOverlayIndicatorSelection();
             }
+            if (typeof this.bumpIndicatorRenderVersion === 'function') {
+                this.bumpIndicatorRenderVersion();
+            }
+        }
+        if (newParams.hideFromContainer !== undefined) {
+            indicator.hidePlot = newParams.hideFromContainer === true;
+            if (typeof this.bumpIndicatorRenderVersion === 'function') {
+                this.bumpIndicatorRenderVersion();
+            }
         }
         if (newParams.showLabel !== undefined) indicator.style.showLabel = newParams.showLabel !== false;
         if (newParams.source !== undefined) indicator.params.source = newParams.source;
@@ -8675,6 +8684,36 @@
         return Math.max(baseEnd, Math.min(seriesLen + off, baseEnd + off));
     };
 
+    Chart.prototype._isIndicatorPlotShown = function(indicator) {
+        if (!indicator) return false;
+        if (indicator.visible === false) return false;
+        if (indicator.hidePlot === true) return false;
+        if (indicator.style && indicator.style.showLine === false) return false;
+        return true;
+    };
+
+    Chart.prototype._setIndicatorPlotLegendVisible = function(indicator, show, opts) {
+        if (!indicator) return;
+        opts = opts || {};
+        const on = show !== false;
+        if (opts.isVolume) {
+            indicator.visible = on;
+            if (this.chartSettings) this.chartSettings.showVolume = on;
+        } else if (indicator.overlay === false || indicator.separatePanel === true) {
+            indicator.hidePlot = !on;
+            indicator.hideValues = !on;
+            if (indicator.visible === false) indicator.visible = true;
+        } else {
+            indicator.visible = on;
+            indicator.hidePlot = false;
+        }
+        if (typeof this.bumpIndicatorRenderVersion === 'function') {
+            this.bumpIndicatorRenderVersion();
+        } else if (typeof this._invalidateIndicatorLayerCache === 'function') {
+            this._invalidateIndicatorLayerCache();
+        }
+    };
+
     Chart.prototype.drawIndicators = function() {
         if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
             return;
@@ -8712,7 +8751,7 @@
             // Skip non-overlay indicators
             if (indicator.overlay === false) continue;
 
-            if (!indicator.visible) continue;
+            if (!this._isIndicatorPlotShown(indicator)) continue;
             if (!this._indicatorVisibleForCurrentTimeframe(indicator)) continue;
             if (indicator.type === 'vwap' && !this._vwapVisibleOnTimeframe(indicator)) continue;
 
@@ -15911,7 +15950,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const structureKey = panelSlots.map(function(slot) {
             return slot.indicator.id + ':' + Math.round(slot.top) + ':' + Math.round(slot.height);
         }).join('|') + '|' + indicators.map(function(ind) {
-            return ind.id + ':' + (ind.visible !== false ? '1' : '0') + ':' + (ind._displayColor || '');
+            return ind.id + ':' + (ind.visible !== false ? '1' : '0') + ':' + (ind.hidePlot === true ? '1' : '0') + ':' + (ind._displayColor || '');
         }).join('|');
 
         let overlay = wrapper.querySelector('#separatePanelsOverlay');
@@ -16010,14 +16049,19 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 eyeBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
             };
             applyPlotEyeState();
-            eyeBtn.innerHTML = showPlot
-                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
-                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+            const eyeOpenSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+            const eyeClosedSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+            eyeBtn.innerHTML = showPlot ? eyeOpenSvg : eyeClosedSvg;
             eyeBtn.onmouseenter = function() { eyeBtn.style.background = 'rgba(255, 255, 255, 0.08)'; };
             eyeBtn.onmouseleave = function() { applyPlotEyeState(); };
             eyeBtn.onclick = function(e) {
                 e.stopPropagation();
-                if (isVolume) {
+                const nextOn = isVolume
+                    ? (self.chartSettings && self.chartSettings.showVolume === false)
+                    : (indicator.hidePlot === true);
+                if (typeof self._setIndicatorPlotLegendVisible === 'function') {
+                    self._setIndicatorPlotLegendVisible(indicator, nextOn, { isVolume: isVolume });
+                } else if (isVolume) {
                     const next = !(self.chartSettings.showVolume !== false);
                     self.chartSettings.showVolume = next;
                     indicator.visible = next;
@@ -16025,7 +16069,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     const nextHidden = !(indicator.hidePlot === true);
                     indicator.hidePlot = nextHidden;
                     indicator.hideValues = nextHidden;
+                    if (typeof self.bumpIndicatorRenderVersion === 'function') {
+                        self.bumpIndicatorRenderVersion();
+                    }
                 }
+                const on = isVolume
+                    ? (self.chartSettings.showVolume !== false)
+                    : (indicator.hidePlot !== true);
+                eyeBtn.innerHTML = on ? eyeOpenSvg : eyeClosedSvg;
                 applyPlotEyeState();
                 if (typeof self.render === 'function') self.render();
             };

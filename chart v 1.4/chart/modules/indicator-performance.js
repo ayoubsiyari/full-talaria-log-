@@ -130,7 +130,10 @@
         if (!active || !active.length) return '';
         try {
             return active.map(function (ind) {
-                return String(ind.id) + ':' + String(ind.type) + ':' + JSON.stringify(ind.params || {});
+                const vis = ind.visible === false ? '0' : '1';
+                const hide = ind.hidePlot === true ? '1' : '0';
+                const showLine = (ind.style && ind.style.showLine === false) ? '0' : '1';
+                return String(ind.id) + ':' + String(ind.type) + ':' + vis + ':' + hide + ':' + showLine + ':' + JSON.stringify(ind.params || {});
             }).join('|');
         } catch (_) {
             return String(active.length);

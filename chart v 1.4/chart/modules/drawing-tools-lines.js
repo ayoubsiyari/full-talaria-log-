@@ -91,6 +91,10 @@ function appendTextLabel(group, text, config = {}) {
             const bbox = textEl.node().getBBox();
             if (anchor === 'middle' && Number.isFinite(bbox.width) && bbox.width > 0) {
                 nudgeX = x - (bbox.x + bbox.width / 2);
+            } else if (anchor === 'start' && Number.isFinite(bbox.width)) {
+                nudgeX = x - bbox.x;
+            } else if (anchor === 'end' && Number.isFinite(bbox.width)) {
+                nudgeX = x - (bbox.x + bbox.width);
             }
             if (typeof equalizeOnLineMiddleExtent === 'function') {
                 const eq = equalizeOnLineMiddleExtent(bbox, x, yPos, rotation);
@@ -231,6 +235,49 @@ function measureLineToolLabelBlock(group, text, style, anchor = 'middle') {
     return { width: w, height: fs * 1.2 };
 }
 
+/** Measure rendered horizontal label span at an anchor (RTL/Latin accurate). */
+function measureHorizontalOnLineLabelSpan(group, text, style, anchorX, svgAnchor) {
+    const label = String(text || '').trim();
+    if (!group || !label) {
+        return { left: anchorX, right: anchorX, width: 0 };
+    }
+    const fontSize = Number(style?.fontSize) || DEFAULT_TEXT_STYLE.fontSize;
+    const fontFamily = style?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily;
+    const fontWeight = style?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight;
+    const fontStyle = style?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle;
+    const resolved = resolveDrawingTextStyle(label, fontStyle, fontFamily);
+    const tempText = group.append('text')
+        .attr('x', anchorX)
+        .attr('y', 0)
+        .attr('font-size', `${fontSize}px`)
+        .attr('font-family', resolved.fontFamily)
+        .attr('font-weight', fontWeight)
+        .attr('font-style', resolved.fontStyle)
+        .attr('text-anchor', svgAnchor)
+        .attr('dominant-baseline', 'middle')
+        .attr('xml:space', 'preserve')
+        .style('visibility', 'hidden')
+        .style('pointer-events', 'none')
+        .text(label);
+    if (resolved.direction) {
+        tempText.style('direction', resolved.direction);
+        tempText.attr('unicode-bidi', 'plaintext');
+    }
+    let left = anchorX;
+    let right = anchorX;
+    let width = 0;
+    try {
+        const bbox = tempText.node().getBBox();
+        if (Number.isFinite(bbox.x) && Number.isFinite(bbox.width)) {
+            left = bbox.x;
+            right = bbox.x + bbox.width;
+            width = bbox.width;
+        }
+    } catch (_) { /* ignore measure failures */ }
+    tempText.remove();
+    return { left, right, width };
+}
+
 /** On-line middle split for full-width horizontal lines (asymmetric left/right, symmetric center). */
 function computeHorizontalLineMiddleSplit(opts) {
     const {
@@ -238,9 +285,15 @@ function computeHorizontalLineMiddleSplit(opts) {
         lineLeftX,
         lineRightX,
         textWidth,
+        spanLeft,
+        spanRight,
         padding = 10,
         capPad = 2
     } = opts;
+
+    const hasSpan = Number.isFinite(spanLeft) && Number.isFinite(spanRight);
+    const leftEdge = hasSpan ? spanLeft : null;
+    const rightEdge = hasSpan ? spanRight : null;
 
     let textX;
     let split1X;
@@ -249,14 +302,26 @@ function computeHorizontalLineMiddleSplit(opts) {
     if (textHAlign === 'left') {
         textX = lineLeftX + TEXT_EDGE_PADDING + capPad;
         split1X = lineLeftX;
-        split2X = textX + textWidth + padding + capPad;
+        split2X = hasSpan
+            ? rightEdge + padding + capPad
+            : textX + textWidth + padding + capPad;
     } else if (textHAlign === 'right') {
         textX = lineRightX - TEXT_EDGE_PADDING - capPad;
         split2X = lineRightX;
-        split1X = textX - textWidth - padding - capPad;
+        split1X = hasSpan
+            ? leftEdge - padding - capPad
+            : textX - textWidth - padding - capPad;
     } else {
         const gapSize = textWidth + (padding * 2) + (capPad * 2);
         textX = (lineLeftX + lineRightX) / 2;
+        if (hasSpan) {
+            split1X = leftEdge - padding - capPad;
+            split2X = rightEdge + padding + capPad;
+            textX = (leftEdge + rightEdge) / 2;
+            split1X = Math.max(lineLeftX, split1X);
+            split2X = Math.min(lineRightX, split2X);
+            return { textX, split1X, split2X };
+        }
         textX = Math.max(lineLeftX + gapSize / 2, Math.min(lineRightX - gapSize / 2, textX));
         split1X = Math.max(lineLeftX, textX - gapSize / 2);
         split2X = Math.min(lineRightX, textX + gapSize / 2);
@@ -1491,11 +1556,21 @@ class HorizontalLineTool extends BaseDrawing {
                     ? resolveLineEndpointSvgAnchor('right', this.text)
                     : 'middle';
             const textWidth = measureLineToolLabelWidth(this.group, this.text, this.style, measureAnchor);
+            const probeX = textHAlign === 'right'
+                ? lineRightX - TEXT_EDGE_PADDING - capPad
+                : textHAlign === 'left'
+                    ? lineLeftX + TEXT_EDGE_PADDING + capPad
+                    : (lineLeftX + lineRightX) / 2;
+            const span = measureHorizontalOnLineLabelSpan(
+                this.group, this.text, this.style, probeX, measureAnchor
+            );
             const { textX, split1X, split2X } = computeHorizontalLineMiddleSplit({
                 textHAlign,
                 lineLeftX,
                 lineRightX,
                 textWidth,
+                spanLeft: span.left,
+                spanRight: span.right,
                 padding,
                 capPad
             });
