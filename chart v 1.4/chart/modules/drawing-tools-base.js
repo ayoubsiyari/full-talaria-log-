@@ -1027,6 +1027,93 @@ class BaseDrawing {
         return { pathData: lineGenerator(curvePts), renderPoints: clean };
     }
 
+    /** Visible stroke endpoints from a rendered SVG path (matches on-chart line, not raw samples). */
+    static resolveFreehandPathEndpointPixels(group, points, scales) {
+        let pathNode = null;
+        if (group && typeof group.selectAll === 'function') {
+            group.selectAll('path').each(function eachVisiblePath() {
+                if (pathNode) return;
+                const sel = d3.select(this);
+                if (sel.attr('stroke') !== 'transparent') pathNode = this;
+            });
+        }
+        if (pathNode && typeof pathNode.getTotalLength === 'function') {
+            const len = pathNode.getTotalLength();
+            if (Number.isFinite(len) && len >= 1) {
+                const start = pathNode.getPointAtLength(0);
+                const end = pathNode.getPointAtLength(len);
+                if (start && end && [start.x, start.y, end.x, end.y].every(Number.isFinite)) {
+                    return { startPx: { x: start.x, y: start.y }, endPx: { x: end.x, y: end.y } };
+                }
+            }
+        }
+        const clean = BaseDrawing.sanitizeFreehandPoints(points);
+        if (!Array.isArray(clean) || clean.length < 2 || !scales) return null;
+        const toPx = (p) => ({
+            x: scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p.x)
+                : scales.xScale(p.x),
+            y: scales.yScale(p.y),
+        });
+        return { startPx: toPx(clean[0]), endPx: toPx(clean[clean.length - 1]) };
+    }
+
+    /** Brush/highlighter endpoint handles — align to visible stroke ends, not first/last raw samples. */
+    _createFreehandEndpointHandles(group, scales) {
+        if (!group || group.empty() || !scales || !this.points || this.points.length < 2) return;
+        const endpoints = BaseDrawing.resolveFreehandPathEndpointPixels(group, this.points, scales);
+        if (!endpoints) return;
+
+        const handleRadius = 3;
+        const handleFill = 'transparent';
+        const handleStroke = '#2962FF';
+        const handleStrokeWidth = 2;
+        const startIndex = 0;
+        const endIndex = this.points.length - 1;
+        const specs = [
+            { cx: endpoints.startPx.x, cy: endpoints.startPx.y, index: startIndex },
+            { cx: endpoints.endPx.x, cy: endpoints.endPx.y, index: endIndex },
+        ];
+
+        this.handles = this.handles || [];
+        specs.forEach(({ cx, cy, index }) => {
+            if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+            const handleGroup = group.append('g')
+                .attr('class', 'resize-handle-group')
+                .attr('data-point-index', index);
+            handleGroup.append('circle')
+                .attr('class', 'resize-handle')
+                .attr('cx', cx)
+                .attr('cy', cy)
+                .attr('r', handleRadius)
+                .attr('fill', handleFill)
+                .attr('stroke', handleStroke)
+                .attr('stroke-width', handleStrokeWidth)
+                .style('cursor', 'move')
+                .style('pointer-events', 'all')
+                .style('opacity', this.selected ? 1 : 0)
+                .attr('data-point-index', index);
+            this.handles.push(handleGroup);
+        });
+    }
+
+    _updateFreehandEndpointHandlePositions(group, scales) {
+        if (!group || group.empty() || !scales || !this.points || this.points.length < 2) return;
+        const endpoints = BaseDrawing.resolveFreehandPathEndpointPixels(group, this.points, scales);
+        if (!endpoints) return;
+        const specs = [
+            { cx: endpoints.startPx.x, cy: endpoints.startPx.y, index: 0 },
+            { cx: endpoints.endPx.x, cy: endpoints.endPx.y, index: this.points.length - 1 },
+        ];
+        specs.forEach(({ cx, cy, index }) => {
+            if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+            group.selectAll(`.resize-handle-group[data-point-index="${index}"] circle`)
+                .attr('cx', cx)
+                .attr('cy', cy);
+        });
+        this._pruneDuplicateGroupHandles();
+    }
+
     /**
      * Freehand path + optional arrow endpoints (ep1/ep2 → startStyle/endStyle).
      * Highlighter does not support endpoints.

@@ -57,49 +57,35 @@ class HighlighterTool extends BaseDrawing {
         this._appendStrokePathWithEndpoints(this.group, container, pathData, this.style.strokeWidth);
 
         // Always create handles (visibility controlled by opacity)
-        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) {
+            this.group.selectAll('.resize-handle').remove();
+            this.group.selectAll('.resize-handle-group').remove();
+            this.handles = [];
+            this._createFreehandEndpointHandles(this.group, scales);
+        }
 
         return this.group;
     }
 
+    patchPanZoomGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        if (!scales || !scales.yScale) return false;
+        const { pathData } = BaseDrawing.buildFreehandPathData(this.points, scales);
+        this.group.selectAll('path').attr('d', pathData);
+        this._updateFreehandEndpointHandlePositions(this.group, scales);
+        return true;
+    }
+
     createHandles(group, scales) {
-        this.handles = []; // Reset handles array
-        const handleRadius = 3;
-        const handleFill = 'transparent';
-        const handleStroke = '#2962FF';
-        const handleStrokeWidth = 2;
-        
-        // Remove existing handles
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-group').remove();
-        
-        // Only show handles for first and last points (grab to move whole stroke)
-        const pointsToHandle = [0, this.points.length - 1];
-        
-        pointsToHandle.forEach(index => {
-            const point = this.points[index];
-            const cx = scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
-            
-            const handleGroup = group.append('g')
-                .attr('class', 'resize-handle-group')
-                .attr('data-point-index', index);
-            
-            const handle = handleGroup.append('circle')
-                .attr('class', 'resize-handle')
-                .attr('cx', cx)
-                .attr('cy', scales.yScale(point.y))
-                .attr('r', handleRadius)
-                .attr('fill', handleFill)
-                .attr('stroke', handleStroke)
-                .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'move')
-                .style('pointer-events', 'all')
-                .style('opacity', this.selected ? 1 : 0)
-                .attr('data-point-index', index);
-            
-            this.handles.push(handleGroup);
-        });
+        this.handles = [];
+        this._createFreehandEndpointHandles(group, scales);
+    }
+
+    updateHandlePositions(scales) {
+        if (!this.group || this.group.empty()) return;
+        this._updateFreehandEndpointHandlePositions(this.group, scales);
     }
 
     addPoint(point) {
