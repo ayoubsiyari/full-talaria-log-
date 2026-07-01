@@ -63,26 +63,23 @@ function fibHorizontalSpanLabelPlacement(style, spanMinX, spanMaxX, pad = 5) {
     return { x: maxX + pad, anchor: 'start' };
 }
 
-/** Fib Arcs: semi-circle labels on the flat diameter (left/center/right); full circle uses cardinals. */
+/** Fib Arcs: labels at the outer diameter edge (level position not exposed in UI). */
 function fibArcsLevelLabelPlacement(style, cx, cy, r, isDown, fullCircle) {
     const pad = 5;
     if (!fullCircle) {
-        const lp = fibHorizontalSpanLabelPlacement(style, cx - r, cx + r, pad);
         return {
-            x: lp.x,
+            x: cx + r + pad,
             y: cy,
-            anchor: lp.anchor,
+            anchor: 'start',
             dominantBaseline: 'middle',
         };
     }
-    const pos = normalizeFibLevelsLabelPosition(style);
-    if (pos === 'left') {
-        return { x: cx - r - pad, y: cy, anchor: 'end', dominantBaseline: 'middle' };
-    }
-    if (pos === 'center') {
-        return { x: cx, y: cy - r - pad, anchor: 'middle', dominantBaseline: 'auto' };
-    }
-    return { x: cx + r + pad, y: cy, anchor: 'start', dominantBaseline: 'middle' };
+    return {
+        x: cx,
+        y: cy - r - pad,
+        anchor: 'middle',
+        dominantBaseline: 'auto',
+    };
 }
 
 /** Stagger Fib Time / vertical-span labels on Y while keeping X on each vertical line. */
@@ -126,27 +123,65 @@ function resolveFibVerticalLineLabelCollisions(slots, group, fontSize, fontWeigh
     return measured;
 }
 
+function fibLabelHorizontalBounds(slot) {
+    const w = slot.block?.width || 0;
+    const anchor = slot.anchor || 'middle';
+    if (anchor === 'start') return { left: slot.x, right: slot.x + w };
+    if (anchor === 'end') return { left: slot.x - w, right: slot.x };
+    return { left: slot.x - w / 2, right: slot.x + w / 2 };
+}
+
+function fibLabelVerticalBounds(slot, fontSize = 11) {
+    const h = slot.block?.height || fontSize;
+    const baseline = slot.dominantBaseline || 'middle';
+    if (baseline === 'middle') return { top: slot.y - h / 2, bottom: slot.y + h / 2 };
+    if (baseline === 'hanging' || baseline === 'auto') return { top: slot.y, bottom: slot.y + h };
+    return { top: slot.y - h, bottom: slot.y };
+}
+
+function fibLabelsOverlap2d(a, b, gap, fontSize = 11) {
+    const ba = fibLabelHorizontalBounds(a);
+    const bb = fibLabelHorizontalBounds(b);
+    if (ba.right + gap <= bb.left || bb.right + gap <= ba.left) return false;
+    const va = fibLabelVerticalBounds(a, fontSize);
+    const vb = fibLabelVerticalBounds(b, fontSize);
+    return va.bottom + gap > vb.top && vb.bottom + gap > va.top;
+}
+
 /** Nudge Fib Arcs labels apart when radii are close (common with Value and Percent text). */
 function resolveFibArcLabelCollisions(slots, group, fontSize, fontWeight = '700') {
     if (!Array.isArray(slots) || !slots.length) return [];
     const gap = Math.max(2, fontSize * 0.25);
+    const rowTolerance = fontSize * 0.75;
+    const rowOffset = Math.max(fontSize * 0.9, 13);
     const measured = slots.map((slot) => ({
         ...slot,
+        baseY: slot.y,
         block: measureFibLabelTextBlock(group, slot.text, fontSize, fontWeight),
     }));
     const sameRow = measured.length > 1
-        && measured.every((s) => Math.abs(s.y - measured[0].y) < fontSize * 0.75);
+        && measured.every((s) => Math.abs(s.y - measured[0].y) < rowTolerance);
     if (sameRow) {
-        measured.sort((a, b) => a.x - b.x);
+        measured.sort((a, b) => fibLabelHorizontalBounds(a).left - fibLabelHorizontalBounds(b).left);
         for (let i = 1; i < measured.length; i++) {
             const prev = measured[i - 1];
             const cur = measured[i];
-            const minGap = (prev.block.width + cur.block.width) / 2 + gap;
-            if (cur.x - prev.x < minGap) cur.x = prev.x + minGap;
+            const minLeft = fibLabelHorizontalBounds(prev).right + gap;
+            const curLeft = fibLabelHorizontalBounds(cur).left;
+            if (curLeft < minLeft) cur.x += minLeft - curLeft;
         }
-        measured.forEach((cur, i) => {
-            cur.y = cur.y + (i % 2 === 0 ? -1 : 1) * (fontSize * 0.42);
-        });
+        for (let i = 0; i < measured.length; i++) {
+            const cur = measured[i];
+            let tier = 0;
+            while (tier <= 12) {
+                const dir = tier === 0 ? 0 : (tier % 2 === 1 ? -1 : 1);
+                const level = tier === 0 ? 0 : Math.ceil(tier / 2);
+                cur.y = cur.baseY + dir * level * rowOffset;
+                const conflict = measured.slice(0, i).some((prev) => fibLabelsOverlap2d(prev, cur, gap, fontSize));
+                if (!conflict) break;
+                tier++;
+            }
+        }
         return measured;
     }
     measured.sort((a, b) => a.y - b.y);
