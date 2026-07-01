@@ -1967,6 +1967,9 @@ class Chart {
             if (typeof this._syncOhlcLegendMaxWidth === 'function') {
                 this._syncOhlcLegendMaxWidth();
             }
+            if (typeof this._syncDomAxisCursorZones === 'function') {
+                this._syncDomAxisCursorZones();
+            }
         } catch (_e) { /* ignore */ }
     }
 
@@ -27342,7 +27345,6 @@ class Chart {
                 }
 
                 this.scheduleRender();
-                this.dispatchScrollSync();
                 return;
             }
 
@@ -27565,7 +27567,9 @@ class Chart {
                 }
             }
 
-            const mode = detectCursorMode(mx, my);
+            const mode = this._axisZoneClick === 'price' ? 'priceAxis'
+                : this._axisZoneClick === 'time' ? 'timeAxis'
+                : detectCursorMode(mx, my);
 
             if (this.drawingManager && this.drawingManager.currentTool) {
                 if (mode !== 'priceAxis' && mode !== 'timeAxis' && mode !== 'separatePanelAxis') {
@@ -28162,6 +28166,7 @@ class Chart {
             }
             
             // Reset states
+            this._axisZoneClick = null;
             this.drag.active = false;
             this.drag.type = null;
             this.drag.separatePanelSlot = null;
@@ -33732,6 +33737,11 @@ async function _talariaInitializeChart() {
             chartInstance.cursor.mode = 'priceAxis';
         } else if (zone === 'time') {
             chartInstance.cursor.mode = 'timeAxis';
+        }
+        if (mouseType === 'mousedown') {
+            chartInstance._axisZoneClick = zone;
+        } else if (mouseType === 'mouseup') {
+            chartInstance._axisZoneClick = null;
         }
 
         const rawType = e.type || '';

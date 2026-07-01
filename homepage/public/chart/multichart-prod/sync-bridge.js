@@ -801,8 +801,24 @@
         return true;
     }
 
+    function shouldPreserveManualPriceScale(chart) {
+        if (!chart) return false;
+        if (chart.priceScale && chart.priceScale.locked) return true;
+        if (chart.autoScale === false && chart.priceScale && chart.priceScale.autoScale === false) {
+            return true;
+        }
+        if (Number.isFinite(chart.priceZoom) && Math.abs(chart.priceZoom - 1) > 1e-6) return true;
+        if (Number.isFinite(chart.priceOffset) && Math.abs(chart.priceOffset) > 1e-9) return true;
+        return false;
+    }
+
+    function refitPriceAutoScale(chart) {
+        if (!chart || shouldPreserveManualPriceScale(chart)) return;
+        if (chart.priceScale) chart.priceScale.autoScale = true;
+        chart.autoScale = true;
+    }
+
     /**
-     * Apply a sync'd visible time-range to the recipient chart.
      *
      * Modeled after chart.js's own internal cross-panel sync (chart.js:2015-
      * 2053). Key safety properties:
@@ -817,8 +833,9 @@
      *     so the user always sees SOMETHING. Without this guard, panning
      *     chart A (1m) by a small delta would leave chart B (1h) showing an
      *     empty canvas — which is exactly the "jump and hide" bug.
-     *   • Forces autoScale=true so the recipient's price axis re-fits its OWN
-     *     newly-visible candles. NEVER reads min/max from the source chart.
+     *   • Re-fits price autoScale unless the user has manually scaled the axis
+     *     (drag/wheel on price axis, or double-click lock). NEVER reads min/max
+     *     from the source chart.
      *
      * @param {object} chart   recipient chart instance
      * @param {number} startSec  inclusive start of source visible window (seconds)
@@ -857,8 +874,7 @@
                     if (!isViewportBootSettling(chart)) {
                         recoverViewportIfEmpty(chart);
                     }
-                    if (chart.priceScale) chart.priceScale.autoScale = true;
-                    chart.autoScale = true;
+                    refitPriceAutoScale(chart);
                     if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
                     return;
                 }
@@ -928,10 +944,8 @@
             recoverViewportIfEmpty(chart);
         }
 
-        // Force price autoScale ON so the recipient's price axis recomputes
-        // from its OWN newly-visible candles. NEVER set min/max from outside.
-        if (chart.priceScale) chart.priceScale.autoScale = true;
-        chart.autoScale = true;
+        // Re-fit price unless the user manually scaled this panel's axis.
+        refitPriceAutoScale(chart);
 
         if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
     }
@@ -1023,6 +1037,13 @@
 
         function isLocalPanDragActive() {
             return !!(chart.drag && chart.drag.active && chart.drag.type === 'pan');
+        }
+
+        /** Block inbound time-range sync while this panel is dragging any axis. */
+        function isLocalAxisDragActive() {
+            if (!chart.drag || !chart.drag.active) return false;
+            const t = chart.drag.type;
+            return t === 'pan' || t === 'timeAxis' || t === 'priceAxis' || t === 'separatePanelAxis';
         }
 
         function beginApplying(fast) {
@@ -1935,7 +1956,9 @@
         function applyVisibleRange(m) {
             // When this iframe is mid-drag, it is the pan leader — ignore host/peer
             // echo ranges that would mirror back from A and freeze B/C/D in place.
-            if (isLocalPanDragActive()) {
+            // Also ignore while price/time axis drag is active so manual Y scale
+            // is not reset mid-gesture by a peer's time sync.
+            if (isLocalAxisDragActive()) {
                 if (m && m.causationId) state.applied.add(m.causationId);
                 return;
             }
@@ -2139,8 +2162,7 @@
                 const startSnapped = floorToBucket(m.startTime, myBucket);
                 const endSnapped   = ceilToBucket(m.endTime,   myBucket);
                 setVisibleTimeRange(chart, startSnapped, endSnapped);
-                if (chart.priceScale) chart.priceScale.autoScale = true;
-                chart.autoScale = true;
+                refitPriceAutoScale(chart);
             }
 
             var tSil = (typeof performance !== 'undefined' && performance.now)
