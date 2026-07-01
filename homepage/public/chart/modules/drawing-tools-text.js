@@ -6,15 +6,19 @@
 const TEXT_TOOL_PLACEHOLDER = 'Type here';
 const TEXT_TOOL_PLACEHOLDER_COLOR = 'rgba(120, 123, 134, 0.75)';
 
+/** Factory-default strings that must not be treated as user-authored annotation text. */
+const TEXT_TOOL_FACTORY_LABELS = new Set([
+    'text', 'note', 'notebox', 'callout', 'comment', 'pin', 'label',
+    'anchored text', 'price note', 'signpost', 'signpost-2', 'type here',
+]);
+
 function isTextToolPlaceholder(text) {
     const t = String(text == null ? '' : text).trim();
     if (!t) return true;
     if (/^add text$/i.test(t)) return true;
     if (/^type here$/i.test(t)) return true;
     if (/^enter text/i.test(t)) return true;
-    if (t === 'text') return true;
-    if (t === 'note') return true;
-    if (t === 'anchored text') return true;
+    if (TEXT_TOOL_FACTORY_LABELS.has(t.toLowerCase())) return true;
     return false;
 }
 
@@ -888,13 +892,21 @@ function syncPlainTextSelectionChrome(group, bbox, drawing) {
 function runTextAnnotationLiveInput(drawing, newText, scheduleLive) {
     if (!drawing) return;
     const normalized = (newText || '').replace(/\r\n/g, '\n');
-    drawing.setText(normalized);
+    const textValue = isTextToolPlaceholder(normalized) ? '' : normalized;
+    drawing.setText(textValue);
     if (typeof drawing._updatePlainTextLayout === 'function') {
         drawing._updatePlainTextLayout();
     } else if (typeof drawing._updateCommentBubble === 'function') {
         drawing._updateCommentBubble();
     } else if (typeof scheduleLive === 'function') {
         scheduleLive(drawing);
+    }
+    if (typeof window !== 'undefined' && drawing.id != null) {
+        try {
+            window.dispatchEvent(new CustomEvent('v9TxtDrawingContentChanged', {
+                detail: { id: drawing.id, text: textValue },
+            }));
+        } catch (_) {}
     }
 }
 

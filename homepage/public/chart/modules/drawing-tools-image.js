@@ -7,6 +7,7 @@
 /** Default on-screen size (px) used to seed data-unit sizing — matches placeholder box, larger than legacy 100×100. */
 const IMAGE_TOOL_DEFAULT_WIDTH = 200;
 const IMAGE_TOOL_DEFAULT_HEIGHT = 150;
+const IMAGE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
 
 class ImageTool extends BaseDrawing {
     constructor(points = [], options = {}) {
@@ -532,6 +533,15 @@ class ImageTool extends BaseDrawing {
         input.onchange = (e) => {
             const file = e.target && e.target.files ? e.target.files[0] : null;
             if (!file) {
+                cleanup();
+                return;
+            }
+
+            if (file.size > IMAGE_UPLOAD_MAX_BYTES) {
+                const ch = this.chart;
+                if (ch && typeof ch.showNotification === 'function') {
+                    ch.showNotification('Image must be 2 MB or smaller');
+                }
                 cleanup();
                 return;
             }

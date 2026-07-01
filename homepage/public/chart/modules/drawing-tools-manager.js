@@ -6452,11 +6452,15 @@ class DrawingToolsManager {
             'price-label', 'price-label-2', 'pin', 'callout', 'comment', 'signpost-2', 'flag-mark'
         ]);
         const isFactoryPlaceholderTitle = (raw) => {
+            const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
+            if (helpers && typeof helpers.isTextToolPlaceholder === 'function') {
+                return helpers.isTextToolPlaceholder(raw);
+            }
             const t = String(raw == null ? '' : raw).trim();
             if (!t) return true;
             if (/^add text$/i.test(t)) return true;
             if (/^type here$/i.test(t)) return true;
-            if (t === 'text') return true;
+            if (/^(text|note|callout|comment)$/i.test(t)) return true;
             return false;
         };
         if (preferTextTypes.has(drawing.type) && drawing.text && String(drawing.text).trim()) {

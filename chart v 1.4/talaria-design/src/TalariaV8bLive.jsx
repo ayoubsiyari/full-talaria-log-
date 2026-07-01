@@ -1739,10 +1739,33 @@ function v9TxtIconHasContentTab(icon) {
 }
 
 /** Quick-bar text field — prefer React state, fall back to live drawing.text. */
+function v9IsTextToolPlaceholderText(text) {
+  try {
+    const helpers = typeof window !== "undefined" ? window.DrawingTextHelpers : null;
+    if (helpers && typeof helpers.isTextToolPlaceholder === "function") {
+      return helpers.isTextToolPlaceholder(text);
+    }
+  } catch (_) {}
+  const t = String(text == null ? "" : text).trim();
+  if (!t) return true;
+  if (/^add text$/i.test(t)) return true;
+  if (/^type here$/i.test(t)) return true;
+  if (/^enter text/i.test(t)) return true;
+  if (/^(text|note|notebox|callout|comment|pin|label|anchored text|price note|signpost|signpost-2)$/i.test(t)) return true;
+  return false;
+}
+
+function v9NormalizeTxtPanelContent(text) {
+  const raw = text == null ? "" : String(text);
+  return v9IsTextToolPlaceholderText(raw) ? "" : raw;
+}
+
 function v9ResolveTxtQuickBarContent(txtStyleContent, liveDrawing) {
-  const fromState = txtStyleContent == null ? "" : String(txtStyleContent);
+  const fromState = v9NormalizeTxtPanelContent(txtStyleContent);
   if (fromState.trim() !== "") return fromState;
-  if (liveDrawing && typeof liveDrawing.text === "string") return liveDrawing.text;
+  if (liveDrawing && typeof liveDrawing.text === "string") {
+    return v9NormalizeTxtPanelContent(liveDrawing.text);
+  }
   return fromState;
 }
 
@@ -4123,6 +4146,8 @@ function v9RunDrawingMoreMenuAction(actionLabel) {
 }
 
 /** Image tool: chart uses `style.imageUrl` + `style.opacity` (0–1). V9 panel uses `imageDataUrl` + opacity % (100 = fully visible). */
+const V9_IMAGE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+
 function v9ImageOpacityPercentFromStyle(style) {
   const op = style && style.opacity;
   if (typeof op === "number" && Number.isFinite(op)) {
@@ -4478,7 +4503,7 @@ function v9TxtStylePatchFromDrawing(d) {
   }
 
   if (s.textAlign) out.horizAlign = s.textAlign;
-  if (typeof d.text === "string") out.content = d.text;
+  if (typeof d.text === "string") out.content = v9NormalizeTxtPanelContent(d.text);
   return out;
 }
 
@@ -15899,21 +15924,23 @@ const TalariaV8bLive = () => {
   }, [txtSettOpen, txtSubTool.icon, txtSettTab]);
 
   // Keep quick-bar text field in sync when a text annotation is selected (incl. locked).
+  // Only pull chart → React when the panel field is empty (inline edit on chart).
   useEffect(() => {
     if (!(tlBarSelected && tlBarDrawingGroup === "text")) return;
     if (editingDrawingRef.current) return;
     try {
       const live = v9GetLiveSelectedDrawingForQuickBar() || getPrimarySelectedDrawingForActiveChart(null);
       if (!live || v9DrawingTypeToPanelGroup(live.type) !== "text") return;
-      const liveText = typeof live.text === "string" ? live.text : "";
-      const stateText = txtStyleLiveRef.current?.content ?? "";
-      if (liveText !== stateText && liveText.trim() !== "") {
-        suppressTxtForwardBridge.current = true;
-        setTxtStyle((s) => ({ ...s, content: liveText }));
-        requestAnimationFrame(() => {
-          suppressTxtForwardBridge.current = false;
-        });
-      }
+      const liveText = v9NormalizeTxtPanelContent(typeof live.text === "string" ? live.text : "");
+      const stateText = v9NormalizeTxtPanelContent(txtStyleLiveRef.current?.content ?? "");
+      if (liveText === stateText) return;
+      if (stateText.trim() !== "") return;
+      if (liveText.trim() === "") return;
+      suppressTxtForwardBridge.current = true;
+      setTxtStyle((s) => ({ ...s, content: liveText }));
+      requestAnimationFrame(() => {
+        suppressTxtForwardBridge.current = false;
+      });
     } catch (_) {}
   }, [tlBarSelected, tlBarDrawingGroup, tlBarSelectedType, txtLocked]);
 
@@ -19403,8 +19430,10 @@ const TalariaV8bLive = () => {
           if (d && d.id === id) matched = true;
         });
         if (!matched) return;
+        const normalized = v9NormalizeTxtPanelContent(text);
         suppressTxtForwardBridge.current = true;
-        setTxtStyle((s) => ({ ...s, content: text }));
+        setTxtStyle((s) => ({ ...s, content: normalized }));
+        txtStyleLiveRef.current = { ...txtStyleLiveRef.current, content: normalized };
         requestAnimationFrame(() => {
           suppressTxtForwardBridge.current = false;
         });
@@ -21634,7 +21663,7 @@ const TalariaV8bLive = () => {
 
   /** Settings-panel text field — one drawing only; never broadcast via the style bridge. */
   const applyTxtContent = useCallback((content) => {
-    const next = typeof content === "string" ? content : "";
+    const next = v9NormalizeTxtPanelContent(typeof content === "string" ? content : "");
     flushSync(() => setTxtStyle((s) => ({ ...s, content: next })));
     txtStyleLiveRef.current = { ...txtStyleLiveRef.current, content: next };
     let editDraw = editingDrawingRef.current?.drawing ?? null;
@@ -26908,7 +26937,7 @@ const TalariaV8bLive = () => {
                       : <><I n="image" s={28} cl={c.ts}/><span style={{fontSize:12,color:c.ts}}>Upload Image</span></>}
                     <input type="file" accept="image/*" style={{display:"none"}}
                       onClick={e=>e.stopPropagation()}
-                      onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>setTxtStyle(s=>({...s,imageDataUrl:ev.target.result}));r.readAsDataURL(f);}}}/>
+                      onChange={e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>V9_IMAGE_UPLOAD_MAX_BYTES){v9NotifyDrawingAction("Image must be 2 MB or smaller");e.target.value="";return;}const r=new FileReader();r.onload=ev=>setTxtStyle(s=>({...s,imageDataUrl:ev.target.result}));r.readAsDataURL(f);e.target.value="";}}/>
                   </label>
                   {/* transparency — label left, slider right-aligned and narrow */}
                   <div style={{marginBottom:16}}>

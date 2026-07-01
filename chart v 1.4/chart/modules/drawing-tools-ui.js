@@ -264,15 +264,25 @@ function getSettingsTextInputDisplayValue(text) {
 
     const raw = String(text == null ? '' : text);
 
-    const t = raw.trim();
+    const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
 
-    if (!t) return '';
+    if (helpers && typeof helpers.isTextToolPlaceholder === 'function') {
 
-    if (/^add text$/i.test(t)) return '';
+        if (helpers.isTextToolPlaceholder(raw)) return '';
 
-    if (/^type here$/i.test(t)) return '';
+    } else {
 
-    if (t === 'text') return '';
+        const t = raw.trim();
+
+        if (!t) return '';
+
+        if (/^add text$/i.test(t)) return '';
+
+        if (/^type here$/i.test(t)) return '';
+
+        if (/^(text|note|callout|comment)$/i.test(t)) return '';
+
+    }
 
     return raw;
 

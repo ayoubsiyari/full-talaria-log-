@@ -18288,6 +18288,8 @@ class Chart {
         this._stopChartPanRenderLoop();
         this._cancelChartPanFrame();
         this._clearPanTimeTickCache();
+        this._cachedInteractionTimeTicks = null;
+        this._timeTicks = null;
         if (typeof this._clearPanDrawingsLayerTransform === 'function') {
             this._clearPanDrawingsLayerTransform();
         }
@@ -22744,7 +22746,16 @@ class Chart {
             if (rightMost >= coverRight && merged.length >= wantTicks) break;
         }
         merged.sort((a, b) => a.idx - b.idx);
-        return merged;
+        const deduped = [];
+        let lastDedupeX = -Infinity;
+        for (let di = 0; di < merged.length; di++) {
+            const t = merged[di];
+            if (deduped.length === 0 || t.x - lastDedupeX >= minSpacingPx * 0.6) {
+                deduped.push(t);
+                lastDedupeX = t.x;
+            }
+        }
+        return deduped;
     }
 
     /**
@@ -23135,7 +23146,9 @@ class Chart {
         const viewRight = this.w - m.r - 20 + panBufferPx;
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
-            const gap = useUniformIntradayTicks ? 0 : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
+            const gap = useUniformIntradayTicks
+                ? minSpacing * 0.65
+                : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
             if (gap <= 0 || x - lastX >= gap || lastX === -Infinity) {
                 if (x >= viewLeft && x <= viewRight) {
                     ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
@@ -26346,6 +26359,22 @@ class Chart {
         if (typeof this.resize === 'function') {
             try { this.resize(); } catch (_e) { /* ignore */ }
         }
+        const embedSamePair = typeof this._isMultichartEmbedPanel === 'function'
+            && this._isMultichartEmbedPanel()
+            && typeof this._multichartSamePairAsHost === 'function'
+            && this._multichartSamePairAsHost(this.currentFileId)
+            && (typeof this._isIndependentMultichartPair !== 'function'
+                || !this._isIndependentMultichartPair());
+        if (embedSamePair && typeof this._multichartMirrorViewportFromHost === 'function') {
+            try {
+                if (this._multichartMirrorViewportFromHost()) {
+                    this._multichartViewportMirroredWithHost = true;
+                }
+            } catch (_mirrorVp) { /* ignore */ }
+        }
+        this._cachedInteractionTimeTicks = null;
+        this._timeTicks = null;
+        this._clearPanTimeTickCache();
         if (this._tfSwitchAnchorLock) {
             this._reapplyTfSwitchAnchorLock();
         }
