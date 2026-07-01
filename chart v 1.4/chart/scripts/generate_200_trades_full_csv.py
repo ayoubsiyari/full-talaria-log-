@@ -137,63 +137,90 @@ def _iso_ms(ms: int) -> str:
 
 
 def _bar_path(
-    direction: str,
-    entry: float,
-    sl_dist: float,
+    is_buy: bool,
     bars: int,
-    mfe_r: float,
-    mae_mag: float,
     exit_r: float,
     rng: random.Random,
-) -> tuple[list[float], list[float], list[float]]:
-    """Synthetic per-bar R arrays (in-trade only)."""
+) -> tuple[list[float], list[float], list[float], float, float]:
+    """
+    Per-bar H/L/C in R (matches chart _calculateExcursionRValues — NOT running envelopes).
+    bar_high_r = favorable extreme of bar i (positive)
+    bar_low_r  = adverse magnitude of bar i (positive)
+    bar_close_r = signed close of bar i
+    """
     high_r: list[float] = []
     low_r: list[float] = []
     close_r: list[float] = []
-    peak_fav = 0.0
-    peak_adv = 0.0
+    pos = 0.0
     for i in range(bars):
-        t = (i + 1) / max(bars, 1)
-        # Bell-ish path toward exit R with noise
-        noise = rng.uniform(-0.15, 0.15)
-        close_val = exit_r * t + noise * 0.3
-        fav = min(mfe_r, max(0.0, mfe_r * t + rng.uniform(0, 0.4)))
-        adv = min(mae_mag, max(0.0, mae_mag * t + rng.uniform(0, 0.25)))
-        peak_fav = max(peak_fav, fav)
-        peak_adv = max(peak_adv, adv)
-        high_r.append(round(peak_fav, 4))
-        low_r.append(round(peak_adv, 4))
-        close_r.append(round(close_val, 4))
-    # Ensure terminal close aligns
-    if close_r:
-        close_r[-1] = round(exit_r, 4)
-    if high_r:
-        high_r[-1] = round(max(high_r[-1], mfe_r * 0.95, abs(exit_r)), 4)
-    if low_r:
-        low_r[-1] = round(max(low_r[-1], mae_mag * 0.9), 4)
-    return high_r, low_r, close_r
+        drift = (exit_r - pos) * rng.uniform(0.08, 0.22)
+        shock = rng.uniform(-0.35, 0.35)
+        pos = pos + drift + shock
+        if i == bars - 1:
+            pos = exit_r
+        bar_range = rng.uniform(0.05, 0.45)
+        if is_buy:
+            bh = pos + bar_range * rng.uniform(0.2, 1.0)
+            bl = pos - bar_range * rng.uniform(0.2, 1.0)
+            fav = max(0.0, bh)
+            adv = max(0.0, -bl)
+            c = round(pos, 4)
+            if c < -adv:
+                c = round(-adv + rng.uniform(0, 0.03), 4)
+        else:
+            # SELL: favorable = down (negative close direction), adverse = up
+            bh_down = -pos + bar_range * rng.uniform(0.1, 0.9)
+            bl_up = pos + bar_range * rng.uniform(0.1, 0.9)
+            fav = max(0.0, bh_down)
+            adv = max(0.0, bl_up)
+            c = round(pos, 4)
+            if c > adv:
+                c = round(adv - rng.uniform(0, 0.03), 4)
+        high_r.append(round(fav, 4))
+        low_r.append(round(adv, 4))
+        close_r.append(c)
+    mfe_r = round(max(high_r) if high_r else 0.0, 4)
+    mae_mag = round(max(low_r) if low_r else 0.0, 4)
+    return high_r, low_r, close_r, mfe_r, mae_mag
 
 
 def _post_exit_bars(
-    direction: str,
+    is_buy: bool,
     exit_r: float,
-    mfe_r: float,
+    in_mfe_r: float,
     bars: int,
     rng: random.Random,
-) -> tuple[list[float], list[float], list[float]]:
-    post_high: list[float] = []
-    post_low: list[float] = []
-    post_close: list[float] = []
-    fav = abs(exit_r)
-    adv = 0.0
-    for _ in range(bars):
-        fav += rng.uniform(-0.05, 0.12)
-        adv += rng.uniform(0, 0.08)
-        fav = max(0, min(mfe_r * 1.15, fav))
-        post_high.append(round(fav, 4))
-        post_low.append(round(adv, 4))
-        post_close.append(round(exit_r + rng.uniform(-0.2, 0.3), 4))
-    return post_high, post_low, post_close
+) -> tuple[list[float], list[float], list[float], float]:
+    """Per-bar post-exit arrays (same semantics as in-trade)."""
+    _, _, close_r, mfe_r, mae_mag = _bar_path(is_buy, bars, exit_r + rng.uniform(-0.15, 0.35), rng)
+    # Re-roll with slight favorable extension possible after exit
+    high_r: list[float] = []
+    low_r: list[float] = []
+    close_r = []
+    pos = exit_r
+    for i in range(bars):
+        pos += rng.uniform(-0.12, 0.18)
+        bar_range = rng.uniform(0.03, 0.25)
+        if is_buy:
+            bh = pos + bar_range * rng.uniform(0.2, 1.0)
+            bl = pos - bar_range * rng.uniform(0.2, 1.0)
+            high_r.append(round(max(0.0, bh), 4))
+            low_r.append(round(max(0.0, -bl), 4))
+            c = round(pos, 4)
+            if c < -low_r[-1]:
+                c = round(-low_r[-1], 4)
+            close_r.append(c)
+        else:
+            adv = pos + bar_range * rng.uniform(0.1, 0.9)
+            fav = -pos + bar_range * rng.uniform(0.1, 0.9)
+            high_r.append(round(max(0.0, fav), 4))
+            low_r.append(round(max(0.0, adv), 4))
+            c = round(pos, 4)
+            if c > low_r[-1]:
+                c = round(low_r[-1], 4)
+            close_r.append(c)
+    post_mfe = round(max(high_r) if high_r else 0.0, 4)
+    return high_r, low_r, close_r, post_mfe
 
 
 def generate_trade(
@@ -261,18 +288,11 @@ def generate_trade(
             exit_price = _price_fmt(entry - move if is_buy else entry + move, pip)
 
     net_pnl = round(r_mult * risk_amount, 2)
-    # reconcile r from pnl
     r_mult = round(net_pnl / risk_amount, 4) if risk_amount else 0.0
 
-    mae_mag = rng.uniform(0.15, min(1.2, abs(r_mult) + 0.5) if not win else 0.85)
-    if win:
-        mfe_r = max(abs(r_mult) + rng.uniform(0.1, 1.8), rng.uniform(0.5, 2.5))
-        mae_mag = min(mae_mag, abs(r_mult) * 0.85 + 0.1)
-    else:
-        mfe_r = rng.uniform(0.2, min(2.5, abs(r_mult) + 1.2))
-        mae_mag = max(mae_mag, abs(r_mult) * 0.75)
-
-    mfe_r = round(mfe_r, 4)
+    hold_min = rng.randint(18, 420)
+    bars_held = max(8, min(hold_min // max(int(rng.choice([1, 5, 15])), 1), 80))
+    bar_high, bar_low, bar_close, mfe_r, mae_mag = _bar_path(is_buy, bars_held, r_mult, rng)
     mae_r = round(-mae_mag, 4)
 
     if is_buy:
@@ -286,7 +306,6 @@ def generate_trade(
         highest = _price_fmt(max(entry, exit_price, mae_points), pip)
         lowest = _price_fmt(min(entry, exit_price, mfe_points), pip)
 
-    hold_min = rng.randint(18, 420)
     exit_dt = entry_dt + timedelta(minutes=hold_min)
     entry_ms = int(entry_dt.timestamp() * 1000)
     exit_ms = int(exit_dt.timestamp() * 1000)
@@ -295,18 +314,14 @@ def generate_trade(
     qty = round(max(0.01, risk_amount / max(sl_pips * inst["pip_value"], 1)), 2)
     balance_after = round(balance + net_pnl, 2)
 
-    total_mfe_r = round(max(mfe_r, mfe_r + rng.uniform(0, 0.4)), 4)
-    capture = round(abs(r_mult) / mfe_r, 4) if mfe_r > 0 else 0
-    mgmt_gap = round(mfe_r - abs(r_mult), 4) if win else round(rng.uniform(0, 0.6), 4)
-    exit_timing = round(rng.uniform(0, 0.35), 4)
-    would_have_won = net_pnl <= 0 and exit_timing > 0.15
-
-    bars_held = max(8, hold_min // max(int(rng.choice([1, 5, 15])), 1))
-    bar_high, bar_low, bar_close = _bar_path(
-        direction, entry, sl_dist, min(bars_held, 80), mfe_r, mae_mag, r_mult, rng
-    )
     post_n = rng.randint(5, 25)
-    pe_high, pe_low, pe_close = _post_exit_bars(direction, r_mult, mfe_r, post_n, rng)
+    pe_high, pe_low, pe_close, post_mfe_r = _post_exit_bars(is_buy, r_mult, mfe_r, post_n, rng)
+    total_mfe_r = round(max(mfe_r, post_mfe_r), 4)
+    capture = round(r_mult / total_mfe_r, 4) if total_mfe_r > 0 else 0.0
+    mgmt_gap = round(mfe_r - r_mult, 4)
+    exit_timing = round(post_mfe_r, 4)
+    would_have_won = net_pnl <= 0 and post_mfe_r > 0.05
+    exit_confirmed = max(pe_low) > max(pe_high) if pe_low and pe_high else False
 
     has_partial = rng.random() < 0.18
     has_multi_tp = rng.random() < 0.12
@@ -349,7 +364,7 @@ def generate_trade(
         "management_gap": mgmt_gap,
         "exit_timing_gap": exit_timing,
         "would_have_won": would_have_won,
-        "exit_confirmed": rng.random() < 0.7,
+        "exit_confirmed": exit_confirmed,
         "dayOfWeek": DAYS[entry_dt.weekday() if entry_dt.weekday() < 5 else 0],
         "hourOfEntry": entry_dt.hour,
         "hourOfExit": exit_dt.hour,

@@ -47,9 +47,15 @@ function appendTextLabel(group, text, config = {}) {
 
     const resolved = resolveDrawingTextStyle(text, fontStyle, fontFamily);
     const isRtl = resolved.direction === 'rtl';
-    // Skew + rotate breaks Arabic glyph joining; use the same rotate-only path as Latin.
-    const italicSkew = (isRtl && isRotated) ? 0 : resolved.italicSkew;
-    const displayFontStyle = (isRtl && isRotated && fontStyle === 'italic')
+    const wantsItalic = fontStyle === 'italic'
+        || (typeof fontStyle === 'string' && fontStyle.includes('italic'));
+    const displayFontWeight = (fontWeight === 'bold' || fontWeight === 700 || fontWeight === '700')
+        ? 'bold'
+        : (fontWeight || 'normal');
+    // Skew + rotate breaks Arabic glyph joining; use font-style on rotated line labels.
+    const isRotatedRtlLineLabel = isRtl && isRotated;
+    const italicSkew = isRotatedRtlLineLabel ? 0 : resolved.italicSkew;
+    const displayFontStyle = (isRotatedRtlLineLabel && wantsItalic)
         ? 'italic'
         : resolved.fontStyle;
 
@@ -71,8 +77,10 @@ function appendTextLabel(group, text, config = {}) {
         .attr('fill', fill !== undefined ? fill : (color !== undefined ? color : '#ffffff'))
         .attr('font-size', `${fontSize}px`)
         .attr('font-family', resolved.fontFamily)
-        .attr('font-weight', fontWeight)
+        .attr('font-weight', displayFontWeight)
         .attr('font-style', displayFontStyle)
+        .style('font-weight', displayFontWeight)
+        .style('font-style', displayFontStyle)
         .attr('text-anchor', svgAnchor)
         .attr('dominant-baseline', useCenteredY ? 'central' : 'text-before-edge')
         .attr('xml:space', 'preserve')
@@ -84,6 +92,7 @@ function appendTextLabel(group, text, config = {}) {
     }
     if (isRtl) {
         textEl.style('direction', resolved.direction);
+        textEl.style('font-synthesis', 'weight style');
         textEl.attr('unicode-bidi', isRotated ? 'embed' : 'plaintext');
     } else if (resolved.direction) {
         textEl.style('direction', resolved.direction);
@@ -93,6 +102,10 @@ function appendTextLabel(group, text, config = {}) {
         const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
         textEl.append('tspan')
             .attr('x', x)
+            .attr('font-weight', displayFontWeight)
+            .attr('font-style', displayFontStyle)
+            .style('font-weight', displayFontWeight)
+            .style('font-style', displayFontStyle)
             .attr('dy', index === 0 ? (useCenteredY ? verticalOffset : 0) : lineHeight)
             .text(sanitized);
     });

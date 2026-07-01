@@ -1473,7 +1473,8 @@ function setQuadraticControlFromMidpointScreen(tool, scales, desiredMid) {
 function computeDoubleCurveHandlePositions(points, scales) {
     if (!points || points.length < 4 || !scales) return [];
     const positions = [];
-    [2, 3].forEach((index) => {
+    // Start + end anchors (indices 0/1) and inner bend handles (2/3).
+    [0, 1, 2, 3].forEach((index) => {
         const sp = drawingPointToScreen(points[index], scales);
         if (sp) positions.push({ x: sp.x, y: sp.y, index });
     });
@@ -2249,7 +2250,7 @@ class DoubleCurveTool extends BaseDrawing {
 
         if (this.points.length < 4) return;
 
-        // Peak + valley handles only (indices 2 and 3 on the spline).
+        // All four anchors: start, end, and inner bend controls.
         computeDoubleCurveHandlePositions(this.points, scales).forEach((pos) => {
             const handleGroup = appendCurveResizeHandle(
                 group, pos, this, handleRadius, handleFill, handleStroke, handleStrokeWidth
