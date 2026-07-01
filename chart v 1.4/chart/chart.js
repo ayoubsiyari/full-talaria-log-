@@ -2514,20 +2514,15 @@ class Chart {
         const spacing = (typeof parent.getCandleSpacing === 'function')
             ? parent.getCandleSpacing()
             : parent.candleWidth;
-        const ppm = parent.margin || { l: 60, r: 60 };
-        const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
         if (spacing > 0 && plotW > 0) {
-            if (Number.isFinite(parent.offsetX) && parentPlotW > 0) {
-                this.offsetX = parent.offsetX * (plotW / parentPlotW);
-            } else {
-                let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
-                    ? parent.getVisibleEndIndex()
-                    : parent.data.length - 1;
-                rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
-                const rightMargin = Math.max(0, (this.timeScale?.rightOffsetCandles || 15)) * spacing;
-                this.offsetX = plotW - rightMargin - (rightIdx + 1) * spacing;
-            }
+            let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
+                ? parent.getVisibleEndIndex()
+                : parent.data.length - 1;
+            rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
+            this.offsetX = plotW - (rightIdx + 1) * spacing;
         } else {
+            const ppm = parent.margin || { l: 60, r: 60 };
+            const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
             this.offsetX = parent.offsetX * (plotW / parentPlotW);
         }
 
@@ -33737,6 +33732,12 @@ async function _talariaInitializeChart() {
     const chartCanvas = document.getElementById('chartCanvas');
     
     const forwardEvent = (e, zone) => {
+        const rawType = e.type || '';
+        const mouseType = rawType === 'pointerdown' ? 'mousedown'
+            : rawType === 'pointermove' ? 'mousemove'
+            : (rawType === 'pointerup' || rawType === 'pointercancel') ? 'mouseup'
+            : rawType;
+
         // Set cursor mode for chart
         if (zone === 'price') {
             chartInstance.cursor.mode = 'priceAxis';
@@ -33748,12 +33749,6 @@ async function _talariaInitializeChart() {
         } else if (mouseType === 'mouseup') {
             chartInstance._axisZoneClick = null;
         }
-
-        const rawType = e.type || '';
-        const mouseType = rawType === 'pointerdown' ? 'mousedown'
-            : rawType === 'pointermove' ? 'mousemove'
-            : (rawType === 'pointerup' || rawType === 'pointercancel') ? 'mouseup'
-            : rawType;
 
         if (zone === 'price' && (rawType === 'dblclick' || mouseType === 'dblclick')
             && typeof chartInstance._applyPriceAxisDoubleClickLock === 'function') {
