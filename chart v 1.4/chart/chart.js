@@ -2201,7 +2201,14 @@ class Chart {
         const tf = String(normalizedTf || '').toLowerCase().trim();
         if (!tf) return false;
         if (String(parent.currentTimeframe || '').toLowerCase() !== tf) return false;
-        if (String(parent._nativeRawFetchTf || '').toLowerCase() !== tf) return false;
+        const parentNative = String(parent._nativeRawFetchTf || parent.currentTimeframe || '')
+            .toLowerCase().trim();
+        const destMs = this.parseTimeframe(tf);
+        const nativeMs = this.parseTimeframe(parentNative);
+        const resampledFromFiner = Number.isFinite(destMs) && destMs > 0
+            && Number.isFinite(nativeMs) && nativeMs > 0
+            && nativeMs < destMs * 0.92;
+        if (!resampledFromFiner && parentNative !== tf) return false;
         if (!Array.isArray(parent.data) || parent.data.length === 0) return false;
 
         if (typeof this._warmBtTfCacheFromParent === 'function') {
@@ -2210,16 +2217,18 @@ class Chart {
 
         this.rawData = parent.rawData;
         this.data = parent.data;
-        this._nativeRawFetchTf = parent._nativeRawFetchTf;
         if (Number.isFinite(parent.totalCandles)) this.totalCandles = parent.totalCandles;
         if (parent._serverCursors) this._serverCursors = { ...parent._serverCursors };
+
+        const prs = parent.replaySystem;
         if (Array.isArray(parent._panelFullRawData)) {
             this._panelFullRawData = parent._panelFullRawData;
+        } else if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
+            this._panelFullRawData = prs.fullRawData;
         }
 
         this._commitTimeframeChange(tf);
-
-        const prs = parent.replaySystem;
+        this._nativeRawFetchTf = parent._nativeRawFetchTf || tf;
         const replay = this.replaySystem;
         if (replay && prs?.isActive) {
             replay.isActive = true;
@@ -2595,11 +2604,14 @@ class Chart {
             }
         }
 
-        this.rawData = parent.rawData;
-        this.data = parent.data;
         if (Array.isArray(parent._panelFullRawData)) {
             this._panelFullRawData = parent._panelFullRawData;
+        } else if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
+            this._panelFullRawData = prs.fullRawData;
         }
+
+        this.rawData = parent.rawData;
+        this.data = parent.data;
         if (parent._serverCursors) {
             this._serverCursors = Object.assign({}, parent._serverCursors);
         }
@@ -4153,8 +4165,21 @@ class Chart {
             if (ts < first - margin || ts > last + margin) return false;
             if (!this._replayRawHasWallClockPrefix(master, ts)) return false;
 
-            this._panelFullRawData = master.slice();
-            this._nativeRawFetchTf = '1m';
+            if (Array.isArray(parent._panelFullRawData) && parent._panelFullRawData.length > 0) {
+                this._panelFullRawData = parent._panelFullRawData;
+            } else {
+                this._panelFullRawData = master.slice();
+            }
+            this._nativeRawFetchTf = parent._nativeRawFetchTf || '1m';
+
+            const parentTf = String(parent.currentTimeframe || '').toLowerCase().trim();
+            const myTf = String(this.currentTimeframe || '').toLowerCase().trim();
+            if (parentTf && parentTf === myTf
+                && Array.isArray(parent.rawData) && parent.rawData.length > 0
+                && Array.isArray(parent.data) && parent.data.length > 0) {
+                this.rawData = parent.rawData;
+                this.data = parent.data;
+            }
             if (parent._serverCursors) {
                 this._serverCursors = Object.assign({}, parent._serverCursors);
             }
@@ -4281,9 +4306,14 @@ class Chart {
                     }
                 }
                 if (!result) {
-                    const range = samePairCatchUp
-                        ? this._getBacktestInitialFetchRange(replayRawTf, session)
-                        : this._getBacktestReplayFetchRange(replayRawTf, session, ts);
+                    const playheadForRange = Number.isFinite(ts)
+                        ? ts
+                        : this._captureReplayPlayheadMs(replay);
+                    const range = this._getBacktestReplayFetchRange(
+                        replayRawTf,
+                        session,
+                        playheadForRange,
+                    );
                     result = await this._fetchSmartWindow(
                         fileId,
                         replayRawTf,

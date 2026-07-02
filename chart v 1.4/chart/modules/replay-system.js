@@ -5929,11 +5929,12 @@ class ReplaySystem {
     _mirrorSharesHostDataset(chart, detail) {
         const hostFid = detail && detail.hostFileId != null ? String(detail.hostFileId) : '';
         const panelFid = chart && chart.currentFileId != null ? String(chart.currentFileId) : '';
-        if (hostFid && panelFid) return hostFid === panelFid;
-        if (panelFid
-            && Array.isArray(chart._panelFullRawData) && chart._panelFullRawData.length > 0) {
+        if (hostFid && panelFid && hostFid !== panelFid) return false;
+        if (typeof chart._isIndependentMultichartPair === 'function'
+            && chart._isIndependentMultichartPair()) {
             return false;
         }
+        if (hostFid && panelFid) return hostFid === panelFid;
         return true;
     }
 
@@ -5942,6 +5943,22 @@ class ReplaySystem {
      */
     _resolveMirrorRawSeries(chart, detail) {
         if (!chart) return null;
+        const independent = typeof chart._isIndependentMultichartPair === 'function'
+            && chart._isIndependentMultichartPair();
+        if (!independent
+            && typeof chart._isMultichartEmbedPanel === 'function'
+            && chart._isMultichartEmbedPanel()
+            && this._mirrorSharesHostDataset(chart, detail)) {
+            try {
+                const parent = window.parent && window.parent !== window
+                    ? window.parent.chart
+                    : null;
+                const prs = parent && parent.replaySystem;
+                if (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
+                    return prs.fullRawData;
+                }
+            } catch (_e) { /* ignore */ }
+        }
         if (!this._mirrorSharesHostDataset(chart, detail)
             && Array.isArray(chart._panelFullRawData) && chart._panelFullRawData.length > 0) {
             return chart._panelFullRawData;
@@ -6386,6 +6403,25 @@ class ReplaySystem {
         } else {
             const lastT = Number(frd[frd.length - 1]?.t);
             if (Number.isFinite(lastT) && ts > lastT) {
+                return false;
+            }
+
+            // Same-pair embed: never reveal candle-by-candle from a short local
+            // master — paint host A's batch or return false so catch-up fetches
+            // the same playhead window as the host.
+            if (sharesHostDataset
+                && typeof chart._isMultichartEmbedPanel === 'function'
+                && chart._isMultichartEmbedPanel()
+                && !(typeof chart._isIndependentMultichartPair === 'function'
+                    && chart._isIndependentMultichartPair())) {
+                if (this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                    return true;
+                }
+                if (typeof chart._syncReplayMasterFromParentIfCovers === 'function'
+                    && chart._syncReplayMasterFromParentIfCovers(ts)
+                    && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                    return true;
+                }
                 return false;
             }
 

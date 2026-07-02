@@ -15902,6 +15902,8 @@ const TalariaV8bLive = () => {
     || avSettOpen || closing.has("avsett");
   const tlBarShowQuickBar =
     tlBarSelected && !!tlBarLiveSelection && !v9DrawingSettingsPanelOpen;
+  const txtBarShowQuickBar =
+    tlBarSelected && tlBarDrawingGroup === "text" && !!tlBarLiveSelection && !v9DrawingSettingsPanelOpen;
   // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
   const settingsEditGroup =
     (tlSettOpen || closing.has("tlsett")) &&
@@ -26533,10 +26535,9 @@ const TalariaV8bLive = () => {
       , v9SettingsPortalTarget() || document.body)}
 
       {/* ── Text Tool mini-bar ──
-          Active text tool OR a text/label drawing selected on the chart (toolbar.show
-          sets tool to crosshair — tlBarDrawingGroup === "text" so we must not fall through
-          to the Trend Line bar, which only keys off tlBarSelected). */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && !v9DrawingSettingsPanelOpen && (()=>{
+          Shown only when a text/label drawing is selected on the chart (not while arming
+          the text tool from the rail before placement). */}
+      {txtBarShowQuickBar && (()=>{
         const TxBtn = ({id, isAct, onClick, children, isDel}) => {
           const isH = hov === id;
           return (
@@ -29107,7 +29108,7 @@ const TalariaV8bLive = () => {
       })(), document.body)}
 
       {/* Text mini-bar font size (portaled — bar uses overflowX:auto which clips inline dropdowns) */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarSizeOpen && typeof document !== "undefined" && createPortal((() => {
+      {txtBarShowQuickBar && txtBarSizeOpen && typeof document !== "undefined" && createPortal((() => {
         const txtSizes = [10, 12, 14, 16, 18, 20, 22, 24];
         const a = txtBarSizeAnchor;
         const dropW = 52;
@@ -29155,7 +29156,7 @@ const TalariaV8bLive = () => {
       })(), document.body)}
 
       {/* Text mini-bar template menu (portaled) */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarDrop === "template" && txtSubTool.icon !== "image" && typeof document !== "undefined" && createPortal((() => {
+      {txtBarShowQuickBar && txtBarDrop === "template" && txtSubTool.icon !== "image" && typeof document !== "undefined" && createPortal((() => {
         const a = txtBarDropAnchor;
         const dropW = 180;
         const tplRows = txtTemplates.length || 1;
@@ -29254,7 +29255,7 @@ const TalariaV8bLive = () => {
       })(), document.body)}
 
       {/* Text mini-bar ⋯ more menu (portaled) */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarDrop === "more" && typeof document !== "undefined" && createPortal((() => {
+      {txtBarShowQuickBar && txtBarDrop === "more" && typeof document !== "undefined" && createPortal((() => {
         const a = txtBarDropAnchor;
         const dropW = 160;
         const dropH = 220;
