@@ -1675,6 +1675,32 @@ const V9_GROUP_DEFAULT = Object.freeze({
   eye: null, magnet: null, lock: null,
 });
 
+/** Resolve legacy chart.js tool id from rail group + sub-tool (no React hook). */
+function v9ResolveLegacyToolFromRailState(toolId, groupSelected) {
+  const sub = groupSelected && groupSelected[toolId];
+  if (sub && sub.icon && V9_ICON_TO_LEGACY[sub.icon] !== undefined) {
+    return V9_ICON_TO_LEGACY[sub.icon];
+  }
+  if (V9_GROUP_DEFAULT[toolId] !== undefined) return V9_GROUP_DEFAULT[toolId];
+  if (V9_ICON_TO_LEGACY[toolId] !== undefined) return V9_ICON_TO_LEGACY[toolId];
+  return null;
+}
+
+/** Multichart host tile (panel A): arm drawingManager synchronously on sidebar click. */
+function v9TryArmHostDrawingToolImmediate(toolId, groupSelected) {
+  try {
+    const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+    if (!grid || grid.hostPanelId == null) return;
+    const fid = typeof grid.getFocusedPanelId === "function" ? grid.getFocusedPanelId() : null;
+    if (fid !== grid.hostPanelId) return;
+    const legacy = v9ResolveLegacyToolFromRailState(toolId, groupSelected);
+    if (!legacy) return;
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm || typeof dm.setTool !== "function") return;
+    if (dm.currentTool !== legacy) dm.setTool(legacy);
+  } catch (_) {}
+}
+
 /** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool`). */
 const V9_FIB_ICONS_WITH_INPUT_TAB = new Set([
   "fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime",
@@ -18764,6 +18790,8 @@ const TalariaV8bLive = () => {
     v9UserExplicitToolRef.current = true;
     setToolApplySeq((n) => n + 1);
   }, []);
+  const v9RailToolRef = useRef(tool);
+  useEffect(() => { v9RailToolRef.current = tool; }, [tool]);
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
@@ -18904,7 +18932,9 @@ const TalariaV8bLive = () => {
       const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
       const focusOnlyMultichartTool =
         typeof window !== "undefined" && window.__v9MultichartFocusToolTick;
-      if (grid && typeof grid.syncDrawingToolAcrossPanels === "function" && focusOnlyMultichartTool) {
+      const explicitSidebarPick = !!v9UserExplicitToolRef.current;
+      const useFocusedPanelToolSync = focusOnlyMultichartTool || explicitSidebarPick;
+      if (grid && typeof grid.syncDrawingToolAcrossPanels === "function" && useFocusedPanelToolSync) {
         try {
           let legacyParam = null;
           if (editingDrawingRef.current) {
@@ -19172,6 +19202,7 @@ const TalariaV8bLive = () => {
       try {
         if (editingDrawingRef.current) return;
         if (v9IsPersistentFreehandArmed(dm)) return;
+        if (v9UserExplicitToolRef.current) return;
         // panel-manager.selectPanel clears non-focused tiles with clearTool(true).
         // Syncing React from those mirrored clears races the tool bridge and forces
         // the V9 rail back to Cursor even when the user immediately picks a draw tool.
@@ -19194,6 +19225,14 @@ const TalariaV8bLive = () => {
         // finishing a stroke on a background chart must not reset V9 while a panel is active.
         if (activeDm && dm !== activeDm) return;
         if (!dm || dm.currentTool) return;
+        // Multichart host (A): focus sync clears dm.currentTool while React still shows
+        // Shapes/Lines — do not snap the rail to crosshair; the tool bridge re-arms host.
+        if (g && dm === hostDm && fid === g.hostPanelId) {
+          const railTool = v9RailToolRef.current;
+          if (railTool && railTool !== "crosshair" && V9_DRAWING_TOOL_GROUP_IDS.has(railTool)) {
+            return;
+          }
+        }
         if (g && typeof g.runCommandOnAllPanels === "function") {
           try {
             if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = true;
@@ -22990,6 +23029,9 @@ const TalariaV8bLive = () => {
               if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
               v9MarkExplicitToolPick();
               setTool(t.id);
+              if (V9_DRAWING_TOOL_GROUP_IDS.has(t.id)) {
+                v9TryArmHostDrawingToolImmediate(t.id, groupSelected);
+              }
             }
             if (dropdown) closeDropdown();
           }
@@ -23008,6 +23050,9 @@ const TalariaV8bLive = () => {
             if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
             v9MarkExplicitToolPick();
             setTool(t.id); setDropdown(null);
+            if (V9_DRAWING_TOOL_GROUP_IDS.has(t.id)) {
+              v9TryArmHostDrawingToolImmediate(t.id, groupSelected);
+            }
           }
         }}
         style={mainBtnStyle}
@@ -31283,6 +31328,12 @@ const TalariaV8bLive = () => {
                     if (avSettOpen) closeAvSett();
                     if (indSettOpen) closeIndSett();
                     setTool(activeKey); setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [activeKey]: item })); closeDropdown();
+                    if (V9_DRAWING_TOOL_GROUP_IDS.has(activeKey)) {
+                      v9TryArmHostDrawingToolImmediate(
+                        activeKey,
+                        v9SanitizeGroupSelected({ ...groupSelected, [activeKey]: item }),
+                      );
+                    }
                     if (item.icon === "emoji") {
                       const r = e.currentTarget.getBoundingClientRect();
                       setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
