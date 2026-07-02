@@ -1987,17 +1987,31 @@ function v9ChartVertToUi(chartVert) {
 }
 
 /** Quick-bar lock icons must follow the selected drawing(s) (all locked => active). */
+function v9ResolveLiveDrawingForLockSync(drawing) {
+  if (!drawing) return null;
+  try {
+    const dm = resolveDrawingManagerForDrawing(drawing);
+    if (dm) return resolveLiveDrawingInDm(dm, drawing) || drawing;
+  } catch (_) {}
+  return drawing;
+}
+
 function v9GetSelectedDrawingEntriesForLock() {
   const out = [];
   try {
-    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-      if (!dm) return;
+    for (const dm of enumerateV9DrawingManagersActiveFirst()) {
       if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-        dm.selectedDrawings.forEach((d) => { if (d) out.push({ dm, drawing: d }); });
-      } else if (dm.selectedDrawing) {
-        out.push({ dm, drawing: dm.selectedDrawing });
+        dm.selectedDrawings.forEach((d) => {
+          if (!d) return;
+          out.push({ dm, drawing: resolveLiveDrawingInDm(dm, d) || d });
+        });
+        return out;
       }
-    });
+      if (dm.selectedDrawing) {
+        out.push({ dm, drawing: resolveLiveDrawingInDm(dm, dm.selectedDrawing) || dm.selectedDrawing });
+        return out;
+      }
+    }
   } catch (_) {}
   return out;
 }
@@ -2024,20 +2038,23 @@ function v9ApplyLockToSelectedDrawings(targetLocked) {
 }
 
 function v9SyncQuickBarLockFromDrawing(drawing, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked) {
+  const primary = v9ResolveLiveDrawingForLockSync(
+    drawing || v9GetLiveSelectedDrawingForQuickBar() || getPrimarySelectedDrawingForActiveChart(null),
+  );
   const entries = v9GetSelectedDrawingEntriesForLock();
   const locked = entries.length
     ? v9SelectedDrawingsAllLocked(entries)
-    : !!(drawing && drawing.locked);
+    : !!(primary && primary.locked);
   if (typeof setTlLocked === "function") setTlLocked(locked);
   if (typeof setTxtLocked === "function") setTxtLocked(locked);
   if (typeof setAvLocked === "function") {
-    setAvLocked(!!(drawing && drawing.type === "anchored-volume-profile" && locked));
+    setAvLocked(!!(primary && primary.type === "anchored-volume-profile" && locked));
   }
   if (typeof setVpLocked === "function") {
-    setVpLocked(!!(drawing && (drawing.type === "volume-profile" || drawing.type === "fixed-range-volume-profile") && locked));
+    setVpLocked(!!(primary && (primary.type === "volume-profile" || primary.type === "fixed-range-volume-profile") && locked));
   }
   if (typeof setVwapLocked === "function") {
-    setVwapLocked(!!(drawing && drawing.type === "anchored-vwap" && locked));
+    setVwapLocked(!!(primary && primary.type === "anchored-vwap" && locked));
   }
 }
 
@@ -20356,6 +20373,7 @@ const TalariaV8bLive = () => {
               br.setTlBarSelected(true);
               br.setTlBarSelectedType(drawing.type);
               v9SyncQuickBarPosFromDrawingManagerShow(br, dm, x, y, drawing && drawing.type);
+              v9SyncQuickBarLockFromDrawing(drawing, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked, br.setVwapLocked);
               if (v9ShouldSkipLegacyDrawingToolbarShow()) return undefined;
               return origShow ? origShow(drawing, x, y) : undefined;
             }
@@ -20408,6 +20426,9 @@ const TalariaV8bLive = () => {
               else if (dm) dm.currentTool = null;
             } catch (_) {}
           }
+          if (!editRef?.current && drawing) {
+            v9SyncQuickBarLockFromDrawing(drawing, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked, br.setVwapLocked);
+          }
           if (!editRef?.current && drawing && drawing.style) {
             const prevType = br.v9LastSelectedDrawingTypeRef?.current;
             const typeChanged = prevType !== drawing.type;
@@ -20441,7 +20462,6 @@ const TalariaV8bLive = () => {
                 }
               }
             }
-            v9SyncQuickBarLockFromDrawing(drawing, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked, br.setVwapLocked);
           }
           if (drawing && drawing.type && !editRef?.current) {
             if (drawing.type === 'long-position' || drawing.type === 'short-position') {
@@ -20681,7 +20701,6 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     const onV9Sel = (ev) => {
       try {
-        if (!v9MultichartGridApi()) return;
         const detail = ev && ev.detail;
         const t = detail && detail.drawingType;
         if (!t) return;
@@ -22897,7 +22916,7 @@ const TalariaV8bLive = () => {
     const act = t.id === "pinbar"
       ? pinnedBarOpen
       : t.id === "lock"
-        ? tlLocked && tlBarSelected
+        ? tlBarSelected && (tlBarDrawingGroup === "text" ? txtLocked : tlLocked)
       : settingsPanelEditing
         ? t.id === "crosshair"
         : tool === t.id;

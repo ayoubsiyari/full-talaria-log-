@@ -1485,7 +1485,7 @@ class TextTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            if (typeof manager.selectDrawing === 'function' && !self.locked) {
+            if (typeof manager.selectDrawing === 'function') {
                 manager.selectDrawing(self);
             }
 
@@ -1548,7 +1548,7 @@ class TextTool extends BaseDrawing {
             // 1st click on unselected → select only
             if (!self.selected) {
                 const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
                 return;
@@ -1588,7 +1588,7 @@ class TextTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
             }
@@ -2019,7 +2019,7 @@ class NoteBoxTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            if (typeof manager.selectDrawing === 'function' && !self.locked) {
+            if (typeof manager.selectDrawing === 'function') {
                 manager.selectDrawing(self);
             }
 
@@ -2077,7 +2077,7 @@ class NoteBoxTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
                 return;
@@ -2104,7 +2104,7 @@ class NoteBoxTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
             }
@@ -2479,7 +2479,7 @@ class AnchoredTextTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            if (typeof manager.selectDrawing === 'function' && !self.locked) {
+            if (typeof manager.selectDrawing === 'function') {
                 manager.selectDrawing(self);
             }
 
@@ -2536,7 +2536,7 @@ class AnchoredTextTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
                 return;
@@ -2563,7 +2563,7 @@ class AnchoredTextTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
             }
@@ -2875,7 +2875,7 @@ class NoteTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
 
             if (editor && typeof editor.show === 'function') {
-                if (!self.selected && manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (!self.selected && manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                     requestAnimationFrame(() => {
                         requestAnimationFrame(() => openNoteInlineEditor(event, selectAll));
@@ -3024,7 +3024,7 @@ class NoteTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
                 return;
@@ -3065,7 +3065,7 @@ class NoteTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
             }
@@ -3526,7 +3526,7 @@ class PinTool extends BaseDrawing {
                 const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
                 if (focusOpts === null) return;
 
-                if (typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
 
@@ -3582,7 +3582,7 @@ class PinTool extends BaseDrawing {
 
                 const manager = self.chart && self.chart.drawingManager;
                 if (!self.selected) {
-                    if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    if (manager && typeof manager.selectDrawing === 'function') {
                         manager.selectDrawing(self);
                     }
                     return;
@@ -3609,7 +3609,7 @@ class PinTool extends BaseDrawing {
 
                 const manager = self.chart && self.chart.drawingManager;
                 if (!self.selected) {
-                    if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    if (manager && typeof manager.selectDrawing === 'function') {
                         manager.selectDrawing(self);
                     }
                 }
@@ -4146,7 +4146,7 @@ class CalloutTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            if (typeof manager.selectDrawing === 'function' && !self.locked) {
+            if (typeof manager.selectDrawing === 'function') {
                 manager.selectDrawing(self);
             }
 
@@ -4207,7 +4207,7 @@ class CalloutTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
                 return;
@@ -4546,7 +4546,7 @@ class CommentTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            if (typeof manager.selectDrawing === 'function' && !self.locked) {
+            if (typeof manager.selectDrawing === 'function') {
                 manager.selectDrawing(self);
             }
 
@@ -4610,7 +4610,7 @@ class CommentTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
                 return;
@@ -4637,7 +4637,7 @@ class CommentTool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
             }
@@ -5216,7 +5216,7 @@ class Signpost2Tool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            if (typeof manager.selectDrawing === 'function' && !self.locked) {
+            if (typeof manager.selectDrawing === 'function') {
                 manager.selectDrawing(self);
             }
 
@@ -5278,7 +5278,7 @@ class Signpost2Tool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
                 return;
@@ -5305,7 +5305,7 @@ class Signpost2Tool extends BaseDrawing {
 
             const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (manager && typeof manager.selectDrawing === 'function') {
                     manager.selectDrawing(self);
                 }
             }

@@ -106,10 +106,10 @@ function notifyV9SelectionSync(chartInstance, drawing) {
     };
     const fire = () => {
         try {
-            if (window.__multichartGrid) {
-                window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', { detail }));
-                return;
-            }
+            window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', { detail }));
+        } catch (_) { /* ignore */ }
+        try {
+            if (window.__multichartGrid) return;
         } catch (_) { /* ignore */ }
         try {
             if (window.parent && window.parent !== window) {
