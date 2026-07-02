@@ -26,9 +26,12 @@ export const currencyCountry = {
   HUF: "HU",
 };
 
+/** Alternate country tokens the calendar can emit → canonical 2-letter code we draw. */
+const countryAlias = { EZ: "EU", EA: "EU", EMU: "EU", UK: "GB", USA: "US", UAE: "AE" };
+
 export function FlagSvg({ code, w = 22, h = 14 }) {
   const sw = { width: w, height: h, viewBox: "0 0 22 14", style: { display: "block", flexShrink: 0 } };
-  const cc = currencyCountry[code] || code;
+  const cc = currencyCountry[code] || countryAlias[code] || code;
   const f = {
     EU: (
       <svg {...sw}>
@@ -217,6 +220,116 @@ export function FlagSvg({ code, w = 22, h = 14 }) {
       <svg {...sw}>
         <rect width={22} height={14} fill="#CE2939" />
         <rect y={4.67} width={22} height={4.66} fill="#fff" />
+      </svg>
+    ),
+    ES: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#AA151B" />
+        <rect y={3.5} width={22} height={7} fill="#F1BF00" />
+      </svg>
+    ),
+    NL: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#fff" />
+        <rect width={22} height={4.67} fill="#AE1C28" />
+        <rect y={9.33} width={22} height={4.67} fill="#21468B" />
+      </svg>
+    ),
+    BE: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#000" />
+        <rect x={7.33} width={7.34} height={14} fill="#FDDA24" />
+        <rect x={14.67} width={7.33} height={14} fill="#EF3340" />
+      </svg>
+    ),
+    AT: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#ED2939" />
+        <rect y={4.67} width={22} height={4.66} fill="#fff" />
+      </svg>
+    ),
+    PT: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#DA291C" />
+        <rect width={8.8} height={14} fill="#046A38" />
+        <circle cx={8.8} cy={7} r={2.1} fill="#FFE900" stroke="#DA291C" strokeWidth={0.5} />
+      </svg>
+    ),
+    IE: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#fff" />
+        <rect width={7.33} height={14} fill="#169B62" />
+        <rect x={14.67} width={7.33} height={14} fill="#FF883E" />
+      </svg>
+    ),
+    FI: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#fff" />
+        <rect x={6} width={3.5} height={14} fill="#003580" />
+        <rect y={5.25} width={22} height={3.5} fill="#003580" />
+      </svg>
+    ),
+    GR: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#0D5EAF" />
+        {[1, 3, 5, 7].map(i => (
+          <rect key={i} y={(i * 14) / 9} width={22} height={14 / 9} fill="#fff" />
+        ))}
+        <rect width={7.78} height={7.78} fill="#0D5EAF" />
+        <rect x={3.11} width={1.56} height={7.78} fill="#fff" />
+        <rect y={3.11} width={7.78} height={1.56} fill="#fff" />
+      </svg>
+    ),
+    LU: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#fff" />
+        <rect width={22} height={4.67} fill="#ED2939" />
+        <rect y={9.33} width={22} height={4.67} fill="#00A1DE" />
+      </svg>
+    ),
+    RU: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#fff" />
+        <rect y={4.67} width={22} height={4.66} fill="#0039A6" />
+        <rect y={9.33} width={22} height={4.67} fill="#D52B1E" />
+      </svg>
+    ),
+    BR: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#009B3A" />
+        <polygon points="11,1.3 20.7,7 11,12.7 1.3,7" fill="#FEDF00" />
+        <circle cx={11} cy={7} r={3} fill="#002776" />
+      </svg>
+    ),
+    IN: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#fff" />
+        <rect width={22} height={4.67} fill="#FF9933" />
+        <rect y={9.33} width={22} height={4.67} fill="#138808" />
+        <circle cx={11} cy={7} r={1.8} fill="none" stroke="#000080" strokeWidth={0.5} />
+      </svg>
+    ),
+    KR: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#fff" />
+        <circle cx={11} cy={7} r={3} fill="#0047A0" />
+        <path d="M8,7 a3,3 0 0,1 6,0 z" fill="#CD2E3A" />
+      </svg>
+    ),
+    TH: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#A51931" />
+        <rect y={2.333} width={22} height={9.334} fill="#F4F5F8" />
+        <rect y={4.667} width={22} height={4.666} fill="#2D2A4A" />
+      </svg>
+    ),
+    IL: (
+      <svg {...sw}>
+        <rect width={22} height={14} fill="#fff" />
+        <rect y={1.6} width={22} height={1.6} fill="#0038B8" />
+        <rect y={10.8} width={22} height={1.6} fill="#0038B8" />
+        <path d="M11,4 L12.7,7 L9.3,7 Z" fill="none" stroke="#0038B8" strokeWidth={0.5} />
+        <path d="M11,10 L12.7,7 L9.3,7 Z" fill="none" stroke="#0038B8" strokeWidth={0.5} />
       </svg>
     ),
   };
