@@ -1341,6 +1341,14 @@
             switch (cmd) {
 
                 // ─── timeframe ─────────────────────────────────────────
+                case 'warmTfCacheFromHost': {
+                    var warmTf = String(args.tf || '').trim().toLowerCase();
+                    if (!warmTf) return;
+                    if (typeof ch._warmBtTfCacheFromParent === 'function') {
+                        try { ch._warmBtTfCacheFromParent(warmTf); } catch (_) {}
+                    }
+                    return;
+                }
                 case 'setTimeframe': {
                     var tf = String(args.tf || '').trim().toLowerCase();
                     if (!tf) throw new Error('setTimeframe: missing args.tf');
@@ -1354,6 +1362,14 @@
                         && !ch._timeframeSwitching) {
                         return;
                     }
+                    // Instant path: host A already painted this TF — clone bars + viewport.
+                    if (typeof ch._multichartMirrorHostRenderedTimeframeSwitch === 'function'
+                        && ch._multichartMirrorHostRenderedTimeframeSwitch(tf)) {
+                        setTimeout(function () {
+                            try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                        }, 0);
+                        return;
+                    }
                     // Multichart backtest: refetch window must anchor on host A's
                     // replay playhead (same as panel A's _refetchBacktestTimeframe).
                     try {
@@ -1365,12 +1381,18 @@
                             && Number.isFinite(Number(prsTf.replayTimestamp))) {
                             ch.replaySystem.replayTimestamp = Number(prsTf.replayTimestamp);
                         }
+                        if (typeof ch._warmBtTfCacheFromParent === 'function') {
+                            try { ch._warmBtTfCacheFromParent(tf); } catch (_) {}
+                        }
                     } catch (_) {}
                     var sw = ch.setTimeframe(tf);
                     if (sw && typeof sw.then === 'function') {
-                        return sw.then(function () {
+                        sw.then(function () {
                             try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                        }).catch(function (e) {
+                            warn('setTimeframe async failed', e && e.message);
                         });
+                        return;
                     }
                     setTimeout(function () {
                         try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
@@ -2533,6 +2555,7 @@
             source:  panelId,
             cmds:    [
                 'setTimeframe',
+                'warmTfCacheFromHost',
                 'loadFile',
                 'setActiveDrawingTool',
                 'clearActiveDrawingTool',

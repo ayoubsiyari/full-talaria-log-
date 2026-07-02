@@ -85,7 +85,7 @@ const PANEL_CMD_NO_REPLY = new Set([
     "replayEnter", "replayExit", "replayPlay", "replayPause", "replayTick", "replayFrame",
     "replaySetSpeed", "replaySetMode", "replaySetStepTf", "replayCut",
     "syncFromHost", "syncReplayFromHost", "extendReplayMasterFromHost",
-    "setTimeframe", "rollbackPickStart", "rollbackPickStop",
+    "setTimeframe", "warmTfCacheFromHost", "rollbackPickStart", "rollbackPickStop",
 ]);
 
 function sendPanelCmd(mgr, panelId, cmd, args) {
@@ -2552,8 +2552,9 @@ export default function MultichartGrid({
                 || null;
             if (!tf) return;
             for (const c of mgr.charts.values()) {
-                if (!c || c.host) continue; // host already changed; iframes only
-                try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
+                if (!c || c.host) continue;
+                sendPanelCmd(mgr, c.id, "warmTfCacheFromHost", { tf });
+                sendPanelCmd(mgr, c.id, "setTimeframe", { tf });
             }
         };
         window.addEventListener("timeframeChanged", onTfChanged);
@@ -3608,7 +3609,7 @@ export default function MultichartGrid({
                 // 2) push to every other iframe panel
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || c.id === id) continue;
-                    try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
+                    try { sendPanelCmd(mgr, c.id, "setTimeframe", { tf }); } catch (_) {}
                 }
             }
         }

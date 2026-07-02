@@ -2092,10 +2092,47 @@ class Chart {
     }
 
     /**
+     * Same-pair iframe TF switch when host tile A already shows the target TF:
+     * copy rendered bars + viewport by reference (no /smart refetch).
+     * @param {string} normalizedTf
+     * @returns {boolean}
+     */
+    _multichartMirrorHostRenderedTimeframeSwitch(normalizedTf) {
+        if (!this._isMultichartEmbedPanel() || this._isIndependentMultichartPair()) return false;
+        const parent = this._multichartGetHostChart();
+        if (!parent || !this._multichartSamePairAsHost(this.currentFileId)) return false;
+        if (parent._timeframeSwitching || parent._pairSwitchLoading) return false;
+
+        const parentTf = String(parent.currentTimeframe || '').toLowerCase().trim();
+        if (parentTf !== normalizedTf) return false;
+        if (!Array.isArray(parent.data) || parent.data.length === 0) return false;
+        if (!Array.isArray(parent.rawData) || parent.rawData.length === 0) return false;
+
+        this._commitTimeframeChange(normalizedTf);
+        this._nativeRawFetchTf = parent._nativeRawFetchTf || normalizedTf;
+
+        if (!this._multichartMirrorViewportFromHost()) {
+            return false;
+        }
+        this._finishTfSwitchViewportRestore();
+        this._scheduleIndicatorsAfterTimeframe();
+        if (typeof this.scheduleRender === 'function') this.scheduleRender();
+        else if (typeof this.render === 'function') this.render();
+        this._logTfSwitch('parent-rendered-mirror', {
+            to: normalizedTf,
+            bars: this.data.length,
+        });
+        return true;
+    }
+
+    /**
      * Fast TF paths for multichart iframe tiles (avoid network reload when possible).
      * @returns {Promise<boolean>}
      */
     async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf) {
+        if (this._multichartMirrorHostRenderedTimeframeSwitch(normalizedTf)) {
+            return true;
+        }
         if (typeof this._warmBtTfCacheFromParent === 'function') {
             this._warmBtTfCacheFromParent(normalizedTf);
         }
@@ -18109,6 +18146,13 @@ class Chart {
                 try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_) { /* ignore */ }
             }
             this._scheduleIndicatorsAfterTimeframe();
+            return;
+        }
+
+        // Same-pair multichart iframe: clone host tile A when it already shows
+        // this TF (instant — no freeze overlay, no /smart refetch).
+        if (this._isMultichartEmbedPanel() && !this._isIndependentMultichartPair()
+            && this._multichartMirrorHostRenderedTimeframeSwitch(normalizedTf)) {
             return;
         }
 
