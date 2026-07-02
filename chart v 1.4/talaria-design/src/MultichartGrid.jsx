@@ -77,7 +77,7 @@ const HOST_CONTAINER_ID = "chart-container";
 const BRIDGE_VERSION =
     (typeof window !== "undefined" && window.__TALARIA_CHART_BUILD_ID)
         ? String(window.__TALARIA_CHART_BUILD_ID)
-        : "20260627b378";
+        : "20260609b07";
 let bridgeLoadPromise = null;
 
 /** Parent → iframe commands that must never block the host play loop on cmd-result. */
@@ -85,65 +85,8 @@ const PANEL_CMD_NO_REPLY = new Set([
     "replayEnter", "replayExit", "replayPlay", "replayPause", "replayTick", "replayFrame",
     "replaySetSpeed", "replaySetMode", "replaySetStepTf", "replayCut",
     "syncFromHost", "syncReplayFromHost", "extendReplayMasterFromHost",
-    "setTimeframe", "mirrorHostTimeframe", "rollbackPickStart", "rollbackPickStop",
+    "setTimeframe", "rollbackPickStart", "rollbackPickStop",
 ]);
-
-/** Wait until host tile A finished committing dest TF bars (not just the label). */
-function waitUntilHostTfCommitted(host, tf, maxMs = 6000) {
-    return new Promise((resolve) => {
-        if (!host) {
-            resolve(false);
-            return;
-        }
-        const want = String(tf || "").toLowerCase().trim();
-        const start = typeof performance !== "undefined" ? performance.now() : Date.now();
-        const tick = () => {
-            const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-            const committed = !host._timeframeSwitching
-                && String(host.currentTimeframe || "").toLowerCase().trim() === want
-                && Array.isArray(host.data) && host.data.length > 0;
-            if (committed || now - start >= maxMs) {
-                resolve(committed);
-                return;
-            }
-            setTimeout(tick, 50);
-        };
-        tick();
-    });
-}
-
-/** Fan out mirror-only TF to every iframe (host excluded). */
-function broadcastMirrorHostTimeframeToIframes(mgr, tf) {
-    if (!mgr || !mgr.charts || !tf) return;
-    const liveTf = String(tf).toLowerCase().trim();
-    for (const c of mgr.charts.values()) {
-        if (!c || c.host) continue;
-        sendPanelCmd(mgr, c.id, "mirrorHostTimeframe", { tf: liveTf });
-    }
-}
-
-/**
- * Host-first TF switch for Interval sync ON: A commits bars, then B/C/D mirror (no /smart).
- * @param {object} mgr multichart-manager instance
- * @param {string} tf destination timeframe
- * @param {{ syncIntervalOnly?: boolean, intervalSyncOn?: boolean, skipHost?: boolean }} opts
- */
-async function switchTimeframeHostThenIframes(mgr, tf, opts = {}) {
-    const { syncIntervalOnly = true, intervalSyncOn = false, skipHost = false } = opts;
-    if (syncIntervalOnly && !intervalSyncOn) return;
-    const host = typeof window !== "undefined" ? window.chart : null;
-    if (!host || !mgr) return;
-    const normalizedTf = String(tf || "").toLowerCase().trim();
-    if (!normalizedTf) return;
-
-    if (!skipHost && String(host.currentTimeframe || "").toLowerCase().trim() !== normalizedTf) {
-        if (typeof host.setTimeframe === "function") {
-            await Promise.resolve(host.setTimeframe(normalizedTf));
-        }
-    }
-    await waitUntilHostTfCommitted(host, normalizedTf);
-    broadcastMirrorHostTimeframeToIframes(mgr, normalizedTf);
-}
 
 function sendPanelCmd(mgr, panelId, cmd, args) {
     if (!mgr || !panelId) return;
@@ -2418,11 +2361,7 @@ export default function MultichartGrid({
                     }
                     sendPanelCmd(mgr, c.id, "loadFile", { fileId: fid });
                 }
-                if (pushTf && tf) {
-                    void waitUntilHostTfCommitted(window.chart, tf).then(() => {
-                        broadcastMirrorHostTimeframeToIframes(mgr, tf);
-                    });
-                }
+                if (pushTf && tf) sendPanelCmd(mgr, c.id, "setTimeframe", { tf });
             } catch (_) {}
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2611,15 +2550,32 @@ export default function MultichartGrid({
                 || null;
             if (!tf) return;
             const host = window.chart;
-            const mirrorIframes = () => {
+            const broadcastTf = () => {
                 const mgrNow = managerRef.current;
                 if (!mgrNow || !mgrNow.charts) return;
                 const liveTf = (host && host.currentTimeframe) ? host.currentTimeframe : tf;
-                void waitUntilHostTfCommitted(host, liveTf).then(() => {
-                    broadcastMirrorHostTimeframeToIframes(mgrNow, liveTf);
-                });
+                for (const c of mgrNow.charts.values()) {
+                    if (!c || c.host) continue;
+                    sendPanelCmd(mgrNow, c.id, "setTimeframe", { tf: liveTf });
+                }
             };
-            mirrorIframes();
+            // Host emits timeframeChanged when the label commits — often BEFORE
+            // finer-TF bars land. Broadcasting immediately made iframes show the
+            // new TF string on stale coarse candles (broken time axis).
+            if (host && host._timeframeSwitching) {
+                let attempts = 0;
+                const waitForHostTf = () => {
+                    attempts += 1;
+                    if (host._timeframeSwitching && attempts < 120) {
+                        setTimeout(waitForHostTf, 50);
+                        return;
+                    }
+                    broadcastTf();
+                };
+                waitForHostTf();
+                return;
+            }
+            broadcastTf();
         };
         window.addEventListener("timeframeChanged", onTfChanged);
         return () => window.removeEventListener("timeframeChanged", onTfChanged);
@@ -3661,15 +3617,20 @@ export default function MultichartGrid({
             const tf = String(state.timeframe);
             if (lastBroadcastTfRef.current[id] !== tf) {
                 lastBroadcastTfRef.current[id] = tf;
-                void switchTimeframeHostThenIframes(mgr, tf, {
-                    intervalSyncOn: true,
-                    syncIntervalOnly: true,
-                }).then(() => {
-                    lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
-                    for (const c of mgr.charts.values()) {
-                        if (c && !c.host) lastBroadcastTfRef.current[c.id] = tf;
+                // 1) push to the host (in-process call) — host doesn't
+                // run panel-cmd-bridge, so we hit window.chart directly.
+                try {
+                    if (window.chart && typeof window.chart.setTimeframe === "function"
+                        && window.chart.currentTimeframe !== tf) {
+                        window.chart.setTimeframe(tf);
+                        lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
                     }
-                });
+                } catch (_) {}
+                // 2) push to every other iframe panel
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || c.id === id) continue;
+                    try { sendPanelCmd(mgr, c.id, "setTimeframe", { tf }); } catch (_) {}
+                }
             }
         }
         if (state && state.fileId && sync.symbol) {
@@ -3735,10 +3696,7 @@ export default function MultichartGrid({
                             return Promise.reject(new Error("chart.setTimeframe is not a function"));
                         }
                         if (!args.tf) return Promise.reject(new Error("setTimeframe: missing tf"));
-                        if (ch.currentTimeframe !== args.tf) {
-                            const sw = ch.setTimeframe(args.tf);
-                            if (sw && typeof sw.then === "function") return sw.then(() => null);
-                        }
+                        if (ch.currentTimeframe !== args.tf) ch.setTimeframe(args.tf);
                         return Promise.resolve(null);
                     }
                     case "setChartType": {
@@ -4365,20 +4323,7 @@ export default function MultichartGrid({
                 return loadFileOnPanel(target, args.fileId, { force: !!args.force });
             }
             if (target === HOST_PANEL_ID) {
-                let hostP = applyHostCommand(cmd, args);
-                if (cmd === "setTimeframe" && args && args.tf) {
-                    const sync = layoutSyncRef.current || {};
-                    if (sync.interval) {
-                        hostP = Promise.resolve(hostP).then(() =>
-                            switchTimeframeHostThenIframes(managerRef.current, args.tf, {
-                                intervalSyncOn: true,
-                                syncIntervalOnly: true,
-                                skipHost: true,
-                            })
-                        );
-                    }
-                }
-                return hostP;
+                return applyHostCommand(cmd, args);
             }
             const mgr = managerRef.current;
             if (!mgr || typeof mgr.sendCommand !== "function") {

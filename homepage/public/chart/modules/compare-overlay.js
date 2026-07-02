@@ -15,6 +15,27 @@ const COMPARE_TRASH_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" 
     <line x1="14" y1="11" x2="14" y2="17"/>
 </svg>`;
 
+const MAX_COMPARE_OVERLAYS = 2;
+
+function isCompareBlockedInMultichart(chart) {
+    if (typeof window === 'undefined') return false;
+    try {
+        if (window.__multichartGrid && typeof window.__multichartGrid.runCommand === 'function') {
+            return true;
+        }
+    } catch (_) { /* ignore */ }
+    try {
+        if (document.querySelector('[data-multichart-grid] iframe')) return true;
+    } catch (_) { /* ignore */ }
+    if (chart && typeof chart._isMultichartHostPanel === 'function' && chart._isMultichartHostPanel()) {
+        return true;
+    }
+    if (chart && typeof chart._isMultichartEmbedPanel === 'function' && chart._isMultichartEmbedPanel()) {
+        return true;
+    }
+    return false;
+}
+
 class CompareOverlay {
     constructor(chart) {
         this.chart = chart;
@@ -40,6 +61,40 @@ class CompareOverlay {
         console.log('📊 CompareOverlay initialized with API:', this.apiUrl);
         
         this.init();
+    }
+
+    static get MAX_OVERLAYS() {
+        return MAX_COMPARE_OVERLAYS;
+    }
+
+    static isMultichartBlocked(chart) {
+        return isCompareBlockedInMultichart(chart);
+    }
+
+    _isMultichartBlocked() {
+        return isCompareBlockedInMultichart(this.chart);
+    }
+
+    _isAtOverlayLimit() {
+        return this.overlays.length >= MAX_COMPARE_OVERLAYS;
+    }
+
+    _notifyCompare(message) {
+        if (typeof this.chart?.showNotification === 'function') {
+            this.chart.showNotification(message);
+        } else if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(message);
+        }
+    }
+
+    _emitOverlayCountChanged() {
+        try {
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                window.dispatchEvent(new CustomEvent('talariaCompareOverlaysChanged', {
+                    detail: { count: this.overlays.length, max: MAX_COMPARE_OVERLAYS }
+                }));
+            }
+        } catch (_) { /* ignore */ }
     }
 
     getMainChartBackground() {
@@ -328,7 +383,12 @@ class CompareOverlay {
             if (compareBtn) {
                 compareBtn.addEventListener('click', () => {
                     const owner = resolveOwner();
-                    if (owner) owner.openModal();
+                    if (!owner) return;
+                    if (owner._isMultichartBlocked()) {
+                        owner._notifyCompare('Compare overlays are not available in multichart mode.');
+                        return;
+                    }
+                    owner.openModal();
                 });
             }
 
@@ -445,6 +505,10 @@ class CompareOverlay {
     }
     
     openModal() {
+        if (this._isMultichartBlocked()) {
+            this._notifyCompare('Compare overlays are not available in multichart mode.');
+            return;
+        }
         console.log('📊 Opening compare modal');
         this._bindCompareModalDomOnce();
         window.__activeCompareOverlayOwner = this;
@@ -714,6 +778,14 @@ class CompareOverlay {
             return;
         }
 
+        const atOverlayLimit = this._isAtOverlayLimit();
+        if (atOverlayLimit) {
+            const limitNote = document.createElement('div');
+            limitNote.className = 'ssd-empty';
+            limitNote.textContent = `Maximum ${MAX_COMPARE_OVERLAYS} compare symbols reached. Remove one to add another.`;
+            listContainer.appendChild(limitNote);
+        }
+
         const esc = (t) => String(t ?? '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -812,10 +884,18 @@ class CompareOverlay {
 
             const btn = item.querySelector('.compare-action-btn');
             if (btn) btn.dataset.symbol = symbolName;
+            if (atOverlayLimit && !isAdded) {
+                item.querySelectorAll('.compare-action-btn').forEach((b) => {
+                    b.disabled = true;
+                    b.classList.add('disabled');
+                    b.title = `Maximum ${MAX_COMPARE_OVERLAYS} compare symbols`;
+                });
+            }
 
             item.querySelectorAll('.compare-action-btn').forEach((b) => {
                 b.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    if (b.disabled) return;
                     const mode = b.dataset.mode;
                     const fileId = parseInt(b.dataset.fileId, 10);
                     const symbol = b.dataset.symbol;
@@ -829,6 +909,14 @@ class CompareOverlay {
     
     async addSymbolWithMode(fileId, symbolName, mode) {
         console.log(`📊 Adding symbol ${symbolName} with mode: ${mode}`);
+        if (this._isMultichartBlocked()) {
+            this._notifyCompare('Compare overlays are not available in multichart mode.');
+            return;
+        }
+        if (this._isAtOverlayLimit()) {
+            this._notifyCompare(`You can add up to ${MAX_COMPARE_OVERLAYS} compare symbols. Remove one to add another.`);
+            return;
+        }
         if (mode === 'new-pane') {
             if (typeof this.chart?.showNotification === 'function') {
                 this.chart.showNotification('New Pane is disabled. Use the multi-panel layout system instead.');
@@ -2987,9 +3075,17 @@ class CompareOverlay {
     }
     
     async addOverlay(fileId, symbol) {
+        if (this._isMultichartBlocked()) {
+            this._notifyCompare('Compare overlays are not available in multichart mode.');
+            return;
+        }
         // Check if already added
         if (this.overlays.find(o => o.fileId === fileId)) {
             console.log('Symbol already added as overlay');
+            return;
+        }
+        if (this._isAtOverlayLimit()) {
+            this._notifyCompare(`You can add up to ${MAX_COMPARE_OVERLAYS} compare symbols. Remove one to add another.`);
             return;
         }
         
@@ -3051,6 +3147,7 @@ class CompareOverlay {
             };
             
             this.overlays.push(overlay);
+            this._emitOverlayCountChanged();
             
             // Close the modal after adding
             this.closeModal();
@@ -3257,6 +3354,7 @@ class CompareOverlay {
         const index = this.overlays.findIndex(o => o.id === overlayId);
         if (index > -1) {
             this.overlays.splice(index, 1);
+            this._emitOverlayCountChanged();
             this.updateCompareButton();
             this.renderActiveOverlays();
             this.renderSymbolsList();
@@ -5244,6 +5342,7 @@ class CompareOverlay {
     clearAll() {
         this.overlays = [];
         this.colorIndex = 0;
+        this._emitOverlayCountChanged();
         this.updateCompareButton();
         this.updateLegend();
         this.chart.render();

@@ -10725,12 +10725,36 @@ function v9ResolveSessionFileId(sessionPairs, symbolId, fileIdFromEntry) {
 }
 
 /** Add a session symbol as a compare overlay (same action as the former OHLC + button). */
+const V9_MAX_COMPARE_OVERLAYS = 2;
+
+function v9GetCompareOverlayCount() {
+  if (typeof window === "undefined") return 0;
+  const ch =
+    typeof window.getActiveChart === "function"
+      ? window.getActiveChart()
+      : window.chart;
+  return ch?.compareOverlay?.overlays?.length ?? 0;
+}
+
+function v9CanAddCompareSymbol(layoutPanelCount = 1) {
+  if (layoutPanelCount > 1 || v9IsMultiPanelLayoutActive()) return false;
+  return v9GetCompareOverlayCount() < V9_MAX_COMPARE_OVERLAYS;
+}
+
 function v9AddCompareSymbol(symbolId, fileId) {
   if (typeof window === "undefined") return;
   const ch =
     typeof window.getActiveChart === "function"
       ? window.getActiveChart()
       : window.chart;
+  if (v9IsMultiPanelLayoutActive()) {
+    ch?.showNotification?.("Compare overlays are not available in multichart mode.");
+    return;
+  }
+  if (v9GetCompareOverlayCount() >= V9_MAX_COMPARE_OVERLAYS) {
+    ch?.showNotification?.(`You can add up to ${V9_MAX_COMPARE_OVERLAYS} compare symbols. Remove one to add another.`);
+    return;
+  }
   const fid = fileId != null ? parseInt(fileId, 10) : NaN;
   if (!Number.isFinite(fid)) {
     ch?.showNotification?.("No dataset available for this symbol.");
@@ -11504,6 +11528,7 @@ const TalariaV8bLive = () => {
   // Pairs available in the active backtest session (read from chart.js / userStorage).
   // Each entry: { ticker: 'EUR/JPY', fileId: 12 }. Empty until session loads.
   const [sessionPairs, setSessionPairs] = useState([]);
+  const [compareOverlayCount, setCompareOverlayCount] = useState(0);
   const [symbolSearch, setSymbolSearch] = useState("");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
   const [chartType, setChartType] = useState(() => {
@@ -14304,6 +14329,14 @@ const TalariaV8bLive = () => {
     }, 100);
     return () => clearInterval(id);
   }, [settings]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const sync = () => setCompareOverlayCount(v9GetCompareOverlayCount());
+    sync();
+    window.addEventListener("talariaCompareOverlaysChanged", sync);
+    return () => window.removeEventListener("talariaCompareOverlaysChanged", sync);
+  }, []);
 
   // Multichart: keep every iframe tile on the same V9 Settings snapshot as
   // the host shell (timezone, precision, colours, trading toggles, …).
@@ -33706,7 +33739,7 @@ const TalariaV8bLive = () => {
                           <div style={{fontSize:12,fontWeight:isAct?700:600,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,lineHeight:1.2}}>{s.id}</div>
                           <div style={{fontSize:12,color:c.tm,lineHeight:1.2}}>{s.name}</div>
                         </div>
-                        {!isAct && s.fileId != null && (
+                        {!isAct && s.fileId != null && v9CanAddCompareSymbol(layoutPanels.n) && compareOverlayCount < V9_MAX_COMPARE_OVERLAYS && (
                           <button
                             type="button"
                             className="add-symbol-btn add-symbol-btn--inline"
@@ -38445,7 +38478,7 @@ const TalariaV8bLive = () => {
                             <div style={{ fontSize:11, fontWeight:isAct?700:600, color:isAct?c.acL:isH?c.tx:c.ts, lineHeight:1.3 }}>{s.id}</div>
                             <div style={{ fontSize:9, color:c.tm, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
                           </div>
-                          {!isAct && s.fileId != null && (
+                          {!isAct && s.fileId != null && v9CanAddCompareSymbol(layoutPanels.n) && compareOverlayCount < V9_MAX_COMPARE_OVERLAYS && (
                             <button
                               type="button"
                               className="add-symbol-btn add-symbol-btn--inline"
