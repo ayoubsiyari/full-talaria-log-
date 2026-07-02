@@ -77,7 +77,7 @@ const HOST_CONTAINER_ID = "chart-container";
 const BRIDGE_VERSION =
     (typeof window !== "undefined" && window.__TALARIA_CHART_BUILD_ID)
         ? String(window.__TALARIA_CHART_BUILD_ID)
-        : "20260609b07";
+        : "20260627b378";
 let bridgeLoadPromise = null;
 
 /** Parent → iframe commands that must never block the host play loop on cmd-result. */

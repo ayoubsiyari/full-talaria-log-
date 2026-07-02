@@ -3242,6 +3242,32 @@ function v9ApplyPointsFromTlStyle(d, tlStyle) {
   return true;
 }
 
+/** One step for Coordinates tab price/bar spinners (integer bar indices). */
+function v9NudgeCoordStyleField(prevVal, type, delta, dec, pxStep) {
+  if (type === "price") {
+    const py = parseFloat(String(prevVal ?? "").replace(/,/g, ""));
+    const base = Number.isFinite(py) ? py : 0;
+    return (base + delta * pxStep).toFixed(dec);
+  }
+  const bx = parseInt(String(prevVal ?? "").replace(/,/g, ""), 10);
+  const base = Number.isFinite(bx) ? bx : 0;
+  return String(base + delta);
+}
+
+/** Panel coord edits already set bar indices — do not re-resolve from timestamps (avoids ±2 bar drift). */
+function v9RepaintDrawingAfterPanelCoordEdit(dm, d, tb) {
+  const renderOpts = { skipTimestampSync: true };
+  try {
+    if (tb && typeof tb.onUpdate === "function") {
+      tb.onUpdate(d, { renderOpts });
+      return;
+    }
+  } catch (_) {}
+  try { dm.renderDrawing?.(d, renderOpts); } catch (_) {}
+  try { dm.saveDrawings?.(); } catch (_) {}
+  try { dm._broadcastLiveEditUpdate?.(d); } catch (_) {}
+}
+
 /** Writes tlStyle.vis* → drawing.visibility._ranges (units m/h/d/w/M; mo mirrors M). */
 function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
   if (!d || !tlStyle) return false;
@@ -22284,6 +22310,10 @@ const TalariaV8bLive = () => {
         if (visibilityChanged) {
           try { dm2.redrawAll?.(); } catch (_) { try { dm2.renderDrawing?.(d); } catch (_) {} }
           try { window.dispatchEvent(new CustomEvent("drawingsChanged")); } catch (_) {}
+        } else if (pointsMoved) {
+          try { v9RepaintDrawingAfterPanelCoordEdit(dm2, d, tb); } catch (_) {
+            try { dm2.renderDrawing?.(d, { skipTimestampSync: true }); } catch (_) {}
+          }
         } else if (tb && typeof tb.onUpdate === "function") {
           try { tb.onUpdate(d); } catch (_) { try { dm2.renderDrawing?.(d); } catch (_) {} }
         } else {
@@ -22465,10 +22495,11 @@ const TalariaV8bLive = () => {
         try { txtPointsMoved = v9ApplyPointsFromTlStyle(d, txtStyle); } catch (_) {}
         try { v9ApplyVisibilityFromTlStyle(d, txtStyle); } catch (_) {}
         if (txtPointsMoved) {
-          try { dm.renderDrawing?.(d); } catch (_) {}
-          try { dm.saveDrawings?.(); } catch (_) {}
-        }
-        if (tb && typeof tb.onUpdate === "function") {
+          try { v9RepaintDrawingAfterPanelCoordEdit(dm, d, tb); } catch (_) {
+            try { dm.renderDrawing?.(d, { skipTimestampSync: true }); } catch (_) {}
+            try { dm.saveDrawings?.(); } catch (_) {}
+          }
+        } else if (tb && typeof tb.onUpdate === "function") {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
         } else {
           try { dm.renderDrawing?.(d); } catch (_) {}
@@ -22669,13 +22700,10 @@ const TalariaV8bLive = () => {
         if (!moved) return;
         const tb = dm.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
-        try {
-          if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
-          else dm.renderDrawing?.(d);
-        } catch (_) {
-          try { dm.renderDrawing?.(d); } catch (_) {}
+        try { v9RepaintDrawingAfterPanelCoordEdit(dm, d, tb); } catch (_) {
+          try { dm.renderDrawing?.(d, { skipTimestampSync: true }); } catch (_) {}
+          try { dm.saveDrawings?.(); } catch (_) {}
         }
-        try { dm.saveDrawings?.(); } catch (_) {}
         v9SyncDrawingAxisHighlights(d);
         if (dm.chart) chartsToRender.add(dm.chart);
       });
@@ -26439,7 +26467,10 @@ const TalariaV8bLive = () => {
                              outline:"none", boxSizing:"border-box", fontVariantNumeric:"tabular-nums" }}/>
                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                     {[[+1,"▲"],[- 1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_pxStep).toFixed(_dec):String(+s[k]+delta)})))}
+                      <button type="button" key={i} {...modalPointerActivate((e) => {
+                        e.preventDefault();
+                        setTlStyle((s) => ({ ...s, [k]: v9NudgeCoordStyleField(s[k], type, delta, _dec, _pxStep) }));
+                      })}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{ flex:1, width:18, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -27419,7 +27450,10 @@ const TalariaV8bLive = () => {
                             outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                   <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                      <button type="button" key={i} {...modalPointerActivate(() => setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*_pxStep).toFixed(_dec):String(+s[k]+delta)})))}
+                      <button type="button" key={i} {...modalPointerActivate((e) => {
+                        e.preventDefault();
+                        setTxtStyle((s) => ({ ...s, [k]: v9NudgeCoordStyleField(s[k], type, delta, _dec, _pxStep) }));
+                      })}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                 display:"flex",alignItems:"center",justifyContent:"center",
@@ -29856,7 +29890,11 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vwapStyle[k]+delta*_pxStep).toFixed(_dec):String(+vwapStyle[k]+delta);setCoord(k,nv);})}
+                        <button type="button" key={i} {...modalPointerActivate((e) => {
+                          e.preventDefault();
+                          const nv = v9NudgeCoordStyleField(vwapStyle[k], type, delta, _dec, _pxStep);
+                          setCoord(k, nv);
+                        })}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -30196,7 +30234,11 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+vpStyle[k]+delta*_pxStep).toFixed(_dec):String(+vpStyle[k]+delta);setCoord(k,nv);})}
+                        <button type="button" key={i} {...modalPointerActivate((e) => {
+                          e.preventDefault();
+                          const nv = v9NudgeCoordStyleField(vpStyle[k], type, delta, _dec, _pxStep);
+                          setCoord(k, nv);
+                        })}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -30513,7 +30555,11 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button type="button" key={i} {...modalPointerActivate(()=>{const nv=type==="price"?(+avStyle[k]+delta*_pxStep).toFixed(_dec):String(+avStyle[k]+delta);setCoord(k,nv);})}
+                        <button type="button" key={i} {...modalPointerActivate((e) => {
+                          e.preventDefault();
+                          const nv = v9NudgeCoordStyleField(avStyle[k], type, delta, _dec, _pxStep);
+                          setCoord(k, nv);
+                        })}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
