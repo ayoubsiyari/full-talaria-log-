@@ -11501,17 +11501,52 @@ class DrawingToolsManager {
     }
 
     /**
+     * Drop duplicate ids from a persisted drawings payload (legacy sync bugs).
+     */
+    _dedupeDrawingsPayload(data) {
+        if (!Array.isArray(data) || data.length < 2) return data || [];
+        const seen = new Set();
+        const out = [];
+        for (const item of data) {
+            if (!item || typeof item !== 'object') continue;
+            const id = item.id;
+            if (id != null && id !== '') {
+                const key = String(id);
+                if (seen.has(key)) continue;
+                seen.add(key);
+            }
+            out.push(item);
+        }
+        return out;
+    }
+
+    /**
+     * Wipe in-memory drawings and reload from the active file/session storage key.
+     */
+    async reloadDrawingsFromStorage(options = {}) {
+        if (this.drawings.length > 0) {
+            this.drawings.forEach((d) => { try { d.destroy(); } catch (_) {} });
+            this.drawings = [];
+            this.selectedDrawing = null;
+            if (this.drawingsGroup) this.drawingsGroup.selectAll('*').remove();
+        }
+        this._drawingsLoaded = false;
+        return this.loadDrawings({ force: options.force !== false });
+    }
+
+    /**
      * Load drawings from API (cloud sync) or localStorage (fallback)
      * Converts timestamps to indices for current timeframe
      */
-    async loadDrawings() {
+    async loadDrawings(options = {}) {
+        const force = !!(options && options.force);
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn(`⚠️ Cannot load drawings yet - chart has no data`);
             return; // _drawingsLoaded stays false — listener will retry
         }
 
         // Session GET /state may hydrate via loadDrawingsFromData before this runs — do not wipe them.
-        if (this._drawingsLoaded) {
+        if (!force && this._drawingsLoaded) {
             if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
                 this.chart._applyPendingSessionDrawingsAfterManagerLoad();
             }
@@ -11546,6 +11581,7 @@ class DrawingToolsManager {
 
         // Mark as loaded regardless of whether there are saved drawings
         this._drawingsLoaded = true;
+        this._drawingsLoadedStorageKey = this.getStorageKey();
 
         if (!saved) {
             if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
@@ -11555,7 +11591,16 @@ class DrawingToolsManager {
         }
         
         try {
-            const data = JSON.parse(saved);
+            let data = JSON.parse(saved);
+            const deduped = this._dedupeDrawingsPayload(data);
+            if (deduped.length < data.length) {
+                console.warn(`⚠️ Pruned ${data.length - deduped.length} duplicate drawing(s) from storage`);
+                data = deduped;
+                try {
+                    const key = this.getStorageKey();
+                    this._writeDrawingsCache(key, JSON.stringify(data));
+                } catch (_) { /* ignore */ }
+            }
             // [debug removed]
 
             const normalizeDashPatterns = (node) => {

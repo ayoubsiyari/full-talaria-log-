@@ -656,7 +656,8 @@
                     if (typeof dmGuard.loadDrawings === 'function') {
                         var __originalLoadDrawings = dmGuard.loadDrawings.bind(dmGuard);
                         var __loadCallCount = 0;
-                        dmGuard.loadDrawings = function () {
+                        dmGuard.loadDrawings = function (options) {
+                            const force = !!(options && options.force);
                             __loadCallCount++;
                             var pre = (dmGuard.__rawDrawings && dmGuard.__rawDrawings.length)
                                 || (dmGuard._drawingsArr && dmGuard._drawingsArr.length)
@@ -675,7 +676,7 @@
                             // to a tf change, refreshDrawingsForTimeframe
                             // is the correct entry point and it's not
                             // affected by this guard.
-                            if (pre > 0 && __loadCallCount > 1) {
+                            if (!force && pre > 0 && __loadCallCount > 1) {
                                 try {
                                     window.parent.postMessage({
                                         type: 'host-log', source: chartId, level: 'info',
@@ -687,7 +688,7 @@
                                 return Promise.resolve();
                             }
                             try {
-                                var ret = __originalLoadDrawings();
+                                var ret = __originalLoadDrawings(options);
                                 if (ret && typeof ret.then === 'function') {
                                     return ret.then(function (r) {
                                         var post = (dmGuard.__rawDrawings && dmGuard.__rawDrawings.length)

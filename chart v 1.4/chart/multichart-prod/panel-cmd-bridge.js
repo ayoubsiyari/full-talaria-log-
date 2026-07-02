@@ -1519,6 +1519,23 @@
                     try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
                     return;
                 }
+                case 'reloadDrawings': {
+                    const dm = ch.drawingManager;
+                    if (dm && typeof dm.reloadDrawingsFromStorage === 'function') {
+                        if (args && args.sessionId) {
+                            try { ch.activeTradingSessionId = String(args.sessionId); } catch (_) {}
+                        }
+                        const loadedSession = typeof ch.getActiveTradingSessionId === 'function'
+                            ? (ch.getActiveTradingSessionId() || '')
+                            : '';
+                        return Promise.resolve(dm.reloadDrawingsFromStorage({ force: true }))
+                            .then(() => {
+                                try { ch._lastLoadedDrawingsSessionId = loadedSession; } catch (_) {}
+                                try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                            });
+                    }
+                    return;
+                }
                 case 'clearOnlyIndicators': {
                     if (typeof ch.clearOnlyIndicators === 'function') {
                         ch.clearOnlyIndicators({ confirmPrompt: false });

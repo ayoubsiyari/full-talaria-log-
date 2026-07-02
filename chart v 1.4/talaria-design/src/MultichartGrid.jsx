@@ -3817,6 +3817,24 @@ export default function MultichartGrid({
                         try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
                         return Promise.resolve(null);
                     }
+                    case "reloadDrawings": {
+                        const dmReload = ch.drawingManager;
+                        if (args && args.sessionId) {
+                            try { ch.activeTradingSessionId = String(args.sessionId); } catch (_) {}
+                        }
+                        if (dmReload && typeof dmReload.reloadDrawingsFromStorage === "function") {
+                            const loadedSession = typeof ch.getActiveTradingSessionId === "function"
+                                ? (ch.getActiveTradingSessionId() || "")
+                                : "";
+                            return Promise.resolve(dmReload.reloadDrawingsFromStorage({ force: true }))
+                                .then(() => {
+                                    try { ch._lastLoadedDrawingsSessionId = loadedSession; } catch (_) {}
+                                    try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                                    return null;
+                                });
+                        }
+                        return Promise.resolve(null);
+                    }
                     case "clearOnlyIndicators": {
                         if (typeof ch.clearOnlyIndicators === "function") {
                             ch.clearOnlyIndicators({ confirmPrompt: false });

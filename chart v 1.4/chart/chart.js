@@ -456,6 +456,7 @@ class Chart {
         this.currentTimeframe = '1m'; // Track current timeframe
 
         this.activeTradingSessionId = null;
+        this._lastLoadedDrawingsSessionId = undefined;
         this._sessionStateLoadedFor = null;
         this._pendingSessionStatePatch = null;
         this._sessionStateSaveTimer = null;
@@ -6514,15 +6515,27 @@ class Chart {
 
         if (startIndex === 0 && this.drawingManager) {
             const fileChanged = this._lastLoadedFileId && this._lastLoadedFileId !== this.currentFileId;
+            const curSession = typeof this.getActiveTradingSessionId === 'function'
+                ? (this.getActiveTradingSessionId() || '')
+                : '';
+            const sessionChanged = this._lastLoadedDrawingsSessionId !== undefined
+                && this._lastLoadedDrawingsSessionId !== curSession;
+            const storageKeyNow = typeof this.drawingManager.getStorageKey === 'function'
+                ? this.drawingManager.getStorageKey()
+                : '';
+            const storageContextChanged = !!(this.drawingManager._drawingsLoaded
+                && this.drawingManager._drawingsLoadedStorageKey
+                && storageKeyNow
+                && this.drawingManager._drawingsLoadedStorageKey !== storageKeyNow);
 
-            if (fileChanged) {
+            if (fileChanged || sessionChanged || storageContextChanged) {
                 if (this.drawingManager.drawings.length > 0) {
-                    this.drawingManager.drawings.forEach(d => d.destroy());
+                    this.drawingManager.drawings.forEach((d) => { try { d.destroy(); } catch (_) {} });
                     this.drawingManager.drawings = [];
                 }
                 this.drawingManager._drawingsLoaded = false;
                 if (typeof this.drawingManager.loadDrawings === 'function') {
-                    this.drawingManager.loadDrawings();
+                    this.drawingManager.loadDrawings({ force: true });
                 }
             } else if (!this._lastLoadedFileId) {
                 if (typeof this.drawingManager.loadDrawings === 'function') {
@@ -6531,6 +6544,7 @@ class Chart {
             }
 
             this._lastLoadedFileId = this.currentFileId;
+            this._lastLoadedDrawingsSessionId = curSession;
         }
 
         if (mergeDirection === 'backward' || mergeDirection === 'forward') {
