@@ -974,6 +974,7 @@ class DrawingToolsManager {
             );
             if (previewPoints) {
                 this._scheduleAxisHighlightsDuringDrag(item.drawing, previewPoints);
+                this._broadcastLiveEditUpdate(item.drawing, previewPoints);
             }
         });
     }
@@ -7789,6 +7790,7 @@ class DrawingToolsManager {
                             if (previewPoints) {
                                 self._scheduleAxisHighlightsDuringDrag(item.drawing, previewPoints);
                                 self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
+                                self._broadcastLiveEditUpdate(item.drawing, previewPoints);
                             }
                         });
                     } else if (dragStartPoints) {
@@ -7802,6 +7804,7 @@ class DrawingToolsManager {
                         if (previewPoints) {
                             self._scheduleAxisHighlightsDuringDrag(drawing, previewPoints);
                             self._notifyV9DrawingGeometryLive(drawing, previewPoints);
+                            self._broadcastLiveEditUpdate(drawing, previewPoints);
                         }
                     }
                     if (event.sourceEvent) {
@@ -7832,8 +7835,9 @@ class DrawingToolsManager {
                         }
                         self.saveDrawings();
                         const idx = self.drawings.indexOf(drawing);
-                        if (self.chart.broadcastDrawingChange && idx > -1) {
-                            self.chart.broadcastDrawingChange('update', drawing, idx);
+                        if (idx > -1) {
+                            self._refreshDrawingTimestampAnchors(drawing);
+                            self._broadcastLiveEditUpdate(drawing);
                         }
                         horizontalAnchorPointDrag = false;
                         dragStartPoints = null;
@@ -7856,6 +7860,7 @@ class DrawingToolsManager {
                             if (didMove) {
                                 self._refreshDrawingTimestampAnchors(item.drawing);
                                 self._renderDrawingAfterGeometryCommit(item.drawing);
+                                self._broadcastLiveEditUpdate(item.drawing);
                             }
                             setAnchoredVWAPMovingState(item.drawing, false);
                         });
@@ -7873,6 +7878,7 @@ class DrawingToolsManager {
                         if (didMove) {
                             self._refreshDrawingTimestampAnchors(drawing);
                             self._renderDrawingAfterGeometryCommit(drawing);
+                            self._broadcastLiveEditUpdate(drawing);
                         }
                         setAnchoredVWAPMovingState(drawing, false);
                         beforeState = null;
@@ -7887,12 +7893,6 @@ class DrawingToolsManager {
                     self._bodyDragActiveDrawings = null;
                     self._endDrawingLiveInteraction();
                     self.saveDrawings();
-                    
-                    // Broadcast update to other panels
-                    const index = self.drawings.indexOf(drawing);
-                    if (self.chart.broadcastDrawingChange && index > -1) {
-                        self.chart.broadcastDrawingChange('update', drawing, index);
-                    }
                     
                     // [debug removed]
                 });
@@ -8450,8 +8450,9 @@ class DrawingToolsManager {
                 }
 
                 const index = this.drawings.indexOf(item.drawing);
-                if (didMove && this.chart && this.chart.broadcastDrawingChange && index > -1) {
-                    this.chart.broadcastDrawingChange('update', item.drawing, index);
+                if (didMove && index > -1) {
+                    this._refreshDrawingTimestampAnchors(item.drawing);
+                    this._broadcastLiveEditUpdate(item.drawing);
                 }
             });
 
@@ -9194,6 +9195,7 @@ class DrawingToolsManager {
                 if (didMove) {
                     this._refreshDrawingTimestampAnchors(drawing);
                     this._renderDrawingAfterGeometryCommit(drawing);
+                    this._broadcastLiveEditUpdate(drawing);
                 } else {
                     this._clearDrawingDragTransform(drawing);
                 }
@@ -9208,6 +9210,7 @@ class DrawingToolsManager {
             if (didMove) {
                 this._refreshDrawingTimestampAnchors(this.draggingDrawing);
                 this._renderDrawingAfterGeometryCommit(this.draggingDrawing);
+                this._broadcastLiveEditUpdate(this.draggingDrawing);
             } else {
                 this._clearDrawingDragTransform(this.draggingDrawing);
             }
