@@ -80,6 +80,34 @@ const BRIDGE_VERSION =
         : "20260609b07";
 let bridgeLoadPromise = null;
 
+/** Parent → iframe commands that must never block the host play loop on cmd-result. */
+const PANEL_CMD_NO_REPLY = new Set([
+    "replayEnter", "replayExit", "replayPlay", "replayPause", "replayTick", "replayFrame",
+    "replaySetSpeed", "replaySetMode", "replaySetStepTf", "replayCut",
+    "syncFromHost", "syncReplayFromHost", "extendReplayMasterFromHost",
+    "setTimeframe", "rollbackPickStart", "rollbackPickStop",
+]);
+
+function sendPanelCmd(mgr, panelId, cmd, args) {
+    if (!mgr || !panelId) return;
+    const payload = args && typeof args === "object" ? args : {};
+    if (typeof mgr.sendCommandNoReply === "function" && PANEL_CMD_NO_REPLY.has(cmd)) {
+        try { mgr.sendCommandNoReply(panelId, cmd, payload); } catch (_) {}
+        return;
+    }
+    if (typeof mgr.sendCommand === "function") {
+        mgr.sendCommand(panelId, cmd, payload).catch(() => {});
+    }
+}
+
+function panelHasBarsForSync(chartRec, dataReadySet) {
+    if (!chartRec || chartRec.host) return false;
+    if (!chartRec.ready) return false;
+    if (dataReadySet && dataReadySet.has(chartRec.id)) return true;
+    const cc = Number(chartRec.state && chartRec.state.candleCount);
+    return Number.isFinite(cc) && cc > 0;
+}
+
 function loadParentBridge() {
     if (typeof window === "undefined") return Promise.reject(new Error("no window"));
     if (window.MultichartManager && window.MultichartGuards) return Promise.resolve();
@@ -1591,6 +1619,8 @@ export default function MultichartGrid({
     }, []);
     const markPanelDataReadyRef = useRef(markPanelDataReady);
     markPanelDataReadyRef.current = markPanelDataReady;
+    const dataReadyPanelsRef = useRef(dataReadyPanels);
+    useEffect(() => { dataReadyPanelsRef.current = dataReadyPanels; }, [dataReadyPanels]);
 
     useEffect(() => {
         setHostViewportFrozenCheck(() => hostViewportFrozenRef.current);
@@ -2292,22 +2322,9 @@ export default function MultichartGrid({
         };
     }, [layout.tiles, managerReady, layoutId]);
 
-    // When a NEW iframe becomes bridge-ready, push the host's current
-    // file + timeframe so it boots with data even if the iframe URL was
-    // missing a fileId (e.g. props were empty on first paint).
-    //
-    // IMPORTANT: only depends on `readyPanels` (+ managerReady).
-    // initialFileId / initialTimeframe are deliberately read from REFS
-    // (not props) so that a timeframe change on Panel A does NOT push
-    // to every iframe — that would override Panel B's independent tf
-    // even when sync.interval is off.  Timeframe sync is handled by the
-    // dedicated "Interval sync" effect above which checks layoutSync.
-    //
-    // File / pair: only force the host dataset onto every iframe when
-    // layout "Symbol" sync is ON. When it is off (including full backtest
-    // replay), a tile that already reports its own fileId (user picked a
-    // different pair on Panel B) must NOT be reset to the host when other
-    // tiles become ready or when Panel A changes pair.
+    // When a NEW iframe has bars (data-ready), push host file/TF/replay state.
+    // Deliberately NOT on bridge-ready alone — syncFromHost during script parse
+    // caused 25s panel-cmd timeouts and desynced candles.
     useEffect(() => {
         if (!managerReady) return;
         const hostNt = readHostChartFileAndTf();
@@ -2320,25 +2337,23 @@ export default function MultichartGrid({
         if (!mgr || !mgr.charts) return;
         const pushTf = !!(layoutSync && layoutSync.interval);
         const symFollow = !!(layoutSync && layoutSync.symbol);
-        // Only stamp the host file onto every iframe when Symbol sync is on.
-        // Backtest/replay file-lock must NOT override this — users turn all
-        // layout toggles off to keep independent instruments per tile.
         const forceHostFileOnEveryTile = symFollow;
         const hostFidStr = String((hostNt.fileId || fid || "")).trim();
         const hostInBacktest = !!(typeof window !== "undefined"
             && window.chart
             && (window.chart.isBacktestMode || window.chart.backtestingSession));
+        const readySet = dataReadyPanelsRef.current;
         for (const c of mgr.charts.values()) {
-            if (!c || c.host || !c.ready) continue;
+            if (!panelHasBarsForSync(c, readySet)) continue;
             try {
                 if (hostInBacktest) {
-                    mgr.sendCommand(c.id, "syncFromHost", {
+                    sendPanelCmd(mgr, c.id, "syncFromHost", {
                         force: true,
                         syncTimeframe: pushTf,
                         syncSymbol: symFollow,
                     });
                 } else if (forceHostFileOnEveryTile) {
-                    mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
+                    sendPanelCmd(mgr, c.id, "loadFile", { fileId: fid });
                 } else {
                     const reported = c.state && c.state.fileId != null
                         ? String(c.state.fileId).trim()
@@ -2346,13 +2361,13 @@ export default function MultichartGrid({
                     if (reported && reported !== hostFidStr) {
                         continue;
                     }
-                    mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
+                    sendPanelCmd(mgr, c.id, "loadFile", { fileId: fid });
                 }
-                if (pushTf && tf) mgr.sendCommandNoReply(c.id, "setTimeframe", { tf });
+                if (pushTf && tf) sendPanelCmd(mgr, c.id, "setTimeframe", { tf });
             } catch (_) {}
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [managerReady, readyPanels, layoutSync && layoutSync.interval, layoutSync && layoutSync.symbol]);
+    }, [managerReady, dataReadyPanels, layoutSync && layoutSync.interval, layoutSync && layoutSync.symbol]);
 
     // ─── Host-tile positioning ──────────────────────────────────────────
     //
@@ -2669,38 +2684,26 @@ export default function MultichartGrid({
                     ? rs.getPlaybackMode()
                     : (rs.playbackMode || "tick");
                 for (const c of mgr.charts.values()) {
-                    if (!c || c.host || !c.ready) continue;
-                    try {
-                        if (typeof mgr.sendCommandNoReply === "function") {
-                            mgr.sendCommandNoReply(c.id, "replayEnter", { timestamp: ts });
-                        } else {
-                            mgr.sendCommand(c.id, "replayEnter", { timestamp: ts });
-                        }
-                    } catch (_) {}
-                    try {
-                        const stf = rs.stepTimeframeOverride;
-                        mgr.sendCommand(c.id, "replaySetStepTf", {
-                            tf: stf == null ? null : stf,
-                        });
-                    }
-                    catch (_) {}
-                    try {
-                        const syncTf = !!(layoutSyncRef.current && layoutSyncRef.current.interval);
-                        const syncSym = !!(layoutSyncRef.current && layoutSyncRef.current.symbol);
-                        mgr.sendCommand(c.id, "syncFromHost", {
-                            force: true,
-                            syncTimeframe: syncTf,
-                            syncSymbol: syncSym,
-                        });
-                    }
-                    catch (_) {}
-                    try { mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed }); }
-                    catch (_) {}
-                    try { mgr.sendCommand(c.id, "replaySetMode", { mode: parentMode }); }
-                    catch (_) {}
+                    if (!panelHasBarsForSync(c, dataReadyPanelsRef.current)) continue;
+                    sendPanelCmd(mgr, c.id, "replayEnter", { timestamp: ts });
+                    const stf = rs.stepTimeframeOverride;
+                    sendPanelCmd(mgr, c.id, "replaySetStepTf", {
+                        tf: stf == null ? null : stf,
+                    });
+                    const syncTf = !!(layoutSyncRef.current && layoutSyncRef.current.interval);
+                    const syncSym = !!(layoutSyncRef.current && layoutSyncRef.current.symbol);
+                    sendPanelCmd(mgr, c.id, "syncFromHost", {
+                        force: true,
+                        syncTimeframe: syncTf,
+                        syncSymbol: syncSym,
+                    });
+                    sendPanelCmd(mgr, c.id, "replaySetSpeed", { speed: parentSpeed });
+                    sendPanelCmd(mgr, c.id, "replaySetMode", { mode: parentMode });
                     if (parentIsPlaying) {
-                        try { mgr.sendCommand(c.id, "replayPlay", { speed: parentSpeed, mode: parentMode }); }
-                        catch (_) {}
+                        sendPanelCmd(mgr, c.id, "replayPlay", {
+                            speed: parentSpeed,
+                            mode: parentMode,
+                        });
                     }
                 }
             } else if (replayStateRef.current.parentEverEntered === true) {
@@ -2711,8 +2714,7 @@ export default function MultichartGrid({
                 // state so they show the full slice like parent.
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
-                    try { mgr.sendCommand(c.id, "replayExit", {}); }
-                    catch (_) {}
+                    sendPanelCmd(mgr, c.id, "replayExit", {});
                 }
             }
             // else: parent has NEVER entered replay yet. This is the
@@ -2748,23 +2750,9 @@ export default function MultichartGrid({
             replayStateRef.current.lastBroadcastTs = ts;
             const cmd = replayStateRef.current.everEntered ? "replayTick" : "replayEnter";
             replayStateRef.current.everEntered = true;
-            // Use sendCommandNoReply for the hot tick path — at 60x
-            // playback speed this fires 60 events/sec * N panels and
-            // the per-call Promise + Map.set + setTimeout overhead of
-            // sendCommand becomes measurable. Fire-and-forget cuts
-            // ~0.3ms/call, freeing the parent's main thread to keep
-            // running its own play loop without stuttering.
-            const useNoReply = (cmd === "replayTick")
-                && typeof mgr.sendCommandNoReply === "function";
             for (const c of mgr.charts.values()) {
                 if (!c || c.host) continue;
-                try {
-                    if (useNoReply) {
-                        mgr.sendCommandNoReply(c.id, cmd, { timestamp: ts });
-                    } else {
-                        mgr.sendCommand(c.id, cmd, { timestamp: ts });
-                    }
-                } catch (_) { /* ignore — the next tick retries */ }
+                sendPanelCmd(mgr, c.id, cmd, { timestamp: ts });
             }
         };
 
@@ -2901,9 +2889,9 @@ export default function MultichartGrid({
                 replayStateRef.current.parentEverEntered = true;
                 const send = typeof mgr.sendCommandNoReply === "function"
                     ? mgr.sendCommandNoReply.bind(mgr)
-                    : mgr.sendCommand.bind(mgr);
+                    : function (id, cmd, args) { sendPanelCmd(mgr, id, cmd, args); };
                 for (const c of mgr.charts.values()) {
-                    if (!c || c.host || !c.ready) continue;
+                    if (!panelHasBarsForSync(c, dataReadyPanelsRef.current)) continue;
                     try {
                         send(c.id, "syncReplayFromHost", { force: true });
                     } catch (_) {}
@@ -2920,8 +2908,7 @@ export default function MultichartGrid({
                 if (!mgr) return;
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
-                    try { mgr.sendCommand(c.id, cmd, args || {}); }
-                    catch (_) {}
+                    sendPanelCmd(mgr, c.id, cmd, args || {});
                 }
             } catch (_) {}
         };
@@ -2997,13 +2984,7 @@ export default function MultichartGrid({
             replayStateRef.current.everEntered = true;
             for (const c of mgr.charts.values()) {
                 if (!c || c.host || !c.ready) continue;
-                try {
-                    if (cmd === "replayTick" && typeof mgr.sendCommandNoReply === "function") {
-                        mgr.sendCommandNoReply(c.id, "replayTick", { timestamp: ts });
-                    } else {
-                        mgr.sendCommand(c.id, cmd, { timestamp: ts });
-                    }
-                } catch (_) {}
+                sendPanelCmd(mgr, c.id, cmd, { timestamp: ts });
             }
         };
         const tryPatch = (deadline) => {
@@ -3297,6 +3278,13 @@ export default function MultichartGrid({
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [readyPanels]);
+
+    // Re-prime replay when a panel's first bars land (not only bridge-ready).
+    useEffect(() => {
+        const t = setTimeout(() => { _primeReplayFromParent(); }, 0);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dataReadyPanels]);
 
     // ─── Focus outline on the host's #chartWrapper ──────────────────────
     // Iframe tiles get their focused border via vanilla DOM injection
@@ -4830,7 +4818,7 @@ export default function MultichartGrid({
             const cmd = active ? "rollbackPickStart" : "rollbackPickStop";
             for (const c of mgr.charts.values()) {
                 if (!c || c.host || !c.ready) continue;
-                try { mgr.sendCommand(c.id, cmd, {}); } catch (_) {}
+                sendPanelCmd(mgr, c.id, cmd, {});
             }
         };
         window.addEventListener("talariaReplayRollbackMode", onReplayRollbackMode);

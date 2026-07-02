@@ -759,7 +759,12 @@
                 requestId: requestId,
             };
             try {
-                c.frame.contentWindow.postMessage(msg, '*');
+                const win = c.frame.contentWindow;
+                if (win && typeof win.__panelCmdApply === 'function') {
+                    win.__panelCmdApply(msg);
+                } else {
+                    win.postMessage(msg, '*');
+                }
                 self._log('out', 'panel-cmd ' + cmd + ' → ' + panelId);
             } catch (e) {
                 clearTimeout(timeout);
@@ -882,8 +887,8 @@
 
             case 'panel-cmd-ready':
                 // Phase 7.2.4 handshake: iframe's panel-cmd-bridge is now
-                // listening for commands. Today this is informational only;
-                // future versions may use it to flush queued commands.
+                // listening for commands.
+                if (sourceChart) sourceChart.cmdReady = true;
                 this._log('info', 'panel-cmd-ready: ' + sourceId
                     + ' (cmds: ' + (msg.cmds || []).join(',') + ')');
                 return;

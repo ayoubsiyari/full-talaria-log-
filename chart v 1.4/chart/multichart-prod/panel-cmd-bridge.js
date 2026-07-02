@@ -367,6 +367,57 @@
         return !!(ch.isBacktestMode || ch.backtestingSession);
     }
 
+    /**
+     * Load host file on an iframe tile — prefer host master clone (no server fetch).
+     * Runs async; callers that need fire-and-forget should not return this promise.
+     */
+    function startSyncFromHostLoad(ch, syncFidStr, syncTs, afterCb) {
+        if (!ch || !syncFidStr) return null;
+        mirrorParentBacktestSession(ch);
+        var primedPlayheadTs = Number.isFinite(syncTs)
+            ? syncTs
+            : primeIframeReplayPlayheadFromParent(ch);
+        var useMcLoader = shouldUseMultichartPanelLoader(ch);
+        var loadPromise = null;
+        if (useMcLoader) {
+            if (typeof ch.loadMultichartPanelFile === 'function') {
+                loadPromise = ch.loadMultichartPanelFile(syncFidStr, {
+                    force: true,
+                    replayTimestamp: primedPlayheadTs,
+                    timeframe: ch.currentTimeframe,
+                });
+            } else if (typeof ch.loadMultichartPanelFromHost === 'function') {
+                loadPromise = ch.loadMultichartPanelFromHost({
+                    fileId: syncFidStr,
+                    force: true,
+                    replayTimestamp: primedPlayheadTs,
+                    timeframe: ch.currentTimeframe,
+                });
+            }
+        }
+        if (!loadPromise && typeof ch.loadFileData === 'function') {
+            loadPromise = ch.loadFileData(syncFidStr);
+        }
+        if (loadPromise && typeof loadPromise.then === 'function') {
+            return loadPromise.then(function () {
+                if (typeof afterCb === 'function') afterCb();
+            }).catch(function (e) {
+                warn('syncFromHost: load failed', e && e.message);
+            });
+        }
+        if (typeof afterCb === 'function') afterCb();
+        return null;
+    }
+
+    function runSyncFromHostLoadDetached(ch, syncFidStr, syncTs, afterCb) {
+        var p = startSyncFromHostLoad(ch, syncFidStr, syncTs, afterCb);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function (e) {
+                warn('syncFromHost: detached load failed', e && e.message);
+            });
+        }
+    }
+
     function isPanelBootSettling(ch) {
         try {
             if (ch && typeof ch._isMultichartBootViewportLocked === 'function'
@@ -1722,74 +1773,70 @@
                         && typeof ch.setTimeframe === 'function') {
                         try { ch.setTimeframe(syncTf); } catch (_) {}
                     }
-                    var alignReplayFromHost = function () {
-                        if (!args.syncSymbol) {
-                            if (!Number.isFinite(syncTs)) return;
-                            if (!ch.replaySystem || !ch.replaySystem.isActive) {
-                                return applyReplayEnter(ch, syncTs);
-                            }
-                            return forceReplaySeek(ch, syncTs, !!args.force);
-                        }
-                        return null;
-                    };
-                    // Empty iframe still needs its first loadFileData — embed-bridge
-                    // can lose the race with this command, and Symbol sync OFF used
-                    // to skip load entirely (replayEnter deferred forever → loading overlay
-                    // never clears because candleCount stays 0).
-                    if ((!ch.rawData || ch.rawData.length === 0)
-                        && !ch._multichartPairLoadInFlight
-                        && typeof ch.loadFileData === 'function') {
-                        var bootFid = pcSync.currentFileId;
-                        if (bootFid != null && bootFid !== '') {
-                            mirrorParentBacktestSession(ch);
-                            var bootP = ch.loadFileData(String(bootFid));
-                            var afterBoot = function () {
-                                try { drainPendingReplay(); } catch (_) {}
-                                var sym = alignReplayFromHost();
-                                if (sym !== null) return sym;
-                            };
-                            if (bootP && typeof bootP.then === 'function') {
-                                return bootP.then(afterBoot);
-                            }
-                            return afterBoot();
-                        }
-                    }
-                    // Symbol sync OFF: align replay playhead only — never stamp host fileId
-                    // onto this tile once bars are loaded (user may have GBP on B while A stays EUR/USD).
-                    var symOnly = alignReplayFromHost();
-                    if (symOnly !== null) return symOnly;
-                    var syncFid = pcSync.currentFileId;
-                    if (syncFid == null || syncFid === '') {
-                        if (Number.isFinite(syncTs)) return applyReplayEnter(ch, syncTs);
-                        return;
-                    }
-                    var syncFidStr = String(syncFid);
                     var afterReplaySync = function () {
                         if (Number.isFinite(syncTs)) {
                             try { drainPendingPlay(ch); } catch (_) {}
                         }
                     };
-                    if (typeof ch.loadFileData !== 'function') {
-                        if (Number.isFinite(syncTs)) return applyReplayEnter(ch, syncTs);
+                    var alignReplayFromHost = function () {
+                        if (!args.syncSymbol) {
+                            if (!Number.isFinite(syncTs)) return;
+                            if (isSamePairAsHost(ch)
+                                && forceSamePairParentDataMirror(ch, { timestamp: syncTs, isPlaying: false })) {
+                                afterReplaySync();
+                                return;
+                            }
+                            if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                                applyReplayEnter(ch, syncTs);
+                                return;
+                            }
+                            forceReplaySeek(ch, syncTs, !!args.force);
+                            return;
+                        }
+                    };
+                    // Empty iframe: kick multichart host-clone load (async) — reply immediately.
+                    if ((!ch.rawData || ch.rawData.length === 0)
+                        && !ch._multichartPairLoadInFlight) {
+                        var bootFid = pcSync.currentFileId;
+                        if (bootFid != null && bootFid !== '') {
+                            runSyncFromHostLoadDetached(ch, String(bootFid), syncTs, function () {
+                                try { drainPendingReplay(); } catch (_) {}
+                                alignReplayFromHost();
+                            });
+                            return;
+                        }
+                    }
+                    // Symbol sync OFF: align replay playhead only — never stamp host fileId
+                    // onto this tile once bars are loaded (user may have GBP on B while A stays EUR/USD).
+                    if (!args.syncSymbol) {
+                        alignReplayFromHost();
                         return;
                     }
+                    var syncFid = pcSync.currentFileId;
+                    if (syncFid == null || syncFid === '') {
+                        if (Number.isFinite(syncTs)) applyReplayEnter(ch, syncTs);
+                        return;
+                    }
+                    var syncFidStr = String(syncFid);
                     if (String(ch.currentFileId || '') === syncFidStr && ch.rawData
                         && ch.rawData.length > 0) {
+                        if (isSamePairAsHost(ch) && Number.isFinite(syncTs)) {
+                            if (forceSamePairParentDataMirror(ch, { timestamp: syncTs, isPlaying: false })) {
+                                afterReplaySync();
+                                return;
+                            }
+                        }
                         if (Number.isFinite(syncTs)) {
                             if (!ch.replaySystem || !ch.replaySystem.isActive) {
                                 applyReplayEnter(ch, syncTs);
                                 afterReplaySync();
                                 return;
                             }
-                            return forceReplaySeek(ch, syncTs, false);
+                            forceReplaySeek(ch, syncTs, false);
                         }
                         return;
                     }
-                    var syncP = ch.loadFileData(syncFidStr);
-                    if (syncP && typeof syncP.then === 'function') {
-                        return syncP.then(afterReplaySync);
-                    }
-                    afterReplaySync();
+                    runSyncFromHostLoadDetached(ch, syncFidStr, syncTs, afterReplaySync);
                     return;
                 }
                 case 'extendReplayMasterFromHost': {
