@@ -28,7 +28,7 @@ except ImportError as exc:  # pragma: no cover
 # Column order copied from talaria-test_2-trades-2026-06-20.csv
 COLUMNS: list[str] = [
     "journal_trade_id", "trade_id", "client_trade_id", "tradeId", "id", "n",
-    "sourceSessionName", "setup", "strategy_id", "strategyName", "symbol", "ticker", "direction", "side", "type",
+    "sourceSessionName", "setup", "symbol", "ticker", "direction", "side", "type",
     "orderType", "quantity", "status", "entryTime", "openTime", "entryDate", "date",
     "exitTime", "closeTime", "exitDate", "entryPrice", "openPrice", "exitPrice",
     "closePrice", "stopLoss", "takeProfit", "pnl", "pnl_dollars_net", "realizedPnL",

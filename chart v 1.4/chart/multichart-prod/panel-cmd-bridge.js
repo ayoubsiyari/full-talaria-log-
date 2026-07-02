@@ -1432,21 +1432,6 @@
                             }, 0);
                             return;
                         }
-                        if (isSameSymbolAsHost(ch)
-                            && typeof ch._pollMirrorHostTfSwitch === 'function') {
-                            return ch._pollMirrorHostTfSwitch(tf, 2500).then(function (hit) {
-                                if (hit) {
-                                    setTimeout(function () {
-                                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
-                                    }, 0);
-                                    return;
-                                }
-                                warn('setTimeframe: same-pair mirror failed for tf', tf);
-                                if (typeof ch._endTimeframeSwitching === 'function') {
-                                    try { ch._endTimeframeSwitching(); } catch (_) {}
-                                }
-                            });
-                        }
                     } catch (_) {}
                     var sw = ch.setTimeframe(tf);
                     if (sw && typeof sw.then === 'function') {

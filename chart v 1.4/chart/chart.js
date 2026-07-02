@@ -2080,13 +2080,6 @@ class Chart {
             return;
         }
         try {
-            if (this._multichartSamePairAsHost(this.currentFileId)) {
-                if (await this._pollMirrorHostTfSwitch(normalizedTf)) {
-                    return;
-                }
-                console.warn('[multichart] same-pair TF mirror failed — skipping network refetch', normalizedTf);
-                return;
-            }
             if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf)) {
                 return;
             }
@@ -2269,7 +2262,8 @@ class Chart {
         this.autoScale = parent.autoScale;
         if (this.priceScale && parent.priceScale) {
             this.priceScale.autoScale = parent.priceScale.autoScale;
-            // Never inherit host locked state — double-click auto-fit on A would freeze B/C/D.
+            // Never inherit host locked state on embed panels — host double-click
+            // auto-fit sets locked=true and would freeze B/C/D wheel/drag during mirror.
             this.priceScale.locked = false;
         }
 
@@ -2296,34 +2290,6 @@ class Chart {
         if (typeof this.render === 'function') this.render();
         this._logTfSwitch('host-mirror-tf', { to: tf, bars: this.data.length });
         return true;
-    }
-
-    /**
-     * Poll host mirror TF for same-pair embeds (Panel C often races host commit).
-     * @param {string} normalizedTf
-     * @param {number} [maxWaitMs]
-     * @returns {Promise<boolean>}
-     */
-    async _pollMirrorHostTfSwitch(normalizedTf, maxWaitMs = 2500) {
-        const tf = String(normalizedTf || '').toLowerCase().trim();
-        if (!tf || !this._isMultichartEmbedPanel()) return false;
-        if (typeof this._isIndependentMultichartPair === 'function'
-            && this._isIndependentMultichartPair()) {
-            return false;
-        }
-        const startedAt = Date.now();
-        while (Date.now() - startedAt < maxWaitMs) {
-            if (typeof this._warmBtTfCacheFromParent === 'function') {
-                try { this._warmBtTfCacheFromParent(tf); } catch (_w) { /* ignore */ }
-            }
-            if (typeof this._multichartMirrorHostTfSwitchIfReady === 'function'
-                && this._multichartMirrorHostTfSwitchIfReady(tf)) {
-                return true;
-            }
-            await new Promise((r) => setTimeout(r, 50));
-        }
-        return !!(typeof this._multichartMirrorHostTfSwitchIfReady === 'function'
-            && this._multichartMirrorHostTfSwitchIfReady(tf));
     }
 
     /** Same-pair iframe B/C/D — same fileId as host tile A. */
@@ -18480,8 +18446,9 @@ class Chart {
             this._dataSwitchAxisInteractionUntil || 0,
             now + (Number.isFinite(ms) ? ms : 2500),
         );
-        // Price-axis interaction can repaint Y domain safely — drop snapshot so
-        // embed panels (often Panel C) don't feel locked during TF switch.
+        // Price-axis drags repaint Y labels/domain only — safe to drop the snapshot
+        // immediately so the user sees scale movement during multichart load/TF switch.
+        // Time-axis still waits until destination bars are committed (garbled labels).
         const priceAxis = !!(opts && opts.priceAxis);
         if (priceAxis || this._tfSwitchBarsMatchDestination()) {
             try { this._removeFreezeOverlay(); } catch (_e) { /* ignore */ }
@@ -18552,6 +18519,24 @@ class Chart {
             }
         }
         return barsReady;
+    }
+
+    /** Allow Y-axis repaint while CSV/server ingest is still in flight. */
+    _canBypassLoadingRenderFreeze() {
+        if (!this.isLoading) return false;
+        const d = this.drag;
+        if (d && d.active && d.type === 'priceAxis') return true;
+        if (typeof this._isPriceAxisZoomDragging === 'function' && this._isPriceAxisZoomDragging()) {
+            return true;
+        }
+        const until = this._dataSwitchAxisInteractionUntil;
+        if (Number.isFinite(until)) {
+            const now = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            if (now < until && this.cursor?.mode === 'priceAxis') return true;
+        }
+        return false;
     }
 
     _beginTimeframeSwitching(fromTf, toTf) {
@@ -18788,6 +18773,7 @@ class Chart {
      * @param {number} [loadSeq]    loadMultichartPanelFromHost sequence — stale loads skip end().
      */
     _beginPairSwitchLoading(nextLabel, loadSeq) {
+        // Match TF switch: keep price/time axis drags alive so Y scale stays interactive.
         if (this.drag && this.drag.active) {
             const t = this.drag.type;
             if (t === 'pan' || t === 'separatePanelResize' || t === 'ctrlMarqueeSelect' || t === 'boxZoom') {
@@ -19274,17 +19260,6 @@ class Chart {
      * @param {{ logTag?: string }} options
      */
     async _refetchBacktestTimeframeCore(timeframe, options = {}) {
-        if (this._isMultichartEmbedPanel?.()
-            && typeof this._multichartSamePairAsHost === 'function'
-            && this._multichartSamePairAsHost(this.currentFileId)) {
-            const hit = await this._pollMirrorHostTfSwitch(timeframe);
-            if (!hit) {
-                console.warn('[multichart] blocked same-pair network TF refetch', timeframe);
-            }
-            this._endTimeframeSwitching();
-            return;
-        }
-
         const replay = this.replaySystem;
         if (!replay || !this.currentFileId) {
             this._endTimeframeSwitching();
@@ -22483,7 +22458,7 @@ class Chart {
     }
 
     render() {
-        if (this.isLoading) return;
+        if (this.isLoading && !this._canBypassLoadingRenderFreeze()) return;
 
         // TradingView-style timeframe switch: freeze the previously-rendered frame while
         // we wait for the new bars. Without this freeze the canvas would clear and either
@@ -27721,7 +27696,7 @@ class Chart {
 
             // ─── Price axis → vertical (price) zoom only (Ctrl/Meta disabled) ───
             if (this.cursor.mode === 'priceAxis') {
-                if (this._timeframeSwitching || this._pairSwitchLoading) {
+                if (this.isLoading || this._timeframeSwitching || this._pairSwitchLoading) {
                     this._liftDataSwitchFreezeForAxisInteraction(2500, { priceAxis: true });
                 }
                 // When price scale is locked (after double-click), ignore wheel vertical zoom
@@ -28062,7 +28037,7 @@ class Chart {
                 this._lockDragCursor('ns-resize');
                 this._beginChartDragPointerTracking(e);
             } else if (mode === 'priceAxis') {
-                if (this._timeframeSwitching || this._pairSwitchLoading) {
+                if (this.isLoading || this._timeframeSwitching || this._pairSwitchLoading) {
                     this._liftDataSwitchFreezeForAxisInteraction(2500, { priceAxis: true });
                 }
                 this.drag.type = 'priceAxis';
