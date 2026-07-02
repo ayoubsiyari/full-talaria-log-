@@ -2108,17 +2108,79 @@ class Chart {
         if (await this._applyBacktestTimeframeFromParentCache(normalizedTf)) {
             return true;
         }
-        if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
-            return true;
-        }
-        if (this._independentPanelTimeframeSwitch(normalizedTf)) {
-            return true;
-        }
-        if (this._canClientResampleToTimeframe(normalizedTf)) {
-            this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-            return true;
+        // Resample-from-master tiers only when the in-memory native master spans
+        // enough history for this TF. A fine master (~2000 1m bars ≈ 1.4 days)
+        // resampled to a coarse TF (e.g. 1D) yields a 2-candle stub that then
+        // fills in one bar at a time via backward paging — the "candles load one
+        // by one" symptom. When the master can't cover the target, return false
+        // so the caller falls through to a native server refetch (identical to
+        // host tile A), which loads the full coarse history in one shot.
+        if (this._multichartMasterCoversTimeframe(normalizedTf)) {
+            if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
+                return true;
+            }
+            if (this._independentPanelTimeframeSwitch(normalizedTf)) {
+                return true;
+            }
+            if (this._canClientResampleToTimeframe(normalizedTf)) {
+                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+                return true;
+            }
         }
         return false;
+    }
+
+    /**
+     * True when the panel's in-memory native master spans enough history that
+     * resampling it to `normalizedTf` produces a full view rather than a stub
+     * that backfills one candle at a time. Equal/finer-than-native targets are
+     * always considered covered (handled by other paths); only coarser targets
+     * are span-checked against the visible bar count.
+     * @param {string} normalizedTf
+     * @returns {boolean}
+     */
+    _multichartMasterCoversTimeframe(normalizedTf) {
+        const targetMs = this.parseTimeframe(normalizedTf);
+        if (!Number.isFinite(targetMs) || targetMs <= 0) return true;
+
+        // Only coarser-than-native switches risk under-coverage.
+        const nativeStepMs = this.parseTimeframe(this._nativeRawFetchTf || '1m') || 60_000;
+        if (targetMs <= nativeStepMs) return true;
+
+        // Resolve the master array this switch would resample from: this panel's
+        // own master, else host tile A's master when showing the same pair.
+        let master = (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length)
+            ? this._panelFullRawData
+            : null;
+        if (!master) {
+            try {
+                const parent = (typeof window !== 'undefined' && window.parent && window.parent !== window)
+                    ? window.parent.chart
+                    : null;
+                const prs = parent && parent.replaySystem;
+                if (parent
+                    && String(parent.currentFileId || '') === String(this.currentFileId || '')
+                    && prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length) {
+                    master = prs.fullRawData;
+                }
+            } catch (_e) { /* ignore */ }
+        }
+        if (!master) {
+            const rs = this.replaySystem;
+            if (rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length) {
+                master = rs.fullRawData;
+            }
+        }
+        if (!master || master.length < 2) return false;
+
+        const firstT = Number(master[0] && master[0].t);
+        const lastT = Number(master[master.length - 1] && master[master.length - 1].t);
+        if (!Number.isFinite(firstT) || !Number.isFinite(lastT) || lastT <= firstT) return false;
+
+        const estimatedBars = (lastT - firstT) / targetMs;
+        const visible = Number(this._pendingTfSwitchVisibleBarCount);
+        const needed = (Number.isFinite(visible) && visible > 0 ? visible : 120) + 20;
+        return estimatedBars >= needed;
     }
 
     /** Copy host tile A's 1m master into this iframe when showing the same pair. */
