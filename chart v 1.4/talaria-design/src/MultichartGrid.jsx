@@ -85,7 +85,7 @@ const PANEL_CMD_NO_REPLY = new Set([
     "replayEnter", "replayExit", "replayPlay", "replayPause", "replayTick", "replayFrame",
     "replaySetSpeed", "replaySetMode", "replaySetStepTf", "replayCut",
     "syncFromHost", "syncReplayFromHost", "extendReplayMasterFromHost",
-    "setTimeframe", "warmTfCacheFromHost", "rollbackPickStart", "rollbackPickStop",
+    "setTimeframe", "rollbackPickStart", "rollbackPickStop",
 ]);
 
 function sendPanelCmd(mgr, panelId, cmd, args) {
@@ -2551,11 +2551,33 @@ export default function MultichartGrid({
                 || (window.chart && window.chart.currentTimeframe)
                 || null;
             if (!tf) return;
-            for (const c of mgr.charts.values()) {
-                if (!c || c.host) continue;
-                sendPanelCmd(mgr, c.id, "warmTfCacheFromHost", { tf });
-                sendPanelCmd(mgr, c.id, "setTimeframe", { tf });
+            const host = window.chart;
+            const broadcastTf = () => {
+                const mgrNow = managerRef.current;
+                if (!mgrNow || !mgrNow.charts) return;
+                const liveTf = (host && host.currentTimeframe) ? host.currentTimeframe : tf;
+                for (const c of mgrNow.charts.values()) {
+                    if (!c || c.host) continue;
+                    sendPanelCmd(mgrNow, c.id, "setTimeframe", { tf: liveTf });
+                }
+            };
+            // Host emits timeframeChanged when the label commits — often BEFORE
+            // finer-TF bars land. Broadcasting immediately made iframes show the
+            // new TF string on stale coarse candles (broken time axis).
+            if (host && host._timeframeSwitching) {
+                let attempts = 0;
+                const waitForHostTf = () => {
+                    attempts += 1;
+                    if (host._timeframeSwitching && attempts < 120) {
+                        setTimeout(waitForHostTf, 50);
+                        return;
+                    }
+                    broadcastTf();
+                };
+                waitForHostTf();
+                return;
             }
+            broadcastTf();
         };
         window.addEventListener("timeframeChanged", onTfChanged);
         return () => window.removeEventListener("timeframeChanged", onTfChanged);

@@ -881,6 +881,7 @@ class BaseDrawing {
 
     _shouldCreateHandles(opts = {}) {
         if (opts.skipHandles) return false;
+        if (this.locked) return false;
         const mgr = this.chart && this.chart.drawingManager;
         // In-place patch resize (trendline, ray, …): handles move via updateHandlePositions.
         if (mgr && mgr.isResizing && mgr.resizingDrawing === this
@@ -1630,7 +1631,7 @@ class BaseDrawing {
                 .attr('x2', fibX2)
                 .attr('y2', y);
             group.selectAll(`text[data-fib-label-idx="${idx}"]`)
-                .attr('y', y + 4);
+                .attr('y', fibHorizontalLabelBaselineY(tool.style, y));
         });
 
         const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;

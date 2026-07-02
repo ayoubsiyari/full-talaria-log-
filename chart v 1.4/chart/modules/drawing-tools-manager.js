@@ -934,7 +934,7 @@ class DrawingToolsManager {
 
     /** Move drawing by pixel delta with full re-render (avoids transform + overflow:hidden clip). */
     _applyLiveDrawingMovePixels(drawing, startPoints, pixelDx, pixelDy) {
-        if (!drawing || !Array.isArray(startPoints) || !this.chart) return;
+        if (!drawing || drawing.locked || !Array.isArray(startPoints) || !this.chart) return;
         const previewPoints = this._translatePointsByPixels(startPoints, pixelDx, pixelDy, drawing.type);
         if (!previewPoints) return;
         this._ensureDrawingsPlotClip();
@@ -3037,7 +3037,7 @@ class DrawingToolsManager {
 
     /** Repaint axis price/time labels at scale edges for preview point positions while dragging. */
     _refreshAxisHighlightsDuringDrag(drawing, previewPoints) {
-        if (!drawing || typeof drawing.showAxisHighlights !== 'function') return;
+        if (!drawing || drawing.locked || typeof drawing.showAxisHighlights !== 'function') return;
         if (!drawing.selected) return;
         if (!Array.isArray(previewPoints) || previewPoints.length === 0) return;
         if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
@@ -3049,7 +3049,7 @@ class DrawingToolsManager {
     }
 
     _scheduleAxisHighlightsDuringDrag(drawing, previewPoints) {
-        if (!drawing) return;
+        if (!drawing || drawing.locked) return;
         if (!this._axisHighlightDragPending) this._axisHighlightDragPending = new Map();
         if (!this._axisHighlightDragRaf) this._axisHighlightDragRaf = new Map();
         const key = String(drawing.id || drawing.type || 'drag');
@@ -3126,7 +3126,7 @@ class DrawingToolsManager {
     }
 
     _commitDrawingPointsIfChanged(drawing, startPoints) {
-        if (!drawing || !Array.isArray(startPoints) || startPoints.length === 0) return false;
+        if (!drawing || drawing.locked || !Array.isArray(startPoints) || startPoints.length === 0) return false;
         if (!this._drawingPointsChanged(startPoints, drawing.points)) return false;
         this._clearDrawingDragTransform(drawing);
         this.clampDrawingPointsToCandleRange(drawing);
@@ -4749,6 +4749,10 @@ class DrawingToolsManager {
         
         // Handle dragging - CSS transform during move; commit points on mouseup.
         if (this.isDragging && this.draggingDrawing && this.dragStartScreen) {
+            if (this.draggingDrawing.locked) {
+                this.endDrag();
+                return;
+            }
             // If mouse button is no longer pressed (e.g. mouseup happened outside SVG), end drag.
             // This prevents drawings from "sticking" to the cursor.
             if (event.buttons !== undefined && event.buttons === 0) {
@@ -4771,7 +4775,7 @@ class DrawingToolsManager {
             
             if (this.draggingMultiple && this.multiDragStartPositions) {
                 this.multiDragStartPositions.forEach(({ drawing, points }) => {
-                    if (!drawing || !Array.isArray(points)) return;
+                    if (!drawing || drawing.locked || !Array.isArray(points)) return;
                     this._applyLiveDrawingMovePixels(drawing, points, pixelDx, pixelDy);
                     const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
                     if (previewPoints) {
@@ -7348,6 +7352,8 @@ class DrawingToolsManager {
         // Setup drag to move entire drawing (not when locked)
         if (!drawing.locked) {
             this.setupDrawingDrag(drawing);
+        } else {
+            this._detachDrawingDragHandlers(drawing);
         }
         
         // Setup drag handlers for resize handles (if selected and not locked)
@@ -7359,6 +7365,42 @@ class DrawingToolsManager {
 
         if (this._isPlacementModeActive()) {
             this._disableDrawingPointerEvents(drawing);
+        }
+
+        // Locked shapes: block move previews (stale d3 handlers / multichart live sync).
+        if (drawing.locked) {
+            this._detachDrawingDragHandlers(drawing);
+            interactiveElements.on('mousedown.locked-guard', null);
+            interactiveElements.on('mousedown.locked-guard', function(event) {
+                if (self.currentTool || event.button !== 0 || !drawing.locked) return;
+                const pointSnapshot = Array.isArray(drawing.points)
+                    ? drawing.points.map((p) => ({ ...p }))
+                    : null;
+                if (!pointSnapshot) return;
+
+                const restoreIfShifted = () => {
+                    if (!drawing.locked || !pointSnapshot) return;
+                    if (!self._drawingPointsChanged(pointSnapshot, drawing.points)) return;
+                    drawing.points = pointSnapshot.map((p) => ({ ...p }));
+                    self._clearDrawingDragTransform(drawing);
+                    self._clearAxisHighlightDragState();
+                    self.renderDrawing(drawing, { drawingRenderOpts: { reuseGroup: false } });
+                };
+
+                const onLockedPointerUp = () => {
+                    document.removeEventListener('mouseup', onLockedPointerUp, true);
+                    document.removeEventListener('mousemove', onLockedPointerMove, true);
+                    restoreIfShifted();
+                };
+                const onLockedPointerMove = () => {
+                    restoreIfShifted();
+                };
+
+                document.addEventListener('mouseup', onLockedPointerUp, true);
+                document.addEventListener('mousemove', onLockedPointerMove, true);
+            });
+        } else {
+            interactiveElements.on('mousedown.locked-guard', null);
         }
     }
     
@@ -7437,6 +7479,10 @@ class DrawingToolsManager {
     }
 
     setupDrawingDrag(drawing) {
+        if (!drawing || drawing.locked) {
+            if (drawing) this._detachDrawingDragHandlers(drawing);
+            return;
+        }
         // Empty image placeholder: upload-only until a file is chosen — skip move drag so the
         // same pointer gesture that placed the object cannot commit a spurious transform.
         if (drawing.type === 'image' && (!drawing.style.imageUrl || drawing.style.imageUrl === '')) {
@@ -7486,6 +7532,7 @@ class DrawingToolsManager {
         const bodyDrag = d3.drag()
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
+                    if (drawing.locked) return false;
                     const src = event.sourceEvent || event;
                     // Multi-select + Ctrl uses canvas direct-move; single selection uses normal d3 body drag.
                     if (!self.currentTool && src && (src.ctrlKey || src.metaKey) && !src.shiftKey) {
@@ -7704,6 +7751,7 @@ class DrawingToolsManager {
                     return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
                 })
                 .on('start', function(event) {
+                    if (drawing.locked) return;
                     event.sourceEvent.stopPropagation();
                     self._bodyDragDepth = (self._bodyDragDepth || 0) + 1;
                     self._commitInlineTextEditorBeforeGeometryEdit();
@@ -7750,7 +7798,9 @@ class DrawingToolsManager {
                     // Check if dragging multiple selected drawings
                     if (self.selectedDrawings.length > 1 && self.selectedDrawings.includes(drawing)) {
                         // Store initial state for all selected drawings
-                        multiDragStartPoints = self.selectedDrawings.map(d => ({
+                        multiDragStartPoints = self.selectedDrawings
+                            .filter((d) => d && !d.locked)
+                            .map(d => ({
                             drawing: d,
                             points: d.points.map(p => ({...p})),
                             beforeState: self.history ? self.history.captureState(d) : null,
@@ -7774,6 +7824,7 @@ class DrawingToolsManager {
                     self._beginDrawingLiveInteraction();
                 })
                 .on('drag', function(event) {
+                    if (drawing.locked || !dragStartPoints || !bodyDragStartScreen) return;
                     if (horizontalAnchorPointDrag) {
                         self._applyHorizontalAnchorPointFromEvent(drawing, event.sourceEvent, 0);
                         return;
@@ -7796,7 +7847,7 @@ class DrawingToolsManager {
                     // Re-render from preview points (no CSS transform — transform breaks plot clip-path).
                     if (multiDragStartPoints && multiDragStartPoints.length > 1) {
                         multiDragStartPoints.forEach(item => {
-                            if (!item.drawing || !Array.isArray(item.points)) return;
+                            if (!item.drawing || item.drawing.locked || !Array.isArray(item.points)) return;
                             self._applyLiveDrawingMovePixels(item.drawing, item.points, pixelDx, pixelDy);
                             const previewPoints = self._translatePointsByPixels(
                                 item.points,
@@ -8347,7 +8398,7 @@ class DrawingToolsManager {
         }
 
         const drawings = (Array.isArray(drawingOrDrawings) ? drawingOrDrawings : [drawingOrDrawings])
-            .filter(d => d && d.type !== 'anchored-vwap' && d.type !== 'anchored-volume-profile');
+            .filter(d => d && !d.locked && d.type !== 'anchored-vwap' && d.type !== 'anchored-volume-profile');
         if (!drawings || drawings.length === 0) return;
 
         drawings.forEach((d) => {
@@ -8559,6 +8610,10 @@ class DrawingToolsManager {
     /** Keep endpoint handles visible and positioned during / after handle edits. */
     _syncResizeHandleChrome(drawing) {
         if (!drawing?.group || drawing.group.empty() || !this.chart?.xScale || !this.chart?.yScale) return;
+        if (drawing.locked) {
+            drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle').remove();
+            return;
+        }
         if (drawing.type === 'text') {
             drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
             return;
@@ -9988,6 +10043,77 @@ class DrawingToolsManager {
         drawing.group.style('opacity', null);
     }
 
+    /** Remove d3 / document drag listeners so locked shapes cannot preview-move. */
+    _detachDrawingDragHandlers(drawing) {
+        if (!drawing?.group || drawing.group.empty()) return;
+        drawing.group.selectAll('*').on('.drag', null);
+        drawing.group.selectAll('.gann-level-hit[data-gann-level-array]').on('mousedown.gann-level-drag', null);
+        drawing.group.selectAll('line.pitchfork-level-hit[data-pf-level-value]').on('mousedown.pitchfork-level-drag', null);
+    }
+
+    /**
+     * Stop in-progress move previews for one drawing and restore committed geometry.
+     */
+    _cancelActiveGeometryMoveForDrawing(drawing) {
+        if (!drawing) return;
+
+        const matchesDrawing = (candidate) => (
+            candidate === drawing || (candidate && drawing && candidate.id === drawing.id)
+        );
+
+        if (this._directMoveStartStates && Array.isArray(this._directMoveDrawings)
+            && this._directMoveDrawings.some(matchesDrawing)) {
+            this._directMoveStartStates.forEach((item) => {
+                if (!item?.drawing || !matchesDrawing(item.drawing) || !Array.isArray(item.points)) return;
+                item.drawing.points = item.points.map((p) => ({ ...p }));
+                this._clearDrawingDragTransform(item.drawing);
+                this._clearRRToolWholeDragSnapshot(item.drawing);
+            });
+            this._stopDirectMoveDrag();
+        }
+
+        if (this.isDragging && matchesDrawing(this.draggingDrawing)) {
+            if (Array.isArray(this.singleDragStartPoints)) {
+                drawing.points = this.singleDragStartPoints.map((p) => ({ ...p }));
+            }
+            this._clearDrawingDragTransform(drawing);
+            this._clearRRToolWholeDragSnapshot(drawing);
+            this.isDragging = false;
+            this.draggingDrawing = null;
+            this.dragStartPoint = null;
+            this.dragStartScreen = null;
+            this.dragStartOriginalPos = null;
+            this.draggingMultiple = false;
+            this.multiDragStartPositions = null;
+            this.singleDragStartPoints = null;
+            if ((this._drawingLiveInteractionDepth || 0) > 0) {
+                this._endDrawingLiveInteraction();
+            }
+        }
+
+        if (Array.isArray(this._bodyDragActiveDrawings)
+            && this._bodyDragActiveDrawings.some(matchesDrawing)) {
+            this._bodyDragActiveDrawings = this._bodyDragActiveDrawings.filter((d) => !matchesDrawing(d));
+            if (!this._bodyDragActiveDrawings.length) {
+                this._bodyDragActiveDrawings = null;
+                this._bodyDragDepth = 0;
+                if ((this._drawingLiveInteractionDepth || 0) > 0) {
+                    this._endDrawingLiveInteraction();
+                }
+            }
+        }
+
+        this._detachDrawingDragHandlers(drawing);
+        this._clearAxisHighlightDragState();
+        this._clearDrawingDragTransform(drawing);
+        if (typeof drawing.hideAxisHighlights === 'function') {
+            drawing.hideAxisHighlights();
+        }
+        if (drawing.group && !drawing.group.empty()) {
+            drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle').remove();
+        }
+    }
+
     /**
      * Set lock state on one drawing (does not persist — caller saves once).
      */
@@ -9998,9 +10124,13 @@ class DrawingToolsManager {
         if (next && this._textInlineEditDrawing === drawing) {
             this.endTextInlineEdit(drawing);
         }
+        if (next) {
+            this._cancelActiveGeometryMoveForDrawing(drawing);
+        }
         drawing.locked = next;
         this._syncDrawingLockVisual(drawing);
-        this.renderDrawing(drawing);
+        this._detachDrawingDragHandlers(drawing);
+        this.renderDrawing(drawing, { drawingRenderOpts: { reuseGroup: false } });
         this._broadcastDrawingStateSync(drawing);
     }
 
