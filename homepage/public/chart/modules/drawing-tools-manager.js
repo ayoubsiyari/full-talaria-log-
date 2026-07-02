@@ -1659,10 +1659,10 @@ class DrawingToolsManager {
         // Expose so the toolbar can call captureStyleBefore before applying a change
         this.toolbar.onBeforeUpdate = captureStyleBefore;
 
-        // Update callback (optional renderOpts e.g. skipTimestampSync for panel coord nudges)
-        this.toolbar.onUpdate = (drawing, opts = {}) => {
+        // Update callback
+        this.toolbar.onUpdate = (drawing) => {
             commitStyleChange(drawing);
-            self.renderDrawing(drawing, opts.renderOpts);
+            self.renderDrawing(drawing);
             self.persistPositionToolDefaults(drawing);
 
             if (drawing) {
