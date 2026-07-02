@@ -2361,7 +2361,7 @@ export default function MultichartGrid({
                     }
                     sendPanelCmd(mgr, c.id, "loadFile", { fileId: fid });
                 }
-                if (pushTf && tf) sendPanelCmd(mgr, c.id, "setTimeframe", { tf });
+                if (pushTf && tf) sendPanelCmd(mgr, c.id, "setTimeframe", { tf, __fromHostFanout: true });
             } catch (_) {}
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2556,7 +2556,7 @@ export default function MultichartGrid({
                 const liveTf = (host && host.currentTimeframe) ? host.currentTimeframe : tf;
                 for (const c of mgrNow.charts.values()) {
                     if (!c || c.host) continue;
-                    sendPanelCmd(mgrNow, c.id, "setTimeframe", { tf: liveTf });
+                    sendPanelCmd(mgrNow, c.id, "setTimeframe", { tf: liveTf, __fromHostFanout: true });
                 }
             };
             // Host emits timeframeChanged when the label commits — often BEFORE
@@ -3629,7 +3629,7 @@ export default function MultichartGrid({
                 // 2) push to every other iframe panel
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || c.id === id) continue;
-                    try { sendPanelCmd(mgr, c.id, "setTimeframe", { tf }); } catch (_) {}
+                    try { sendPanelCmd(mgr, c.id, "setTimeframe", { tf, __fromHostFanout: true }); } catch (_) {}
                 }
             }
         }

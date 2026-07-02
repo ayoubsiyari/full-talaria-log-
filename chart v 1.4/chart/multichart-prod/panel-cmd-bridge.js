@@ -487,7 +487,8 @@
             var pcSym = readParentChart();
             var hostTf = pcSym ? String(pcSym.currentTimeframe || '').toLowerCase().trim() : '';
             var panelTf = String(ch.currentTimeframe || '').toLowerCase().trim();
-            if (hostTf && panelTf && hostTf !== panelTf && !ch._timeframeSwitching) {
+            if (ch._mcIntervalSyncOn
+                && hostTf && panelTf && hostTf !== panelTf && !ch._timeframeSwitching) {
                 if (!ch._mcPendingHostTf) {
                     ch._mcPendingHostTf = hostTf;
                     setTimeout(function () {
@@ -531,6 +532,12 @@
 
         // Independent pair only — same-symbol panels never step one candle at a time.
         if (isSameSymbolAsHost(ch)) {
+            var hostTfNow = readParentChart();
+            hostTfNow = hostTfNow ? String(hostTfNow.currentTimeframe || '').toLowerCase().trim() : '';
+            var panelTfNow = String(ch.currentTimeframe || '').toLowerCase().trim();
+            if (hostTfNow && panelTfNow && hostTfNow !== panelTfNow) {
+                return; // independent TF by user choice — do not step/mirror from host bars
+            }
             scheduleMirrorCatchUp(ch, ts, args);
             return;
         }
@@ -1399,6 +1406,12 @@
 
                 // ─── timeframe ─────────────────────────────────────────
                 case 'setTimeframe': {
+                    // A setTimeframe panel-cmd is only broadcast by the host fan-out
+                    // when Interval sync is ON (see MultichartGrid.jsx timeframeChanged
+                    // effect). Any other path here is a direct/manual pick on this panel.
+                    // Track which one this is so applyReplayFrame knows whether it's safe
+                    // to mirror host TF on every frame. A manual pick leaves the flag as-is.
+                    if (args.__fromHostFanout === true) ch._mcIntervalSyncOn = true;
                     var tf = String(args.tf || '').trim().toLowerCase();
                     if (!tf) throw new Error('setTimeframe: missing args.tf');
                     if (typeof ch.setTimeframe !== 'function') {
@@ -1825,6 +1838,7 @@
                 //     the same timestamp.
                 //   • exitReplayMode early-returns when !isActive.
                 case 'syncFromHost': {
+                    ch._mcIntervalSyncOn = !!args.syncTimeframe;
                     var pcSync = null;
                     try {
                         pcSync = (global.parent && global.parent !== global)
