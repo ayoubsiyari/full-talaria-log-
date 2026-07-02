@@ -12,7 +12,8 @@ Output (under mentor data/generated/):
 
 Usage:
   py scripts/generate_mentor_t1_t3_batches.py
-  py scripts/generate_mentor_t1_t3_batches.py --seed 20260701
+  py scripts/generate_mentor_t1_t3_batches.py --seed 20260702
+  py scripts/generate_mentor_t1_t3_batches.py --profile losing --seed 20260703
 """
 from __future__ import annotations
 
@@ -315,6 +316,34 @@ T3_SPECS: list[dict[str, Any]] = [
     },
 ]
 
+# Drawdown / losing-period batch — ~26–34% win rate per file.
+LOSING_WIN_RATES_T1 = [0.30, 0.28, 0.32, 0.27, 0.29, 0.31, 0.26, 0.33, 0.28, 0.30]
+LOSING_WIN_RATES_T3 = [0.29, 0.27, 0.31, 0.28, 0.26, 0.30, 0.32, 0.27, 0.29, 0.28]
+
+
+def _losing_specs(base: list[dict[str, Any]], kind: str, win_rates: list[float]) -> list[dict[str, Any]]:
+    prefix = "qa_gen_t1_losing_" if kind == "t1" else "qa_gen_t3_losing_"
+    label_tag = "T1 Losing ·" if kind == "t1" else "T3 Losing ·"
+    src_tag = "QA Gen T1 ·" if kind == "t1" else "QA Gen T3 ·"
+    out: list[dict[str, Any]] = []
+    for i, spec in enumerate(base):
+        row = dict(spec)
+        old_stem = str(spec["stem"])
+        suffix = old_stem.replace("qa_gen_t1_", "").replace("qa_gen_t3_", "")
+        row["stem"] = f"{prefix}{suffix}"
+        row["session_name"] = str(spec["session_name"]).replace(src_tag, f"QA Gen {label_tag} ", 1)
+        row["strategy_label"] = f"{spec['strategy_label']} (Drawdown)"
+        row["win_rate"] = win_rates[i] if i < len(win_rates) else 0.28
+        row["losing_profile"] = True
+        if kind == "t3":
+            row["discipline_mix"] = True
+        out.append(row)
+    return out
+
+
+T1_LOSING_SPECS = _losing_specs(T1_SPECS, "t1", LOSING_WIN_RATES_T1)
+T3_LOSING_SPECS = _losing_specs(T3_SPECS, "t3", LOSING_WIN_RATES_T3)
+
 
 def _price_fmt(value: float, pip: float) -> float:
     if pip >= 1:
@@ -333,19 +362,24 @@ def _variables_json(
     *,
     live: bool,
     setup: str,
+    losing: bool = False,
 ) -> str:
-    dol = rng.choice(["taken", "not taken", "taken", "taken"])
+    dol = rng.choice(["not taken", "taken", "not taken"] if losing else ["taken", "not taken", "taken", "taken"])
     extra: dict[str, list[str]] = {"dol": [dol], "setup_tag": [setup]}
+    if losing:
+        extra["period"] = ["drawdown"]
     if live:
         roll = rng.random()
-        if roll < 0.12:
+        oop_thresh = 0.22 if losing else 0.12
+        missed_thresh = oop_thresh + (0.10 if losing else 0.06)
+        if roll < oop_thresh:
             extra["plan_review"] = ["out of plan"]
-        elif roll < 0.06:
+        elif roll < missed_thresh:
             extra["plan_review"] = ["missed trade"]
-        elif roll < 0.78:
-            extra["session_mood"] = [rng.choice(["focused", "calm", "neutral"])]
+        elif roll < (0.55 if losing else 0.78):
+            extra["session_mood"] = [rng.choice(["rushed", "tired", "frustrated", "distracted"] if losing else ["focused", "calm", "neutral"])]
         else:
-            extra["session_mood"] = [rng.choice(["rushed", "tired", "distracted"])]
+            extra["session_mood"] = [rng.choice(["revenge", "impatient", "overconfident"] if losing else ["rushed", "tired", "distracted"])]
     return json.dumps(extra, ensure_ascii=False)
 
 
@@ -384,6 +418,7 @@ def _generate_trade(
     strategy_label: str,
     live: bool,
     bar_min: int,
+    losing: bool = False,
 ) -> dict[str, Any]:
     inst = INSTRUMENTS.get(ticker) or INSTRUMENTS["EURUSD"]
     pip = float(inst["pip"])
@@ -412,12 +447,13 @@ def _generate_trade(
             frac = rng.uniform(0.35, 0.92)
             exit_px = entry + (target - entry) * frac if direction == "long" else entry + (target - entry) * frac
     else:
-        if rng.random() < 0.55:
+        stop_prob = 0.72 if losing else 0.55
+        if rng.random() < stop_prob:
             exit_px = stop
-        elif rng.random() < 0.35:
+        elif rng.random() < (0.25 if losing else 0.35):
             exit_px = entry
         else:
-            frac = rng.uniform(0.2, 0.85)
+            frac = rng.uniform(0.35, 0.95) if losing else rng.uniform(0.2, 0.85)
             exit_px = entry + (stop - entry) * frac if direction == "long" else entry + (stop - entry) * frac
     exit_px = _price_fmt(float(exit_px), pip)
 
@@ -447,13 +483,23 @@ def _generate_trade(
     commission = round(rng.uniform(1.5, 6.5), 2) if market == "Futures" else round(rng.uniform(0, 4.5), 2)
     slippage = round(rng.uniform(0, 1.2), 2)
 
-    notes_pool = [
-        f"{close_note}; followed playbook",
-        f"{close_note}; waited for confirmation",
-        f"{close_note}; session volatility elevated",
-        f"{close_note}; partial scale considered",
-        "",
-    ]
+    if losing:
+        notes_pool = [
+            f"{close_note}; revenge entry after prior loss",
+            f"{close_note}; chased move — setup degraded",
+            f"{close_note}; oversize relative to plan",
+            f"{close_note}; stopped out in chop",
+            f"{close_note}; held loser too long",
+            f"{close_note}; early exit on winner, full loss on next",
+        ]
+    else:
+        notes_pool = [
+            f"{close_note}; followed playbook",
+            f"{close_note}; waited for confirmation",
+            f"{close_note}; session volatility elevated",
+            f"{close_note}; partial scale considered",
+            "",
+        ]
     notes = rng.choice(notes_pool)
 
     return {
@@ -480,7 +526,7 @@ def _generate_trade(
         "strategy": strategy_label,
         "notes": notes,
         "status": "closed",
-        "variables_json": _variables_json(rng, live=live, setup=strategy_label),
+        "variables_json": _variables_json(rng, live=live, setup=strategy_label, losing=losing),
         "entry_screenshot": "",
         "exit_screenshot": "",
         "var1": "",
@@ -498,6 +544,7 @@ def generate_mentor_rows(spec: dict[str, Any], rng: random.Random) -> list[dict[
     live = bool(spec.get("discipline_mix"))
     bar_min = int(spec.get("bar_min") or DEFAULT_TIMEFRAME_MINUTES)
     win_rate = float(spec.get("win_rate") or 0.52)
+    losing = bool(spec.get("losing_profile"))
 
     start = datetime(2024, 1, 8, 8, 0, tzinfo=timezone.utc)
     end = datetime(2025, 6, 30, 20, 0, tzinfo=timezone.utc)
@@ -523,6 +570,7 @@ def generate_mentor_rows(spec: dict[str, Any], rng: random.Random) -> list[dict[
                 strategy_label=str(spec["strategy_label"]),
                 live=live,
                 bar_min=bar_min,
+                losing=losing,
             )
         )
         cursor += timedelta(
@@ -544,6 +592,18 @@ def write_mentor_workbook(path: Path, rows: list[dict[str, Any]]) -> None:
         ws.append([row.get(h, "") for h in MENTOR_HEADERS])
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
+
+
+def _summarize_pnl(trades: list[dict[str, Any]]) -> dict[str, Any]:
+    pnls = [float(t.get("pnl") or t.get("netPnL") or 0) for t in trades]
+    wins = sum(1 for p in pnls if p > 0)
+    losses = sum(1 for p in pnls if p < 0)
+    return {
+        "net_pnl": round(sum(pnls), 2),
+        "wins": wins,
+        "losses": losses,
+        "win_rate_actual": round(wins / len(pnls), 4) if pnls else 0,
+    }
 
 
 def process_spec(
@@ -578,6 +638,7 @@ def process_spec(
     write_workbook(adapted_path, trades)
 
     with_bar = sum(1 for t in trades if isinstance(t.get("bar_high_r"), list) and len(t["bar_high_r"]) > 0)
+    pnl_summary = _summarize_pnl(trades)
     return {
         "stem": stem,
         "source_kind": source_kind,
@@ -590,12 +651,21 @@ def process_spec(
         "tickers": spec["tickers"],
         "strategy_id": spec["strategy_id"],
         "start_balance": spec.get("balance"),
+        "win_rate_target": spec.get("win_rate"),
+        "profile": "losing" if spec.get("losing_profile") else "balanced",
+        "pnl_summary": pnl_summary,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate mentor T1/T3 batch xlsx files")
     parser.add_argument("--seed", type=int, default=20260701)
+    parser.add_argument(
+        "--profile",
+        choices=("balanced", "losing"),
+        default="balanced",
+        help="balanced (~48-55%% win) or losing drawdown (~26-34%% win)",
+    )
     parser.add_argument(
         "--out",
         default=str(ROOT / "mentor data" / "generated"),
@@ -604,45 +674,69 @@ def main() -> int:
     args = parser.parse_args()
 
     out_root = Path(args.out)
-    t1_dir = out_root / "t1"
-    t3_dir = out_root / "t3"
+    if args.profile == "losing":
+        t1_specs = T1_LOSING_SPECS
+        t3_specs = T3_LOSING_SPECS
+        t1_dir = out_root / "t1-losing"
+        t3_dir = out_root / "t3-losing"
+        manifest_name = "manifest-losing.json"
+        source_id_t1 = 6100
+        source_id_t3 = 6300
+    else:
+        t1_specs = T1_SPECS
+        t3_specs = T3_SPECS
+        t1_dir = out_root / "t1"
+        t3_dir = out_root / "t3"
+        manifest_name = "manifest.json"
+        source_id_t1 = 5100
+        source_id_t3 = 5300
+
     manifest: list[dict[str, Any]] = []
 
-    for i, spec in enumerate(T1_SPECS, start=1):
+    for i, spec in enumerate(t1_specs, start=1):
         rng = random.Random(args.seed + i * 101)
         info = process_spec(
             spec,
             source_kind="backtest",
-            source_id=5100 + i,
+            source_id=source_id_t1 + i,
             out_dir=t1_dir,
             rng=rng,
         )
         manifest.append(info)
-        print(f"T1 [{i}/10] {info['mentor_file']} — {info['trade_count']} trades ({info['with_bar_paths']} with bar paths)")
+        ps = info["pnl_summary"]
+        print(
+            f"T1 [{i}/10] {info['mentor_file']} — {info['trade_count']} trades, "
+            f"WR {ps['win_rate_actual']:.0%}, net ${ps['net_pnl']:,.0f}"
+        )
 
-    for i, spec in enumerate(T3_SPECS, start=1):
+    for i, spec in enumerate(t3_specs, start=1):
         rng = random.Random(args.seed + i * 307)
         info = process_spec(
             spec,
             source_kind="live_personal",
-            source_id=5300 + i,
+            source_id=source_id_t3 + i,
             out_dir=t3_dir,
             rng=rng,
         )
         manifest.append(info)
-        print(f"T3 [{i}/10] {info['mentor_file']} — {info['trade_count']} trades ({info['with_bar_paths']} with bar paths)")
+        ps = info["pnl_summary"]
+        print(
+            f"T3 [{i}/10] {info['mentor_file']} — {info['trade_count']} trades, "
+            f"WR {ps['win_rate_actual']:.0%}, net ${ps['net_pnl']:,.0f}"
+        )
 
     manifest_doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
-        "t1_count": len(T1_SPECS),
-        "t3_count": len(T3_SPECS),
+        "profile": args.profile,
+        "t1_count": len(t1_specs),
+        "t3_count": len(t3_specs),
         "mentor_headers": MENTOR_HEADERS,
         "adapted_columns": 140,
         "import_hint": "Use mentor *_trading_journal_complete.xlsx with batch_adapt_mentor_data.py (backtest / live_personal).",
         "files": manifest,
     }
-    manifest_path = out_root / "manifest.json"
+    manifest_path = out_root / manifest_name
     manifest_path.write_text(json.dumps(manifest_doc, indent=2), encoding="utf-8")
     print(f"\nWrote manifest: {manifest_path}")
     print(f"T1 dir: {t1_dir}")

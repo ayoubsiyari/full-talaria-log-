@@ -2024,7 +2024,7 @@ function v9SelectedDrawingsAllLocked(entries) {
 
 function v9ApplyLockToSelectedDrawings(targetLocked) {
   const byDm = new Map();
-  v9GetSelectedDrawingEntriesForLock().forEach(({ dm, drawing }) => {
+  v9GetLockTargetEntries().forEach(({ dm, drawing }) => {
     if (!dm || !drawing) return;
     if (!byDm.has(dm)) byDm.set(dm, []);
     byDm.get(dm).push(drawing);
@@ -2037,14 +2037,42 @@ function v9ApplyLockToSelectedDrawings(targetLocked) {
   });
 }
 
+function v9GetLockTargetEntries(panelGroup = null) {
+  let entries = v9GetSelectedDrawingEntriesForLock();
+  if (!entries.length) {
+    const live =
+      v9GetLiveSelectedDrawingForQuickBar()
+      || getPrimarySelectedDrawingForActiveChart(null);
+    const resolved = v9ResolveLiveDrawingForLockSync(live);
+    const dm = resolved ? resolveDrawingManagerForDrawing(resolved) : null;
+    if (resolved && dm) entries = [{ dm, drawing: resolved }];
+  }
+  if (panelGroup) {
+    entries = entries.filter(
+      ({ drawing }) => drawing && v9DrawingTypeToPanelGroup(drawing.type) === panelGroup,
+    );
+  }
+  return entries;
+}
+
+function v9QuickBarLockIsActive(fallbackLocked = false, hintDrawing = null) {
+  try {
+    const entries = v9GetSelectedDrawingEntriesForLock();
+    if (entries.length > 1) return v9SelectedDrawingsAllLocked(entries);
+    const primary = v9ResolveLiveDrawingForLockSync(
+      hintDrawing || v9GetLiveSelectedDrawingForQuickBar() || getPrimarySelectedDrawingForActiveChart(null),
+    );
+    if (primary) return !!primary.locked;
+    if (entries.length === 1 && entries[0].drawing) return !!entries[0].drawing.locked;
+  } catch (_) {}
+  return !!fallbackLocked;
+}
+
 function v9SyncQuickBarLockFromDrawing(drawing, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked) {
   const primary = v9ResolveLiveDrawingForLockSync(
     drawing || v9GetLiveSelectedDrawingForQuickBar() || getPrimarySelectedDrawingForActiveChart(null),
   );
-  const entries = v9GetSelectedDrawingEntriesForLock();
-  const locked = entries.length
-    ? v9SelectedDrawingsAllLocked(entries)
-    : !!(primary && primary.locked);
+  const locked = v9QuickBarLockIsActive(false, primary || drawing);
   if (typeof setTlLocked === "function") setTlLocked(locked);
   if (typeof setTxtLocked === "function") setTxtLocked(locked);
   if (typeof setAvLocked === "function") {
@@ -20601,12 +20629,12 @@ const TalariaV8bLive = () => {
             }
           }
           const br = v9ToolbarBridgeActRef.current;
-          // Multichart only: peer tile deselect must not wipe the bar while another tile
-          // still has a real selection. Single-chart keeps original always-hide behaviour.
+          if (v9IsDrawingSelectionGuardActive()) {
+            return origHide ? origHide() : undefined;
+          }
+          // Multichart: peer tile deselect must not wipe the bar while another tile
+          // still has a real selection.
           if (v9MultichartGridApi()) {
-            if (v9IsDrawingSelectionGuardActive()) {
-              return origHide ? origHide() : undefined;
-            }
             const live = v9GetLiveSelectedDrawingForQuickBar();
             if (live) {
               return origHide ? origHide() : undefined;
@@ -20695,6 +20723,16 @@ const TalariaV8bLive = () => {
       window.removeEventListener("pointerup", sync, true);
     };
   }, [tlBarSelected]);
+
+  // Keep lock icons aligned with drawing.locked whenever the quick-bar selection changes.
+  useLayoutEffect(() => {
+    if (!tlBarSelected) return;
+    try {
+      const live = v9GetLiveSelectedDrawingForQuickBar();
+      if (!live) return;
+      v9SyncQuickBarLockFromDrawing(live, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
+    } catch (_) {}
+  }, [tlBarSelected, tlBarSelectedType, chartPrimarySelectedDrawingType]);
 
   // Chart.js fires this whenever a drawing becomes primary selection (see drawing-tools-manager
   // `_notifyV9SelectionSync`) — survives toolbar wrapper loss and reaches always after finalize/select.
@@ -22916,7 +22954,7 @@ const TalariaV8bLive = () => {
     const act = t.id === "pinbar"
       ? pinnedBarOpen
       : t.id === "lock"
-        ? tlBarSelected && (tlBarDrawingGroup === "text" ? txtLocked : tlLocked)
+        ? tlBarSelected && v9QuickBarLockIsActive(tlBarDrawingGroup === "text" ? txtLocked : tlLocked)
       : settingsPanelEditing
         ? t.id === "crosshair"
         : tool === t.id;
@@ -22980,30 +23018,20 @@ const TalariaV8bLive = () => {
             return;
           }
           if (t.id === "lock") {
-            const dm = ch && ch.drawingManager;
-            const tb = dm && dm.toolbar;
-            if (dm) {
-              const list = [];
-              if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-                dm.selectedDrawings.forEach(d => { if (d) list.push(d); });
-              } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
-              else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
-              if (list.length) {
-                const targetLocked = !list.every((d) => !!(d && d.locked));
-                if (typeof dm.setDrawingsLock === "function") {
-                  dm.setDrawingsLock(list, targetLocked);
-                } else {
-                  list.forEach((d) => {
-                    try {
-                      if (!!d.locked !== targetLocked) dm.toggleLock(d);
-                    } catch (_) {}
-                  });
-                }
-                try {
-                  const live = getPrimarySelectedDrawingForActiveChart(null);
-                  v9SyncQuickBarLockFromDrawing(live, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
-                } catch (_) {}
-              } else if (typeof tb?.showNotification === "function") {
+            const entries = v9GetLockTargetEntries();
+            if (entries.length) {
+              const targetLocked = !v9SelectedDrawingsAllLocked(entries);
+              setTlLocked(targetLocked);
+              setTxtLocked(targetLocked);
+              try {
+                v9ApplyLockToSelectedDrawings(targetLocked);
+                const live = getPrimarySelectedDrawingForActiveChart(null);
+                v9SyncQuickBarLockFromDrawing(live, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
+              } catch (_) {}
+            } else {
+              const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+              const tb = ch && ch.drawingManager && ch.drawingManager.toolbar;
+              if (typeof tb?.showNotification === "function") {
                 tb.showNotification("Select a drawing first");
               } else if (typeof ch?.showNotification === "function") {
                 ch.showNotification("Select a drawing first");
@@ -26713,14 +26741,14 @@ const TalariaV8bLive = () => {
             })}
           </>}
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-lock" isAct={txtLocked} onClick={()=>{
+          <TxBtn id="txt-lock" isAct={v9QuickBarLockIsActive(txtLocked)} onClick={()=>{
             setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);
-            const textEntries = v9GetSelectedDrawingEntriesForLock()
-              .filter(({ drawing }) => drawing && v9DrawingTypeToPanelGroup(drawing.type) === "text");
+            const textEntries = v9GetLockTargetEntries("text");
             const targetLocked = textEntries.length
               ? !v9SelectedDrawingsAllLocked(textEntries)
-              : !txtLocked;
+              : !v9QuickBarLockIsActive(txtLocked);
             setTxtLocked(targetLocked);
+            setTlLocked(targetLocked);
             try {
               const byDm = new Map();
               textEntries.forEach(({ dm, drawing }) => {
@@ -30977,11 +31005,12 @@ const TalariaV8bLive = () => {
           <TlSep/>
           {/* btn 5: lock — toggle locked state on the selected drawing(s) too,
                so V9's lock matches what the legacy toolbar's lock button does. */}
-          <TlBtn id="tl-lock" isAct={tlLocked} onClick={()=>{
+          <TlBtn id="tl-lock" isAct={v9QuickBarLockIsActive(tlLocked)} onClick={()=>{
             setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
-            const entries = v9GetSelectedDrawingEntriesForLock();
-            const targetLocked = entries.length ? !v9SelectedDrawingsAllLocked(entries) : !tlLocked;
+            const entries = v9GetLockTargetEntries();
+            const targetLocked = entries.length ? !v9SelectedDrawingsAllLocked(entries) : !v9QuickBarLockIsActive(tlLocked);
             setTlLocked(targetLocked);
+            setTxtLocked(targetLocked);
             try {
               v9ApplyLockToSelectedDrawings(targetLocked);
             } catch(_){}

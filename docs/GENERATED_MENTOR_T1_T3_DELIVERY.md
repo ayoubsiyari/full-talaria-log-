@@ -80,7 +80,22 @@ For T3 live journals, use `batch_adapt_mentor_data.py` with `source_kind=live_pe
 ```bash
 py scripts/generate_mentor_t1_t3_batches.py
 py scripts/generate_mentor_t1_t3_batches.py --seed 20260702 --out "mentor data/generated"
+py scripts/generate_mentor_t1_t3_batches.py --profile losing --seed 20260703
 ```
+
+## Losing-strategy batch
+
+**Profile:** `losing` · **Seed:** `20260703`  
+**Output:** `mentor data/generated/t1-losing/`, `t3-losing/`, `manifest-losing.json`
+
+| | T1 (10) | T3 (10) |
+|--|---------|---------|
+| Target win rate | 26–34% | 26–32% |
+| Actual win rate | ~26–35% | ~23–33% |
+| Net PnL | Negative on 9/10 | Negative on all 10 |
+| File prefix | `qa_gen_t1_losing_*` | `qa_gen_t3_losing_*` |
+
+Same 140-column adapted schema and scalar reconciliation as the balanced batch. Trades skew to stop-outs, drawdown notes, and more out-of-plan discipline tags on T3.
 
 ## Field parity with real mentor data
 
