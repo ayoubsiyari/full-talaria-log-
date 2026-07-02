@@ -2096,6 +2096,9 @@ class Chart {
      * @returns {Promise<boolean>}
      */
     async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf) {
+        if (this._multichartMirrorHostTfSwitchIfReady(normalizedTf)) {
+            return true;
+        }
         if (typeof this._warmBtTfCacheFromParent === 'function') {
             this._warmBtTfCacheFromParent(normalizedTf);
         }
@@ -2177,6 +2180,105 @@ class Chart {
             this._tryExtendReplayMasterFromParent();
         }
         return this._independentPanelTimeframeSwitch(normalizedTf);
+    }
+
+    /**
+     * Same-pair iframe: after host tile A finished a TF switch, clone its committed
+     * bars + viewport instantly (no /smart). Safe only when native fetch TF matches.
+     * @param {string} normalizedTf
+     * @returns {boolean}
+     */
+    _multichartMirrorHostTfSwitchIfReady(normalizedTf) {
+        if (!this._isMultichartEmbedPanel()) return false;
+        if (typeof this._isIndependentMultichartPair === 'function'
+            && this._isIndependentMultichartPair()) {
+            return false;
+        }
+        const parent = this._multichartGetHostChart();
+        if (!parent) return false;
+        if (parent._timeframeSwitching || parent._pairSwitchLoading) return false;
+
+        const tf = String(normalizedTf || '').toLowerCase().trim();
+        if (!tf) return false;
+        if (String(parent.currentTimeframe || '').toLowerCase() !== tf) return false;
+        if (String(parent._nativeRawFetchTf || '').toLowerCase() !== tf) return false;
+        if (!Array.isArray(parent.data) || parent.data.length === 0) return false;
+
+        if (typeof this._warmBtTfCacheFromParent === 'function') {
+            try { this._warmBtTfCacheFromParent(tf); } catch (_w) { /* ignore */ }
+        }
+
+        this.rawData = parent.rawData;
+        this.data = parent.data;
+        this._nativeRawFetchTf = parent._nativeRawFetchTf;
+        if (Number.isFinite(parent.totalCandles)) this.totalCandles = parent.totalCandles;
+        if (parent._serverCursors) this._serverCursors = { ...parent._serverCursors };
+        if (Array.isArray(parent._panelFullRawData)) {
+            this._panelFullRawData = parent._panelFullRawData;
+        }
+
+        this._commitTimeframeChange(tf);
+
+        const prs = parent.replaySystem;
+        const replay = this.replaySystem;
+        if (replay && prs?.isActive) {
+            replay.isActive = true;
+            replay.replayTimestamp = prs.replayTimestamp;
+            replay.userHasPanned = prs.userHasPanned;
+            replay.autoScrollEnabled = prs.autoScrollEnabled;
+            replay.tickProgress = prs.tickProgress;
+            replay.tickElapsedMs = prs.tickElapsedMs;
+            replay.animatingCandle = prs.animatingCandle;
+            if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
+                replay.fullRawData = prs.fullRawData;
+                replay.rawTimeframe = prs.rawTimeframe || '1m';
+                replay._fullRawDataMatchesTF = prs._fullRawDataMatchesTF;
+            }
+            if (Number.isFinite(replay.replayTimestamp)
+                && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
+                try { replay.syncCurrentIndexFromReplayTimestamp(replay.replayTimestamp); } catch (_si) { /* ignore */ }
+            }
+            if (typeof replay.updateChartData === 'function') {
+                try { replay.updateChartData(false); } catch (_uc) { /* ignore */ }
+            }
+        }
+
+        this.candleWidth = parent.candleWidth;
+        if (this.zoomLevel && parent.zoomLevel) {
+            this.zoomLevel.candleWidthIndex = parent.zoomLevel.candleWidthIndex;
+        }
+        if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
+        this.priceZoom = parent.priceZoom;
+        this.priceOffset = parent.priceOffset;
+        this.autoScale = parent.autoScale;
+        if (this.priceScale && parent.priceScale) {
+            this.priceScale.autoScale = parent.priceScale.autoScale;
+            this.priceScale.locked = parent.priceScale.locked;
+        }
+
+        const pm = this.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, (this.w || 0) - pm.l - pm.r);
+        const spacing = (typeof parent.getCandleSpacing === 'function')
+            ? parent.getCandleSpacing()
+            : parent.candleWidth;
+        if (spacing > 0 && plotW > 0) {
+            let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
+                ? parent.getVisibleEndIndex()
+                : parent.data.length - 1;
+            rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
+            this.offsetX = plotW - (rightIdx + 1) * spacing;
+            if (typeof this.constrainOffset === 'function') {
+                try { this.constrainOffset(); } catch (_c) { /* ignore */ }
+            }
+        }
+
+        this._multichartViewportMirroredWithHost = true;
+        this._finishTfSwitchViewportRestore();
+        this._endTimeframeSwitching();
+        this._scheduleIndicatorsAfterTimeframe();
+        if (typeof this.render === 'function') this.render();
+        this._logTfSwitch('host-mirror-tf', { to: tf, bars: this.data.length });
+        return true;
     }
 
     /** Same-pair iframe B/C/D — same fileId as host tile A. */
@@ -4944,7 +5046,7 @@ class Chart {
 
     /** Timeframe-aware in-memory bar cap (ZOOM-FIX-10). */
     _getRawDataCap() {
-        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const tf = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
         if (tf === '1m' || tf === '5m') return 5000;
         if (tf === '15m' || tf === '30m') return 6000;
         return this._RAW_DATA_CAP || 8000;
@@ -18158,6 +18260,9 @@ class Chart {
             // must refetch native bars at the replay playhead instead.
             if (this.isBacktestMode && this.currentFileId) {
                 if (this._isMultichartEmbedPanel()) {
+                    if (this._multichartMirrorHostTfSwitchIfReady(normalizedTf)) {
+                        return Promise.resolve();
+                    }
                     // Independent pair: client-resample from the 1m master (no refetch).
                     if (this._isIndependentMultichartPair()
                         && this._independentPanelTimeframeSwitch(normalizedTf)) {
@@ -18309,30 +18414,77 @@ class Chart {
             this._dataSwitchAxisInteractionUntil || 0,
             now + (Number.isFinite(ms) ? ms : 2500),
         );
-        try { this._removeFreezeOverlay(); } catch (_e) { /* ignore */ }
+        // Keep the snapshot until new bars match the destination TF — removing it
+        // early paints 1m time labels on stale coarse bars (double/garbled axes).
+        if (this._tfSwitchBarsMatchDestination()) {
+            try { this._removeFreezeOverlay(); } catch (_e) { /* ignore */ }
+        }
+    }
+
+    /** True when committed bars match the in-flight destination timeframe. */
+    _tfSwitchBarsMatchDestination() {
+        if (!this._timeframeSwitching && !this._pairSwitchLoading) return true;
+        const dest = String(this._switchingToTimeframe || this.currentTimeframe || '')
+            .toLowerCase().trim();
+        if (!dest) return true;
+        if (!Array.isArray(this.data) || this.data.length === 0) return false;
+        if (String(this.currentTimeframe || '').toLowerCase() !== dest) return false;
+        const native = String(this._nativeRawFetchTf || '').toLowerCase().trim();
+        const destMs = this.parseTimeframe(dest);
+        const nativeMs = this.parseTimeframe(native);
+        if (Number.isFinite(destMs) && destMs > 0
+            && Number.isFinite(nativeMs) && nativeMs > 0
+            && nativeMs < destMs * 0.92) {
+            // Finer native master displaying a coarser TF — resampled data is valid.
+            return true;
+        }
+        if (native && native !== dest) return false;
+        if (this.data.length >= 2) {
+            const step = this.data[1].t - this.data[0].t;
+            if (Number.isFinite(destMs) && destMs > 0 && Number.isFinite(step) && step > 0) {
+                const ratio = step / destMs;
+                if (ratio < 0.45 || ratio > 2.2) return false;
+            }
+        }
+        return true;
+    }
+
+    /** Time-axis label cadence: use previous TF until destination bars are committed. */
+    _getRenderTimeframe() {
+        if ((this._timeframeSwitching || this._pairSwitchLoading)
+            && !this._tfSwitchBarsMatchDestination()
+            && this._switchingFromTimeframe) {
+            return this._switchingFromTimeframe;
+        }
+        return this.currentTimeframe;
     }
 
     /** Allow price/time axis drag + wheel to repaint while TF/pair data is still loading. */
     _canBypassDataSwitchRenderFreeze() {
         if (!(this._timeframeSwitching || this._pairSwitchLoading)) return false;
+        const barsReady = this._tfSwitchBarsMatchDestination();
         const d = this.drag;
-        if (d && d.active && (d.type === 'priceAxis' || d.type === 'timeAxis' || d.type === 'separatePanelAxis')) {
-            return true;
+        if (d && d.active) {
+            if (d.type === 'priceAxis') return true;
+            if ((d.type === 'timeAxis' || d.type === 'separatePanelAxis') && barsReady) return true;
+            return false;
         }
         if (typeof this._isPriceAxisZoomDragging === 'function' && this._isPriceAxisZoomDragging()) {
             return true;
         }
         if (typeof this._isTimeAxisZoomDragging === 'function' && this._isTimeAxisZoomDragging()) {
-            return true;
+            return barsReady;
         }
         const until = this._dataSwitchAxisInteractionUntil;
         if (Number.isFinite(until)) {
             const now = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
                 : Date.now();
-            if (now < until) return true;
+            if (now < until) {
+                return this.cursor?.mode === 'priceAxis' || barsReady;
+            }
         }
-        return false;
+        return barsReady;
     }
 
     _beginTimeframeSwitching(fromTf, toTf) {
@@ -18393,6 +18545,11 @@ class Chart {
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
             return;
         }
+        try {
+            if (this.svg && typeof this.svg.selectAll === 'function') {
+                this.svg.selectAll('.axis-highlight-group').remove();
+            }
+        } catch (_svg) { /* ignore */ }
         // Paint the new bars to the canvas FIRST, then drop the overlay on the next
         // frame. If we removed the overlay before render() the user would see a
         // single blank canvas frame between the snapshot and the new chart.
@@ -20800,7 +20957,7 @@ class Chart {
         if (!Number.isFinite(ts)) return '';
         const tzDate = this.convertToTimezone(ts);
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const tf = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
         let tfMs = this.parseTimeframe(tf);
         if (!Number.isFinite(tfMs) || tfMs <= 0) {
             if (this.data && this.data.length >= 2) {
@@ -22794,7 +22951,7 @@ class Chart {
         const vp = this._getViewportBarRange();
         const visibleBarsCount = Math.max(1, Math.ceil(Math.max(0, vp.last - vp.first)));
         const spacing = vp.spacing;
-        const timeframe = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
         let labelInterval;
         if (timeframe === '1m') {
             if (visibleBarsCount > 600) labelInterval = 180;
@@ -22951,7 +23108,7 @@ class Chart {
         const lastVisibleIdx = vp.last;
         const minSpacingPx = 72;
         const labelInterval = this._getFastTimeLabelIntervalBars();
-        const timeframe = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
         let timeframeMs = this.parseTimeframe(timeframe);
         if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) {
             if (this.data.length >= 2) {
@@ -23002,7 +23159,7 @@ class Chart {
 
         // Prefer the explicit chart timeframe (supports custom intervals like 13m)
         // and only fall back to data-detection when needed.
-        const timeframe = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const timeframe = String(this._getRenderTimeframe() || '1m').toLowerCase().trim();
         let timeframeMs = this.parseTimeframe(timeframe);
         if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) {
             if (this.data.length >= 2) {

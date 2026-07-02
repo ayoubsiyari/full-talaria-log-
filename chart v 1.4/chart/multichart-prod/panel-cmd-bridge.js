@@ -1365,6 +1365,16 @@
                             && Number.isFinite(Number(prsTf.replayTimestamp))) {
                             ch.replaySystem.replayTimestamp = Number(prsTf.replayTimestamp);
                         }
+                        if (typeof ch._warmBtTfCacheFromParent === 'function') {
+                            ch._warmBtTfCacheFromParent(tf);
+                        }
+                        if (typeof ch._multichartMirrorHostTfSwitchIfReady === 'function'
+                            && ch._multichartMirrorHostTfSwitchIfReady(tf)) {
+                            setTimeout(function () {
+                                try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                            }, 0);
+                            return;
+                        }
                     } catch (_) {}
                     var sw = ch.setTimeframe(tf);
                     if (sw && typeof sw.then === 'function') {
