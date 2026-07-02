@@ -1,8 +1,8 @@
 # Generated mentor batches — T1 × 10 + T3 × 10
 
-**Generated:** 2026-07-01  
+**Generated:** 2026-07-02 (v2 — scalar reconciliation fix)  
 **Script:** `scripts/generate_mentor_t1_t3_batches.py`  
-**Seed:** `20260701`
+**Seed:** `20260702` (use `20260701` for pre-fix v1)
 
 ## What was created
 

@@ -366,6 +366,63 @@ def _excursions(
     return mfe_r, mae_r, mfe_price, mae_price, highest, lowest
 
 
+def _num_list(arr: Any) -> list[float]:
+    if not isinstance(arr, list):
+        return []
+    out: list[float] = []
+    for v in arr:
+        try:
+            f = float(v)
+            if math.isfinite(f):
+                out.append(f)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _finalize_excursion_scalars_from_path(
+    path: dict[str, Any],
+    *,
+    r_mult: float,
+) -> dict[str, Any]:
+    """
+    Authoritative excursion scalars from per-bar arrays (matches order-manager.js).
+
+    bar_high_r / bar_low_r are per-bar favorable / adverse magnitudes in R.
+    mfe_r = max(bar_high_r) in-trade; mae_r = -max(bar_low_r); total_mfe_r includes post-exit.
+    """
+    high_in = _num_list(path.get("bar_high_r"))
+    low_in = _num_list(path.get("bar_low_r"))
+    post_high = _num_list(path.get("post_exit_bar_high_r"))
+    post_low = _num_list(path.get("post_exit_bar_low_r"))
+
+    in_trade_mfe = max(high_in) if high_in else 0.0
+    mae_mag = max(low_in) if low_in else 0.0
+    post_mfe = max(post_high) if post_high else 0.0
+    post_mae = max(post_low) if post_low else 0.0
+    total_mfe = max(in_trade_mfe, post_mfe)
+
+    mfe_r = in_trade_mfe
+    mae_r = -mae_mag if mae_mag > 0 else 0.0
+    r_val = float(r_mult)
+    capture_ratio = round(r_val / total_mfe, 4) if total_mfe > 0 else 0.0
+    management_gap = round(in_trade_mfe - abs(r_val), 4) if math.isfinite(r_val) else 0.0
+    exit_timing_gap = round(post_mfe, 4)
+    would_have_won = r_val <= 0 and post_mfe > 0
+    exit_confirmed = post_mae > post_mfe
+
+    return {
+        "mfe_r": round(mfe_r, 4),
+        "mae_r": round(mae_r, 4),
+        "total_mfe_r": round(total_mfe, 4),
+        "capture_ratio": capture_ratio,
+        "management_gap": management_gap,
+        "exit_timing_gap": exit_timing_gap,
+        "would_have_won": would_have_won,
+        "exit_confirmed": exit_confirmed,
+    }
+
+
 def _pip_for(entry: float) -> float:
     if entry > 1000:
         return 0.01 if entry < 5000 else 1.0
@@ -870,6 +927,9 @@ def convert_mentor_row(
         initial_sl=stop,
         post_exit_candles=post_exit_candles,
     )
+    excursion_scalars = _finalize_excursion_scalars_from_path(path, r_mult=float(r_mult))
+    mfe_r = float(excursion_scalars["mfe_r"])
+    mae_r = float(excursion_scalars["mae_r"])
 
     qty = _to_float(row.get("quantity"), 1.0) or 1.0
     balance_after = round(balance_before + pnl, 2)
@@ -884,7 +944,7 @@ def convert_mentor_row(
     exit_screenshot = str(row.get("exit_screenshot") or "").strip()
     notes = str(row.get("notes") or "").strip()
 
-    capture_ratio = round(abs(float(r_mult)) / mfe_r, 4) if mfe_r else 0.0
+    capture_ratio = float(excursion_scalars["capture_ratio"])
     mfe_time = entry_ms + max(1000, hold_ms // 2)
     mae_time = exit_ms - max(1000, min(hold_ms // 3, 600000))
 
@@ -935,7 +995,7 @@ def convert_mentor_row(
         "mae": mae_price,
         "mfe_r": round(mfe_r, 4),
         "mae_r": round(mae_r, 4),
-        "total_mfe_r": round(mfe_r, 4),
+        "total_mfe_r": excursion_scalars["total_mfe_r"],
         "highestPrice": highest,
         "lowestPrice": lowest,
         "commission_total": _to_float(row.get("commission"), 0.0) or 0.0,
@@ -983,8 +1043,8 @@ def convert_mentor_row(
         "entries_locked": False,
         "entryMarkerTimeMs": float(entry_ms),
         "entry_offset_r": 0.0,
-        "exit_confirmed": True,
-        "exit_timing_gap": round(mfe_r - abs(float(r_mult)), 4),
+        "exit_confirmed": excursion_scalars["exit_confirmed"],
+        "exit_timing_gap": excursion_scalars["exit_timing_gap"],
         "finalClosePnL": pnl,
         "final_exit_bar": path["final_exit_bar"],
         "hasMultipleTakeProfits": False,
@@ -999,7 +1059,7 @@ def convert_mentor_row(
         "isScaledTrade": False,
         "isSplitEntry": False,
         "maeTime": float(mae_time),
-        "management_gap": 0.0,
+        "management_gap": excursion_scalars["management_gap"],
         "market": inst["market"],
         "mfeTime": float(mfe_time),
         "month": MONTHS[entry_dt.month - 1],
@@ -1035,7 +1095,7 @@ def convert_mentor_row(
         "trail_sl_path": [],
         "v9PostTradeTags": post_tags,
         "v9TradeNotes": notes or f"Imported from mentor ({mentor_filename}, id={row.get('id')})",
-        "would_have_won": False,
+        "would_have_won": excursion_scalars["would_have_won"],
         "year": entry_dt.year,
         "accountType": "private",
         "planAdherence": plan_adherence,

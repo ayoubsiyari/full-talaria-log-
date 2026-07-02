@@ -18758,6 +18758,12 @@ const TalariaV8bLive = () => {
   // and wipes the selection the user just made — and leaves draw mode armed.
   const v9SelectionToolbarSyncRef = useRef(false);
   const v9UserExplicitToolRef = useRef(false);
+  /** Bumps on every explicit sidebar tool pick so the bridge re-runs even when React `tool` is unchanged (multichart host A can lose dm.currentTool while rail still shows Shapes). */
+  const [toolApplySeq, setToolApplySeq] = useState(0);
+  const v9MarkExplicitToolPick = useCallback(() => {
+    v9UserExplicitToolRef.current = true;
+    setToolApplySeq((n) => n + 1);
+  }, []);
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
@@ -18807,12 +18813,26 @@ const TalariaV8bLive = () => {
     if (!keepAvSett && (tool !== "brush" || brushIcon !== "anchoredVol")) { if (avSettOpen) closeAvSett(); }
     let cancelled = false; let n = 0;
     /** Push tool into the in-process host chart (and poll until drawingManager exists). */
+    const resolveChartForToolBridge = () => {
+      try {
+        const gridMc = typeof window !== "undefined" ? window.__multichartGrid : null;
+        if (
+          gridMc
+          && gridMc.hostPanelId != null
+          && typeof gridMc.getFocusedPanelId === "function"
+          && gridMc.getFocusedPanelId() === gridMc.hostPanelId
+          && window.chart
+        ) {
+          return window.chart;
+        }
+      } catch (_) {}
+      return typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : window.chart;
+    };
     const applyHostDm = () => {
       if (cancelled) return;
-      const ch =
-        typeof window.getActiveChart === "function"
-          ? window.getActiveChart()
-          : window.chart;
+      const ch = resolveChartForToolBridge();
       const dm = ch && ch.drawingManager;
       if (!dm || typeof dm.setTool !== 'function') {
         if (++n < 50) setTimeout(apply, 100);
@@ -19092,7 +19112,7 @@ const TalariaV8bLive = () => {
     // layoutPanels.n is in deps so we re-run when the multichart grid
     // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, groupSelected, layoutPanels.n]);
+  }, [tool, groupSelected, layoutPanels.n, toolApplySeq]);
 
   // Cursor sub-tools (Cross / Dot / Arrow / Eraser) — chart.js owns cursorType;
   // re-apply whenever the rail cursor choice or active tool changes (skipSync when a draw tool is armed).
@@ -22968,7 +22988,7 @@ const TalariaV8bLive = () => {
               }
               if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
               if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
-              v9UserExplicitToolRef.current = true;
+              v9MarkExplicitToolPick();
               setTool(t.id);
             }
             if (dropdown) closeDropdown();
@@ -22986,7 +23006,7 @@ const TalariaV8bLive = () => {
             }
             if (tlSettOpen) closeTlSett(); if (txtSettOpen) closeTxtSett();
             if (vwapSettOpen) closeVwapSett(); if (vpSettOpen) closeVpSett(); if (avSettOpen) closeAvSett(); if (indSettOpen) closeIndSett();
-            v9UserExplicitToolRef.current = true;
+            v9MarkExplicitToolPick();
             setTool(t.id); setDropdown(null);
           }
         }}
@@ -31209,7 +31229,7 @@ const TalariaV8bLive = () => {
                           delete next.trash;
                           return v9SanitizeGroupSelected(next);
                         });
-                        v9UserExplicitToolRef.current = true;
+                        v9MarkExplicitToolPick();
                         setTool("crosshair");
                         applyV9DeleteMode(null);
                         closeDropdown();
@@ -31255,7 +31275,7 @@ const TalariaV8bLive = () => {
                       } catch (_) {}
                     }
                     editingDrawingRef.current = null;
-                    v9UserExplicitToolRef.current = true;
+                    v9MarkExplicitToolPick();
                     if (tlSettOpen) closeTlSett();
                     if (txtSettOpen) closeTxtSett();
                     if (vwapSettOpen) closeVwapSett();
