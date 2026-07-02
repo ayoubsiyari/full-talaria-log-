@@ -4596,7 +4596,6 @@ function v9ApplyTxtContentToDrawing(d, content, dm) {
   const next = content == null ? "" : String(content);
   const cur = typeof d.text === "string" ? d.text : "";
   if (next === cur) return;
-  if (next.trim() === "" && cur.trim() !== "") return;
   d.text = next;
   if (typeof d.setText === "function") {
     try {
@@ -26768,6 +26767,7 @@ const TalariaV8bLive = () => {
       {(txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
         const txtSizes = [10,12,14,16,18,20,22,24];
         const openTxtCP = (e, key, val) => {
+          const anchorRect = e.currentTarget.getBoundingClientRect();
           if (key === "txtBgColor") {
             applyTxtStylePatch((s) => (s.bgOn ? s : { ...s, bgOn: true }));
           } else if (key === "txtBorderColor") {
@@ -26776,7 +26776,7 @@ const TalariaV8bLive = () => {
           const p = parseColor(val||'#ffffff'); const hsv = rgbToHsv(p.r,p.g,p.b);
           setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p.a);
           setCpHex(toHex2(p.r)+toHex2(p.g)+toHex2(p.b));
-          setCpPos(posFromRect(e.currentTarget.getBoundingClientRect(), cpW));
+          setCpPos(posFromRect(anchorRect, cpW));
           cpBarAnchorRef.current = null; setColorPicker(key);
         };
         const TxtSwatch = ({ck, val, showDisabled}) => {
