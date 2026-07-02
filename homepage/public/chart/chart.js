@@ -20902,6 +20902,38 @@ class Chart {
         return false;
     }
 
+    /** Time-axis horizontal drag zoom — anchor under cursor (same as wheel), not the right edge. */
+    _applyTimeAxisDragZoom(dx, mx) {
+        const sensitivity = 0.001;
+        const zoomFactor = 1 + dx * sensitivity;
+        const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
+        const minWidth = this._getEffectiveMinCandleWidth(widths);
+        const maxWidth = widths[widths.length - 1];
+        const oldWidth = this.candleWidth;
+        const newWidth = Math.max(minWidth, Math.min(maxWidth, oldWidth * zoomFactor));
+        if (newWidth === oldWidth) return false;
+
+        if (!this.priceScale.locked) {
+            this.autoScale = false;
+            this.priceScale.autoScale = false;
+        }
+
+        const m = this.margin;
+        const oldSpacing = this.getCandleSpacing();
+        const anchorIndex = (mx - m.l - this.offsetX) / oldSpacing;
+        const oldAnchorX = m.l + anchorIndex * oldSpacing + this.offsetX;
+
+        this.candleWidth = newWidth;
+        const newSpacing = this.getCandleSpacing();
+        this.offsetX = oldAnchorX - (m.l + anchorIndex * newSpacing);
+
+        if (typeof this.constrainOffset === 'function') {
+            try { this.constrainOffset(); } catch (_e) { /* ignore */ }
+        }
+        this._scheduleAxisZoomRender();
+        return true;
+    }
+
     /** One chart paint per frame while axis zoom math runs on every mousemove. */
     _scheduleAxisZoomRender() {
         if (this._axisZoomRenderRaf != null) return;
@@ -27741,33 +27773,7 @@ class Chart {
                 }
                 // ─── Time Axis Drag Zoom ───
                 else if (this.drag.type === 'timeAxis') {
-                    // Like price axis: dx controls horizontal zoom, anchored at right edge
-                    const sensitivity = 0.001;
-                    const zoomFactor = 1 + dx * sensitivity;
-                    const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
-                    const minWidth = this._getEffectiveMinCandleWidth(widths);
-                    const maxWidth = widths[widths.length - 1];
-                    const newWidth = Math.max(minWidth, Math.min(maxWidth, this.candleWidth * zoomFactor));
-
-                    // Once user manually adjusts time scale, freeze vertical auto-scale (only if price scale is unlocked)
-                    if (!this.priceScale.locked) {
-                        this.autoScale = false;
-                        this.priceScale.autoScale = false;
-                    }
-                    
-                    // Anchor at right edge (last visible candle stays in place)
-                    const m = this.margin;
-                    const oldSpacing = this.getCandleSpacing();
-                    const rightEdge = this.w - m.r;
-                    const lastVisibleIdx = (rightEdge - m.l - this.offsetX) / oldSpacing;
-                    
-                    this.candleWidth = newWidth;
-                    const newSpacing = this.getCandleSpacing();
-                    
-                    // Keep same candle at right edge
-                    this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
-
-                    this._scheduleAxisZoomRender();
+                    this._applyTimeAxisDragZoom(dx, mx);
                 }
                 // ─── Price Axis Drag Zoom ───
                 else if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
@@ -28315,20 +28321,9 @@ class Chart {
                         this.priceZoom = newZoom;
                         this._scheduleAxisZoomRender();
                     } else if (this.drag.type === 'timeAxis') {
-                        const sensitivity = 0.001;
-                        const zoomFactor = 1 + dx * sensitivity;
-                        const widths = this.zoomLevel.allowedWidths || [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
-                        const newWidth = Math.max(widths[0], Math.min(widths[widths.length - 1], this.candleWidth * zoomFactor));
-                        const m = this.margin;
-                        const oldSpacing = this.getCandleSpacing();
-                        const rightEdge = this.w - m.r;
-                        const lastVisibleIdx = (rightEdge - m.l - this.offsetX) / oldSpacing;
-                        this.candleWidth = newWidth;
-                        const newSpacing = this.getCandleSpacing();
-                        this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
-                        this.constrainOffset();
-                        this._scheduleAxisZoomRender();
-                        this.dispatchScrollSync();
+                        if (this._applyTimeAxisDragZoom(dx, mx)) {
+                            this.dispatchScrollSync();
+                        }
                     } else if (this.drag.type === 'pan') {
                         if (continueOverlayPan) {
                             this._scheduleChartPanFrame(e.clientX, e.clientY);

@@ -15796,7 +15796,14 @@ const TalariaV8bLive = () => {
     tlBarDrawingGroupRaw === "brush"
       ? (v9SubToolIconFromDrawingType(chartPrimarySelectedDrawingType, "brush") || (groupSelected.brush?.icon ?? "vwap"))
       : null;
-  const tlBarShowQuickBar = tlBarSelected && !!tlBarLiveSelection;
+  const v9DrawingSettingsPanelOpen =
+    tlSettOpen || closing.has("tlsett")
+    || txtSettOpen || closing.has("txtsett")
+    || vwapSettOpen || closing.has("vwapsett")
+    || vpSettOpen || closing.has("vpsett")
+    || avSettOpen || closing.has("avsett");
+  const tlBarShowQuickBar =
+    tlBarSelected && !!tlBarLiveSelection && !v9DrawingSettingsPanelOpen;
   // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
   const settingsEditGroup =
     (tlSettOpen || closing.has("tlsett")) &&
@@ -26413,7 +26420,7 @@ const TalariaV8bLive = () => {
           Active text tool OR a text/label drawing selected on the chart (toolbar.show
           sets tool to crosshair — tlBarDrawingGroup === "text" so we must not fall through
           to the Trend Line bar, which only keys off tlBarSelected). */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (()=>{
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && !v9DrawingSettingsPanelOpen && (()=>{
         const TxBtn = ({id, isAct, onClick, children, isDel}) => {
           const isH = hov === id;
           return (
