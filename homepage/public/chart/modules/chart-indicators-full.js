@@ -7777,7 +7777,10 @@
         if (!Array.isArray(this.data) || !this.data.length) return;
 
         const replay = this.replaySystem;
-        const playing = isPlaying != null ? !!isPlaying : !!(replay && replay.isActive && replay.isPlaying);
+        const passivePlay = this._multichartPassivePlayActive === true;
+        const playing = isPlaying != null
+            ? (!!isPlaying || passivePlay)
+            : !!(replay && replay.isActive && (replay.isPlaying || passivePlay));
 
         if (!playing) {
             if (this._replayIndRecalcRaf != null) {
@@ -7799,7 +7802,9 @@
         const chart = this;
         this._replayIndRecalcRaf = requestAnimationFrame(function() {
             chart._replayIndRecalcRaf = null;
-            if (!chart.replaySystem || !chart.replaySystem.isActive || !chart.replaySystem.isPlaying) return;
+            const passiveMirror = chart._multichartPassivePlayActive === true;
+            if (!chart.replaySystem || !chart.replaySystem.isActive) return;
+            if (!chart.replaySystem.isPlaying && !passiveMirror) return;
             if (!chart.indicators || !chart.indicators.active || !chart.indicators.active.length) return;
             if (!Array.isArray(chart.data) || !chart.data.length) return;
             if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
@@ -7822,7 +7827,7 @@
         const prev = this._indCalcSnapshot;
         const replay = this.replaySystem;
         const replayActive = !!(replay && replay.isActive);
-        const replayPlaying = replayActive && !!replay.isPlaying;
+        const replayPlaying = replayActive && (!!replay.isPlaying || this._multichartPassivePlayActive === true);
         const replaySyncMax = 12000;
         const appendOnly = !opts.force && !replayActive && prev
             && barCount > prev.barCount && (barCount - prev.barCount) <= 8;

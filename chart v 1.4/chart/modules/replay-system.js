@@ -2913,7 +2913,9 @@ class ReplaySystem {
         }
         if (!Array.isArray(chart.data) || !chart.data.length) return;
         if (this._tfSwitchSkipHeavyIndicators) return;
-        if (!this.isPlaying
+        const passivePlay = chart._multichartPassivePlayActive === true;
+        const effectivePlaying = this.isPlaying || passivePlay;
+        if (!effectivePlaying
             && typeof chart._isChartViewPanning === 'function'
             && chart._isChartViewPanning()
             && typeof chart._deferIndicatorRecalcAfterZoomFill === 'function') {
@@ -2922,11 +2924,11 @@ class ReplaySystem {
         }
 
         if (typeof chart.scheduleReplayIndicatorRecalc === 'function') {
-            chart.scheduleReplayIndicatorRecalc(this.isPlaying);
+            chart.scheduleReplayIndicatorRecalc(effectivePlaying);
             return;
         }
 
-        const reason = this.isPlaying ? 'replay-tick' : 'replay-step';
+        const reason = effectivePlaying ? 'replay-tick' : 'replay-step';
         if (typeof chart.scheduleIndicatorRecalc === 'function') {
             chart.scheduleIndicatorRecalc(reason, { force: true, immediate: true });
         } else if (typeof chart.recalculateIndicators === 'function') {
@@ -6118,6 +6120,9 @@ class ReplaySystem {
         }
 
         if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
+        try {
+            this._scheduleReplayIndicatorRecalc();
+        } catch (_indErr) { /* ignore */ }
         if (typeof chart.render === 'function') {
             if (passivePlay || lightPass) {
                 chart.renderPending = false;
