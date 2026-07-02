@@ -5165,6 +5165,11 @@ class DrawingToolsManager {
      * Handle keyboard shortcuts
      */
     handleKeyDown(event) {
+        if (typeof isChartShortcutsBlockedBySettingsUi === 'function'
+            && isChartShortcutsBlockedBySettingsUi()) {
+            if (event.key !== 'Escape') return;
+            return;
+        }
         // Track Command/Ctrl key for multi-select hover mode
         // Note: magnetKeyHeld is no longer used for snap - event.metaKey/ctrlKey checked directly
         if (event.metaKey || event.ctrlKey) {
@@ -9288,12 +9293,31 @@ class DrawingToolsManager {
      * @param {boolean} [options.suppressToolbar=false] - Select without floating quick bar / V9 rail sync
      * @param {boolean} [options.allowWhileArmed=false] - Allow selection while a draw tool is armed
      */
+    /**
+     * Multichart: focus the tile that owns this drawingManager before selection UI sync.
+     */
+    _focusMultichartPanelForSelection() {
+        try {
+            const ch = this.chart;
+            if (!ch || typeof ch._getMultichartPanelId !== 'function') return;
+            const panelId = ch._getMultichartPanelId();
+            if (!panelId) return;
+            if (typeof ch._isMultichartHostPanel === 'function' && ch._isMultichartHostPanel()) {
+                const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+                if (grid && typeof grid.focusPanelById === 'function') {
+                    grid.focusPanelById(panelId);
+                }
+            }
+        } catch (_) { /* ignore */ }
+    }
+
     selectDrawing(drawing, addToSelection = false, options = {}) {
         const allowWhileArmed = options.allowWhileArmed === true;
         const suppressToolbar = options.suppressToolbar === true;
         if (!allowWhileArmed && this._isPlacementModeActive()) {
             return;
         }
+        this._focusMultichartPanelForSelection();
         // Brief guard: multichart focus/tool sync must not run in the same frame as select.
         if (typeof window !== 'undefined') {
             window.__v9DrawingSelectionGuardUntil = performance.now() + 200;

@@ -3881,8 +3881,9 @@ function v9ResolveLiveDrawingFromQuickBarAnchor() {
           ? resolveLiveDrawingInDmById(anchor.dm, anchor.drawingId)
           : null;
       if (onOwner) {
-        if (anchor.dm === focusDm) return onOwner;
-        if (v9DrawingIsPrimarySelection(anchor.dm, onOwner)) return onOwner;
+        if (onOwner.selected || anchor.dm === focusDm || v9DrawingIsPrimarySelection(anchor.dm, onOwner)) {
+          return onOwner;
+        }
       }
     }
     if (anchor.drawingId != null) {
@@ -3905,6 +3906,13 @@ function v9GetLiveSelectedDrawingForQuickBar() {
     if (v9MultichartGridApi()) {
       const onFocus = v9GetPrimarySelectedDrawingOnFocusedPanel();
       if (onFocus) return onFocus;
+      const anchored = v9ResolveLiveDrawingFromQuickBarAnchor();
+      if (anchored) return anchored;
+      const hostDm = typeof window !== "undefined" && window.chart ? window.chart.drawingManager : null;
+      if (hostDm) {
+        const onHost = v9ResolveSelectedDrawingOnDm(hostDm);
+        if (onHost) return onHost;
+      }
     }
     const scanned = getPrimarySelectedDrawingForActiveChart(null) || getSelectedDrawingAcrossCharts(null);
     const owned = v9ResolveSelectionOwnerDrawing(scanned);
@@ -15684,7 +15692,11 @@ const TalariaV8bLive = () => {
       || vwapSettOpen || closing.has("vwapsett")
       || vpSettOpen || closing.has("vpsett")
       || avSettOpen || closing.has("avsett")
-      || indSettOpen || closing.has("indsett");
+      || indSettOpen || closing.has("indsett")
+      || settingsOpen || closing.has("settings");
+    if (typeof window !== "undefined") {
+      window.__v9BlockChartShortcuts = active;
+    }
     if (!active || typeof document === "undefined") return;
     const svg = document.getElementById("drawingSvg");
     if (!svg) return;
@@ -15702,7 +15714,13 @@ const TalariaV8bLive = () => {
         if (dm && typeof dm._updateAxisZonePointerEvents === "function") dm._updateAxisZonePointerEvents();
       } catch (_) {}
     };
-  }, [tlSettOpen, txtSettOpen, vwapSettOpen, vpSettOpen, avSettOpen, indSettOpen, closing]);
+  }, [tlSettOpen, txtSettOpen, vwapSettOpen, vpSettOpen, avSettOpen, indSettOpen, settingsOpen, closing]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined") window.__v9BlockChartShortcuts = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!document.querySelector('link[href*="Exo+2"]')) {

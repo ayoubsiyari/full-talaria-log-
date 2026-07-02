@@ -2415,9 +2415,11 @@ export default function MultichartGrid({
         // Focus-tracking shim: cell A has pointerEvents:none (so the
         // parent chartWrapper captures pointer activity), so the cell's
         // own onMouseDownCapture never fires. Listen on #chartWrapper
-        // instead — clicking anywhere on the parent chart means the
-        // user is interacting with tile A.
+        // AND #drawingSvg — they are siblings under #chart-container;
+        // shape clicks hit the SVG overlay, not the wrapper, so focus
+        // must follow drawing hits or Panel A selection/quick bar breaks.
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
+        const drawingSvg = typeof document !== "undefined" ? document.getElementById("drawingSvg") : null;
         const onHostPointerDown = (ev) => {
             try {
                 if (ev && ev.target && typeof ev.target.closest === "function") {
@@ -2450,6 +2452,9 @@ export default function MultichartGrid({
         if (wrapper) {
             wrapper.addEventListener("pointerdown", onHostPointerDown, { capture: true });
         }
+        if (drawingSvg) {
+            drawingSvg.addEventListener("pointerdown", onHostPointerDown, { capture: true });
+        }
 
         return () => {
             if (raf) window.cancelAnimationFrame(raf);
@@ -2459,6 +2464,9 @@ export default function MultichartGrid({
             window.removeEventListener("scroll", onWin, { capture: true });
             if (wrapper) {
                 wrapper.removeEventListener("pointerdown", onHostPointerDown, { capture: true });
+            }
+            if (drawingSvg) {
+                drawingSvg.removeEventListener("pointerdown", onHostPointerDown, { capture: true });
             }
             clearHostSlot();
         };
@@ -4396,6 +4404,12 @@ export default function MultichartGrid({
          * previous panel's selection chrome.
          */
         function deselectDrawingsOnNonFocusedPanels(focusedId) {
+            try {
+                if (typeof window !== "undefined" && window.__v9DrawingSelectionGuardUntil
+                    && performance.now() < window.__v9DrawingSelectionGuardUntil) {
+                    return Promise.resolve();
+                }
+            } catch (_) {}
             const focus = focusedId || focusedPanelIdRef.current || HOST_PANEL_ID;
             const mgr = managerRef.current;
             const proms = [];

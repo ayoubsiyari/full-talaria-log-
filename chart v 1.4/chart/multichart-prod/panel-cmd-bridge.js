@@ -437,13 +437,17 @@
             return;
         }
 
-        // Mirror rejected the host playhead — almost always because this panel's
-        // loaded master does not yet reach `ts` (host stepped a full display-TF
-        // candle ahead; on a coarser-data / independent pair the forward bars
-        // aren't in yet). Instead of leaving the panel frozen on an old candle
-        // until the async fetch lands, advance it to the FURTHEST candle it
-        // already holds right now, then kick the catch-up fetch for the rest.
-        // This keeps every panel moving candle-by-candle through its own data.
+        // Same symbol + TF as host: parent tile A is authoritative — never
+        // advance this panel on its own stale master (that is what made B/C
+        // show different last candles and scrambled time axes vs A).
+        if (forceSamePairParentDataMirror(ch, args)) {
+            ch._mcCatchUpFails = 0;
+            ch._mcCatchUpCooldownUntil = 0;
+            return;
+        }
+
+        // Independent pair only: host playhead is ahead of this panel's loaded
+        // master — step to the furthest local bar while catch-up fetches.
         renderFurthestLoadedMirrorFrame(ch, rs, args);
 
         scheduleMirrorCatchUp(ch, ts, args);
@@ -774,15 +778,125 @@
         });
     }
 
-    /** Host tile A's current fileId, so mirror frames pick the shared vs independent path correctly. */
-    function readParentHostFileId() {
+    function readParentChart() {
         try {
-            var pc = global.parent && global.parent !== global ? global.parent.chart : null;
-            if (pc && pc.currentFileId != null && pc.currentFileId !== '') {
-                return String(pc.currentFileId);
-            }
+            return global.parent && global.parent !== global ? global.parent.chart : null;
         } catch (_) {}
         return null;
+    }
+
+    /** Host tile A's current fileId, so mirror frames pick the shared vs independent path correctly. */
+    function readParentHostFileId() {
+        var pc = readParentChart();
+        if (pc && pc.currentFileId != null && pc.currentFileId !== '') {
+            return String(pc.currentFileId);
+        }
+        return null;
+    }
+
+    function isSamePairAsHost(ch) {
+        var pc = readParentChart();
+        if (!pc || !ch) return false;
+        var hostFid = pc.currentFileId != null ? String(pc.currentFileId) : '';
+        var panelFid = ch.currentFileId != null ? String(ch.currentFileId) : '';
+        if (!hostFid || !panelFid || hostFid !== panelFid) return false;
+        var pTf = String(pc.currentTimeframe || '').toLowerCase().trim();
+        var mTf = String(ch.currentTimeframe || '').toLowerCase().trim();
+        return !pTf || !mTf || pTf === mTf;
+    }
+
+    /**
+     * Same-pair iframe: force B/C/D to paint exactly what host A already has.
+     * Used when the slow resample path rejects a frame (local master shorter than host)
+     * but the host's rendered arrays are the source of truth.
+     * @returns {boolean}
+     */
+    function forceSamePairParentDataMirror(ch, args) {
+        if (!isSamePairAsHost(ch)) return false;
+        var pc = readParentChart();
+        var rs = ch && ch.replaySystem;
+        if (!pc || !rs || !Array.isArray(pc.data) || !pc.data.length) return false;
+        if (typeof rs.applyMultichartMirrorFrame !== 'function') return false;
+
+        var payload = null;
+        if (args && typeof args === 'object' && Number.isFinite(Number(args.timestamp))) {
+            payload = Object.assign({}, args);
+        } else {
+            payload = readParentReplayMirrorPayload();
+        }
+        if (!payload) return false;
+        if (pc.currentFileId != null) payload.hostFileId = String(pc.currentFileId);
+        if (Number.isFinite(pc.offsetX)) payload.hostOffsetX = pc.offsetX;
+        var prs = pc.replaySystem;
+        if (prs && Number.isFinite(prs.currentIndex)) payload.currentIndex = prs.currentIndex;
+
+        var prevOffsetX = ch.offsetX;
+        var prevCandleWidth = ch.candleWidth;
+        var prevAutoScroll = rs.autoScrollEnabled;
+        rs.autoScrollEnabled = false;
+        var ok = false;
+        try {
+            ok = !!rs.applyMultichartMirrorFrame(payload);
+        } catch (_) {}
+        if (!ok) {
+            try {
+                ch.rawData = pc.rawData;
+                ch.data = pc.data;
+                if (prs) {
+                    var pts = Number(payload.timestamp);
+                    if (Number.isFinite(pts)) rs.replayTimestamp = pts;
+                    else if (Number.isFinite(Number(prs.replayTimestamp))) {
+                        rs.replayTimestamp = Number(prs.replayTimestamp);
+                    }
+                    if (Number.isFinite(prs.currentIndex)) {
+                        rs.currentIndex = prs.currentIndex;
+                    }
+                    if (payload.animatedCandle && Number(payload.tickProgress) > 0) {
+                        rs.tickProgress = Number(payload.tickProgress) || 0;
+                        rs.tickElapsedMs = Number(payload.tickElapsedMs) || 0;
+                        var ac = payload.animatedCandle;
+                        rs.animatingCandle = {
+                            t: Number(ac.t),
+                            open: Number(ac.o),
+                            high: Number(ac.h),
+                            low: Number(ac.l),
+                            close: Number(ac.c),
+                            volume: Number(ac.v) || 0,
+                        };
+                    } else {
+                        rs.tickProgress = 0;
+                        rs.tickElapsedMs = 0;
+                        rs.animatingCandle = null;
+                    }
+                }
+                if (!rs.userHasPanned) {
+                    if (Number.isFinite(payload.hostOffsetX)) {
+                        ch.offsetX = Number(payload.hostOffsetX);
+                    } else if (Number.isFinite(pc.offsetX)) {
+                        ch.offsetX = pc.offsetX;
+                    }
+                }
+                if (typeof ch.bumpDataVersion === 'function') ch.bumpDataVersion();
+                ch.renderPending = false;
+                if (typeof ch.render === 'function') ch.render();
+                ok = true;
+            } catch (_) {
+                ok = false;
+            }
+        }
+        rs.autoScrollEnabled = prevAutoScroll;
+        if (ok) {
+            var keepOffset = Number.isFinite(prevOffsetX);
+            if (rs.userHasPanned || ch._multichartVisibleRangeSyncOn) {
+                keepOffset = Number.isFinite(prevOffsetX);
+            } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
+                && ch._multichartViewportNeedsRecovery()) {
+                keepOffset = false;
+            }
+            if (keepOffset) ch.offsetX = prevOffsetX;
+            if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) ch.candleWidth = prevCandleWidth;
+        }
+        return ok;
     }
 
     /**
@@ -803,13 +917,25 @@
             var prevAutoScroll = rs.autoScrollEnabled;
             // Freeze auto-scroll for this single static frame so it can't re-fit the viewport.
             rs.autoScrollEnabled = false;
-            var ok = !!rs.applyMultichartMirrorFrame({
-                timestamp: ts,
-                isPlaying: false,
-                tickProgress: 0,
-                tickElapsedMs: 0,
-                hostFileId: readParentHostFileId(),
-            });
+            var ok = false;
+            var parentPayload = readParentReplayMirrorPayload();
+            if (parentPayload && Number(parentPayload.timestamp) === ts) {
+                parentPayload.isPlaying = false;
+                if (!parentPayload.hostFileId) parentPayload.hostFileId = readParentHostFileId();
+                ok = !!rs.applyMultichartMirrorFrame(parentPayload);
+            }
+            if (!ok) {
+                ok = !!rs.applyMultichartMirrorFrame({
+                    timestamp: ts,
+                    isPlaying: false,
+                    tickProgress: 0,
+                    tickElapsedMs: 0,
+                    hostFileId: readParentHostFileId(),
+                });
+            }
+            if (!ok) {
+                ok = forceSamePairParentDataMirror(ch, { timestamp: ts, isPlaying: false });
+            }
             rs.autoScrollEnabled = prevAutoScroll;
             if (ok) {
                 var keepOffset = Number.isFinite(prevOffsetX);
@@ -1893,7 +2019,9 @@
                     var rsPa = ch.replaySystem;
                     if (!rsPa || !rsPa.isActive) return;
                     // Freeze at host's partial tick (same frozen candle as tile A).
-                    applyParentReplayMirror(ch, readParentReplayTimestamp(), false);
+                    if (!applyParentReplayMirror(ch, readParentReplayTimestamp(), false)) {
+                        forceSamePairParentDataMirror(ch, null);
+                    }
                     drainPendingPlay(ch);
                     return;
                 }

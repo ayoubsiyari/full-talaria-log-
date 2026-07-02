@@ -1,0 +1,355 @@
+{
+  "generated_at": "2026-07-02T09:34:49.448443+00:00",
+  "seed": 20260701,
+  "t1_count": 10,
+  "t3_count": 10,
+  "mentor_headers": [
+    "id",
+    "symbol",
+    "direction",
+    "instrument_type",
+    "entry_price",
+    "exit_price",
+    "stop_loss",
+    "take_profit",
+    "high_price",
+    "low_price",
+    "entry_datetime",
+    "exit_datetime",
+    "trade_date",
+    "quantity",
+    "risk_amount",
+    "pnl",
+    "rr",
+    "commission",
+    "slippage",
+    "setup",
+    "strategy",
+    "notes",
+    "status",
+    "variables_json",
+    "entry_screenshot",
+    "exit_screenshot",
+    "var1",
+    "var2",
+    "var3",
+    "var4",
+    "var5"
+  ],
+  "adapted_columns": 140,
+  "import_hint": "Use mentor *_trading_journal_complete.xlsx with batch_adapt_mentor_data.py (backtest / live_personal).",
+  "files": [
+    {
+      "stem": "qa_gen_t1_eurusd_scalper",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 EURUSD Scalper BT",
+      "mentor_file": "qa_gen_t1_eurusd_scalper_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_eurusd_scalper-talaria-adapted.xlsx",
+      "trade_count": 321,
+      "with_bar_paths": 321,
+      "tickers": [
+        "EURUSD"
+      ],
+      "strategy_id": 57,
+      "start_balance": 10000
+    },
+    {
+      "stem": "qa_gen_t1_gbpusd_london",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 GBPUSD London BT",
+      "mentor_file": "qa_gen_t1_gbpusd_london_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_gbpusd_london-talaria-adapted.xlsx",
+      "trade_count": 280,
+      "with_bar_paths": 280,
+      "tickers": [
+        "GBPUSD"
+      ],
+      "strategy_id": 58,
+      "start_balance": 15000
+    },
+    {
+      "stem": "qa_gen_t1_xauusd_swing",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 XAUUSD Swing BT",
+      "mentor_file": "qa_gen_t1_xauusd_swing_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_xauusd_swing-talaria-adapted.xlsx",
+      "trade_count": 112,
+      "with_bar_paths": 112,
+      "tickers": [
+        "XAUUSD"
+      ],
+      "strategy_id": 64,
+      "start_balance": 25000
+    },
+    {
+      "stem": "qa_gen_t1_es_orb",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 ES Opening Range BT",
+      "mentor_file": "qa_gen_t1_es_orb_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_es_orb-talaria-adapted.xlsx",
+      "trade_count": 216,
+      "with_bar_paths": 216,
+      "tickers": [
+        "ES"
+      ],
+      "strategy_id": 60,
+      "start_balance": 50000
+    },
+    {
+      "stem": "qa_gen_t1_nq_vwap",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 NQ VWAP Reclaim BT",
+      "mentor_file": "qa_gen_t1_nq_vwap_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_nq_vwap-talaria-adapted.xlsx",
+      "trade_count": 227,
+      "with_bar_paths": 227,
+      "tickers": [
+        "NQ"
+      ],
+      "strategy_id": 59,
+      "start_balance": 50000
+    },
+    {
+      "stem": "qa_gen_t1_btc_liquidity",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 BTC Liquidity Sweep BT",
+      "mentor_file": "qa_gen_t1_btc_liquidity_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_btc_liquidity-talaria-adapted.xlsx",
+      "trade_count": 226,
+      "with_bar_paths": 226,
+      "tickers": [
+        "BTCUSD"
+      ],
+      "strategy_id": 62,
+      "start_balance": 10000
+    },
+    {
+      "stem": "qa_gen_t1_multipair_swing",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 Multi-Pair Swing BT",
+      "mentor_file": "qa_gen_t1_multipair_swing_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_multipair_swing-talaria-adapted.xlsx",
+      "trade_count": 366,
+      "with_bar_paths": 366,
+      "tickers": [
+        "EURUSD",
+        "GBPUSD",
+        "USDJPY"
+      ],
+      "strategy_id": 61,
+      "start_balance": 20000
+    },
+    {
+      "stem": "qa_gen_t1_usdjpy_fade",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 USDJPY Carry Fade BT",
+      "mentor_file": "qa_gen_t1_usdjpy_fade_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_usdjpy_fade-talaria-adapted.xlsx",
+      "trade_count": 216,
+      "with_bar_paths": 216,
+      "tickers": [
+        "USDJPY"
+      ],
+      "strategy_id": 61,
+      "start_balance": 12000
+    },
+    {
+      "stem": "qa_gen_t1_mixed_fx",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 Mixed FX Portfolio BT",
+      "mentor_file": "qa_gen_t1_mixed_fx_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_mixed_fx-talaria-adapted.xlsx",
+      "trade_count": 427,
+      "with_bar_paths": 427,
+      "tickers": [
+        "EURUSD",
+        "GBPUSD",
+        "AUDUSD",
+        "USDCHF"
+      ],
+      "strategy_id": 57,
+      "start_balance": 18000
+    },
+    {
+      "stem": "qa_gen_t1_nq_momentum",
+      "source_kind": "backtest",
+      "source_type": 1,
+      "session_name": "QA Gen T1 \u00b7 NQ 1m Momentum BT",
+      "mentor_file": "qa_gen_t1_nq_momentum_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t1_nq_momentum-talaria-adapted.xlsx",
+      "trade_count": 482,
+      "with_bar_paths": 482,
+      "tickers": [
+        "NQ"
+      ],
+      "strategy_id": 59,
+      "start_balance": 35000
+    },
+    {
+      "stem": "qa_gen_t3_oanda_personal",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 OANDA Personal Live",
+      "mentor_file": "qa_gen_t3_oanda_personal_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_oanda_personal-talaria-adapted.xlsx",
+      "trade_count": 294,
+      "with_bar_paths": 294,
+      "tickers": [
+        "EURUSD",
+        "GBPUSD"
+      ],
+      "strategy_id": 57,
+      "start_balance": 15000
+    },
+    {
+      "stem": "qa_gen_t3_mt5_swing",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 MT5 Swing Live",
+      "mentor_file": "qa_gen_t3_mt5_swing_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_mt5_swing-talaria-adapted.xlsx",
+      "trade_count": 149,
+      "with_bar_paths": 149,
+      "tickers": [
+        "EURUSD",
+        "USDJPY"
+      ],
+      "strategy_id": 61,
+      "start_balance": 22000
+    },
+    {
+      "stem": "qa_gen_t3_gold_live",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 Gold Session Live",
+      "mentor_file": "qa_gen_t3_gold_live_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_gold_live-talaria-adapted.xlsx",
+      "trade_count": 108,
+      "with_bar_paths": 108,
+      "tickers": [
+        "XAUUSD"
+      ],
+      "strategy_id": 64,
+      "start_balance": 30000
+    },
+    {
+      "stem": "qa_gen_t3_es_daytrade",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 ES Day Journal Live",
+      "mentor_file": "qa_gen_t3_es_daytrade_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_es_daytrade-talaria-adapted.xlsx",
+      "trade_count": 253,
+      "with_bar_paths": 253,
+      "tickers": [
+        "ES"
+      ],
+      "strategy_id": 60,
+      "start_balance": 45000
+    },
+    {
+      "stem": "qa_gen_t3_nq_scalp",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 NQ Scalping Live",
+      "mentor_file": "qa_gen_t3_nq_scalp_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_nq_scalp-talaria-adapted.xlsx",
+      "trade_count": 340,
+      "with_bar_paths": 340,
+      "tickers": [
+        "NQ"
+      ],
+      "strategy_id": 59,
+      "start_balance": 50000
+    },
+    {
+      "stem": "qa_gen_t3_crypto_perps",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 Crypto Perps Live",
+      "mentor_file": "qa_gen_t3_crypto_perps_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_crypto_perps-talaria-adapted.xlsx",
+      "trade_count": 183,
+      "with_bar_paths": 183,
+      "tickers": [
+        "BTCUSD"
+      ],
+      "strategy_id": 62,
+      "start_balance": 20000
+    },
+    {
+      "stem": "qa_gen_t3_multi_broker",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 Multi-Broker Aggregate Live",
+      "mentor_file": "qa_gen_t3_multi_broker_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_multi_broker-talaria-adapted.xlsx",
+      "trade_count": 346,
+      "with_bar_paths": 346,
+      "tickers": [
+        "EURUSD",
+        "GBPUSD",
+        "XAUUSD"
+      ],
+      "strategy_id": 58,
+      "start_balance": 28000
+    },
+    {
+      "stem": "qa_gen_t3_eur_scalp",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 EUR Scalping Live",
+      "mentor_file": "qa_gen_t3_eur_scalp_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_eur_scalp-talaria-adapted.xlsx",
+      "trade_count": 352,
+      "with_bar_paths": 352,
+      "tickers": [
+        "EURUSD"
+      ],
+      "strategy_id": 57,
+      "start_balance": 12000
+    },
+    {
+      "stem": "qa_gen_t3_indices_journal",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 Indices Day Journal Live",
+      "mentor_file": "qa_gen_t3_indices_journal_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_indices_journal-talaria-adapted.xlsx",
+      "trade_count": 236,
+      "with_bar_paths": 236,
+      "tickers": [
+        "ES",
+        "NQ"
+      ],
+      "strategy_id": 60,
+      "start_balance": 40000
+    },
+    {
+      "stem": "qa_gen_t3_discipline_tracker",
+      "source_kind": "live_personal",
+      "source_type": 3,
+      "session_name": "QA Gen T3 \u00b7 Discipline Tracker Live",
+      "mentor_file": "qa_gen_t3_discipline_tracker_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_discipline_tracker-talaria-adapted.xlsx",
+      "trade_count": 261,
+      "with_bar_paths": 261,
+      "tickers": [
+        "EURUSD",
+        "GBPUSD",
+        "USDJPY"
+      ],
+      "strategy_id": 58,
+      "start_balance": 18000
+    }
+  ]
+}

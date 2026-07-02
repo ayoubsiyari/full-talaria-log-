@@ -3,6 +3,27 @@
  * TradingView-style keyboard shortcuts for the chart
  */
 
+/**
+ * True while a V9/legacy settings panel is open — chart shortcuts (undo, zoom, etc.) must not run.
+ * React sets window.__v9BlockChartShortcuts; DOM selectors are a fallback for legacy modals.
+ */
+function isChartShortcutsBlockedBySettingsUi() {
+    if (typeof window !== 'undefined' && window.__v9BlockChartShortcuts) return true;
+    if (typeof document === 'undefined') return false;
+    try {
+        if (document.querySelector('.tv-settings-modal')) return true;
+        if (document.querySelector('[data-v9-ind-sett="1"]')) return true;
+        if (document.querySelector('#indicator-settings-modal')) return true;
+        const goTo = document.getElementById('goToSettingsModal');
+        if (goTo && goTo.classList && goTo.classList.contains('open')) return true;
+    } catch (_) { /* ignore */ }
+    return false;
+}
+
+if (typeof window !== 'undefined') {
+    window.isChartShortcutsBlockedBySettingsUi = isChartShortcutsBlockedBySettingsUi;
+}
+
 class KeyboardShortcutsManager {
     constructor(chart) {
         this.chart = chart;
@@ -459,6 +480,12 @@ class KeyboardShortcutsManager {
                 document.activeElement.blur();
                 e.preventDefault();
             }
+            return;
+        }
+
+        // Block chart shortcuts while a settings panel is open (undo, zoom, symbol search, etc.).
+        if (isChartShortcutsBlockedBySettingsUi()) {
+            if (e.key === 'Escape') return;
             return;
         }
         

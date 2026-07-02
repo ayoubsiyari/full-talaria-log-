@@ -16073,6 +16073,11 @@ class Chart {
         this.ctrlPressed = false;
         
         document.addEventListener('keydown', (e) => {
+            if (typeof isChartShortcutsBlockedBySettingsUi === 'function'
+                && isChartShortcutsBlockedBySettingsUi()) {
+                if (e.key !== 'Escape') return;
+                return;
+            }
             // Track CTRL key for tooltip showing
             if (e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
                 this.ctrlPressed = e.ctrlKey || e.metaKey;
