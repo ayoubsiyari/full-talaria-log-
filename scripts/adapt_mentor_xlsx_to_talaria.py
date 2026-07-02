@@ -837,6 +837,49 @@ def _apply_source_metadata(
         trade["propFirm"] = trade.get("propFirm") or "FTMO"
 
 
+def _resolve_row_strategy(
+    row: dict[str, Any],
+    default_id: int,
+    default_label: str,
+) -> tuple[int, str]:
+    raw_id = row.get("strategy_id") if row.get("strategy_id") is not None else row.get("strategyId")
+    sid = default_id
+    if raw_id not in (None, ""):
+        try:
+            sid = int(raw_id)
+        except (TypeError, ValueError):
+            sid = default_id
+    label = str(
+        row.get("strategy_name")
+        or row.get("strategyName")
+        or row.get("setup")
+        or row.get("strategy")
+        or default_label
+    ).strip() or default_label
+    return sid, label
+
+
+def _post_variables_for_row(row: dict[str, Any], pnl: float) -> list[dict[str, Any]]:
+    """Strategy-specific post variables when mentor row declares a schema hint."""
+    schema = str(row.get("post_variables_schema") or row.get("strategy_schema") or "").strip().lower()
+    if schema == "vwap_reclaim":
+        return [
+            {"id": "trade_grade", "name": "trade_grade", "vtype": "multi", "value": "A" if pnl > 0 else "C"},
+            {"id": "lesson_learned", "name": "lesson_learned", "vtype": "yesno", "value": "Yes" if pnl < 0 else "No"},
+        ]
+    if schema == "fib_swing":
+        return [
+            {"id": "fib_respect", "name": "fib_respect", "vtype": "yesno", "value": "Yes" if pnl >= 0 else "No"},
+            {"id": "swing_quality", "name": "swing_quality", "vtype": "multi", "value": "clean" if pnl > 0 else "choppy"},
+        ]
+    if schema == "liquidity_fvg":
+        return [
+            {"id": "fvg_fill", "name": "fvg_fill", "vtype": "yesno", "value": "Yes" if pnl > 0 else "No"},
+            {"id": "sweep_valid", "name": "sweep_valid", "vtype": "multi", "value": "valid" if pnl >= 0 else "weak"},
+        ]
+    return _post_variables(pnl)
+
+
 def convert_mentor_row(
     row: dict[str, Any],
     *,
@@ -861,6 +904,8 @@ def convert_mentor_row(
     low = _row_price(row, "low_price", "lowestPrice", "low")
     if None in (entry, exit_px, stop, target):
         raise ValueError("missing required prices")
+
+    row_strategy_id, row_strategy_label = _resolve_row_strategy(row, strategy_id, strategy_label)
 
     ticker = _infer_symbol(row.get("symbol"), float(entry))
     inst = _instrument(ticker)
@@ -908,7 +953,7 @@ def convert_mentor_row(
     plan_adherence = _infer_plan_adherence(row)
 
     pre_vars = _parse_mentor_variables(row)
-    post_vars = _post_variables(pnl)
+    post_vars = _post_variables_for_row(row, pnl)
     pre_tags = _tags_from_strategy_variables(pre_vars)
     post_tag = "Win" if pnl > 0 else "Loss" if pnl < 0 else "BE"
     post_tags = _tags_from_strategy_variables(post_vars) + [post_tag]
@@ -957,7 +1002,9 @@ def convert_mentor_row(
         "id": numeric_id,
         "n": index,
         "sourceSessionName": source_name,
-        "setup": strategy_label,
+        "setup": row_strategy_label,
+        "strategy_id": row_strategy_id,
+        "strategyName": row_strategy_label,
         "symbol": ticker,
         "ticker": ticker,
         "direction": direction,
@@ -1090,7 +1137,7 @@ def convert_mentor_row(
         "splitGroupId": None,
         "splitIndex": None,
         "splitTotal": None,
-        "tag": strategy_label,
+        "tag": row_strategy_label,
         "total_bars_held": len(path["bar_close_r"]),
         "trail_sl_path": [],
         "v9PostTradeTags": post_tags,
@@ -1103,7 +1150,7 @@ def convert_mentor_row(
         "originSource": "mentor_import",
         "session_mode": "standard_backtest",
         "category_sheet": "Standard Backtest",
-        "strategy_id": strategy_id,
+        "strategy_id": row_strategy_id,
         "entries": [{"price": entry, "qty": qty, "quantity": qty}],
         "targets": [{"price": target, "qty": qty, "quantity": qty}],
         "exits": [{"price": exit_px, "qty": qty, "quantity": qty}],

@@ -1,0 +1,81 @@
+{
+  "generated_at": "2026-07-02T14:48:40.864192+00:00",
+  "seed": 20260704,
+  "profile": "multistrategy_t3",
+  "pipeline": "mentor 32-col + adapted 142-col (includes strategy_id, strategyName)",
+  "files": [
+    {
+      "stem": "qa_gen_t3_multistrat_fx_indices",
+      "session_name": "QA Gen T3 \u00b7 Multi-Strategy FX + Indices Live",
+      "mentor_file": "qa_gen_t3_multistrat_fx_indices_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_multistrat_fx_indices-talaria-adapted.xlsx",
+      "trade_count": 138,
+      "strategies": [
+        {
+          "strategy_id": 58,
+          "strategy_name": "London Open Liquidity Scalp",
+          "variable_keys": [
+            "dol",
+            "setup_tag",
+            "session_mood"
+          ],
+          "trade_count": 73
+        },
+        {
+          "strategy_id": 59,
+          "strategy_name": "VWAP Reclaim Intraday",
+          "variable_keys": [
+            "bias",
+            "entry_model",
+            "htf_confluence"
+          ],
+          "trade_count": 65
+        }
+      ],
+      "pnl_summary": {
+        "net_pnl": 24174.31,
+        "wins": 79,
+        "losses": 51,
+        "win_rate_actual": 0.5725
+      },
+      "profile": "multistrategy_t3"
+    },
+    {
+      "stem": "qa_gen_t3_multistrat_gold_crypto",
+      "session_name": "QA Gen T3 \u00b7 Multi-Strategy Gold + Crypto Live",
+      "mentor_file": "qa_gen_t3_multistrat_gold_crypto_trading_journal_complete.xlsx",
+      "adapted_file": "qa_gen_t3_multistrat_gold_crypto-talaria-adapted.xlsx",
+      "trade_count": 94,
+      "strategies": [
+        {
+          "strategy_id": 64,
+          "strategy_name": "Fibonacci Confluence Swing",
+          "variable_keys": [
+            "fib_zone",
+            "confluence_count",
+            "dol"
+          ],
+          "trade_count": 45
+        },
+        {
+          "strategy_id": 62,
+          "strategy_name": "Liquidity Sweep + FVG",
+          "variable_keys": [
+            "sweep_type",
+            "fvg_quality",
+            "session_mood"
+          ],
+          "trade_count": 49
+        }
+      ],
+      "pnl_summary": {
+        "net_pnl": 6348.83,
+        "wins": 43,
+        "losses": 40,
+        "win_rate_actual": 0.4574
+      },
+      "profile": "multistrategy_t3"
+    }
+  ],
+  "verification_note": "Filter by strategy_id/strategyName; tag namespaces differ per strategy (London: dol/setup_tag/session_mood; VWAP: bias/entry_model/htf_confluence; etc.)"
+}
