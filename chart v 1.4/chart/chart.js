@@ -18301,11 +18301,49 @@ class Chart {
      *  - flips the OHLC info block into the "tf-loading-active" CSS state so the
      *    3-dot loading indicator next to the symbol becomes visible.
      */
+    _liftDataSwitchFreezeForAxisInteraction(ms = 2500) {
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        this._dataSwitchAxisInteractionUntil = Math.max(
+            this._dataSwitchAxisInteractionUntil || 0,
+            now + (Number.isFinite(ms) ? ms : 2500),
+        );
+        try { this._removeFreezeOverlay(); } catch (_e) { /* ignore */ }
+    }
+
+    /** Allow price/time axis drag + wheel to repaint while TF/pair data is still loading. */
+    _canBypassDataSwitchRenderFreeze() {
+        if (!(this._timeframeSwitching || this._pairSwitchLoading)) return false;
+        const d = this.drag;
+        if (d && d.active && (d.type === 'priceAxis' || d.type === 'timeAxis' || d.type === 'separatePanelAxis')) {
+            return true;
+        }
+        if (typeof this._isPriceAxisZoomDragging === 'function' && this._isPriceAxisZoomDragging()) {
+            return true;
+        }
+        if (typeof this._isTimeAxisZoomDragging === 'function' && this._isTimeAxisZoomDragging()) {
+            return true;
+        }
+        const until = this._dataSwitchAxisInteractionUntil;
+        if (Number.isFinite(until)) {
+            const now = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            if (now < until) return true;
+        }
+        return false;
+    }
+
     _beginTimeframeSwitching(fromTf, toTf) {
-        // Drop any in-flight pan snap/transform — stale offsets make drawings snap after TF switch.
-        if (this.drag) {
-            this.drag.active = false;
-            this.drag.type = null;
+        this._tfSwitchPreservePriceLock = !!(this.priceScale && this.priceScale.locked);
+        // Cancel pan-only drags — keep price/time axis drags so Y scale stays interactive.
+        if (this.drag && this.drag.active) {
+            const t = this.drag.type;
+            if (t === 'pan' || t === 'separatePanelResize' || t === 'ctrlMarqueeSelect' || t === 'boxZoom') {
+                this.drag.active = false;
+                this.drag.type = null;
+            }
         }
         this._stopChartPanRenderLoop();
         this._cancelChartPanFrame();
@@ -18345,6 +18383,11 @@ class Chart {
         this._timeframeFetchAbort = null;
         this._switchingFromTimeframe = null;
         this._switchingToTimeframe = null;
+        this._dataSwitchAxisInteractionUntil = null;
+        if (this.priceScale && !this._tfSwitchPreservePriceLock) {
+            this.priceScale.locked = false;
+        }
+        this._tfSwitchPreservePriceLock = undefined;
         try { this._hideTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
         if (!wasSwitching) {
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
@@ -22205,7 +22248,10 @@ class Chart {
         // which look like the chart "broke" until the user double-clicks the time axis.
         // setTimeframe() / _loadTimeframeFromServer() lift this flag once the new bars are
         // committed and the currentTimeframe matches the destination TF.
-        if (this._timeframeSwitching || this._pairSwitchLoading) return;
+        if ((this._timeframeSwitching || this._pairSwitchLoading)
+            && !this._canBypassDataSwitchRenderFreeze()) {
+            return;
+        }
 
         this._frameDisplaySeries = null;
         
@@ -27431,6 +27477,9 @@ class Chart {
 
             // ─── Price axis → vertical (price) zoom only (Ctrl/Meta disabled) ───
             if (this.cursor.mode === 'priceAxis') {
+                if (this._timeframeSwitching || this._pairSwitchLoading) {
+                    this._liftDataSwitchFreezeForAxisInteraction();
+                }
                 // When price scale is locked (after double-click), ignore wheel vertical zoom
                 if (priceLocked) {
                     return;
@@ -27769,6 +27818,9 @@ class Chart {
                 this._lockDragCursor('ns-resize');
                 this._beginChartDragPointerTracking(e);
             } else if (mode === 'priceAxis') {
+                if (this._timeframeSwitching || this._pairSwitchLoading) {
+                    this._liftDataSwitchFreezeForAxisInteraction();
+                }
                 this.drag.type = 'priceAxis';
                 const wasAutoScale = this.autoScale;
                 this.autoScale = false;
@@ -27787,6 +27839,9 @@ class Chart {
                 this._lockDragCursor('ns-resize');
                 this._beginChartDragPointerTracking(e);
             } else if (mode === 'timeAxis') {
+                if (this._timeframeSwitching || this._pairSwitchLoading) {
+                    this._liftDataSwitchFreezeForAxisInteraction();
+                }
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
                 this._cachedInteractionTimeTicks = this._timeTicks;

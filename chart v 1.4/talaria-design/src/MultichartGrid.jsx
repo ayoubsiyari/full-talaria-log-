@@ -1808,7 +1808,7 @@ export default function MultichartGrid({
 
             const manager = new window.MultichartManager({
                 container: containerRef.current,
-                silentPanelBoot: true,
+                silentPanelBoot: false,
                 deferInitialRangeSync: true,
                 iframeSrcBuilder: function (cfg) {
                     return buildIframeSrc({
