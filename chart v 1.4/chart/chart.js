@@ -15583,7 +15583,29 @@ class Chart {
             if (!(spacing > 0)) return;
             const i0 = Math.max(0, -Math.floor(this.offsetX / spacing));
             const i1 = Math.min(this.data.length, i0 + Math.ceil(plotW / spacing));
-            if (i1 > i0) return;
+            // This runs only after a render drew NOTHING despite having data.
+            // i1 > i0 means bars ARE in the horizontal window — but on an
+            // independent replay panel the price (Y) scale can be stale, so every
+            // bar is culled vertically (chart.js candle draw _isOhlcVerticallyInPlot)
+            // and nothing paints. The horizontal-only check would wrongly bail and
+            // leave the panel flooding "No candles drawn" every frame. Only bail
+            // when at least one horizontally-present bar is ALSO vertically in-plot;
+            // otherwise fall through to the recenter below, which resets the price
+            // scale (resetPriceScale: true) and fixes the empty render.
+            if (i1 > i0) {
+                let anyVerticallyVisible = true;
+                if (typeof this._isOhlcVerticallyInPlot === 'function') {
+                    anyVerticallyVisible = false;
+                    for (let i = i0; i < i1; i++) {
+                        const d = this.data[i];
+                        if (d && this._isOhlcVerticallyInPlot(d)) {
+                            anyVerticallyVisible = true;
+                            break;
+                        }
+                    }
+                }
+                if (anyVerticallyVisible) return;
+            }
             this._chartViewRestored = false;
             const rs = this.replaySystem;
             if (this.isBacktestMode && rs) {

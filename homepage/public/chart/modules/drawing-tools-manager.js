@@ -2194,8 +2194,25 @@ class DrawingToolsManager {
                     const [ctrlMx, ctrlMy] = this._eventCanvasLocalXY(event);
                     const ctrlHits = this.findDrawingsAtPoint(ctrlMx, ctrlMy, { includeVolumeProfileBodyHit: true });
                     if (!ctrlHits || ctrlHits.length === 0) {
+                        // Empty space with Ctrl → let chart.js Ctrl+marquee handle the drag-select.
                         return;
                     }
+                    // Ctrl+click on a shape → toggle it in/out of the multi-selection
+                    // (add shapes one-by-one). The canvas is the top hit-test surface, so
+                    // without this the additive select never fires and the shape stays
+                    // unselected. _tryStartCtrlSelectionMove above already handles Ctrl+drag
+                    // to move an existing multi-selection.
+                    const ctrlBest = ctrlHits.find((d) => d && !d.locked) || null;
+                    if (ctrlBest) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (typeof event.stopImmediatePropagation === 'function') {
+                            event.stopImmediatePropagation();
+                        }
+                        this.selectDrawing(ctrlBest, true);
+                        suppressNextCanvasClick = true;
+                    }
+                    return;
                 }
 
                 // Make drag-start use the same geometric hover hit zone, even when the
@@ -12724,15 +12741,15 @@ class DrawingToolsManager {
         if (rectWidth < 3 && rectHeight < 3) return;
         if (this._directMoveMoveHandler) return;
 
-        const selectedDrawings = [];
+        // Ctrl+marquee is additive: union the drawings inside the rectangle with the
+        // current selection so a drag-select composes with one-by-one Ctrl+clicks.
+        // Skip drawings that are already selected so the union never toggles them off.
         this.drawings.forEach((drawing) => {
-            if (this.isDrawingInRectangle(drawing, rectX, rectY, rectWidth, rectHeight)) {
-                selectedDrawings.push(drawing);
-            }
-        });
-
-        this.deselectAll({ forSelectionChange: true });
-        selectedDrawings.forEach((drawing) => {
+            if (!drawing || drawing.locked) return;
+            if (!this.isDrawingInRectangle(drawing, rectX, rectY, rectWidth, rectHeight)) return;
+            const alreadySelected = Array.isArray(this.selectedDrawings)
+                && this.selectedDrawings.indexOf(drawing) > -1;
+            if (alreadySelected) return;
             this.selectDrawing(drawing, true);
         });
     }
