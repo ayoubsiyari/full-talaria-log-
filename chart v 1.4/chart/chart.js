@@ -21240,23 +21240,114 @@ class Chart {
     }
 
     _releasePanPointerCapture() {
-        if (this._panPointerCaptureId == null || !this.canvas) return;
-        try {
-            if (typeof this.canvas.releasePointerCapture === 'function') {
-                this.canvas.releasePointerCapture(this._panPointerCaptureId);
-            }
-        } catch (_e) {}
-        this._panPointerCaptureId = null;
+        this._releaseDragPointerCapture();
+    }
+
+    _releaseDragPointerCapture() {
+        if (this._panPointerCaptureId != null && this.canvas) {
+            try {
+                if (typeof this.canvas.releasePointerCapture === 'function') {
+                    this.canvas.releasePointerCapture(this._panPointerCaptureId);
+                }
+            } catch (_e) {}
+            this._panPointerCaptureId = null;
+        }
+        const zoneEl = this._axisZonePointerCaptureEl;
+        const zonePid = this._axisZonePointerCaptureId;
+        if (zoneEl != null && zonePid != null) {
+            try {
+                if (typeof zoneEl.releasePointerCapture === 'function') {
+                    zoneEl.releasePointerCapture(zonePid);
+                }
+            } catch (_e2) {}
+        }
+        this._axisZonePointerCaptureEl = null;
+        this._axisZonePointerCaptureId = null;
     }
 
     _tryCapturePanPointer(e) {
-        this._releasePanPointerCapture();
-        if (!this.canvas || !e || typeof e.pointerId !== 'number') return;
-        if (typeof this.canvas.setPointerCapture !== 'function') return;
+        this._tryCaptureDragPointer(e);
+    }
+
+    _tryCaptureDragPointer(e) {
+        this._releaseDragPointerCapture();
+        if (!e || typeof e.pointerId !== 'number') return;
+        const target = (e.currentTarget && e.currentTarget !== this.canvas)
+            ? e.currentTarget
+            : this.canvas;
+        if (!target || typeof target.setPointerCapture !== 'function') return;
         try {
-            this.canvas.setPointerCapture(e.pointerId);
-            this._panPointerCaptureId = e.pointerId;
+            target.setPointerCapture(e.pointerId);
+            if (target === this.canvas) {
+                this._panPointerCaptureId = e.pointerId;
+            } else {
+                this._axisZonePointerCaptureEl = target;
+                this._axisZonePointerCaptureId = e.pointerId;
+            }
         } catch (_e) {}
+    }
+
+    _isChartDragButtonReleased(e) {
+        return !!(e && typeof e.buttons === 'number' && e.buttons === 0);
+    }
+
+    _installDragEndGuard() {
+        if (this._dragEndGuardInstalled) return;
+        this._dragEndGuardInstalled = true;
+        const self = this;
+        const end = (ev) => {
+            if (!self.drag?.active && !self.boxZoom?.active && !(self.ctrlMarqueeSelect && self.ctrlMarqueeSelect.active)) {
+                self._removeDragEndGuard();
+                return;
+            }
+            if ((ev.type === 'mousemove' || ev.type === 'pointermove') && !self._isChartDragButtonReleased(ev)) {
+                return;
+            }
+            if (typeof self._onChartDragMouseUp === 'function') {
+                self._onChartDragMouseUp(ev);
+            }
+        };
+        this._dragEndGuardHandler = end;
+        const cap = true;
+        window.addEventListener('mouseup', end, cap);
+        window.addEventListener('pointerup', end, cap);
+        window.addEventListener('pointercancel', end, cap);
+        window.addEventListener('mousemove', end, cap);
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.addEventListener('mouseup', end, cap);
+                window.parent.addEventListener('pointerup', end, cap);
+                window.parent.addEventListener('pointercancel', end, cap);
+                window.parent.addEventListener('mousemove', end, cap);
+                this._dragEndGuardOnParent = true;
+            }
+        } catch (_guardParent) { /* cross-origin */ }
+    }
+
+    _removeDragEndGuard() {
+        if (!this._dragEndGuardInstalled || !this._dragEndGuardHandler) return;
+        const end = this._dragEndGuardHandler;
+        const cap = true;
+        window.removeEventListener('mouseup', end, cap);
+        window.removeEventListener('pointerup', end, cap);
+        window.removeEventListener('pointercancel', end, cap);
+        window.removeEventListener('mousemove', end, cap);
+        try {
+            if (this._dragEndGuardOnParent && window.parent && window.parent !== window) {
+                window.parent.removeEventListener('mouseup', end, cap);
+                window.parent.removeEventListener('pointerup', end, cap);
+                window.parent.removeEventListener('pointercancel', end, cap);
+                window.parent.removeEventListener('mousemove', end, cap);
+            }
+        } catch (_guardParent) { /* cross-origin */ }
+        this._dragEndGuardInstalled = false;
+        this._dragEndGuardOnParent = false;
+        this._dragEndGuardHandler = null;
+    }
+
+    _beginChartDragPointerTracking(e) {
+        this._tryCaptureDragPointer(e);
+        this._installDragEndGuard();
     }
 
     /** Synthesize a mouse event on the canvas so touch/pen reuse the mouse drag pipeline. */
@@ -27657,6 +27748,7 @@ class Chart {
                 this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
                 this.isZooming = true;
                 this._lockDragCursor('ns-resize');
+                this._beginChartDragPointerTracking(e);
             } else if (mode === 'priceAxis') {
                 this.drag.type = 'priceAxis';
                 const wasAutoScale = this.autoScale;
@@ -27674,6 +27766,7 @@ class Chart {
                 }
                 this._cachedInteractionTimeTicks = this._timeTicks;
                 this._lockDragCursor('ns-resize');
+                this._beginChartDragPointerTracking(e);
             } else if (mode === 'timeAxis') {
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
@@ -27682,6 +27775,7 @@ class Chart {
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
+                this._beginChartDragPointerTracking(e);
             } else if (mode === 'separatePanelPlot' && this.cursor.separatePanelSlot) {
                 if (typeof this._beginSeparatePanelLineDrag === 'function'
                     && this._beginSeparatePanelLineDrag(e, this.cursor.separatePanelSlot)) {
@@ -27700,6 +27794,7 @@ class Chart {
                     this.drag.separatePanelIndicator = null;
                 }
                 this._tryCapturePanPointer(e);
+                this._installDragEndGuard();
                 this._snapshotPanDrawingsLayer();
                 this._lockDragCursor(mode === 'separatePanelPlot' ? 'ns-resize' : this._panDragCursorStyle());
                 
@@ -27728,6 +27823,10 @@ class Chart {
             // Resize-handle hover is handled below; avoid full chart paints on every mousemove over panels.
             
             if (this.drag.active) {
+                if (this._isChartDragButtonReleased(e)) {
+                    handleMouseUp(e);
+                    return;
+                }
                 const dm = this.drawingManager;
                 if (
                     dm &&
@@ -28158,17 +28257,23 @@ class Chart {
                 this._setChartSurfaceCursor(this.getCurrentCursorStyle());
             }
 
+            this._removeDragEndGuard();
+            this._releaseDragPointerCapture();
+
             if (wasDragging && dragType === 'pan') {
                 if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
                 if (typeof this.updateTooltip === 'function') this.updateTooltip(e);
             }
         };
+
+        this._onChartDragMouseUp = handleMouseUp;
         
         this.canvas.addEventListener('mouseup', handleMouseUp);
         
-        // Add document-level mouseup to catch releases outside canvas/axis zones
-        // This prevents stuck drag state when mouse is released outside the chart area
-        document.addEventListener('mouseup', handleMouseUp);
+        // Catch releases outside canvas/axis zones (including over sibling multichart iframes).
+        window.addEventListener('mouseup', handleMouseUp, true);
+        window.addEventListener('pointerup', handleMouseUp, true);
+        window.addEventListener('pointercancel', handleMouseUp, true);
 
         // Touch/pen → same drag pipeline as mouse (single-finger pan + axis drag)
         this._setupTouchPointerBridge();
@@ -28179,6 +28284,14 @@ class Chart {
             // TradingView-like behavior: if user is still holding mouse button while
             // leaving the chart, keep drag state alive so re-entering continues the drag.
             if (this.drag.active && hasPressedButton) {
+                this.hideTooltip();
+                if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
+                return;
+            }
+
+            // Button already released (e.g. mouseup happened outside canvas) — finish drag cleanly.
+            if (this.drag.active && typeof this._onChartDragMouseUp === 'function') {
+                this._onChartDragMouseUp(e);
                 this.hideTooltip();
                 if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
                 return;
@@ -28230,6 +28343,12 @@ class Chart {
         // element owns the event (canvas, SVG overlay, resize handles, etc.).
         // This is the single source of truth for crosshair position.
         document.addEventListener('mousemove', (e) => {
+            if (this.drag?.active && this._isChartDragButtonReleased(e)) {
+                if (typeof this._onChartDragMouseUp === 'function') {
+                    this._onChartDragMouseUp(e);
+                }
+                return;
+            }
             // Keep right-drag box-zoom tracking in capture phase so we don't miss
             // movement when another layer consumes bubble-phase mousemove events.
             if (this.drag && this.drag.active && this.drag.type === 'boxZoom' && this.boxZoom && this.boxZoom.active && this.canvas) {
@@ -33725,10 +33844,34 @@ async function _talariaInitializeChart() {
             e.preventDefault();
             if (rawType === 'pointerdown' && typeof e.pointerId === 'number') {
                 chartInstance._activeTouchPointerId = e.pointerId;
+                try {
+                    if (e.currentTarget && typeof e.currentTarget.setPointerCapture === 'function') {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        chartInstance._axisZonePointerCaptureEl = e.currentTarget;
+                        chartInstance._axisZonePointerCaptureId = e.pointerId;
+                    }
+                } catch (_) {}
             } else if ((rawType === 'pointerup' || rawType === 'pointercancel')
                 && chartInstance._activeTouchPointerId === e.pointerId) {
                 chartInstance._activeTouchPointerId = null;
             }
+        } else if (rawType === 'pointerdown' && typeof e.pointerId === 'number') {
+            try {
+                if (e.currentTarget && typeof e.currentTarget.setPointerCapture === 'function') {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    chartInstance._axisZonePointerCaptureEl = e.currentTarget;
+                    chartInstance._axisZonePointerCaptureId = e.pointerId;
+                }
+            } catch (_) {}
+        }
+
+        if (mouseType === 'mousedown' && typeof chartInstance._installDragEndGuard === 'function') {
+            // Axis zones sit outside #chartCanvas — ensure release-outside still ends the drag.
+            setTimeout(() => {
+                if (chartInstance.drag?.active) {
+                    chartInstance._installDragEndGuard();
+                }
+            }, 0);
         }
 
         if (!chartCanvas) return;
@@ -33736,7 +33879,7 @@ async function _talariaInitializeChart() {
         // Forward the event to canvas
         const button = typeof e.button === 'number' ? e.button : 0;
         const buttons = typeof e.buttons === 'number' ? e.buttons : (mouseType === 'mouseup' ? 0 : 1);
-        chartCanvas.dispatchEvent(new MouseEvent(mouseType, {
+        const mouseInit = {
             bubbles: true,
             cancelable: true,
             clientX: e.clientX,
@@ -33747,7 +33890,11 @@ async function _talariaInitializeChart() {
             ctrlKey: e.ctrlKey,
             altKey: e.altKey,
             metaKey: e.metaKey
-        }));
+        };
+        if (typeof e.pointerId === 'number') {
+            mouseInit.pointerId = e.pointerId;
+        }
+        chartCanvas.dispatchEvent(new MouseEvent(mouseType, mouseInit));
     };
 
     const axisForwardTypes = [

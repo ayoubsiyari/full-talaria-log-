@@ -9734,6 +9734,9 @@ Chart.prototype._beginSeparatePanelResizeDrag = function(startEvent, handle) {
     this.drag.lastX = startEvent.clientX;
     this.drag.lastY = startEvent.clientY;
     if (typeof this._lockDragCursor === 'function') this._lockDragCursor('row-resize');
+    if (typeof this._beginChartDragPointerTracking === 'function') {
+        this._beginChartDragPointerTracking(startEvent);
+    }
 
     const self = this;
     self._separatePanelResizeDragActive = true;

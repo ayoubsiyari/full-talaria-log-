@@ -3645,6 +3645,16 @@ function enumerateV9DrawingManagersActiveFirst() {
   const all = enumerateV9DrawingManagersFromWindow();
   if (typeof window === "undefined" || all.length <= 1) return all;
   try {
+    const grid = v9MultichartGridApi();
+    if (grid && typeof grid.getFocusedPanelId === "function" && typeof grid.getChartForPanel === "function") {
+      const fid = grid.getFocusedPanelId();
+      const ch = fid ? grid.getChartForPanel(fid) : null;
+      const dmFocus = ch && ch.drawingManager;
+      if (dmFocus) {
+        const rest = all.filter((dm) => dm !== dmFocus);
+        return [dmFocus, ...rest];
+      }
+    }
     const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : null;
     const dmActive = ac && ac.drawingManager;
     if (!dmActive) return all;
@@ -3736,21 +3746,15 @@ function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
   }
   if (typeof window === "undefined") return null;
   try {
+    if (v9MultichartGridApi()) {
+      const onFocus = v9GetPrimarySelectedDrawingOnFocusedPanel();
+      if (onFocus) return onFocus;
+    }
     const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : null;
     const dm = ac && ac.drawingManager;
     if (dm) {
-      if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-        const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
-        if (live) return live;
-      }
-      if (dm.selectedDrawing) {
-        const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
-        if (live) return live;
-      }
-      if (Array.isArray(dm.drawings)) {
-        const sel = dm.drawings.filter((x) => x && x.selected);
-        if (sel.length) return sel[0];
-      }
+      const live = v9ResolveSelectedDrawingOnDm(dm);
+      if (live) return live;
     }
   } catch (_) {}
   return getSelectedDrawingAcrossCharts(null);
@@ -3758,6 +3762,43 @@ function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
 
 /** Last shape that opened the V9 quick bar — multichart only (panel A focus races). */
 const v9QuickBarSelectionAnchorRef = { current: null };
+
+function v9GetFocusedPanelDrawingManager() {
+  try {
+    const grid = v9MultichartGridApi();
+    if (!grid || typeof grid.getFocusedPanelId !== "function" || typeof grid.getChartForPanel !== "function") {
+      return null;
+    }
+    const fid = grid.getFocusedPanelId();
+    if (!fid) return null;
+    const ch = grid.getChartForPanel(fid);
+    return (ch && ch.drawingManager) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Resolve the primary selected drawing on the focused multichart tile's drawingManager. */
+function v9ResolveSelectedDrawingOnDm(dm) {
+  if (!dm) return null;
+  if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+    for (let i = dm.selectedDrawings.length - 1; i >= 0; i -= 1) {
+      const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[i]);
+      if (live) return live;
+    }
+  }
+  if (dm.selectedDrawing) {
+    const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
+    if (live) return live;
+  }
+  if (Array.isArray(dm.drawings)) {
+    for (let i = dm.drawings.length - 1; i >= 0; i -= 1) {
+      const d = dm.drawings[i];
+      if (d && d.selected) return d;
+    }
+  }
+  return null;
+}
 
 function v9DrawingIsPrimarySelection(dm, drawing) {
   if (!dm || !drawing) return false;
@@ -3767,7 +3808,7 @@ function v9DrawingIsPrimarySelection(dm, drawing) {
       if (d === drawing) return true;
       if (drawing.id != null && d.id === drawing.id) return true;
     }
-    return false;
+    // Do not return false here — selectedDrawings can lag while drawing.selected is already true.
   }
   if (dm.selectedDrawing) {
     if (dm.selectedDrawing === drawing) return true;
@@ -3776,6 +3817,8 @@ function v9DrawingIsPrimarySelection(dm, drawing) {
   // Synced copies share ids across tiles — only the focused chart's visual select counts.
   try {
     if (drawing.selected && resolveLiveDrawingInDm(dm, drawing)) {
+      const focusDm = v9GetFocusedPanelDrawingManager();
+      if (focusDm && focusDm === dm) return true;
       const grid = v9MultichartGridApi();
       if (grid && typeof grid.getFocusedPanelId === "function" && typeof grid.getChartForPanel === "function") {
         const fid = grid.getFocusedPanelId();
@@ -3789,24 +3832,9 @@ function v9DrawingIsPrimarySelection(dm, drawing) {
 
 /** Primary selection on the focused multichart tile (panel A host or iframe). */
 function v9GetPrimarySelectedDrawingOnFocusedPanel() {
-  const grid = v9MultichartGridApi();
-  if (!grid || typeof grid.getFocusedPanelId !== "function" || typeof grid.getChartForPanel !== "function") {
-    return null;
-  }
-  const fid = grid.getFocusedPanelId();
-  if (!fid) return null;
-  const ch = grid.getChartForPanel(fid);
-  const dm = ch && ch.drawingManager;
+  const dm = v9GetFocusedPanelDrawingManager();
   if (!dm) return null;
-  if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
-    const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
-    if (live && v9DrawingIsPrimarySelection(dm, live)) return live;
-  }
-  if (dm.selectedDrawing) {
-    const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
-    if (live && v9DrawingIsPrimarySelection(dm, live)) return live;
-  }
-  return null;
+  return v9ResolveSelectedDrawingOnDm(dm);
 }
 
 function v9ResolveSelectionOwnerDrawing(drawing) {
@@ -3846,14 +3874,22 @@ function v9ResolveLiveDrawingFromQuickBarAnchor() {
   try {
     const anchor = v9QuickBarSelectionAnchorRef.current;
     if (!anchor) return null;
+    const focusDm = v9GetFocusedPanelDrawingManager();
     if (anchor.dm && Array.isArray(anchor.dm.drawings)) {
       const onOwner =
         anchor.drawingId != null
           ? resolveLiveDrawingInDmById(anchor.dm, anchor.drawingId)
           : null;
-      if (onOwner && v9DrawingIsPrimarySelection(anchor.dm, onOwner)) return onOwner;
+      if (onOwner) {
+        if (anchor.dm === focusDm) return onOwner;
+        if (v9DrawingIsPrimarySelection(anchor.dm, onOwner)) return onOwner;
+      }
     }
     if (anchor.drawingId != null) {
+      if (focusDm) {
+        const onFocus = resolveLiveDrawingInDmById(focusDm, anchor.drawingId);
+        if (onFocus && (onFocus.selected || v9DrawingIsPrimarySelection(focusDm, onFocus))) return onFocus;
+      }
       for (const dm of enumerateV9DrawingManagersFromWindow()) {
         const live = resolveLiveDrawingInDmById(dm, anchor.drawingId);
         if (live && v9DrawingIsPrimarySelection(dm, live)) return live;
