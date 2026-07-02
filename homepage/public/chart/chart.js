@@ -2147,6 +2147,11 @@ class Chart {
         const nativeStepMs = this.parseTimeframe(this._nativeRawFetchTf || '1m') || 60_000;
         if (targetMs <= nativeStepMs) return true;
 
+        // Phase 2: pull a wider base master from the shared store if available,
+        // so a coarse switch resamples client-side instead of refetching whenever
+        // any panel/host already loaded enough base data for this fileId.
+        this._topUpMasterFromSharedStore(normalizedTf);
+
         // Resolve the master array this switch would resample from: this panel's
         // own master, else host tile A's master when showing the same pair.
         let master = (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length)
@@ -2181,6 +2186,253 @@ class Chart {
         const visible = Number(this._pendingTfSwitchVisibleBarCount);
         const needed = (Number.isFinite(visible) && visible > 0 ? visible : 120) + 20;
         return estimatedBars >= needed;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Phase 1 — shared client bar store
+    //
+    // A single in-memory bar cache living on the top-most same-origin window
+    // (the parent /chart/ page). Because every multichart panel is an iframe on
+    // the SAME origin, all panels + the host read/write ONE store. Keyed by
+    // fileId → per-timeframe windows. This turns "each panel fetches its own
+    // bars" into "the first panel to load a fileId+tf serves every other panel
+    // for free" (bottleneck #2 + #5), and — combined with Phase 2's top-up —
+    // lets coarse TF switches resample from a shared base instead of refetching
+    // (bottleneck #3).
+    //
+    // Fully additive: if the store is disabled or misses, every existing path
+    // behaves exactly as before. Disable with window.__TALARIA_DISABLE_SHARED_BAR_STORE = true.
+    // Inspect with window.__talariaBarStoreStats().
+    // ─────────────────────────────────────────────────────────────────────
+
+    /** Resolve the ONE shared store (lazily created on the top same-origin window). */
+    _sharedBarStore() {
+        if (typeof window === 'undefined') return null;
+        if (window.__TALARIA_DISABLE_SHARED_BAR_STORE) return null;
+        let host = window;
+        try {
+            const top = window.top || window;
+            // Touching top.document throws if cross-origin; then fall back to local.
+            void top.document;
+            host = top;
+        } catch (_e) {
+            host = window;
+        }
+        try {
+            if (!host.__talariaBarStore) {
+                host.__talariaBarStore = this._createSharedBarStore();
+                try {
+                    host.__talariaBarStoreStats = function () {
+                        return host.__talariaBarStore ? host.__talariaBarStore.stats() : null;
+                    };
+                } catch (_s) { /* ignore */ }
+            }
+            return host.__talariaBarStore;
+        } catch (_e2) {
+            if (!window.__talariaBarStore) {
+                window.__talariaBarStore = this._createSharedBarStore();
+            }
+            return window.__talariaBarStore;
+        }
+    }
+
+    /** Build the store singleton. Kept self-contained (no chart `this` closure). */
+    _createSharedBarStore() {
+        const MAX_FILES = 12;
+        const MAX_BARS_PER_TF = 200000;
+        const files = new Map(); // fileId -> { tfs:Map(tf->{bars,cursors,updatedAt}), lru }
+        let lruSeq = 0;
+
+        const parseTfMs = (tf) => {
+            const s = String(tf || '').toLowerCase().trim();
+            const m = s.match(/^(\d+)\s*(mo|w|d|h|m|s)?$/);
+            if (!m) return 0;
+            const n = parseInt(m[1], 10);
+            const unit = m[2] || 'm';
+            const mult = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000, mo: 2592000000 };
+            return n * (mult[unit] || 60000);
+        };
+
+        const evict = () => {
+            if (files.size <= MAX_FILES) return;
+            let oldestId = null; let oldestLru = Infinity;
+            for (const [id, f] of files) {
+                if (f.lru < oldestLru) { oldestLru = f.lru; oldestId = id; }
+            }
+            if (oldestId != null) files.delete(oldestId);
+        };
+
+        const unionByTime = (existing, incoming) => {
+            if (!existing || !existing.length) return incoming.slice();
+            if (!incoming || !incoming.length) return existing;
+            const byT = new Map();
+            for (const b of existing) { if (b && Number.isFinite(Number(b.t))) byT.set(Number(b.t), b); }
+            for (const b of incoming) { if (b && Number.isFinite(Number(b.t))) byT.set(Number(b.t), b); }
+            const merged = Array.from(byT.values()).sort((a, b) => Number(a.t) - Number(b.t));
+            if (merged.length > MAX_BARS_PER_TF) {
+                return merged.slice(merged.length - MAX_BARS_PER_TF);
+            }
+            return merged;
+        };
+
+        return {
+            put(fileId, tf, bars, cursors) {
+                const id = String(fileId || '');
+                const key = String(tf || '').toLowerCase().trim();
+                if (!id || !key || !Array.isArray(bars) || bars.length === 0) return;
+                if (!parseTfMs(key)) return;
+                let f = files.get(id);
+                if (!f) { f = { tfs: new Map(), lru: ++lruSeq }; files.set(id, f); }
+                f.lru = ++lruSeq;
+                const prev = f.tfs.get(key);
+                const mergedBars = prev ? unionByTime(prev.bars, bars) : bars.slice();
+                f.tfs.set(key, {
+                    bars: mergedBars,
+                    cursors: cursors || (prev && prev.cursors) || null,
+                    updatedAt: Date.now(),
+                });
+                evict();
+            },
+            /**
+             * Best cached window for `wantedTf`: the entry whose resolution is
+             * ≤ wantedTf (so it can be resampled up) with the most coarse-bar
+             * coverage. Returns {bars, tf, cursors} or null.
+             */
+            pick(fileId, wantedTf) {
+                const id = String(fileId || '');
+                const f = files.get(id);
+                if (!f) return null;
+                const wantMs = parseTfMs(wantedTf);
+                if (!wantMs) return null;
+                let best = null; let bestScore = -1;
+                for (const [tf, e] of f.tfs) {
+                    const ms = parseTfMs(tf);
+                    if (!ms || ms > wantMs) continue; // can't upsample a coarser cache
+                    if (!e.bars || e.bars.length < 1) continue;
+                    const span = e.bars.length > 1
+                        ? (Number(e.bars[e.bars.length - 1].t) - Number(e.bars[0].t))
+                        : 0;
+                    const score = span > 0 ? span / wantMs : e.bars.length;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = { bars: e.bars, tf: tf, cursors: e.cursors };
+                    }
+                }
+                if (best) f.lru = ++lruSeq;
+                return best;
+            },
+            peek(fileId) {
+                const f = files.get(String(fileId || ''));
+                if (!f) return null;
+                const out = {};
+                for (const [tf, e] of f.tfs) out[tf] = e.bars.length;
+                return out;
+            },
+            clearFile(fileId) { files.delete(String(fileId || '')); },
+            stats() {
+                const out = { files: files.size, detail: {} };
+                for (const [id, f] of files) {
+                    const tfs = {};
+                    for (const [tf, e] of f.tfs) {
+                        tfs[tf] = {
+                            bars: e.bars.length,
+                            first: e.bars[0] && e.bars[0].t,
+                            last: e.bars[e.bars.length - 1] && e.bars[e.bars.length - 1].t,
+                        };
+                    }
+                    out.detail[id] = tfs;
+                }
+                return out;
+            },
+        };
+    }
+
+    /** Publish just-ingested native bars into the shared store (called from ingest). */
+    _publishMasterToSharedStore(bars, result) {
+        try {
+            if (!Array.isArray(bars) || bars.length === 0) return;
+            if (result && result.source === 'shared-bar-store') return; // don't echo our own read
+            const fileId = String(this.currentFileId || (result && result.fileId) || '');
+            if (!fileId) return;
+            const tf = String(
+                (result && (result.nativeRawFetchTf || result.timeframe))
+                || this._nativeRawFetchTf
+                || this.currentTimeframe
+                || '1m'
+            ).toLowerCase().trim();
+            const store = this._sharedBarStore();
+            if (!store) return;
+            const cursors = this._serverCursors
+                ? Object.assign({}, this._serverCursors, { total: this.totalCandles })
+                : { total: this.totalCandles };
+            store.put(fileId, tf, bars, cursors);
+        } catch (_e) { /* best-effort cache only */ }
+    }
+
+    /**
+     * Phase 1 read tier: satisfy a load from the shared store when another panel
+     * (or the host) has already loaded a compatible window for this fileId.
+     * Returns a smart-window-shaped result (same shape as _takeParentNativeMasterSmartWindow)
+     * or null on miss. Sets _panelFullRawData to the shared base so later TF
+     * switches resample client-side.
+     */
+    _takeSharedStoreSmartWindow(fileId, requestTimeframe) {
+        try {
+            const store = this._sharedBarStore();
+            if (!store) return null;
+            const picked = store.pick(String(fileId), requestTimeframe || this.currentTimeframe || '1m');
+            if (!picked || !Array.isArray(picked.bars) || picked.bars.length === 0) return null;
+            const bars = picked.bars;
+            this._panelFullRawData = bars.slice();
+            const c = picked.cursors || {};
+            return {
+                candles: bars,
+                total: Number.isFinite(c.total) ? c.total : bars.length,
+                returned: bars.length,
+                first_cursor: bars[0] && bars[0].t,
+                last_cursor: bars[bars.length - 1] && bars[bars.length - 1].t,
+                has_more_left: c.hasMoreLeft !== false,
+                has_more_right: c.hasMoreRight === true,
+                source: 'shared-bar-store',
+                nativeRawFetchTf: picked.tf,
+            };
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    /**
+     * Phase 2: before deciding TF-switch coverage, top up this panel's local
+     * master (_panelFullRawData) from the shared store if the store holds a
+     * base with wider span. This is what makes a coarse switch (e.g. 1m→1D)
+     * resample instantly whenever ANY panel/host already loaded enough base
+     * data for this fileId — instead of a network refetch.
+     * @returns {boolean} true when the local master was replaced with a wider one.
+     */
+    _topUpMasterFromSharedStore(wantedTf) {
+        try {
+            const store = this._sharedBarStore();
+            if (!store) return false;
+            const picked = store.pick(String(this.currentFileId || ''), wantedTf || this.currentTimeframe || '1m');
+            if (!picked || !Array.isArray(picked.bars) || picked.bars.length < 2) return false;
+            // Never replace the master with a COARSER resolution — that would break
+            // a later switch to a finer TF (cannot upsample). Only accept a base
+            // whose resolution is finer-or-equal to the current native master.
+            const curNativeMs = this.parseTimeframe(this._nativeRawFetchTf || '1m') || 60_000;
+            const pickMs = this.parseTimeframe(picked.tf) || curNativeMs;
+            if (pickMs > curNativeMs) return false;
+            const local = Array.isArray(this._panelFullRawData) ? this._panelFullRawData : [];
+            const localSpan = local.length > 1
+                ? (Number(local[local.length - 1].t) - Number(local[0].t))
+                : 0;
+            const pickSpan = Number(picked.bars[picked.bars.length - 1].t) - Number(picked.bars[0].t);
+            if (!(pickSpan > localSpan)) return false;
+            this._panelFullRawData = picked.bars.slice();
+            if (picked.tf) this._nativeRawFetchTf = picked.tf;
+            return true;
+        } catch (_e) {
+            return false;
+        }
     }
 
     /** Copy host tile A's 1m master into this iframe when showing the same pair. */
@@ -6826,6 +7078,7 @@ class Chart {
                 return false;
             }
             this._commitLoadedBars(newData, 0, options);
+            this._publishMasterToSharedStore(newData, result);
             return true;
         }
         if (result.data) {
@@ -6962,6 +7215,11 @@ class Chart {
             }
             if (!result && canUseParentMemory) {
                 result = this._takeParentMemorySmartWindow(targetFileId, requestTimeframe);
+            }
+            // Phase 1: cross-panel shared bar store — reuse a compatible window
+            // already loaded by any panel/host for this fileId (no network).
+            if (!result && canUseParentMemory) {
+                result = this._takeSharedStoreSmartWindow(targetFileId, requestTimeframe);
             }
             if (!result) result = this._tryTakeSmartPrefetch(targetFileId, params);
             if (!result && !fetchReplayAnchored) {
