@@ -6236,6 +6236,9 @@ class ReplaySystem {
                 } else if (Number.isFinite(parent.offsetX)) {
                     chart.offsetX = parent.offsetX;
                 }
+                if (Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
+                    chart.candleWidth = parent.candleWidth;
+                }
                 chart._chartViewRestored = true;
             }
 
@@ -6336,6 +6339,23 @@ class ReplaySystem {
         }
 
         if (hasAnim) {
+            const samePairEmbed = sharesHostDataset
+                && typeof chart._isMultichartEmbedPanel === 'function'
+                && chart._isMultichartEmbedPanel()
+                && !(typeof chart._isIndependentMultichartPair === 'function'
+                    && chart._isIndependentMultichartPair());
+            if (samePairEmbed) {
+                if (this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                    return true;
+                }
+                if (typeof chart._syncReplayMasterFromParentIfCovers === 'function'
+                    && chart._syncReplayMasterFromParentIfCovers(ts)
+                    && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                    return true;
+                }
+                return false;
+            }
+
             const formTs = Number(anim.t);
             let targetIdx = -1;
             if (typeof chart.findGoToTargetIndex === 'function') {

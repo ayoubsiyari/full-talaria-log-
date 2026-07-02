@@ -481,6 +481,38 @@
             return;
         }
 
+        // Same symbol as host A: always paint host's batch — never the
+        // furthest-loaded / per-candle catch-up path (panel C one-by-one).
+        if (isSameSymbolAsHost(ch)) {
+            var pcSym = readParentChart();
+            var hostTf = pcSym ? String(pcSym.currentTimeframe || '').toLowerCase().trim() : '';
+            var panelTf = String(ch.currentTimeframe || '').toLowerCase().trim();
+            if (hostTf && panelTf && hostTf !== panelTf && !ch._timeframeSwitching) {
+                if (!ch._mcPendingHostTf) {
+                    ch._mcPendingHostTf = hostTf;
+                    setTimeout(function () {
+                        ch._mcPendingHostTf = null;
+                        try {
+                            if (typeof ch._multichartMirrorHostTfSwitchIfReady === 'function'
+                                && ch._multichartMirrorHostTfSwitchIfReady(hostTf)) {
+                                return;
+                            }
+                            if (typeof ch.setTimeframe === 'function') ch.setTimeframe(hostTf);
+                        } catch (_) {}
+                    }, 0);
+                }
+                return;
+            }
+            if (typeof ch._syncReplayMasterFromParentIfCovers === 'function') {
+                try { ch._syncReplayMasterFromParentIfCovers(ts); } catch (_) {}
+            }
+            if (forceSamePairParentDataMirror(ch, args)) {
+                ch._mcCatchUpFails = 0;
+                ch._mcCatchUpCooldownUntil = 0;
+                return;
+            }
+        }
+
         var applied = rs.applyMultichartMirrorFrame(args);
         if (applied) {
             ch._mcCatchUpFails = 0;
@@ -497,8 +529,12 @@
             return;
         }
 
-        // Independent pair only: host playhead is ahead of this panel's loaded
-        // master — step to the furthest local bar while catch-up fetches.
+        // Independent pair only — same-symbol panels never step one candle at a time.
+        if (isSameSymbolAsHost(ch)) {
+            scheduleMirrorCatchUp(ch, ts, args);
+            return;
+        }
+
         renderFurthestLoadedMirrorFrame(ch, rs, args);
 
         scheduleMirrorCatchUp(ch, ts, args);
@@ -845,12 +881,17 @@
         return null;
     }
 
-    function isSamePairAsHost(ch) {
+    function isSameSymbolAsHost(ch) {
         var pc = readParentChart();
         if (!pc || !ch) return false;
         var hostFid = pc.currentFileId != null ? String(pc.currentFileId) : '';
         var panelFid = ch.currentFileId != null ? String(ch.currentFileId) : '';
-        if (!hostFid || !panelFid || hostFid !== panelFid) return false;
+        return !!(hostFid && panelFid && hostFid === panelFid);
+    }
+
+    function isSamePairAsHost(ch) {
+        if (!isSameSymbolAsHost(ch)) return false;
+        var pc = readParentChart();
         var pTf = String(pc.currentTimeframe || '').toLowerCase().trim();
         var mTf = String(ch.currentTimeframe || '').toLowerCase().trim();
         return !pTf || !mTf || pTf === mTf;
@@ -894,6 +935,11 @@
                 ch.rawData = pc.rawData;
                 ch.data = pc.data;
                 if (prs) {
+                    if (Array.isArray(prs.fullRawData) && prs.fullRawData.length) {
+                        rs.fullRawData = prs.fullRawData;
+                        rs.rawTimeframe = prs.rawTimeframe || '1m';
+                        rs._fullRawDataMatchesTF = prs._fullRawDataMatchesTF;
+                    }
                     var pts = Number(payload.timestamp);
                     if (Number.isFinite(pts)) rs.replayTimestamp = pts;
                     else if (Number.isFinite(Number(prs.replayTimestamp))) {
@@ -920,6 +966,9 @@
                         rs.animatingCandle = null;
                     }
                 }
+                if (Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length) {
+                    ch._panelFullRawData = pc._panelFullRawData;
+                }
                 if (!rs.userHasPanned) {
                     if (Number.isFinite(payload.hostOffsetX)) {
                         ch.offsetX = Number(payload.hostOffsetX);
@@ -937,15 +986,23 @@
         }
         rs.autoScrollEnabled = prevAutoScroll;
         if (ok) {
-            var keepOffset = Number.isFinite(prevOffsetX);
-            if (rs.userHasPanned || ch._multichartVisibleRangeSyncOn) {
-                keepOffset = Number.isFinite(prevOffsetX);
-            } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
-                && ch._multichartViewportNeedsRecovery()) {
-                keepOffset = false;
+            var passiveFollow = !rs.userHasPanned
+                && ch._multichartVisibleRangeSyncOn !== false;
+            if (!passiveFollow) {
+                var keepOffset = Number.isFinite(prevOffsetX);
+                if (rs.userHasPanned || ch._multichartVisibleRangeSyncOn) {
+                    keepOffset = Number.isFinite(prevOffsetX);
+                } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
+                    && ch._multichartViewportNeedsRecovery()) {
+                    keepOffset = false;
+                }
+                if (keepOffset) ch.offsetX = prevOffsetX;
+                if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) {
+                    ch.candleWidth = prevCandleWidth;
+                }
+            } else if (pc && Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
+                ch.candleWidth = pc.candleWidth;
             }
-            if (keepOffset) ch.offsetX = prevOffsetX;
-            if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) ch.candleWidth = prevCandleWidth;
         }
         return ok;
     }
