@@ -1008,6 +1008,126 @@
     }
 
     /**
+     * Same-pair iframe TF: clone host committed bars — never /smart refetch.
+     * Independent-pair panels delegate to setTimeframe.
+     * @returns {Promise<boolean>}
+     */
+    function applyMirrorHostTimeframeAsync(ch, tf) {
+        var normalizedTf = String(tf || '').trim().toLowerCase();
+        if (!normalizedTf || !ch) return Promise.resolve(false);
+
+        var nativeTf = String(ch._nativeRawFetchTf || ch.currentTimeframe || '')
+            .toLowerCase().trim();
+        if (ch.currentTimeframe === normalizedTf && nativeTf === normalizedTf
+            && Array.isArray(ch.data) && ch.data.length > 0
+            && !ch._timeframeSwitching) {
+            return Promise.resolve(true);
+        }
+
+        if (!isSameSymbolAsHost(ch)) {
+            if (typeof ch.setTimeframe === 'function') {
+                return Promise.resolve(ch.setTimeframe(normalizedTf)).then(function () { return false; });
+            }
+            return Promise.resolve(false);
+        }
+
+        var parentPc = readParentChart();
+        var prsTf = parentPc && parentPc.replaySystem;
+        if (ch.isBacktestMode && ch.replaySystem && ch.replaySystem.isActive
+            && prsTf && prsTf.isActive
+            && Number.isFinite(Number(prsTf.replayTimestamp))) {
+            ch.replaySystem.replayTimestamp = Number(prsTf.replayTimestamp);
+        }
+
+        var finishFollow = function () {
+            setTimeout(function () {
+                try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+            }, 0);
+        };
+
+        var tryMirror = function () {
+            if (typeof ch._warmBtTfCacheFromParent === 'function') {
+                try { ch._warmBtTfCacheFromParent(normalizedTf); } catch (_) {}
+            }
+            if (typeof ch._multichartMirrorHostTfSwitchIfReady === 'function'
+                && ch._multichartMirrorHostTfSwitchIfReady(normalizedTf)) {
+                finishFollow();
+                return true;
+            }
+            return false;
+        };
+
+        if (tryMirror()) return Promise.resolve(true);
+
+        var started = Date.now();
+        var maxMs = 2000;
+        var poll = function () {
+            if (tryMirror()) return Promise.resolve(true);
+            if (typeof ch._pollMirrorHostTfSwitch === 'function') {
+                return ch._pollMirrorHostTfSwitch(normalizedTf, 80).then(function (hit) {
+                    if (hit) {
+                        finishFollow();
+                        return true;
+                    }
+                    if (Date.now() - started >= maxMs) {
+                        var pc = readParentChart();
+                        if (pc && isSameSymbolAsHost(ch) && Array.isArray(pc.data) && pc.data.length) {
+                            try {
+                                ch.rawData = pc.rawData;
+                                ch.data = pc.data;
+                                if (typeof ch._commitTimeframeChange === 'function') {
+                                    ch._commitTimeframeChange(normalizedTf);
+                                } else {
+                                    ch.currentTimeframe = normalizedTf;
+                                }
+                                if (pc._nativeRawFetchTf) ch._nativeRawFetchTf = pc._nativeRawFetchTf;
+                                if (typeof ch._endTimeframeSwitching === 'function') {
+                                    ch._endTimeframeSwitching();
+                                } else if (typeof ch.render === 'function') {
+                                    ch.render();
+                                }
+                                finishFollow();
+                                return true;
+                            } catch (_) { /* fall through */ }
+                        }
+                        var ok = forceSamePairParentDataMirror(ch, null);
+                        if (ok) finishFollow();
+                        return ok;
+                    }
+                    return new Promise(function (r) { setTimeout(r, 50); }).then(poll);
+                });
+            }
+            if (Date.now() - started >= maxMs) {
+                var pcFb = readParentChart();
+                if (pcFb && isSameSymbolAsHost(ch) && Array.isArray(pcFb.data) && pcFb.data.length) {
+                    try {
+                        ch.rawData = pcFb.rawData;
+                        ch.data = pcFb.data;
+                        if (typeof ch._commitTimeframeChange === 'function') {
+                            ch._commitTimeframeChange(normalizedTf);
+                        } else {
+                            ch.currentTimeframe = normalizedTf;
+                        }
+                        if (pcFb._nativeRawFetchTf) ch._nativeRawFetchTf = pcFb._nativeRawFetchTf;
+                        if (typeof ch._endTimeframeSwitching === 'function') {
+                            ch._endTimeframeSwitching();
+                        } else if (typeof ch.render === 'function') {
+                            ch.render();
+                        }
+                        finishFollow();
+                        return Promise.resolve(true);
+                    } catch (_) { /* fall through */ }
+                }
+                var okFallback = forceSamePairParentDataMirror(ch, null);
+                if (okFallback) finishFollow();
+                return Promise.resolve(okFallback);
+            }
+            return new Promise(function (r) { setTimeout(r, 50); }).then(poll);
+        };
+        return poll();
+    }
+
+    /**
      * Apply a static (no animation) mirror frame — identical render path to the play-time
      * replayFrame stream. Used for pause / scrub / step so the panel does NOT jump to a
      * different viewport (goToReplayTimestamp) and snap back when play resumes.
@@ -1446,6 +1566,12 @@
                         try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
                     }, 0);
                     return;
+                }
+
+                case 'mirrorHostTimeframe': {
+                    var mtf = String(args.tf || '').trim().toLowerCase();
+                    if (!mtf) throw new Error('mirrorHostTimeframe: missing args.tf');
+                    return applyMirrorHostTimeframeAsync(ch, mtf).then(function () { return null; });
                 }
 
                 // ─── file / dataset switch ─────────────────────────────
@@ -2603,6 +2729,7 @@
             source:  panelId,
             cmds:    [
                 'setTimeframe',
+                'mirrorHostTimeframe',
                 'loadFile',
                 'setActiveDrawingTool',
                 'clearActiveDrawingTool',

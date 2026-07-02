@@ -6290,6 +6290,10 @@ class ReplaySystem {
         const sharesHostDataset = this._mirrorSharesHostDataset(chart, detail);
         const anim = detail.animatedCandle;
         const hasAnim = !!(anim && Number.isFinite(Number(anim.t)));
+        const samePairEmbed = typeof chart._isMultichartEmbedPanel === 'function'
+            && chart._isMultichartEmbedPanel()
+            && !(typeof chart._isIndependentMultichartPair === 'function'
+                && chart._isIndependentMultichartPair());
 
         // FAST PATH (iframe, same file + same TF as host): the host already
         // sliced + resampled this exact frame. Reuse its arrays by reference
@@ -6298,6 +6302,19 @@ class ReplaySystem {
         if (sharesHostDataset
             && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
             return true;
+        }
+
+        // Same-pair embed during play: never incremental slice — host is authoritative.
+        if (hasAnim && samePairEmbed) {
+            if (this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                return true;
+            }
+            if (typeof chart._syncReplayMasterFromParentIfCovers === 'function'
+                && chart._syncReplayMasterFromParentIfCovers(ts)
+                && this._tryMirrorFrameFromParentData(chart, detail, ts, anim, hasAnim)) {
+                return true;
+            }
+            return false;
         }
 
         if (hasAnim && !sharesHostDataset) {

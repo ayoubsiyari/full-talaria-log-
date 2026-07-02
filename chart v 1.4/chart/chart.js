@@ -2080,6 +2080,13 @@ class Chart {
             return;
         }
         try {
+            if (this._multichartSamePairAsHost(this.currentFileId)) {
+                if (await this._pollMirrorHostTfSwitch(normalizedTf)) {
+                    return;
+                }
+                console.warn('[multichart] same-pair TF mirror failed — skipping network refetch', normalizedTf);
+                return;
+            }
             if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf)) {
                 return;
             }
@@ -2139,7 +2146,13 @@ class Chart {
             ? prs.fullRawData
             : null;
         if (!master || master.length === 0) return false;
-        this._panelFullRawData = master.slice();
+        this._panelFullRawData = master;
+        const replay = this.replaySystem;
+        if (replay && master) {
+            replay.fullRawData = master;
+            replay.rawTimeframe = (prs && prs.rawTimeframe) || '1m';
+            replay._fullRawDataMatchesTF = !!(prs && prs._fullRawDataMatchesTF);
+        }
         return true;
     }
 
@@ -2290,6 +2303,38 @@ class Chart {
         if (typeof this.render === 'function') this.render();
         this._logTfSwitch('host-mirror-tf', { to: tf, bars: this.data.length });
         return true;
+    }
+
+    /**
+     * Poll host mirror TF switch for same-pair embeds (host may still be committing).
+     * @param {string} normalizedTf
+     * @param {number} [maxWaitMs]
+     * @returns {Promise<boolean>}
+     */
+    async _pollMirrorHostTfSwitch(normalizedTf, maxWaitMs = 2000) {
+        const tf = String(normalizedTf || '').toLowerCase().trim();
+        if (!tf || !this._isMultichartEmbedPanel()) return false;
+        if (typeof this._isIndependentMultichartPair === 'function'
+            && this._isIndependentMultichartPair()) {
+            return false;
+        }
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < maxWaitMs) {
+            if (typeof this._multichartMirrorHostTfSwitchIfReady === 'function'
+                && this._multichartMirrorHostTfSwitchIfReady(tf)) {
+                return true;
+            }
+            if (typeof this._tryMultichartEmbedBacktestTimeframeFastPath === 'function') {
+                try {
+                    if (await this._tryMultichartEmbedBacktestTimeframeFastPath(tf)) {
+                        return true;
+                    }
+                } catch (_fast) { /* ignore */ }
+            }
+            await new Promise((r) => setTimeout(r, 50));
+        }
+        return !!(typeof this._multichartMirrorHostTfSwitchIfReady === 'function'
+            && this._multichartMirrorHostTfSwitchIfReady(tf));
     }
 
     /** Same-pair iframe B/C/D — same fileId as host tile A. */
@@ -19260,6 +19305,17 @@ class Chart {
      * @param {{ logTag?: string }} options
      */
     async _refetchBacktestTimeframeCore(timeframe, options = {}) {
+        if (this._isMultichartEmbedPanel?.()
+            && typeof this._multichartSamePairAsHost === 'function'
+            && this._multichartSamePairAsHost(this.currentFileId)) {
+            const hit = await this._pollMirrorHostTfSwitch(timeframe);
+            if (!hit) {
+                console.warn('[multichart] blocked same-pair network TF refetch', timeframe);
+            }
+            this._endTimeframeSwitching();
+            return;
+        }
+
         const replay = this.replaySystem;
         if (!replay || !this.currentFileId) {
             this._endTimeframeSwitching();
