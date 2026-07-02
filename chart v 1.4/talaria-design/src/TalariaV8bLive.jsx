@@ -11408,6 +11408,7 @@ const TalariaV8bLive = () => {
   });
   const chartTypeHydratedRef = useRef(false);
   const [chartTypeDropL, setChartTypeDropL] = useState(185);
+  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: true, chartType: false });
   const [tfOpen, setTfOpen] = useState(false);
   const [tfCat, setTfCat] = useState(null);
   const [tfPinned, setTfPinned] = useState(["1m","5m","15m","1H","4H","1D"]);
@@ -11972,6 +11973,8 @@ const TalariaV8bLive = () => {
   // V9 React state (chartType) drives chart.js's chartSettings.chartType.
   // Hydrate from userStorage/chart first so refresh does not reset to Candles.
   // On user change, mirror legacy toolbar: saveSettings() for persistence.
+  // Multichart: route via __multichartGrid panel-cmd (focused tile, or all tiles
+  // when Layouts → Sync → Chart Type is on).
   useEffect(() => {
     const mapped = V9_CHART_TYPE_TO_ENGINE[chartType] || "candles";
 
@@ -11995,6 +11998,21 @@ const TalariaV8bLive = () => {
         }
       }
 
+      const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+      if (grid && typeof grid.runCommand === "function" && v9IsMultiPanelLayoutActive()) {
+        const payload = { chartType: mapped };
+        const p = layoutSync.chartType && typeof grid.runCommandOnAllPanels === "function"
+          ? grid.runCommandOnAllPanels("setChartType", payload)
+          : grid.runCommand("setChartType", payload);
+        void (p && typeof p.catch === "function"
+          ? p.catch((err) => { console.warn("[V9] multichart setChartType failed:", err); })
+          : p);
+        if (typeof window._syncChartTypeUI === "function") {
+          try { window._syncChartTypeUI(mapped); } catch (_) {}
+        }
+        return;
+      }
+
       if (chart.chartSettings.chartType === mapped) return;
 
       chart.chartSettings.chartType = mapped;
@@ -12002,7 +12020,7 @@ const TalariaV8bLive = () => {
       if (typeof chart.saveSettings === "function") {
         try { chart.saveSettings(); } catch (_) {}
       }
-      // Apply to other panels too (multi-panel sync, mirrors legacy behavior).
+      // Apply to other panels too (legacy panelManager multi-panel sync).
       try {
         const panels = window.panelManager?.getPanels?.() || [];
         for (const p of panels) {
@@ -12016,6 +12034,14 @@ const TalariaV8bLive = () => {
           }
         }
       } catch (_) {}
+      if (layoutSync.chartType) {
+        try {
+          const pm = window.panelManager;
+          if (pm && typeof pm.syncChartTypeNow === "function" && (pm.panels || []).length > 1) {
+            pm.syncChartTypeNow();
+          }
+        } catch (_) {}
+      }
       // Sync legacy toolbar UI if it exists in the DOM.
       if (typeof window._syncChartTypeUI === "function") {
         try { window._syncChartTypeUI(mapped); } catch (_) {}
@@ -12024,7 +12050,7 @@ const TalariaV8bLive = () => {
 
     apply();
     return () => { cancelled = true; };
-  }, [chartType]);
+  }, [chartType, layoutSync.chartType]);
 
   // Per Chart instance (main + panel tiles): V9 id (e.g. "SMA") → chart.js runtime id.
   // WeakMap so each focused tile keeps its own mapping (multi-panel).
@@ -13481,7 +13507,7 @@ const TalariaV8bLive = () => {
   // directly below the button so it lines up like TradingView.
   // Keep V9 defaults aligned with panel-manager.js defaults to avoid startup
   // races re-enabling sync modes (especially `time`) unexpectedly.
-  const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: false, drawings: true, symbol: false, interval: false, dateRange: false, indicators: true, chartType: false });
+  // (layoutSync state is declared near chartType — multichart chart-type fan-out reads it.)
   // ── Support Chat Widget state ─────────────────────────────────────────
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [supportThreads, setSupportThreads] = useState([]);
@@ -14005,13 +14031,6 @@ const TalariaV8bLive = () => {
     pushWhenReady();
     return () => { cancelled = true; };
   }, [applyLayoutSyncToPanelManager]);
-
-  useEffect(() => {
-    if (!layoutSync.chartType) return;
-    const pm = window.panelManager;
-    if (!pm || typeof pm.syncChartTypeNow !== "function" || (pm.panels || []).length <= 1) return;
-    try { pm.syncChartTypeNow(); } catch (_) {}
-  }, [chartType, layoutSync.chartType]);
 
   const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
   const [settingsTab, setSettingsTab] = useState("chart");

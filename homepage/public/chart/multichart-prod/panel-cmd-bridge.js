@@ -1303,6 +1303,18 @@
                     ch.setCursorType(ct, skipSync);
                     return;
                 }
+                case 'setChartType': {
+                    var chartTypeVal = args.chartType ? String(args.chartType) : null;
+                    if (!chartTypeVal) throw new Error('setChartType: missing args.chartType');
+                    if (!ch.chartSettings) ch.chartSettings = {};
+                    if (ch.chartSettings.chartType === chartTypeVal) return;
+                    ch.chartSettings.chartType = chartTypeVal;
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_rCt) {}
+                    if (typeof ch.saveSettings === 'function') {
+                        try { ch.saveSettings(); } catch (_sCt) {}
+                    }
+                    return;
+                }
 
                 // ─── indicators ────────────────────────────────────────
                 //

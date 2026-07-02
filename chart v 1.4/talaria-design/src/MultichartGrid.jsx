@@ -3682,6 +3682,18 @@ export default function MultichartGrid({
                         if (ch.currentTimeframe !== args.tf) ch.setTimeframe(args.tf);
                         return Promise.resolve(null);
                     }
+                    case "setChartType": {
+                        const ct = args.chartType ? String(args.chartType) : null;
+                        if (!ct) return Promise.reject(new Error("setChartType: missing chartType"));
+                        if (!ch.chartSettings) ch.chartSettings = {};
+                        if (ch.chartSettings.chartType === ct) return Promise.resolve(null);
+                        ch.chartSettings.chartType = ct;
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        if (typeof ch.saveSettings === "function") {
+                            try { ch.saveSettings(); } catch (_) {}
+                        }
+                        return Promise.resolve(null);
+                    }
                     case "loadFile": {
                         if (typeof ch.loadFileData !== "function"
                             && typeof ch.loadMultichartPanelFromHost !== "function"
