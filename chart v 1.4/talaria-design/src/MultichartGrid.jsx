@@ -1621,6 +1621,10 @@ export default function MultichartGrid({
     markPanelDataReadyRef.current = markPanelDataReady;
     const dataReadyPanelsRef = useRef(dataReadyPanels);
     useEffect(() => { dataReadyPanelsRef.current = dataReadyPanels; }, [dataReadyPanels]);
+    /** Panels that already received the one-time host file/replay sync — avoid re-syncing B when C loads. */
+    const hostSyncedPanelsRef = useRef(new Set());
+    /** Full boot align / reveal runs once when all panels first have bars. */
+    const bootAlignDoneRef = useRef(false);
 
     useEffect(() => {
         setHostViewportFrozenCheck(() => hostViewportFrozenRef.current);
@@ -1861,25 +1865,9 @@ export default function MultichartGrid({
                         next.add(id);
                         return next;
                     });
-                    // TradingView-style: no loading overlay — treat bridge-ready as visible.
-                    if (id !== HOST_PANEL_ID) {
-                        setDataReadyPanels((prev) => {
-                            if (prev.has(id)) return prev;
-                            const next = new Set(prev);
-                            next.add(id);
-                            return next;
-                        });
-                        setOverlayFallbackPanels((prev) => {
-                            if (prev.has(id)) return prev;
-                            const next = new Set(prev);
-                            next.add(id);
-                            return next;
-                        });
-                        const mgr = managerRef.current;
-                        if (mgr && typeof mgr.showPanelFrame === "function") {
-                            try { mgr.showPanelFrame(id); } catch (_) {}
-                        }
-                    }
+                    // Do NOT mark data-ready on bridge-ready alone — bars are not
+                    // loaded yet. Premature syncFromHost on empty panels made B
+                    // flash blank when C later finished loading.
                     // A panel that recovered after a prior boot failure clears
                     // its error overlay here.
                     setFailedPanels((prev) => {
@@ -2046,6 +2034,7 @@ export default function MultichartGrid({
         // Remove iframe charts no longer in the layout
         for (const existingId of Array.from(mgr.charts.keys())) {
             if (!desiredIframeIds.has(existingId)) {
+                hostSyncedPanelsRef.current.delete(existingId);
                 try { mgr.removeChart(existingId); } catch (_) {}
                 if (overlayHoldTimersRef.current[existingId]) {
                     clearTimeout(overlayHoldTimersRef.current[existingId]);
@@ -2233,6 +2222,13 @@ export default function MultichartGrid({
                 try { mgr.showPanelFrame(id); } catch (_) {}
             }
         };
+        // Second+ panel joining: reveal newcomers only — do not re-align host
+        // or re-sync every iframe (that made panel B disappear while C loaded).
+        if (bootAlignDoneRef.current) {
+            revealAll();
+            return;
+        }
+        bootAlignDoneRef.current = true;
         if (mgr) {
             if (typeof mgr.flushPendingRangeSync === "function") {
                 try { mgr.flushPendingRangeSync(); } catch (_) {}
@@ -2345,6 +2341,8 @@ export default function MultichartGrid({
         const readySet = dataReadyPanelsRef.current;
         for (const c of mgr.charts.values()) {
             if (!panelHasBarsForSync(c, readySet)) continue;
+            if (hostSyncedPanelsRef.current.has(c.id)) continue;
+            hostSyncedPanelsRef.current.add(c.id);
             try {
                 if (hostInBacktest) {
                     sendPanelCmd(mgr, c.id, "syncFromHost", {

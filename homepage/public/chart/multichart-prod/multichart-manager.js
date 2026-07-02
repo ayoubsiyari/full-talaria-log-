@@ -345,6 +345,9 @@
         // dev server), and chart.js needs unrestricted scripts. The
         // postMessage allowlist is the security boundary here.
         frame.style.cssText = 'width:100%;height:100%;border:0;display:block;background:#000000;';
+        if (this.silentPanelBoot) {
+            frame.style.opacity = '0';
+        }
         const self = this;
         // Panel iframes each boot the full dist-v9 stack (deferred scripts +
         // React + chart.js). With 3–4 panels, parallel CPU/network contention
@@ -417,6 +420,8 @@
     MultichartManager.prototype.showPanelFrame = function (id) {
         const c = this.charts.get(id);
         if (!c || c.host || !c.frame) return;
+        let alreadyVisible = false;
+        try { alreadyVisible = c.frame.style.opacity === '1'; } catch (_) {}
         let revealAfter = 0;
         try {
             if (typeof window !== 'undefined' && Number.isFinite(window.__multichartBootRevealAfter)) {
@@ -426,7 +431,9 @@
         const now = (typeof performance !== 'undefined' && performance.now)
             ? performance.now()
             : Date.now();
-        if (revealAfter > now) {
+        // Global boot hold defers FIRST reveal only — never hide a panel that
+        // is already visible because a later panel (C/D) is still loading.
+        if (!alreadyVisible && revealAfter > now) {
             const self = this;
             const waitMs = Math.ceil(revealAfter - now);
             setTimeout(function () { self.showPanelFrame(id); }, waitMs);
