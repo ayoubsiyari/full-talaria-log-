@@ -5204,7 +5204,7 @@ class DrawingToolsManager {
                 : (typeof event.key === 'string' && event.key.toLowerCase() === token));
             if (isKey('c') && !event.shiftKey && !event.altKey) {
                 const drawing = this._getPrimarySelectedDrawingForClipboard();
-                if (drawing && !drawing.locked) {
+                if (drawing) {
                     event.preventDefault();
                     this.copyDrawing(drawing);
                     try {
@@ -9869,10 +9869,12 @@ class DrawingToolsManager {
     }
 
     _getPrimarySelectedDrawingForClipboard() {
-        if (this.selectedDrawing) return this.selectedDrawing;
         if (Array.isArray(this.selectedDrawings) && this.selectedDrawings.length > 0) {
             return this.selectedDrawings[this.selectedDrawings.length - 1];
         }
+        if (this.selectedDrawing) return this.selectedDrawing;
+        const tb = this.toolbar;
+        if (tb && tb.currentDrawing) return tb.currentDrawing;
         return null;
     }
 
@@ -9907,10 +9909,22 @@ class DrawingToolsManager {
             if (!newDrawing) return false;
 
             this.addDrawing(newDrawing);
+            if (newDrawing.locked) {
+                this._syncDrawingLockVisual(newDrawing);
+            }
             // While brush/highlighter stay armed, addDrawing clears selection — do not re-select
             // or the V9 quick bar sticks with nothing visibly selected on canvas.
             if (!this._isPersistentFreehandTool(this.currentTool)) {
                 this.selectDrawing(newDrawing);
+            }
+            if (newDrawing.locked) {
+                try {
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('talaria-drawing-lock-changed', {
+                            detail: { locked: true },
+                        }));
+                    }
+                } catch (_) {}
             }
             return true;
             // [debug removed]
@@ -10486,6 +10500,7 @@ class DrawingToolsManager {
             coordinateSystem: 'index',
             style: JSON.parse(JSON.stringify(drawing.style || {})),
             visible: drawing.visible !== false,
+            locked: !!drawing.locked,
             meta: {
                 ...(drawing.meta && typeof drawing.meta === 'object' ? drawing.meta : {}),
                 createdAt: Date.now(),
@@ -10507,11 +10522,12 @@ class DrawingToolsManager {
         if (!toolInfo) return null;
 
         const data = JSON.parse(JSON.stringify(payload));
+        const preserveLocked = !!data.locked;
         delete data.locked;
         const newDrawing = toolInfo.class.fromJSON(data, this.chart);
         newDrawing.id = generateUUID();
         newDrawing.coordinateSystem = 'index';
-        newDrawing.locked = false;
+        newDrawing.locked = preserveLocked;
 
         if (this._isFreehandDrawingType(newDrawing.type) && Array.isArray(data.points) && data.points.length > 0) {
             newDrawing.points = this._sanitizeFreehandClonePoints(

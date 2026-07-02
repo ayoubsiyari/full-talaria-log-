@@ -4103,7 +4103,9 @@ function v9NotifyDrawingAction(message) {
 
 /** Floating toolbar "…" menu — same actions as right-click drawing context menu. */
 function v9RunDrawingMoreMenuAction(actionLabel) {
-  const drawing = getPrimarySelectedDrawingForActiveChart(null);
+  const drawing =
+    v9GetLiveSelectedDrawingForQuickBar() ||
+    getPrimarySelectedDrawingForActiveChart(null);
   const dm = resolveDrawingManagerForDrawing(drawing);
   if (!dm || !drawing) {
     v9NotifyDrawingAction("Select a drawing first");

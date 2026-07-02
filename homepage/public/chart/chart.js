@@ -18291,8 +18291,6 @@ class Chart {
         this._stopChartPanRenderLoop();
         this._cancelChartPanFrame();
         this._clearPanTimeTickCache();
-        this._cachedInteractionTimeTicks = null;
-        this._timeTicks = null;
         if (typeof this._clearPanDrawingsLayerTransform === 'function') {
             this._clearPanDrawingsLayerTransform();
         }
@@ -20372,10 +20370,7 @@ class Chart {
 
             // Horizontal zoom-out can reveal OHLC outside the Y range frozen on the first
             // wheel tick — refit the manual base so the chart does not go blank mid-zoom.
-            // Skip during time-axis drag: visible bar window changes but price scale must stay put
-            // (otherwise the price line flickers in/out of the plot).
-            if (!this._isTimeAxisZoomDragging()
-                && Number.isFinite(minPrice) && Number.isFinite(maxPrice)
+            if (Number.isFinite(minPrice) && Number.isFinite(maxPrice)
                 && (domainMax < minPrice || domainMin > maxPrice)) {
                 const visLo = minPrice - padding;
                 const visHi = maxPrice + padding;
@@ -20439,11 +20434,6 @@ class Chart {
             const priceDy = this.priceOffset - snapPo;
             domainMin = snapMin + priceDy;
             domainMax = snapMax + priceDy;
-        } else if (this._isTimeAxisZoomDragging()
-            && this._timeAxisSnapYDomain
-            && this._timeAxisSnapYDomain.length === 2) {
-            domainMin = this._timeAxisSnapYDomain[0];
-            domainMax = this._timeAxisSnapYDomain[1];
         }
 
         // X-axis follows the viewport (not snapped bar window) so time grid scrolls in empty gaps.
@@ -20933,7 +20923,6 @@ class Chart {
     _finishAxisZoomInteraction() {
         this._cancelAxisZoomRender();
         this._panelSnapDomains = null;
-        this._timeAxisSnapYDomain = null;
         if (this.drawingManager && typeof this.drawingManager.redrawAll === 'function') {
             this.drawingManager.redrawAll({ forceFull: true });
         }
@@ -22717,33 +22706,6 @@ class Chart {
         return best;
     }
 
-    /** Drop ticks that share the same screen column — sort by x so labels stay chronological left-to-right. */
-    _thinTimeTicksByPixelSpacing(ticks, minSpacingPx = 50) {
-        if (!Array.isArray(ticks) || ticks.length === 0) return [];
-        const minGap = Math.max(1, minSpacingPx * 0.65);
-        const withX = [];
-        for (let i = 0; i < ticks.length; i++) {
-            const t = ticks[i];
-            if (!t || !Number.isFinite(t.idx)) continue;
-            const x = typeof this.dataIndexToPixel === 'function'
-                ? this.dataIndexToPixel(t.idx)
-                : t.x;
-            if (!Number.isFinite(x)) continue;
-            withX.push({ idx: t.idx, x, label: t.label, isBoundary: !!t.isBoundary });
-        }
-        withX.sort((a, b) => a.x - b.x);
-        const out = [];
-        let lastX = -Infinity;
-        for (let j = 0; j < withX.length; j++) {
-            const tick = withX[j];
-            if (out.length === 0 || tick.x - lastX >= minGap) {
-                out.push(tick);
-                lastX = tick.x;
-            }
-        }
-        return out;
-    }
-
     /** Extend tick list until the viewport right edge has grid/axis coverage. */
     _fillTimeTicksToViewport(ticks, labelInterval, timeframeMs) {
         const m = this.margin || { l: 60, r: 60 };
@@ -22785,7 +22747,7 @@ class Chart {
             if (rightMost >= coverRight && merged.length >= wantTicks) break;
         }
         merged.sort((a, b) => a.idx - b.idx);
-        return this._thinTimeTicksByPixelSpacing(merged, minSpacingPx);
+        return merged;
     }
 
     /**
@@ -23176,12 +23138,11 @@ class Chart {
         const viewRight = this.w - m.r - 20 + panBufferPx;
         for (const c of candidates) {
             const x = this.dataIndexToPixel(c.idx);
-            const gap = useUniformIntradayTicks
-                ? 0
-                : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
-            if (x < viewLeft || x > viewRight) continue;
+            const gap = useUniformIntradayTicks ? 0 : ((c.isBoundary && allowStandaloneBoundaries) ? minSpacing * 0.7 : minSpacing);
             if (gap <= 0 || x - lastX >= gap || lastX === -Infinity) {
-                ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
+                if (x >= viewLeft && x <= viewRight) {
+                    ticks.push({ idx: c.idx, x, label: c.label, isBoundary: c.isBoundary });
+                }
                 lastX = x;
             }
         }
@@ -26388,22 +26349,6 @@ class Chart {
         if (typeof this.resize === 'function') {
             try { this.resize(); } catch (_e) { /* ignore */ }
         }
-        const embedSamePair = typeof this._isMultichartEmbedPanel === 'function'
-            && this._isMultichartEmbedPanel()
-            && typeof this._multichartSamePairAsHost === 'function'
-            && this._multichartSamePairAsHost(this.currentFileId)
-            && (typeof this._isIndependentMultichartPair !== 'function'
-                || !this._isIndependentMultichartPair());
-        if (embedSamePair && typeof this._multichartMirrorViewportFromHost === 'function') {
-            try {
-                if (this._multichartMirrorViewportFromHost()) {
-                    this._multichartViewportMirroredWithHost = true;
-                }
-            } catch (_mirrorVp) { /* ignore */ }
-        }
-        this._cachedInteractionTimeTicks = null;
-        this._timeTicks = null;
-        this._clearPanTimeTickCache();
         if (this._tfSwitchAnchorLock) {
             this._reapplyTfSwitchAnchorLock();
         }
@@ -27593,9 +27538,7 @@ class Chart {
                 }
             }
 
-            const mode = this._axisZoneClick === 'price' ? 'priceAxis'
-                : this._axisZoneClick === 'time' ? 'timeAxis'
-                : detectCursorMode(mx, my);
+            const mode = detectCursorMode(mx, my);
 
             if (this.drawingManager && this.drawingManager.currentTool) {
                 if (mode !== 'priceAxis' && mode !== 'timeAxis' && mode !== 'separatePanelAxis') {
@@ -27702,12 +27645,6 @@ class Chart {
             } else if (mode === 'timeAxis') {
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
-                if (this.yScale) {
-                    const d = this.yScale.domain();
-                    this._timeAxisSnapYDomain = [Number(d[0]), Number(d[1])];
-                } else {
-                    this._timeAxisSnapYDomain = null;
-                }
                 this._cachedInteractionTimeTicks = this._timeTicks;
                 this._lockDragCursor('ew-resize');
                 if (this.replaySystem?.isActive) {
@@ -28198,7 +28135,6 @@ class Chart {
             }
             
             // Reset states
-            this._axisZoneClick = null;
             this.drag.active = false;
             this.drag.type = null;
             this.drag.separatePanelSlot = null;
@@ -33764,23 +33700,18 @@ async function _talariaInitializeChart() {
     const chartCanvas = document.getElementById('chartCanvas');
     
     const forwardEvent = (e, zone) => {
-        const rawType = e.type || '';
-        const mouseType = rawType === 'pointerdown' ? 'mousedown'
-            : rawType === 'pointermove' ? 'mousemove'
-            : (rawType === 'pointerup' || rawType === 'pointercancel') ? 'mouseup'
-            : rawType;
-
         // Set cursor mode for chart
         if (zone === 'price') {
             chartInstance.cursor.mode = 'priceAxis';
         } else if (zone === 'time') {
             chartInstance.cursor.mode = 'timeAxis';
         }
-        if (mouseType === 'mousedown') {
-            chartInstance._axisZoneClick = zone;
-        } else if (mouseType === 'mouseup') {
-            chartInstance._axisZoneClick = null;
-        }
+
+        const rawType = e.type || '';
+        const mouseType = rawType === 'pointerdown' ? 'mousedown'
+            : rawType === 'pointermove' ? 'mousemove'
+            : (rawType === 'pointerup' || rawType === 'pointercancel') ? 'mouseup'
+            : rawType;
 
         if (zone === 'price' && (rawType === 'dblclick' || mouseType === 'dblclick')
             && typeof chartInstance._applyPriceAxisDoubleClickLock === 'function') {
