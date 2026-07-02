@@ -33481,6 +33481,77 @@ class Chart {
         return typeof id === 'string' && id.startsWith('live_');
     }
 
+    /** Match synced drawings by string id (avoids duplicate adds on multichart live move). */
+    _findSyncedDrawingById(dm, drawingId) {
+        if (drawingId == null || drawingId === '') return null;
+        const want = String(drawingId);
+        if (!dm || !Array.isArray(dm.drawings)) return null;
+        return dm.drawings.find((d) => d && d.id != null && String(d.id) === want) || null;
+    }
+
+    /** Apply inbound sync payload onto an existing drawing instance (add/update upsert). */
+    _applySyncedDrawingPayloadToExisting(existingDrawing, drawingData, dm) {
+        if (!existingDrawing || !drawingData || !dm) return;
+        const incomingId = drawingData.id;
+        const isLiveId = this._isLiveSyncDrawingId(incomingId);
+
+        if (isLiveId && drawingData.points) {
+            existingDrawing.points = drawingData.points;
+            existingDrawing.coordinateSystem = 'index';
+            if (Array.isArray(drawingData.__syncPointAnchors)) {
+                const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
+                if (tsPoints) existingDrawing.timestampPoints = tsPoints;
+            }
+        } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
+            if (Array.isArray(drawingData.__syncPointAnchors)) {
+                const originalTimestampPoints = drawingData.points.map((p) => ({
+                    timestamp: p.timestamp,
+                    price: p.price || p.y,
+                }));
+                drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
+                existingDrawing.points = drawingData.points;
+                existingDrawing.timestampPoints = originalTimestampPoints;
+            } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
+                const originalTimestampPoints = drawingData.points.map((p) => ({
+                    timestamp: p.timestamp,
+                    price: p.price || p.y,
+                }));
+                drawingData.points = CoordinateUtils.pointsFromTimestamps(
+                    drawingData.points,
+                    this.data,
+                    this.currentTimeframe,
+                );
+                existingDrawing.points = drawingData.points;
+                existingDrawing.timestampPoints = originalTimestampPoints;
+            }
+        } else if (drawingData.points) {
+            existingDrawing.points = drawingData.points;
+            if (Array.isArray(drawingData.__syncPointAnchors)) {
+                const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
+                if (tsPoints) {
+                    existingDrawing.timestampPoints = tsPoints;
+                    existingDrawing.coordinateSystem = 'timestamp';
+                } else if (drawingData.coordinateSystem === 'index') {
+                    existingDrawing.coordinateSystem = 'index';
+                }
+            } else if (drawingData.coordinateSystem === 'index') {
+                existingDrawing.coordinateSystem = 'index';
+            }
+        }
+
+        if (drawingData.text !== undefined) existingDrawing.text = drawingData.text;
+        if (drawingData.style) {
+            Object.assign(existingDrawing.style, drawingData.style);
+        }
+        if (drawingData.meta && typeof drawingData.meta === 'object') {
+            existingDrawing.meta = { ...(existingDrawing.meta || {}), ...drawingData.meta };
+        }
+        if (drawingData.visible !== undefined) existingDrawing.visible = drawingData.visible;
+        if (drawingData.locked !== undefined) existingDrawing.locked = drawingData.locked;
+
+        dm.renderDrawing(existingDrawing);
+    }
+
     _normalizeSymbolForDrawingSync(symbol) {
         if (symbol === undefined || symbol === null) return '';
         return String(symbol).replace(/\s+/g, '').replace(/\//g, '').toUpperCase();
@@ -33554,43 +33625,12 @@ class Chart {
                 const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
                 this._applyDrawingSyncAnchors(drawingData);
                 const incomingId = drawingData && drawingData.id;
-                const existingById = incomingId ? dm.drawings.find(d => d && d.id === incomingId) : null;
+                const existingById = this._findSyncedDrawingById(dm, incomingId);
                 const isLiveId = this._isLiveSyncDrawingId(incomingId);
                 if (!isLiveId) this._prepareTimestampPayloadFromSyncAnchors(drawingData);
-                // Live preview path may send repeated "add" for the same temp id; update in place.
+                // Live preview / missed-update upsert — never push a second copy with the same id.
                 if (existingById) {
-                    if (isLiveId && drawingData.points) {
-                        existingById.points = drawingData.points;
-                        existingById.coordinateSystem = 'index';
-                        if (Array.isArray(drawingData.__syncPointAnchors)) {
-                            const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
-                            if (tsPoints) existingById.timestampPoints = tsPoints;
-                        }
-                    } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                        if (Array.isArray(drawingData.__syncPointAnchors)) {
-                            const originalTimestampPoints = drawingData.points.map(p => ({
-                                timestamp: p.timestamp,
-                                price: p.price || p.y
-                            }));
-                            drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
-                            existingById.points = drawingData.points;
-                            existingById.timestampPoints = originalTimestampPoints;
-                        } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
-                            const originalTimestampPoints = drawingData.points.map(p => ({
-                                timestamp: p.timestamp,
-                                price: p.price || p.y
-                            }));
-                            drawingData.points = CoordinateUtils.pointsFromTimestamps(drawingData.points, this.data, this.currentTimeframe);
-                            existingById.points = drawingData.points;
-                            existingById.timestampPoints = originalTimestampPoints;
-                        }
-                    } else if (drawingData.points) {
-                        existingById.points = drawingData.points;
-                    }
-                    if (drawingData.style) {
-                        existingById.style = { ...(existingById.style || {}), ...drawingData.style };
-                    }
-                    dm.renderDrawing(existingById);
+                    this._applySyncedDrawingPayloadToExisting(existingById, drawingData, dm);
                 } else {
                 
                 // CRITICAL: Convert timestamp points to indices for THIS panel's data
@@ -33627,6 +33667,10 @@ class Chart {
                     if (isLiveId) {
                         drawingData.coordinateSystem = 'index';
                     }
+                    const dupeGuard = this._findSyncedDrawingById(dm, drawingData.id);
+                    if (dupeGuard) {
+                        this._applySyncedDrawingPayloadToExisting(dupeGuard, drawingData, dm);
+                    } else {
                     const drawingObj = toolInfo.class.fromJSON(drawingData, this);
                     drawingObj.chart = this;
                     drawingObj.id = drawingData.id; // Keep same ID for sync
@@ -33663,68 +33707,39 @@ class Chart {
                             }
                         }, 200);
                     }
-                    
+                    }
                 } else {
                 }
                 }
             } else if (action === 'remove' || action === 'delete') {
                 // Find and remove drawing by ID
-                const drawingId = drawing.id;
-                const existingDrawing = dm.drawings.find(d => d.id === drawingId);
+                const drawingId = drawing && drawing.id;
+                const existingDrawing = this._findSyncedDrawingById(dm, drawingId);
                 if (existingDrawing) {
                     const index = dm.drawings.indexOf(existingDrawing);
                     dm.drawings.splice(index, 1);
                     existingDrawing.destroy();
                 }
             } else if (action === 'update') {
-                // Find and update drawing by ID
-                const drawingId = drawing.id;
-                const existingDrawing = dm.drawings.find(d => d.id === drawingId);
+                const drawingId = drawing && drawing.id;
+                const drawingData = typeof drawing.toJSON === 'function'
+                    ? drawing.toJSON()
+                    : JSON.parse(JSON.stringify(drawing));
+                if (drawingData && drawingId != null && drawingData.id == null) {
+                    drawingData.id = drawingId;
+                }
+                const existingDrawing = this._findSyncedDrawingById(dm, drawingId);
                 if (existingDrawing) {
-                    const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
                     this._applyDrawingSyncAnchors(drawingData);
                     const isLiveId = this._isLiveSyncDrawingId(drawingId);
                     if (!isLiveId) this._prepareTimestampPayloadFromSyncAnchors(drawingData);
-                    
-                    // Convert timestamp points to indices for THIS panel's data
-                    if (isLiveId && drawingData.points) {
-                        existingDrawing.points = drawingData.points;
-                        existingDrawing.coordinateSystem = 'index';
-                        if (Array.isArray(drawingData.__syncPointAnchors)) {
-                            const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
-                            if (tsPoints) existingDrawing.timestampPoints = tsPoints;
-                        }
-                    } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                        if (Array.isArray(drawingData.__syncPointAnchors)) {
-                            const originalTimestampPoints = drawingData.points.map(p => ({
-                                timestamp: p.timestamp,
-                                price: p.price || p.y
-                            }));
-                            drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
-                            existingDrawing.points = drawingData.points;
-                            existingDrawing.timestampPoints = originalTimestampPoints;
-                        } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
-                            const originalTimestampPoints = drawingData.points.map(p => ({
-                                timestamp: p.timestamp,
-                                price: p.price || p.y
-                            }));
-                            drawingData.points = CoordinateUtils.pointsFromTimestamps(drawingData.points, this.data, this.currentTimeframe);
-                            existingDrawing.points = drawingData.points;
-                            existingDrawing.timestampPoints = originalTimestampPoints;
-                        }
-                    } else {
-                        existingDrawing.points = drawingData.points;
-                    }
-                    
-                    // Update style if changed
-                    if (drawingData.style) {
-                        Object.assign(existingDrawing.style, drawingData.style);
-                    }
-                    
-                    dm.renderDrawing(existingDrawing);
-                } else {
-                    // Robustness: if a panel missed the live "add", treat final update as add.
-                    this.receiveDrawingChange('add', drawing, drawingIndex);
+                    this._applySyncedDrawingPayloadToExisting(existingDrawing, drawingData, dm);
+                } else if (drawingId != null && drawingId !== '') {
+                    // Missed initial add — upsert once (add path dedupes by id).
+                    this._applyDrawingSyncAnchors(drawingData);
+                    const isLiveId = this._isLiveSyncDrawingId(drawingId);
+                    if (!isLiveId) this._prepareTimestampPayloadFromSyncAnchors(drawingData);
+                    this.receiveDrawingChange('add', drawingData, drawingIndex);
                 }
             } else if (action === 'clear') {
                 // Use full clear path (SVG + storage) without re-broadcasting sync storms

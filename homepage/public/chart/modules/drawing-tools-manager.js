@@ -3262,7 +3262,13 @@ class DrawingToolsManager {
         const payload = this._serializeDrawingForStorage(drawing);
         payload.id = drawing.id || payload.id || ensuredId;
         if (!payload.id) return;
-        if (Array.isArray(pointsOverride)) payload.points = pointsOverride.map(p => ({ ...p }));
+        if (Array.isArray(pointsOverride)) {
+            payload.points = pointsOverride.map((p) => ({ ...p }));
+            // Live move/resize uses bar-index preview points — do not send stale
+            // timestampPoints from toJSON or peers may ignore the moved geometry.
+            payload.coordinateSystem = 'index';
+            delete payload.timestampPoints;
+        }
         this.chart.broadcastDrawingChange('update', payload);
     }
     
