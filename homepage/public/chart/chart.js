@@ -33547,7 +33547,16 @@ class Chart {
             existingDrawing.meta = { ...(existingDrawing.meta || {}), ...drawingData.meta };
         }
         if (drawingData.visible !== undefined) existingDrawing.visible = drawingData.visible;
-        if (drawingData.locked !== undefined) existingDrawing.locked = drawingData.locked;
+        if (drawingData.locked !== undefined) {
+            if (typeof dm._applyLoadedDrawingLockState === 'function') {
+                dm._applyLoadedDrawingLockState(existingDrawing, drawingData);
+            } else {
+                existingDrawing.locked = !!drawingData.locked;
+            }
+            if (typeof dm._syncDrawingLockVisual === 'function') {
+                dm._syncDrawingLockVisual(existingDrawing);
+            }
+        }
 
         dm.renderDrawing(existingDrawing);
     }
@@ -33679,6 +33688,9 @@ class Chart {
                     if (!isLiveId && drawingData._originalTimestampPoints) {
                         drawingObj.timestampPoints = drawingData._originalTimestampPoints;
                         drawingObj.coordinateSystem = 'timestamp';
+                    }
+                    if (typeof dm._applyLoadedDrawingLockState === 'function') {
+                        dm._applyLoadedDrawingLockState(drawingObj, drawingData);
                     }
                     
                     // Add to drawings array

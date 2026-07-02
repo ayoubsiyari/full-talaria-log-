@@ -3271,6 +3271,17 @@ class DrawingToolsManager {
         }
         this.chart.broadcastDrawingChange('update', payload);
     }
+
+    /** Broadcast non-geometry drawing state (lock, visibility, style) to synced panels. */
+    _broadcastDrawingStateSync(drawing) {
+        if (!drawing || !this.chart || typeof this.chart.broadcastDrawingChange !== 'function') return;
+        if (!this._isCrossPanelDrawingSyncEnabled()) return;
+        if (this.chart._receivingDrawingSync) return;
+        const payload = this._serializeDrawingForStorage(drawing);
+        payload.id = drawing.id || payload.id;
+        if (!payload.id) return;
+        this.chart.broadcastDrawingChange('update', payload);
+    }
     
     /**
      * Deactivate current drawing tool (used when switching panels)
@@ -9990,6 +10001,7 @@ class DrawingToolsManager {
         drawing.locked = next;
         this._syncDrawingLockVisual(drawing);
         this.renderDrawing(drawing);
+        this._broadcastDrawingStateSync(drawing);
     }
 
     /**
