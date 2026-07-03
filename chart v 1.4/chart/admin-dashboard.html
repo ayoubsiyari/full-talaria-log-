@@ -3488,6 +3488,65 @@ select { cursor:default; }
             </div>
           </div>
         </div>
+
+        <!-- Cohort reports -->
+        <div class="card" id="mtReportsCard" style="margin-top:16px;display:none">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+            <div class="card-title">Cohort reports</div>
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+              <label style="font-size:12px;color:var(--text-muted)">Sort by</label>
+              <select id="mtSortSelect" onchange="renderLeaderboard()" style="font-size:12px;padding:4px 8px">
+                <option value="bt.avg_r">Backtest avg-R</option>
+                <option value="bt.net_pnl">Backtest PnL</option>
+                <option value="bt.win_rate">Backtest win rate</option>
+                <option value="bt.profit_factor">Backtest profit factor</option>
+                <option value="bt.trades">Backtest trades</option>
+                <option value="jr.avg_rr">Journal avg-R</option>
+                <option value="jr.total_pnl">Journal PnL</option>
+                <option value="jr.win_rate">Journal win rate</option>
+                <option value="jr.total_trades">Journal trades</option>
+              </select>
+              <button class="btn sm" type="button" onclick="exportLeaderboardCsv()">Export CSV</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="stat-cards" id="mtReportKpis" style="margin-bottom:14px"></div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th title="Backtest trades">BT trades</th>
+                    <th title="Backtest win rate">BT win%</th>
+                    <th title="Backtest profit factor">BT PF</th>
+                    <th title="Backtest average R">BT avg-R</th>
+                    <th title="Backtest net PnL">BT PnL</th>
+                    <th title="Journal trades">JR trades</th>
+                    <th title="Journal win rate">JR win%</th>
+                    <th title="Journal average R">JR avg-R</th>
+                    <th title="Journal net PnL">JR PnL</th>
+                  </tr>
+                </thead>
+                <tbody id="mtLeaderboardBody"></tbody>
+              </table>
+            </div>
+            <div class="empty-state" id="mtReportEmpty" style="display:none"><p>No members in this cohort yet.</p></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Per-student report card modal -->
+      <div class="modal-overlay" id="mtStudentModal">
+        <div class="modal" style="max-width:640px">
+          <h2 id="mtStudentTitle">Student report</h2>
+          <div id="mtStudentBody"></div>
+          <div class="modal-actions" style="margin-top:18px">
+            <button class="btn" type="button" onclick="printStudentReport()">Print</button>
+            <button class="btn" type="button" onclick="closeStudentReport()">Close</button>
+          </div>
+        </div>
       </div>
 
       <!-- ════════ SESSIONS SECTION ════════ -->
@@ -7726,6 +7785,7 @@ async function selectCohort(id) {
     if ($('mtCohortDefaultEditor')) $('mtCohortDefaultEditor').style.display = '';
     mtModuleCheckboxes('mtCohortModules', 'mt-cohort-mod', cohort.default_modules || {});
     renderRoster(members);
+    loadCohortReport(id);
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -7881,6 +7941,181 @@ function mtDownloadTemplate() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'mentorship_students_template.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Cohort reports (backtest + journal, merged by user_id) ──
+let mtReportRows = [];        // merged per-student rows
+let mtReportCohortName = '';
+
+function mtNum(v, d) { d = (d == null ? 2 : d); return (v == null || isNaN(v)) ? '—' : Number(v).toFixed(d); }
+function mtMoney(v) { if (v == null || isNaN(v)) return '—'; return (v < 0 ? '-$' : '$') + Math.abs(Number(v)).toFixed(2); }
+function mtFrac2Pct(v) { return (v == null || isNaN(v)) ? '—' : (Number(v) * 100).toFixed(1) + '%'; }  // backtest win_rate is 0..1
+function mtPct(v) { return (v == null || isNaN(v)) ? '—' : Number(v).toFixed(1) + '%'; }               // journal win_rate is 0..100
+
+async function loadCohortReport(id) {
+  const card = $('mtReportsCard');
+  if (card) card.style.display = '';
+  const kpis = $('mtReportKpis');
+  const body = $('mtLeaderboardBody');
+  const empty = $('mtReportEmpty');
+  if (body) body.innerHTML = '';
+  if (empty) empty.style.display = 'none';
+  if (kpis) kpis.innerHTML = '<div class="stat-card"><div class="label">Loading…</div><div class="value">—</div></div>';
+  try {
+    const results = await Promise.allSettled([
+      api('/api/admin/mentorship/cohorts/' + id + '/report'),
+      journalApi('/journal/api/admin/groups/' + id + '/analytics'),
+    ]);
+    const chartRep = results[0].status === 'fulfilled' ? results[0].value : { members: [], totals: {} };
+    const jrRep = results[1].status === 'fulfilled' ? results[1].value : { analytics: {}, members: [] };
+    mtReportCohortName = (chartRep.cohort && chartRep.cohort.name) || '';
+
+    const jrByUser = {};
+    (jrRep.members || []).forEach(function (m) { jrByUser[m.user_id] = m; });
+
+    mtReportRows = (chartRep.members || []).map(function (m) {
+      const j = jrByUser[m.user_id] || {};
+      return {
+        user_id: m.user_id,
+        email: m.email,
+        name: m.name || j.full_name || '',
+        bt: m.backtest || {},
+        jr: {
+          total_trades: j.total_trades != null ? j.total_trades : null,
+          win_rate: j.win_rate != null ? j.win_rate : null,
+          avg_rr: j.avg_rr != null ? j.avg_rr : null,
+          total_pnl: j.total_pnl != null ? j.total_pnl : null,
+        },
+      };
+    });
+
+    renderCohortKpis(chartRep.totals || {}, jrRep.analytics || {}, mtReportRows.length);
+    renderLeaderboard();
+    if (!mtReportRows.length && empty) empty.style.display = '';
+  } catch (e) {
+    if (kpis) kpis.innerHTML = '';
+    toast(e.message || String(e), 'err');
+  }
+}
+
+function renderCohortKpis(bt, jr, memberCount) {
+  const kpis = $('mtReportKpis');
+  if (!kpis) return;
+  const cards = [
+    { cls: 'accent', label: 'Members', value: memberCount != null ? memberCount : '—' },
+    { cls: '', label: 'BT trades', value: bt.trades != null ? bt.trades : '—' },
+    { cls: '', label: 'BT win rate', value: mtFrac2Pct(bt.win_rate) },
+    { cls: '', label: 'BT profit factor', value: mtNum(bt.profit_factor) },
+    { cls: '', label: 'BT avg-R', value: mtNum(bt.avg_r) },
+    { cls: (bt.net_pnl < 0 ? 'danger' : 'ok'), label: 'BT net PnL', value: mtMoney(bt.net_pnl) },
+    { cls: '', label: 'JR trades', value: jr.total_trades != null ? jr.total_trades : '—' },
+    { cls: '', label: 'JR win rate', value: mtPct(jr.win_rate) },
+    { cls: '', label: 'JR avg-R', value: mtNum(jr.avg_rr) },
+    { cls: (jr.total_pnl < 0 ? 'danger' : 'ok'), label: 'JR net PnL', value: mtMoney(jr.total_pnl) },
+  ];
+  kpis.innerHTML = cards.map(function (c) {
+    return '<div class="stat-card ' + c.cls + '"><div class="label">' + esc(c.label) + '</div><div class="value" style="font-size:18px">' + esc(String(c.value)) + '</div></div>';
+  }).join('');
+}
+
+function mtSortVal(row, key) {
+  const parts = key.split('.');
+  const v = (row[parts[0]] || {})[parts[1]];
+  return (v == null || isNaN(v)) ? -Infinity : Number(v);
+}
+
+function renderLeaderboard() {
+  const body = $('mtLeaderboardBody');
+  if (!body) return;
+  const sortKey = ($('mtSortSelect') && $('mtSortSelect').value) || 'bt.avg_r';
+  const rows = mtReportRows.slice().sort(function (a, b) { return mtSortVal(b, sortKey) - mtSortVal(a, sortKey); });
+  body.innerHTML = rows.map(function (r, i) {
+    const label = (r.name ? esc(r.name) : esc(r.email));
+    const sub = (r.name ? '<div style="font-size:11px;color:var(--text-muted)">' + esc(r.email) + '</div>' : '');
+    return '<tr style="cursor:pointer" onclick="openStudentReport(' + r.user_id + ')">' +
+      '<td><span style="color:var(--text-muted)">#' + (i + 1) + '</span> ' + label + sub + '</td>' +
+      '<td>' + (r.bt.trades != null ? r.bt.trades : '—') + '</td>' +
+      '<td>' + mtFrac2Pct(r.bt.win_rate) + '</td>' +
+      '<td>' + mtNum(r.bt.profit_factor) + '</td>' +
+      '<td>' + mtNum(r.bt.avg_r) + '</td>' +
+      '<td>' + mtMoney(r.bt.net_pnl) + '</td>' +
+      '<td>' + (r.jr.total_trades != null ? r.jr.total_trades : '—') + '</td>' +
+      '<td>' + mtPct(r.jr.win_rate) + '</td>' +
+      '<td>' + mtNum(r.jr.avg_rr) + '</td>' +
+      '<td>' + mtMoney(r.jr.total_pnl) + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+async function openStudentReport(userId) {
+  const modal = $('mtStudentModal');
+  const body = $('mtStudentBody');
+  const title = $('mtStudentTitle');
+  if (!modal || !body) return;
+  const row = mtReportRows.filter(function (r) { return r.user_id === userId; })[0] || { bt: {}, jr: {} };
+  if (title) title.textContent = 'Report — ' + (row.name || row.email || ('#' + userId));
+  const kpi = function (label, val) { return '<div class="stat-card"><div class="label">' + esc(label) + '</div><div class="value" style="font-size:16px">' + esc(String(val)) + '</div></div>'; };
+  body.innerHTML =
+    '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Backtest</div>' +
+    '<div class="stat-cards" style="margin-bottom:12px">' +
+      kpi('Trades', row.bt.trades != null ? row.bt.trades : '—') +
+      kpi('Win rate', mtFrac2Pct(row.bt.win_rate)) +
+      kpi('Profit factor', mtNum(row.bt.profit_factor)) +
+      kpi('Avg-R', mtNum(row.bt.avg_r)) +
+      kpi('Net PnL', mtMoney(row.bt.net_pnl)) +
+      kpi('Max DD', row.bt.max_drawdown_pct != null ? (Number(row.bt.max_drawdown_pct) * 100).toFixed(1) + '%' : '—') +
+    '</div>' +
+    '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Journal</div>' +
+    '<div class="stat-cards" style="margin-bottom:12px">' +
+      kpi('Trades', row.jr.total_trades != null ? row.jr.total_trades : '—') +
+      kpi('Win rate', mtPct(row.jr.win_rate)) +
+      kpi('Avg-R', mtNum(row.jr.avg_rr)) +
+      kpi('Net PnL', mtMoney(row.jr.total_pnl)) +
+    '</div>' +
+    '<div id="mtStudentTrades" style="font-size:12px;color:var(--text-muted)">Loading recent journal trades…</div>' +
+    '<div style="margin-top:12px"><button class="btn sm" type="button" onclick="closeStudentReport();openUserMonitor(' + userId + ')">Open full monitor</button></div>';
+  modal.classList.add('open');
+  try {
+    const detail = await journalApi('/journal/api/admin/users/' + userId);
+    const trades = (detail && detail.recent_trades) || [];
+    const el = $('mtStudentTrades');
+    if (!el) return;
+    if (!trades.length) { el.textContent = 'No recent journal trades.'; return; }
+    el.innerHTML = '<div style="margin-bottom:6px">Recent journal trades</div><div style="overflow-x:auto"><table>' +
+      '<thead><tr><th>Date</th><th>Symbol</th><th>Dir</th><th>PnL</th><th>Strategy</th></tr></thead><tbody>' +
+      trades.map(function (t) {
+        return '<tr><td>' + esc((t.date || t.created_at || '').slice(0, 10)) + '</td><td>' + esc(t.symbol || '—') + '</td><td>' + esc(t.direction || '—') + '</td><td>' + mtMoney(t.pnl) + '</td><td>' + esc(t.strategy || '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  } catch (e) {
+    const el = $('mtStudentTrades');
+    if (el) el.textContent = 'Could not load journal trades: ' + (e.message || String(e));
+  }
+}
+
+function closeStudentReport() { const m = $('mtStudentModal'); if (m) m.classList.remove('open'); }
+function printStudentReport() { window.print(); }
+
+function exportLeaderboardCsv() {
+  if (!mtReportRows.length) { toast('No report data to export', 'err'); return; }
+  const header = ['email', 'name', 'bt_trades', 'bt_win_rate', 'bt_profit_factor', 'bt_avg_r', 'bt_net_pnl', 'jr_trades', 'jr_win_rate', 'jr_avg_r', 'jr_net_pnl'];
+  const rows = [header];
+  mtReportRows.forEach(function (r) {
+    rows.push([
+      r.email || '', r.name || '',
+      r.bt.trades != null ? r.bt.trades : '', r.bt.win_rate != null ? (r.bt.win_rate * 100).toFixed(2) : '',
+      r.bt.profit_factor != null ? r.bt.profit_factor : '', r.bt.avg_r != null ? r.bt.avg_r : '',
+      r.bt.net_pnl != null ? r.bt.net_pnl : '',
+      r.jr.total_trades != null ? r.jr.total_trades : '', r.jr.win_rate != null ? r.jr.win_rate : '',
+      r.jr.avg_rr != null ? r.jr.avg_rr : '', r.jr.total_pnl != null ? r.jr.total_pnl : '',
+    ]);
+  });
+  const csv = rows.map(function (r) { return r.map(function (c) { c = String(c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'cohort_' + (mtReportCohortName || 'report').replace(/[^a-z0-9]+/gi, '_') + '_leaderboard.csv';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }

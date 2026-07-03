@@ -1334,11 +1334,16 @@ def get_group_analytics(group_id):
         # Get all trades for group members
         trades = JournalEntry.query.filter(JournalEntry.user_id.in_(user_ids)).all()
         
+        def _avg_rr(trade_list):
+            rrs = [t.rr for t in trade_list if getattr(t, 'rr', None) is not None]
+            return round(sum(rrs) / len(rrs), 2) if rrs else None
+
         # Calculate group analytics
         total_trades = len(trades)
         total_pnl = sum(trade.pnl for trade in trades if trade.pnl is not None)
         winning_trades = len([trade for trade in trades if trade.pnl and trade.pnl > 0])
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        avg_rr = _avg_rr(trades)
         
         # Individual member stats
         member_stats = []
@@ -1356,6 +1361,7 @@ def get_group_analytics(group_id):
                 'total_trades': user_total_trades,
                 'total_pnl': round(user_total_pnl, 2),
                 'win_rate': round(user_win_rate, 2),
+                'avg_rr': _avg_rr(user_trades),
                 'winning_trades': user_winning_trades,
                 'losing_trades': user_total_trades - user_winning_trades
             })
@@ -1389,7 +1395,8 @@ def get_group_analytics(group_id):
                 'losing_trades': total_trades - winning_trades,
                 'recent_trades_30d': len(recent_trades),
                 'recent_pnl_30d': round(recent_pnl, 2),
-                'average_pnl_per_trade': round(total_pnl / total_trades, 2) if total_trades > 0 else 0
+                'average_pnl_per_trade': round(total_pnl / total_trades, 2) if total_trades > 0 else 0,
+                'avg_rr': avg_rr
             },
             'members': member_stats
         }), 200

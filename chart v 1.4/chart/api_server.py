@@ -15158,6 +15158,78 @@ async def admin_mentorship_import(payload: _MentorshipImportIn, request: Request
         db.close()
 
 
+def _backtest_kpi_block(kpis) -> dict:
+    """Flatten a _compute_session_analytics kpis dict to the report shape.
+    avg_r mirrors expectancy_r (mean of per-trade R multiples)."""
+    if not kpis:
+        return {
+            "trades": 0, "win_rate": None, "profit_factor": None,
+            "expectancy_r": None, "avg_r": None, "net_pnl": 0.0, "max_drawdown_pct": None,
+        }
+    return {
+        "trades": kpis.get("trades") or 0,
+        "win_rate": kpis.get("win_rate"),
+        "profit_factor": kpis.get("profit_factor"),
+        "expectancy_r": kpis.get("expectancy_r"),
+        "avg_r": kpis.get("expectancy_r"),
+        "net_pnl": kpis.get("net_pnl") or 0.0,
+        "max_drawdown_pct": kpis.get("max_drawdown_pct"),
+    }
+
+
+@app.get("/api/admin/mentorship/cohorts/{group_id}/report")
+async def admin_mentorship_cohort_report(group_id: int, request: Request):
+    """Per-member + cohort-total BACKTEST KPIs (chart trades). Journal KPIs are
+    fetched separately by the admin UI from the journal group-analytics endpoint
+    and merged client-side by user_id."""
+    _require_admin(request)
+    MAX_TRADES_PER_USER = 3000
+    db = SessionLocal()
+    try:
+        group = db.query(Group).filter(Group.id == group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Cohort not found")
+        members = db.query(User).filter(User.group_id == group_id).order_by(User.email.asc()).all()
+
+        def _kpis_for(journal):
+            if not journal:
+                return None
+            agg = {"id": None, "name": "Cohort", "session_type": "aggregate", "start_balance": None}
+            try:
+                res = _sanitize_for_json(_compute_session_analytics(agg, journal))
+                return res.get("kpis") if isinstance(res, dict) else None
+            except Exception:
+                return None
+
+        members_out = []
+        all_trades: list = []
+        for u in members:
+            rows = (
+                db.query(TradingSessionJournalTrade)
+                .filter(TradingSessionJournalTrade.user_id == u.id)
+                .order_by(TradingSessionJournalTrade.updated_at.desc())
+                .limit(MAX_TRADES_PER_USER)
+                .all()
+            )
+            rows = list(reversed(rows))
+            journal = _journal_dicts_from_journal_trade_rows(rows)
+            all_trades.extend(journal)
+            members_out.append({
+                "user_id": u.id,
+                "email": u.email,
+                "name": u.name,
+                "backtest": _backtest_kpi_block(_kpis_for(journal)),
+            })
+
+        return {
+            "cohort": {"id": group.id, "name": group.name, "member_count": len(members)},
+            "members": members_out,
+            "totals": _backtest_kpi_block(_kpis_for(all_trades)),
+        }
+    finally:
+        db.close()
+
+
 @app.delete("/api/admin/users/{user_id}")
 async def admin_delete_user(user_id: int, request: Request):
     admin = _require_admin(request)
