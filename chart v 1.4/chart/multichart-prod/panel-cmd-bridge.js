@@ -932,7 +932,13 @@
         var prevOffsetX = ch.offsetX;
         var prevCandleWidth = ch.candleWidth;
         var prevAutoScroll = rs.autoScrollEnabled;
-        rs.autoScrollEnabled = false;
+        // During active playback the panel tracks the host playhead like the main
+        // chart (unless the user manually panned THIS panel). Let the mirror's own
+        // follow path set + render the followed offset in a single pass — forcing
+        // autoScroll off here is what froze panels while candles advanced.
+        var willFollowPlayhead = (!!(payload && payload.isPlaying)
+            || ch._multichartPassivePlayActive === true) && !rs.userHasPanned;
+        rs.autoScrollEnabled = willFollowPlayhead;
         var ok = false;
         try {
             ok = !!rs.applyMultichartMirrorFrame(payload);
@@ -993,22 +999,42 @@
         }
         rs.autoScrollEnabled = prevAutoScroll;
         if (ok) {
-            var passiveFollow = !rs.userHasPanned
-                && ch._multichartVisibleRangeSyncOn !== false;
-            if (!passiveFollow) {
-                var keepOffset = Number.isFinite(prevOffsetX);
-                if (rs.userHasPanned || ch._multichartVisibleRangeSyncOn) {
-                    keepOffset = Number.isFinite(prevOffsetX);
-                } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
-                    && ch._multichartViewportNeedsRecovery()) {
-                    keepOffset = false;
+            // During active playback the panel must track the host playhead like the
+            // main chart — this is core replay behavior and must NOT be gated on the
+            // visible-range sync toggle (which defaults OFF). Only a manual pan on THIS
+            // panel opts it out. When paused/scrubbing we fall back to the sync-aware
+            // logic below so an independent panel keeps its own view.
+            var hostPlaying = !!(payload && payload.isPlaying)
+                || ch._multichartPassivePlayActive === true;
+            var followPlayhead = hostPlaying && !rs.userHasPanned;
+            if (followPlayhead) {
+                if (Number.isFinite(payload.hostOffsetX)) {
+                    ch.offsetX = Number(payload.hostOffsetX);
+                } else if (Number.isFinite(pc.offsetX)) {
+                    ch.offsetX = pc.offsetX;
                 }
-                if (keepOffset) ch.offsetX = prevOffsetX;
-                if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) {
-                    ch.candleWidth = prevCandleWidth;
+                if (Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
+                    ch.candleWidth = pc.candleWidth;
                 }
-            } else if (pc && Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
-                ch.candleWidth = pc.candleWidth;
+                if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+            } else {
+                var passiveFollow = !rs.userHasPanned
+                    && ch._multichartVisibleRangeSyncOn !== false;
+                if (!passiveFollow) {
+                    var keepOffset = Number.isFinite(prevOffsetX);
+                    if (rs.userHasPanned || ch._multichartVisibleRangeSyncOn) {
+                        keepOffset = Number.isFinite(prevOffsetX);
+                    } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
+                        && ch._multichartViewportNeedsRecovery()) {
+                        keepOffset = false;
+                    }
+                    if (keepOffset) ch.offsetX = prevOffsetX;
+                    if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) {
+                        ch.candleWidth = prevCandleWidth;
+                    }
+                } else if (pc && Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
+                    ch.candleWidth = pc.candleWidth;
+                }
             }
         }
         return ok;
