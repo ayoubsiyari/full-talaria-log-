@@ -34424,9 +34424,19 @@ class Chart {
 
     _resolveDrawingSyncIndexFromAnchor(anchor) {
         if (!anchor) return null;
+        // Prefer TIMESTAMP resolution. `fractionalIndex` is the SOURCE chart's bar
+        // index and is only valid on a panel with identical data + timeframe. Across
+        // multichart panels (different timeframe / data window) it must be remapped
+        // through the timestamp to THIS panel's local index, otherwise a synced
+        // move lands the shape on the wrong bars and it appears scrambled/broken.
+        // timestampToIndex returns a fractional index, so brush-stroke smoothness
+        // is preserved.
+        if (Number.isFinite(anchor.timestamp)) {
+            const idx = this._findTargetIndexForTimestamp(anchor.timestamp);
+            if (Number.isFinite(idx)) return idx;
+        }
         if (Number.isFinite(anchor.fractionalIndex)) return anchor.fractionalIndex;
-        if (!Number.isFinite(anchor.timestamp)) return null;
-        return this._findTargetIndexForTimestamp(anchor.timestamp);
+        return null;
     }
 
     _nearestOhlcKeyAtIndex(idx, y) {
