@@ -20333,8 +20333,17 @@ class Chart {
         // Replay can consume candles much faster than normal panning.
         // Size chunk by replay consumption rate + timeframe to avoid long waits
         // while also preventing oversized requests on larger raw timeframes.
+        // Batch size depends on whether replay is actively PLAYING — NOT on
+        // replay-mode or single-vs-multichart. This keeps manual pan-loading
+        // identical everywhere:
+        //   • Actively playing replay → size by consumption rate (forward runway).
+        //   • Live OR paused-replay manual pan → size to the visible span (2000–5000).
+        // Previously this branched on `isReplay`, so any paused backtest pan-back
+        // (including multichart panels) was hard-capped at 2000 while a plain live
+        // chart pulled up to 5000 — that made multichart/backtest feel slower. Now a
+        // single chart and a multichart panel in the same state pull the same bars.
         let panLimit = 2000;
-        if (isReplay) {
+        if (isPlayback) {
             const replaySpeed = Math.max(1, Number(this.replaySystem?.speed) || 1);
             let rawCandleTimeframeMs = this.parseTimeframe(tf);
             if (!Number.isFinite(rawCandleTimeframeMs) || rawCandleTimeframeMs <= 0) {
@@ -20378,9 +20387,10 @@ class Chart {
         }
         this._panLoadLimit = panLimit;
         
-        // Replay keeps the proven 2000-bar cadence; manual panning may pull a
-        // larger chunk so a zoomed-out viewport fills in one request.
-        const barLimit = isReplay ? Math.min(2000, panLimit) : Math.min(10000, panLimit);
+        // Actively-playing replay keeps the proven 2000-bar cadence; manual panning
+        // (live OR paused replay) may pull a larger chunk so a zoomed-out viewport
+        // fills in one request — identical for single charts and multichart panels.
+        const barLimit = isPlayback ? Math.min(2000, panLimit) : Math.min(5000, panLimit);
         const storeTf = this._questdbStoreResolution(tf);
 
         // Replay: use fullRawData edges — _serverCursors can lag after 1m TF hot-swap.
