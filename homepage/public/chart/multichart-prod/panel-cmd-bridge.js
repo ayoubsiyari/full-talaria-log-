@@ -512,6 +512,14 @@
                 ch._mcCatchUpCooldownUntil = 0;
                 return;
             }
+            // Independent TF by user choice (host switched TF, this panel kept its
+            // own): NEVER mirror/step from the host's bars. Falling through to
+            // applyMultichartMirrorFrame below would apply the host's frame (e.g. 1D)
+            // onto this panel (e.g. 15m) and drag its viewport backward while the
+            // host loads history. This panel owns its own replay view.
+            if (hostTf && panelTf && hostTf !== panelTf) {
+                return;
+            }
         }
 
         var applied = rs.applyMultichartMirrorFrame(args);
