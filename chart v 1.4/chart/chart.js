@@ -9296,11 +9296,12 @@ class Chart {
         void this.flushCriticalSessionStateSave();
     }
 
-    async flushCriticalSessionStateSave() {
+    async flushCriticalSessionStateSave(opts = {}) {
+        const useKeepalive = !!(opts && opts.keepalive);
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
-        if (this._sessionPatchBackoffActive()) return;
-        if (this._sessionStatePatchInFlight) {
+        if (this._sessionPatchBackoffActive() && !useKeepalive) return;
+        if (this._sessionStatePatchInFlight && !useKeepalive) {
             this._sessionPatchFlushQueued = true;
             return;
         }
@@ -9315,6 +9316,7 @@ class Chart {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
+                keepalive: useKeepalive,
                 body: JSON.stringify(patch)
             });
             if (!res.ok) {
@@ -9403,18 +9405,22 @@ class Chart {
         );
     }
 
-    async flushSessionStateSave() {
+    async flushSessionStateSave(opts = {}) {
+        const useKeepalive = !!(opts && opts.keepalive);
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
         if (this._sessionPatchBackoffActive()) {
-            const wait = Math.max(250, Math.min(this._sessionPatchBackoffUntil - Date.now(), 60000));
-            if (!this._sessionStateSaveTimer) {
-                this._sessionStateSaveTimer = setTimeout(() => {
-                    this._sessionStateSaveTimer = null;
-                    void this.flushSessionStateSave();
-                }, wait);
+            // On unload we can't wait out a backoff — send immediately via keepalive.
+            if (!useKeepalive) {
+                const wait = Math.max(250, Math.min(this._sessionPatchBackoffUntil - Date.now(), 60000));
+                if (!this._sessionStateSaveTimer) {
+                    this._sessionStateSaveTimer = setTimeout(() => {
+                        this._sessionStateSaveTimer = null;
+                        void this.flushSessionStateSave();
+                    }, wait);
+                }
+                return;
             }
-            return;
         }
         if (this._sessionStatePatchInFlight) {
             this._sessionPatchFlushQueued = true;
@@ -9434,6 +9440,7 @@ class Chart {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
+                keepalive: useKeepalive,
                 body: JSON.stringify(patch)
             });
             if (!res.ok) {
@@ -9556,15 +9563,20 @@ class Chart {
                     this._sessionStateUnloadHookInstalled = true;
                     const flushPendingSessionState = () => {
                         try {
-                            // Capture the LATEST replay playhead before flushing. The
-                            // periodic persist is throttled (~8s while playing), so a
-                            // refresh mid-window would otherwise push a stale playhead
-                            // and the host would restart replay from the session start
-                            // while panels kept their advanced position.
+                            // Merge the LATEST replay playhead into the pending patch
+                            // WITHOUT firing a cancellable send first. The periodic
+                            // persist is throttled (~8s while playing), so a refresh
+                            // mid-window would otherwise leave a stale playhead queued —
+                            // the host would restart replay from the session start while
+                            // panels kept their advanced position. We merge here, then do
+                            // a single keepalive flush below that survives page unload.
                             if (this.replaySystem
                                 && this.replaySystem.isActive
-                                && typeof this.replaySystem._flushReplayStateToSession === 'function') {
-                                this.replaySystem._flushReplayStateToSession();
+                                && typeof this.replaySystem._buildReplaySessionPatch === 'function'
+                                && typeof this._mergeSessionStatePatches === 'function') {
+                                const replayPatch = this.replaySystem._buildReplaySessionPatch();
+                                this._pendingSessionStatePatch =
+                                    this._mergeSessionStatePatches(this._pendingSessionStatePatch, replayPatch);
                             }
                             this._flushReplayDashboardCoverageNow();
                             if (this.drawingManager && typeof this.drawingManager._flushScheduledSaveDrawings === 'function') {
@@ -9574,8 +9586,12 @@ class Chart {
                                 clearTimeout(this._sessionStateSaveTimer);
                                 this._sessionStateSaveTimer = null;
                             }
-                            void this.flushSessionStateSave();
-                            void this.flushCriticalSessionStateSave();
+                            this._replaySessionStateLastPatchAt = 0;
+                            // keepalive so the browser doesn't abort the request when the
+                            // page is torn down by a refresh/close — this is what makes the
+                            // advanced playhead actually reach the server on refresh.
+                            void this.flushSessionStateSave({ keepalive: true });
+                            void this.flushCriticalSessionStateSave({ keepalive: true });
                         } catch (e) {}
                     };
                     window.addEventListener('pagehide', flushPendingSessionState);
