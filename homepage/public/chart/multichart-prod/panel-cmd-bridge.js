@@ -447,6 +447,18 @@
         var ts = Number(args.timestamp);
         if (!Number.isFinite(ts)) return;
 
+        // Host mid timeframe-switch: it rebuilds its master data and its broadcast
+        // playhead can momentarily regress. Applying those transient frames drags
+        // panels (especially ones on a different TF) BACKWARD while the host loads
+        // history. Hold this panel steady until the host finishes switching.
+        try {
+            var pcSwitching = readParentChart();
+            if (pcSwitching
+                && (pcSwitching._timeframeSwitching || pcSwitching._pairSwitchLoading)) {
+                return;
+            }
+        } catch (_) {}
+
         if (!ch.rawData || ch.rawData.length === 0) {
             pendingReplayTs = ts;
             return applyReplayEnter(ch, ts);
