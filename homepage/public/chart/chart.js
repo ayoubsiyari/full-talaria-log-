@@ -20227,15 +20227,28 @@ class Chart {
             && typeof this._multichartSamePairDataShareActive === 'function'
             && this._multichartSamePairDataShareActive()
             && this._isMultichartEmbedPanel()) {
-            if (!this._isMultichartLocalPanLeader()) {
-                if (typeof this._tryExtendReplayMasterFromParent === 'function') {
-                    try { this._tryExtendReplayMasterFromParent({ lite: true }); } catch (_) { /* ignore */ }
-                }
+            const syncOn = !!this._multichartVisibleRangeSyncOn;
+            // 1) Instant fill from the host's already-loaded master (no /bars wait).
+            let extended = false;
+            if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+                try { extended = !!this._tryExtendReplayMasterFromParent({ lite: true }); } catch (_) { /* ignore */ }
+            }
+            if (extended) return true;
+            // 2) Viewport sync ON: followers must NOT each fetch — only the drag
+            //    leader (or host) pulls new history; followers mirror it.
+            if (syncOn && !this._isMultichartLocalPanLeader()) {
                 return false;
             }
-            if (typeof this._delegateSamePairPanLoadToHost === 'function') {
-                return this._delegateSamePairPanLoadToHost(force);
+            // 3) Need history the host doesn't hold yet. Ask the host to fetch it
+            //    once (shared); the poll extends this panel when it lands. This must
+            //    run even when this panel is NOT the active drag leader — with
+            //    independent viewports (sync off) an idle / wheel / auto pan-left
+            //    otherwise got stuck with no loader until the user grabbed it.
+            if (typeof this._delegateSamePairPanLoadToHost === 'function'
+                && this._delegateSamePairPanLoadToHost(force)) {
+                return true;
             }
+            // 4) Otherwise fall through to this panel's own fetch path below.
         }
 
         const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
