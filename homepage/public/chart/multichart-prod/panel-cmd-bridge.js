@@ -1008,13 +1008,21 @@
                 || ch._multichartPassivePlayActive === true;
             var followPlayhead = hostPlaying && !rs.userHasPanned;
             if (followPlayhead) {
-                if (Number.isFinite(payload.hostOffsetX)) {
+                // Match host zoom, then right-anchor with this panel's OWN width so it
+                // keeps the same right-side gap as the main chart (mirroring the host's
+                // raw pixel offsetX jams the newest candle against the panel axis).
+                if (Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
+                    ch.candleWidth = pc.candleWidth;
+                }
+                var followSt = (typeof rs.getReplayAutoScrollState === 'function')
+                    ? rs.getReplayAutoScrollState(ch)
+                    : null;
+                if (followSt && Number.isFinite(followSt.offsetX)) {
+                    ch.offsetX = followSt.offsetX;
+                } else if (Number.isFinite(payload.hostOffsetX)) {
                     ch.offsetX = Number(payload.hostOffsetX);
                 } else if (Number.isFinite(pc.offsetX)) {
                     ch.offsetX = pc.offsetX;
-                }
-                if (Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
-                    ch.candleWidth = pc.candleWidth;
                 }
                 if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
             } else {

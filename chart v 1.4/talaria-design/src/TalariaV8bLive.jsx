@@ -18713,10 +18713,37 @@ const TalariaV8bLive = () => {
 
         const items = [];
         // Multichart: every panel's drawingManager holds a synced copy of the
-        // same drawing (identical `id` across tiles). Without dedupe the tree
-        // lists each drawing once per panel (e.g. 4 brushes × 4 tiles = 16).
-        // Track ids we've already emitted so each logical drawing shows once.
-        const seenDrawingIds = new Set();
+        // same drawing, so enumerating all managers lists each drawing once per
+        // tile (e.g. 4 brushes × 4 tiles = 16). We can't dedupe on `id` alone —
+        // synced copies frequently lack a stable id across panels — so build a
+        // content signature (type + geometry + color) that is identical for the
+        // same logical drawing on every tile, and emit each signature once.
+        const seenDrawingKeys = new Set();
+        const drawingDedupeKey = (d) => {
+          try {
+            // Prefer timestamp anchors: they survive across panels even when
+            // each tile is on a different timeframe (index-based x differs, the
+            // timestamp+price pair does not).
+            let geom = '';
+            if (Array.isArray(d.timestampPoints) && d.timestampPoints.length) {
+              geom = d.timestampPoints
+                .map((p) => `${Math.round(Number(p && (p.timestamp ?? p.t)) || 0)}:${Number(p && (p.price ?? p.y)) || 0}`)
+                .join(',');
+            } else if (Array.isArray(d.points) && d.points.length) {
+              geom = d.points
+                .map((p) => `${Number(p && p.x) || 0}:${Number(p && p.y) || 0}`)
+                .join(',');
+            } else {
+              // Point-less drawings (e.g. images) — synced copies keep the same
+              // id, so fall back to that; otherwise leave undeduped.
+              return (d.id != null && d.id !== '') ? `${d.type}|id:${String(d.id)}` : null;
+            }
+            const col = (d.style && (d.style.color || d.style.stroke)) || d.color || '';
+            return `${d.type}|${col}|${geom}`;
+          } catch (_) {
+            return null;
+          }
+        };
         for (const dm of managers) {
           if (!dm || !Array.isArray(dm.drawings)) continue;
           const valid = dm.drawings.filter((d) => {
@@ -18731,10 +18758,10 @@ const TalariaV8bLive = () => {
               : (d.visible !== false && (typeof dm._isVisibleForCurrentTimeframe !== 'function' || dm._isVisibleForCurrentTimeframe(d)))
           );
           for (const d of valid) {
-            const dedupeKey = (d.id != null && d.id !== '') ? String(d.id) : null;
+            const dedupeKey = drawingDedupeKey(d);
             if (dedupeKey !== null) {
-              if (seenDrawingIds.has(dedupeKey)) continue;
-              seenDrawingIds.add(dedupeKey);
+              if (seenDrawingKeys.has(dedupeKey)) continue;
+              seenDrawingKeys.add(dedupeKey);
             }
             const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
             const name = (typeof dm.getDrawingDisplayTitle === 'function')

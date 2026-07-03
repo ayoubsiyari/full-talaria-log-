@@ -6241,14 +6241,26 @@ class ReplaySystem {
             const preserveViewport = Number.isFinite(preserveUntil) && nowPv < preserveUntil;
             const passiveFollow = this.autoScrollEnabled && !this.userHasPanned && !preserveViewport;
             if (passiveFollow) {
-                if (Number.isFinite(detail && detail.hostOffsetX)) {
-                    chart.offsetX = Number(detail.hostOffsetX);
-                } else if (Number.isFinite(parent.offsetX)) {
-                    chart.offsetX = parent.offsetX;
-                }
+                // Match the host's zoom, then right-anchor using THIS panel's own width
+                // so it keeps the same right-edge gap as the main chart. Copying the
+                // host's raw pixel offsetX pins the newest candle flush against a
+                // differently-sized panel's axis (no right-side space).
                 if (Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
                     chart.candleWidth = parent.candleWidth;
                 }
+                let followOffset = null;
+                if (typeof this.getReplayAutoScrollState === 'function') {
+                    const st = this.getReplayAutoScrollState(chart);
+                    if (st && Number.isFinite(st.offsetX)) followOffset = st.offsetX;
+                }
+                if (followOffset == null) {
+                    if (Number.isFinite(detail && detail.hostOffsetX)) {
+                        followOffset = Number(detail.hostOffsetX);
+                    } else if (Number.isFinite(parent.offsetX)) {
+                        followOffset = parent.offsetX;
+                    }
+                }
+                if (followOffset != null) chart.offsetX = followOffset;
                 chart._chartViewRestored = true;
             }
 
