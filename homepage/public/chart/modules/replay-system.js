@@ -2396,6 +2396,11 @@ class ReplaySystem {
             if (typeof this.chart._invalidateIndicatorLayerCache === 'function') {
                 this.chart._invalidateIndicatorLayerCache();
             }
+            // Entering replay swaps the full dataset for a sliced view — drop any
+            // cached/frozen time-axis ticks so the axis rebuilds for the slice.
+            if (typeof this.chart._invalidateTimeAxisTickCaches === 'function') {
+                this.chart._invalidateTimeAxisTickCaches();
+            }
         }
         
         // Reset auto-scroll state
@@ -2590,6 +2595,11 @@ class ReplaySystem {
             this.chart.data = this.chart.resampleData(this.chart.rawData, this.chart.currentTimeframe);
             if (typeof this.chart.bumpDataVersion === 'function') {
                 this.chart.bumpDataVersion();
+            }
+            // Exiting replay swaps the sliced view back for the full dataset —
+            // drop cached/frozen time-axis ticks so the axis rebuilds cleanly.
+            if (typeof this.chart._invalidateTimeAxisTickCaches === 'function') {
+                this.chart._invalidateTimeAxisTickCaches();
             }
             
             if (typeof this.chart.scheduleIndicatorRecalc === 'function') {

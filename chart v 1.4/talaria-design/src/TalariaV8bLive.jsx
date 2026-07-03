@@ -14304,7 +14304,13 @@ const TalariaV8bLive = () => {
   // the host shell (timezone, precision, colours, trading toggles, …).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (layoutPanels.n <= 1) return;
+    // NOTE: do NOT gate on layoutPanels.n — that state is only refreshed when a
+    // layout is opened via the layouts menu, so backtest/replay layouts (opened
+    // through a restored session) can leave it stale at 1 and silently drop the
+    // settings broadcast, leaving panels B/C/D on the old crosshair/grid/theme
+    // while only host panel A (updated by the local apply effect) changes. The
+    // authoritative "iframes exist" check is v9IsMultiPanelLayoutActive() /
+    // broadcastToIframesNoReply (host-excluded, no-op when there are no tiles).
     const grid = window.__multichartGrid;
     if (!grid || typeof grid.broadcastToIframesNoReply !== "function") return;
     const t = window.setTimeout(() => {

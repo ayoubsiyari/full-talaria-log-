@@ -16588,49 +16588,68 @@ class Chart {
         this._syncCtrlMarqueeSelectOverlay(x1, y1, x2 - x1, y2 - y1);
     }
 
-    /** Create (or reuse) the SVG overlay rect used to draw the Ctrl+marquee box on top. */
+    /**
+     * Create (or reuse) a DEDICATED sibling <svg> layer for the Ctrl+marquee box.
+     * It lives next to (not inside) the drawings SVG so the DrawingToolsManager's
+     * clears / layer-raising / clip-path never touch it — this avoids corrupting
+     * drawings in multichart panels while still stacking the box above them.
+     */
     _ensureCtrlMarqueeSelectOverlayRect() {
-        if (!this.svg || typeof this.svg.append !== 'function') return null;
-        const svgNode = typeof this.svg.node === 'function' ? this.svg.node() : null;
-        const cached = this._ctrlMarqueeOverlayRect;
-        if (cached && typeof cached.node === 'function') {
-            const node = cached.node();
-            if (node && svgNode && svgNode.contains(node)) return cached;
+        if (!this.svg || typeof this.svg.node !== 'function') return null;
+        const drawingsSvg = this.svg.node();
+        const parent = drawingsSvg && drawingsSvg.parentNode;
+        if (!parent) return null;
+        let layer = this._ctrlMarqueeOverlaySvg;
+        let rectEl = this._ctrlMarqueeOverlayRectEl;
+        if (!layer || layer.parentNode !== parent || !rectEl || rectEl.parentNode !== layer) {
+            const NS = 'http://www.w3.org/2000/svg';
+            layer = document.createElementNS(NS, 'svg');
+            layer.setAttribute('class', 'ctrl-marquee-overlay');
+            layer.style.position = 'absolute';
+            layer.style.top = '0';
+            layer.style.left = '0';
+            layer.style.pointerEvents = 'none';
+            layer.style.overflow = 'hidden';
+            const drawingsZ = parseInt(drawingsSvg.style.zIndex, 10);
+            layer.style.zIndex = String(Number.isFinite(drawingsZ) ? drawingsZ + 1 : 3);
+            rectEl = document.createElementNS(NS, 'rect');
+            rectEl.setAttribute('fill', 'rgba(41, 98, 255, 0.15)');
+            rectEl.setAttribute('stroke', 'rgba(41, 98, 255, 0.9)');
+            rectEl.setAttribute('stroke-width', '1');
+            rectEl.setAttribute('stroke-dasharray', '4,4');
+            rectEl.setAttribute('shape-rendering', 'crispEdges');
+            layer.appendChild(rectEl);
+            parent.appendChild(layer);
+            this._ctrlMarqueeOverlaySvg = layer;
+            this._ctrlMarqueeOverlayRectEl = rectEl;
         }
-        this._ctrlMarqueeOverlayRect = this.svg.append('rect')
-            .attr('class', 'ctrl-marquee-select')
-            .style('fill', 'rgba(41, 98, 255, 0.15)')
-            .style('stroke', 'rgba(41, 98, 255, 0.9)')
-            .style('stroke-width', '1')
-            .style('stroke-dasharray', '4,4')
-            .style('pointer-events', 'none')
-            .style('shape-rendering', 'crispEdges');
-        return this._ctrlMarqueeOverlayRect;
+        // Keep the layer sized to the chart so its pixel coords match the drawings space.
+        const w = this.w || drawingsSvg.clientWidth || 0;
+        const h = this.h || drawingsSvg.clientHeight || 0;
+        if (w) layer.style.width = w + 'px';
+        if (h) layer.style.height = h + 'px';
+        return rectEl;
     }
 
-    /** Position + show the SVG overlay marquee rect. */
+    /** Position + show the isolated marquee overlay rect. */
     _syncCtrlMarqueeSelectOverlay(x, y, width, height) {
         if (!this.ctrlMarqueeSelect || !this.ctrlMarqueeSelect.active) {
             this._hideCtrlMarqueeSelectOverlay();
             return;
         }
-        const rect = this._ensureCtrlMarqueeSelectOverlayRect();
-        if (!rect) return;
-        rect
-            .attr('x', x)
-            .attr('y', y)
-            .attr('width', Math.max(0, width))
-            .attr('height', Math.max(0, height))
-            .style('display', null);
-        // Keep it above any drawings appended to the same overlay.
-        if (typeof rect.raise === 'function') rect.raise();
+        const rectEl = this._ensureCtrlMarqueeSelectOverlayRect();
+        if (!rectEl) return;
+        rectEl.setAttribute('x', x);
+        rectEl.setAttribute('y', y);
+        rectEl.setAttribute('width', Math.max(0, width));
+        rectEl.setAttribute('height', Math.max(0, height));
+        if (this._ctrlMarqueeOverlaySvg) this._ctrlMarqueeOverlaySvg.style.display = '';
     }
 
-    /** Remove the SVG overlay marquee rect when the gesture ends/cancels. */
+    /** Hide the isolated marquee overlay when the gesture ends/cancels. */
     _hideCtrlMarqueeSelectOverlay() {
-        if (this._ctrlMarqueeOverlayRect) {
-            try { this._ctrlMarqueeOverlayRect.remove(); } catch (_e) { /* ignore */ }
-            this._ctrlMarqueeOverlayRect = null;
+        if (this._ctrlMarqueeOverlaySvg) {
+            this._ctrlMarqueeOverlaySvg.style.display = 'none';
         }
     }
 
@@ -19162,6 +19181,11 @@ class Chart {
         this._stopChartPanRenderLoop();
         this._cancelChartPanFrame();
         this._clearPanTimeTickCache();
+        // Also drop the interaction tick cache + wheel-burst density freeze so the
+        // post-switch render can't reuse the previous timeframe's/pair's ticks.
+        if (typeof this._invalidateTimeAxisTickCaches === 'function') {
+            this._invalidateTimeAxisTickCaches();
+        }
         if (typeof this._clearPanDrawingsLayerTransform === 'function') {
             this._clearPanDrawingsLayerTransform();
         }
@@ -19398,6 +19422,11 @@ class Chart {
         this._stopChartPanRenderLoop();
         this._cancelChartPanFrame();
         this._clearPanTimeTickCache();
+        // Also drop the interaction tick cache + wheel-burst density freeze so the
+        // post-switch render can't reuse the previous timeframe's/pair's ticks.
+        if (typeof this._invalidateTimeAxisTickCaches === 'function') {
+            this._invalidateTimeAxisTickCaches();
+        }
         if (typeof this._clearPanDrawingsLayerTransform === 'function') {
             this._clearPanDrawingsLayerTransform();
         }
@@ -21501,10 +21530,37 @@ class Chart {
         });
     }
 
+    /**
+     * Freeze the bars-between-time-labels while a wheel-zoom burst is running so
+     * the date axis scales smoothly with the candles instead of re-densifying
+     * (jumping/drifting) each tick as the visible-bar count crosses a threshold.
+     * Mirrors the {@link #_wheelBurstSnapYDomain} freeze used for the price axis:
+     * during the burst we reuse the interval captured at burst start; once the
+     * burst settles the interval is recomputed once for the new zoom level.
+     * @param {number} computed Freshly computed interval (bars between labels).
+     * @returns {number} Interval to actually use this frame.
+     */
+    _stabilizeTimeLabelInterval(computed) {
+        const tf = String(this._getRenderTimeframe() || '').toLowerCase().trim();
+        if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass
+            && Number.isFinite(this._wheelBurstSnapLabelInterval)
+            && this._wheelBurstSnapLabelInterval > 0
+            && this._wheelBurstSnapLabelIntervalTf === tf) {
+            return this._wheelBurstSnapLabelInterval;
+        }
+        if (Number.isFinite(computed) && computed > 0) {
+            this._lastComputedTimeLabelInterval = computed;
+            this._lastComputedTimeLabelIntervalTf = tf;
+        }
+        return computed;
+    }
+
     _finishWheelBurstInteraction() {
         this._cancelWheelBurstRender();
         this._wheelBurstSnapYDomain = null;
         this._wheelBurstSnapVolumeDomain = null;
+        this._wheelBurstSnapLabelInterval = null;
+        this._wheelBurstSnapLabelIntervalTf = null;
         // Geometry stays aligned via panFast redraws during the burst; re-sync on settle caused snap.
         if (this.drawingManager && typeof this.drawingManager.finalizeDrawingsAfterChartPan === 'function') {
             this.drawingManager.finalizeDrawingsAfterChartPan();
@@ -21606,7 +21662,15 @@ class Chart {
             const c = this.data[iFloor];
             return c && Number.isFinite(c.t) ? c.t : null;
         }
-        let tfMs = this.parseTimeframe(String(this.currentTimeframe || '1m').toLowerCase());
+        // Use the RENDER timeframe (not currentTimeframe): during a timeframe
+        // switch the displayed bars are still the old timeframe until the new
+        // ones land, and the time-label density uses _getRenderTimeframe() too.
+        // Projecting empty-viewport tick timestamps with the same timeframe keeps
+        // grid lines + date labels consistent with the bars actually on screen.
+        const projTf = (typeof this._getRenderTimeframe === 'function')
+            ? this._getRenderTimeframe()
+            : this.currentTimeframe;
+        let tfMs = this.parseTimeframe(String(projTf || '1m').toLowerCase());
         if (!Number.isFinite(tfMs) || tfMs <= 0) {
             if (this.data.length >= 2) {
                 const d = this.data[1].t - this.data[0].t;
@@ -22520,6 +22584,26 @@ class Chart {
 
     _clearPanTimeTickCache() {
         this._panTimeTickCache = null;
+    }
+
+    /**
+     * Drop every cached/frozen time-axis tick source so the next render rebuilds
+     * ticks from the CURRENT timeframe + data. Must be called on transitions that
+     * swap the underlying bars (timeframe switch, replay enter/exit) — otherwise a
+     * render right after the swap can paint the previous timeframe's label density
+     * or bar→timestamp projection (garbled/uneven date labels + misaligned grid
+     * that "self-corrects" on the next full rebuild).
+     */
+    _invalidateTimeAxisTickCaches() {
+        this._cachedInteractionTimeTicks = null;
+        if (typeof this._clearPanTimeTickCache === 'function') {
+            this._clearPanTimeTickCache();
+        }
+        // Release any wheel-zoom label-density freeze captured on the old
+        // timeframe so it cannot be re-applied to the new view.
+        this._wheelBurstSnapLabelInterval = null;
+        this._wheelBurstSnapLabelIntervalTf = null;
+        this._wheelBurstUntil = 0;
     }
 
     /** Shift cached time-axis ticks during pan instead of rebuilding every frame. */
@@ -23762,7 +23846,7 @@ class Chart {
             const dayStep = Math.max(1, Math.ceil(minBarsPerTick / barsPerDay));
             labelInterval = dayStep * barsPerDay;
         }
-        return labelInterval;
+        return this._stabilizeTimeLabelInterval(labelInterval);
     }
 
     /** First tick index on the global bar/time grid at or after viewport left edge. */
@@ -23995,6 +24079,10 @@ class Chart {
                 labelInterval = Math.max(labelInterval, minBarsPerTick);
             }
         }
+
+        // Freeze density during a wheel-zoom burst (see _stabilizeTimeLabelInterval)
+        // so the date axis scales smoothly instead of drifting at each tick.
+        labelInterval = this._stabilizeTimeLabelInterval(labelInterval);
 
         const labelIntervalMs   = labelInterval * timeframeMs;
         // Anchor tick alignment to the LAST loaded bar (not the first). Dragging
@@ -28324,6 +28412,16 @@ class Chart {
                     const vd = this.volumeScale.domain();
                     this._wheelBurstSnapVolumeDomain = [Number(vd[0]), Number(vd[1])];
                 }
+            }
+            if (!burstWasActive) {
+                // Freeze the time-label density for the whole burst so the date
+                // axis stays anchored on the same bars and just scales with the
+                // zoom (no per-tick relabel/drift). Recomputed on settle.
+                this._wheelBurstSnapLabelInterval = Number.isFinite(this._lastComputedTimeLabelInterval)
+                    && this._lastComputedTimeLabelInterval > 0
+                    ? this._lastComputedTimeLabelInterval
+                    : null;
+                this._wheelBurstSnapLabelIntervalTf = String(this._getRenderTimeframe() || '').toLowerCase().trim();
             }
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
