@@ -2310,6 +2310,38 @@ export default function MultichartGrid({
                 scheduleAlignHostOnly(mgr, 0);
                 syncAllIframesToHost(mgr);
             }
+            // Backtest host reconcile: on layout open the host's replay slice can
+            // sit BEHIND its own playhead — data ends before replayTimestamp — so
+            // A shows an older last candle than B/C/D until the user presses Play
+            // (Play runs updateChartData which reveals up to the playhead). Do that
+            // same reveal here automatically. GUARD: only when the replay master
+            // (fullRawData) actually contains bars up to the playhead, so we reveal
+            // existing data and never clamp/regress the playhead backwards (the
+            // "needs a forward fetch" case is deliberately left to Play).
+            try {
+                const hostCh = window.chart;
+                const hrs = hostCh && hostCh.replaySystem;
+                if (hrs && hrs.isActive && Number.isFinite(hrs.replayTimestamp)) {
+                    const hd = Array.isArray(hostCh.data) ? hostCh.data : [];
+                    const hLast = hd.length ? hd[hd.length - 1] : null;
+                    const behind = hLast && Number.isFinite(hLast.t)
+                        && hLast.t < hrs.replayTimestamp;
+                    const frd = Array.isArray(hrs.fullRawData) ? hrs.fullRawData : null;
+                    const mLast = frd && frd.length ? frd[frd.length - 1] : null;
+                    const masterReaches = mLast && Number.isFinite(mLast.t)
+                        && mLast.t >= hrs.replayTimestamp;
+                    if (behind && masterReaches) {
+                        if (typeof hrs.goToReplayTimestamp === "function") {
+                            hrs.goToReplayTimestamp(hrs.replayTimestamp, {
+                                preserveVisibleWindow: false,
+                            });
+                        } else if (typeof hrs.updateChartData === "function") {
+                            hrs.updateChartData();
+                        }
+                        if (typeof hostCh.render === "function") hostCh.render();
+                    }
+                }
+            } catch (_) {}
             // Hold opacity:0 until settle window completes; showPanelFrame also
             // defers via __multichartBootRevealAfter set in flushPendingRangeSync.
             revealTimer = setTimeout(() => {

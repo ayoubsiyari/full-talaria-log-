@@ -15212,6 +15212,9 @@ class Chart {
 	        if (typeof this._syncDomAxisCursorZones === 'function') {
 	            this._syncDomAxisCursorZones();
 	        }
+	        if (typeof this._ensureScaleResetCorner === 'function') {
+	            this._ensureScaleResetCorner();
+	        }
 	        
 	        if (!isPanelDragResize) {
 	            if (svgNode) {
@@ -15416,6 +15419,85 @@ class Chart {
             timeZone.style.pointerEvents = 'auto';
             timeZone.style.zIndex = '12';
         }
+    }
+
+    /**
+     * Bottom-right price/time intersection box → click resets the chart scale
+     * (auto-fit price + default viewport), TradingView-style. Created per Chart
+     * instance and scoped to its own wrapper, so it works for the main chart and
+     * every multichart panel without touching the HTML shells. Idempotent and
+     * cheap: builds the element once, then only rewrites styles when the axis
+     * margins change.
+     */
+    _ensureScaleResetCorner() {
+        if (typeof document === 'undefined') return;
+        const wrap = this.canvas && this.canvas.parentElement;
+        if (!wrap) return;
+        try {
+            if (getComputedStyle(wrap).position === 'static') {
+                wrap.style.position = 'relative';
+            }
+        } catch (_) { /* ignore */ }
+
+        let corner = this._scaleResetCornerEl;
+        if (!corner || !corner.isConnected || corner.parentElement !== wrap) {
+            corner = wrap.querySelector(':scope > .scale-reset-corner');
+            if (!corner) {
+                corner = document.createElement('div');
+                corner.className = 'scale-reset-corner';
+                corner.setAttribute('title', 'Reset chart scale');
+                corner.setAttribute('role', 'button');
+                corner.setAttribute('aria-label', 'Reset chart scale');
+                corner.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v6h6"></path><path d="M3.51 15a9 9 0 1 0 2.13-9.36L3 8"></path></svg>';
+                Object.assign(corner.style, {
+                    position: 'absolute',
+                    right: '0',
+                    bottom: '0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box',
+                    color: 'rgba(209,212,220,0.9)',
+                    background: 'transparent',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    zIndex: '14',
+                    pointerEvents: 'auto',
+                    opacity: '0',
+                    transition: 'opacity 0.12s ease, background 0.12s ease',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                });
+                corner.addEventListener('mouseenter', () => {
+                    corner.style.opacity = '1';
+                    corner.style.background = 'rgba(255,255,255,0.08)';
+                });
+                corner.addEventListener('mouseleave', () => {
+                    corner.style.opacity = '0';
+                    corner.style.background = 'transparent';
+                });
+                // Swallow pointer/wheel so clicking the corner never starts a
+                // chart pan/zoom on the canvas underneath.
+                const swallow = (e) => { e.stopPropagation(); };
+                ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'dblclick', 'wheel', 'contextmenu']
+                    .forEach(t => corner.addEventListener(t, swallow));
+                corner.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    try {
+                        if (typeof this.resetView === 'function') this.resetView();
+                    } catch (_) { /* ignore */ }
+                });
+                wrap.appendChild(corner);
+            }
+            this._scaleResetCornerEl = corner;
+        }
+
+        const m = this.margin || { r: 60, b: 30 };
+        const w = Math.max(24, Number(m.r) || 60);
+        const h = Math.max(20, Number(m.b) || 30);
+        if (this._scaleResetCornerW !== w) { corner.style.width = w + 'px'; this._scaleResetCornerW = w; }
+        if (this._scaleResetCornerH !== h) { corner.style.height = h + 'px'; this._scaleResetCornerH = h; }
     }
 
     /**
@@ -16489,6 +16571,57 @@ class Chart {
         ctx.setLineDash([4, 4]);
         ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
         ctx.setLineDash([]);
+
+        // Also mirror the marquee onto the SVG overlay (z-index above the canvas +
+        // all drawings) so the blue box is always visible even if the base-canvas
+        // paint is occluded by the overlay layer.
+        this._syncCtrlMarqueeSelectOverlay(x1, y1, x2 - x1, y2 - y1);
+    }
+
+    /** Create (or reuse) the SVG overlay rect used to draw the Ctrl+marquee box on top. */
+    _ensureCtrlMarqueeSelectOverlayRect() {
+        if (!this.svg || typeof this.svg.append !== 'function') return null;
+        const svgNode = typeof this.svg.node === 'function' ? this.svg.node() : null;
+        const cached = this._ctrlMarqueeOverlayRect;
+        if (cached && typeof cached.node === 'function') {
+            const node = cached.node();
+            if (node && svgNode && svgNode.contains(node)) return cached;
+        }
+        this._ctrlMarqueeOverlayRect = this.svg.append('rect')
+            .attr('class', 'ctrl-marquee-select')
+            .style('fill', 'rgba(41, 98, 255, 0.15)')
+            .style('stroke', 'rgba(41, 98, 255, 0.9)')
+            .style('stroke-width', '1')
+            .style('stroke-dasharray', '4,4')
+            .style('pointer-events', 'none')
+            .style('shape-rendering', 'crispEdges');
+        return this._ctrlMarqueeOverlayRect;
+    }
+
+    /** Position + show the SVG overlay marquee rect. */
+    _syncCtrlMarqueeSelectOverlay(x, y, width, height) {
+        if (!this.ctrlMarqueeSelect || !this.ctrlMarqueeSelect.active) {
+            this._hideCtrlMarqueeSelectOverlay();
+            return;
+        }
+        const rect = this._ensureCtrlMarqueeSelectOverlayRect();
+        if (!rect) return;
+        rect
+            .attr('x', x)
+            .attr('y', y)
+            .attr('width', Math.max(0, width))
+            .attr('height', Math.max(0, height))
+            .style('display', null);
+        // Keep it above any drawings appended to the same overlay.
+        if (typeof rect.raise === 'function') rect.raise();
+    }
+
+    /** Remove the SVG overlay marquee rect when the gesture ends/cancels. */
+    _hideCtrlMarqueeSelectOverlay() {
+        if (this._ctrlMarqueeOverlayRect) {
+            try { this._ctrlMarqueeOverlayRect.remove(); } catch (_e) { /* ignore */ }
+            this._ctrlMarqueeOverlayRect = null;
+        }
     }
 
     shouldSuppressRightClickContextMenu(event = null) {
@@ -19010,6 +19143,10 @@ class Chart {
             if (t === 'pan' || t === 'separatePanelResize' || t === 'ctrlMarqueeSelect' || t === 'boxZoom') {
                 this.drag.active = false;
                 this.drag.type = null;
+                if (t === 'ctrlMarqueeSelect' && this.ctrlMarqueeSelect) {
+                    this.ctrlMarqueeSelect.active = false;
+                    this._hideCtrlMarqueeSelectOverlay();
+                }
             }
         }
         this._stopChartPanRenderLoop();
@@ -19242,6 +19379,10 @@ class Chart {
             if (t === 'pan' || t === 'separatePanelResize' || t === 'ctrlMarqueeSelect' || t === 'boxZoom') {
                 this.drag.active = false;
                 this.drag.type = null;
+                if (t === 'ctrlMarqueeSelect' && this.ctrlMarqueeSelect) {
+                    this.ctrlMarqueeSelect.active = false;
+                    this._hideCtrlMarqueeSelectOverlay();
+                }
             }
         }
         this._stopChartPanRenderLoop();
@@ -24635,6 +24776,9 @@ class Chart {
         }
 
         this._syncOhlcLegendMaxWidth();
+        if (typeof this._ensureScaleResetCorner === 'function') {
+            this._ensureScaleResetCorner();
+        }
     }
 
     /**
@@ -28873,6 +29017,7 @@ class Chart {
                     dm.cancelCtrlMarqueeSelectFromChart();
                 }
                 this.ctrlMarqueeSelect.active = false;
+                this._hideCtrlMarqueeSelectOverlay();
             }
 
             // If mousemove events were missed, compute final right-drag distance from mouseup.
@@ -28904,6 +29049,7 @@ class Chart {
                     dm.cancelCtrlMarqueeSelectFromChart();
                 }
                 this.ctrlMarqueeSelect.active = false;
+                this._hideCtrlMarqueeSelectOverlay();
                 this.scheduleRender();
             }
             // Handle box zoom
@@ -29079,6 +29225,7 @@ class Chart {
             this.drag.separatePanelIndicator = null;
             this.boxZoom.active = false;
             if (this.ctrlMarqueeSelect) this.ctrlMarqueeSelect.active = false;
+            this._hideCtrlMarqueeSelectOverlay();
             this.movement.isDragging = false;
             this.isZooming = false;
             this._rightMouseDragged = false;
