@@ -4393,11 +4393,23 @@ class OrderManager {
                 const om = window.chart && window.chart.orderManager;
                 if (!om) return;
                 const hasJournal = Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0;
-                if (om._journalMarkerRestorePending || hasJournal) {
+                // Only run the heavy session-restore cascade (6 timed full strip +
+                // redraw passes) while an actual restore is IN FLIGHT. It is armed
+                // explicitly on refresh / session-load / replay-init by setting
+                // _journalMarkerRestorePending = true. Previously this also fired
+                // whenever a journal merely existed (hasJournal), so EVERY replay
+                // frame advance — each dispatches chartDataLoaded — re-armed the full
+                // cascade. That flooded the console with "Session marker restore" and
+                // stripped/redrew every marker many times per second, making replay
+                // and timeframe loads stutter and appear to build "candles one by one".
+                if (om._journalMarkerRestorePending) {
                     if (typeof om._scheduleSessionMarkerRedraw === 'function') {
                         om._scheduleSessionMarkerRedraw();
                     }
                 } else if (typeof om._scheduleClosedJournalMarkerRedraw === 'function') {
+                    // Normal data loads (replay frame advance, pan-load): one debounced
+                    // marker repaint keeps journal/open markers current without the
+                    // full-strip cost.
                     om._scheduleClosedJournalMarkerRedraw();
                 }
             });
