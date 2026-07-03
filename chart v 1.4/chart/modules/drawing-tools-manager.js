@@ -12660,12 +12660,56 @@ class DrawingToolsManager {
             || this._isPointNearAnySelectedDrawing(mx, my);
         if (!onSelection) return false;
 
+        // Gate the group move behind a drag threshold. A plain Ctrl+click on a member of
+        // a multi-selection must TOGGLE it (add/remove one-by-one), not move the group:
+        // starting the move on mousedown drifts every shape by any cursor jitter, and the
+        // direct-move handler's stopPropagation() freezes the crosshair and prevents the
+        // Ctrl+marquee box. Only a real drag past the threshold starts the move.
         event.preventDefault();
         event.stopPropagation();
         if (typeof event.stopImmediatePropagation === 'function') {
             event.stopImmediatePropagation();
         }
-        this._startDirectMoveDrag(toMove, event);
+
+        const startClientX = event.clientX;
+        const startClientY = event.clientY;
+        const zoom = (this.chart && typeof this.chart._v9LayoutZoom === 'function')
+            ? (this.chart._v9LayoutZoom() || 1)
+            : 1;
+        const dragThreshold = 4 * zoom;
+        const mousedownEvent = event;
+        let moveStarted = false;
+
+        const cleanupPending = () => {
+            document.removeEventListener('mousemove', onPendingMove, true);
+            document.removeEventListener('mouseup', onPendingUp, true);
+        };
+
+        const onPendingMove = (e) => {
+            if (moveStarted) return;
+            const dist = Math.hypot(e.clientX - startClientX, e.clientY - startClientY);
+            if (dist < dragThreshold) return;
+            moveStarted = true;
+            cleanupPending();
+            this._startDirectMoveDrag(toMove, mousedownEvent);
+            if (typeof this._directMoveMoveHandler === 'function') {
+                this._directMoveMoveHandler(e);
+            }
+        };
+
+        const onPendingUp = () => {
+            cleanupPending();
+            if (moveStarted) return;
+            // No drag → one-by-one toggle of the shape under the cursor.
+            const hits = this.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true }) || [];
+            const clicked = hits.find((d) => d && !d.locked) || null;
+            if (clicked) {
+                this.selectDrawing(clicked, true);
+            }
+        };
+
+        document.addEventListener('mousemove', onPendingMove, true);
+        document.addEventListener('mouseup', onPendingUp, true);
         return true;
     }
 
