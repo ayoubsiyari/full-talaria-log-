@@ -4381,17 +4381,23 @@ class CompareOverlay {
             const isHidden = !overlay.visible;
             const pairFlags = buildOverlayPairFlags(overlay.symbol);
             
+            // Match the MAIN chart OHLC header style: muted labels + muted
+            // near-white values (rgba(255,255,255,0.82)), NOT the bright
+            // bullish/bearish green/red the compare legend used before. Keeps
+            // the compare symbol info visually consistent with the main symbol.
+            const _ohlcLabelColor = '#787b86';
+            const _ohlcValueColor = 'rgba(255,255,255,0.82)';
             const ohlcStatsHtml = showLoading
                 ? this._compareLegendLoadingDotsHtml()
                 : `
-                <span style="color: #787b86;">O</span>
-                <span style="color: ${changeColor};">${latestCandle.o.toFixed(decimals)}</span>
-                <span style="color: #787b86;">H</span>
-                <span style="color: ${changeColor};">${latestCandle.h.toFixed(decimals)}</span>
-                <span style="color: #787b86;">L</span>
-                <span style="color: ${changeColor};">${latestCandle.l.toFixed(decimals)}</span>
-                <span style="color: #787b86;">C</span>
-                <span style="color: ${changeColor};">${latestCandle.c.toFixed(decimals)}</span>
+                <span style="color: ${_ohlcLabelColor};">O</span>
+                <span style="color: ${_ohlcValueColor};">${latestCandle.o.toFixed(decimals)}</span>
+                <span style="color: ${_ohlcLabelColor};">H</span>
+                <span style="color: ${_ohlcValueColor};">${latestCandle.h.toFixed(decimals)}</span>
+                <span style="color: ${_ohlcLabelColor};">L</span>
+                <span style="color: ${_ohlcValueColor};">${latestCandle.l.toFixed(decimals)}</span>
+                <span style="color: ${_ohlcLabelColor};">C</span>
+                <span style="color: ${_ohlcValueColor};">${latestCandle.c.toFixed(decimals)}</span>
             `;
             
             const row = document.createElement('div');
@@ -4512,15 +4518,23 @@ class CompareOverlay {
     }
     
     updateInfoPositions() {
-        const layouts = this._overlayAxisLayouts && this._overlayAxisLayouts.length
-            ? this._overlayAxisLayouts
-            : this._buildOverlayAxisLayouts();
+        // Always rebuild fresh — never trust the previously stored layout here.
+        // _buildOverlayAxisLayouts() only counts VISIBLE overlays, so when the
+        // compare symbol is hidden it returns [] (width 0) and the info block
+        // snaps back to its base position immediately. Reusing the stale stored
+        // layout kept the old axis width, so the OHLC menu stayed offset until a
+        // later layout click rebuilt it.
+        const layouts = this._buildOverlayAxisLayouts();
+        this._overlayAxisLayouts = layouts;
+        const overlayAxisWidth = layouts.reduce((sum, row) => sum + row.axisWidth, 0);
         const baseLeft = 10;
-        // Compare price scale overlays the chart edge (no reserved space), so
-        // keep margin.l at 0 and leave the OHLC info / legend / logo anchored
-        // at their normal left position — nothing shifts when a compare symbol
-        // is added or removed.
-        const leftOffset = baseLeft;
+        // Keep margin.l at 0 so the chart candles + logo never shift (the compare
+        // price scale overlays the left edge instead of reserving space). BUT the
+        // OHLC info / compare legend are DOM overlays — nudging their left is a
+        // cosmetic offset that does NOT move the chart. Offset them just past the
+        // overlay axis strip so the compare symbol name + O/H/L/C values aren't
+        // hidden behind the price scale drawn at the left edge.
+        const leftOffset = baseLeft + overlayAxisWidth;
 
         this.chart.margin.l = 0;
 

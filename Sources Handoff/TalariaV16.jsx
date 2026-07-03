@@ -15439,11 +15439,21 @@ const TalariaV8b = () => {
               const ms=sessionsPageRows.find(s=>s.id===sessActMenu.id);
               if(!ms)return null;
               const hasStarted=sessionHasTradingActivity(ms);
+              // Flip the menu upward when it would overflow past the bottom of the viewport.
+              const menuVpH=(typeof window!=="undefined"?window.innerHeight:800)/Z;
+              const menuBtnH=30;
+              const menuPosStyle=(count)=>{
+                const estH=count*32+14;
+                const openUp=(menuVpH-(sessActMenu.y+6))<estH && sessActMenu.y>estH+menuBtnH;
+                return openUp
+                  ? {bottom:menuVpH-sessActMenu.y+menuBtnH+6, maxHeight:Math.max(120,sessActMenu.y-menuBtnH-12), overflowY:"auto"}
+                  : {top:sessActMenu.y+6, maxHeight:Math.max(120,menuVpH-sessActMenu.y-12), overflowY:"auto"};
+              };
               if(ms.isJournalSession){
                 const journalAccount = resolveJournalSessionAccount(ms);
                 return(<>
                 <div style={{position:"fixed",inset:0,zIndex:99997}} onClick={e=>{e.stopPropagation();setSessActMenu(null);}}/>
-                <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:sessActMenu.y+6,left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
+                <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F,...menuPosStyle(6)}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.gn},${c.acL},${c.gn})`}}/>
                   {[
                     {label:"Trades", handler:()=>{openEmbeddedJournalTrades(ms);setSessActMenu(null);}, col:c.gn, disabled:false, danger:false,
@@ -15493,7 +15503,7 @@ const TalariaV8b = () => {
               }
               return(<>
                 <div style={{position:"fixed",inset:0,zIndex:99997}} onClick={e=>{e.stopPropagation();setSessActMenu(null);}}/>
-                <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:sessActMenu.y+6,left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F}}>
+                <div onClick={e=>e.stopPropagation()} style={{position:"fixed",left:sessActMenu.x-80,zIndex:99998,width:160,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 12px 40px rgba(0,0,0,0.8)",fontFamily:F,...menuPosStyle(isV16LiveBoot()?6:5)}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   {[
                     {label:hasStarted?"Resume":"Start", handler:()=>{launchSession(ms);setSessActMenu(null);}, col:c.acL, disabled:false, danger:false,
