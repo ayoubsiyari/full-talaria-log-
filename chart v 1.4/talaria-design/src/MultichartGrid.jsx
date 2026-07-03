@@ -2116,15 +2116,46 @@ export default function MultichartGrid({
             syncHostViewportFrozenFlag(true);
         }
 
-        const staggerTimeouts = [];
+        // ─── Serialized panel boot (host-paint-first) ─────────────────────
+        // Pre-Phase-6 mitigation for "chart A builds candle-by-candle when I
+        // add a panel": each iframe panel downloads+parses the full ~1.6MB
+        // dist-v9 bundle and boots a whole chart engine on the SHARED renderer
+        // main thread. Firing them all on fixed staggered timers still lets
+        // 2–4 boots overlap, starving the host's paint/replay. Instead we:
+        //   1. give chart A a head-start to paint its cell, THEN
+        //   2. boot panels ONE AT A TIME — the next only starts once the
+        //      previous is bridge-ready (or a safety cap elapses).
+        // This keeps the single main thread free for the host between boots.
         let staggerCancelled = false;
-        let staggerSlot = 0;
-        for (const tile of layout.tiles) {
-            if (tile.id === HOST_PANEL_ID) continue; // host has no iframe
-            if (mgr.charts.has(tile.id)) continue;
-            const cellEl = cellRefs.current[tile.id];
-            if (!cellEl) continue;
+        let chainTimer = null;
+        const bootQueue = layout.tiles.filter(
+            (t) => t.id !== HOST_PANEL_ID && !mgr.charts.has(t.id)
+        );
+        // Cap so a slow/failed panel boot can't stall the whole queue forever.
+        const PANEL_BOOT_MAX_WAIT_MS = 3000;
+        // Small gap after a panel is ready before the next boots — long enough
+        // for the host (and the just-booted panel) to paint a frame.
+        const INTER_BOOT_GAP_MS = 90;
+        let qIndex = 0;
 
+        const spawnNext = () => {
+            if (staggerCancelled) return;
+            if (qIndex >= bootQueue.length) return;
+            const tile = bootQueue[qIndex];
+            qIndex += 1;
+            const m = managerRef.current;
+            const cellEl = cellRefs.current[tile.id];
+            if (!m || m !== mgr || !cellEl || m.charts.has(tile.id)) {
+                // Nothing to boot for this slot — advance immediately.
+                chainTimer = setTimeout(spawnNext, 0);
+                return;
+            }
+            setFailedPanels((prev) => {
+                if (!prev.has(tile.id)) return prev;
+                const next = new Map(prev);
+                next.delete(tile.id);
+                return next;
+            });
             const cfg = {
                 id:        tile.id,
                 tf:        effTf,
@@ -2132,37 +2163,34 @@ export default function MultichartGrid({
                 sessionId: sessId,
                 mode:      effMode,
             };
-            const delayMs = staggerSlot * IFRAME_ADD_STAGGER_MS;
-            staggerSlot += 1;
-
-            const runAdd = () => {
+            try {
+                m.addChart(cfg, cellEl);
+            } catch (e) {
+                console.error("[MultichartGrid] addChart failed for", tile.id, e);
+            }
+            // Advance to the next panel as soon as THIS one reports
+            // bridge-ready, or after the safety cap — whichever comes first.
+            const startedAt = Date.now();
+            const waitReady = () => {
                 if (staggerCancelled) return;
-                try {
-                    const m = managerRef.current;
-                    if (!m || m !== mgr) return;
-                    if (m.charts.has(tile.id)) return;
-                    setFailedPanels((prev) => {
-                        if (!prev.has(tile.id)) return prev;
-                        const next = new Map(prev);
-                        next.delete(tile.id);
-                        return next;
-                    });
-                    m.addChart(cfg, cellEl);
-                } catch (e) {
-                    console.error("[MultichartGrid] addChart failed for", tile.id, e);
+                const c = m.charts.get(tile.id);
+                if ((c && c.ready) || (Date.now() - startedAt) >= PANEL_BOOT_MAX_WAIT_MS) {
+                    chainTimer = setTimeout(spawnNext, INTER_BOOT_GAP_MS);
+                } else {
+                    chainTimer = setTimeout(waitReady, 120);
                 }
             };
+            chainTimer = setTimeout(waitReady, 120);
+        };
 
-            if (delayMs === 0) {
-                runAdd();
-            } else {
-                staggerTimeouts.push(setTimeout(runAdd, delayMs));
-            }
-        }
+        // Head-start: let chart A paint its cell before the first panel boots.
+        // Reuse the existing same-pair/cross-pair tuning for the delay.
+        const headStartTimer = setTimeout(spawnNext, IFRAME_ADD_STAGGER_MS);
 
         return () => {
             staggerCancelled = true;
-            staggerTimeouts.forEach((tid) => clearTimeout(tid));
+            clearTimeout(headStartTimer);
+            if (chainTimer) clearTimeout(chainTimer);
         };
     }, [layout.tiles, managerReady]);
 
