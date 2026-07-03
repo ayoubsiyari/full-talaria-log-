@@ -15082,6 +15082,14 @@ class Chart {
         let _mcHostRightIdx = null;
         try {
             if (!this._multichartSkipResizeOffsetAdjust
+                // Only snap the host to an integer right-edge bar when Date/Time
+                // range sync is ON — that's the only case where panel A must stay
+                // bar-aligned with mirroring duplicate panels. With sync OFF
+                // (default) this snap shifted the host by up to one bar on every
+                // width change (opening/closing the right menu), while the panels
+                // used the drift-free pixel path and stayed put. Falling through to
+                // that same pixel path here makes the host behave like the panels.
+                && this._multichartVisibleRangeSyncOn
                 && Array.isArray(this.data) && this.data.length
                 && typeof this._isMultichartHostPanel === 'function'
                 && this._isMultichartHostPanel()
