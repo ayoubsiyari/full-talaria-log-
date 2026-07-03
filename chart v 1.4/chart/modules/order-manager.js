@@ -3613,9 +3613,13 @@ class OrderManager {
         // No trading session: keep pending/executed orders across a refresh via a
         // local fallback. Session-backed charts still use the API path below (unchanged).
         if (!sessionId) {
+            console.log('[orders-persist] no session → local fallback save:',
+                'pending=', patch.pending_orders.length, 'open=', patch.open_positions.length);
             this._persistRuntimeOrderStateLocalFallback(patch);
             return;
         }
+        console.log('[orders-persist] session save (sessionId=' + sessionId + '):',
+            'pending=', patch.pending_orders.length, 'open=', patch.open_positions.length);
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
             this.chart.scheduleSessionStateSave(patch);
@@ -3632,10 +3636,16 @@ class OrderManager {
      */
     _persistRuntimeOrderStateLocalFallback(patch) {
         try {
-            if (typeof userStorage === 'undefined' || !userStorage || typeof userStorage.setItem !== 'function') return;
+            if (typeof userStorage === 'undefined' || !userStorage || typeof userStorage.setItem !== 'function') {
+                console.warn('[orders-persist] userStorage unavailable — cannot save locally');
+                return;
+            }
             const payload = Object.assign({}, patch, { savedAt: Date.now() });
             userStorage.setItem(ORDER_MANAGER_LOCAL_RUNTIME_KEY, JSON.stringify(payload));
-        } catch (_) { /* storage unavailable/full — ignore */ }
+            console.log('[orders-persist] wrote localStorage key', ORDER_MANAGER_LOCAL_RUNTIME_KEY);
+        } catch (e) {
+            console.warn('[orders-persist] local save failed:', e);
+        }
     }
 
     restoreRuntimeOrderStateFromSession(state) {

@@ -8639,7 +8639,11 @@ class Chart {
      */
     loadLocalRuntimeOrdersIfNoSession() {
         try {
-            if (this.getActiveTradingSessionId()) return; // session path owns persistence
+            const activeSid = this.getActiveTradingSessionId();
+            if (activeSid) {
+                console.log('[orders-restore] active session present (' + activeSid + ') → skip local restore (session path owns it)');
+                return; // session path owns persistence
+            }
             if (this._localRuntimeOrdersRestored) return;
 
             const om = typeof this._getOrderManagerForSessionPersistence === 'function'
@@ -8662,16 +8666,25 @@ class Chart {
 
             let raw = null;
             try { raw = userStorage.getItem('chart_orders_runtime_local_v1'); } catch (_) { raw = null; }
-            if (!raw) return;
+            if (!raw) {
+                console.log('[orders-restore] no session, no local snapshot found — nothing to restore');
+                return;
+            }
 
             let snap = null;
             try { snap = JSON.parse(raw); } catch (_) { return; }
-            if (!snap || !this._sessionStateHasRuntimeOrderState(snap)) return;
+            if (!snap || !this._sessionStateHasRuntimeOrderState(snap)) {
+                console.log('[orders-restore] local snapshot found but empty/invalid:', snap);
+                return;
+            }
 
+            console.log('[orders-restore] restoring from local snapshot:',
+                'pending=', (snap.pending_orders || []).length, 'open=', (snap.open_positions || []).length);
             om.restoreRuntimeOrderStateFromSession(snap);
             if (typeof om.updatePositionsPanel === 'function') om.updatePositionsPanel();
             if (typeof om.updateJournalTab === 'function') om.updateJournalTab();
             this._scheduleOrderMarkersRedrawAfterSessionRestore(om);
+            console.log('[orders-restore] restore complete');
         } catch (e) {
             console.warn('Local runtime order restore failed:', e);
         }
