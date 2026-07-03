@@ -10701,16 +10701,37 @@ function v9ResolveSessionFileId(sessionPairs, symbolId, fileIdFromEntry) {
 /** Add a session symbol as a compare overlay (same action as the former OHLC + button). */
 function v9AddCompareSymbol(symbolId, fileId) {
   if (typeof window === "undefined") return;
+  const fid = fileId != null ? parseInt(fileId, 10) : NaN;
+  const sym = String(symbolId || "").trim();
+
+  // Multichart: the focused tile's compareOverlay isn't reachable from here
+  // (it lives on host tile A in-process, or inside an iframe for B/C/D). Route
+  // through the command bus so the overlay is added directly to the focused
+  // panel — matching the single-chart behaviour instead of popping the picker.
+  const grid = window.__multichartGrid;
+  if (grid && typeof grid.runCommand === "function") {
+    if (!Number.isFinite(fid)) {
+      const ac = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+      ac?.showNotification?.("No dataset available for this symbol.");
+      return;
+    }
+    const panelId = typeof grid.getFocusedPanelId === "function" ? grid.getFocusedPanelId() : null;
+    const opts = panelId ? { panelId } : undefined;
+    grid.runCommand("addCompareSymbol", { fileId: fid, symbol: sym, mode: "same-scale" }, opts)
+      .catch((err) => {
+        console.warn("[V9 compare] addCompareSymbol on panel failed", err);
+      });
+    return;
+  }
+
   const ch =
     typeof window.getActiveChart === "function"
       ? window.getActiveChart()
       : window.chart;
-  const fid = fileId != null ? parseInt(fileId, 10) : NaN;
   if (!Number.isFinite(fid)) {
     ch?.showNotification?.("No dataset available for this symbol.");
     return;
   }
-  const sym = String(symbolId || "").trim();
   if (ch?.compareOverlay && typeof ch.compareOverlay.addSymbolWithMode === "function") {
     ch.compareOverlay.addSymbolWithMode(fid, sym, "same-scale");
     return;

@@ -3788,6 +3788,19 @@ export default function MultichartGrid({
                             type:    type,
                         });
                     }
+                    case "addCompareSymbol": {
+                        const cmpFid = args.fileId;
+                        if (cmpFid === undefined || cmpFid === null || cmpFid === "") {
+                            return Promise.reject(new Error("addCompareSymbol: missing fileId"));
+                        }
+                        const co = ch.compareOverlay;
+                        if (!co || typeof co.addSymbolWithMode !== "function") {
+                            return Promise.reject(new Error("chart.compareOverlay is not available"));
+                        }
+                        const cmpSym = args.symbol != null ? String(args.symbol).trim() : "";
+                        const cmpMode = args.mode ? String(args.mode) : "same-scale";
+                        return Promise.resolve(co.addSymbolWithMode(cmpFid, cmpSym, cmpMode)).then(() => null);
+                    }
                     case "removeIndicator": {
                         const indId = args.chartId;
                         if (indId === undefined || indId === null || indId === "") {

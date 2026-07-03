@@ -2992,7 +2992,13 @@ class CompareOverlay {
             console.log('Symbol already added as overlay');
             return;
         }
-        
+
+        // Max one compare overlay per chart: a newly picked symbol replaces the
+        // existing overlay instead of stacking a second one.
+        if (this.overlays.length > 0) {
+            this.overlays.slice().forEach(o => this.removeOverlay(o.id));
+        }
+
         try {
             console.log(`📊 Adding overlay: ${symbol} (fileId: ${fileId})`);
             

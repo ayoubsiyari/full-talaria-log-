@@ -1611,6 +1611,22 @@
                     try { if (typeof ch.updateOHLCIndicators === 'function') ch.updateOHLCIndicators(); } catch (_) {}
                     return { chartId: (ind && ind.id) ? ind.id : null, type: indType };
                 }
+                case 'addCompareSymbol': {
+                    var cmpFid = args.fileId;
+                    if (cmpFid === undefined || cmpFid === null || cmpFid === '') {
+                        throw new Error('addCompareSymbol: missing args.fileId');
+                    }
+                    if (!ch.compareOverlay || typeof ch.compareOverlay.addSymbolWithMode !== 'function') {
+                        throw new Error('chart.compareOverlay is not available');
+                    }
+                    if (!ch.data || ch.data.length === 0) {
+                        throw new Error('chart data not loaded yet');
+                    }
+                    var cmpSym = args.symbol != null ? String(args.symbol).trim() : '';
+                    var cmpMode = args.mode ? String(args.mode) : 'same-scale';
+                    return Promise.resolve(ch.compareOverlay.addSymbolWithMode(cmpFid, cmpSym, cmpMode))
+                        .then(function () { return { ok: true }; });
+                }
                 case 'removeIndicator': {
                     var indId = args.chartId;
                     if (indId === undefined || indId === null || indId === '') {
