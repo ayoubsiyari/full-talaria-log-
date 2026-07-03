@@ -10853,7 +10853,29 @@ class DrawingToolsManager {
         // during the render cycle (would cause stack overflow when scheduleRender is synchronous)
         const wasRendering = this.chart._isRendering;
         this.chart._isRendering = true;
-        
+
+        // Full (non-pan) redraw recomputes every drawing from the current scales,
+        // so the drawings/labels/temp groups must NOT carry a leftover pan-layer
+        // CSS translate. A stale translate(dx,…) — e.g. left on the group when an
+        // indicator apply fires scheduleRender() one frame before chart.js clears
+        // it — would shift the freshly-drawn (already-correct) tools sideways and
+        // then snap them back, which reads as "tools move along with the render."
+        // During live pan (panFast) the transform IS the optimisation, so skip.
+        if (!options.panFast) {
+            if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+                this.drawingsGroup.attr('transform', null);
+            }
+            if (this.drawingsPanLayer && !this.drawingsPanLayer.empty()) {
+                this.drawingsPanLayer.attr('transform', null);
+            }
+            if (this.labelsGroup && !this.labelsGroup.empty()) {
+                this.labelsGroup.attr('transform', null);
+            }
+            if (this.tempGroup && !this.tempGroup.empty()) {
+                this.tempGroup.attr('transform', null);
+            }
+        }
+
         // Drop stale group refs before clearing SVG (hidden-by-TF drawings skip renderDrawing).
         this.drawings.forEach((d) => { if (d) d.group = null; });
 

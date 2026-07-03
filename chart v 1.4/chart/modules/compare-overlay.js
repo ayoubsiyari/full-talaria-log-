@@ -3878,7 +3878,13 @@ class CompareOverlay {
     updateLeftMargin() {
         const layouts = this._buildOverlayAxisLayouts();
         this._overlayAxisLayouts = layouts;
-        this.chart.margin.l = layouts.reduce((sum, row) => sum + row.axisWidth, 0);
+        // Do NOT reserve left-margin space for the compare price scale. The
+        // compare axes are painted in drawOverlays() (after the candles) at
+        // axisX starting from 0, so they overlay the chart's left edge ON TOP
+        // instead of pushing the plot + logo to the right. Growing margin.l
+        // here is what made the chart and logo "move forward" when a compare
+        // symbol was added and snap back when it was removed.
+        this.chart.margin.l = 0;
     }
 
     /** Freeze compare overlay Y domains while chart-panning (same pattern as separate panels). */
@@ -4509,11 +4515,14 @@ class CompareOverlay {
         const layouts = this._overlayAxisLayouts && this._overlayAxisLayouts.length
             ? this._overlayAxisLayouts
             : this._buildOverlayAxisLayouts();
-        const leftMargin = layouts.reduce((sum, row) => sum + row.axisWidth, 0);
         const baseLeft = 10;
-        const leftOffset = baseLeft + leftMargin;
+        // Compare price scale overlays the chart edge (no reserved space), so
+        // keep margin.l at 0 and leave the OHLC info / legend / logo anchored
+        // at their normal left position — nothing shifts when a compare symbol
+        // is added or removed.
+        const leftOffset = baseLeft;
 
-        this.chart.margin.l = leftMargin;
+        this.chart.margin.l = 0;
 
         const ohlcInfo = document.getElementById('ohlcInfo');
         if (ohlcInfo) {
@@ -4530,7 +4539,7 @@ class CompareOverlay {
             && !(typeof document !== 'undefined'
                 && document.documentElement
                 && document.documentElement.classList.contains('multichart-embed'))) {
-            chartBrand.style.left = leftMargin + 'px';
+            chartBrand.style.left = '0px';
         }
     }
     
