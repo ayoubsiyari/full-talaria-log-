@@ -1881,11 +1881,11 @@
         // Iframe bridges: local copy updated via bridge-config.syncMode.
         var syncModeGate = null;
         var localSyncMode = {
-            crosshair: true,
+            crosshair: false,
             visibleRange: false,
             timeSync: false,
             symbol: false,
-            drawings: true,
+            drawings: false,
         };
 
         function effectiveSyncMode() {
