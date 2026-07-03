@@ -3112,14 +3112,23 @@ class ReplaySystem {
             if (Number.isFinite(Number(this.replayTimestamp))) {
                 om._lastMarkerRedrawPlayhead = Number(this.replayTimestamp);
             }
-            om._journalMarkerRestorePending = true;
+            // Per-frame marker upkeep is LIGHT + debounced. Do NOT re-arm the heavy
+            // session-restore cascade every tick: it strips and redraws every marker,
+            // forces _renderAllLayoutCharts and logs "Session marker restore" on each
+            // frame — flooding the console and stuttering replay / timeframe loads
+            // ("candles one by one"). The heavy restore is armed once on refresh /
+            // session-load; if it is genuinely still pending we let it finish (it
+            // clears itself once markers are fully drawn). Otherwise the light
+            // playhead redraw keeps journal/open markers current on each new candle.
+            const restorePending = !!om._journalMarkerRestorePending;
             clearTimeout(om._replayMarkerSyncDebounce);
             om._replayMarkerSyncDebounce = setTimeout(() => {
                 try {
                     if (typeof om._redrawJournalMarkersForReplayPlayhead === 'function') {
                         om._redrawJournalMarkersForReplayPlayhead();
                     }
-                    if (om._journalMarkerRestorePending
+                    if (restorePending
+                        && om._journalMarkerRestorePending
                         && typeof om._syncJournalMarkersAfterSessionRestore === 'function') {
                         om._syncJournalMarkersAfterSessionRestore();
                     }

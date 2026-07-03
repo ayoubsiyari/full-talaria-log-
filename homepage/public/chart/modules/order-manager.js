@@ -34008,11 +34008,13 @@ class OrderManager {
             this._redrawJournalMarkersForReplayPlayhead();
             const expectedClosed = this._countClosedJournalTradesForActiveChart();
             const drawnClosed = Number(this._lastJournalClosedMarkersDrawn) || 0;
-            console.log('🎨 Session marker restore: journal', (this.tradeJournal || []).length,
-                'expectedClosed', expectedClosed, 'drawnClosed', drawnClosed,
-                'open', (this.openPositions || []).length,
-                'dataBars', this.chart?.data?.length || 0,
-                'replayIdx', this._playbackReplaySystem()?.currentIndex);
+            if (typeof window !== 'undefined' && window.__ORDER_MARKER_DEBUG__ === true) {
+                console.log('🎨 Session marker restore: journal', (this.tradeJournal || []).length,
+                    'expectedClosed', expectedClosed, 'drawnClosed', drawnClosed,
+                    'open', (this.openPositions || []).length,
+                    'dataBars', this.chart?.data?.length || 0,
+                    'replayIdx', this._playbackReplaySystem()?.currentIndex);
+            }
             if (expectedClosed === 0 || drawnClosed >= expectedClosed) {
                 this._journalMarkerRestorePending = false;
             }
