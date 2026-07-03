@@ -15162,6 +15162,13 @@ class DrawingToolsManager {
         const patch = this.getDefaultToolStylePatch(drawing.type);
         if (!drawing.style) drawing.style = {};
 
+        // Preserve the user's explicit price/time axis-label choice across "Apply default".
+        // isAxisLabelEnabled() falls back to a per-type default that is OFF for shape/fib
+        // types, so deleting these keys would silently hide labels the user turned on.
+        // Apply default should reset the visual style (colors/width/fill), not label visibility.
+        const preservedShowPriceLabel = drawing.style.showPriceLabel;
+        const preservedShowTimeLabel = drawing.style.showTimeLabel;
+
         const resetKeys = new Set([
             'stroke', 'color', 'lineColor', 'strokeWidth', 'opacity',
             'dashArray', 'strokeDasharray', 'borderDasharray', 'borderWidth',
@@ -15177,6 +15184,15 @@ class DrawingToolsManager {
         }
         Object.assign(drawing.style, patch);
         this.resetDrawingVisibilityToDefaults(drawing);
+
+        // Restore the preserved axis-label toggles unless the default patch itself set them
+        // (brush/highlighter force these off intentionally).
+        if (patch.showPriceLabel === undefined && preservedShowPriceLabel !== undefined) {
+            drawing.style.showPriceLabel = preservedShowPriceLabel;
+        }
+        if (patch.showTimeLabel === undefined && preservedShowTimeLabel !== undefined) {
+            drawing.style.showTimeLabel = preservedShowTimeLabel;
+        }
 
         try {
             if (typeof window !== 'undefined'
