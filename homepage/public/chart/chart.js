@@ -2671,15 +2671,28 @@ class Chart {
         return true;
     }
 
-    /** Same backtest file as host — share replay master / pan-load only when range/time sync is on. */
+    /**
+     * Same backtest file as host — this panel can clone/extend the host's already
+     * loaded replay master instead of re-fetching its own tiny windows.
+     *
+     * DATA sharing is INDEPENDENT of VIEWPORT sync. Previously this required
+     * _multichartVisibleRangeSyncOn, so a same-symbol panel with its own (unsynced)
+     * viewport fell back to fetching ~2000 raw bars per pan and rebuilding
+     * candle-by-candle, while a single chart — which holds the whole session in
+     * fullRawData — panned instantly. During replay the host already holds the full
+     * session, so a same-symbol panel should share it regardless of viewport sync
+     * and pan just as fast. We still share unconditionally when sync is ON (prior
+     * behavior); when sync is OFF we share as long as replay is active (a master
+     * exists to clone) — sharing only the DATA, never the viewport position.
+     */
     _multichartSamePairDataShareActive() {
-        if (!this._multichartVisibleRangeSyncOn) return false;
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
         if (typeof this._isIndependentMultichartPair === 'function'
             && this._isIndependentMultichartPair()) {
             return false;
         }
-        return true;
+        if (this._multichartVisibleRangeSyncOn) return true;
+        return !!(this.replaySystem && this.replaySystem.isActive);
     }
 
     _syncIndicatorsAfterMultichartDataShare() {
@@ -4389,7 +4402,11 @@ class Chart {
      * @returns {boolean}
      */
     _tryExtendReplayMasterFromParent(opts = {}) {
-        if (!this._multichartVisibleRangeSyncOn) return false;
+        // Data-extend is independent of viewport sync: a same-symbol panel with its
+        // own unsynced viewport must still pull the host's full session master so
+        // panning fills instantly instead of building candle-by-candle. Same-pair +
+        // replay-active guards below are sufficient; it only prepends/anchors data
+        // and never mirrors the host's viewport position.
         if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
         const lite = !!(opts && opts.lite);
         const replay = this.replaySystem;
