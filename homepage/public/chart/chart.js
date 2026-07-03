@@ -2968,17 +2968,15 @@ class Chart {
         // false) we DO adopt the host so the panel opens aligned; after that it
         // owns its data + viewport. Replay master state is still shared above so a
         // single backtest playhead keeps every tile in step.
-        // NEVER preserve/independent while replay or backtest is active: replay is
-        // a data/playhead sync (not a view sync), so every tile MUST mirror the
-        // host's replay data slice or the panels drift AHEAD of the host (e.g.
-        // host paused at 30 Oct while B/C/D show 2 Nov). Independence applies to
-        // plain live charts only.
-        const _replayOrBacktestActive = !!(prs && prs.isActive)
-            || !!this.isBacktestMode
-            || !!(this.replaySystem && this.replaySystem.isActive);
+        // Once a panel has booted its own viewport and range/date sync is OFF, it
+        // stays independent and SOLID — it must not re-adopt the host's bar array
+        // or right-edge anchor on a post-boot re-mirror. This holds in replay too:
+        // the diagnostic showed the HOST can lag its OWN playhead (master ends
+        // 10-30 while playhead is 11-02), so re-mirroring the host would drag the
+        // already-correct panels BACKWARD. Panels track the replay playhead via
+        // the replayTick command bus, not via this viewport mirror.
         const _preserveOwnViewport = !this._multichartVisibleRangeSyncOn
-            && this._multichartBootViewportPositioned === true
-            && !_replayOrBacktestActive;
+            && this._multichartBootViewportPositioned === true;
 
         if (!_preserveOwnViewport) {
             this.rawData = parent.rawData;
