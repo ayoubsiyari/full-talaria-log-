@@ -23576,12 +23576,16 @@ class Chart {
             return idx;
         }
         const labelIntervalMs = step * timeframeMs;
-        let alignBase = this.data[0].t;
-        if (Number.isFinite(alignBase) && labelIntervalMs > 0 && 86400000 % labelIntervalMs === 0) {
-            const d0 = this.convertToTimezone(alignBase);
-            const msOfDay0 = (((d0.getUTCHours() * 60 + d0.getUTCMinutes()) * 60
-                + d0.getUTCSeconds()) * 1000) + d0.getUTCMilliseconds();
-            alignBase = alignBase - msOfDay0;
+        // Anchor to the LAST bar (stable across backward history loads — see
+        // _buildTimeTicks) and midnight-align for sub-day AND multi-day cadence.
+        const _fastAnchorBar = this.data[this.data.length - 1];
+        let alignBase = _fastAnchorBar ? _fastAnchorBar.t : this.data[0].t;
+        if (Number.isFinite(alignBase) && labelIntervalMs > 0
+            && (86400000 % labelIntervalMs === 0 || labelIntervalMs % 86400000 === 0)) {
+            const dN = this.convertToTimezone(alignBase);
+            const msOfDayN = (((dN.getUTCHours() * 60 + dN.getUTCMinutes()) * 60
+                + dN.getUTCSeconds()) * 1000) + dN.getUTCMilliseconds();
+            alignBase = alignBase - msOfDayN;
         }
         const searchFrom = Math.floor(firstIdx) - step * 6;
         const searchTo = Math.ceil(firstIdx) + step * 2;
@@ -23795,23 +23799,25 @@ class Chart {
         }
 
         const labelIntervalMs   = labelInterval * timeframeMs;
-        // Anchor tick alignment to a DATA-INDEPENDENT reference (local midnight of
-        // the first bar's day) instead of the raw first-bar timestamp. Anchoring to
-        // this.data[0].t meant every backward-pan history load shifted the anchor,
-        // so the whole vertical-grid / time-axis tick set re-aligned and visibly
-        // "rebuilt" mid-drag. Local midnight differs between days only by whole days,
-        // which are exact multiples of any day-dividing interval (5m,15m,30m,1h,…),
-        // so `delta % labelIntervalMs` is invariant to which bars are loaded — the
-        // grid stays fixed while dragging and ticks land on round local clock times.
-        let tickAlignmentBaseTs = this.data[0] && Number.isFinite(this.data[0].t)
-            ? this.data[0].t
+        // Anchor tick alignment to the LAST loaded bar (not the first). Dragging
+        // right loads OLDER history that is PREPENDED, which changes this.data[0]
+        // but never this.data[last] — so a last-bar anchor stays fixed across
+        // backward-pan history loads and the grid/time-axis ticks just scroll
+        // instead of re-aligning ("rebuilding") mid-drag. Midnight-align for BOTH
+        // sub-day intervals (86400000 % iv === 0) AND multi-day intervals
+        // (iv % 86400000 === 0, e.g. zoomed-out 2-/3-day cadence) so ticks land on
+        // round local day boundaries; the previous `86400000 % iv === 0` check was
+        // false for multi-day cadence and fell back to the raw (shifting) anchor.
+        const _tickAnchorBar = this.data.length ? this.data[this.data.length - 1] : null;
+        let tickAlignmentBaseTs = _tickAnchorBar && Number.isFinite(_tickAnchorBar.t)
+            ? _tickAnchorBar.t
             : 0;
-        if (this.data[0] && Number.isFinite(this.data[0].t)
-            && labelIntervalMs > 0 && 86400000 % labelIntervalMs === 0) {
-            const d0 = this.convertToTimezone(this.data[0].t);
-            const msOfDay0 = (((d0.getUTCHours() * 60 + d0.getUTCMinutes()) * 60
-                + d0.getUTCSeconds()) * 1000) + d0.getUTCMilliseconds();
-            tickAlignmentBaseTs = this.data[0].t - msOfDay0;
+        if (_tickAnchorBar && Number.isFinite(_tickAnchorBar.t) && labelIntervalMs > 0
+            && (86400000 % labelIntervalMs === 0 || labelIntervalMs % 86400000 === 0)) {
+            const dN = this.convertToTimezone(_tickAnchorBar.t);
+            const msOfDayN = (((dN.getUTCHours() * 60 + dN.getUTCMinutes()) * 60
+                + dN.getUTCSeconds()) * 1000) + dN.getUTCMilliseconds();
+            tickAlignmentBaseTs = _tickAnchorBar.t - msOfDayN;
         }
 
         const scanFromRaw = Math.floor(Math.max(0, firstVisibleIdx));
