@@ -1144,21 +1144,23 @@ def import_bulk_users():
                             db.session.flush()  # Get the group ID
                         group_id = group.id
                     
-                    # Create new user
+                    # Create new user.
+                    # NOTE: full_name / is_admin / account_type / email_verified are
+                    # read-only @property on the User model, so we must write the real
+                    # columns instead (name, role, group_id). account_type is derived
+                    # from role + group_id and is intentionally not set here.
                     hashed_password = generate_password_hash(password)
-                    
+
                     new_user = User(
                         email=email,
-                        password=hashed_password,
-                        full_name=full_name if full_name else None,
+                        password_hash=hashed_password,
+                        name=full_name if full_name else email.split('@')[0],
                         phone=phone if phone else None,
                         country=country if country else None,
-                        is_admin=is_admin,
-                        email_verified=True,  # Auto-verify imported users
+                        role='admin' if is_admin else 'user',
                         group_id=group_id,  # Assign to group
-                        account_type=account_type  # Set account type
                     )
-                    
+
                     db.session.add(new_user)
                     db.session.flush()  # Get the user ID
                     
@@ -1440,6 +1442,346 @@ def create_group():
         db.session.rollback()
         current_app.logger.error(f"Error creating group: {e}")
         return jsonify({'error': 'Internal server error'}), 500
+
+
+# ─── MENTORSHIP COHORTS ────────────────────────────────────────────────────
+# A mentorship "cohort" is a Group. Students are users assigned to that group
+# whose visible dashboard sections are controlled via dashboard_module_grants.
+
+def _coerce_module_list(value):
+    """Accept a list of keys, a dict {key: bool}, a JSON string, or a
+    comma-separated string, and return a normalized {key: True} dict limited
+    to the allowed dashboard module keys."""
+    from dashboard_access import ALLOWED_MODULE_KEYS
+
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+            value = parsed
+        except Exception:
+            value = [part.strip() for part in raw.split(',') if part.strip()]
+
+    keys = []
+    if isinstance(value, dict):
+        keys = [k for k, v in value.items() if v]
+    elif isinstance(value, (list, tuple, set)):
+        keys = list(value)
+
+    out = {}
+    for k in keys:
+        sk = str(k).strip().lower()
+        if sk in ALLOWED_MODULE_KEYS:
+            out[sk] = True
+    return out
+
+
+def _parse_expiry(value):
+    """Parse an ISO datetime or YYYY-MM-DD date string; return datetime or None."""
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace('Z', '+00:00'))
+    except Exception:
+        pass
+    try:
+        return datetime.strptime(raw, '%Y-%m-%d')
+    except Exception:
+        return None
+
+
+def _grants_json(module_dict):
+    """Serialize a {key: True} module dict to storage JSON (or None if empty)."""
+    return json.dumps(module_dict, separators=(",", ":")) if module_dict else None
+
+
+@admin_bp.route('/mentorship/cohorts', methods=['GET'])
+@jwt_required()
+@admin_required
+def mentorship_list_cohorts():
+    """List mentorship cohorts (groups) with member counts and default modules."""
+    try:
+        groups = Group.query.filter_by(is_active=True).order_by(Group.name.asc()).all()
+        cohorts = []
+        for g in groups:
+            member_count = User.query.filter_by(group_id=g.id).count()
+            cohorts.append({
+                'id': g.id,
+                'name': g.name,
+                'description': g.description,
+                'member_count': member_count,
+                'default_modules': _coerce_module_list(getattr(g, 'default_modules', None)),
+                'created_at': g.created_at.isoformat() if g.created_at else None,
+            })
+        return jsonify({'success': True, 'cohorts': cohorts}), 200
+    except Exception as e:
+        current_app.logger.error(f"Error listing cohorts: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@admin_bp.route('/mentorship/cohorts/<int:group_id>/members', methods=['GET'])
+@jwt_required()
+@admin_required
+def mentorship_cohort_members(group_id):
+    """Roster for a cohort with each member's effective dashboard modules."""
+    try:
+        from dashboard_access import effective_dashboard_modules
+
+        group = Group.query.get(group_id)
+        if not group:
+            return jsonify({'error': 'Cohort not found'}), 404
+
+        members = User.query.filter_by(group_id=group_id).order_by(User.email.asc()).all()
+        roster = []
+        for u in members:
+            roster.append({
+                'id': u.id,
+                'email': u.email,
+                'full_name': u.full_name,
+                'role': u.role,
+                'is_active': u.is_active,
+                'has_journal_access': bool(getattr(u, 'has_journal_access', False)),
+                'dashboard_modules': effective_dashboard_modules(u),
+                'access_expires_at': u.access_expires_at.isoformat() if getattr(u, 'access_expires_at', None) else None,
+            })
+
+        return jsonify({
+            'success': True,
+            'cohort': {
+                'id': group.id,
+                'name': group.name,
+                'description': group.description,
+                'default_modules': _coerce_module_list(getattr(group, 'default_modules', None)),
+            },
+            'members': roster,
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching cohort members: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@admin_bp.route('/mentorship/cohorts/<int:group_id>/modules', methods=['PATCH'])
+@jwt_required()
+@admin_required
+def mentorship_cohort_modules(group_id):
+    """Set the cohort default modules and (optionally) apply them to all members."""
+    try:
+        group = Group.query.get(group_id)
+        if not group:
+            return jsonify({'error': 'Cohort not found'}), 404
+
+        data = request.get_json() or {}
+        modules = _coerce_module_list(data.get('modules'))
+        apply_to_members = bool(data.get('apply_to_members', True))
+
+        group.default_modules = _grants_json(modules)
+
+        updated = 0
+        if apply_to_members:
+            members = User.query.filter_by(group_id=group_id).all()
+            for u in members:
+                # Don't downgrade admins or users with full manual access.
+                if u.role == 'admin' or getattr(u, 'has_journal_access', False):
+                    continue
+                u.dashboard_module_grants = _grants_json(modules)
+                updated += 1
+
+        db.session.commit()
+        log_admin_action("MENTORSHIP_MODULES", f"Cohort {group_id} modules set; {updated} members updated")
+
+        return jsonify({
+            'success': True,
+            'default_modules': modules,
+            'members_updated': updated,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating cohort modules: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@admin_bp.route('/mentorship/import', methods=['POST'])
+@jwt_required()
+@admin_required
+@rate_limit_admin(max_requests=3, window_seconds=300)  # 3 imports per 5 minutes
+def mentorship_import_users():
+    """
+    Bulk-import mentorship students into a cohort (group) and grant them a
+    controlled set of dashboard modules.
+
+    Two request shapes are supported:
+
+    1) multipart/form-data:
+       - file: CSV with columns email,password,full_name,phone,country[,modules]
+       - cohort_name: str (required)
+       - default_modules: JSON list or comma-separated keys
+       - access_expires_at: ISO datetime or YYYY-MM-DD (optional)
+
+    2) application/json:
+       {
+         "cohort_name": "March Mentorship",
+         "default_modules": ["backtest", "journal"],
+         "access_expires_at": "2026-12-31",
+         "rows": [{ "email", "password", "full_name", "phone", "country", "modules"? }, ...]
+       }
+
+    Per-row `modules` overrides the cohort default for that student.
+    """
+    try:
+        is_json = request.is_json and 'file' not in request.files
+
+        if is_json:
+            body = request.get_json() or {}
+            cohort_name = str(body.get('cohort_name', '')).strip()
+            default_modules = _coerce_module_list(body.get('default_modules'))
+            access_expires_at = _parse_expiry(body.get('access_expires_at'))
+            rows = body.get('rows') or []
+            if not isinstance(rows, list):
+                return jsonify({'error': 'rows must be a list'}), 400
+        else:
+            cohort_name = str(request.form.get('cohort_name', '')).strip()
+            default_modules = _coerce_module_list(request.form.get('default_modules'))
+            access_expires_at = _parse_expiry(request.form.get('access_expires_at'))
+
+            if 'file' not in request.files:
+                return jsonify({'error': 'No file uploaded'}), 400
+            file = request.files['file']
+            if not file or file.filename == '':
+                return jsonify({'error': 'No file selected'}), 400
+
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            if file_ext not in {'.csv', '.xlsx', '.xls'}:
+                return jsonify({'error': 'Only CSV and Excel files are allowed'}), 400
+
+            if file_ext == '.csv':
+                stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+                rows = list(csv.DictReader(stream))
+            else:
+                import pandas as pd
+                df = pd.read_excel(file)
+                rows = df.to_dict('records')
+
+        if not cohort_name:
+            return jsonify({'error': 'cohort_name is required'}), 400
+
+        # Find or create the cohort and persist its default module set.
+        cohort = Group.query.filter_by(name=cohort_name).first()
+        if not cohort:
+            cohort = Group(name=cohort_name, description=f"Mentorship cohort: {cohort_name}")
+            db.session.add(cohort)
+            db.session.flush()
+        cohort.default_modules = _grants_json(default_modules)
+
+        imported_count = 0
+        skipped_count = 0
+        errors = []
+
+        for row_num, row in enumerate(rows, start=2):
+            try:
+                email = str(row.get('email', '')).strip().lower()
+                password = str(row.get('password', '')).strip()
+                full_name = str(row.get('full_name', '')).strip()
+                phone = str(row.get('phone', '')).strip()
+                country = str(row.get('country', '')).strip()
+
+                if not email or not password:
+                    errors.append(f"Row {row_num}: Email and password are required")
+                    continue
+                if '@' not in email or '.' not in email:
+                    errors.append(f"Row {row_num}: Invalid email format: {email}")
+                    continue
+                if len(password) < 8:
+                    errors.append(f"Row {row_num}: Password must be at least 8 characters")
+                    continue
+                if User.query.filter_by(email=email).first():
+                    skipped_count += 1
+                    errors.append(f"Row {row_num}: User {email} already exists - skipped")
+                    continue
+
+                # Per-row module override, else the cohort default.
+                row_modules = _coerce_module_list(row.get('modules')) if row.get('modules') else default_modules
+
+                new_user = User(
+                    email=email,
+                    password_hash=generate_password_hash(password),
+                    name=full_name if full_name else email.split('@')[0],
+                    phone=phone if phone else None,
+                    country=country if country else None,
+                    role='user',
+                    group_id=cohort.id,
+                    dashboard_module_grants=_grants_json(row_modules),
+                )
+                if access_expires_at is not None:
+                    new_user.access_expires_at = access_expires_at
+
+                db.session.add(new_user)
+                db.session.flush()
+
+                db.session.add(Profile(
+                    user_id=new_user.id,
+                    name="Default Profile",
+                    description="Default trading profile",
+                    is_active=True,
+                ))
+
+                imported_count += 1
+            except Exception as row_error:
+                errors.append(f"Row {row_num}: {str(row_error)}")
+                continue
+
+        db.session.commit()
+        log_admin_action(
+            "MENTORSHIP_IMPORT",
+            f"Cohort '{cohort_name}' (#{cohort.id}): imported {imported_count}, skipped {skipped_count}, {len(errors)} errors",
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Mentorship import completed',
+            'cohort': {'id': cohort.id, 'name': cohort.name, 'default_modules': default_modules},
+            'imported_count': imported_count,
+            'skipped_count': skipped_count,
+            'error_count': len(errors),
+            'errors': errors[:20] if errors else [],
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error in mentorship import: {e}")
+        return jsonify({'error': 'Internal server error during import'}), 500
+
+
+@admin_bp.route('/mentorship/download-template', methods=['GET'])
+@jwt_required()
+@admin_required
+def mentorship_download_template():
+    """Download the CSV template for mentorship student import."""
+    try:
+        template_data = [
+            ['email', 'password', 'full_name', 'phone', 'country', 'modules'],
+            ['student1@example.com', 'StudentPass123!', 'John Smith', '+1234567890', 'United States', ''],
+            ['student2@example.com', 'StudentPass123!', 'Sarah Johnson', '+1234567891', 'United States', 'backtest,journal'],
+        ]
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerows(template_data)
+        csv_string = output.getvalue()
+        output.close()
+
+        response = make_response(csv_string)
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = 'attachment; filename=mentorship_students_template.csv'
+        return response
+    except Exception as e:
+        current_app.logger.error(f"Error downloading mentorship template: {e}")
+        return jsonify({'error': 'Error generating template'}), 500
 
 
 @admin_bp.route('/users/<int:user_id>/login-as', methods=['POST'])

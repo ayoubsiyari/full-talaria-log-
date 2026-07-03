@@ -204,6 +204,12 @@ def ensure_users_schema(app) -> None:
                             "v9_chart_templates JSONB"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "ALTER TABLE journal_groups ADD COLUMN IF NOT EXISTS "
+                            "default_modules TEXT"
+                        )
+                    )
                 else:
                     if "users" not in insp.get_table_names():
                         return
@@ -464,6 +470,15 @@ def ensure_users_schema(app) -> None:
                                 text(
                                     "ALTER TABLE user_preferences ADD COLUMN "
                                     "v9_chart_templates JSON"
+                                )
+                            )
+                    if "journal_groups" in insp.get_table_names():
+                        grp_cols = {c["name"] for c in insp.get_columns("journal_groups")}
+                        if "default_modules" not in grp_cols:
+                            conn.execute(
+                                text(
+                                    "ALTER TABLE journal_groups ADD COLUMN "
+                                    "default_modules TEXT"
                                 )
                             )
             app.logger.info(

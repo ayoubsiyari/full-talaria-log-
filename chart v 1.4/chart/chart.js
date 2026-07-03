@@ -8531,7 +8531,15 @@ class Chart {
     _applyTradingSessionFromLocalBackupOnly(sessionId) {
         const backup = this._readTradingSessionLocalBackup(sessionId);
         const om = this._getOrderManagerForSessionPersistence();
-        if (!backup || !om) return false;
+        if (!backup || !om) {
+            // Server returned no usable state AND there is no local backup yet — e.g. a brand-new
+            // session, or the backend is unreachable in local/dev. Mark the session as hydrated
+            // (empty) anyway so later order saves are NOT dropped by the pre-hydrate guard in
+            // scheduleSessionStateSave(). Without this the guard stays closed forever, runtime
+            // orders never reach the local backup, and nothing persists across a refresh.
+            if (sessionId) this._sessionStateLoadedFor = String(sessionId);
+            return false;
+        }
         this._restoredFromLocalBackupOnly = true;
         this._sessionStateLoadedFor = String(sessionId);
 

@@ -1,7 +1,7 @@
 "use client";
 // Unified Admin Dashboard — controls users, feature flags, security logs, system metrics
 import React, { useState, useEffect, useCallback } from "react";
-import { Shield, Users, Zap, Server, RefreshCw, Plus, Trash2, Edit, X, CheckCircle, AlertTriangle, Download, Database, BarChart3, Activity, MessageSquare, ExternalLink } from "lucide-react";
+import { Shield, Users, Zap, Server, RefreshCw, Plus, Trash2, Edit, X, CheckCircle, AlertTriangle, Download, Database, BarChart3, Activity, MessageSquare, ExternalLink, GraduationCap, Upload } from "lucide-react";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { DASHBOARD_MODULE_LABELS } from "@/lib/dashboardAccess";
 
@@ -61,6 +61,7 @@ type Metrics={cpu?:{percent:number};memory?:{used:number;total:number;percent:nu
 const TABS=[
   {id:"overview",label:"Overview",      Icon:BarChart3},
   {id:"users",   label:"Users",          Icon:Users},
+  {id:"mentorship",label:"Mentorship",   Icon:GraduationCap},
   {id:"support", label:"Support",        Icon:MessageSquare},
   {id:"flags",   label:"Feature Flags",  Icon:Zap},
   {id:"security",label:"Security Logs",  Icon:Shield},
@@ -352,6 +353,9 @@ export default function AdminDashboard() {
           <div className="text-xs text-white/30">{filtered.length} of {users.length} users</div>
         </div>
       )}
+
+      {/* MENTORSHIP */}
+      {tab==="mentorship"&&<MentorshipTab msg={msg}/>}
 
       {/* SUPPORT — full ticket desk lives on chart admin */}
       {tab==="support"&&(
