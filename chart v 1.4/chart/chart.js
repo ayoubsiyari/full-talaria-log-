@@ -16660,12 +16660,12 @@ class Chart {
             // + or = to zoom in
             if (e.key === '+' || e.key === '=') {
                 e.preventDefault();
-                this.zoomAtCenter(1.2);
+                (this.zoomAtLastCandle ? this.zoomAtLastCandle(1.2) : this.zoomAtCenter(1.2));
             }
             // - to zoom out
             if (e.key === '-') {
                 e.preventDefault();
-                this.zoomAtCenter(0.8);
+                (this.zoomAtLastCandle ? this.zoomAtLastCandle(0.8) : this.zoomAtCenter(0.8));
             }
             // Arrow keys for navigation
             if (e.key === 'ArrowLeft') {
@@ -22735,6 +22735,67 @@ class Chart {
         if (this.replaySystem?.isActive && factor > 1.01
             && typeof this._scheduleReplayPanLoadLeft === 'function') {
             this._scheduleReplayPanLoadLeft();
+        }
+        this.render();
+    }
+
+    /**
+     * Keyboard zoom (Ctrl+Up / Ctrl+Down, +/-) anchored on the most recent candle,
+     * so the chart zooms toward/away from the last bar and keeps it pinned to its
+     * current position — the same feel as the mouse wheel, TradingView-style.
+     * @param {number} factor >1 zooms in, <1 zooms out.
+     */
+    zoomAtLastCandle(factor) {
+        if (!this.data || this.data.length === 0) {
+            // Nothing to anchor on — fall back to center zoom.
+            return this.zoomAtCenter(factor);
+        }
+        if (this.timeScale && this.timeScale.locked) return;
+
+        const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+            ? this.zoomLevel.allowedWidths
+            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
+        const minWidth = this._getEffectiveMinCandleWidth(widths);
+        const maxWidth = widths[widths.length - 1];
+
+        const oldSpacing = this.getCandleSpacing();
+        const newWidth = Math.max(minWidth, Math.min(maxWidth, this.candleWidth * factor));
+        if (newWidth === this.candleWidth) return; // already at a zoom bound
+
+        // Pin the newest candle: keep its screen x fixed across the zoom.
+        const anchorIndex = this.data.length - 1;
+        const oldAnchorX = this.margin.l + anchorIndex * oldSpacing + this.offsetX;
+
+        // Freeze vertical auto-scale during time zoom (matches the wheel path).
+        const priceLocked = this.priceScale && this.priceScale.locked;
+        if (!priceLocked) {
+            this.autoScale = false;
+            if (this.priceScale) this.priceScale.autoScale = false;
+        }
+
+        this.candleWidth = newWidth;
+        const newSpacing = this.getCandleSpacing();
+        this.offsetX = oldAnchorX - (this.margin.l + anchorIndex * newSpacing);
+
+        // Keep zoomLevel index consistent with the new candle width.
+        let nearestIdx = 0;
+        let minDiff = Math.abs(newWidth - widths[0]);
+        for (let i = 1; i < widths.length; i++) {
+            const diff = Math.abs(newWidth - widths[i]);
+            if (diff < minDiff) { minDiff = diff; nearestIdx = i; }
+        }
+        if (this.zoomLevel) this.zoomLevel.candleWidthIndex = nearestIdx;
+
+        this.constrainOffset();
+
+        this._lastWheelZoomDirection = factor > 1 ? 1 : -1;
+        if (this.replaySystem?.isActive) {
+            if (typeof this.replaySystem.onUserPan === 'function') this.replaySystem.onUserPan();
+            if (factor > 1.01 && typeof this._scheduleReplayPanLoadLeft === 'function') {
+                this._scheduleReplayPanLoadLeft();
+            }
+        } else if (factor < 1 && typeof this._scheduleZoomOutDataFill === 'function') {
+            this._scheduleZoomOutDataFill();
         }
         this.render();
     }

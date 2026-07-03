@@ -655,7 +655,9 @@ class KeyboardShortcutsManager {
     }
     
     zoomIn() {
-        if (this.chart.zoomAtCenter) {
+        if (this.chart.zoomAtLastCandle) {
+            this.chart.zoomAtLastCandle(1.2);
+        } else if (this.chart.zoomAtCenter) {
             this.chart.zoomAtCenter(1.2);
         } else {
             this.chart.candleWidth = Math.min(100, this.chart.candleWidth * 1.2);
@@ -664,7 +666,9 @@ class KeyboardShortcutsManager {
     }
     
     zoomOut() {
-        if (this.chart.zoomAtCenter) {
+        if (this.chart.zoomAtLastCandle) {
+            this.chart.zoomAtLastCandle(0.8);
+        } else if (this.chart.zoomAtCenter) {
             this.chart.zoomAtCenter(0.8);
         } else {
             this.chart.candleWidth = Math.max(2, this.chart.candleWidth * 0.8);
