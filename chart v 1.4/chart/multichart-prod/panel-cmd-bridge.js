@@ -1605,7 +1605,18 @@
                             return { chartId: existing.id, type: indType, deduped: true };
                         }
                     }
-                    var ind = ch.addIndicator(indType);
+                    // Carry settings when cloning the host: params + style are
+                    // merged exactly like chart.js _applyPersistedIndicators so a
+                    // duplicated panel matches the host's configuration.
+                    var indParams = Object.assign({}, args.params || {}, args.style || {});
+                    var ind = Object.keys(indParams).length
+                        ? ch.addIndicator(indType, indParams)
+                        : ch.addIndicator(indType);
+                    if (ind && args.visible === false) ind.visible = false;
+                    if (ind && args.visibility && typeof args.visibility === 'object') {
+                        try { ind.visibility = JSON.parse(JSON.stringify(args.visibility)); }
+                        catch (_) { ind.visibility = args.visibility; }
+                    }
                     try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
                     try { if (typeof ch.recalculateIndicators === 'function') ch.recalculateIndicators(); } catch (_) {}
                     try { if (typeof ch.updateOHLCIndicators === 'function') ch.updateOHLCIndicators(); } catch (_) {}
@@ -1647,7 +1658,14 @@
                         ? ch.indicators.active
                         : [];
                     var items = list.map(function (i) {
-                        return { id: i.id, type: i.type || i.name || null };
+                        var out = { id: i.id, type: i.type || i.name || null };
+                        if (i.params) out.params = Object.assign({}, i.params);
+                        if (i.style) out.style = Object.assign({}, i.style);
+                        out.visible = i.visible !== false;
+                        if (i.visibility && typeof i.visibility === 'object') {
+                            try { out.visibility = JSON.parse(JSON.stringify(i.visibility)); } catch (_) {}
+                        }
+                        return out;
                     });
                     return { indicators: items };
                 }

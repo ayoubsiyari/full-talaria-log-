@@ -3307,6 +3307,71 @@ export default function MultichartGrid({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dataReadyPanels]);
 
+    // ─── One-time full clone of the host chart into each new panel ──────────
+    // "Duplicate main chart" semantics: when a panel's bars land, copy the
+    // host's chart type + indicators (with their settings) into it ONCE, then
+    // leave it independent (no ongoing mirror — changing one panel does NOT
+    // touch the others). Dataset + timeframe arrive via buildIframeSrc, the
+    // visible range/last candle via _initialSyncToHost, and drawings via the
+    // shared session-scoped storage key; this effect fills the remaining gap.
+    const clonedPanelsRef = useRef(new Set([HOST_PANEL_ID]));
+    useEffect(() => {
+        const t = setTimeout(() => {
+            try {
+                const ch = (typeof window !== "undefined") ? window.chart : null;
+                const grid = window.__multichartGrid;
+                if (!ch || !grid || typeof grid.runCommand !== "function") return;
+                for (const panelId of dataReadyPanels) {
+                    if (panelId === HOST_PANEL_ID) continue;
+                    if (clonedPanelsRef.current.has(panelId)) continue;
+                    // Mark before dispatch so a re-render mid-clone never
+                    // double-applies (matches orderSyncedPanelsRef above).
+                    clonedPanelsRef.current.add(panelId);
+
+                    // 1) Chart type (candles / line / area / bars / …).
+                    try {
+                        const ctype = ch.chartSettings && ch.chartSettings.chartType;
+                        if (ctype) {
+                            grid.runCommand("setChartType", { chartType: ctype }, { panelId }).catch(() => {});
+                        }
+                    } catch (_) {}
+
+                    // 2) Indicators — reuse the session-backup serializer so
+                    // params/style/visibility travel with each one.
+                    try {
+                        const snaps = typeof ch._snapshotIndicatorsForSessionBackup === "function"
+                            ? ch._snapshotIndicatorsForSessionBackup()
+                            : [];
+                        if (Array.isArray(snaps)) {
+                            for (const snap of snaps) {
+                                if (!snap || !snap.type) continue;
+                                grid.runCommand("addIndicator", {
+                                    type:       snap.type,
+                                    params:     snap.params || null,
+                                    style:      snap.style || null,
+                                    visible:    snap.visible !== false,
+                                    visibility: snap.visibility || null,
+                                }, { panelId }).catch(() => {});
+                            }
+                        }
+                    } catch (_) {}
+
+                    // 3) Drawings safety re-read from the shared session key
+                    // (covers a panel that booted before the host finished
+                    // persisting). Idempotent — reloads the same stored set.
+                    try {
+                        const sessId = initialSessionIdRef.current || null;
+                        if (sessId) {
+                            grid.runCommand("reloadDrawings", { sessionId: sessId }, { panelId }).catch(() => {});
+                        }
+                    } catch (_) {}
+                }
+            } catch (_) {}
+        }, 0);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dataReadyPanels]);
+
     // ─── Focus outline on the host's #chartWrapper ──────────────────────
     // Iframe tiles get their focused border via vanilla DOM injection
     // (see iframe focus-border effect below). The host's cell is invisible
@@ -3779,7 +3844,18 @@ export default function MultichartGrid({
                         if (existing && existing.id) {
                             return Promise.resolve({ chartId: existing.id, type, deduped: true });
                         }
-                        const ind = ch.addIndicator(type);
+                        // Carry settings when cloning the host: params + style
+                        // are merged exactly like _applyPersistedIndicators so a
+                        // duplicated panel matches the host's configuration.
+                        const indParams = Object.assign({}, args.params || {}, args.style || {});
+                        const ind = Object.keys(indParams).length
+                            ? ch.addIndicator(type, indParams)
+                            : ch.addIndicator(type);
+                        if (ind && args.visible === false) ind.visible = false;
+                        if (ind && args.visibility && typeof args.visibility === "object") {
+                            try { ind.visibility = JSON.parse(JSON.stringify(args.visibility)); }
+                            catch (_) { ind.visibility = args.visibility; }
+                        }
                         try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
                         try { if (typeof ch.recalculateIndicators === "function") ch.recalculateIndicators(); } catch (_) {}
                         try { if (typeof ch.updateOHLCIndicators === "function") ch.updateOHLCIndicators(); } catch (_) {}
@@ -3818,7 +3894,16 @@ export default function MultichartGrid({
                         const list = (ch.indicators && Array.isArray(ch.indicators.active))
                             ? ch.indicators.active : [];
                         return Promise.resolve({
-                            indicators: list.map((i) => ({ id: i.id, type: i.type || i.name || null })),
+                            indicators: list.map((i) => {
+                                const out = { id: i.id, type: i.type || i.name || null };
+                                if (i.params) out.params = Object.assign({}, i.params);
+                                if (i.style) out.style = Object.assign({}, i.style);
+                                out.visible = i.visible !== false;
+                                if (i.visibility && typeof i.visibility === "object") {
+                                    try { out.visibility = JSON.parse(JSON.stringify(i.visibility)); } catch (_) {}
+                                }
+                                return out;
+                            }),
                         });
                     }
                     case "setVisibilityMenuState": {
