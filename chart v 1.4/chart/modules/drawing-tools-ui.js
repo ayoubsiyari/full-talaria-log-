@@ -26358,6 +26358,29 @@ applyTemplate(drawing, templateId, modal) {
 
             if (isMultichartGlobalParentShell()) {
                 centerMultichartGlobalSettingsModal(modal);
+            } else {
+                // buildTVModal positioned the modal before it was in the DOM, so it
+                // measured height 0 and used a 500px fallback. A tall dialog (e.g. Fib
+                // with many price levels) or a shape near the chart bottom then opened
+                // partly below the viewport. Now that the real height is known, re-clamp
+                // so the whole panel stays on-screen.
+                try {
+                    const vr = modal.getBoundingClientRect();
+                    if (vr && vr.height) {
+                        const margin = 10;
+                        const topBar = 60;
+                        const maxTop = Math.max(topBar, window.innerHeight - vr.height - margin);
+                        const maxLeft = Math.max(margin, window.innerWidth - vr.width - margin);
+                        let top = Math.min(Math.max(vr.top, topBar), maxTop);
+                        let left = Math.min(Math.max(vr.left, margin), maxLeft);
+                        if (top !== vr.top || left !== vr.left) {
+                            modal.style.position = 'fixed';
+                            modal.style.transform = 'none';
+                            modal.style.top = top + 'px';
+                            modal.style.left = left + 'px';
+                        }
+                    }
+                } catch (_) {}
             }
 
             modal.style.opacity = '1';

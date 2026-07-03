@@ -18712,6 +18712,11 @@ const TalariaV8bLive = () => {
         }
 
         const items = [];
+        // Multichart: every panel's drawingManager holds a synced copy of the
+        // same drawing (identical `id` across tiles). Without dedupe the tree
+        // lists each drawing once per panel (e.g. 4 brushes × 4 tiles = 16).
+        // Track ids we've already emitted so each logical drawing shows once.
+        const seenDrawingIds = new Set();
         for (const dm of managers) {
           if (!dm || !Array.isArray(dm.drawings)) continue;
           const valid = dm.drawings.filter((d) => {
@@ -18726,6 +18731,11 @@ const TalariaV8bLive = () => {
               : (d.visible !== false && (typeof dm._isVisibleForCurrentTimeframe !== 'function' || dm._isVisibleForCurrentTimeframe(d)))
           );
           for (const d of valid) {
+            const dedupeKey = (d.id != null && d.id !== '') ? String(d.id) : null;
+            if (dedupeKey !== null) {
+              if (seenDrawingIds.has(dedupeKey)) continue;
+              seenDrawingIds.add(dedupeKey);
+            }
             const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
             const name = (typeof dm.getDrawingDisplayTitle === 'function')
               ? dm.getDrawingDisplayTitle(d)
