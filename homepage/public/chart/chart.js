@@ -7985,6 +7985,7 @@ class Chart {
                     });
                 }
                 this.loadTradingSessionStateIfNeeded();
+                this.loadLocalRuntimeOrdersIfNoSession();
                 if (this.orderManager) {
                     this._scheduleOrderMarkersRedrawAfterSessionRestore(this.orderManager);
                 }
@@ -8624,6 +8625,56 @@ class Chart {
             );
         }
         return true;
+    }
+
+    /**
+     * No trading session: restore pending/executed orders + account snapshot from the
+     * localStorage fallback that OrderManager.persistRuntimeOrderState() wrote. Session-backed
+     * charts use loadTradingSessionStateIfNeeded() (API + local backup) and this no-ops for them.
+     * Idempotent — runs at most once per load; retries briefly until OrderManager exists.
+     *
+     * Note: only pending orders, open positions and the account snapshot are kept here — the
+     * closed-trade journal is not persisted without a session, so account balance is taken from
+     * the saved snapshot and NOT recomputed from an (empty) journal.
+     */
+    loadLocalRuntimeOrdersIfNoSession() {
+        try {
+            if (this.getActiveTradingSessionId()) return; // session path owns persistence
+            if (this._localRuntimeOrdersRestored) return;
+
+            const om = typeof this._getOrderManagerForSessionPersistence === 'function'
+                ? this._getOrderManagerForSessionPersistence()
+                : this.orderManager;
+            if (!om || typeof om.restoreRuntimeOrderStateFromSession !== 'function') {
+                // OrderManager not ready yet — retry briefly (mirrors the session loader).
+                this._localRuntimeOrdersRestoreRetry = (this._localRuntimeOrdersRestoreRetry || 0) + 1;
+                if (this._localRuntimeOrdersRestoreRetry <= 80) {
+                    clearTimeout(this._localRuntimeOrdersRestoreTimer);
+                    this._localRuntimeOrdersRestoreTimer = setTimeout(() => {
+                        this._localRuntimeOrdersRestoreTimer = null;
+                        this.loadLocalRuntimeOrdersIfNoSession();
+                    }, 50);
+                }
+                return;
+            }
+
+            this._localRuntimeOrdersRestored = true;
+
+            let raw = null;
+            try { raw = userStorage.getItem('chart_orders_runtime_local_v1'); } catch (_) { raw = null; }
+            if (!raw) return;
+
+            let snap = null;
+            try { snap = JSON.parse(raw); } catch (_) { return; }
+            if (!snap || !this._sessionStateHasRuntimeOrderState(snap)) return;
+
+            om.restoreRuntimeOrderStateFromSession(snap);
+            if (typeof om.updatePositionsPanel === 'function') om.updatePositionsPanel();
+            if (typeof om.updateJournalTab === 'function') om.updateJournalTab();
+            this._scheduleOrderMarkersRedrawAfterSessionRestore(om);
+        } catch (e) {
+            console.warn('Local runtime order restore failed:', e);
+        }
     }
 
     async loadTradingSessionStateIfNeeded() {
@@ -9557,6 +9608,7 @@ class Chart {
 
                 setTimeout(() => {
                     this.loadTradingSessionStateIfNeeded();
+                    this.loadLocalRuntimeOrdersIfNoSession();
                 }, 0);
 
                 if (!this._sessionStateUnloadHookInstalled) {

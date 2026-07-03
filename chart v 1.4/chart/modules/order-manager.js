@@ -6,6 +6,9 @@
 const MAX_TP_TARGETS = 5;
 const MAX_ENTRY_LEVELS = 4;
 
+// localStorage key for the no-session runtime order fallback (must match chart.js).
+const ORDER_MANAGER_LOCAL_RUNTIME_KEY = 'chart_orders_runtime_local_v1';
+
 class OrderManager {
     constructor(chart, replaySystem) {
         this.chart = chart;
@@ -3576,7 +3579,6 @@ class OrderManager {
             this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
                 ? this.chart.getActiveTradingSessionId()
                 : null;
-        if (!sessionId) return;
 
         const safeClone = (arr) => {
             try {
@@ -3608,12 +3610,32 @@ class OrderManager {
             order_counters,
         };
 
+        // No trading session: keep pending/executed orders across a refresh via a
+        // local fallback. Session-backed charts still use the API path below (unchanged).
+        if (!sessionId) {
+            this._persistRuntimeOrderStateLocalFallback(patch);
+            return;
+        }
+
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
             this.chart.scheduleSessionStateSave(patch);
         }
         if (opts.critical && this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
             this.chart.queueCriticalSessionStateSave(patch);
         }
+    }
+
+    /**
+     * Persist runtime order state to localStorage when no trading session is active,
+     * so a page refresh keeps pending + executed orders and the account snapshot.
+     * Best-effort: never throws (quota / disabled storage just skips the save).
+     */
+    _persistRuntimeOrderStateLocalFallback(patch) {
+        try {
+            if (typeof userStorage === 'undefined' || !userStorage || typeof userStorage.setItem !== 'function') return;
+            const payload = Object.assign({}, patch, { savedAt: Date.now() });
+            userStorage.setItem(ORDER_MANAGER_LOCAL_RUNTIME_KEY, JSON.stringify(payload));
+        } catch (_) { /* storage unavailable/full — ignore */ }
     }
 
     restoreRuntimeOrderStateFromSession(state) {
