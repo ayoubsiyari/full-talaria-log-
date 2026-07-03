@@ -3377,9 +3377,12 @@ class CompareOverlay {
 
             let axisWidth = chart.margin.r || 48;
             if (typeof chart._measurePriceAxisStripWidth === 'function') {
+                // Measure with the MAIN symbol's precision so the strip fits the
+                // labels we actually draw (which follow the main axis decimals).
+                const mainSymbol = chart.currentSymbol || overlay.symbol;
                 axisWidth = chart._measurePriceAxisStripWidth(
-                    minPrice, maxPrice, numYTicks, overlay.symbol,
-                    { data: overlay.data, priceHeight }
+                    minPrice, maxPrice, numYTicks, mainSymbol,
+                    { data: chart.data, priceHeight }
                 );
             }
 
@@ -4989,10 +4992,25 @@ class CompareOverlay {
 
         const numYTicks = Math.max(8, Math.min(15, Math.floor(priceHeight / 60)));
         const priceRange = maxPrice - minPrice;
+        // Label the compare axis with the MAIN symbol's price-axis precision (not
+        // the compare symbol's own inferred decimals) so it reads consistently
+        // with the main chart, e.g. main ES → 2dp makes the compare show
+        // "4570.25" instead of "4570.25000". Tick PLACEMENT still uses the
+        // overlay's own tick grid below; only the decimals/formatting follow main.
+        const mainSymbol = this.chart.currentSymbol || overlay.symbol;
+        let mainRange = priceRange;
+        try {
+            if (this.chart.yScale && typeof this.chart.yScale.domain === 'function') {
+                const dom = this.chart.yScale.domain();
+                if (dom && dom.length === 2 && Number.isFinite(dom[0]) && Number.isFinite(dom[1])) {
+                    mainRange = Math.abs(dom[1] - dom[0]) || priceRange;
+                }
+            }
+        } catch (_) { mainRange = priceRange; }
         const symDec = typeof this.chart.getPriceDecimalsForSymbol === 'function'
-            ? this.chart.getPriceDecimalsForSymbol(overlay.symbol, priceRange, { data: overlay.data })
+            ? this.chart.getPriceDecimalsForSymbol(mainSymbol, mainRange, { data: this.chart.data })
             : (typeof this.chart._decimalsFromPriceRangeHeuristic === 'function'
-                ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(priceRange) || 0))
+                ? this.chart._decimalsFromPriceRangeHeuristic(Math.abs(Number(mainRange) || 0))
                 : 5);
 
         const ticks = typeof this.chart._getYPriceTicksForDomain === 'function'
@@ -5024,7 +5042,7 @@ class CompareOverlay {
             ctx.fillStyle = axisTextColor;
             ctx.font = scaleFont;
             const axisLabel = typeof this.chart._formatLastPrice === 'function'
-                ? this.chart._formatLastPrice(price, Math.abs(priceRange), overlay.symbol)
+                ? this.chart._formatLastPrice(price, Math.abs(mainRange), mainSymbol)
                 : price.toFixed(symDec);
             ctx.fillText(axisLabel, axisMidX, y + 4);
         });
@@ -5037,7 +5055,7 @@ class CompareOverlay {
 
                 if (currentY >= m.t && currentY <= m.t + priceHeight) {
                     const priceStr = typeof this.chart._formatLastPrice === 'function'
-                        ? this.chart._formatLastPrice(currentPrice, Math.abs(priceRange), overlay.symbol)
+                        ? this.chart._formatLastPrice(currentPrice, Math.abs(mainRange), mainSymbol)
                         : Number(currentPrice).toFixed(symDec);
                     const bgColor = overlay.color || this.chart.chartSettings?.priceLineColor || '#787B86';
                     const labelWidth = axisWidth - 4;
