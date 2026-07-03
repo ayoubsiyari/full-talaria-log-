@@ -19249,6 +19249,10 @@ const TalariaV8bLive = () => {
         if (editingDrawingRef.current) return;
         if (v9IsPersistentFreehandArmed(dm)) return;
         if (v9UserExplicitToolRef.current) return;
+        // A shape was just selected (host or iframe tile) — the clear-tool broadcast
+        // below runs clearActiveDrawingTool without keepSelection and would wipe that
+        // fresh selection on the other panels. Respect the selection guard here too.
+        if (v9IsDrawingSelectionGuardActive()) return;
         // panel-manager.selectPanel clears non-focused tiles with clearTool(true).
         // Syncing React from those mirrored clears races the tool bridge and forces
         // the V9 rail back to Cursor even when the user immediately picks a draw tool.

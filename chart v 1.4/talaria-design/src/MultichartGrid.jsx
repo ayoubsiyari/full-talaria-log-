@@ -2459,7 +2459,13 @@ export default function MultichartGrid({
             if (!raf) {
                 raf = window.requestAnimationFrame(() => {
                     raf = 0;
-                    positionHostOnly();
+                    // Full resize + redrawDrawings every frame while the cell
+                    // bbox changes (right Layouts menu open/close, sidebar).
+                    // positionHostOnly() only CSS-stretched the canvas/SVG shell;
+                    // drawing line coordinates stayed in the old pixel space and
+                    // snapped back when the 150ms debounced repaint finally ran.
+                    // Iframe panels already call chart.resize() on every RO tick.
+                    repaintHost();
                 });
             }
             clearTimeout(settleTimer);
@@ -5716,6 +5722,14 @@ export default function MultichartGrid({
             }
             if (msg.type === "multichart-drawing-selected") {
                 try {
+                    // Mirror the host-panel behaviour: a shape selected on an iframe
+                    // tile must arm the PARENT selection guard, otherwise this shell's
+                    // focus-change cleanup (deselectDrawingsOnNonFocusedPanels / tool
+                    // sync / quick-bar hide) instantly wipes the fresh selection and the
+                    // shape never shows selected on B/C/D.
+                    if (typeof window !== "undefined") {
+                        window.__v9DrawingSelectionGuardUntil = performance.now() + 400;
+                    }
                     if (msg.drawingType) {
                         window.dispatchEvent(new CustomEvent("talaria:v9-selected-drawing", {
                             detail: {

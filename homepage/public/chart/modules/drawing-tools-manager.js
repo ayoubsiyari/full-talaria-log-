@@ -104,13 +104,15 @@ function notifyV9SelectionSync(chartInstance, drawing) {
         drawingId: drawing.id != null ? drawing.id : null,
         panelId,
     };
-    const fire = () => {
-        try {
-            window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', { detail }));
-        } catch (_) { /* ignore */ }
-        try {
-            if (window.__multichartGrid) return;
-        } catch (_) { /* ignore */ }
+    // Iframe tiles (B/C/D): tell the parent shell SYNCHRONOUSLY so it can arm its
+    // own `__v9DrawingSelectionGuardUntil` before the parent's focus-change cleanup
+    // (deselectDrawingsOnNonFocusedPanels / tool sync, both setTimeout(0)) runs.
+    // The guard set inside handleMouseDown lives on THIS iframe's window, which the
+    // parent never sees — without this early ping the parent wipes the fresh
+    // selection and the shape never appears selected on non-host panels.
+    let isHostGrid = false;
+    try { isHostGrid = !!window.__multichartGrid; } catch (_) { /* ignore */ }
+    if (!isHostGrid) {
         try {
             if (window.parent && window.parent !== window) {
                 window.parent.postMessage({
@@ -120,6 +122,11 @@ function notifyV9SelectionSync(chartInstance, drawing) {
                     source: panelId,
                 }, '*');
             }
+        } catch (_) { /* ignore */ }
+    }
+    const fire = () => {
+        try {
+            window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', { detail }));
         } catch (_) { /* ignore */ }
     };
     try {
