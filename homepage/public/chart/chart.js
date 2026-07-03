@@ -9556,6 +9556,16 @@ class Chart {
                     this._sessionStateUnloadHookInstalled = true;
                     const flushPendingSessionState = () => {
                         try {
+                            // Capture the LATEST replay playhead before flushing. The
+                            // periodic persist is throttled (~8s while playing), so a
+                            // refresh mid-window would otherwise push a stale playhead
+                            // and the host would restart replay from the session start
+                            // while panels kept their advanced position.
+                            if (this.replaySystem
+                                && this.replaySystem.isActive
+                                && typeof this.replaySystem._flushReplayStateToSession === 'function') {
+                                this.replaySystem._flushReplayStateToSession();
+                            }
                             this._flushReplayDashboardCoverageNow();
                             if (this.drawingManager && typeof this.drawingManager._flushScheduledSaveDrawings === 'function') {
                                 this.drawingManager._flushScheduledSaveDrawings();
