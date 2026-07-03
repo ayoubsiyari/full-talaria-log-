@@ -7259,11 +7259,12 @@ class DrawingToolsManager {
         // Hover handlers
         const handleMouseEnter = function(event) {
             if (self.currentTool) return;
-            
-            // Ctrl+hover to select (multi-select mode)
-            if (self.ctrlSelectMode && !drawing.locked && !self._isDrawingGeometryMoveActive()) {
-                self.selectDrawing(drawing, true);
-            }
+
+            // NOTE: Ctrl+hover auto-select is intentionally disabled. Selection is
+            // click/marquee-driven now: Ctrl+click toggles a shape one-by-one and
+            // Ctrl+drag marquees. Auto-selecting on hover double-toggled the shape on the
+            // following Ctrl+click (looked like the shape "disappeared") and polluted the
+            // selection so the Ctrl+marquee refused to start (no blue box).
             
             // Check if hovering on inline-editable text - use move cursor
             const target = event?.target ? d3.select(event.target) : null;
