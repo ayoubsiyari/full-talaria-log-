@@ -1924,7 +1924,13 @@ class Chart {
                     '#chart-container #chartWrapper .ohlc-stats-flow{display:flex;align-items:center;flex-wrap:nowrap;gap:10px;flex:0 1 auto;min-width:0;overflow:hidden;box-sizing:border-box;}',
                     '#chart-container #chartWrapper .ohlc-item{display:inline-flex;align-items:center;gap:3px;}',
                     '#chart-container #chartWrapper .ohlc-item-close-change{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;overflow:hidden;box-sizing:border-box;}',
-                    '#chart-container #chartWrapper .ohlc-label,#chart-container #chartWrapper .ohlc-value,#chart-container #chartWrapper .ohlc-change{font-size:9px;font-weight:500;color:var(--ohlc-muted,rgba(255,255,255,0.82));font-variant-numeric:tabular-nums lining-nums;}',
+                    // Force muted color with !important so it matches the main
+                    // chart legend (talaria-v9-live.css uses !important here). The
+                    // per-candle up/down colors are set as inline styles by
+                    // updateOHLCFromCandle; without !important those inline colors
+                    // win only on embed panels, making panel numerals green/red
+                    // while the host stays muted — the mismatch users reported.
+                    '#chart-container #chartWrapper .ohlc-label,#chart-container #chartWrapper .ohlc-value,#chart-container #chartWrapper .ohlc-change{font-size:9px;font-weight:500;color:var(--ohlc-muted,rgba(255,255,255,0.82))!important;font-variant-numeric:tabular-nums lining-nums;}',
                     '#chart-container #chartWrapper .ohlc-item-close-change .ohlc-change{margin-left:0;width:14ch;min-width:14ch;flex:0 0 14ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}',
                     '#chart-container #chartWrapper .ohlc-body{margin-top:1px;pointer-events:none;}',
                     '#chart-container #chartWrapper .ohlc-indicators{display:flex;flex-direction:column;align-items:flex-start;gap:0;width:100%;max-width:100%;font-size:10.5px;line-height:1.2;color:var(--ohlc-ind,rgba(255,255,255,0.72));pointer-events:none;position:relative;z-index:100;}',
