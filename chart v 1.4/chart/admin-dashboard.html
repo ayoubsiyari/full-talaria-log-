@@ -3028,6 +3028,10 @@ select { cursor:default; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
         Users
       </a>
+      <a class="nav-item" data-section="mentorship" onclick="navigate('mentorship')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+        Mentorship
+      </a>
       <a class="nav-item" data-section="sessions" onclick="navigate('sessions')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         Live Sessions
@@ -3416,6 +3420,71 @@ select { cursor:default; }
             <div class="empty-state" id="emptyUsers" style="display:none">
               <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
               <p>No users found</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════ MENTORSHIP SECTION ════════ -->
+      <div class="section" id="sec-mentorship">
+        <!-- Import students -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+            <div class="card-title">Import mentorship students</div>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field"><label>Cohort name</label><input type="text" id="mtCohortName" placeholder="e.g. March Mentorship"></div>
+              <div class="field"><label>Access expires (optional)</label><input type="datetime-local" id="mtExpiry"></div>
+              <div class="field fg-full">
+                <label>Default sections these students can see (per-row <code>modules</code> column overrides this)</label>
+                <div id="mtDefaultModules" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+              </div>
+              <div class="field fg-full">
+                <label>Upload CSV (columns: email, password, full_name, phone, country, modules)</label>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px">
+                  <input type="file" id="mtFile" accept=".csv" onchange="mtOnFile(event)">
+                  <button class="btn sm" type="button" onclick="mtDownloadTemplate()">Download template</button>
+                </div>
+                <div id="mtPreview" style="font-size:12px;color:var(--text-muted);margin-top:8px"></div>
+              </div>
+              <div class="fg-full" style="text-align:right;margin-top:4px">
+                <button class="btn primary" id="mtImportBtn" onclick="doMentorshipImport()" disabled>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  Import students
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cohorts + roster -->
+        <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start">
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">Cohorts</div><span class="card-badge" id="mtCohortCount">0</span></div>
+            <div class="card-body" style="padding:8px" id="mtCohortList">
+              <p style="font-size:12px;color:var(--text-muted);padding:8px">No cohorts yet.</p>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-hdr">
+              <div class="card-title" id="mtRosterTitle">Select a cohort</div>
+              <span class="card-badge" id="mtMemberCount">0</span>
+            </div>
+            <div class="card-body">
+              <div id="mtCohortDefaultEditor" style="display:none;margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary)">
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Cohort default sections — apply to every member at once:</div>
+                <div id="mtCohortModules" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px"></div>
+                <button class="btn sm" type="button" onclick="applyCohortModules()">Apply to all members</button>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead><tr id="mtRosterHead"><th>Student</th></tr></thead>
+                  <tbody id="mtRosterBody"></tbody>
+                </table>
+              </div>
+              <div class="empty-state" id="mtEmptyRoster" style="display:none"><p>Select a cohort to view its roster.</p></div>
             </div>
           </div>
         </div>
@@ -5091,6 +5160,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 const sectionTitles = {
   overview: 'Overview & roadmap',
   users: 'User Management',
+  mentorship: 'Mentorship Cohorts',
   sessions: 'Live Sessions',
   datasets: 'Dataset Management',
   'dataset-registry': 'Dataset registry & health',
@@ -6873,6 +6943,7 @@ function navigate(section) {
     }
   }
   if (section === 'sessions') loadSessions();
+  if (section === 'mentorship') loadMentorship();
   if (section === 'datasets') {
     const dsTab = dsTabOverride || parseDsHubTabFromHash();
     setDsHubTab(dsTab, { skipRegistryLoad: true });
@@ -7574,6 +7645,244 @@ async function saveUser() {
     closeEditModal();
     await loadUsers();
   } catch (e) { toast(e.message, 'err'); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MENTORSHIP COHORTS
+// ═══════════════════════════════════════════════════════════
+let mtCohorts = [];
+let mtSelectedId = null;
+let mtParsedRows = [];
+
+function mtModuleCatalog() {
+  return (dashboardModuleCatalog && dashboardModuleCatalog.length) ? dashboardModuleCatalog : [
+    { key: 'journal', label: 'Journal' },
+    { key: 'backtest', label: 'Backtest & sessions' },
+    { key: 'strategies', label: 'Strategy lab' },
+    { key: 'cot', label: 'COT analysis' },
+    { key: 'community', label: 'Community feed' },
+    { key: 'chart', label: 'Chart data & drawings' },
+  ];
+}
+
+function mtModuleCheckboxes(hostId, cls, selected) {
+  const host = $(hostId);
+  if (!host) return;
+  host.innerHTML = mtModuleCatalog().map(function (m) {
+    const on = !!(selected && selected[m.key]);
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary)">' +
+      '<input type="checkbox" class="' + cls + '" data-mod="' + esc(m.key) + '"' + (on ? ' checked' : '') + ' />' +
+      '<span>' + esc(m.label) + '</span></label>';
+  }).join('');
+}
+
+function mtReadModules(cls) {
+  const out = {};
+  document.querySelectorAll('.' + cls).forEach(function (el) {
+    if (el.checked) out[el.getAttribute('data-mod')] = true;
+  });
+  return out;
+}
+
+async function loadMentorship() {
+  mtModuleCheckboxes('mtDefaultModules', 'mt-def-mod', { backtest: true, journal: true });
+  await loadCohorts();
+}
+
+async function loadCohorts() {
+  try {
+    const data = await api('/api/admin/mentorship/cohorts');
+    mtCohorts = data.cohorts || [];
+  } catch (e) { mtCohorts = []; }
+  renderCohortList();
+}
+
+function renderCohortList() {
+  const host = $('mtCohortList');
+  if ($('mtCohortCount')) $('mtCohortCount').textContent = mtCohorts.length;
+  if (!host) return;
+  if (!mtCohorts.length) {
+    host.innerHTML = '<p style="font-size:12px;color:var(--text-muted);padding:8px">No cohorts yet. Import students to create one.</p>';
+    return;
+  }
+  host.innerHTML = mtCohorts.map(function (c) {
+    const active = c.id === mtSelectedId;
+    return '<button type="button" onclick="selectCohort(' + c.id + ')" style="display:block;width:100%;text-align:left;padding:8px 10px;margin-bottom:4px;border:1px solid ' + (active ? 'var(--accent)' : 'var(--border)') + ';border-radius:8px;background:' + (active ? 'var(--accent-subtle,rgba(139,92,246,.12))' : 'transparent') + ';cursor:pointer;color:var(--text)">' +
+      '<div style="font-size:13px;font-weight:600">' + esc(c.name) + '</div>' +
+      '<div style="font-size:11px;color:var(--text-muted)">' + c.member_count + ' member' + (c.member_count === 1 ? '' : 's') + '</div>' +
+      '</button>';
+  }).join('');
+}
+
+async function selectCohort(id) {
+  mtSelectedId = id;
+  renderCohortList();
+  try {
+    const data = await api('/api/admin/mentorship/cohorts/' + id + '/members');
+    const cohort = data.cohort || {};
+    const members = data.members || [];
+    if ($('mtRosterTitle')) $('mtRosterTitle').textContent = cohort.name || 'Cohort';
+    if ($('mtMemberCount')) $('mtMemberCount').textContent = members.length;
+    if ($('mtCohortDefaultEditor')) $('mtCohortDefaultEditor').style.display = '';
+    mtModuleCheckboxes('mtCohortModules', 'mt-cohort-mod', cohort.default_modules || {});
+    renderRoster(members);
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function renderRoster(members) {
+  const cat = mtModuleCatalog();
+  const head = $('mtRosterHead');
+  if (head) head.innerHTML = '<th>Student</th>' + cat.map(function (m) { return '<th style="text-align:center">' + esc(m.label) + '</th>'; }).join('');
+  const body = $('mtRosterBody');
+  const empty = $('mtEmptyRoster');
+  if (!body) return;
+  if (!members.length) {
+    body.innerHTML = '';
+    if (empty) { empty.style.display = ''; empty.querySelector('p').textContent = 'No members in this cohort.'; }
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  body.innerHTML = members.map(function (u) {
+    const locked = u.has_journal_access || u.role === 'admin';
+    const cells = cat.map(function (m) {
+      const on = !!(u.dashboard_modules && u.dashboard_modules[m.key]);
+      return '<td style="text-align:center"><input type="checkbox" ' + (on ? 'checked ' : '') + (locked ? 'disabled ' : '') +
+        'onchange="toggleMemberModule(this,' + u.id + ')"></td>';
+    }).join('');
+    const nameHtml = '<div>' + esc(u.email) + '</div>' + (u.name ? '<div style="font-size:11px;color:var(--text-muted)">' + esc(u.name) + '</div>' : '') + (locked ? '<span style="font-size:10px;color:var(--accent)">full access</span>' : '');
+    return '<tr><td>' + nameHtml + '</td>' + cells + '</tr>';
+  }).join('');
+}
+
+async function toggleMemberModule(el, userId) {
+  // Rebuild this student's grants from every module checkbox in the same row.
+  const grants = {};
+  const row = el.closest('tr');
+  const cat = mtModuleCatalog();
+  row.querySelectorAll('input[type="checkbox"]').forEach(function (cb, i) {
+    if (cb.checked && cat[i]) grants[cat[i].key] = true;
+  });
+  try {
+    await api('/api/admin/users/' + userId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ has_journal_access: false, dashboard_module_grants: grants }),
+    });
+    toast('Updated — student should re-login to apply.', 'ok');
+  } catch (e) { toast(e.message, 'err'); if (mtSelectedId) selectCohort(mtSelectedId); }
+}
+
+async function applyCohortModules() {
+  if (!mtSelectedId) return;
+  const modules = Object.keys(mtReadModules('mt-cohort-mod'));
+  try {
+    const data = await api('/api/admin/mentorship/cohorts/' + mtSelectedId + '/modules', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modules: modules, apply_to_members: true }),
+    });
+    toast('Applied to ' + (data.members_updated || 0) + ' member(s) — they should re-login.', 'ok');
+    selectCohort(mtSelectedId);
+    loadCohorts();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function mtParseCsv(text) {
+  const rows = [];
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(function (l) { return l.trim() !== ''; });
+  if (!lines.length) return rows;
+  const parseLine = function (line) {
+    const out = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQ) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') { inQ = false; }
+        else cur += ch;
+      } else {
+        if (ch === '"') inQ = true;
+        else if (ch === ',') { out.push(cur); cur = ''; }
+        else cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  };
+  const headers = parseLine(lines[0]).map(function (h) { return h.trim().toLowerCase(); });
+  for (let r = 1; r < lines.length; r++) {
+    const cells = parseLine(lines[r]);
+    const obj = {};
+    headers.forEach(function (h, i) { obj[h] = (cells[i] != null ? String(cells[i]).trim() : ''); });
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function mtOnFile(evt) {
+  const file = evt.target.files && evt.target.files[0];
+  const btn = $('mtImportBtn');
+  const preview = $('mtPreview');
+  if (!file) { mtParsedRows = []; if (btn) btn.disabled = true; if (preview) preview.textContent = ''; return; }
+  const reader = new FileReader();
+  reader.onload = function () {
+    try {
+      mtParsedRows = mtParseCsv(String(reader.result));
+      const valid = mtParsedRows.filter(function (r) { return r.email && r.password; });
+      if (preview) preview.textContent = mtParsedRows.length + ' row(s) parsed, ' + valid.length + ' with email + password.';
+      if (btn) btn.disabled = valid.length === 0;
+    } catch (e) {
+      mtParsedRows = [];
+      if (preview) preview.textContent = 'Could not parse CSV: ' + e.message;
+      if (btn) btn.disabled = true;
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function doMentorshipImport() {
+  const cohortName = ($('mtCohortName').value || '').trim();
+  if (!cohortName) { toast('Cohort name is required', 'err'); return; }
+  if (!mtParsedRows.length) { toast('Choose a CSV file', 'err'); return; }
+  const defaultModules = Object.keys(mtReadModules('mt-def-mod'));
+  const expiryVal = $('mtExpiry').value;
+  const body = {
+    cohort_name: cohortName,
+    default_modules: defaultModules,
+    rows: mtParsedRows,
+  };
+  if (expiryVal) body.access_expires_at = new Date(expiryVal).toISOString();
+  const btn = $('mtImportBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const data = await api('/api/admin/mentorship/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    toast('Imported ' + (data.imported_count || 0) + ', skipped ' + (data.skipped_count || 0) + (data.error_count ? ', ' + data.error_count + ' errors' : ''), 'ok');
+    $('mtCohortName').value = '';
+    $('mtFile').value = '';
+    mtParsedRows = [];
+    if ($('mtPreview')) $('mtPreview').textContent = '';
+    await loadCohorts();
+    if (data.cohort && data.cohort.id) selectCohort(data.cohort.id);
+  } catch (e) { toast(e.message, 'err'); if (btn) btn.disabled = false; }
+}
+
+function mtDownloadTemplate() {
+  const rows = [
+    ['email', 'password', 'full_name', 'phone', 'country', 'modules'],
+    ['student1@example.com', 'StudentPass123!', 'John Smith', '+1234567890', 'United States', ''],
+    ['student2@example.com', 'StudentPass123!', 'Sarah Johnson', '+1234567891', 'United States', 'backtest,journal'],
+  ];
+  const csv = rows.map(function (r) { return r.map(function (c) { return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'mentorship_students_template.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════════════════════════════════════

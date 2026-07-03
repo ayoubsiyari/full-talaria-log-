@@ -871,6 +871,22 @@ class User(Base):
     phone = Column(String(50), nullable=True)
     birth_date = Column(Date, nullable=True)
     public_id = Column(String(20), unique=True, nullable=True, index=True)
+    group_id = Column(Integer, ForeignKey("journal_groups.id"), nullable=True)
+
+
+class Group(Base):
+    """Maps to journal-backend's 'journal_groups' table (mentorship cohorts).
+    Declared here for read/write from the chart admin; excluded from create_all —
+    journal-backend owns this schema.
+    """
+    __tablename__ = "journal_groups"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    default_modules = Column(Text, nullable=True)  # JSON: {"backtest": true, ...}
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
 
 class SubscriptionPlan(Base):
     """Maps to journal-backend's subscription_plans table (read/write for admin)."""
@@ -1292,6 +1308,11 @@ try:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE"))
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS public_id VARCHAR(20)"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS group_id INTEGER"))
+        try:
+            _conn.execute(text("ALTER TABLE journal_groups ADD COLUMN IF NOT EXISTS default_modules TEXT"))
+        except Exception:
+            pass
         try:
             _conn.execute(
                 text(
@@ -14915,6 +14936,226 @@ async def admin_update_user(user_id: int, payload: _UpdateUserIn, request: Reque
 async def admin_dashboard_modules_catalog(request: Request):
     _require_admin(request)
     return {"modules": modules_catalog()}
+
+
+# ─── MENTORSHIP COHORTS ────────────────────────────────────────────────────
+# A mentorship "cohort" is a journal_groups row. Students are users assigned to
+# that group whose visible dashboard sections are controlled via
+# dashboard_module_grants (the same mechanism the edit-user modal already uses).
+
+def _coerce_module_dict(value) -> dict:
+    """Accept a list of keys, {key: bool} dict, JSON string, or comma-separated
+    string; return a normalized {key: True} dict limited to allowed modules."""
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return {}
+        try:
+            value = json.loads(raw)
+        except Exception:
+            value = [p.strip() for p in raw.split(",") if p.strip()]
+    if isinstance(value, dict):
+        return normalize_module_grants(value)
+    if isinstance(value, (list, tuple, set)):
+        return normalize_module_grants({str(k).strip().lower(): True for k in value})
+    return {}
+
+
+def _grants_text(module_dict) -> str | None:
+    return json.dumps(module_dict, separators=(",", ":")) if module_dict else None
+
+
+def _parse_expiry_dt(value):
+    """Parse ISO datetime or YYYY-MM-DD; return naive datetime or None."""
+    if not value:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        pass
+    try:
+        return datetime.strptime(s, "%Y-%m-%d")
+    except Exception:
+        return None
+
+
+@app.get("/api/admin/mentorship/cohorts")
+async def admin_mentorship_cohorts(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        groups = db.query(Group).filter(Group.is_active == True).order_by(Group.name.asc()).all()  # noqa: E712
+        cohorts = []
+        for g in groups:
+            member_count = db.query(User).filter(User.group_id == g.id).count()
+            cohorts.append({
+                "id": g.id,
+                "name": g.name,
+                "description": g.description,
+                "member_count": member_count,
+                "default_modules": _coerce_module_dict(g.default_modules),
+                "created_at": g.created_at.isoformat() if g.created_at else None,
+            })
+        return {"cohorts": cohorts}
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/mentorship/cohorts/{group_id}/members")
+async def admin_mentorship_cohort_members(group_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        group = db.query(Group).filter(Group.id == group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Cohort not found")
+        members = db.query(User).filter(User.group_id == group_id).order_by(User.email.asc()).all()
+        roster = []
+        for u in members:
+            roster.append({
+                "id": u.id,
+                "email": u.email,
+                "name": u.name,
+                "role": u.role,
+                "is_active": u.is_active,
+                "has_journal_access": bool(u.has_journal_access),
+                "dashboard_modules": effective_dashboard_modules(u),
+                "access_expires_at": u.access_expires_at.isoformat() if u.access_expires_at else None,
+            })
+        return {
+            "cohort": {
+                "id": group.id,
+                "name": group.name,
+                "description": group.description,
+                "default_modules": _coerce_module_dict(group.default_modules),
+            },
+            "members": roster,
+        }
+    finally:
+        db.close()
+
+
+class _CohortModulesIn(BaseModel):
+    modules: list | dict | str | None = None
+    apply_to_members: bool = True
+
+
+@app.patch("/api/admin/mentorship/cohorts/{group_id}/modules")
+async def admin_mentorship_cohort_modules(group_id: int, payload: _CohortModulesIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        group = db.query(Group).filter(Group.id == group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Cohort not found")
+        modules = _coerce_module_dict(payload.modules)
+        group.default_modules = _grants_text(modules)
+        updated = 0
+        if payload.apply_to_members:
+            members = db.query(User).filter(User.group_id == group_id).all()
+            for u in members:
+                # Don't downgrade admins or users with full manual access.
+                if u.role == "admin" or u.has_journal_access:
+                    continue
+                _set_user_module_grants(u, modules)
+                updated += 1
+        db.commit()
+        return {"success": True, "default_modules": modules, "members_updated": updated}
+    finally:
+        db.close()
+
+
+class _MentorshipImportIn(BaseModel):
+    cohort_name: str
+    default_modules: list | dict | str | None = None
+    access_expires_at: str | None = None
+    rows: list[dict] = []
+
+
+@app.post("/api/admin/mentorship/import")
+async def admin_mentorship_import(payload: _MentorshipImportIn, request: Request):
+    """Bulk-create mentorship students into a cohort and grant them a controlled
+    set of dashboard modules. The admin UI parses the CSV client-side and posts
+    JSON rows: [{ email, password, full_name?, phone?, country?, modules? }, ...]."""
+    _require_admin(request)
+    cohort_name = (payload.cohort_name or "").strip()
+    if not cohort_name:
+        raise HTTPException(status_code=400, detail="cohort_name is required")
+
+    default_modules = _coerce_module_dict(payload.default_modules)
+    expires = _parse_expiry_dt(payload.access_expires_at)
+
+    db = SessionLocal()
+    try:
+        cohort = db.query(Group).filter(Group.name == cohort_name).first()
+        if not cohort:
+            cohort = Group(name=cohort_name, description=f"Mentorship cohort: {cohort_name}", is_active=True)
+            db.add(cohort)
+            db.flush()
+        cohort.default_modules = _grants_text(default_modules)
+
+        imported = 0
+        skipped = 0
+        errors: list[str] = []
+
+        for i, row in enumerate(payload.rows or [], start=2):
+            try:
+                email = str(row.get("email", "")).strip().lower()
+                password = str(row.get("password", "")).strip()
+                full_name = str(row.get("full_name", "") or row.get("name", "")).strip()
+                phone = str(row.get("phone", "")).strip()
+                country = str(row.get("country", "")).strip()
+
+                if not email or not password:
+                    errors.append(f"Row {i}: email and password are required")
+                    continue
+                if "@" not in email or "." not in email:
+                    errors.append(f"Row {i}: invalid email {email}")
+                    continue
+                if len(password) < 8:
+                    errors.append(f"Row {i}: password must be at least 8 characters")
+                    continue
+                if db.query(User).filter(User.email == email).first():
+                    skipped += 1
+                    errors.append(f"Row {i}: {email} already exists - skipped")
+                    continue
+
+                row_modules = _coerce_module_dict(row.get("modules")) if row.get("modules") else default_modules
+
+                user = User(
+                    name=full_name if full_name else email.split("@")[0],
+                    email=email,
+                    password_hash=_hash_password(password),
+                    role="user",
+                    is_active=True,
+                    group_id=cohort.id,
+                    dashboard_module_grants=_grants_text(row_modules),
+                )
+                if expires is not None:
+                    user.access_expires_at = expires
+                db.add(user)
+                imported += 1
+            except Exception as row_err:
+                errors.append(f"Row {i}: {row_err}")
+                continue
+
+        db.commit()
+        db.refresh(cohort)
+        return {
+            "success": True,
+            "cohort": {"id": cohort.id, "name": cohort.name, "default_modules": default_modules},
+            "imported_count": imported,
+            "skipped_count": skipped,
+            "error_count": len(errors),
+            "errors": errors[:20],
+        }
+    finally:
+        db.close()
 
 
 @app.delete("/api/admin/users/{user_id}")
