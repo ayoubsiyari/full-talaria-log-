@@ -15667,6 +15667,13 @@ class Chart {
             if (!(spacing > 0)) return;
             const i0 = Math.max(0, -Math.floor(this.offsetX / spacing));
             const i1 = Math.min(this.data.length, i0 + Math.ceil(plotW / spacing));
+            // When the viewport is parked entirely off the data (no bars in the
+            // horizontal window at all), the clamped i0/i1 can still look non-empty,
+            // so verify real on-screen presence and skip the "bars present" bail —
+            // fall straight through to the recenter below.
+            const barsOnScreen = typeof this._viewportHasLoadedBarsOnScreen === 'function'
+                ? this._viewportHasLoadedBarsOnScreen()
+                : (i1 > i0);
             // This runs only after a render drew NOTHING despite having data.
             // i1 > i0 means bars ARE in the horizontal window — but on an
             // independent replay panel the price (Y) scale can be stale, so every
@@ -15676,7 +15683,7 @@ class Chart {
             // when at least one horizontally-present bar is ALSO vertically in-plot;
             // otherwise fall through to the recenter below, which resets the price
             // scale (resetPriceScale: true) and fixes the empty render.
-            if (i1 > i0) {
+            if (barsOnScreen && i1 > i0) {
                 let anyVerticallyVisible = true;
                 if (typeof this._isOhlcVerticallyInPlot === 'function') {
                     anyVerticallyVisible = false;
@@ -20968,6 +20975,16 @@ class Chart {
             };
             if (this._chartPanRenderLoopActive) {
                 this._panScalesCalculated = true;
+            }
+            // Viewport parked ENTIRELY off the loaded data (multichart panel booted
+            // or retimed into an empty range, or a lost viewport) → recenter onto the
+            // data instead of leaving a blank plot. Only when the user is NOT actively
+            // panning/dragging, so deliberate pans into an empty gap are preserved.
+            if (this.data.length > 0
+                && !(this.drag && this.drag.active)
+                && !(typeof this._isChartViewPanning === 'function' && this._isChartViewPanning())
+                && typeof this._scheduleViewportEmptyRecovery === 'function') {
+                this._scheduleViewportEmptyRecovery();
             }
             return;
         }

@@ -94,11 +94,11 @@
 
         this.charts = new Map();    // id -> { id, frame, ready, state }
         this.syncMode = {
-            crosshair:    false,
+            crosshair:    true,
             visibleRange: false,
             timeSync:     false,
             symbol:       false,
-            drawings:     false,
+            drawings:     true,
         };
         this.counters = {
             outFromUser: 0,        // user-originated forwards
