@@ -15448,7 +15448,7 @@ class Chart {
                 corner.setAttribute('title', 'Reset chart scale');
                 corner.setAttribute('role', 'button');
                 corner.setAttribute('aria-label', 'Reset chart scale');
-                corner.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v6h6"></path><path d="M3.51 15a9 9 0 1 0 2.13-9.36L3 8"></path></svg>';
+                corner.innerHTML = '<svg class="scale-reset-corner-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:0;transition:opacity 0.12s ease;"><path d="M3 2v6h6"></path><path d="M3.51 15a9 9 0 1 0 2.13-9.36L3 8"></path></svg>';
                 Object.assign(corner.style, {
                     position: 'absolute',
                     right: '0',
@@ -15458,23 +15458,23 @@ class Chart {
                     justifyContent: 'center',
                     boxSizing: 'border-box',
                     color: 'rgba(209,212,220,0.9)',
-                    background: 'transparent',
-                    borderRadius: '4px',
+                    // Opaque mask matching the chart background so the last
+                    // time-axis label never bleeds into the price/time corner.
+                    background: this._scaleResetCornerBg || '#131722',
                     cursor: 'pointer',
                     zIndex: '14',
                     pointerEvents: 'auto',
-                    opacity: '0',
-                    transition: 'opacity 0.12s ease, background 0.12s ease',
+                    opacity: '1',
+                    transition: 'background 0.12s ease',
                     userSelect: 'none',
                     WebkitUserSelect: 'none',
                 });
+                const iconEl = corner.querySelector('.scale-reset-corner-icon');
                 corner.addEventListener('mouseenter', () => {
-                    corner.style.opacity = '1';
-                    corner.style.background = 'rgba(255,255,255,0.08)';
+                    if (iconEl) iconEl.style.opacity = '1';
                 });
                 corner.addEventListener('mouseleave', () => {
-                    corner.style.opacity = '0';
-                    corner.style.background = 'transparent';
+                    if (iconEl) iconEl.style.opacity = '0';
                 });
                 // Swallow pointer/wheel so clicking the corner never starts a
                 // chart pan/zoom on the canvas underneath.
@@ -15498,6 +15498,16 @@ class Chart {
         const h = Math.max(20, Number(m.b) || 30);
         if (this._scaleResetCornerW !== w) { corner.style.width = w + 'px'; this._scaleResetCornerW = w; }
         if (this._scaleResetCornerH !== h) { corner.style.height = h + 'px'; this._scaleResetCornerH = h; }
+
+        // Keep the mask painted with the current theme background so it hides any
+        // axis-label bleed regardless of theme switches.
+        const bg = (this.chartSettings && this.chartSettings.backgroundColor)
+            ? String(this.chartSettings.backgroundColor)
+            : '#131722';
+        if (this._scaleResetCornerBg !== bg) {
+            this._scaleResetCornerBg = bg;
+            corner.style.background = bg;
+        }
     }
 
     /**
