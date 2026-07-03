@@ -1374,6 +1374,32 @@ class Chart {
         return null;
     }
 
+    /**
+     * Resolve a display ticker for a fileId from the global #fileSelect option
+     * list. This is independent of the backtest session's instrument map, so it
+     * still returns the correct symbol for datasets that aren't recorded in the
+     * session (e.g. after fileId de-duplication) — used as a fallback so panel
+     * symbol labels never show a stale pair name after a pair switch.
+     */
+    resolveTickerFromFileSelect(fileId) {
+        if (fileId == null || fileId === '') return null;
+        try {
+            if (typeof document === 'undefined') return null;
+            const sel = document.getElementById('fileSelect');
+            if (!sel || !sel.options) return null;
+            const key = String(fileId);
+            for (let i = 0; i < sel.options.length; i += 1) {
+                const opt = sel.options[i];
+                if (!opt || String(opt.value) !== key) continue;
+                const txt = String(opt.textContent || '').trim();
+                if (!txt) return null;
+                const first = txt.split(/\s+/)[0];
+                return first || null;
+            }
+        } catch (_) { /* ignore */ }
+        return null;
+    }
+
     async checkBacktestingMode() {
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
@@ -3560,8 +3586,20 @@ class Chart {
                     }
                 }
 
-                const resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
-                if (resolvedTicker) this.currentSymbol = resolvedTicker;
+                let resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
+                if (!resolvedTicker) {
+                    // Session instrument map didn't have this fileId (happens for
+                    // some pairs/layouts). Fall back to the global file list so the
+                    // label reflects the loaded pair instead of the stale previous one.
+                    resolvedTicker = this.resolveTickerFromFileSelect(fileId);
+                }
+                if (resolvedTicker) {
+                    this.currentSymbol = resolvedTicker;
+                } else if (switchingPair) {
+                    // New pair but no resolvable name — never keep the old pair's
+                    // label; show a neutral placeholder tied to the fileId.
+                    this.currentSymbol = `FILE_${fileId}`;
+                }
                 this.updateChartTitle(this.currentSymbol || `FILE_${fileId}`);
 
                 if (!this.replaySystem) this.initReplaySystem();
@@ -15026,9 +15064,31 @@ class Chart {
 	            return;
 	        }
 
-	        this._lastResizeDpr = dpr;
-	        
-	        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
+        this._lastResizeDpr = dpr;
+
+        // Multichart host: remember which bar sits at the right axis BEFORE the
+        // width changes. A layout/splitter resize otherwise runs the pixel-based
+        // right-edge nudge below, which drifts and shifts panel A out of
+        // alignment with its duplicate panels (which use the drift-free
+        // index-based anchor in _realignMultichartViewportAfterResize). Only
+        // engage when a real multi-panel layout is up so single-chart resize
+        // behaviour is untouched.
+        let _mcHostRightIdx = null;
+        try {
+            if (!this._multichartSkipResizeOffsetAdjust
+                && Array.isArray(this.data) && this.data.length
+                && typeof this._isMultichartHostPanel === 'function'
+                && this._isMultichartHostPanel()
+                && window.__multichartGrid
+                && typeof window.__multichartGrid.getPanelIds === 'function'
+                && window.__multichartGrid.getPanelIds().length > 1) {
+                _mcHostRightIdx = (typeof this.getVisibleEndIndex === 'function')
+                    ? this.getVisibleEndIndex()
+                    : this.data.length - 1;
+            }
+        } catch (_) { _mcHostRightIdx = null; }
+
+        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
 	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
 	        this.canvas.style.width = nextW + 'px';
 	        this.canvas.style.height = nextH + 'px';
@@ -15055,10 +15115,28 @@ class Chart {
 	            // iframes finish loading. Skipping the right-edge offsetX nudge keeps
 	            // panel A locked in place (TradingView-style) until boot completes.
 	            if (!this._multichartSkipResizeOffsetAdjust) {
-	            const realignedMc = typeof this._realignMultichartViewportAfterResize === 'function'
-	                && this._realignMultichartViewportAfterResize(oldW, oldH);
-	            if (!realignedMc) {
-	            // Anchor the right edge of the plot area through resize.
+            const realignedMc = typeof this._realignMultichartViewportAfterResize === 'function'
+                && this._realignMultichartViewportAfterResize(oldW, oldH);
+            let pinnedMcHost = false;
+            if (!realignedMc && _mcHostRightIdx != null) {
+                // Pin the pre-resize right-edge bar back to the right axis using
+                // the SAME index-based formula the duplicate panels use
+                // (offsetX = plotW - (rightIdx+1)*spacing). This keeps panel A
+                // locked to its panels through any layout/splitter resize.
+                const spacing = (typeof this.getCandleSpacing === 'function')
+                    ? this.getCandleSpacing()
+                    : this.candleWidth;
+                if (Number.isFinite(spacing) && spacing > 0) {
+                    const mm = this.margin || { l: 60, r: 60 };
+                    const plotW = Math.max(1, this.w - (mm.l || 0) - (mm.r || 0));
+                    const ri = Math.max(0, Math.min(_mcHostRightIdx, this.data.length - 1));
+                    this.offsetX = Math.round(plotW - (ri + 1) * spacing);
+                    if (typeof this.constrainOffset === 'function') this.constrainOffset();
+                    pinnedMcHost = true;
+                }
+            }
+            if (!realignedMc && !pinnedMcHost) {
+            // Anchor the right edge of the plot area through resize.
 	            //
 	            // The previous version shifted offsetX by `deltaW * 0.5` to keep
 	            // the visual center, but that was asymmetric under the

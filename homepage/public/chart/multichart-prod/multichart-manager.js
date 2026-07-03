@@ -596,9 +596,16 @@
         if (!host || typeof host.directRead !== 'function') return;
 
         // Never mirror host pixel viewport onto a tile showing a different
-        // instrument when Symbol sync is off — host offsetX is calibrated for
-        // host bars only and produces blank / one-candle charts on other pairs.
-        if (!this.syncMode.symbol) {
+        // instrument — host offsetX/candleWidth are calibrated for host bars
+        // only and produce blank / one-candle / shifted charts on other pairs.
+        //
+        // This guard is UNCONDITIONAL (independent of syncMode.symbol): when
+        // the user enables Symbol sync, a panel still showing a different pair
+        // must NOT receive the host viewport, otherwise its candles visibly
+        // jump to a nonsensical position before (or instead of) reloading the
+        // host symbol. Once the panel actually reloads to the host fileId, its
+        // reported state.fileId matches and this snap proceeds normally.
+        {
             let hostFid = '';
             try {
                 if (typeof window !== 'undefined' && window.chart
