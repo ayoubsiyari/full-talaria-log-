@@ -20796,10 +20796,26 @@ async def upload_csv(request: Request, csvFile: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
     
-    return _store_dataset_file(
+    # Route through the dedup-aware upsert path so a manual upload of a symbol
+    # that already exists (via FirstRate sync OR a prior manual upload) merges
+    # into that dataset instead of silently creating a duplicate CSVFile row —
+    # which is what produced two "EUR/USD" rows (ids 25 & 27) with different
+    # ranges. Ticker/class are derived with the same canonical helpers the
+    # matcher uses (_firstrate_extract_ticker_from_filename via
+    # _dataset_file_symbol_fields, and _firstrate_classify_ticker) so the
+    # canonical-ticker fallback lands on the right row. An unknown/new symbol
+    # (no match) still falls through to a fresh row — unchanged from before.
+    ticker, _asset = _dataset_file_symbol_fields(csvFile.filename)
+    canonical_ticker = ticker or None
+    canonical_class = _firstrate_classify_ticker(ticker) if ticker else None
+
+    return _upsert_or_create_dataset_from_csv(
         file_path=file_path,
         original_name=csvFile.filename,
-        description=f"Uploaded on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        description=f"Uploaded on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        upsert=True,
+        match_canonical_ticker=canonical_ticker,
+        match_canonical_class=canonical_class,
     )
 
 @app.get("/api/files")
