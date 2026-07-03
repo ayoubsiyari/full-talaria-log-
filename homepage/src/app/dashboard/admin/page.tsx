@@ -450,6 +450,179 @@ export default function AdminDashboard() {
   );
 }
 
+type Cohort={id:number;name:string;description?:string;member_count:number;default_modules:Record<string,boolean>;created_at?:string};
+type Member={id:number;email:string;full_name?:string;role?:string;is_active?:boolean;has_journal_access?:boolean;dashboard_modules:Record<string,boolean>;access_expires_at?:string|null};
+const MODULE_KEYS=Object.keys(DASHBOARD_MODULE_LABELS);
+
+function ModulePicker({value,onToggle}:{value:Record<string,boolean>;onToggle:(k:string,v:boolean)=>void}){
+  return(
+    <div className="flex flex-wrap gap-3">
+      {Object.entries(DASHBOARD_MODULE_LABELS).map(([key,label])=>(
+        <label key={key} className="flex items-center gap-2 text-xs text-white/70">
+          <input type="checkbox" checked={!!value[key]} onChange={e=>onToggle(key,e.target.checked)}/>
+          {label as string}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function MentorshipTab({msg}:{msg:(t:string,ok?:boolean)=>void}){
+  const [cohorts,setCohorts]=useState<Cohort[]>([]);
+  const [selectedId,setSelectedId]=useState<number|null>(null);
+  const [members,setMembers]=useState<Member[]>([]);
+  const [cohortDefaults,setCohortDefaults]=useState<Record<string,boolean>>({});
+  const [busy,setBusy]=useState(false);
+  // import form
+  const [cohortName,setCohortName]=useState("");
+  const [defaultModules,setDefaultModules]=useState<Record<string,boolean>>({backtest:true,journal:true});
+  const [expiry,setExpiry]=useState("");
+  const [file,setFile]=useState<File|null>(null);
+
+  const modulesToList=(m:Record<string,boolean>)=>MODULE_KEYS.filter(k=>m[k]);
+
+  const loadCohorts=useCallback(async()=>{
+    try{
+      const r=await fetch("/journal/api/admin/mentorship/cohorts",{headers:jh()});
+      const d=await r.json().catch(()=>null);
+      if(r.ok)setCohorts(d?.cohorts??[]);
+    }catch{/* ignore */}
+  },[]);
+  useEffect(()=>{loadCohorts();},[loadCohorts]);
+
+  const loadMembers=useCallback(async(id:number)=>{
+    setSelectedId(id);
+    try{
+      const r=await fetch(`/journal/api/admin/mentorship/cohorts/${id}/members`,{headers:jh()});
+      const d=await r.json().catch(()=>null);
+      if(r.ok){setMembers(d?.members??[]);setCohortDefaults(d?.cohort?.default_modules??{});}
+    }catch{msg("Failed to load members",false);}
+  },[msg]);
+
+  async function doImport(){
+    if(!cohortName.trim()){msg("Cohort name is required",false);return;}
+    if(!file){msg("Choose a CSV file",false);return;}
+    setBusy(true);
+    try{
+      const fd=new FormData();
+      fd.append("file",file);
+      fd.append("cohort_name",cohortName.trim());
+      fd.append("default_modules",JSON.stringify(modulesToList(defaultModules)));
+      if(expiry)fd.append("access_expires_at",expiry);
+      // Don't set Content-Type manually — browser adds the multipart boundary.
+      const c=journalCsrfToken();
+      const r=await fetch("/journal/api/admin/mentorship/import",{method:"POST",headers:c?{"X-CSRF-TOKEN":c}:{},body:fd});
+      const d=await r.json().catch(()=>null);
+      if(r.ok){
+        msg(`Imported ${d?.imported_count??0}, skipped ${d?.skipped_count??0}${d?.error_count?`, ${d.error_count} errors`:""}`);
+        setFile(null);setCohortName("");
+        await loadCohorts();
+        if(d?.cohort?.id)loadMembers(d.cohort.id);
+      }else msg(d?.error??"Import failed",false);
+    }catch{msg("Import failed",false);}
+    finally{setBusy(false);}
+  }
+
+  async function applyCohortModules(){
+    if(selectedId==null)return;
+    setBusy(true);
+    try{
+      const r=await fetch(`/journal/api/admin/mentorship/cohorts/${selectedId}/modules`,{method:"PATCH",headers:jh(),body:JSON.stringify({modules:modulesToList(cohortDefaults),apply_to_members:true})});
+      const d=await r.json().catch(()=>null);
+      if(r.ok){msg(`Applied to ${d?.members_updated??0} member(s) — they should re-login to refresh`);loadMembers(selectedId);loadCohorts();}
+      else msg(d?.error??"Failed",false);
+    }catch{msg("Failed",false);}
+    finally{setBusy(false);}
+  }
+
+  async function toggleMember(m:Member,key:string,val:boolean){
+    const next={...m.dashboard_modules,[key]:val};
+    const grants=MODULE_KEYS.filter(k=>next[k]);
+    setMembers(p=>p.map(x=>x.id===m.id?{...x,dashboard_modules:next}:x));
+    try{
+      const r=await fetch(`/journal/api/admin/users/${m.id}`,{method:"PUT",headers:jh(),body:JSON.stringify({has_journal_access:false,dashboard_module_grants:Object.fromEntries(grants.map(k=>[k,true]))})});
+      if(!r.ok)throw new Error();
+    }catch{msg("Failed to update member",false);if(selectedId!=null)loadMembers(selectedId);}
+  }
+
+  const selected=cohorts.find(c=>c.id===selectedId)||null;
+
+  return(
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
+        <div className="flex items-center gap-2"><Upload className="h-4 w-4 text-blue-300"/><h2 className="text-sm font-semibold text-white">Import mentorship students</h2></div>
+        <div className="grid md:grid-cols-2 gap-3">
+          <label className="text-xs text-white/60">Cohort name
+            <input value={cohortName} onChange={e=>setCohortName(e.target.value)} placeholder="e.g. March Mentorship" className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"/>
+          </label>
+          <label className="text-xs text-white/60">Access expires (optional)
+            <input type="date" value={expiry} onChange={e=>setExpiry(e.target.value)} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"/>
+          </label>
+        </div>
+        <div>
+          <p className="text-xs text-white/40 mb-2">Default sections these students can see (per-row `modules` column in the CSV overrides this):</p>
+          <ModulePicker value={defaultModules} onToggle={(k,v)=>setDefaultModules(p=>({...p,[k]:v}))}/>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input type="file" accept=".csv,.xlsx,.xls" onChange={e=>setFile(e.target.files?.[0]??null)} className="text-xs text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-500/20 file:px-3 file:py-1.5 file:text-blue-200 file:text-xs"/>
+          <button disabled={busy} onClick={doImport} className="flex items-center gap-1.5 rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-300 hover:bg-blue-500/20 transition disabled:opacity-40"><Upload className="h-4 w-4"/>Import</button>
+          <a href="/journal/api/admin/mentorship/download-template" download className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/60 hover:bg-white/10 transition"><Download className="h-4 w-4"/>Template</a>
+        </div>
+        <p className="text-[11px] text-white/30">CSV columns: email, password, full_name, phone, country, modules. Passwords must be 8+ chars. Existing emails are skipped.</p>
+      </div>
+
+      <div className="grid lg:grid-cols-[260px_1fr] gap-4">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-3 space-y-1">
+          <div className="text-xs font-semibold text-white/40 uppercase tracking-wide px-2 py-1">Cohorts</div>
+          {cohorts.map(c=>(
+            <button key={c.id} onClick={()=>loadMembers(c.id)} className={`w-full text-left rounded-lg px-3 py-2 text-sm transition ${selectedId===c.id?"bg-blue-500/20 text-blue-200":"text-white/70 hover:bg-white/5"}`}>
+              <div className="truncate">{c.name}</div>
+              <div className="text-[11px] text-white/30">{c.member_count} member{c.member_count===1?"":"s"}</div>
+            </button>
+          ))}
+          {!cohorts.length&&<p className="px-2 py-2 text-xs text-white/30">No cohorts yet. Import students to create one.</p>}
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
+          {!selected&&<p className="text-sm text-white/30 py-8 text-center">Select a cohort to view its roster.</p>}
+          {selected&&(
+            <>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div><h3 className="text-sm font-semibold text-white">{selected.name}</h3><p className="text-xs text-white/30">{members.length} member{members.length===1?"":"s"}</p></div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+                <p className="text-xs text-white/40">Cohort default sections — apply to every member at once:</p>
+                <ModulePicker value={cohortDefaults} onToggle={(k,v)=>setCohortDefaults(p=>({...p,[k]:v}))}/>
+                <button disabled={busy} onClick={applyCohortModules} className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-200 hover:bg-amber-500/20 transition disabled:opacity-40">Apply to all members</button>
+              </div>
+              <div className="rounded-xl border border-white/10 overflow-x-auto">
+                <table className="w-full text-sm min-w-[640px]">
+                  <thead className="bg-white/5 text-white/40 text-xs uppercase tracking-wide">
+                    <tr><th className="px-3 py-2 text-left">Student</th>{MODULE_KEYS.map(k=><th key={k} className="px-2 py-2 text-center">{(DASHBOARD_MODULE_LABELS as Record<string,string>)[k]}</th>)}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {members.map(m=>(
+                      <tr key={m.id} className="hover:bg-white/5 transition">
+                        <td className="px-3 py-2"><div className="truncate max-w-[220px]">{m.email}</div>{m.full_name&&<div className="text-[11px] text-white/30">{m.full_name}</div>}{m.has_journal_access&&<span className="text-[10px] text-amber-300">full access</span>}</td>
+                        {MODULE_KEYS.map(k=>(
+                          <td key={k} className="px-2 py-2 text-center">
+                            <input type="checkbox" disabled={m.has_journal_access||m.role==="admin"} checked={!!m.dashboard_modules[k]} onChange={e=>toggleMember(m,k,e.target.checked)}/>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!members.length&&<div className="py-6 text-center text-white/30 text-sm">No members in this cohort.</div>}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ServiceCheck({label,url}:{label:string;url:string}){
   const[status,setStatus]=React.useState<"checking"|"up"|"down">("checking");
   useEffect(()=>{
