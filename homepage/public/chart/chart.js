@@ -2958,39 +2958,54 @@ class Chart {
             this._panelFullRawData = prs.fullRawData;
         }
 
-        this.rawData = parent.rawData;
-        this.data = parent.data;
-        if (parent._serverCursors) {
-            this._serverCursors = Object.assign({}, parent._serverCursors);
-        }
-        if (Number.isFinite(parent.totalCandles)) {
-            this.totalCandles = parent.totalCandles;
-        }
-        this.candleWidth = parent.candleWidth;
-        if (this.zoomLevel && parent.zoomLevel) {
-            this.zoomLevel.candleWidthIndex = parent.zoomLevel.candleWidthIndex;
-        }
-        if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
+        // Range/Date sync OFF + this panel already booted its own view: it must
+        // stay fully independent and SOLID, exactly like a lone main chart. Do
+        // NOT re-adopt the host's bar array, zoom, or right-edge anchor on a
+        // post-boot re-mirror — that is what made idle peers (C/D) drift and jump
+        // whenever another tile reloaded/mirrored/panned (the host array can have
+        // more prepended history, so even reusing our own offsetX would shift the
+        // view). On the FIRST boot mirror (_multichartBootViewportPositioned still
+        // false) we DO adopt the host so the panel opens aligned; after that it
+        // owns its data + viewport. Replay master state is still shared above so a
+        // single backtest playhead keeps every tile in step.
+        const _preserveOwnViewport = !this._multichartVisibleRangeSyncOn
+            && this._multichartBootViewportPositioned === true;
 
-        const pm = this.margin || { l: 60, r: 60 };
-        const plotW = Math.max(1, (this.w || 0) - pm.l - pm.r);
-        const spacing = (typeof parent.getCandleSpacing === 'function')
-            ? parent.getCandleSpacing()
-            : parent.candleWidth;
-        if (spacing > 0 && plotW > 0) {
-            let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
-                ? parent.getVisibleEndIndex()
-                : parent.data.length - 1;
-            rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
-            this.offsetX = plotW - (rightIdx + 1) * spacing;
-        } else {
-            const ppm = parent.margin || { l: 60, r: 60 };
-            const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
-            this.offsetX = parent.offsetX * (plotW / parentPlotW);
-        }
+        if (!_preserveOwnViewport) {
+            this.rawData = parent.rawData;
+            this.data = parent.data;
+            if (parent._serverCursors) {
+                this._serverCursors = Object.assign({}, parent._serverCursors);
+            }
+            if (Number.isFinite(parent.totalCandles)) {
+                this.totalCandles = parent.totalCandles;
+            }
+            this.candleWidth = parent.candleWidth;
+            if (this.zoomLevel && parent.zoomLevel) {
+                this.zoomLevel.candleWidthIndex = parent.zoomLevel.candleWidthIndex;
+            }
+            if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
 
-        if (typeof this.constrainOffset === 'function') {
-            try { this.constrainOffset(); } catch (_c) { /* ignore */ }
+            const pm = this.margin || { l: 60, r: 60 };
+            const plotW = Math.max(1, (this.w || 0) - pm.l - pm.r);
+            const spacing = (typeof parent.getCandleSpacing === 'function')
+                ? parent.getCandleSpacing()
+                : parent.candleWidth;
+            if (spacing > 0 && plotW > 0) {
+                let rightIdx = (typeof parent.getVisibleEndIndex === 'function')
+                    ? parent.getVisibleEndIndex()
+                    : parent.data.length - 1;
+                rightIdx = Math.max(0, Math.min(rightIdx, this.data.length - 1));
+                this.offsetX = plotW - (rightIdx + 1) * spacing;
+            } else {
+                const ppm = parent.margin || { l: 60, r: 60 };
+                const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
+                this.offsetX = parent.offsetX * (plotW / parentPlotW);
+            }
+
+            if (typeof this.constrainOffset === 'function') {
+                try { this.constrainOffset(); } catch (_c) { /* ignore */ }
+            }
         }
         this._multichartViewportMirroredWithHost = true;
         this._multichartBootViewportPositioned = true;
