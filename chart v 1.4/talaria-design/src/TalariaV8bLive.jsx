@@ -33681,7 +33681,7 @@ const TalariaV8bLive = () => {
                           <div style={{fontSize:12,fontWeight:isAct?700:600,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,lineHeight:1.2}}>{s.id}</div>
                           <div style={{fontSize:12,color:c.tm,lineHeight:1.2}}>{s.name}</div>
                         </div>
-                        {!isAct && s.fileId != null && (
+                        {!isAct && s.fileId != null && focusedPanelId === "A" && (
                           <button
                             type="button"
                             className="add-symbol-btn add-symbol-btn--inline"
@@ -38420,7 +38420,7 @@ const TalariaV8bLive = () => {
                             <div style={{ fontSize:11, fontWeight:isAct?700:600, color:isAct?c.acL:isH?c.tx:c.ts, lineHeight:1.3 }}>{s.id}</div>
                             <div style={{ fontSize:9, color:c.tm, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
                           </div>
-                          {!isAct && s.fileId != null && (
+                          {!isAct && s.fileId != null && focusedPanelId === "A" && (
                             <button
                               type="button"
                               className="add-symbol-btn add-symbol-btn--inline"

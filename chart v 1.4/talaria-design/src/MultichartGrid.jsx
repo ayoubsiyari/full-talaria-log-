@@ -628,6 +628,21 @@ function hostHasCloneableBars(fileId) {
  * `loadFileData`, so the non-`mode=` path still loads the correct session
  * window for B/C/D (see embed-bridge.js "mirrored parent backtestingSession").
  */
+/**
+ * Phase 6 — single-process multichart toggle. When truthy, non-host tiles
+ * mount an in-window Chart instance (reusing chart.js's panel mode) instead of
+ * a per-panel iframe, eliminating the extra ~1.6MB bundle parse + engine boot
+ * that starves the host chart's rendering. Default OFF until parity is proven;
+ * flip via `window.__TALARIA_INPROC_PANELS = true` (or once verified, here).
+ */
+function inProcPanelsEnabled() {
+    try {
+        return !!(typeof window !== "undefined" && window.__TALARIA_INPROC_PANELS);
+    } catch (_) {
+        return false;
+    }
+}
+
 function readUrlChartMode() {
     try {
         const u = new URLSearchParams(window.location.search || "");
@@ -1568,6 +1583,13 @@ export default function MultichartGrid({
     // focused panel reports a new tf / fileId / symbol.
     const focusedPanelIdRef = useRef(focusedPanelId);
     useEffect(() => { focusedPanelIdRef.current = focusedPanelId; }, [focusedPanelId]);
+
+    // Phase 6 (single-process multichart): panelId → in-window Chart instance
+    // for tiles mounted WITHOUT an iframe. Populated by the in-proc mount path
+    // (behind window.__TALARIA_INPROC_PANELS). runCommand routes commands for
+    // these panels straight to the instance via applyHostCommand(…, instance),
+    // exactly like the host — no postMessage, no second bundle parse.
+    const inProcPanelChartsRef = useRef(new Map());
 
     /** Keep ref + React state in sync immediately — runCommand reads the ref, not state. */
     const focusPanelById = useCallback((id) => {
@@ -3750,8 +3772,10 @@ export default function MultichartGrid({
         // callers can `await runCommand("addIndicator", …)` and read
         // .chartId regardless of whether the focused panel is the host
         // or an iframe.
-        function applyHostCommand(cmd, args) {
-            const ch = window.chart;
+        function applyHostCommand(cmd, args, targetChart) {
+            // targetChart lets Phase 6 in-window panels reuse this exact command
+            // logic against their own Chart instance; defaults to the host.
+            const ch = targetChart || window.chart;
             if (!ch) return Promise.reject(new Error("host chart not ready"));
             args = args || {};
             try {
@@ -4417,6 +4441,12 @@ export default function MultichartGrid({
             const target = (opts && opts.panelId)
                 ? opts.panelId
                 : (focusedPanelIdRef.current || HOST_PANEL_ID);
+            // Phase 6: an in-window panel instance handles commands in-process,
+            // identical to the host path (no iframe / postMessage round-trip).
+            const inProcChart = inProcPanelChartsRef.current.get(target);
+            if (inProcChart) {
+                return applyHostCommand(cmd, args, inProcChart);
+            }
             if (cmd === "loadFile" && args && args.fileId != null && args.fileId !== "") {
                 return loadFileOnPanel(target, args.fileId, { force: !!args.force });
             }
