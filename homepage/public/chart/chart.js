@@ -623,9 +623,16 @@ class Chart {
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
         this.loadedRanges = new Map(); // Cache loaded data ranges
-        this._smartPrefetchCache = new Map(); // LRU-ish cache for /smart payloads (prefetch + repeat loads)
+        this._smartPrefetchCache = new Map(); // LRU cache for /smart|/bars|/candles payloads (prefetch + repeat loads)
         this._barsInflight = new Map(); // dedupe parallel /bars requests with identical params
-        this._smartCacheTtlMs = 120000;
+        // TradingView-style revisit: keep fetched data warm long enough that
+        // flipping between recently-viewed timeframes / pairs is instant (no
+        // refetch). The user pays the network cost ONCE per instrument; coming
+        // back reuses the cached payload. Memory is bounded by the LRU caps below.
+        this._smartCacheTtlMs = 900000; // 15 min (was 120s — too short to survive a browse)
+        this._smartCacheMaxEntries = 48; // /smart|/bars|/candles payloads across pairs+TFs
+        /** How many distinct fileIds (pairs) to retain resampled TF data for on switch. */
+        this._maxCachedFileIds = 6;
         /** Per fileId → Map<tf, { rawData, data, cursors, nativeRawFetchTf }> for instant TF revisit */
         this._tfDataCache = new Map();
         this._tfDataCacheMaxPerFile = 5;
@@ -3410,8 +3417,10 @@ class Chart {
         }
 
         this.currentTimeframe = displayTf;
-        if (this._tfDataCache) this._tfDataCache.clear();
-        if (this._btTfDataCache) this._btTfDataCache.clear();
+        // Keep recently-viewed pairs' TF data warm (LRU) instead of nuking the
+        // whole cache on every panel pair switch — switching back is then instant.
+        this._trimFileIdCacheLru(this._tfDataCache);
+        this._trimFileIdCacheLru(this._btTfDataCache);
 
         if (switchingPair) {
             this.rawData = [];
@@ -3784,22 +3793,34 @@ class Chart {
      * Prevents multiple full datasets accumulating in the JS heap after pair switches.
      */
     _evictPanelMasterData() {
+        // Detach the CURRENT live-view buffer (the new pair will rebuild it), but
+        // DO NOT wipe the network / resampled caches. TradingView-style: the pair
+        // we're leaving stays cached so switching BACK to it is instant. Bounded
+        // by the LRU caps below + the smart-cache TTL, so memory can't run away.
         this._panelFullRawData = null;
-        if (this._smartPrefetchCache && typeof this._smartPrefetchCache.clear === 'function') {
-            this._smartPrefetchCache.clear();
-        }
         if (this._barsInflight && typeof this._barsInflight.clear === 'function') {
             this._barsInflight.clear();
         }
-        const prevFid = this.currentFileId != null ? String(this.currentFileId) : '';
-        if (prevFid && this._tfDataCache && typeof this._tfDataCache.delete === 'function') {
-            this._tfDataCache.delete(prevFid);
-        }
-        if (prevFid && this._btTfDataCache && typeof this._btTfDataCache.delete === 'function') {
-            this._btTfDataCache.delete(prevFid);
-        }
+        this._trimFileIdCacheLru(this._tfDataCache);
+        this._trimFileIdCacheLru(this._btTfDataCache);
         this._ensureReplayDataGeneration = (this._ensureReplayDataGeneration || 0) + 1;
         this._ensureReplayDataInflight = null;
+    }
+
+    /**
+     * Bound a per-fileId cache Map (e.g. _tfDataCache / _btTfDataCache) so we
+     * retain data for only the most-recently-used N pairs. Map iteration order is
+     * insertion order; save paths delete+re-set a fileId on write so the active
+     * pair is always "newest" and stale pairs fall off the front.
+     */
+    _trimFileIdCacheLru(cache) {
+        if (!cache || typeof cache.size !== 'number' || typeof cache.keys !== 'function') return;
+        const max = Number(this._maxCachedFileIds) > 0 ? Number(this._maxCachedFileIds) : 6;
+        while (cache.size > max) {
+            const oldest = cache.keys().next().value;
+            if (oldest === undefined) break;
+            cache.delete(oldest);
+        }
     }
 
     /**
@@ -4903,7 +4924,14 @@ class Chart {
             this._smartPrefetchCache.delete(key);
             return null;
         }
-        if (consume) this._smartPrefetchCache.delete(key);
+        // LRU touch: keep recently-used windows from being evicted first, so
+        // flipping back and forth between two instruments stays cached. We no
+        // longer physically drop the entry on `consume` — a "take" is really a
+        // peek now, so a SECOND revisit of the same window is still instant
+        // instead of forcing a refetch (that one-shot delete was the main reason
+        // returning to a pair re-hit the network).
+        this._smartPrefetchCache.delete(key);
+        this._smartPrefetchCache.set(key, entry);
         return entry.payload;
     }
 
@@ -4914,12 +4942,20 @@ class Chart {
         if (!ok) return;
         if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
         const key = this._smartCacheKeyFromParams(fileId, params);
+        this._smartPrefetchCache.delete(key);
         this._smartPrefetchCache.set(key, {
             at: Date.now(),
             payload,
             fileId: String(fileId),
         });
-        while (this._smartPrefetchCache.size > 8) {
+        this._trimSmartPrefetchCache();
+    }
+
+    /** Bound the /smart|/bars|/candles payload cache (oldest-used dropped first). */
+    _trimSmartPrefetchCache() {
+        if (!this._smartPrefetchCache) return;
+        const max = Number(this._smartCacheMaxEntries) > 0 ? Number(this._smartCacheMaxEntries) : 48;
+        while (this._smartPrefetchCache.size > max) {
             const first = this._smartPrefetchCache.keys().next().value;
             this._smartPrefetchCache.delete(first);
         }
@@ -5156,7 +5192,9 @@ class Chart {
                     console.info(`[chart] file ${fileId} bar loads via: ${src}`);
                 }
                 if (this._smartPrefetchCache) {
+                    this._smartPrefetchCache.delete(cacheKey);
                     this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload: result, fileId: String(fileId) });
+                    this._trimSmartPrefetchCache();
                 }
                 return result;
             })
@@ -5236,7 +5274,9 @@ class Chart {
                     console.info(`[chart] file ${fileId} pan loads via: ${src}`);
                 }
                 if (this._smartPrefetchCache) {
+                    this._smartPrefetchCache.delete(cacheKey);
                     this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload, fileId: String(fileId) });
+                    this._trimSmartPrefetchCache();
                 }
                 return payload;
             })
@@ -5788,8 +5828,10 @@ class Chart {
         if (!Array.isArray(this.rawData) || !this.rawData.length) return;
         if (!this._tfDataCache) this._tfDataCache = new Map();
         const fid = String(fileId);
-        if (!this._tfDataCache.has(fid)) this._tfDataCache.set(fid, new Map());
-        const perFile = this._tfDataCache.get(fid);
+        // Move this fileId to newest (delete+set) so LRU trimming drops stale pairs.
+        const perFile = this._tfDataCache.get(fid) || new Map();
+        this._tfDataCache.delete(fid);
+        this._tfDataCache.set(fid, perFile);
         perFile.set(tf, {
             at: Date.now(),
             rawData: this.rawData.slice(),
@@ -5805,6 +5847,7 @@ class Chart {
             const first = perFile.keys().next().value;
             perFile.delete(first);
         }
+        this._trimFileIdCacheLru(this._tfDataCache);
     }
 
     _restoreFromTfDataCache(fileId, normalizedTf) {
@@ -6417,8 +6460,10 @@ class Chart {
         const sessionEndMs = this._getBacktestSessionEndMs();
         if (!this._btTfDataCache) this._btTfDataCache = new Map();
         const fid = String(fileId);
-        if (!this._btTfDataCache.has(fid)) this._btTfDataCache.set(fid, new Map());
-        const perFile = this._btTfDataCache.get(fid);
+        // Move this fileId to newest (delete+set) so LRU trimming drops stale pairs.
+        const perFile = this._btTfDataCache.get(fid) || new Map();
+        this._btTfDataCache.delete(fid);
+        this._btTfDataCache.set(fid, perFile);
         const maxCacheBars = 12000;
         const existingEntry = perFile.get(tf);
         if (existingEntry
@@ -6446,6 +6491,7 @@ class Chart {
             const first = perFile.keys().next().value;
             perFile.delete(first);
         }
+        this._trimFileIdCacheLru(this._btTfDataCache);
     }
 
     _saveBtTfDataCacheFromChart(fileId, timeframe) {

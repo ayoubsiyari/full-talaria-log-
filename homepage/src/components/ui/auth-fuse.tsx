@@ -148,9 +148,7 @@ export async function completeAuthLogin(
         typeof chartUser?.access_expired_at === "string"
           ? chartUser.access_expired_at
           : undefined,
-      lapsed_subscription: chartUser?.lapsed_subscription as
-        | { plan_name?: string | null; current_period_end?: string | null }
-        | undefined,
+      lapsed_subscription: chartUser?.lapsed_subscription as unknown as DashboardUser["lapsed_subscription"],
     },
     nextPath: safeNext,
   });
