@@ -6132,10 +6132,16 @@ class ReplaySystem {
                     ? this.getReplayAutoScrollState(chart)
                     : null;
                 if (needsRecovery && typeof chart._syncIndependentPanelViewportIfNeeded === 'function') {
-                    chart._syncIndependentPanelViewportIfNeeded({
+                    const synced = chart._syncIndependentPanelViewportIfNeeded({
                         resetPriceScale: false,
                         render: false,
                     });
+                    const disableFallback = typeof window !== 'undefined'
+                        && window.__TALARIA_MC_DISABLE_REPLAY_FOLLOW_FALLBACK;
+                    if (!synced && !disableFallback && st && Number.isFinite(st.offsetX) && !preserveViewport) {
+                        chart.offsetX = st.offsetX;
+                        chart._chartViewRestored = true;
+                    }
                 } else if (st && Number.isFinite(st.offsetX)) {
                     if (!preserveViewport) {
                         chart.offsetX = st.offsetX;
