@@ -21055,8 +21055,20 @@ class Chart {
                     }
                 } else {
                     // Normal mode: update rawData directly
-                    if (direction === 'backward') {
-                        this.offsetX -= uniqueNew.length * this.getCandleSpacing();
+                    const chartTf = this.currentTimeframe || '1m';
+                    // Viewport compensation for a backward (older-history) prepend MUST use
+                    // the number of DISPLAY (resampled) bars actually added on the left, NOT
+                    // the raw fetched bar count. When the display TF is coarser than the
+                    // fetched raw bars (e.g. 5m/1h view over 1m fetch) the raw count is far
+                    // larger, so shifting offsetX by it over-scrolls and the chart visibly
+                    // "moves back". Shifting by display bars keeps the visible candles fixed
+                    // (TradingView behavior). Compute the display chunk once and reuse below.
+                    let backwardChunk = null;
+                    if (direction === 'backward' && uniqueNew.length > 0) {
+                        backwardChunk = this.dataPipeline
+                            ? this.dataPipeline.getResampledSeries(uniqueNew, chartTf, this.dataVersion)
+                            : this.resampleData(uniqueNew, chartTf);
+                        this.offsetX -= backwardChunk.length * this.getCandleSpacing();
                     }
                     // ── Ring buffer: cap rawData to avoid unbounded memory growth ──
                     let trimmed = merged;
@@ -21078,11 +21090,12 @@ class Chart {
                         }
                     }
                     this.rawData = trimmed;
-                    const chartTf = this.currentTimeframe || '1m';
                     if (!capTrimmed && uniqueNew.length > 0 && Array.isArray(this.data) && this.data.length > 0) {
-                        const chunk = this.dataPipeline
-                            ? this.dataPipeline.getResampledSeries(uniqueNew, chartTf, this.dataVersion)
-                            : this.resampleData(uniqueNew, chartTf);
+                        const chunk = (direction === 'backward' && backwardChunk)
+                            ? backwardChunk
+                            : (this.dataPipeline
+                                ? this.dataPipeline.getResampledSeries(uniqueNew, chartTf, this.dataVersion)
+                                : this.resampleData(uniqueNew, chartTf));
                         if (direction === 'backward') {
                             this.data = chunk.concat(this.data);
                         } else {
