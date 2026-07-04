@@ -1,0 +1,14 @@
+{
+  "name": "lwc-proto-test",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Headless-browser tests for lwc-proto.html (multichart prototype)",
+  "scripts": {
+    "serve": "node serve.mjs",
+    "test": "node test.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^25.3.0"
+  }
+}

@@ -141,6 +141,11 @@
   var TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
   var currentTf = TIMEFRAMES.indexOf(qs.get('tf') || '') >= 0 ? qs.get('tf') : '1m';
   var BATCH = 2000; // server max per /bars request
+  // Request windows sized UNDER the server limit: /bars truncates oversized
+  // windows from the START (tiles anchor="start"), so a window wider than
+  // `limit` bars would silently drop the newest bars and leave a seam/gap
+  // between the fetched chunk and already-loaded data.
+  var WINDOW_BARS = BATCH - 10;
 
   if (!Number.isFinite(FILE_ID)) {
     document.getElementById('setup').style.display = 'flex';
@@ -230,7 +235,7 @@
             return self.endMs;
           });
     this._inflight = metaP.then(function (endMs) {
-      var span = BATCH * tfMs(self.tf) * 1.05;
+      var span = WINDOW_BARS * tfMs(self.tf);
       return self._fetchWindow(endMs - span, endMs + tfMs(self.tf));
     }).then(function (payload) {
       self.bars = self._normalize(payload.bars || []);
@@ -248,7 +253,7 @@
     if (this._inflight || !this.hasMoreLeft || this.bars.length === 0) return;
     var self = this;
     var firstMs = this.bars[0].time * 1000;
-    var span = BATCH * tfMs(this.tf) * 1.05;
+    var span = WINDOW_BARS * tfMs(this.tf);
     this._inflight = this._fetchWindow(firstMs - span, firstMs - 1).then(function (payload) {
       var older = self._normalize(payload.bars || []);
       // keep strictly-older bars only → contiguous prepend, no seams
@@ -410,6 +415,18 @@
 
   renderTfButtons();
   switchTimeframe(currentTf);
+
+  // Debug/test handle (read-only inspection; not used by the page itself).
+  window.__lwcProto = {
+    panels: panels,
+    services: services,
+    fetchCount: function () { return fetchCount; },
+    tf: function () { return currentTf; },
+    bars: function () { return getService(currentTf).bars.length; },
+    ranges: function () {
+      return panels.map(function (p) { return p.chart.timeScale().getVisibleLogicalRange(); });
+    },
+  };
 }());
 </script>
 </body>
