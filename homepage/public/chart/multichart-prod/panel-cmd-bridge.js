@@ -568,6 +568,21 @@
             if (hostTf && panelTf && hostTf !== panelTf) {
                 return;
             }
+            // SAME symbol + SAME TF idle dedup. Once this panel's TF matches the
+            // host's, it becomes a same-pair authoritative mirror: every host
+            // replayFrame below re-clones host data + re-anchors the viewport. When
+            // replay is PAUSED and the playhead has NOT advanced, re-mirroring the
+            // identical frame on every rebroadcast just makes this panel re-render
+            // and drift ("keeps moving") — and the general idle dedup above is
+            // bypassed whenever Time/Date-range sync is on. Mirror once to align,
+            // then no-op until replay actually plays or the playhead ts changes.
+            var _samePairAnim = !!(args.animatedCandle && Number(args.tickProgress) > 0);
+            if (!args.isPlaying && !_samePairAnim
+                && Number.isFinite(ch._mcLastSamePairMirrorTs)
+                && ch._mcLastSamePairMirrorTs === ts) {
+                return;
+            }
+            ch._mcLastSamePairMirrorTs = ts;
             if (typeof ch._syncReplayMasterFromParentIfCovers === 'function') {
                 try { ch._syncReplayMasterFromParentIfCovers(ts); } catch (_) {}
             }
