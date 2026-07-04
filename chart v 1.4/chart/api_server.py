@@ -15024,7 +15024,7 @@ async def admin_mentorship_cohort_members(group_id: int, request: Request):
                 "role": u.role,
                 "is_active": u.is_active,
                 "has_journal_access": bool(u.has_journal_access),
-                "dashboard_modules": effective_dashboard_modules(u),
+                "dashboard_modules": effective_dashboard_modules(u, fully_entitled=bool(u.has_journal_access)),
                 "access_expires_at": u.access_expires_at.isoformat() if u.access_expires_at else None,
             })
         return {

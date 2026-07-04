@@ -19331,8 +19331,42 @@ class Chart {
      * switch is in flight (idempotent). Renders the new frame synchronously before
      * removing the snapshot overlay so the swap is seamless (no blank flash).
      */
+    /**
+     * True when the currently committed this.data bars have a cadence consistent
+     * with `tf`. Measures the minimum positive gap across a handful of interior
+     * bars (min ≈ one TF step; ignores weekend/holiday gaps that inflate spacing),
+     * then compares it to the target TF with a generous ratio window. Used as the
+     * "did the new bars actually land?" gate for the TF-switch safety net.
+     */
+    _committedBarsMatchTimeframe(tf) {
+        const data = this.data;
+        if (!Array.isArray(data) || data.length < 2) return false;
+        const tfMs = this.parseTimeframe(tf);
+        if (!Number.isFinite(tfMs) || tfMs <= 0) return true; // unknown TF: don't fight it
+        let minGap = Infinity;
+        const start = Math.min(1, data.length - 1);
+        const end = Math.min(data.length - 1, start + 24);
+        for (let i = start; i <= end; i++) {
+            const gap = Number(data[i].t) - Number(data[i - 1].t);
+            if (Number.isFinite(gap) && gap > 0 && gap < minGap) minGap = gap;
+        }
+        if (!Number.isFinite(minGap)) return false;
+        const ratio = minGap / tfMs;
+        return ratio >= 0.5 && ratio <= 1.5;
+    }
+
     _endTimeframeSwitching() {
         const wasSwitching = !!this._timeframeSwitching;
+        // Did the switch path actually install bars for the destination TF? Some
+        // replay / multichart tiles commit currentTimeframe (so the axis/grid repaint
+        // at the new TF) but leave this.data at the PREVIOUS timeframe until the user
+        // pans or clicks — the "new grid, old candles" symptom. We rebuild below if
+        // not. NOTE: we deliberately do NOT use _tfSwitchBarsMatchDestination() here —
+        // its "finer native displaying coarser TF" shortcut returns true for panels
+        // whose native master is 1m regardless of what this.data currently holds, so
+        // it would mask exactly this bug. Instead we measure the actual committed bar
+        // cadence and compare it to the destination TF.
+        const destBarsMatched = wasSwitching ? this._committedBarsMatchTimeframe(this.currentTimeframe) : true;
         this._timeframeSwitching = false;
         this._timeframeFetchAbort = null;
         this._switchingFromTimeframe = null;
@@ -19352,6 +19386,26 @@ class Chart {
                 this.svg.selectAll('.axis-highlight-group').remove();
             }
         } catch (_svg) { /* ignore */ }
+        // Safety net for the "new grid, old candles" bug: if the switch committed the
+        // new timeframe (axis already repainted) but the committed bars still belong
+        // to the previous TF, rebuild them NOW so the render below paints candles that
+        // match the axis instead of waiting for the user to pan/click. In the healthy
+        // flow onTimeframeChange/updateChartData has already installed matching bars,
+        // so destBarsMatched is true here and this is skipped entirely.
+        if (!destBarsMatched) {
+            try {
+                if (this.replaySystem && this.replaySystem.isActive
+                    && typeof this.replaySystem.updateChartData === 'function') {
+                    this.replaySystem.updateChartData(false);
+                } else if (Array.isArray(this.rawData) && this.rawData.length
+                    && typeof this.resampleData === 'function') {
+                    const rebuilt = this.resampleData(this.rawData, this.currentTimeframe);
+                    if (Array.isArray(rebuilt) && rebuilt.length) {
+                        this.data = rebuilt;
+                    }
+                }
+            } catch (_rebuild) { /* ignore */ }
+        }
         // Paint the new bars to the canvas FIRST, then drop the overlay on the next
         // frame. If we removed the overlay before render() the user would see a
         // single blank canvas frame between the snapshot and the new chart.
