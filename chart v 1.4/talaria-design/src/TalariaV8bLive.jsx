@@ -14814,6 +14814,22 @@ const TalariaV8bLive = () => {
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [indOpen]);
 
+  // When the Indicators modal opens, re-read the focused chart / multichart panel
+  // so the Active state (chips + tab count + on/off highlight) reflects reality.
+  // After switching a multichart layout or panel, the focus-change sync can run
+  // BEFORE the newly focused panel finished restoring its indicators, leaving the
+  // toolbar's `indActive` stale — the indicator draws on the chart but shows as
+  // "off" in the menu until a second click forces a re-read. Firing this on open
+  // triggers the same `indicatorsChanged` listeners (multichart + single-chart
+  // branches) to resync from the panel's real indicator list.
+  useEffect(() => {
+    if (!indOpen) return;
+    const t = setTimeout(() => {
+      try { window.dispatchEvent(new CustomEvent("indicatorsChanged")); } catch (_) {}
+    }, 0);
+    return () => clearTimeout(t);
+  }, [indOpen]);
+
   /** Reset manual hover/press chrome when a panel closes without mouseleave (e.g. Esc). */
   const clearSettingsPanelHover = () => {
     setHov(null);
