@@ -15344,6 +15344,56 @@ async def admin_mentorship_allowlist_delete(entry_id: int, request: Request):
         db.close()
 
 
+@app.post("/api/admin/mentorship/cohorts/{group_id}/purge-members")
+async def admin_mentorship_purge_members(group_id: int, request: Request):
+    """Delete every (non-admin) user account assigned to this cohort. Intended to
+    clean up the legacy bulk-imported students. Destructive and irreversible —
+    deletes user rows one at a time (per-user commit so a single FK failure does
+    not abort the whole batch)."""
+    admin = _require_admin(request)
+    db = SessionLocal()
+    try:
+        group = db.query(Group).filter(Group.id == group_id).first()
+        if not group:
+            raise HTTPException(status_code=404, detail="Cohort not found")
+        members = (
+            db.query(User)
+            .filter(User.group_id == group_id, User.role != "admin")
+            .all()
+        )
+        admin_id = getattr(admin, "id", None)
+        deleted = 0
+        failed: list[dict] = []
+        for u in members:
+            if admin_id is not None and u.id == admin_id:
+                continue
+            uid, uemail = u.id, u.email
+            try:
+                db.query(UserSession).filter(UserSession.user_id == uid).delete()
+                db.delete(u)
+                db.commit()
+                deleted += 1
+            except Exception as del_err:
+                db.rollback()
+                failed.append({"user_id": uid, "email": uemail, "error": str(del_err)[:200]})
+        _record_admin_action(
+            request,
+            action="mentorship_purge_members",
+            target_type="cohort",
+            target_id=group_id,
+            params={"cohort": group.name, "deleted": deleted, "failed": len(failed)},
+        )
+        return {
+            "success": True,
+            "cohort": {"id": group.id, "name": group.name},
+            "deleted": deleted,
+            "failed_count": len(failed),
+            "failed": failed[:20],
+        }
+    finally:
+        db.close()
+
+
 def _backtest_kpi_block(kpis) -> dict:
     """Flatten a _compute_session_analytics kpis dict to the report shape.
     avg_r mirrors expectancy_r (mean of per-trade R multiples)."""

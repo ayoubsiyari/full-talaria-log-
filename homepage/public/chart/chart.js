@@ -19536,7 +19536,13 @@ class Chart {
                 'z-index:3',
                 'display:block',
                 'object-fit:fill',
-                'user-select:none'
+                'user-select:none',
+                // Soft blur + slight dim instead of a hard frozen frame: reads as
+                // "loading" and lets the 3-dot loaders (above) stand out, while the
+                // finished chart paints crisply behind and is revealed on removal.
+                'filter:blur(4px) brightness(0.92) saturate(0.95)',
+                'transform:scale(1.02)', // hide blurred edge bleed at the frame border
+                'will-change:filter'
             ].join(';');
             parent.appendChild(overlay);
         }

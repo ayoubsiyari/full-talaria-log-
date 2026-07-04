@@ -3479,6 +3479,7 @@ select { cursor:default; }
             <div class="card-hdr">
               <div class="card-title" id="mtRosterTitle">Select a cohort</div>
               <span class="card-badge" id="mtMemberCount">0</span>
+              <button class="btn sm" id="mtPurgeBtn" type="button" style="margin-left:auto;display:none;background:var(--danger);color:#fff;border-color:var(--danger)" onclick="purgeCohortMembers()">Delete all members</button>
             </div>
             <div class="card-body">
               <div id="mtCohortDefaultEditor" style="display:none;margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary)">
@@ -7898,6 +7899,7 @@ async function selectCohort(id) {
     const members = data.members || [];
     if ($('mtRosterTitle')) $('mtRosterTitle').textContent = cohort.name || 'Cohort';
     if ($('mtMemberCount')) $('mtMemberCount').textContent = members.length;
+    if ($('mtPurgeBtn')) $('mtPurgeBtn').style.display = members.length ? '' : 'none';
     if ($('mtCohortDefaultEditor')) $('mtCohortDefaultEditor').style.display = '';
     mtModuleCheckboxes('mtCohortModules', 'mt-cohort-mod', cohort.default_modules || {});
     renderRoster(members);
@@ -7946,6 +7948,24 @@ async function toggleMemberModule(el, userId) {
     });
     toast('Updated — student should re-login to apply.', 'ok');
   } catch (e) { toast(e.message, 'err'); if (mtSelectedId) selectCohort(mtSelectedId); }
+}
+
+async function purgeCohortMembers() {
+  if (!mtSelectedId) return;
+  const cohort = mtCohorts.filter(function (c) { return c.id === mtSelectedId; })[0];
+  const name = cohort ? cohort.name : ('#' + mtSelectedId);
+  const count = cohort && cohort.member_count != null ? cohort.member_count : '';
+  if (!confirm('Delete ALL ' + count + ' member account(s) in "' + name + '"?\n\nThis permanently deletes their user accounts and cannot be undone.')) return;
+  if (!confirm('Are you absolutely sure? This will delete the imported student accounts for "' + name + '".')) return;
+  const btn = $('mtPurgeBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const data = await api('/api/admin/mentorship/cohorts/' + mtSelectedId + '/purge-members', { method: 'POST' });
+    toast('Deleted ' + (data.deleted || 0) + ' member(s)' + (data.failed_count ? ', ' + data.failed_count + ' failed' : ''), data.failed_count ? 'err' : 'ok');
+    await loadCohorts();
+    selectCohort(mtSelectedId);
+  } catch (e) { toast(e.message, 'err'); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 async function applyCohortModules() {
