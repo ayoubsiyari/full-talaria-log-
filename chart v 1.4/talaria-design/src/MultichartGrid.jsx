@@ -2057,6 +2057,7 @@ export default function MultichartGrid({
         for (const existingId of Array.from(mgr.charts.keys())) {
             if (!desiredIframeIds.has(existingId)) {
                 hostSyncedPanelsRef.current.delete(existingId);
+                primedPanelsRef.current.delete(existingId);
                 try { mgr.removeChart(existingId); } catch (_) {}
                 if (overlayHoldTimersRef.current[existingId]) {
                     clearTimeout(overlayHoldTimersRef.current[existingId]);
@@ -2765,6 +2766,16 @@ export default function MultichartGrid({
         parentEverEntered: null,
     });
 
+    // Panels that have already been primed for the CURRENT replay session.
+    // _primeReplayFromParent re-fires every time dataReadyPanels changes (e.g.
+    // when ONE panel reloads after a timeframe switch). Re-priming ALL panels
+    // re-sends `syncFromHost {force:true}` to the untouched siblings, which
+    // forces them to re-seek/re-mirror the host → visible re-render + drift.
+    // Track who's primed so a single panel's reload only primes genuinely new
+    // panels, never the ones the user didn't touch. Cleared on replay exit so
+    // a fresh replay session re-primes everyone.
+    const primedPanelsRef = useRef(new Set());
+
     // Prime helper: shared between the mount-once tick listener and the
     // readyPanels-watching effect. If parent is in active replay, send
     // replayEnter to every iframe panel that's bridge-ready but hasn't
@@ -2794,6 +2805,11 @@ export default function MultichartGrid({
                     : (rs.playbackMode || "tick");
                 for (const c of mgr.charts.values()) {
                     if (!panelHasBarsForSync(c, dataReadyPanelsRef.current)) continue;
+                    // Only prime panels not already primed this replay session.
+                    // Re-priming an already-synced sibling forces it to re-seek
+                    // and drift when ANOTHER panel reloads (e.g. TF switch). Play/
+                    // pause/tick still propagate via their own broadcasters.
+                    if (c.id !== HOST_PANEL_ID && primedPanelsRef.current.has(c.id)) continue;
                     sendPanelCmd(mgr, c.id, "replayEnter", { timestamp: ts });
                     const stf = rs.stepTimeframeOverride;
                     sendPanelCmd(mgr, c.id, "replaySetStepTf", {
@@ -2814,6 +2830,7 @@ export default function MultichartGrid({
                             mode: parentMode,
                         });
                     }
+                    primedPanelsRef.current.add(c.id);
                 }
             } else if (replayStateRef.current.parentEverEntered === true) {
                 // Parent IS NOT currently in replay BUT has entered
@@ -2821,6 +2838,8 @@ export default function MultichartGrid({
                 // user explicitly exited (or paused-and-exited).
                 // Tell iframes to drop their auto-entered replay
                 // state so they show the full slice like parent.
+                // Forget primed panels so the NEXT replay session re-primes all.
+                primedPanelsRef.current.clear();
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     sendPanelCmd(mgr, c.id, "replayExit", {});
@@ -6273,6 +6292,7 @@ export default function MultichartGrid({
                                             const mgr = managerRef.current;
                                             if (!mgr) return;
                                             const cellEl = cellRefs.current[tile.id];
+                                            primedPanelsRef.current.delete(tile.id);
                                             try { mgr.removeChart(tile.id); } catch (_) {}
                                             setReadyPanels((prev) => {
                                                 if (!prev.has(tile.id)) return prev;

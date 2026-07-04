@@ -467,6 +467,24 @@
             return applyReplayEnter(ch, ts);
         }
 
+        // GENERAL IDLE-FRAME DEDUP (fixes "changing TF on panel B re-renders C/D").
+        // The parent re-primes / re-broadcasts the CURRENT playhead frame whenever
+        // any single panel reloads (e.g. a sibling's timeframe switch). For a panel
+        // the user did NOT touch, re-applying a frame at the SAME timestamp it
+        // already shows just re-slices + repaints for nothing — the visible
+        // re-render + drift. Skip it unless: we are actively playing, animating a
+        // forming candle, or this panel is explicitly viewport-synced to the host
+        // (visibleRange/time sync ON — then it is SUPPOSED to follow host changes).
+        // Genuine scrubs/advances change ts (or set isPlaying/anim) so they apply.
+        try {
+            var _animActiveG = !!(args.animatedCandle && Number(args.tickProgress) > 0);
+            if (!ch._multichartVisibleRangeSyncOn && !args.isPlaying && !_animActiveG
+                && Number.isFinite(ch._mcLastAppliedFrameTs) && ch._mcLastAppliedFrameTs === ts) {
+                return;
+            }
+            ch._mcLastAppliedFrameTs = ts;
+        } catch (_) {}
+
         // INDEPENDENT-PANEL FRAME DEDUP (fixes "host TF switch re-renders B/C/D").
         // An independent panel — a DIFFERENT symbol than the host, or the same
         // symbol on a DIFFERENT timeframe — follows ONLY the shared playhead
@@ -539,20 +557,23 @@
                 }
                 return;
             }
+            // Independent TF by user choice (host switched TF, this panel kept its
+            // own): NEVER mirror/step from the host's bars. This MUST run before
+            // _syncReplayMasterFromParentIfCovers — that helper re-slices/renders
+            // from the host master (goToReplayTimestamp), which is exactly the
+            // re-render + backward drift we want to avoid on a different-TF panel.
+            // This panel owns its own replay view; it only follows the shared
+            // playhead timestamp, applied via applyMultichartMirrorFrame on its
+            // OWN bars (handled by the earlier mirror path / dedup).
+            if (hostTf && panelTf && hostTf !== panelTf) {
+                return;
+            }
             if (typeof ch._syncReplayMasterFromParentIfCovers === 'function') {
                 try { ch._syncReplayMasterFromParentIfCovers(ts); } catch (_) {}
             }
             if (forceSamePairParentDataMirror(ch, args)) {
                 ch._mcCatchUpFails = 0;
                 ch._mcCatchUpCooldownUntil = 0;
-                return;
-            }
-            // Independent TF by user choice (host switched TF, this panel kept its
-            // own): NEVER mirror/step from the host's bars. Falling through to
-            // applyMultichartMirrorFrame below would apply the host's frame (e.g. 1D)
-            // onto this panel (e.g. 15m) and drag its viewport backward while the
-            // host loads history. This panel owns its own replay view.
-            if (hostTf && panelTf && hostTf !== panelTf) {
                 return;
             }
         }
@@ -1202,6 +1223,25 @@
             if (applyStaticMirrorFrame(ch, seekTs)) return;
             forceReplaySeek(ch, seekTs, false);
         });
+    }
+
+    /**
+     * True when this panel's replay playhead is already at (within 2 bars of)
+     * the given timestamp. Used to no-op forced re-syncs on panels the user did
+     * not touch — re-seeking an already-aligned panel re-slices/renders it and
+     * drags its viewport (the drift when a SIBLING panel reloads/switches TF).
+     */
+    function isPanelReplayAligned(ch, ts) {
+        try {
+            if (!ch || !ch.replaySystem || !ch.replaySystem.isActive) return false;
+            var panelTs = Number(ch.replaySystem.replayTimestamp);
+            if (!Number.isFinite(panelTs) || !Number.isFinite(ts)) return false;
+            var tfMs = 60000;
+            if (typeof ch.parseTimeframe === 'function') {
+                tfMs = ch.parseTimeframe(ch.currentTimeframe) || tfMs;
+            }
+            return Math.abs(panelTs - ts) <= tfMs * 2;
+        } catch (_) { return false; }
     }
 
     /**
@@ -1994,6 +2034,14 @@
                     var alignReplayFromHost = function () {
                         if (!args.syncSymbol) {
                             if (!Number.isFinite(syncTs)) return;
+                            // Already on this playhead and NOT viewport-synced → leave the
+                            // panel exactly where it is. Re-mirroring/seeking here is what
+                            // makes an untouched panel re-render + drift when a sibling
+                            // reloads (its data-ready toggle re-primes every panel).
+                            if (!ch._multichartVisibleRangeSyncOn && isPanelReplayAligned(ch, syncTs)) {
+                                afterReplaySync();
+                                return;
+                            }
                             if (isSamePairAsHost(ch)
                                 && forceSamePairParentDataMirror(ch, { timestamp: syncTs, isPlaying: false })) {
                                 afterReplaySync();
@@ -2106,7 +2154,11 @@
                     // restores the known-good behavior at commit 8d1751f. The
                     // `_syncIndependentPanelViewportIfNeeded` recenter added afterwards
                     // is what made the panel snap back to the middle every 800ms.
-                    if (!args.force && replayAligned) return;
+                    // Already aligned: skip unless the caller forced AND this panel is
+                    // viewport-synced to the host. A forced align on an INDEPENDENT
+                    // (non-viewport-synced) panel would re-mirror the host and drift a
+                    // panel the user never touched — so honor `force` only when sync is on.
+                    if (replayAligned && (!args.force || !ch._multichartVisibleRangeSyncOn)) return;
                     // Same render path as the play-time frame stream — avoids
                     // goToReplayTimestamp viewport jumps when playhead drifted while paused.
                     if (applyStaticMirrorFrame(ch, hostTs)) return;
