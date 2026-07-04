@@ -1626,7 +1626,7 @@ def _get_user_from_request(request: Request):
         if not user or not user.is_active:
             return None
         # Revoke session when entitlement ended (admins exempt) — forces re-login with clear denial.
-        if (user.role or "") != "admin" and not _user_entitles_journal_db(db, user):
+        if (user.role or "") != "admin" and not _user_may_access_platform(db, user):
             db.query(UserSession).filter(UserSession.user_id == user.id).delete()
             db.commit()
             return None
@@ -1655,7 +1655,7 @@ def _get_user_from_websocket(ws: WebSocket):
         user = db.query(User).filter(User.id == sess.user_id).first()
         if not user or not user.is_active:
             return None
-        if (user.role or "") != "admin" and not _user_entitles_journal_db(db, user):
+        if (user.role or "") != "admin" and not _user_may_access_platform(db, user):
             return None
         return user
     except Exception:
@@ -11094,7 +11094,7 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             raise HTTPException(status_code=401, detail="Invalid email or password.")
 
         is_admin = (user.role or "") == "admin"
-        entitled = is_admin or _user_entitles_journal_db(db, user)
+        entitled = is_admin or _user_may_access_platform(db, user)
         if not entitled and not _is_pricing_renewal_path(payload.next_path):
             ctx = _subscription_access_context(db, user)
             reason = ctx.get("access_denial_reason") or "subscription"
@@ -11172,7 +11172,7 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
             )
         elif not is_new:
             is_admin = (user.role or "") == "admin"
-            entitled = is_admin or _user_entitles_journal_db(db, user)
+            entitled = is_admin or _user_may_access_platform(db, user)
             if not entitled and not _is_pricing_renewal_path(getattr(payload, "next_path", None)):
                 ctx = _subscription_access_context(db, user)
                 reason = ctx.get("access_denial_reason") or "subscription"
@@ -17531,6 +17531,20 @@ def _user_entitles_journal_db(db, user: User) -> bool:
     if user.has_journal_access:
         return True
     return False
+
+
+def _user_may_access_platform(db, user: User) -> bool:
+    """Sign-in / session gate. True for full entitlement (admin, active/trialing
+    subscription, admin extension window, or manual full access) OR for
+    mentorship/partial students who have been granted at least one dashboard
+    module. Per-section visibility is still enforced by _chart_user_has_module,
+    so partial students only see the sections they were granted."""
+    if not user:
+        return False
+    if _user_entitles_journal_db(db, user):
+        return True
+    grants = normalize_module_grants(_parse_user_module_grants(user))
+    return any(grants.values()) if isinstance(grants, dict) else False
 
 
 def _chart_user_has_module(user: User, module: str) -> bool:

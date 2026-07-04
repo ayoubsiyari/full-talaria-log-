@@ -1003,9 +1003,18 @@
                     ch._panelFullRawData = pc._panelFullRawData;
                 }
                 if (!rs.userHasPanned) {
-                    if (Number.isFinite(payload.hostOffsetX)) {
+                    // Error fallback: same independence rule as the main follow path —
+                    // prefer this panel's OWN auto-scroll offset; only copy host pixels
+                    // when visible-range sync is explicitly ON.
+                    var rangeSyncOnFb = !!ch._multichartVisibleRangeSyncOn;
+                    var fbSt = (!rangeSyncOnFb && typeof rs.getReplayAutoScrollState === 'function')
+                        ? rs.getReplayAutoScrollState(ch)
+                        : null;
+                    if (fbSt && Number.isFinite(fbSt.offsetX)) {
+                        ch.offsetX = fbSt.offsetX;
+                    } else if (rangeSyncOnFb && Number.isFinite(payload.hostOffsetX)) {
                         ch.offsetX = Number(payload.hostOffsetX);
-                    } else if (Number.isFinite(pc.offsetX)) {
+                    } else if (rangeSyncOnFb && Number.isFinite(pc.offsetX)) {
                         ch.offsetX = pc.offsetX;
                     }
                 }
@@ -1028,10 +1037,17 @@
                 || ch._multichartPassivePlayActive === true;
             var followPlayhead = hostPlaying && !rs.userHasPanned;
             if (followPlayhead) {
-                // Match host zoom, then right-anchor with this panel's OWN width so it
-                // keeps the same right-side gap as the main chart (mirroring the host's
-                // raw pixel offsetX jams the newest candle against the panel axis).
-                if (Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
+                // VIEWPORT INDEPENDENCE (single-chart parity): the panel follows the
+                // host PLAYHEAD during replay, but it must do so with its OWN viewport
+                // math, not by copying host pixels. Adopt the host zoom (candleWidth)
+                // ONLY when visible-range sync is explicitly ON; otherwise keep this
+                // panel's own zoom. Right-anchor to the playhead via this panel's OWN
+                // getReplayAutoScrollState (identical to how a single chart auto-scrolls
+                // in replay). Falling back to the host's raw pixel offsetX is what made
+                // panels drift/shake/zoom-jump, so only do that when sync is ON; with
+                // sync OFF and our own state unavailable (width lag), keep our offset.
+                var rangeSyncOn = !!ch._multichartVisibleRangeSyncOn;
+                if (rangeSyncOn && Number.isFinite(pc.candleWidth) && pc.candleWidth > 0) {
                     ch.candleWidth = pc.candleWidth;
                 }
                 var followSt = (typeof rs.getReplayAutoScrollState === 'function')
@@ -1039,10 +1055,12 @@
                     : null;
                 if (followSt && Number.isFinite(followSt.offsetX)) {
                     ch.offsetX = followSt.offsetX;
-                } else if (Number.isFinite(payload.hostOffsetX)) {
+                } else if (rangeSyncOn && Number.isFinite(payload.hostOffsetX)) {
                     ch.offsetX = Number(payload.hostOffsetX);
-                } else if (Number.isFinite(pc.offsetX)) {
+                } else if (rangeSyncOn && Number.isFinite(pc.offsetX)) {
                     ch.offsetX = pc.offsetX;
+                } else if (Number.isFinite(prevOffsetX)) {
+                    ch.offsetX = prevOffsetX;
                 }
                 if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
             } else {

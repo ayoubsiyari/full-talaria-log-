@@ -3651,6 +3651,14 @@ class OrderManager {
     restoreRuntimeOrderStateFromSession(state) {
         if (!state || typeof state !== 'object') return;
 
+        try {
+            console.log('[orders-restore] restoreRuntimeOrderStateFromSession IN:',
+                'pending=', Array.isArray(state.pending_orders) ? state.pending_orders.length : 'none',
+                'open=', Array.isArray(state.open_positions) ? state.open_positions.length : 'none',
+                'journal=', Array.isArray(state.journal) ? state.journal.length : 'none',
+                'balance=', state.account_runtime && state.account_runtime.balance);
+        } catch (_) {}
+
         const normalizeTradeTicker = (item) => {
             const t = String(item?.ticker || item?.symbol || '').replace('/', '').trim().toUpperCase();
             return t && t !== 'UNKNOWN' ? t : '';
@@ -3747,6 +3755,30 @@ class OrderManager {
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
         try {
             this._redrawClosedJournalTradeMarkers();
+        } catch (_) {}
+
+        try {
+            console.log('[orders-restore] restoreRuntimeOrderStateFromSession OUT (applied):',
+                'open=', (this.openPositions || []).length,
+                'pending=', (this.pendingOrders || []).length,
+                'journal=', (this.tradeJournal || []).length,
+                'balance=', this.balance);
+        } catch (_) {}
+        // Watch for a later force-close: if something (replay catch-up / margin check) drops
+        // the just-restored open positions into the journal, this delayed readout shows the shift.
+        try {
+            const restoredOpen = (this.openPositions || []).length;
+            if (restoredOpen > 0) {
+                setTimeout(() => {
+                    try {
+                        console.log('[orders-restore] +1500ms after restore:',
+                            'open=', (this.openPositions || []).length,
+                            'journal=', (this.tradeJournal || []).length,
+                            'balance=', this.balance,
+                            (this.openPositions || []).length < restoredOpen ? '⚠️ OPEN POSITION WAS CLOSED AFTER RESTORE' : '(still open — good)');
+                    } catch (_) {}
+                }, 1500);
+            }
         } catch (_) {}
     }
 

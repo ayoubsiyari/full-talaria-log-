@@ -6250,11 +6250,15 @@ class ReplaySystem {
             const preserveViewport = Number.isFinite(preserveUntil) && nowPv < preserveUntil;
             const passiveFollow = this.autoScrollEnabled && !this.userHasPanned && !preserveViewport;
             if (passiveFollow) {
-                // Match the host's zoom, then right-anchor using THIS panel's own width
-                // so it keeps the same right-edge gap as the main chart. Copying the
-                // host's raw pixel offsetX pins the newest candle flush against a
-                // differently-sized panel's axis (no right-side space).
-                if (Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
+                // VIEWPORT INDEPENDENCE (single-chart parity): follow the playhead with
+                // THIS panel's own viewport math. Adopt the host zoom (candleWidth) ONLY
+                // when visible-range sync is explicitly ON; otherwise keep our own zoom.
+                // Right-anchor with our OWN getReplayAutoScrollState so the newest bar
+                // keeps the same right-side gap as a single chart. Copying the host's raw
+                // pixel offsetX pins/drifts the panel against a differently-sized axis, so
+                // only fall back to it when sync is ON.
+                const rangeSyncOn = !!chart._multichartVisibleRangeSyncOn;
+                if (rangeSyncOn && Number.isFinite(parent.candleWidth) && parent.candleWidth > 0) {
                     chart.candleWidth = parent.candleWidth;
                 }
                 let followOffset = null;
@@ -6262,7 +6266,7 @@ class ReplaySystem {
                     const st = this.getReplayAutoScrollState(chart);
                     if (st && Number.isFinite(st.offsetX)) followOffset = st.offsetX;
                 }
-                if (followOffset == null) {
+                if (followOffset == null && rangeSyncOn) {
                     if (Number.isFinite(detail && detail.hostOffsetX)) {
                         followOffset = Number(detail.hostOffsetX);
                     } else if (Number.isFinite(parent.offsetX)) {

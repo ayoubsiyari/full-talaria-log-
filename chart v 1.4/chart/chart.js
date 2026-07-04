@@ -3680,7 +3680,13 @@ class Chart {
                     && typeof this._isMultichartEmbedPanel === 'function'
                     && this._isMultichartEmbedPanel();
                 let mirroredHostViewport = false;
+                // VIEWPORT INDEPENDENCE: only snap this panel's boot viewport to the
+                // host when visible-range sync is explicitly ON. With sync OFF we skip
+                // the snap and fall through to _resetViewportToDefault below, which
+                // right-anchors to the panel's OWN data — identical to how a fresh
+                // single chart positions itself. This kills the boot-time jump.
                 if (samePairEmbedMc
+                    && this._multichartVisibleRangeSyncOn
                     && typeof this._multichartMirrorViewportFromHost === 'function') {
                     try {
                         mirroredHostViewport = !!this._multichartMirrorViewportFromHost();
@@ -20293,12 +20299,16 @@ class Chart {
             if (syncOn && !this._isMultichartLocalPanLeader()) {
                 return false;
             }
-            // 3) Need history the host doesn't hold yet. Ask the host to fetch it
-            //    once (shared); the poll extends this panel when it lands. This must
-            //    run even when this panel is NOT the active drag leader — with
-            //    independent viewports (sync off) an idle / wheel / auto pan-left
-            //    otherwise got stuck with no loader until the user grabbed it.
-            if (typeof this._delegateSamePairPanLoadToHost === 'function'
+            // 3) Need history the host doesn't hold yet.
+            //    • Sync ON: ask the host to fetch it once (shared); the poll extends
+            //      this panel when it lands, so followers stay aligned to one fetch.
+            //    • Sync OFF (independent, single-chart parity): do NOT delegate. A
+            //      single chart pulls its own 2000-5000 bar batch in ONE request;
+            //      delegating + RAF-polling the host was exactly the "loads old
+            //      candles one-by-one" trickle. Fall through to this panel's own
+            //      big-batch fetch path below.
+            if (syncOn
+                && typeof this._delegateSamePairPanLoadToHost === 'function'
                 && this._delegateSamePairPanLoadToHost(force)) {
                 return true;
             }
