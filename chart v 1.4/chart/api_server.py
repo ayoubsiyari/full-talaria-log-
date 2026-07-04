@@ -1173,8 +1173,34 @@ class AdminAuditLog(Base):
     user_agent = Column(String(512), nullable=True)
 
 
+class MentorshipAllowlist(Base):
+    """Invite-only registration allowlist. When allowlist mode is on, only emails
+    present here may create an account (they then pay/subscribe like normal users).
+    Optional cohort_id links a registrant to a journal_groups cohort for reporting."""
+    __tablename__ = "mentorship_allowlist"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    cohort_id = Column(Integer, nullable=True)  # journal_groups.id (logical, no FK)
+    note = Column(String(255), nullable=True)
+    added_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    registered_at = Column(DateTime, nullable=True)
+
+
+class AppSetting(Base):
+    """Small key/value store for admin-toggleable app settings (feature flags)."""
+    __tablename__ = "app_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Create chart-specific tables only — exclude 'users' (managed by journal-backend).
 _CHART_TABLES = [
+    MentorshipAllowlist.__table__,
+    AppSetting.__table__,
     CSVFile.__table__,
     CSVAggregate.__table__,
     DatasetSettings.__table__,
@@ -11023,6 +11049,67 @@ def _dataset_settings_public_dict(settings: DatasetSettings | None, file_obj: CS
         "notes": settings.notes if settings else None,
     }
 
+SIGNUP_ALLOWLIST_SETTING = "mentorship_signup_allowlist_only"
+SIGNUP_BLOCKED_MESSAGE = (
+    "Registration is currently open to Mentorship members only. "
+    "If you believe this is a mistake, please contact support."
+)
+
+
+def _get_app_setting(db, key: str, default: str | None = None) -> str | None:
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == key).first()
+        return row.value if row and row.value is not None else default
+    except Exception:
+        return default
+
+
+def _set_app_setting(db, key: str, value: str) -> None:
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if row:
+        row.value = value
+        row.updated_at = datetime.utcnow()
+    else:
+        db.add(AppSetting(key=key, value=value))
+
+
+def _truthy(v) -> bool:
+    return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _signup_allowlist_only(db) -> bool:
+    """Invite-only registration toggle. DB setting wins; falls back to env
+    MENTORSHIP_SIGNUP_ALLOWLIST_ONLY (default on during the mentorship phase)."""
+    v = _get_app_setting(db, SIGNUP_ALLOWLIST_SETTING, None)
+    if v is None:
+        return _truthy(os.getenv("MENTORSHIP_SIGNUP_ALLOWLIST_ONLY", "true"))
+    return _truthy(v)
+
+
+def _allowlist_entry(db, email: str):
+    if not email:
+        return None
+    return (
+        db.query(MentorshipAllowlist)
+        .filter(MentorshipAllowlist.email == email.strip().lower())
+        .first()
+    )
+
+
+def _assert_email_may_register(db, email: str):
+    """Raise 403 if allowlist mode is on and the email is not approved.
+    Returns the matching allowlist entry (or None when allowlist mode is off)."""
+    if not _signup_allowlist_only(db):
+        return None
+    entry = _allowlist_entry(db, email)
+    if not entry:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "mentorship_only", "message": SIGNUP_BLOCKED_MESSAGE},
+        )
+    return entry
+
+
 @app.post("/api/auth/signup")
 async def auth_signup(payload: SignUpIn, request: Request):
     ip = _client_ip_for_rate_limit(request)
@@ -11042,6 +11129,8 @@ async def auth_signup(payload: SignUpIn, request: Request):
         if existing:
             raise HTTPException(status_code=400, detail="Email already exists")
 
+        allow_entry = _assert_email_may_register(db, email)
+
         user = User(
             name=name,
             email=email,
@@ -11049,9 +11138,13 @@ async def auth_signup(payload: SignUpIn, request: Request):
             role="user",
             is_active=True,
         )
+        if allow_entry and allow_entry.cohort_id:
+            user.group_id = allow_entry.cohort_id
         db.add(user)
         db.flush()
         _ensure_user_public_id_chart(db, user)
+        if allow_entry:
+            allow_entry.registered_at = datetime.utcnow()
         db.commit()
         db.refresh(user)
         try:
@@ -11149,6 +11242,7 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
         user = db.query(User).filter(User.email == email).first()
         is_new = False
         if not user:
+            allow_entry = _assert_email_may_register(db, email)
             user = User(
                 name=name,
                 email=email,
@@ -11156,9 +11250,13 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
                 role="user",
                 is_active=True,
             )
+            if allow_entry and allow_entry.cohort_id:
+                user.group_id = allow_entry.cohort_id
             db.add(user)
             db.flush()
             _ensure_user_public_id_chart(db, user)
+            if allow_entry:
+                allow_entry.registered_at = datetime.utcnow()
             db.commit()
             db.refresh(user)
             is_new = True
@@ -15070,90 +15168,148 @@ async def admin_mentorship_cohort_modules(group_id: int, payload: _CohortModules
         db.close()
 
 
-class _MentorshipImportIn(BaseModel):
-    cohort_name: str
-    default_modules: list | dict | str | None = None
-    access_expires_at: str | None = None
-    rows: list[dict] = []
+# ── Invite-only registration: email allowlist + signup-mode toggle ──
+# Students self-register and pay like normal users; the only gate is whether
+# their email was pre-approved here (see _assert_email_may_register).
 
 
-@app.post("/api/admin/mentorship/import")
-async def admin_mentorship_import(payload: _MentorshipImportIn, request: Request):
-    """Bulk-create mentorship students into a cohort and grant them a controlled
-    set of dashboard modules. The admin UI parses the CSV client-side and posts
-    JSON rows: [{ email, password, full_name?, phone?, country?, modules? }, ...]."""
+@app.get("/api/admin/mentorship/signup-mode")
+async def admin_mentorship_get_signup_mode(request: Request):
     _require_admin(request)
-    cohort_name = (payload.cohort_name or "").strip()
-    if not cohort_name:
-        raise HTTPException(status_code=400, detail="cohort_name is required")
-
-    default_modules = _coerce_module_dict(payload.default_modules)
-    expires = _parse_expiry_dt(payload.access_expires_at)
-
     db = SessionLocal()
     try:
-        cohort = db.query(Group).filter(Group.name == cohort_name).first()
-        if not cohort:
-            cohort = Group(name=cohort_name, description=f"Mentorship cohort: {cohort_name}", is_active=True)
-            db.add(cohort)
-            db.flush()
-        cohort.default_modules = _grants_text(default_modules)
+        return {"allowlist_only": _signup_allowlist_only(db)}
+    finally:
+        db.close()
 
-        imported = 0
+
+class _SignupModeIn(BaseModel):
+    allowlist_only: bool
+
+
+@app.put("/api/admin/mentorship/signup-mode")
+async def admin_mentorship_set_signup_mode(payload: _SignupModeIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        _set_app_setting(db, SIGNUP_ALLOWLIST_SETTING, "true" if payload.allowlist_only else "false")
+        db.commit()
+        return {"success": True, "allowlist_only": bool(payload.allowlist_only)}
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/mentorship/allowlist")
+async def admin_mentorship_allowlist_list(request: Request, cohort_id: int | None = None):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        q = db.query(MentorshipAllowlist)
+        if cohort_id is not None:
+            q = q.filter(MentorshipAllowlist.cohort_id == cohort_id)
+        rows = q.order_by(MentorshipAllowlist.created_at.desc()).all()
+        cohort_names = {g.id: g.name for g in db.query(Group).all()}
+        entries = [
+            {
+                "id": r.id,
+                "email": r.email,
+                "cohort_id": r.cohort_id,
+                "cohort_name": cohort_names.get(r.cohort_id) if r.cohort_id else None,
+                "note": r.note,
+                "added_by": r.added_by,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "registered_at": r.registered_at.isoformat() if r.registered_at else None,
+                "registered": bool(r.registered_at),
+            }
+            for r in rows
+        ]
+        return {
+            "allowlist_only": _signup_allowlist_only(db),
+            "total": len(entries),
+            "registered_count": sum(1 for e in entries if e["registered"]),
+            "entries": entries,
+        }
+    finally:
+        db.close()
+
+
+class _AllowlistAddIn(BaseModel):
+    emails: list[str] = []
+    cohort_name: str | None = None
+    note: str | None = None
+
+
+@app.post("/api/admin/mentorship/allowlist")
+async def admin_mentorship_allowlist_add(payload: _AllowlistAddIn, request: Request):
+    """Add approved emails. Optionally attach them to a (find-or-create) cohort so
+    that when they self-register their account is linked to that cohort for reports."""
+    admin = _require_admin(request)
+    added_by = getattr(admin, "email", None) if admin else None
+    db = SessionLocal()
+    try:
+        cohort_id = None
+        cohort_name = (payload.cohort_name or "").strip()
+        if cohort_name:
+            cohort = db.query(Group).filter(Group.name == cohort_name).first()
+            if not cohort:
+                cohort = Group(name=cohort_name, description=f"Mentorship cohort: {cohort_name}", is_active=True)
+                db.add(cohort)
+                db.flush()
+            cohort_id = cohort.id
+
+        added = 0
+        updated = 0
         skipped = 0
         errors: list[str] = []
-
-        for i, row in enumerate(payload.rows or [], start=2):
-            try:
-                email = str(row.get("email", "")).strip().lower()
-                password = str(row.get("password", "")).strip()
-                full_name = str(row.get("full_name", "") or row.get("name", "")).strip()
-                phone = str(row.get("phone", "")).strip()
-                country = str(row.get("country", "")).strip()
-
-                if not email or not password:
-                    errors.append(f"Row {i}: email and password are required")
-                    continue
-                if "@" not in email or "." not in email:
-                    errors.append(f"Row {i}: invalid email {email}")
-                    continue
-                if len(password) < 8:
-                    errors.append(f"Row {i}: password must be at least 8 characters")
-                    continue
-                if db.query(User).filter(User.email == email).first():
-                    skipped += 1
-                    errors.append(f"Row {i}: {email} already exists - skipped")
-                    continue
-
-                row_modules = _coerce_module_dict(row.get("modules")) if row.get("modules") else default_modules
-
-                user = User(
-                    name=full_name if full_name else email.split("@")[0],
-                    email=email,
-                    password_hash=_hash_password(password),
-                    role="user",
-                    is_active=True,
-                    group_id=cohort.id,
-                    dashboard_module_grants=_grants_text(row_modules),
-                )
-                if expires is not None:
-                    user.access_expires_at = expires
-                db.add(user)
-                imported += 1
-            except Exception as row_err:
-                errors.append(f"Row {i}: {row_err}")
+        note = (payload.note or "").strip()[:255] or None
+        for raw in (payload.emails or []):
+            email = str(raw or "").strip().lower()
+            if not email:
                 continue
-
+            if "@" not in email or "." not in email:
+                errors.append(f"Invalid email: {email}")
+                continue
+            existing = _allowlist_entry(db, email)
+            if existing:
+                # Re-attach cohort / note without clobbering registration state.
+                if cohort_id is not None:
+                    existing.cohort_id = cohort_id
+                if note:
+                    existing.note = note
+                updated += 1
+                continue
+            db.add(MentorshipAllowlist(
+                email=email,
+                cohort_id=cohort_id,
+                note=note,
+                added_by=added_by,
+            ))
+            added += 1
         db.commit()
-        db.refresh(cohort)
         return {
             "success": True,
-            "cohort": {"id": cohort.id, "name": cohort.name, "default_modules": default_modules},
-            "imported_count": imported,
-            "skipped_count": skipped,
+            "added": added,
+            "updated": updated,
+            "skipped": skipped,
             "error_count": len(errors),
             "errors": errors[:20],
+            "cohort_id": cohort_id,
         }
+    finally:
+        db.close()
+
+
+@app.delete("/api/admin/mentorship/allowlist/{entry_id}")
+async def admin_mentorship_allowlist_delete(entry_id: int, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        row = db.query(MentorshipAllowlist).filter(MentorshipAllowlist.id == entry_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Allowlist entry not found")
+        db.delete(row)
+        db.commit()
+        return {"success": True}
     finally:
         db.close()
 

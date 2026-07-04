@@ -5010,11 +5010,13 @@ class Chart {
                 this._fetchSmartWindow(e.fileId, timeframe, session, 'end', isBacktest && backtestEndTs != null ? { endTs: backtestEndTs } : null, isBacktest ? { skipSessionDates: true } : null)
                     .then((data) => {
                         if (!this._smartResponseHasPayload(data)) return;
+                        // Retain ALL warmed session pairs (bounded by the shared 48-entry
+                        // LRU), not a hardcoded 4 — that old cap silently evicted most
+                        // prefetched pairs, so switching to the 4th/5th session symbol
+                        // still hit the network. delete+set keeps this entry "newest".
+                        this._smartPrefetchCache.delete(key);
                         this._smartPrefetchCache.set(key, { at: Date.now(), payload: data, fileId: String(e.fileId) });
-                        while (this._smartPrefetchCache.size > 4) {
-                            const first = this._smartPrefetchCache.keys().next().value;
-                            this._smartPrefetchCache.delete(first);
-                        }
+                        this._trimSmartPrefetchCache();
                     })
                     .catch(() => {});
             }

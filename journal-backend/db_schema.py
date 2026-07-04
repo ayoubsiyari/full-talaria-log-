@@ -210,6 +210,32 @@ def ensure_users_schema(app) -> None:
                             "default_modules TEXT"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS mentorship_allowlist ("
+                            "id SERIAL PRIMARY KEY, "
+                            "email VARCHAR(255) UNIQUE NOT NULL, "
+                            "cohort_id INTEGER, "
+                            "note VARCHAR(255), "
+                            "added_by VARCHAR(255), "
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                            "registered_at TIMESTAMP)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_mentorship_allowlist_email "
+                            "ON mentorship_allowlist (email)"
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS app_settings ("
+                            "key VARCHAR(100) PRIMARY KEY, "
+                            "value TEXT, "
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                        )
+                    )
                 else:
                     if "users" not in insp.get_table_names():
                         return

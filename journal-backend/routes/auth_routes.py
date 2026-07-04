@@ -2,6 +2,7 @@
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
+from sqlalchemy import text
 from models import db, User, Profile, BlockedIP, SecurityLog, FailedLoginAttempt
 from email_service import send_verification_email, send_password_reset_email, send_welcome_email
 from datetime import datetime, timedelta
@@ -27,6 +28,40 @@ BLOCK_DURATION_HOURS = 24
 FAILED_ATTEMPT_WINDOW_HOURS = max(1, LOCKOUT_WINDOW_MINUTES // 60)
 ALERT_THRESHOLD = max(3, MAX_FAILED_ATTEMPTS - 2)
 ADMIN_EMAIL = os.environ.get('ADMIN_ALERT_EMAIL', 'contact@talaria.services')
+
+SIGNUP_ALLOWLIST_SETTING = "mentorship_signup_allowlist_only"
+SIGNUP_BLOCKED_MESSAGE = (
+    "Registration is currently open to Mentorship members only. "
+    "If you believe this is a mistake, please contact support."
+)
+
+
+def _signup_allowlist_only():
+    """Invite-only registration toggle. Reads the shared app_settings row (managed
+    from the chart admin); falls back to env MENTORSHIP_SIGNUP_ALLOWLIST_ONLY."""
+    try:
+        row = db.session.execute(
+            text("SELECT value FROM app_settings WHERE key = :k"),
+            {"k": SIGNUP_ALLOWLIST_SETTING},
+        ).first()
+        if row and row[0] is not None:
+            return str(row[0]).strip().lower() in ("1", "true", "yes", "on")
+    except Exception:
+        pass
+    return str(os.getenv("MENTORSHIP_SIGNUP_ALLOWLIST_ONLY", "true")).strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _allowlist_lookup(email):
+    """Return (id, cohort_id) for an approved email, or None."""
+    try:
+        return db.session.execute(
+            text("SELECT id, cohort_id FROM mentorship_allowlist WHERE email = :e"),
+            {"e": (email or "").strip().lower()},
+        ).first()
+    except Exception:
+        return None
 
 
 def send_security_alert(subject, message, ip_address, event_type='attack_detected'):
@@ -323,6 +358,13 @@ def register_user():
     if existing_user:
         return jsonify({"error": "An account with this email already exists"}), 400
 
+    # Invite-only gate: when allowlist mode is on, only pre-approved emails may register.
+    allow_entry = None
+    if _signup_allowlist_only():
+        allow_entry = _allowlist_lookup(email)
+        if not allow_entry:
+            return jsonify({"error": SIGNUP_BLOCKED_MESSAGE, "code": "mentorship_only"}), 403
+
     # Create new user (auto-verified - email_verified is a property that returns True)
     new_user = User(
         name=name,
@@ -331,11 +373,22 @@ def register_user():
         is_active=True,
         has_journal_access=False
     )
-    
+    # Link the registrant to their cohort (for reporting) when the allowlist assigned one.
+    if allow_entry and allow_entry[1]:
+        new_user.group_id = allow_entry[1]
+
     db.session.add(new_user)
     db.session.flush()
     from user_public_id import ensure_user_public_id
     ensure_user_public_id(new_user, commit=False)
+    if allow_entry:
+        try:
+            db.session.execute(
+                text("UPDATE mentorship_allowlist SET registered_at = :now WHERE id = :id"),
+                {"now": datetime.utcnow(), "id": allow_entry[0]},
+            )
+        except Exception:
+            pass
     db.session.commit()
 
     # Skip email verification - user is auto-verified
