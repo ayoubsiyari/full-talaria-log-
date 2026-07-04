@@ -1,0 +1,280 @@
+# Multichart Baseline Results
+
+This is the permanent regression matrix. Phases 1-4 all measure against these exact scenarios, and S1/S11 are the frozen single-chart reference.
+
+## Capture Header
+
+- Deployed build id: TODO
+- Baseline capture date: TODO
+- Diagnostic fields exposed by `window.__mcDiagReport()`: `panelId`, `fetches`, `fetchedBars`, `extendsFromParent`, `resamples`, `renders`, `seams`, `lastFetchMs`
+
+## How to run
+
+Use the live deployed browser build after Task 0.1 diagnostics have been signed off and deployed.
+
+For each scenario:
+
+1. Configure the chart exactly as listed in the scenario.
+2. Open the browser console on the top window.
+3. Before the scenario, run:
+
+   ```js
+   window.__mcDiagReset()
+   ```
+
+4. Perform the scenario's exact gesture.
+5. After the gesture completes, run:
+
+   ```js
+   window.__mcDiagReport()
+   ```
+
+6. Paste the resulting table into that scenario's results table.
+7. Also record:
+   - Console error count and first error line.
+   - Subjective smoothness score from 1-5, where 1 is unusable and 5 is smooth.
+
+## S1 - Single Chart Drag Right
+
+**Do this:** Single chart, backtest replay paused, drag right 3 screen-widths (old data loads).
+
+**Configuration:**
+
+- Layout: single chart.
+- Date-Range/viewport sync: N/A.
+- Symbol sync: N/A.
+- Pair configuration: single active pair.
+- Replay state: backtest replay paused.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S2 - 2×2 Same-Pair Sync ON, Drag Tile A
+
+**Do this:** Same as S1 but 2×2 same-pair, sync ON, drag TILE A.
+
+**Configuration:**
+
+- Layout: 2×2.
+- Date-Range/viewport sync: ON.
+- Symbol sync: ON.
+- Pair configuration: all panels same pair/fileId.
+- Replay state: backtest replay paused.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S3 - 2×2 Same-Pair Sync ON, Drag Panel B
+
+**Do this:** Same as S2 but drag PANEL B.
+
+**Configuration:**
+
+- Layout: 2×2.
+- Date-Range/viewport sync: ON.
+- Symbol sync: ON.
+- Pair configuration: all panels same pair/fileId.
+- Replay state: backtest replay paused.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Does B fill while dragging or only at mouse-up?: TODO
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S4 - 2×2 Same-Pair Sync OFF, Drag Panel B Right
+
+**Do this:** 2×2 same-pair, sync OFF, drag panel B right.
+
+**Configuration:**
+
+- Layout: 2×2.
+- Date-Range/viewport sync: OFF.
+- Symbol sync: OFF, with all panels manually kept on the same pair/fileId.
+- Pair configuration: all panels same pair/fileId.
+- Replay state: backtest replay paused.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S5 - 2×2 Independent Panel B, Replay Playing, Drag B Right
+
+**Do this:** 2×2, panel B independent pair, replay playing, drag B right.
+
+**Configuration:**
+
+- Layout: 2×2.
+- Date-Range/viewport sync: not constrained by the scenario matrix.
+- Symbol sync: OFF, so panel B can remain independent.
+- Pair configuration: panel B uses a different fileId; the other panels keep the original pair/fileId.
+- Replay state: replay playing.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S6 - 2×2 Same-Pair Sync ON, Topbar TF Switch
+
+**Do this:** 2×2 same-pair sync ON: TF switch 1m→1h→1m from the topbar.
+
+**Configuration:**
+
+- Layout: 2×2.
+- Date-Range/viewport sync: ON.
+- Symbol sync: ON.
+- Interval/timeframe sync: ON.
+- Pair configuration: all panels same pair/fileId.
+- Replay state: not constrained by the scenario matrix.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Switch duration feel: TODO
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S7 - 2×2 Panel B Only TF Switch
+
+**Do this:** 2×2: TF switch on panel B ONLY (interval sync OFF).
+
+**Configuration:**
+
+- Layout: 2×2.
+- Date-Range/viewport sync: not constrained by the scenario matrix.
+- Symbol sync: not constrained by the scenario matrix.
+- Interval/timeframe sync: OFF.
+- Pair configuration: not constrained by the scenario matrix.
+- Replay state: not constrained by the scenario matrix.
+- Regression check: does B revert TF?
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Does B revert TF?: TODO
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S8 - 2×2 Sync ON, Replay Playing for 60s
+
+**Do this:** 2×2 sync ON, replay PLAYING for 60s.
+
+**Configuration:**
+
+- Layout: 2×2.
+- Date-Range/viewport sync: ON.
+- Symbol sync: ON.
+- Pair configuration: all panels same pair/fileId.
+- Replay state: replay playing for 60 seconds.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S9 - 2×2 Zoom Out Far on Tile A, Then Drag Right
+
+**Do this:** 2×2, zoom out far on tile A, then drag right.
+
+**Configuration:**
+
+- Layout: 2×2.
+- Date-Range/viewport sync: not constrained by the scenario matrix.
+- Symbol sync: not constrained by the scenario matrix.
+- Pair configuration: not constrained by the scenario matrix.
+- Replay state: not constrained by the scenario matrix.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S10 - Open 2×2 Layout from Single Chart
+
+**Do this:** Open 2×2 layout from single chart (boot).
+
+**Configuration:**
+
+- Layout: start from single chart, then open 2×2.
+- Date-Range/viewport sync: normal app setting for 2×2 boot; record actual setting during capture.
+- Symbol sync: normal app setting for 2×2 boot; record actual setting during capture.
+- Pair configuration: panels use the normal 2×2 boot pair assignment from the single chart.
+- Replay state: not constrained by the scenario matrix.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| B | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| C | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+| D | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Time until all 4 painted: TODO
+- Console errors: TODO
+- Smoothness 1-5: TODO
+
+## S11 - Return to Single Chart, Drag Right
+
+**Do this:** S2 then close layout back to single chart, drag right.
+
+**Configuration:**
+
+- Layout: start in 2×2 as S2, then close back to single chart before the final drag.
+- Date-Range/viewport sync: ON during the S2 setup; N/A after returning to single chart.
+- Symbol sync: ON during the S2 setup; N/A after returning to single chart.
+- Pair configuration: all panels same pair/fileId during S2 setup; single active pair after returning to single chart.
+- Replay state: backtest replay paused.
+- Regression check: single chart must behave like S1.
+
+| panelId | fetches | fetchedBars | extendsFromParent | resamples | renders | seams | lastFetchMs |
+|---------|---------|-------------|-------------------|-----------|---------|-------|-------------|
+| HOST | TODO | TODO | TODO | TODO | TODO | TODO | TODO |
+
+- Single-chart comparison to S1: TODO
+- Console errors: TODO
+- Smoothness 1-5: TODO

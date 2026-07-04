@@ -366,6 +366,95 @@ const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
 const CHART_ENGINE_BUILD = '20260628b204';
 
+const MC_DIAG_COUNTER_FIELDS = [
+    'fetches',
+    'fetchedBars',
+    'extendsFromParent',
+    'resamples',
+    'renders',
+    'seams',
+    'lastFetchMs',
+];
+
+function _talariaMcDiagPanelIdForWindow(win) {
+    try {
+        if (win?.document?.documentElement?.classList?.contains('multichart-embed')) {
+            return new URLSearchParams(win.location.search).get('panelId') || 'embed';
+        }
+    } catch (_e) { /* ignore */ }
+    return 'HOST';
+}
+
+function _talariaMcDiagZeroCounters(diag) {
+    if (!diag) return;
+    for (const field of MC_DIAG_COUNTER_FIELDS) {
+        diag[field] = 0;
+    }
+}
+
+function _talariaMcDiagSnapshot(diag) {
+    const row = { panelId: diag?.panelId || 'unknown' };
+    for (const field of MC_DIAG_COUNTER_FIELDS) {
+        row[field] = Number(diag?.[field]) || 0;
+    }
+    return row;
+}
+
+function _talariaMcDiagCollectCharts(win, out, seen) {
+    if (!win || seen.has(win)) return;
+    seen.add(win);
+    try {
+        const chart = win.chart || win.mainChart;
+        if (chart && chart._mcDiag) {
+            out.push(chart);
+        }
+    } catch (_e) { /* ignore */ }
+    try {
+        const frames = win.document ? win.document.querySelectorAll('iframe') : [];
+        for (const frame of frames) {
+            try {
+                if (frame.contentWindow) {
+                    _talariaMcDiagCollectCharts(frame.contentWindow, out, seen);
+                }
+            } catch (_frameErr) { /* cross-origin or not ready */ }
+        }
+    } catch (_e) { /* ignore */ }
+}
+
+function _talariaInstallMcDiagReporter() {
+    if (typeof window === 'undefined') return;
+    let target = window;
+    try {
+        if (window.top && window.top !== window) {
+            void window.top.document;
+            target = window.top;
+        }
+    } catch (_e) {
+        target = window;
+    }
+    if (target.__mcDiagReporterInstalled) return;
+    target.__mcDiagReporterInstalled = true;
+    target.__mcDiagReport = function __mcDiagReport() {
+        const charts = [];
+        _talariaMcDiagCollectCharts(target, charts, new Set());
+        const rows = charts.map((chart) => _talariaMcDiagSnapshot(chart._mcDiag));
+        if (target.console && typeof target.console.table === 'function') {
+            target.console.table(rows);
+        } else if (target.console && typeof target.console.log === 'function') {
+            target.console.log(rows);
+        }
+        return rows;
+    };
+    target.__mcDiagReset = function __mcDiagReset() {
+        const charts = [];
+        _talariaMcDiagCollectCharts(target, charts, new Set());
+        for (const chart of charts) {
+            _talariaMcDiagZeroCounters(chart._mcDiag);
+        }
+        return charts.length;
+    };
+}
+
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
         installChartContextMenuCapture();
@@ -420,6 +509,8 @@ class Chart {
             .style('display', 'none')
             .style('visibility', 'hidden')
             .style('opacity', '0');
+        this._mcDiag = null;
+        this._ensureMcDiag();
         this.rawData = []; // Store raw data - will be populated from CSV
         this.data = []; // Working data (resampled based on timeframe)
         this.dataVersion = 0; // Increment whenever data changes (used for caching)
@@ -1901,6 +1992,78 @@ class Chart {
             return typeof document !== 'undefined'
                 && document.documentElement.classList.contains('multichart-embed');
         } catch (_e) { return false; }
+    }
+
+    _ensureMcDiag() {
+        if (this._mcDiag) return this._mcDiag;
+        this._mcDiag = {
+            panelId: _talariaMcDiagPanelIdForWindow(typeof window !== 'undefined' ? window : null),
+            fetches: 0,
+            fetchedBars: 0,
+            extendsFromParent: 0,
+            resamples: 0,
+            renders: 0,
+            seams: 0,
+            lastFetchMs: 0,
+        };
+        _talariaInstallMcDiagReporter();
+        return this._mcDiag;
+    }
+
+    _mcDiagWrapReplaySystem() {
+        const replay = this.replaySystem;
+        if (!replay || replay._mcDiagUpdateChartDataWrapped || typeof replay.updateChartData !== 'function') return;
+        const chart = this;
+        const originalUpdateChartData = replay.updateChartData;
+        replay.updateChartData = function mcDiagUpdateChartDataWrapper(...args) {
+            chart._mcDiag && chart._mcDiag.resamples++;
+            return originalUpdateChartData.apply(this, args);
+        };
+        replay._mcDiagUpdateChartDataWrapped = true;
+    }
+
+    _mcDiagIsFullArrayResample(data) {
+        if (!Array.isArray(data)) return false;
+        if (data === this.rawData || data === this._panelFullRawData) return true;
+        const replay = this.replaySystem;
+        return !!(replay && data === replay.fullRawData);
+    }
+
+    _mcDiagCheckJoinRegion(series, edgeTs, details = {}) {
+        if (!this._mcDiag || !Array.isArray(series) || series.length < 2) return false;
+        const edge = Number(edgeTs);
+        if (!Number.isFinite(edge)) return false;
+        let edgeIndex = -1;
+        for (let i = 0; i < series.length; i++) {
+            const ts = Number(series[i]?.t);
+            if (ts === edge) {
+                edgeIndex = i;
+                break;
+            }
+            if (edgeIndex < 0 && ts > edge) {
+                edgeIndex = i;
+                break;
+            }
+        }
+        if (edgeIndex < 0) return false;
+        const start = Math.max(0, edgeIndex - 3);
+        const end = Math.min(series.length - 1, edgeIndex + 3);
+        for (let i = start + 1; i <= end; i++) {
+            const prevTs = Number(series[i - 1]?.t);
+            const ts = Number(series[i]?.t);
+            if (!Number.isFinite(prevTs) || !Number.isFinite(ts) || ts <= prevTs) {
+                this._mcDiag && this._mcDiag.seams++;
+                console.error('[mcDiag] SEAM', Object.assign({
+                    panelId: this._mcDiag?.panelId || 'unknown',
+                    edgeTs: edge,
+                    index: i,
+                    prevTs,
+                    ts,
+                }, details));
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -4580,6 +4743,23 @@ class Chart {
             if (!lite) {
                 this._syncIndicatorsAfterMultichartDataShare();
             }
+            if (localMaster.length) {
+                if (earlier.length > 0) {
+                    this._mcDiagCheckJoinRegion(merged, localFirst, {
+                        source: '_tryExtendReplayMasterFromParent',
+                        direction: 'backward',
+                        target: 'replaySystem.fullRawData',
+                    });
+                }
+                if (later.length > 0) {
+                    this._mcDiagCheckJoinRegion(merged, localLast, {
+                        source: '_tryExtendReplayMasterFromParent',
+                        direction: 'forward',
+                        target: 'replaySystem.fullRawData',
+                    });
+                }
+            }
+            this._mcDiag && this._mcDiag.extendsFromParent++;
             return true;
         } catch (_e) {
             return false;
@@ -5158,6 +5338,7 @@ class Chart {
      * Server reads binary tiles/mmap; response uses native candle array when response_format=candles.
      */
     async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null, smartOpts = null) {
+        this._mcDiag && this._mcDiag.fetches++;
         const sessionObj = session || this.backtestingSession || {};
         if (fileId) {
             try {
@@ -5178,6 +5359,7 @@ class Chart {
      * Fetch bounded OHLC via /bars (bar-budget resolution selection).
      */
     async _fetchBarsWindow(fileId, fromMs, toMs, resolution = 'auto', limit = 2000) {
+        this._mcDiag && this._mcDiag.fetches++;
         const params = new URLSearchParams({
             resolution: String(resolution || 'auto'),
             limit: String(Math.max(100, Math.min(2000, Number(limit) || 2000))),
@@ -5233,6 +5415,8 @@ class Chart {
      * Correct for 1m replay pan-left; /bars?from=&to= returns ASC from window start (wrong edge).
      */
     async _fetchCandlesCursor(fileId, timeframe, cursorTs, direction = 'backward', limit = 2000) {
+        const mcDiagFetchStartMs = Date.now();
+        this._mcDiag && this._mcDiag.fetches++;
         const storeTf = this._questdbStoreResolution(timeframe);
         const params = new URLSearchParams({
             timeframe: String(storeTf || '1m'),
@@ -5289,6 +5473,8 @@ class Chart {
                     elapsed_ms: result.elapsed_ms,
                     source: result.source || 'candles',
                 };
+                this._mcDiag && (this._mcDiag.fetchedBars += bars.length);
+                this._mcDiag && (this._mcDiag.lastFetchMs = Date.now() - mcDiagFetchStartMs);
                 const src = String(payload.source);
                 if (this._lastBarsSourceLogFileId !== String(fileId) || this._lastBarsSourceLog !== src) {
                     this._lastBarsSourceLogFileId = String(fileId);
@@ -9725,6 +9911,7 @@ class Chart {
 
             if (typeof replaySystemCtor === 'function') {
                 this.replaySystem = new replaySystemCtor(this);
+                this._mcDiagWrapReplaySystem();
                 
                 // Initialize Order Manager for backtesting
                 this.initOrderManager();
@@ -20364,6 +20551,7 @@ class Chart {
      * @param {{ logTag?: string }} options
      */
     async _refetchBacktestTimeframeCore(timeframe, options = {}) {
+        this._mcDiag && this._mcDiag.fetches++;
         const replay = this.replaySystem;
         if (!replay || !this.currentFileId) {
             this._endTimeframeSwitching();
@@ -20914,6 +21102,12 @@ class Chart {
                 // Fast-path merge based on direction to avoid expensive full-array sort/set
                 let uniqueNew = [];
                 let merged = masterData;
+                const mcDiagPrevEdgeTs = masterData.length
+                    ? Number(direction === 'backward' ? masterData[0]?.t : masterData[masterData.length - 1]?.t)
+                    : NaN;
+                const mcDiagPrevDisplayEdgeTs = Array.isArray(this.data) && this.data.length
+                    ? Number(direction === 'backward' ? this.data[0]?.t : this.data[this.data.length - 1]?.t)
+                    : NaN;
                 if (masterData.length === 0) {
                     const seen = new Set();
                     uniqueNew = incoming.filter(c => {
@@ -20975,6 +21169,11 @@ class Chart {
                     this.replaySystem.fullRawData = merged;
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
+                    this._mcDiagCheckJoinRegion(this.replaySystem.fullRawData, mcDiagPrevEdgeTs, {
+                        source: 'checkViewportLoadMore',
+                        direction,
+                        target: 'replaySystem.fullRawData',
+                    });
 
                     // Keep replay index stable without scanning entire array when possible
                     const prevReplayIndex = Number.isFinite(replayIndex) ? replayIndex : (masterData.length - 1);
@@ -21030,6 +21229,11 @@ class Chart {
                         // Mirror renderer reads _panelFullRawData for independent pairs;
                         // keep it aligned with the replay master after backward pan loads.
                         this._panelFullRawData = [...this.replaySystem.fullRawData];
+                        this._mcDiagCheckJoinRegion(this._panelFullRawData, mcDiagPrevEdgeTs, {
+                            source: 'checkViewportLoadMore',
+                            direction,
+                            target: '_panelFullRawData',
+                        });
                     }
                     if (direction === 'forward' && uniqueNew.length > 0 && this.replaySystem.isPlaying) {
                         queueMicrotask(() => {
@@ -21090,6 +21294,11 @@ class Chart {
                         }
                     }
                     this.rawData = trimmed;
+                    this._mcDiagCheckJoinRegion(this.rawData, mcDiagPrevEdgeTs, {
+                        source: 'checkViewportLoadMore',
+                        direction,
+                        target: 'rawData',
+                    });
                     if (!capTrimmed && uniqueNew.length > 0 && Array.isArray(this.data) && this.data.length > 0) {
                         const chunk = (direction === 'backward' && backwardChunk)
                             ? backwardChunk
@@ -21111,6 +21320,11 @@ class Chart {
                             ? this.dataPipeline.getResampledSeries(this.rawData, chartTf, this.dataVersion)
                             : this.resampleData(this.rawData, chartTf);
                     }
+                    this._mcDiagCheckJoinRegion(this.data, mcDiagPrevDisplayEdgeTs, {
+                        source: 'checkViewportLoadMore',
+                        direction,
+                        target: 'data',
+                    });
                 }
 
                 // ── Prefetch next batch while user is still panning ──
@@ -21291,6 +21505,7 @@ class Chart {
     }
 
     resampleData(data, timeframe) {
+        if (this._mcDiag && this._mcDiagIsFullArrayResample(data)) this._mcDiag.resamples++;
         if (this.dataPipeline) {
             return this.dataPipeline.getResampledSeries(data, timeframe, this.dataVersion);
         }
@@ -23728,6 +23943,7 @@ class Chart {
     }
 
     render() {
+        this._mcDiag && this._mcDiag.renders++;
         if (this.isLoading && !this._canBypassLoadingRenderFreeze()) return;
 
         // TradingView-style timeframe switch: freeze the previously-rendered frame while
