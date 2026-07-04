@@ -11110,6 +11110,37 @@ def _assert_email_may_register(db, email: str):
     return entry
 
 
+def _email_verified_for_signup(db, email: str) -> bool:
+    """True when the mailbox completed the signup-wizard verify-code step within
+    its window. The signup_verifications table is owned/managed by the journal
+    backend (shared DB); we read it here so the password (non-Google) signup
+    path can't be used to skip email verification."""
+    if not email:
+        return False
+    try:
+        row = db.execute(
+            text("SELECT verified, expires_at FROM signup_verifications WHERE email = :e"),
+            {"e": email.strip().lower()},
+        ).first()
+    except Exception:
+        # If the table is somehow unavailable, fail closed only when invite-only
+        # mode is active; otherwise treat as unverified.
+        return False
+    if not row or not row[0]:
+        return False
+    exp = row[1]
+    if exp is not None and not isinstance(exp, datetime):
+        parsed = None
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                parsed = datetime.strptime(str(exp)[:26], fmt)
+                break
+            except (ValueError, TypeError):
+                continue
+        exp = parsed
+    return exp is None or datetime.utcnow() <= exp
+
+
 @app.post("/api/auth/signup")
 async def auth_signup(payload: SignUpIn, request: Request):
     ip = _client_ip_for_rate_limit(request)
@@ -11131,6 +11162,19 @@ async def auth_signup(payload: SignUpIn, request: Request):
 
         allow_entry = _assert_email_may_register(db, email)
 
+        # Signup-wizard gate: the mailbox must have passed the email-code step.
+        # This mirrors the journal /signup gate so the chart password-signup
+        # path can't be used to skip email verification. Google sign-up is
+        # exempt (Google already proves mailbox ownership).
+        if not _email_verified_for_signup(db, email):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "verification_required",
+                    "message": "Please verify your email with the code we sent before creating your account.",
+                },
+            )
+
         user = User(
             name=name,
             email=email,
@@ -11145,6 +11189,13 @@ async def auth_signup(payload: SignUpIn, request: Request):
         _ensure_user_public_id_chart(db, user)
         if allow_entry:
             allow_entry.registered_at = datetime.utcnow()
+        try:
+            db.execute(
+                text("DELETE FROM signup_verifications WHERE email = :e"),
+                {"e": email},
+            )
+        except Exception:
+            pass
         db.commit()
         db.refresh(user)
         try:
