@@ -7833,6 +7833,7 @@ async function addAllowlist() {
   if (!raw) { toast('Enter at least one email', 'err'); return; }
   const emails = raw.split(/[\s,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
   if (!emails.length) { toast('Enter at least one email', 'err'); return; }
+  if (emails.length > 1000) { toast('Too many emails at once (max 1000). Split into smaller batches.', 'err'); return; }
   const body = { emails: emails };
   const cohort = ($('mtAllowCohort') && $('mtAllowCohort').value || '').trim();
   const note = ($('mtAllowNote') && $('mtAllowNote').value || '').trim();

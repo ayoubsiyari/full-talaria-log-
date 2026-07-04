@@ -19335,6 +19335,8 @@ class Chart {
     }
 
     _beginTimeframeSwitching(fromTf, toTf) {
+        // A new switch supersedes any in-flight reveal hold from a prior switch.
+        try { this._clearTfRevealHold(); } catch (_e) { /* ignore */ }
         this._tfSwitchPreservePriceLock = !!(this.priceScale && this.priceScale.locked);
         // Cancel pan-only drags — keep price/time axis drags so Y scale stays interactive.
         if (this.drag && this.drag.active) {
@@ -19473,7 +19475,20 @@ class Chart {
             try {
                 if (typeof this.render === 'function') this.render();
             } catch (e) { /* ignore */ }
-            try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
+            // TradingView-style reveal: for multichart panels whose new-TF window
+            // isn't filled yet, KEEP the frozen frame + 3-dot loaders up and reveal
+            // the finished chart in one step once the viewport is covered — instead
+            // of dropping the overlay now and letting candles trickle in one by one.
+            let held = false;
+            try {
+                if (this._shouldHoldTfReveal()) {
+                    this._holdTfRevealUntilCovered();
+                    held = true;
+                }
+            } catch (_hold) { held = false; }
+            if (!held) {
+                try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
+            }
             if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
                 try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
             }
@@ -19544,6 +19559,112 @@ class Chart {
             overlay.style.display = 'none';
             overlay.removeAttribute('src');
         }
+    }
+
+    /**
+     * True when the visible viewport's LEFT edge lands on real data (no blank
+     * gutter that would backfill candle-by-candle). getVisibleStartIndex clamps
+     * to 0, so we read the RAW (unclamped) index at the left margin: a negative
+     * value means whitespace is showing on the left and bars are still trickling
+     * in. Used to gate the "reveal the finished chart" moment on a TF switch.
+     */
+    _viewportLeftFullyCovered() {
+        if (!Array.isArray(this.data) || this.data.length === 0) return false;
+        if (typeof this.pixelToDataIndex !== 'function') return true;
+        const m = this.margin || { l: 0 };
+        let rawLeftIdx;
+        try { rawLeftIdx = this.pixelToDataIndex(m.l); } catch (_e) { return true; }
+        if (!Number.isFinite(rawLeftIdx)) return true;
+        // Small tolerance so a sub-pixel gap doesn't hold the reveal forever.
+        return rawLeftIdx >= -0.75;
+    }
+
+    /** True when there is still older history to pull to the left. */
+    _moreHistoryLeftAvailable() {
+        if (!this._serverCursors) return false;
+        if (this._serverCursors.hasMoreLeft) return true;
+        if (this.isBacktestMode && typeof this._backtestReplayHasUnloadHistoryLeft === 'function') {
+            try { return !!this._backtestReplayHasUnloadHistoryLeft(); } catch (_e) { return false; }
+        }
+        return false;
+    }
+
+    /**
+     * Should a TF switch keep the freeze + 3-dot loader up (TradingView-style)
+     * until the viewport is filled, instead of revealing a half-built chart that
+     * then backfills candle-by-candle? Only for multichart embed panels — the
+     * single main chart already commits its full viewport window in one shot.
+     */
+    _shouldHoldTfReveal() {
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_DISABLE_TF_REVEAL_HOLD) return false;
+            if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) {
+                return false;
+            }
+            if (this._viewportLeftFullyCovered()) return false;
+            return this._moreHistoryLeftAvailable();
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /** Cancel any in-flight TF reveal hold (timers + polling RAF). Idempotent. */
+    _clearTfRevealHold() {
+        const hold = this._tfRevealHold;
+        if (!hold) return;
+        this._tfRevealHold = null;
+        try { if (hold.timer) clearTimeout(hold.timer); } catch (_e) { /* ignore */ }
+        try { if (hold.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(hold.raf); } catch (_e) { /* ignore */ }
+    }
+
+    /**
+     * Keep the frozen previous frame + 3-dot loaders visible while this panel
+     * backfills the new timeframe, then reveal the COMPLETE chart in one step.
+     * Reveals as soon as the viewport left edge is covered, when there is no more
+     * history to pull, or after a hard timeout so it can never hang.
+     */
+    _holdTfRevealUntilCovered() {
+        this._clearTfRevealHold();
+        const startedAt = Date.now();
+        const MAX_HOLD_MS = 4500;
+        const POLL_MS = 90;
+        const hold = { timer: null, raf: null };
+        this._tfRevealHold = hold;
+
+        // Re-assert the loaders (end-of-switch already hid the label dots).
+        try { this._showTimeframeLoadingIndicator('symbol'); } catch (_e) { /* ignore */ }
+        try { this._showChartCenterLoadingDots(); } catch (_e) { /* ignore */ }
+
+        const finish = () => {
+            if (this._tfRevealHold !== hold) return; // superseded by a newer switch
+            this._clearTfRevealHold();
+            try { this._hideTimeframeLoadingIndicator(); } catch (_e) { /* ignore */ }
+            try { this._hideChartCenterLoadingDots(); } catch (_e) { /* ignore */ }
+            try { if (typeof this.render === 'function') this.render(); } catch (_e) { /* ignore */ }
+            const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+            raf(() => {
+                try { if (typeof this.render === 'function') this.render(); } catch (_e) { /* ignore */ }
+                try { this._removeFreezeOverlay(); } catch (_e) { /* ignore */ }
+            });
+        };
+
+        const tick = () => {
+            if (this._tfRevealHold !== hold) return; // cancelled / superseded
+            const covered = this._viewportLeftFullyCovered();
+            const noMore = !this._moreHistoryLeftAvailable();
+            const timedOut = (Date.now() - startedAt) > MAX_HOLD_MS;
+            if (covered || noMore || timedOut) { finish(); return; }
+            // More history IS available and we're not covered yet — push the fetch.
+            try { this.checkViewportLoadMore('backward', true); } catch (_e) { /* ignore */ }
+            hold.timer = setTimeout(() => {
+                if (this._tfRevealHold !== hold) return;
+                const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+                hold.raf = raf(tick);
+            }, POLL_MS);
+        };
+
+        const raf0 = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+        hold.raf = raf0(tick);
     }
 
     /**
@@ -19631,6 +19752,8 @@ class Chart {
      * @param {number} [loadSeq]    loadMultichartPanelFromHost sequence — stale loads skip end().
      */
     _beginPairSwitchLoading(nextLabel, loadSeq) {
+        // A pair switch supersedes any in-flight TF reveal hold.
+        try { this._clearTfRevealHold(); } catch (_e) { /* ignore */ }
         // Match TF switch: keep price/time axis drags alive so Y scale stays interactive.
         if (this.drag && this.drag.active) {
             const t = this.drag.type;

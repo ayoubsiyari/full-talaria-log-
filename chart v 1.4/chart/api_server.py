@@ -15194,6 +15194,13 @@ async def admin_mentorship_set_signup_mode(payload: _SignupModeIn, request: Requ
     try:
         _set_app_setting(db, SIGNUP_ALLOWLIST_SETTING, "true" if payload.allowlist_only else "false")
         db.commit()
+        _record_admin_action(
+            request,
+            action="mentorship_signup_mode_set",
+            target_type="app_setting",
+            target_id=SIGNUP_ALLOWLIST_SETTING,
+            params={"allowlist_only": bool(payload.allowlist_only)},
+        )
         return {"success": True, "allowlist_only": bool(payload.allowlist_only)}
     finally:
         db.close()
@@ -15233,6 +15240,9 @@ async def admin_mentorship_allowlist_list(request: Request, cohort_id: int | Non
         db.close()
 
 
+MENTORSHIP_ALLOWLIST_MAX_PER_REQUEST = 1000
+
+
 class _AllowlistAddIn(BaseModel):
     emails: list[str] = []
     cohort_name: str | None = None
@@ -15245,6 +15255,11 @@ async def admin_mentorship_allowlist_add(payload: _AllowlistAddIn, request: Requ
     that when they self-register their account is linked to that cohort for reports."""
     admin = _require_admin(request)
     added_by = getattr(admin, "email", None) if admin else None
+    if len(payload.emails or []) > MENTORSHIP_ALLOWLIST_MAX_PER_REQUEST:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many emails in one request (max {MENTORSHIP_ALLOWLIST_MAX_PER_REQUEST}).",
+        )
     db = SessionLocal()
     try:
         cohort_id = None
@@ -15286,6 +15301,13 @@ async def admin_mentorship_allowlist_add(payload: _AllowlistAddIn, request: Requ
             ))
             added += 1
         db.commit()
+        _record_admin_action(
+            request,
+            action="mentorship_allowlist_add",
+            target_type="cohort",
+            target_id=cohort_id,
+            params={"added": added, "updated": updated, "invalid": len(errors), "cohort_name": cohort_name or None},
+        )
         return {
             "success": True,
             "added": added,
@@ -15307,8 +15329,16 @@ async def admin_mentorship_allowlist_delete(entry_id: int, request: Request):
         row = db.query(MentorshipAllowlist).filter(MentorshipAllowlist.id == entry_id).first()
         if not row:
             raise HTTPException(status_code=404, detail="Allowlist entry not found")
+        removed_email = row.email
         db.delete(row)
         db.commit()
+        _record_admin_action(
+            request,
+            action="mentorship_allowlist_remove",
+            target_type="allowlist_entry",
+            target_id=entry_id,
+            params={"email": removed_email},
+        )
         return {"success": True}
     finally:
         db.close()
