@@ -2788,6 +2788,20 @@ class Chart {
                 try { extended = !!self._tryExtendReplayMasterFromParent({ lite: true }); } catch (_) {}
             }
             if (stillPan || hostBusy) {
+                // Mid-drag: don't park the reslice until mouse-up — that left the
+                // panel's left gap empty for the entire drag (single chart fills
+                // while dragging). Flush the pending resample on a throttle so
+                // freshly-extended history paints during the drag, without the
+                // every-frame full-reslice jank the deferral was added to avoid.
+                if (self._multichartPendingMasterResample) {
+                    const nowMs = (typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now();
+                    if (nowMs - (self._mcPendingResampleFlushAt || 0) >= 180) {
+                        self._mcPendingResampleFlushAt = nowMs;
+                        try { self._flushMultichartPendingMasterResample(); } catch (_) { /* ignore */ }
+                    }
+                }
                 self._mcHostMasterSyncRaf = requestAnimationFrame(poll);
             } else if (self._multichartPendingMasterResample) {
                 self._flushMultichartPendingMasterResample();
@@ -4560,6 +4574,75 @@ class Chart {
             if (!lite) {
                 this._syncIndicatorsAfterMultichartDataShare();
             }
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /**
+     * Backward pan: before hitting /bars, prepend older native bars that ANY
+     * other panel/host already loaded for this file, via the shared bar store.
+     * Same-resolution-only prepend (seam-safe), replay master only. Returns
+     * true when history was added — the caller can skip the network fetch;
+     * the next left-edge probe falls through to /bars once the store is drained.
+     */
+    _tryExtendReplayMasterFromSharedStore() {
+        try {
+            if (typeof this._sharedBarStore !== 'function') return false;
+            const store = this._sharedBarStore();
+            if (!store) return false;
+            const replay = this.replaySystem;
+            if (!replay?.isActive) return false;
+            const master = Array.isArray(replay.fullRawData) ? replay.fullRawData : null;
+            if (!master || master.length === 0) return false;
+            // Hybrid masters (independent pair on a coarse display TF: native-TF
+            // prefix in front of a 1m core) must not get 1m bars prepended ahead
+            // of the coarse prefix — skip; those tiles keep their fetch path.
+            if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()
+                && typeof this._isIndependentMultichartPair === 'function' && this._isIndependentMultichartPair()
+                && String(this.currentTimeframe || '').toLowerCase().trim() !== '1m') {
+                return false;
+            }
+            const nativeTf = String(this._nativeRawFetchTf || '1m').toLowerCase().trim();
+            const picked = store.pick(String(this.currentFileId || ''), nativeTf);
+            if (!picked || !Array.isArray(picked.bars) || picked.bars.length === 0) return false;
+            const curMs = this.parseTimeframe(nativeTf) || 60_000;
+            const pickMs = this.parseTimeframe(picked.tf) || 0;
+            if (pickMs !== curMs) return false; // exact resolution only — no resample seams
+            const firstTs = Number(master[0]?.t);
+            if (!Number.isFinite(firstTs)) return false;
+            const src = picked.bars; // ascending
+            let hi = 0;
+            while (hi < src.length && Number(src[hi]?.t) < firstTs) hi++;
+            if (hi === 0) return false;
+            const earlier = src.slice(0, hi);
+
+            const prevIndex = Number.isFinite(Number(replay.currentIndex))
+                ? Number(replay.currentIndex)
+                : master.length - 1;
+            const merged = earlier.concat(master);
+            replay.fullRawData = merged;
+            this._panelFullRawData = merged;
+            replay.replayStartTimestamp = merged[0]?.t;
+            replay.currentIndex = Math.min(Math.max(prevIndex + earlier.length, 0), merged.length - 1);
+
+            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
+            if (spacing > 0) {
+                const displayBarsAdded = typeof this._countReplayBackwardDisplayBarsAdded === 'function'
+                    ? this._countReplayBackwardDisplayBarsAdded(master, prevIndex, merged, replay.currentIndex)
+                    : earlier.length;
+                this.offsetX -= (displayBarsAdded > 0 ? displayBarsAdded : earlier.length) * spacing;
+            }
+
+            if (typeof replay.updateChartData === 'function') {
+                try { replay.updateChartData(false); } catch (_u) { /* ignore */ }
+            }
+            if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
+                this._syncReplayPanCursorsFromFullRaw();
+            }
+            this._syncIndicatorsAfterMultichartDataShare();
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
             return true;
         } catch (_e) {
             return false;
@@ -10047,6 +10130,8 @@ class Chart {
      * Schedule API save with debouncing to avoid excessive requests
      */
     scheduleSettingsSaveToAPI() {
+        // Subscription gate hit this session — keep settings local only.
+        if (this._settingsCloudSubscriptionBlocked) return;
         // Clear existing timer
         if (this._settingsApiSaveTimer) {
             clearTimeout(this._settingsApiSaveTimer);
@@ -10056,6 +10141,23 @@ class Chart {
         this._settingsApiSaveTimer = setTimeout(() => {
             this.saveSettingsToAPI();
         }, 2000);
+    }
+
+    /**
+     * 403 subscription gate on the cloud settings API — stop syncing settings
+     * this session (localStorage keeps working) so we don't re-POST on every
+     * settings change. Cleared naturally on reload / re-login.
+     */
+    _onSettingsApiSubscriptionBlocked() {
+        this._settingsCloudSubscriptionBlocked = true;
+        if (this._settingsApiSaveTimer) {
+            clearTimeout(this._settingsApiSaveTimer);
+            this._settingsApiSaveTimer = null;
+        }
+        if (!this._settingsSubscriptionNoticeShown) {
+            this._settingsSubscriptionNoticeShown = true;
+            console.info('ℹ️ Chart settings are saved on this device — cloud sync needs an active subscription.');
+        }
     }
     
     /**
@@ -10073,6 +10175,7 @@ class Chart {
                 // User not logged in, skip API save
                 return;
             }
+            if (this._settingsCloudSubscriptionBlocked) return;
             
             const response = await fetch(`/api/chart/settings/${encodeURIComponent(symbol)}`, {
                 method: 'POST',
@@ -10091,6 +10194,8 @@ class Chart {
                 const result = await response.json();
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - settings saved locally only');
+            } else if (response.status === 403) {
+                this._onSettingsApiSubscriptionBlocked();
             } else {
                 console.warn('⚠️ Failed to sync settings to cloud:', response.statusText);
             }
@@ -10115,6 +10220,7 @@ class Chart {
                 // User not logged in, skip API load
                 return null;
             }
+            if (this._settingsCloudSubscriptionBlocked) return null;
             
             const url = new URL(`/api/chart/settings/${encodeURIComponent(symbol)}`, window.location.origin);
             if (sessionId) {
@@ -10136,6 +10242,8 @@ class Chart {
                 }
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - using local settings only');
+            } else if (response.status === 403) {
+                this._onSettingsApiSubscriptionBlocked();
             }
             
             return null;
@@ -20594,6 +20702,15 @@ class Chart {
             && this._tryExtendReplayMasterFromParent()) {
             return true;
         }
+
+        // Shared bar store: another panel (or the host) may already hold the
+        // older bars this viewport needs — prepend them with zero network.
+        if (direction === 'backward'
+            && typeof this._tryExtendReplayMasterFromSharedStore === 'function'
+            && this._tryExtendReplayMasterFromSharedStore()) {
+            this._lastPanLoadTime = Date.now();
+            return true;
+        }
         
         this._panLoading = true;
 
@@ -20855,7 +20972,20 @@ class Chart {
                 }
 
                 if (uniqueNew.length === 0) return;
-                
+
+                // Publish this pan chunk into the shared bar store so sibling
+                // panels on the same file reuse it instead of re-fetching the
+                // identical window (host↔panel and panel↔panel).
+                try {
+                    const store = typeof this._sharedBarStore === 'function' ? this._sharedBarStore() : null;
+                    if (store && this.currentFileId) {
+                        const cursors = this._serverCursors
+                            ? Object.assign({}, this._serverCursors, { total: this.totalCandles })
+                            : { total: this.totalCandles };
+                        store.put(String(this.currentFileId), tf, uniqueNew, cursors);
+                    }
+                } catch (_st) { /* best-effort cache only */ }
+
                 if (isReplay) {
                     // Keep backward pan history — cap only evicts far-ahead bars during forward prefetch.
                     if (direction === 'forward'

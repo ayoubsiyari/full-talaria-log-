@@ -236,6 +236,18 @@ def ensure_users_schema(app) -> None:
                             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
                         )
                     )
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS signup_verifications ("
+                            "email VARCHAR(255) PRIMARY KEY, "
+                            "code VARCHAR(10) NOT NULL, "
+                            "expires_at TIMESTAMP NOT NULL, "
+                            "verified BOOLEAN NOT NULL DEFAULT FALSE, "
+                            "attempts INTEGER NOT NULL DEFAULT 0, "
+                            "last_sent_at TIMESTAMP, "
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                        )
+                    )
                 else:
                     if "users" not in insp.get_table_names():
                         return
@@ -353,6 +365,18 @@ def ensure_users_schema(app) -> None:
                                     "entitlements_json TEXT"
                                 )
                             )
+                    conn.execute(
+                        text(
+                            "CREATE TABLE IF NOT EXISTS signup_verifications ("
+                            "email VARCHAR(255) PRIMARY KEY, "
+                            "code VARCHAR(10) NOT NULL, "
+                            "expires_at TIMESTAMP NOT NULL, "
+                            "verified BOOLEAN NOT NULL DEFAULT 0, "
+                            "attempts INTEGER NOT NULL DEFAULT 0, "
+                            "last_sent_at TIMESTAMP, "
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+                        )
+                    )
                     if "strategy_templates" not in insp.get_table_names():
                         conn.execute(
                             text(

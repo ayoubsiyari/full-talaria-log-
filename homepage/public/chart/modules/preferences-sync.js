@@ -9,6 +9,11 @@ class PreferencesSyncManager {
         this.syncTimer = null;
         this.pendingUpdates = {};
         this.isLoaded = false;
+        // After a 403 subscription gate, stop calling the cloud preferences API
+        // this session (prefs still persist to localStorage). Prevents a failed
+        // POST on every preference change from flooding the console.
+        this._cloudSubscriptionBlocked = false;
+        this._cloudSubscriptionNoticeShown = false;
     }
 
     /**
@@ -18,7 +23,7 @@ class PreferencesSyncManager {
         try {
             const token = localStorage.getItem('token');
             
-            if (token) {
+            if (token && !this._cloudSubscriptionBlocked) {
                 // Try loading from API
                 const response = await fetch('/api/chart/preferences', {
                     method: 'GET',
@@ -27,6 +32,10 @@ class PreferencesSyncManager {
                     },
                     credentials: 'include'
                 });
+
+                if (response.status === 403) {
+                    this._onCloudSubscriptionBlocked();
+                }
 
                 if (response.ok) {
                     const result = await response.json();
@@ -358,6 +367,7 @@ class PreferencesSyncManager {
      * Schedule API sync with debouncing
      */
     scheduleSyncToAPI() {
+        if (this._cloudSubscriptionBlocked) return;
         if (this.syncTimer) {
             clearTimeout(this.syncTimer);
         }
@@ -375,6 +385,11 @@ class PreferencesSyncManager {
             const token = localStorage.getItem('token');
             if (!token) {
                 console.log('⚠️ Not authenticated - preferences saved locally only');
+                this.pendingUpdates = {};
+                return;
+            }
+            if (this._cloudSubscriptionBlocked) {
+                // Subscription gate hit earlier this session — keep local only.
                 this.pendingUpdates = {};
                 return;
             }
@@ -400,11 +415,30 @@ class PreferencesSyncManager {
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - preferences saved locally only');
                 this.pendingUpdates = {};
+            } else if (response.status === 403) {
+                this._onCloudSubscriptionBlocked();
             } else {
                 console.warn('⚠️ Failed to sync preferences to cloud:', response.statusText);
             }
         } catch (error) {
             console.warn('⚠️ Error syncing preferences to cloud:', error.message);
+        }
+    }
+
+    /**
+     * 403 subscription gate on the cloud preferences API — stop syncing this
+     * session (localStorage keeps working) so we don't re-POST on every change.
+     */
+    _onCloudSubscriptionBlocked() {
+        this._cloudSubscriptionBlocked = true;
+        this.pendingUpdates = {};
+        if (this.syncTimer) {
+            clearTimeout(this.syncTimer);
+            this.syncTimer = null;
+        }
+        if (!this._cloudSubscriptionNoticeShown) {
+            this._cloudSubscriptionNoticeShown = true;
+            console.info('ℹ️ Preferences are saved on this device — cloud sync needs an active subscription.');
         }
     }
 

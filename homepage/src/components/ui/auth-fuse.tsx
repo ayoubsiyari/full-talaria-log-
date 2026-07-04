@@ -741,91 +741,293 @@ function VerificationForm({ email, onVerified, onBack, nextPath }: { email: stri
   );
 }
 
-function SignUpForm({ onSignedUp, onNeedsVerification, nextPath }: { onSignedUp: (email: string) => void; onNeedsVerification: (email: string) => void; nextPath?: string }) {
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [name, setName] = useState("");
+type SignupStep = "email" | "code" | "password";
+
+function SignupStepper({ step }: { step: SignupStep }) {
+  const steps: { key: SignupStep; label: string }[] = [
+    { key: "email", label: "Email" },
+    { key: "code", label: "Verify" },
+    { key: "password", label: "Password" },
+  ];
+  const activeIndex = steps.findIndex((s) => s.key === step);
+  return (
+    <div className="flex items-center justify-center gap-2">
+      {steps.map((s, i) => {
+        const state = i < activeIndex ? "done" : i === activeIndex ? "active" : "todo";
+        return (
+          <React.Fragment key={s.key}>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
+                  state === "active" && "bg-primary text-primary-foreground",
+                  state === "done" && "bg-green-600 text-white",
+                  state === "todo" && "bg-muted text-muted-foreground",
+                )}
+              >
+                {state === "done" ? "✓" : i + 1}
+              </span>
+              <span className={cn("text-xs", state === "todo" ? "text-muted-foreground" : "text-foreground")}>{s.label}</span>
+            </div>
+            {i < steps.length - 1 && <span className="h-px w-4 bg-border" />}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function SignUpForm({ onSignedUp, nextPath }: { onSignedUp: (email: string) => void; onNeedsVerification: (email: string) => void; nextPath?: string }) {
+  const pricingRenewPath = "/pricing/?browse=1";
+
+  const [step, setStep] = useState<SignupStep>("email");
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string }>({});
 
-  const handleSignUp = async (event: React.FormEvent<HTMLFormElement>) => {
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; password?: string; confirmPassword?: string }>({});
+
+  const jsonPost = async (url: string, payload: Record<string, unknown>) => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => null);
+    return { res, body };
+  };
+
+  const readErr = (body: { error?: unknown; message?: unknown; detail?: unknown } | null, fallback: string) =>
+    body && (body.error || body.message || body.detail)
+      ? String(body.error || body.message || body.detail)
+      : fallback;
+
+  // Step 1 — email: confirm the invite/allowlist, then email a code.
+  const handleEmailStep = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-    setFieldErrors({});
+    setInfo(null);
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(trimmedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
     setLoading(true);
-
     try {
-      const trimmedName = name.trim();
-      const trimmedEmail = email.trim();
-      const passwordErr = validatePassword(password);
-      const nextErrors: { name?: string; email?: string; password?: string; confirmPassword?: string } = {};
-
-      if (!trimmedName) nextErrors.name = "Name is required";
-      if (!trimmedEmail || !isValidEmail(trimmedEmail)) nextErrors.email = "Please enter a valid email";
-      if (passwordErr) nextErrors.password = passwordErr;
-      if (!confirmPassword) nextErrors.confirmPassword = "Please confirm your password";
-      if (password && confirmPassword && password !== confirmPassword) nextErrors.confirmPassword = "Passwords do not match";
-
-      if (Object.keys(nextErrors).length > 0) {
-        setFieldErrors(nextErrors);
+      const { res, body } = await jsonPost("/journal/api/auth/signup/check", { email: trimmedEmail });
+      if (!res.ok) {
+        setError(readErr(body, "Could not check this email. Please try again."));
         return;
       }
-
-      const signupRes = await fetch("/journal/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmedName, email: trimmedEmail, password }),
-      });
-
-      const body = await signupRes.json().catch(() => null);
-
-      if (!signupRes.ok) {
-        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Sign up failed");
+      if (body?.exists) {
+        setError(body.message || "An account with this email already exists. Please log in.");
         return;
       }
-
-      // Check if verification is required
-      if (body && body.requires_verification) {
-        onNeedsVerification(trimmedEmail);
-      } else {
-        onSignedUp(trimmedEmail);
+      if (body && body.invited === false) {
+        setError(body.message || "Registration is currently open to Mentorship members only.");
+        return;
       }
+      const sent = await jsonPost("/journal/api/auth/signup/send-code", { email: trimmedEmail });
+      if (!sent.res.ok) {
+        setError(readErr(sent.body, "Could not send the verification code. Please try again."));
+        return;
+      }
+      setEmail(trimmedEmail);
+      setInfo(`We sent a 6-digit code to ${trimmedEmail}.`);
+      setStep("code");
     } finally {
       setLoading(false);
     }
   };
+
+  // Step 2 — verify the emailed code.
+  const handleCodeStep = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setInfo(null);
+    if (code.length !== 6) {
+      setError("Enter the 6-digit code from your email.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { res, body } = await jsonPost("/journal/api/auth/signup/verify-code", { email, code });
+      if (!res.ok) {
+        setError(readErr(body, "Incorrect or expired code."));
+        return;
+      }
+      setStep("password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setError(null);
+    setInfo(null);
+    setResending(true);
+    try {
+      const { res, body } = await jsonPost("/journal/api/auth/signup/send-code", { email });
+      if (!res.ok) {
+        setError(readErr(body, "Could not resend the code."));
+        return;
+      }
+      setInfo(`A new code was sent to ${email}.`);
+    } finally {
+      setResending(false);
+    }
+  };
+
+  // Step 3 — set name + password, create the account, then log in and go pay.
+  const handlePasswordStep = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setInfo(null);
+    setFieldErrors({});
+    const trimmedName = name.trim();
+    const passwordErr = validatePassword(password);
+    const nextErrors: { name?: string; password?: string; confirmPassword?: string } = {};
+    if (!trimmedName) nextErrors.name = "Name is required";
+    if (passwordErr) nextErrors.password = passwordErr;
+    if (!confirmPassword) nextErrors.confirmPassword = "Please confirm your password";
+    if (password && confirmPassword && password !== confirmPassword) nextErrors.confirmPassword = "Passwords do not match";
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      return;
+    }
+    setLoading(true);
+    try {
+      const { res, body } = await jsonPost("/journal/api/auth/signup", { name: trimmedName, email, password });
+      if (!res.ok) {
+        if (body?.code === "verification_required") {
+          setError("Your verification expired. Please verify your email again.");
+          setCode("");
+          setStep("email");
+          return;
+        }
+        setError(readErr(body, "Sign up failed."));
+        return;
+      }
+      // Auto-login and send the new member straight to pricing to pay.
+      const loginRes = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password, next_path: pricingRenewPath }),
+      });
+      const loginBody = await loginRes.json().catch(() => null);
+      if (loginRes.ok) {
+        await completeAuthLogin(loginBody, { email, password, nextPath: pricingRenewPath });
+        return;
+      }
+      // Account exists but auto-login failed — fall back to the sign-in screen.
+      onSignedUp(email);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <form onSubmit={handleSignUp} autoComplete="on" className="flex flex-col gap-8">
-      <div className="flex flex-col items-center gap-2 text-center">
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col items-center gap-3 text-center">
         <h1 className="text-2xl font-bold">Create an account</h1>
-        <p className="text-balance text-sm text-muted-foreground">Enter your details below to sign up</p>
+        <SignupStepper step={step} />
       </div>
-      <div className="grid gap-4">
-        <div className="grid gap-1">
-          <Label htmlFor="name">Full Name</Label>
-          <Input id="name" name="name" type="text" placeholder="John Doe" required autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
-          {fieldErrors.name && <div className="text-xs text-red-500">{fieldErrors.name}</div>}
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" type="email" placeholder="m@example.com" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          {fieldErrors.email && <div className="text-xs text-red-500">{fieldErrors.email}</div>}
-        </div>
-        <div className="grid gap-2">
-          <PasswordInput name="password" label="Password" required autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword((e.target as HTMLInputElement).value)} />
-          <div className="text-xs text-muted-foreground">Minimum 8 characters</div>
-          {fieldErrors.password && <div className="text-xs text-red-500">{fieldErrors.password}</div>}
-        </div>
-        <div className="grid gap-2">
-          <PasswordInput name="confirmPassword" label="Confirm Password" required autoComplete="new-password" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword((e.target as HTMLInputElement).value)} />
-          {fieldErrors.confirmPassword && <div className="text-xs text-red-500">{fieldErrors.confirmPassword}</div>}
-        </div>
-        {error && <div className="text-sm text-red-500">{error}</div>}
-        <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading}>{loading ? "Creating..." : "Sign Up"}</AuthButton>
-      </div>
-    </form>
+
+      {step === "email" && (
+        <form onSubmit={handleEmailStep} className="grid gap-4">
+          <p className="text-balance text-center text-sm text-muted-foreground">
+            Enter your email to get started. We&apos;ll confirm your invitation and send a verification code.
+          </p>
+          <div className="grid gap-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="m@example.com"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          {error && <div className="text-sm text-red-500">{error}</div>}
+          <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading}>
+            {loading ? "Checking…" : "Continue"}
+          </AuthButton>
+        </form>
+      )}
+
+      {step === "code" && (
+        <form onSubmit={handleCodeStep} className="grid gap-4">
+          <p className="text-balance text-center text-sm text-muted-foreground">
+            We sent a 6-digit code to <strong>{email}</strong>
+          </p>
+          <div className="grid gap-2">
+            <Label htmlFor="code">Verification Code</Label>
+            <Input
+              id="code"
+              name="code"
+              type="text"
+              inputMode="numeric"
+              placeholder="123456"
+              required
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="text-center text-2xl tracking-widest"
+            />
+          </div>
+          {error && <div className="text-sm text-red-500">{error}</div>}
+          {info && <div className="text-sm text-green-600">{info}</div>}
+          <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading || code.length !== 6}>
+            {loading ? "Verifying…" : "Verify email"}
+          </AuthButton>
+          <div className="flex justify-between text-sm">
+            <AuthButton type="button" variant="link" className="p-0 h-auto" onClick={() => { setError(null); setInfo(null); setStep("email"); }}>
+              ← Change email
+            </AuthButton>
+            <AuthButton type="button" variant="link" className="p-0 h-auto" onClick={handleResend} disabled={resending}>
+              {resending ? "Sending…" : "Resend code"}
+            </AuthButton>
+          </div>
+        </form>
+      )}
+
+      {step === "password" && (
+        <form onSubmit={handlePasswordStep} autoComplete="on" className="grid gap-4">
+          <p className="text-balance text-center text-sm text-muted-foreground">
+            Email verified. Set your name and password to finish.
+          </p>
+          <div className="grid gap-1">
+            <Label htmlFor="name">Full Name</Label>
+            <Input id="name" name="name" type="text" placeholder="John Doe" required autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+            {fieldErrors.name && <div className="text-xs text-red-500">{fieldErrors.name}</div>}
+          </div>
+          <div className="grid gap-2">
+            <PasswordInput name="password" label="Password" required autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword((e.target as HTMLInputElement).value)} />
+            <div className="text-xs text-muted-foreground">Minimum 8 characters</div>
+            {fieldErrors.password && <div className="text-xs text-red-500">{fieldErrors.password}</div>}
+          </div>
+          <div className="grid gap-2">
+            <PasswordInput name="confirmPassword" label="Confirm Password" required autoComplete="new-password" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword((e.target as HTMLInputElement).value)} />
+            {fieldErrors.confirmPassword && <div className="text-xs text-red-500">{fieldErrors.confirmPassword}</div>}
+          </div>
+          {error && <div className="text-sm text-red-500">{error}</div>}
+          <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading}>
+            {loading ? "Creating…" : "Create account & continue to payment"}
+          </AuthButton>
+        </form>
+      )}
+    </div>
   );
 }
 

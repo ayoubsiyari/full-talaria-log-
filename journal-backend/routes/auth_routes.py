@@ -64,6 +64,77 @@ def _allowlist_lookup(email):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Signup wizard: pre-account email verification (see /signup/check|send-code|
+# verify-code below). A short-lived row in signup_verifications proves the
+# registrant controls the mailbox before the account is created.
+# ---------------------------------------------------------------------------
+import random as _random
+
+SIGNUP_CODE_TTL_MINUTES = 15          # how long an emailed code is valid
+SIGNUP_COMPLETE_WINDOW_MINUTES = 30   # after verifying, time allowed to finish signup
+SIGNUP_RESEND_COOLDOWN_SECONDS = 45   # min seconds between code sends
+SIGNUP_MAX_VERIFY_ATTEMPTS = 6        # wrong-code attempts before a new code is required
+
+
+class _PendingRecipient:
+    """Lightweight stand-in so send_verification_email() can address a mailbox
+    for which no User row exists yet."""
+
+    def __init__(self, email):
+        self.email = email
+        self.name = email.split("@")[0] if email else ""
+
+
+def _gen_signup_code():
+    return f"{_random.randint(0, 999999):06d}"
+
+
+def _as_dt(value):
+    """Normalize a DB timestamp (datetime on Postgres, str on SQLite) to datetime."""
+    if value is None or isinstance(value, datetime):
+        return value
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(str(value)[:26], fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def _signup_eligibility(email):
+    """Return (invited: bool, exists: bool) for a prospective registrant."""
+    exists = User.query.filter_by(email=email).first() is not None
+    invited = True
+    if _signup_allowlist_only():
+        invited = _allowlist_lookup(email) is not None
+    return invited, exists
+
+
+def _email_verified_for_signup(email):
+    """True when the mailbox completed the verify-code step within the window."""
+    try:
+        row = db.session.execute(
+            text("SELECT verified, expires_at FROM signup_verifications WHERE email = :e"),
+            {"e": email},
+        ).first()
+    except Exception:
+        return False
+    if not row or not row[0]:
+        return False
+    exp = _as_dt(row[1])
+    return not exp or datetime.utcnow() <= exp
+
+
+def _consume_signup_verification(email):
+    try:
+        db.session.execute(
+            text("DELETE FROM signup_verifications WHERE email = :e"), {"e": email}
+        )
+    except Exception:
+        pass
+
+
 def send_security_alert(subject, message, ip_address, event_type='attack_detected'):
     """Send security alert email to admin."""
     try:
@@ -365,6 +436,13 @@ def register_user():
         if not allow_entry:
             return jsonify({"error": SIGNUP_BLOCKED_MESSAGE, "code": "mentorship_only"}), 403
 
+    # Signup wizard gate: the mailbox must have completed the email-code step.
+    if not _email_verified_for_signup(email):
+        return jsonify({
+            "error": "Please verify your email with the code we sent before creating your account.",
+            "code": "verification_required",
+        }), 400
+
     # Create new user (auto-verified - email_verified is a property that returns True)
     new_user = User(
         name=name,
@@ -389,16 +467,167 @@ def register_user():
             )
         except Exception:
             pass
+    # Email was already verified via the signup wizard; consume the pending row.
+    _consume_signup_verification(email)
     db.session.commit()
 
-    # Skip email verification - user is auto-verified
-    # email_sent = send_verification_email(new_user, verification_code)
-    
     return jsonify({
         "message": "Account created successfully! You can now log in.",
         "requires_verification": False,
         "email": email
     }), 201
+
+
+@auth_bp.route('/signup/check', methods=['POST'])
+def signup_check():
+    """Step 1 of the signup wizard: is this email allowed to register?
+
+    Returns { invited, exists } without sending anything. When invite-only mode
+    is off, every new email is 'invited'. Existing emails are flagged so the UI
+    can steer the user to log in instead.
+    """
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email:
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
+    invited, exists = _signup_eligibility(email)
+    if exists:
+        return jsonify({
+            "invited": invited,
+            "exists": True,
+            "message": "An account with this email already exists. Please log in.",
+        }), 200
+    if not invited:
+        return jsonify({
+            "invited": False,
+            "exists": False,
+            "code": "mentorship_only",
+            "message": SIGNUP_BLOCKED_MESSAGE,
+        }), 200
+    return jsonify({"invited": True, "exists": False}), 200
+
+
+@auth_bp.route('/signup/send-code', methods=['POST'])
+def signup_send_code():
+    """Step 2 of the signup wizard: email a 6-digit verification code.
+
+    Re-checks eligibility (invite-only + not-already-registered), enforces a
+    resend cooldown, then stores a short-lived code and sends it.
+    """
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email:
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
+    invited, exists = _signup_eligibility(email)
+    if exists:
+        return jsonify({
+            "error": "An account with this email already exists. Please log in.",
+            "code": "exists",
+        }), 400
+    if not invited:
+        return jsonify({"error": SIGNUP_BLOCKED_MESSAGE, "code": "mentorship_only"}), 403
+
+    now = datetime.utcnow()
+    try:
+        existing = db.session.execute(
+            text("SELECT last_sent_at FROM signup_verifications WHERE email = :e"),
+            {"e": email},
+        ).first()
+    except Exception:
+        existing = None
+    if existing and existing[0]:
+        last_sent = _as_dt(existing[0])
+        if last_sent and (now - last_sent).total_seconds() < SIGNUP_RESEND_COOLDOWN_SECONDS:
+            return jsonify({
+                "error": "Please wait a moment before requesting another code.",
+            }), 429
+
+    code = _gen_signup_code()
+    expires = now + timedelta(minutes=SIGNUP_CODE_TTL_MINUTES)
+    try:
+        db.session.execute(
+            text("DELETE FROM signup_verifications WHERE email = :e"), {"e": email}
+        )
+        db.session.execute(
+            text(
+                "INSERT INTO signup_verifications "
+                "(email, code, expires_at, verified, attempts, last_sent_at, created_at) "
+                "VALUES (:e, :c, :x, :verified, 0, :now, :now)"
+            ),
+            {"e": email, "c": code, "x": expires, "verified": False, "now": now},
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Could not start verification. Please try again."}), 500
+
+    sent = send_verification_email(_PendingRecipient(email), code)
+    if not sent:
+        return jsonify({
+            "error": "We couldn't send the verification email. Please try again shortly.",
+        }), 502
+
+    return jsonify({
+        "message": "Verification code sent. Check your inbox.",
+        "expires_in": SIGNUP_CODE_TTL_MINUTES * 60,
+    }), 200
+
+
+@auth_bp.route('/signup/verify-code', methods=['POST'])
+def signup_verify_code():
+    """Step 3 of the signup wizard: confirm the emailed code.
+
+    On success the pending row is marked verified and its window extended so the
+    user has time to set a password and finish registering.
+    """
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    code = (data.get('code') or '').strip()
+    if not email or not code:
+        return jsonify({"error": "Email and code are required."}), 400
+
+    try:
+        row = db.session.execute(
+            text("SELECT code, expires_at, attempts, verified FROM signup_verifications WHERE email = :e"),
+            {"e": email},
+        ).first()
+    except Exception:
+        row = None
+    if not row:
+        return jsonify({"error": "Please request a verification code first."}), 400
+
+    stored_code, expires_at, attempts, verified = row[0], _as_dt(row[1]), int(row[2] or 0), bool(row[3])
+    if verified:
+        return jsonify({"message": "Email already verified.", "verified": True}), 200
+    if expires_at and datetime.utcnow() > expires_at:
+        return jsonify({"error": "This code has expired. Please request a new one."}), 400
+    if attempts >= SIGNUP_MAX_VERIFY_ATTEMPTS:
+        return jsonify({"error": "Too many attempts. Please request a new code."}), 429
+    if code != str(stored_code):
+        try:
+            db.session.execute(
+                text("UPDATE signup_verifications SET attempts = attempts + 1 WHERE email = :e"),
+                {"e": email},
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return jsonify({"error": "Incorrect code. Please try again."}), 400
+
+    new_window = datetime.utcnow() + timedelta(minutes=SIGNUP_COMPLETE_WINDOW_MINUTES)
+    try:
+        db.session.execute(
+            text("UPDATE signup_verifications SET verified = :v, expires_at = :x WHERE email = :e"),
+            {"v": True, "x": new_window, "e": email},
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Could not confirm the code. Please try again."}), 500
+
+    return jsonify({"message": "Email verified.", "verified": True}), 200
 
 
 @auth_bp.route('/verify-email', methods=['POST'])
