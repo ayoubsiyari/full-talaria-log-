@@ -10,7 +10,7 @@
     "bundle-fonts": "node scripts/bundle-self-hosted-fonts.mjs"
   },
   "dependencies": {
-    "dukascopy-node": "1.46.3"
+    "dukascopy-node": "1.46.4"
   },
   "devDependencies": {
     "terser": "^5.37.0"
