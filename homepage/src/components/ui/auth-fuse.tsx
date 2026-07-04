@@ -12,6 +12,10 @@ import { GoogleAuthButton } from "./GoogleAuthButton";
 import {
   isPathAdminOnlyWip,
   userIsDashboardAdmin,
+  userHasAnyDashboardAccess,
+  userCanAccessDashboardPath,
+  defaultDashboardPathForUser,
+  type DashboardUser,
 } from "@/lib/dashboardAccess";
 import {
   accessDenialTitle,
@@ -66,18 +70,13 @@ function isJournalPublicNextPath(path: string): boolean {
  * authenticated (e.g. visits /login/) so we send them to the dashboard instead.
  */
 export function getPostAuthRedirectUrl(opts: {
-  user: {
-    role?: string;
-    has_journal_access?: boolean;
-    access_denial_reason?: string;
-    lapsed_subscription?: { plan_name?: string | null; current_period_end?: string | null };
-    access_expired_at?: string | null;
-  };
+  user: DashboardUser & { access_expired_at?: string | null };
   nextPath?: string | null;
 }): string {
   const raw = opts.nextPath;
   const safeNext = raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
-  const isAdmin = userIsDashboardAdmin({ role: opts.user.role });
+  const user = opts.user;
+  const isAdmin = userIsDashboardAdmin({ role: user.role });
   if (isAdmin) {
     if (safeNext) return safeNext;
     return "/dashboard/?view=sessions";
@@ -85,17 +84,19 @@ export function getPostAuthRedirectUrl(opts: {
   if (safeNext && isPathAdminOnlyWip(safeNext)) {
     return "/dashboard/?view=sessions";
   }
-  const hasAccess = !!opts.user.has_journal_access;
-  if (!hasAccess) {
-    if (safeNext && isJournalPublicNextPath(safeNext)) {
+  // Full paid/manual users AND mentorship students with any granted section may
+  // enter the dashboard. Route them to the first section they can actually open.
+  if (userHasAnyDashboardAccess(user)) {
+    if (safeNext && userCanAccessDashboardPath(user, safeNext)) {
       return safeNext;
     }
-    return pricingUrlForAccessDenial(opts.user.access_denial_reason);
+    return defaultDashboardPathForUser(user);
   }
-  if (safeNext) {
+  // No access at all → pricing (still allow journal public/marketing next paths).
+  if (safeNext && isJournalPublicNextPath(safeNext)) {
     return safeNext;
   }
-  return "/dashboard/?view=sessions";
+  return pricingUrlForAccessDenial(user.access_denial_reason);
 }
 
 type AuthSuccessBody = {
@@ -135,6 +136,10 @@ export async function completeAuthLogin(
     user: {
       role: chartUser?.role,
       has_journal_access: chartHasAccess,
+      has_active_subscription: !!chartUser?.has_active_subscription,
+      manual_full_access: !!chartUser?.manual_full_access,
+      has_dashboard_access: !!chartUser?.has_dashboard_access,
+      dashboard_modules: (chartUser?.dashboard_modules as Record<string, boolean> | undefined),
       access_denial_reason:
         typeof chartUser?.access_denial_reason === "string"
           ? chartUser.access_denial_reason

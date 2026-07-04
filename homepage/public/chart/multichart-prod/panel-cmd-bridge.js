@@ -467,6 +467,29 @@
             return applyReplayEnter(ch, ts);
         }
 
+        // INDEPENDENT-PANEL FRAME DEDUP (fixes "host TF switch re-renders B/C/D").
+        // An independent panel — a DIFFERENT symbol than the host, or the same
+        // symbol on a DIFFERENT timeframe — follows ONLY the shared playhead
+        // TIMESTAMP; the host's own TF/data changes are irrelevant to it. When the
+        // host switches timeframe (or otherwise re-emits the SAME playhead) it
+        // rebroadcasts a frame at a timestamp this panel already shows. Re-applying
+        // it re-slices + resamples + repaints for no reason (the visible re-render).
+        // Skip it when the timestamp has not advanced and we are neither actively
+        // playing nor animating a forming candle. Genuine scrubs/advances change ts
+        // (or set isPlaying/anim) so they still apply.
+        try {
+            var _pcInd = readParentChart();
+            var _hTf = _pcInd ? String(_pcInd.currentTimeframe || '').toLowerCase().trim() : '';
+            var _pTf = String(ch.currentTimeframe || '').toLowerCase().trim();
+            var _independentFrame = !isSameSymbolAsHost(ch) || (!!_hTf && !!_pTf && _hTf !== _pTf);
+            var _animActive = !!(args.animatedCandle && Number(args.tickProgress) > 0);
+            if (_independentFrame && !args.isPlaying && !_animActive
+                && Number.isFinite(ch._mcLastIndepFrameTs) && ch._mcLastIndepFrameTs === ts) {
+                return;
+            }
+            if (_independentFrame) ch._mcLastIndepFrameTs = ts;
+        } catch (_) {}
+
         if (rs.isPlaying) {
             if (!ch._multichartPassivePlayActive) {
                 try {

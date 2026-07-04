@@ -45,6 +45,10 @@ function LoginPageContent({
           user?: {
             role?: string;
             has_journal_access?: boolean;
+            has_active_subscription?: boolean;
+            manual_full_access?: boolean;
+            has_dashboard_access?: boolean;
+            dashboard_modules?: Record<string, boolean>;
             access_denial_reason?: string;
             access_expired_at?: string;
             lapsed_subscription?: { plan_name?: string; current_period_end?: string };
