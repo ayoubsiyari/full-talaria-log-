@@ -1306,6 +1306,15 @@ class DrawingToolsManager {
     static _drawingsCloudAuthBlocked = false;
     static _drawingsCloudAuthLastToken = null;
     static _drawingsAuthWarnAt = 0;
+    /**
+     * After a 403 subscription gate, stop hitting the cloud drawings API for this
+     * session (drawings still persist to localStorage). The server enforces the
+     * entitlement; this just prevents a failed POST on every drawing action from
+     * flooding the console + spamming error toasts. Cleared on token change so a
+     * fresh login / new subscription re-enables cloud sync without a reload.
+     */
+    static _drawingsCloudSubscriptionBlocked = false;
+    static _drawingsSubscriptionNoticeShown = false;
 
     _canUseDrawingsCloudApi() {
         if (typeof localStorage === 'undefined') return false;
@@ -1318,7 +1327,11 @@ class DrawingToolsManager {
         if (token !== DrawingToolsManager._drawingsCloudAuthLastToken) {
             DrawingToolsManager._drawingsCloudAuthLastToken = token;
             DrawingToolsManager._drawingsCloudAuthBlocked = false;
+            // New token → possibly a new subscription; give cloud sync another try.
+            DrawingToolsManager._drawingsCloudSubscriptionBlocked = false;
+            DrawingToolsManager._drawingsSubscriptionNoticeShown = false;
         }
+        if (DrawingToolsManager._drawingsCloudSubscriptionBlocked) return false;
         return !DrawingToolsManager._drawingsCloudAuthBlocked;
     }
 
@@ -1353,6 +1366,31 @@ class DrawingToolsManager {
         if (!DrawingToolsManager._drawingsAuthWarnAt || now - DrawingToolsManager._drawingsAuthWarnAt > 60000) {
             DrawingToolsManager._drawingsAuthWarnAt = now;
             console.warn('⚠️ Drawings cloud sync paused — sign in again to sync across devices');
+        }
+    }
+
+    /**
+     * 403 subscription gate on the cloud drawings API. The server requires an
+     * active journal subscription; without it we stop calling the API for this
+     * session (drawings keep saving to localStorage) so we don't spam a failed
+     * request + error toast on every drawing action. Shows one gentle notice.
+     */
+    _onDrawingsApiSubscriptionBlocked() {
+        DrawingToolsManager._drawingsCloudSubscriptionBlocked = true;
+        if (this._apiSaveTimer) {
+            clearTimeout(this._apiSaveTimer);
+            this._apiSaveTimer = null;
+        }
+        // Not a transient error the user can retry away — don't flag the cloud icon red.
+        this._drawingsSaveError = false;
+        if (!DrawingToolsManager._drawingsSubscriptionNoticeShown) {
+            DrawingToolsManager._drawingsSubscriptionNoticeShown = true;
+            console.info('ℹ️ Cloud drawing sync needs an active subscription — drawings are saved on this device.');
+            try {
+                if (this.chart && typeof this.chart.showNotification === 'function') {
+                    this.chart.showNotification('Drawings are saved on this device. Cloud sync needs an active subscription.', 'info', 5000);
+                }
+            } catch (_) { /* ignore */ }
         }
     }
 
@@ -11451,6 +11489,9 @@ class DrawingToolsManager {
                     return this._saveDrawingsToAPIOnce(data, clientUpdatedAt, true);
                 }
                 this._onDrawingsApiUnauthorized();
+            } else if (response.status === 403) {
+                // Subscription/entitlement gate — stop hammering the API this session.
+                this._onDrawingsApiSubscriptionBlocked();
             } else if (response.status === 413) {
                 console.warn('⚠️ Drawings payload too large for cloud');
                 this._drawingsSaveError = true;
@@ -11668,6 +11709,9 @@ class DrawingToolsManager {
                     return this.loadDrawingsFromAPI(true);
                 }
                 this._onDrawingsApiUnauthorized();
+            } else if (response.status === 403) {
+                // Subscription gate — stop calling the cloud API this session.
+                this._onDrawingsApiSubscriptionBlocked();
             }
             
             return null;
