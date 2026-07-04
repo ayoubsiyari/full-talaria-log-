@@ -3679,7 +3679,17 @@ export default function MultichartGrid({
             }
             const syncDate = !!(layoutSyncRef.current && layoutSyncRef.current.dateRange);
             const mgr = managerRef.current;
-            if (syncDate && mgr) {
+            // Skip the focus-change viewport re-sync while replay is actively
+            // PLAYING. During play the replay frame stream already keeps panels
+            // aligned; firing a host-led visibleRange fan-out on every focus
+            // change makes the OTHER (non-focused, different-symbol) panel do
+            // heavy viewport refit + history-fetch + render work on the SAME main
+            // thread it needs for ~60 replay mirrors/sec, so its forming-candle
+            // price visibly freezes for a few seconds. Focus viewport sync still
+            // runs normally when replay is paused or inactive.
+            const _hostRsFocus = window.chart && window.chart.replaySystem;
+            const _replayPlayingFocus = !!(_hostRsFocus && _hostRsFocus.isActive && _hostRsFocus.isPlaying);
+            if (syncDate && mgr && !_replayPlayingFocus) {
                 clearTimeout(_focusViewportSyncTimer);
                 _focusViewportSyncTimer = setTimeout(() => {
                     try {

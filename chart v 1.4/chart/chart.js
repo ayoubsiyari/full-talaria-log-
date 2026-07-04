@@ -2563,6 +2563,11 @@ class Chart {
             && nativeMs < destMs * 0.92;
         if (!resampledFromFiner && parentNative !== tf) return false;
         if (!Array.isArray(parent.data) || parent.data.length === 0) return false;
+        // The host's committed bars must actually have this TF's cadence before we
+        // clone them — otherwise the panel would adopt stale/coarse host data (e.g.
+        // daily) while its label says 5m. If they don't match, bail so the panel
+        // does a real server fetch for the requested TF instead.
+        if (!this._barsMatchTimeframe(parent.data, tf)) return false;
 
         if (typeof this._warmBtTfCacheFromParent === 'function') {
             try { this._warmBtTfCacheFromParent(tf); } catch (_w) { /* ignore */ }
@@ -5855,10 +5860,21 @@ class Chart {
     _restoreFromTfDataCache(fileId, normalizedTf) {
         const entry = this._getTfDataCache(fileId, normalizedTf);
         if (!entry) return false;
-        this.rawData = entry.rawData.slice();
-        this.data = Array.isArray(entry.data) && entry.data.length
+        const restoredData = Array.isArray(entry.data) && entry.data.length
             ? entry.data.slice()
-            : this.resampleData(this.rawData, normalizedTf);
+            : this.resampleData(entry.rawData, normalizedTf);
+        // Validate the cached bars actually match the requested TF's cadence before
+        // adopting them. A mis-keyed/stale entry (e.g. daily bars under a "5m" slot)
+        // is dropped so the caller falls back to a real server fetch.
+        if (!this._barsMatchTimeframe(restoredData, normalizedTf)) {
+            try {
+                const perFile = this._tfDataCache && this._tfDataCache.get(String(fileId));
+                if (perFile) perFile.delete(String(normalizedTf).toLowerCase().trim());
+            } catch (_) { /* ignore */ }
+            return false;
+        }
+        this.rawData = entry.rawData.slice();
+        this.data = restoredData;
         this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
         this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
         if (entry.nativeRawFetchTf) this._nativeRawFetchTf = entry.nativeRawFetchTf;
@@ -19053,7 +19069,11 @@ class Chart {
         const haveCurrentTfData = (this.currentTimeframe === normalizedTf)
             && (String(this._nativeRawFetchTf || normalizedTf).toLowerCase().trim() === normalizedTf)
             && Array.isArray(this.data) && this.data.length > 0
-            && !this._panLoading;
+            && !this._panLoading
+            // Don't trust the TF label alone — the committed bars must actually
+            // have this TF's cadence. Otherwise a stale/coarse dataset (e.g. daily
+            // bars left over from before) would be kept when switching to 5m.
+            && this._committedBarsMatchTimeframe(normalizedTf);
         if (haveCurrentTfData) {
             this._logTfSwitch('noop', { to: normalizedTf });
             if (this.drawingManager
@@ -19420,7 +19440,18 @@ class Chart {
      * "did the new bars actually land?" gate for the TF-switch safety net.
      */
     _committedBarsMatchTimeframe(tf) {
-        const data = this.data;
+        return this._barsMatchTimeframe(this.data, tf);
+    }
+
+    /**
+     * True when an arbitrary bar array's real cadence matches `tf` (min spacing
+     * ≈ one TF step). Shared by the safety net AND by every "trust the TF label"
+     * shortcut (idempotency skips, host-data mirrors, TF cache restores) so a
+     * panel can NEVER keep/adopt data whose candles don't match the selected
+     * timeframe (e.g. showing daily bars after switching to 5m). When it returns
+     * false the caller falls back to a real server fetch for the requested TF.
+     */
+    _barsMatchTimeframe(data, tf) {
         if (!Array.isArray(data) || data.length < 2) return false;
         const tfMs = this.parseTimeframe(tf);
         if (!Number.isFinite(tfMs) || tfMs <= 0) return true; // unknown TF: don't fight it
@@ -19944,12 +19975,39 @@ class Chart {
             }
 
             const session = this.backtestingSession || {};
+            let effectiveAnchor = options.anchor;
+            let effectiveWindowRange = options.windowRange || null;
+            // Post-replay / free-browse backtest TF switch fix.
+            // The default backtest smart window is anchored at the SESSION START.
+            // After the user exits replay they are usually viewing a different
+            // region (right-anchored near the latest bar, or wherever they paused),
+            // so a session-start fetch leaves the current viewport OUTSIDE the
+            // fetched bars — the post-fetch viewport restore then snaps to an
+            // out-of-window anchor and the chart JUMPS once with candles misaligned
+            // against sibling panels. Instead fetch the exact window the user is
+            // looking at (from the snapshot captured at switch start) so the restore
+            // finds its anchor and the view is preserved. Only applies when replay
+            // is NOT active (during replay the replay branch handles TF switches).
+            if (!effectiveAnchor && !effectiveWindowRange
+                && this.isBacktestMode
+                && !(this.replaySystem && this.replaySystem.isActive)) {
+                const vp = this._tfSwitchViewport;
+                if (vp && Number.isFinite(vp.leftTs) && Number.isFinite(vp.rightTs)
+                    && vp.rightTs > vp.leftTs) {
+                    const span = vp.rightTs - vp.leftTs;
+                    effectiveAnchor = 'end';
+                    effectiveWindowRange = {
+                        startTs: vp.leftTs - span * 3,
+                        endTs: vp.rightTs + span,
+                    };
+                }
+            }
             const result = await this._fetchSmartWindow(
                 this.currentFileId,
                 timeframe,
                 session,
-                options.anchor,
-                options.windowRange || null,
+                effectiveAnchor,
+                effectiveWindowRange,
                 options.smartOpts || null
             );
 

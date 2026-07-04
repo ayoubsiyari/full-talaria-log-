@@ -1554,9 +1554,15 @@
                     }
                     var nativeTf = String(ch._nativeRawFetchTf || ch.currentTimeframe || '')
                         .toLowerCase().trim();
+                    // Idempotency: skip only if the committed bars really have this TF's
+                    // cadence — never skip on label match alone, or a panel left holding
+                    // coarse (e.g. daily) bars would stay wrong after picking 5m.
+                    var barsMatchTf = (typeof ch._committedBarsMatchTimeframe !== 'function')
+                        || ch._committedBarsMatchTimeframe(tf);
                     if (ch.currentTimeframe === tf && nativeTf === tf
                         && Array.isArray(ch.data) && ch.data.length > 0
-                        && !ch._timeframeSwitching) {
+                        && !ch._timeframeSwitching
+                        && barsMatchTf) {
                         return;
                     }
                     // Multichart backtest: refetch window must anchor on host A's
