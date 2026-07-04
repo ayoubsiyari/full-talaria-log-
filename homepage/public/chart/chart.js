@@ -4085,6 +4085,21 @@ class Chart {
         if (!replay || !replay.isActive) return false;
         if (!Array.isArray(this._panelFullRawData) || this._panelFullRawData.length === 0) return false;
 
+        // Granularity gate: the panel master must be FINE enough to build the
+        // destination TF. For a SAME-symbol panel the master is often seeded from
+        // the host's DISPLAY series (e.g. the host's 1h bars after the host itself
+        // switched to 1h). Resampling that coarse master to a FINER TF (e.g. 5m)
+        // cannot upsample — it yields host-shaped bars under the new TF label (the
+        // "panel says 5m but shows 1h candles" bug). Bail so the caller falls
+        // through to a real server refetch at the requested resolution. Coarser or
+        // equal switches (which only downsample) still use this fast path.
+        const _destMs = this.parseTimeframe(normalizedTf);
+        const _masterStepMs = this._estimateBarsStepMs(this._panelFullRawData);
+        if (Number.isFinite(_destMs) && _destMs > 0
+            && Number.isFinite(_masterStepMs) && _masterStepMs > _destMs * 1.5) {
+            return false;
+        }
+
         const playheadTs = this._resolveMultichartReplayPlayheadMs();
 
         // Drop any in-flight ensureReplayDataCoversTimestamp fetch that captured the
@@ -19455,6 +19470,20 @@ class Chart {
         if (!Array.isArray(data) || data.length < 2) return false;
         const tfMs = this.parseTimeframe(tf);
         if (!Number.isFinite(tfMs) || tfMs <= 0) return true; // unknown TF: don't fight it
+        const minGap = this._estimateBarsStepMs(data);
+        if (!Number.isFinite(minGap)) return false;
+        const ratio = minGap / tfMs;
+        return ratio >= 0.5 && ratio <= 1.5;
+    }
+
+    /**
+     * Estimate a bar array's real cadence: the minimum positive gap between
+     * consecutive bars near the start (ignores weekend/holiday gaps that inflate
+     * spacing). Used to detect when a "master" series is too coarse to resample
+     * up to a finer timeframe.
+     */
+    _estimateBarsStepMs(data) {
+        if (!Array.isArray(data) || data.length < 2) return NaN;
         let minGap = Infinity;
         const start = Math.min(1, data.length - 1);
         const end = Math.min(data.length - 1, start + 24);
@@ -19462,9 +19491,7 @@ class Chart {
             const gap = Number(data[i].t) - Number(data[i - 1].t);
             if (Number.isFinite(gap) && gap > 0 && gap < minGap) minGap = gap;
         }
-        if (!Number.isFinite(minGap)) return false;
-        const ratio = minGap / tfMs;
-        return ratio >= 0.5 && ratio <= 1.5;
+        return Number.isFinite(minGap) ? minGap : NaN;
     }
 
     _endTimeframeSwitching() {
