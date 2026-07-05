@@ -465,3 +465,96 @@ the failure is diagnosable.
 high-limit `/smart`, per D-008 — remember half that task is live server-side
 verification before any client change). **Fail ⇒** kill-switch on, evidence to a
 read-only diagnosis worker, no patch-on-patch.
+
+---
+
+## D-011 — B-FIX-3b authorized: viewport-first for the same-pair TF switch (2026-07-05)
+
+§6n accepted. B-FIX-3 stands as a partial win: pair-switch path is fast live, and the
+safety counters (seams 0, panel fetches 0, extendsFromParent rising) prove the
+background-hydration machinery is sound under real use. The gap is understood and
+code-verified: `_multichartViewportFirstSwitchEnabled` requires `switchingPair`, and a
+pure TF switch travels a completely different route
+(`setTimeframe → _refetchBacktestTimeframeCore → _hotSwapBacktestReplayTimeframe →
+_finishTfSwitchViewportRestore → _fillViewportHistoryAfterTfSwitch`) that B-FIX-3 never
+touched. The manager's read is correct — and note the S6 baseline (canonical before)
+is exactly this untouched path, which is why S6 hasn't moved. **B-FIX-3b authorized.**
+
+### B-FIX-3b spec (one worker, one change)
+
+**Why this path is slow only in multichart (context for the worker):** single chart's
+master is the display TF, so switching to 1D fetches a small 1D window — fast. The
+multichart host is contractually pinned to a 1m master; a 1D viewport spans months of
+1m bars, so `_fillViewportHistoryAfterTfSwitch`'s retry loop foreground-pages the whole
+span in 2000-bar chunks. That loop is the target.
+
+**Change (gated inside the shared path — CAUTION, single chart uses these functions):**
+in `_fillViewportHistoryAfterTfSwitch` (and/or its scheduling in
+`_finishTfSwitchViewportRestore`), when `_isMultichartHostPanel()` + backtest + switch
+enabled: paint first, hydrate later.
+- **Expected fast path:** if the existing 1m master already covers the new viewport,
+  resample and paint immediately — zero fetches. Only the uncovered remainder is
+  hydration work.
+- The uncovered remainder moves to BACKGROUND hydration — **reuse the B-FIX-3
+  hydration controller** (`_mcViewportFirstHydrationSeq` + stillCurrent checks), do
+  not build a second cancellation mechanism. A TF switch mid-hydration must cancel
+  the prior run exactly like a pair switch does.
+- **Separate kill-switch** `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH` — B-FIX-3
+  is proven live and must not be re-risked; the two behaviors roll back independently.
+- No new fetch call sites; sequencing only (same rule as D-008).
+
+**Acceptance (measured against S6, the canonical before: 87–91 fetches / 170–178k
+bars / renders 1152):**
+- Same-pair 1m → 1D TF switch in 2×2: candles visible ≤ 2 fetches (0 if master covers
+  viewport); "loads one by one" gone per PO.
+- Post-hydration: seams 0, panels aligned, replay scrub works, master spans session.
+- **Single-chart TF switch re-run mandatory** (S6-ref 4 fetches / 4000 bars unchanged)
+  — this fix lives inside a SHARED function, so the single-chart regression check is
+  the highest-risk item on the report, not a formality.
+- Both kill-switches tested: 3b switch restores eager TF behavior while pair-switch
+  stays fast; B-FIX-3 switch untouched by this change.
+- Mid-hydration TF switch + pair switch each cancel cleanly.
+
+Same hygiene rules (pre-task `git status` in header, byte-identical copies).
+Follow-up #2 (high-limit `/smart` round-trip reduction) remains queued behind 3b —
+do not parallelize; 3b changes the fetch pattern that #2 would measure.
+
+---
+
+## D-012 — B-FIX-3b code sign-off acknowledged; live acceptance order (2026-07-05)
+
+§6o accepted; build authorized. Implementation matches D-011: TF-switch divert into the
+shared B-FIX-3 hydration controller, mode-aware dual kill-switches, zero-fetch fast
+path present, byte-identical copies. Two review notes before the PO run:
+
+1. **The divert-point return (chart.js:28629) is the single highest-risk line.** It
+   sits inside `_fillViewportHistoryAfterTfSwitch`, which single chart executes on
+   every TF switch. The gate reads correct (backtest + multichart host + not-embed +
+   active 1m master), but the live single-chart control run is the item that closes
+   this risk — treat a single-chart deviation of ANY size as a hard fail.
+2. **The `active 1m master` gate term is new relative to D-011 — verify its polarity
+   live.** If a multichart host somehow reaches a TF switch without a 1m master
+   (e.g. fresh boot race), the branch silently falls back to the OLD eager path.
+   That is safe-by-default (correct choice), but the PO run should include one
+   switch-immediately-after-entering-multichart case to confirm no dead zone where
+   neither fast path engages.
+
+**Live acceptance order (same discipline as D-010):**
+1. Single-chart control: TF switch 1m→1D — S6-ref numbers unchanged (4 fetches /
+   4000 bars), new branch never fires. Deviation = STOP, kill-switch, escalate.
+2. Headline S6 case: 2×2 same-pair, host 1m→1D. Expect ≤ 2 fetches before paint
+   (0 if master covers viewport), then background hydration; settled state seams 0,
+   panels aligned, master spans session. Compare against S6 before (87–91 fetches).
+3. Immediately-after-boot TF switch (note 2 above): enter multichart, switch TF
+   within ~2s. Either fast path or clean eager fallback — no blank chart.
+4. Mid-hydration cancels: TF switch during hydration, then pair switch during
+   hydration — clean restart both times.
+5. Kill-switch matrix: tf-switch flag on → TF switch eager again while pair switch
+   stays fast; pair flag on → inverse. Both off → both fast.
+6. Un-hydrated replay scrub during background hydration — no console errors.
+
+Rollback = kill-switch first, evidence captured, no patch-on-patch (D-010 policy).
+**Pass ⇒** B-FIX-3 family CLOSED against the original PO complaint; S6 re-captured
+as the new baseline in `BASELINE-RESULTS.md` (it becomes the "before" for follow-up
+#2); manager dispatches follow-up #2 (high-limit `/smart`), server-side verification
+first. **Fail ⇒** kill-switch, read-only diagnosis.

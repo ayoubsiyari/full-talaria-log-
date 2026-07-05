@@ -429,6 +429,51 @@ completes/seams 0, un-hydrated scrub, mid-hydration cancellation, kill-switch fl
 single-chart S1/S6-ref/S11 unchanged) requires build + PO run. Build authorized.
 Open: PO confirm `Sources Handoff/TalariaV16.jsx` provenance.
 
+## 6n. B-FIX-3 live result — PARTIAL win, TF-switch path still eager (2026-07-05)
+
+Build b592, PO live feedback:
+- ✅ **Pair switch now fast** — switching a panel to another pair (+ any TF) "loads so fast
+  and good." Viewport-first path confirmed working.
+- ❌ **Same-pair TF switch still slow** — "open on 1m → set multichart → switch to 1D loads
+  one by one." Still eager.
+- Counters safe throughout: seams 0 all panels; B/C/D fetches 0 / extendsFromParent rising
+  (ownership + contiguity intact during background hydration).
+
+Root of the gap (code-verified): `_multichartViewportFirstSwitchEnabled` returns false when
+`!switchingPair` (chart.js:4037), so a pure same-pair TF switch never engages viewport-first.
+Per B-DIAG-4, a TF switch routes `setTimeframe() → _refetchBacktestTimeframeCore() →
+_hotSwapBacktestReplayTimeframe() → _finishTfSwitchViewportRestore() →
+_fillViewportHistoryAfterTfSwitch()` — a SEPARATE path from `loadMultichartPanelFromHost`,
+and B-FIX-3 only rewired the pair path. The S6 baseline (the canonical before-number) is a
+TF switch, so it is NOT yet improved.
+
+**Escalation to Director:** B-FIX-3 accepted as a partial win (pair-switch). Propose
+**B-FIX-3b** — extend viewport-first, master-later to the same-pair TF-switch path
+(`_fillViewportHistoryAfterTfSwitch` / `_refetchBacktestTimeframeCore`), same gating +
+kill-switch pattern, measured against S6. Awaiting Director call.
+
+## 6o. B-FIX-3b code sign-off (2026-07-05) — live acceptance pending
+
+Implementation verified vs D-011. Same-pair multichart-host TF switch now diverts from the
+foreground `_fillViewportHistoryAfterTfSwitch` paging into the B-FIX-3 hydration controller.
+- I7 (highest-risk): `_multichartViewportFirstTfSwitchEnabled` (chart.js:4250) gated on
+  `isBacktestMode` + `_isMultichartHostPanel()` + not-embed + active 1m master; divert at
+  :28629 returns early ONLY when engaged → single chart runs old path unchanged.
+- Dual kill-switches, mode-aware in `_multichartViewportFirstHydrationStillCurrent`
+  (:4073-4078): `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH` (tf) vs
+  `__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH` (pair) — independent rollback.
+- Reuses `_mcViewportFirstHydrationSeq` + stillCurrent; new TF/pair switch cancels prior.
+- Zero-fetch fast path: `_mcViewportFirstMasterReady=true` immediately → paint now, hydrate
+  remainder in background.
+- Both copies byte-identical `9682C04F94B144833D10A72C25C36023D49EA19D88FBF6AA2FFE7C1063E84E08`;
+  node --check clean.
+
+Status: CODE SIGNED OFF. **Built by manager: active build id `20260627b598`** (npm run
+build:live, exit 0; both chart.js copies post-build SHA-256 `9682C04F…` == signed-off).
+D-011/D-012 live acceptance (S6 TF switch ≤2 fetches / 0 if covered; seams 0; single-chart
+S6-ref UNCHANGED = highest-risk; boot-race switch has no dead zone; both kill-switches;
+mid-hydration cancel; un-hydrated scrub) requires PO run.
+
 ## Appendix — early Phase-0 recommendation (superseded)
 
 **Option B.** Instrumentation did its job: it told us the plan may be aimed at the

@@ -759,6 +759,7 @@ class Chart {
         this._mcViewportFirstHydrationTimer = null;
         this._mcViewportFirstMasterHydrating = false;
         this._mcViewportFirstMasterReady = false;
+        this._mcViewportFirstHydrationMode = null;
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
@@ -4056,6 +4057,7 @@ class Chart {
         this._mcViewportFirstHydrationSeq = (this._mcViewportFirstHydrationSeq || 0) + 1;
         this._mcViewportFirstMasterHydrating = false;
         this._mcViewportFirstMasterReady = false;
+        this._mcViewportFirstHydrationMode = null;
         this._mcViewportFirstHydrationFileId = null;
         this._mcViewportFirstHydrationTicks = 0;
         if (this._mcViewportFirstHydrationTimer != null) {
@@ -4066,8 +4068,14 @@ class Chart {
 
     _multichartViewportFirstHydrationStillCurrent(seq, fileId) {
         try {
-            if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH) {
-                return false;
+            const mode = this._mcViewportFirstHydrationMode || 'pair-switch';
+            if (typeof window !== 'undefined') {
+                if (mode === 'tf-switch' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH) {
+                    return false;
+                }
+                if (mode !== 'tf-switch' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH) {
+                    return false;
+                }
             }
             if (seq !== this._mcViewportFirstHydrationSeq) return false;
             if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) {
@@ -4087,6 +4095,7 @@ class Chart {
         this._mcViewportFirstMasterHydrating = false;
         this._mcViewportFirstMasterReady = !!complete;
         this._mcViewportFirstHydrationTimer = null;
+        this._mcViewportFirstHydrationMode = null;
     }
 
     _startMultichartViewportFirstMasterHydration(fileId, session, displayTf, replayTs) {
@@ -4094,6 +4103,7 @@ class Chart {
         const seq = ++this._mcViewportFirstHydrationSeq;
         this._mcViewportFirstMasterHydrating = true;
         this._mcViewportFirstMasterReady = false;
+        this._mcViewportFirstHydrationMode = 'pair-switch';
         this._mcViewportFirstHydrationFileId = String(fileId);
         this._mcViewportFirstHydrationTicks = 0;
         if (this._mcViewportFirstHydrationTimer != null) {
@@ -4235,6 +4245,47 @@ class Chart {
             }
             this._scheduleMultichartViewportFirstHydrationPump(seq, fileId);
         }, this._panLoading ? 140 : 80);
+    }
+
+    _multichartViewportFirstTfSwitchEnabled() {
+        try {
+            if (typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_TF_SWITCH) {
+                return false;
+            }
+            if (!this.isBacktestMode) return false;
+            if (typeof this._isMultichartHostPanel !== 'function' || !this._isMultichartHostPanel()) {
+                return false;
+            }
+            if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
+                return false;
+            }
+            const replay = this.replaySystem;
+            if (!replay?.isActive || !Array.isArray(replay.fullRawData) || !replay.fullRawData.length) {
+                return false;
+            }
+            const rawTf = String(replay.rawTimeframe || this._nativeRawFetchTf || '').toLowerCase().trim();
+            return rawTf === '1m';
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    _startMultichartViewportFirstTfHydration() {
+        if (!this._multichartViewportFirstTfSwitchEnabled()) return false;
+        const fileId = this.currentFileId;
+        if (fileId == null || fileId === '') return false;
+        const seq = ++this._mcViewportFirstHydrationSeq;
+        this._mcViewportFirstMasterHydrating = true;
+        this._mcViewportFirstMasterReady = true;
+        this._mcViewportFirstHydrationMode = 'tf-switch';
+        this._mcViewportFirstHydrationFileId = String(fileId);
+        this._mcViewportFirstHydrationTicks = 0;
+        if (this._mcViewportFirstHydrationTimer != null) {
+            try { clearTimeout(this._mcViewportFirstHydrationTimer); } catch (_e) { /* ignore */ }
+            this._mcViewportFirstHydrationTimer = null;
+        }
+        this._scheduleMultichartViewportFirstHydrationPump(seq, fileId);
+        return true;
     }
 
     /**
@@ -19890,6 +19941,12 @@ class Chart {
         this._timeframeFetchAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
         this._ensureReplayDataGeneration = (this._ensureReplayDataGeneration || 0) + 1;
         this._ensureReplayDataInflight = null;
+        if (this.isBacktestMode
+            && typeof this._isMultichartHostPanel === 'function'
+            && this._isMultichartHostPanel()
+            && typeof this._cancelMultichartViewportFirstHydration === 'function') {
+            this._cancelMultichartViewportFirstHydration();
+        }
         this._timeframeSwitching = true;
         this._switchingFromTimeframe = fromTf || this.currentTimeframe || null;
         this._switchingToTimeframe = toTf || null;
@@ -28544,8 +28601,14 @@ class Chart {
         if (this._mcViewportFirstMasterHydrating
             && typeof this._isMultichartHostPanel === 'function'
             && this._isMultichartHostPanel()
-            && !(typeof window !== 'undefined' && window.__TALARIA_MC_DISABLE_VIEWPORT_FIRST_SWITCH)) {
-            return;
+            && typeof this._multichartViewportFirstHydrationStillCurrent === 'function') {
+            if (this._multichartViewportFirstHydrationStillCurrent(
+                this._mcViewportFirstHydrationSeq,
+                this.currentFileId
+            )) {
+                return;
+            }
+            this._finishMultichartViewportFirstHydration(this._mcViewportFirstHydrationSeq, false);
         }
         // Big-TF tiles pull many 1m chunks (shared-master design fetches at 1m),
         // so allow more iterations than a single coarse-TF fetch would need.
@@ -28563,6 +28626,10 @@ class Chart {
         const plotW = Math.max(1, this.w - m.l - m.r);
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
         if (leftIdx >= 6) return;
+        if (typeof this._startMultichartViewportFirstTfHydration === 'function'
+            && this._startMultichartViewportFirstTfHydration()) {
+            return;
+        }
 
         const replay = this.replaySystem;
         const measureLen = () => (replay && Array.isArray(replay.fullRawData))

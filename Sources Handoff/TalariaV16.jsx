@@ -5877,6 +5877,7 @@ function GeneralInfoStepContent({ c, F,
   const [supPickCat, setSupPickCat]   = React.useState(null);
   const mktWrapRef = React.useRef(null);
   const mktMenuRef = React.useRef(null);
+  const marketsManualFilterRef = React.useRef(false);
   const trdWrapRef = React.useRef(null);
   const trdMenuRef = React.useRef(null);
   const supWrapRef = React.useRef(null);
@@ -5991,6 +5992,7 @@ function GeneralInfoStepContent({ c, F,
   };
 
   const toggleMkt  = id => {
+    marketsManualFilterRef.current = true;
     const cur=stratBMarkets||[];
     const next=cur.includes(id)?cur.filter(x=>x!==id):[...cur,id];
     setStratBMarkets(next);
@@ -6003,15 +6005,37 @@ function GeneralInfoStepContent({ c, F,
     [stratBMarkets, stratBInstruments, stratBSupportInst]
   );
   const marketsAutoDerived = !(stratBMarkets||[]).length && effectiveMarkets.length > 0;
+  const syncMarketsFromSymbols = React.useCallback((instruments, support, { force = false } = {}) => {
+    const total = (instruments?.length || 0) + (support?.length || 0);
+    if (total === 0) {
+      marketsManualFilterRef.current = false;
+      setStratBMarkets([]);
+      return;
+    }
+    if (!force && marketsManualFilterRef.current) return;
+    const derived = deriveStrategyMarketsFromInstruments(instruments, support);
+    setStratBMarkets(prev => {
+      const nextKey = [...derived].sort().join('|');
+      const prevKey = [...(prev || [])].sort().join('|');
+      return nextKey === prevKey ? prev : derived;
+    });
+  }, [setStratBMarkets]);
+  React.useEffect(() => {
+    syncMarketsFromSymbols(stratBInstruments, stratBSupportInst);
+  }, [stratBInstruments, stratBSupportInst, syncMarketsFromSymbols]);
   const toggleInst = id => {
+    marketsManualFilterRef.current = false;
     const cur=stratBInstruments||[];
     const next=cur.includes(id)?cur.filter(x=>x!==id):cur.length>=10?cur:[...cur,id];
     setStratBInstruments(next);
+    syncMarketsFromSymbols(next, stratBSupportInst, { force: true });
   };
   const toggleSupportInst = id => {
+    marketsManualFilterRef.current = false;
     const cur=stratBSupportInst||[];
     const next=cur.includes(id)?cur.filter(x=>x!==id):cur.length>=10?cur:[...cur,id];
     setStratBSupportInst(next);
+    syncMarketsFromSymbols(stratBInstruments, next, { force: true });
   };
   React.useEffect(()=>{
     if(!mktDropOpen) return;
@@ -6344,7 +6368,7 @@ function GeneralInfoStepContent({ c, F,
               <div ref={mktMenuRef} onClick={e=>e.stopPropagation()} style={{position:'fixed',top:mktDropPos.top,left:mktDropPos.left,width:210,maxHeight:mktDropPos.maxH,overflowY:'auto',background:c.sf,border:'1px solid rgba(140,160,255,0.22)',boxShadow:'0 8px 28px rgba(0,0,0,0.7)',zIndex:100020,fontFamily:F}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 {MKT_CAT_OPTS.map(o=>{
-                  const checked=(stratBMarkets||[]).includes(o.id);
+                  const checked=(effectiveMarkets||[]).includes(o.id);
                   const isH=mktHov===o.id;
                   return(
                     <div key={o.id} onClick={e=>{e.stopPropagation();toggleMkt(o.id);}}
@@ -6379,7 +6403,7 @@ function GeneralInfoStepContent({ c, F,
               </div>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
                 {(stratBInstruments||[]).length>0&&(
-                  <div onClick={e=>{e.stopPropagation();setStratBInstruments([]);}}
+                  <div onClick={e=>{e.stopPropagation();marketsManualFilterRef.current=false;setStratBInstruments([]);syncMarketsFromSymbols([], stratBSupportInst, { force: true });}}
                     style={{display:'flex',alignItems:'center',cursor:'default',color:c.tm,transition:'color 0.1s'}}
                     onMouseEnter={e=>e.currentTarget.style.color=c.rd}
                     onMouseLeave={e=>e.currentTarget.style.color=c.tm}>
@@ -6404,7 +6428,7 @@ function GeneralInfoStepContent({ c, F,
                 </svg>
               </div>
               {trdPickOpen && createPortal((()=>{
-                const cats=(stratBMarkets||[]).map(x=>x.toLowerCase());
+                const cats=(effectiveMarkets||[]).map(x=>x.toLowerCase());
                 const showAll=cats.length===0;
                 const sections=[
                   ...(showAll||cats.includes('forex')?[{cat:'forex',title:'Forex pairs',opts:FOREX_INSTRUMENTS},{cat:'forex',title:'Commodities (CFD)',opts:COMMODITY_CFD_INSTRUMENTS}]:[]),
@@ -6508,7 +6532,7 @@ function GeneralInfoStepContent({ c, F,
               </div>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
                 {(stratBSupportInst||[]).length>0&&(
-                  <div onClick={e=>{e.stopPropagation();setStratBSupportInst([]);}}
+                  <div onClick={e=>{e.stopPropagation();marketsManualFilterRef.current=false;setStratBSupportInst([]);syncMarketsFromSymbols(stratBInstruments, [], { force: true });}}
                     style={{display:'flex',alignItems:'center',cursor:'default',color:c.tm,transition:'color 0.1s'}}
                     onMouseEnter={e=>e.currentTarget.style.color=c.rd}
                     onMouseLeave={e=>e.currentTarget.style.color=c.tm}>
@@ -6532,7 +6556,7 @@ function GeneralInfoStepContent({ c, F,
                 </svg>
               </div>
               {supPickOpen && createPortal((()=>{
-                const cats=(stratBMarkets||[]).map(x=>x.toLowerCase());
+                const cats=(effectiveMarkets||[]).map(x=>x.toLowerCase());
                 const showAll=cats.length===0;
                 const sections=[
                   ...(showAll||cats.includes('forex')?[{cat:'forex',title:'Forex pairs',opts:FOREX_INSTRUMENTS},{cat:'forex',title:'Commodities (CFD)',opts:COMMODITY_CFD_INSTRUMENTS}]:[]),
@@ -45469,7 +45493,14 @@ const TalariaV8b = () => {
               setStratBTags(editStrat.tags||[]);
               setStratBComplexity(editStrat.complexity||"Medium");
               setStratBDirection(editStrat.direction||"both");
-              setStratBMarkets(editStrat.markets||[]);
+              const editInst = editStrat.instruments || [];
+              const editSupport = editStrat.supportInst || [];
+              const editDerivedMarkets = deriveStrategyMarketsFromInstruments(editInst, editSupport);
+              setStratBMarkets(
+                editDerivedMarkets.length
+                  ? editDerivedMarkets
+                  : (editStrat.markets || [])
+              );
               setStratBConditions(editStrat.conditions||[]);
               setStratBVariables(editStrat.variables||[{type:"divider",id:"div0"}]);
               setStratBImages(editStrat.images||[]);
